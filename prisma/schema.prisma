@@ -1,0 +1,168 @@
+// prisma/schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"] // 开启扩展支持
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis] // 声明使用 PostGIS
+}
+
+// --------------------------------------
+// 🌍 核心数据模型：地点 (餐厅/景点)
+// --------------------------------------
+model Place {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @default(uuid()) @unique
+  
+  name      String   // 默认名称 (通常存中文)
+  nameEN    String?  // 英文名称 (可选)
+  category  PlaceCategory // 枚举：景点、餐厅等
+  
+  // 📍 地理位置 (PostGIS)
+  // 注意：Prisma 目前用 Unsupported 处理原生 GIS 类型
+  location  Unsupported("geography(Point, 4326)")? 
+  
+  address   String?
+  
+  // 🔗 关联
+  cityId    Int?
+  city      City?    @relation(fields: [cityId], references: [id])
+
+  // 💎 核心灵活字段 (JSONB)
+  // 包含：营业时间、设施(无障碍)、穿衣指南、餐饮锚点属性
+  metadata  Json?    @db.JsonB 
+  
+  // 🥵 体力消耗元数据 (新增)
+  // { "terrain": "STAIRS_ONLY", "fatigue_score": "HIGH" }
+  physicalMetadata Json? @db.JsonB
+
+  googlePlaceId String? @unique 
+  rating        Float?  @default(0)
+
+  itineraryItems ItineraryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 索引
+  @@index([metadata(ops: JsonbPathOps)], type: Gin)
+}
+
+// --------------------------------------
+// 🗺️ 行程模型
+// --------------------------------------
+model Trip {
+  id          String   @id @default(uuid())
+  destination String   // ISO Code, e.g. "JP"
+  
+  startDate   DateTime
+  endDate     DateTime
+  
+  // 💰 预算配置
+  budgetConfig Json?   
+  // { "total": 20000, "currency": "CNY", "hotel_tier": "4-Star" }
+
+  // 🔋 体能/木桶配置 (新增)
+  // { "pacing_factor": "LOW", "daily_step_limit": 10000, "forced_rest_interval": 90 }
+  pacingConfig Json?   
+
+  days        TripDay[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TripDay {
+  id     String @id @default(uuid())
+  date   DateTime
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id])
+  
+  items  ItineraryItem[]
+}
+
+model ItineraryItem {
+  id        String   @id @default(uuid())
+  startTime DateTime?
+  endTime   DateTime?
+  
+  type      ItemType // ACTIVITY, REST, MEAL, TRANSIT
+  
+  placeId   Int?
+  place     Place?   @relation(fields: [placeId], references: [id])
+  
+  tripDayId String
+  tripDay   TripDay  @relation(fields: [tripDayId], references: [id])
+  
+  note      String?
+}
+
+// --------------------------------------
+// 🏳️ 国家/城市档案
+// --------------------------------------
+model City {
+  id      Int     @id @default(autoincrement())
+  name    String
+  countryCode String
+  places  Place[]
+}
+
+model CountryProfile {
+  isoCode     String @id @unique // "JP"
+  nameCN      String
+  
+  // 💱 货币信息
+  currencyCode String? // "JPY"
+  currencyName String? // "Yen"
+  
+  // 💳 支付画像 (关键字段)
+  paymentType  PaymentType? // 枚举: CASH_HEAVY, BALANCED, DIGITAL_ONLY
+  
+  // 📝 支付实用建议 (JSONB)
+  // 存: {"tipping": "No tipping", "atm_network": "7-Bank is best", "wallet_apps": ["Suica", "PayPay"], "cash_preparation": "硬币使用极高，务必准备零钱袋"}
+  paymentInfo Json? @db.JsonB
+  
+  // 💱 汇率 (缓存值，每天更新一次)
+  // 1 外币 = 多少 CNY，例如 0.048 (1 JPY = 0.048 CNY)
+  exchangeRateToCNY Float?
+  
+  // 🔌 电压、插座
+  powerInfo   Json? 
+  // 🚑 紧急电话
+  emergency   Json?
+  // 🛂 签证政策
+  visaForCN   Json? 
+  // ✈️ 机票估算
+  flightEstimates Json?
+
+  updatedAt   DateTime @updatedAt
+}
+
+// --------------------------------------
+// ⚙️ 枚举
+// --------------------------------------
+enum PlaceCategory {
+  ATTRACTION
+  RESTAURANT
+  SHOPPING
+  HOTEL
+  TRANSIT_HUB
+}
+
+enum ItemType {
+  ACTIVITY
+  REST
+  MEAL_ANCHOR
+  MEAL_FLOATING
+  TRANSIT
+}
+
+enum PaymentType {
+  CASH_HEAVY   // 必须带大量现金（日本、德国、大部分东南亚）
+  BALANCED     // 卡+现金混合（美国、法国、大部分欧洲）
+  DIGITAL_ONLY // 基本不用现金（中国、瑞典、新加坡、英国伦敦）
+}
