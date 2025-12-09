@@ -18,6 +18,13 @@
     "seed": "ts-node --project tsconfig.backend.json scripts/seed-places.ts",
     "seed:payment-profiles": "ts-node --project tsconfig.backend.json scripts/seed-payment-profiles.ts",
     "seed:visa": "ts-node --project tsconfig.backend.json scripts/seed-visa-requirements.ts",
+    "seed:flight-prices": "ts-node --project tsconfig.backend.json scripts/seed-flight-prices.ts",
+    "clear:flight-prices": "ts-node --project tsconfig.backend.json scripts/clear-flight-prices.ts",
+    "import:flight-data": "ts-node --project tsconfig.backend.json scripts/import-flight-data.ts",
+    "import:flight-data:streaming": "ts-node --project tsconfig.backend.json scripts/import-flight-data-streaming.ts",
+    "convert:excel-to-csv": "ts-node --project tsconfig.backend.json scripts/convert-excel-to-csv.ts",
+    "clear:test-data": "ts-node --project tsconfig.backend.json scripts/clear-test-data.ts",
+    "create:flight-table": "ts-node --project tsconfig.backend.json scripts/create-flight-price-table.ts",
     "check:visa": "ts-node --project tsconfig.backend.json scripts/check-visa-data.ts"
   },
   "dependencies": {
@@ -29,6 +36,7 @@
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^11.2.3",
     "@prisma/client": "^6.19.0",
+    "@types/pg": "^8.15.6",
     "apify-client": "^2.20.0",
     "axios": "^1.13.2",
     "cheerio": "^1.1.0",
@@ -40,11 +48,13 @@
     "luxon": "^3.7.2",
     "next": "14.2.5",
     "node-fetch": "^2.7.0",
+    "pg": "^8.16.3",
     "prisma": "^6.19.0",
     "react": "^18",
     "react-dom": "^18",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.14",

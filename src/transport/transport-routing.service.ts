@@ -1,5 +1,5 @@
 // src/transport/transport-routing.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   TransportOption,
@@ -8,6 +8,8 @@ import {
   TransportRecommendation,
 } from './interfaces/transport.interface';
 import { TransportDecisionService } from './transport-decision.service';
+import { GoogleRoutesService } from './services/google-routes.service';
+import { RouteCacheService } from './services/route-cache.service';
 
 /**
  * 交通路线规划服务
@@ -16,9 +18,13 @@ import { TransportDecisionService } from './transport-decision.service';
  */
 @Injectable()
 export class TransportRoutingService {
+  private readonly logger = new Logger(TransportRoutingService.name);
+
   constructor(
     private prisma: PrismaService,
     private decisionService: TransportDecisionService,
+    private googleRoutesService: GoogleRoutesService,
+    private routeCacheService: RouteCacheService,
   ) {}
 
   /**
@@ -122,6 +128,13 @@ export class TransportRoutingService {
    * - 步行：< 1.5km 且天气好且无老人
    * - 公共交通：> 1.5km 且属于交通枢纽且无大件行李
    * - 打车：有大件行李 OR 有老人 OR 下雨 OR 换乘>2次
+   * 
+   * 特殊场景：换酒店日强制门到门
+   * 
+   * 优化：
+   * - 短距离（< 1km）使用 PostGIS 计算，不调 API
+   * - 长距离优先使用 Google Routes API（如果配置）
+   * - 热门路线使用缓存
    */
   private async planIntraCityRoute(
     fromLat: number,
@@ -134,11 +147,65 @@ export class TransportRoutingService {
     const distanceMeters = distance * 1000;
     const options: TransportOption[] = [];
 
-    // 1. 步行选项
-    if (distanceMeters < 1500 && !context.isRaining && !context.hasElderly) {
+    // ============================================
+    // 优化：短距离使用 PostGIS，不调 API
+    // ============================================
+    const isShortDistance = this.routeCacheService.isShortDistance(distanceMeters);
+
+    // ============================================
+    // 特殊场景：换酒店日（Moving Day）
+    // ============================================
+    // 强制门到门策略：TAXI 到车站 → 大交通 → TAXI 到新酒店
+    if (context.isMovingDay && context.hasLuggage) {
+      // 换酒店日时，优先推荐打车（门到门）
+      const taxiOption: TransportOption = {
+        mode: TransportMode.TAXI,
+        durationMinutes: this.estimateTaxiTime(distanceMeters),
+        cost: this.estimateTaxiCost(distanceMeters),
+        walkDistance: 0,
+        description: '打车：门到门，适合换酒店日',
+      };
+      options.push(taxiOption);
+
+      // 仍然提供公共交通作为备选，但会被算法惩罚
+      const transitOption: TransportOption = {
+        mode: TransportMode.TRANSIT,
+        durationMinutes: this.estimateTransitTime(distanceMeters),
+        cost: this.estimateTransitCost(distanceMeters),
+        walkDistance: 800, // 换酒店日时，步行距离惩罚更大
+        transfers: this.estimateTransfers(distanceMeters),
+        description: '公共交通：不推荐（携带大件行李）',
+      };
+      options.push(transitOption);
+
+      // 使用决策服务进行排序（会大幅惩罚公共交通）
+      return this.decisionService.rankOptions(options, context);
+    }
+
+    // ============================================
+    // 正常场景：市内交通
+    // ============================================
+
+    // 1. 步行选项：< 1.5km 且天气好且无老人且无行李
+    if (
+      distanceMeters < 1500 &&
+      !context.isRaining &&
+      !context.hasElderly &&
+      !context.hasLuggage
+    ) {
+      // 短距离使用 PostGIS 精确计算
+      const walkDuration = isShortDistance
+        ? await this.routeCacheService.calculateShortDistanceWalkTime(
+            fromLat,
+            fromLng,
+            toLat,
+            toLng
+          )
+        : Math.round(distanceMeters / 80); // 降级：估算
+
       const walkOption: TransportOption = {
         mode: TransportMode.WALKING,
-        durationMinutes: Math.round(distanceMeters / 80), // 步行速度：80米/分钟
+        durationMinutes: walkDuration,
         cost: 0,
         walkDistance: distanceMeters,
         description: '步行：免费，距离较近',
@@ -146,28 +213,98 @@ export class TransportRoutingService {
       options.push(walkOption);
     }
 
-    // 2. 公共交通选项
-    if (distanceMeters > 1500 || context.hasLuggage === false) {
-      const transitOption: TransportOption = {
-        mode: TransportMode.TRANSIT,
-        durationMinutes: this.estimateTransitTime(distanceMeters),
-        cost: this.estimateTransitCost(distanceMeters),
-        walkDistance: 500, // 到车站的步行距离
-        transfers: this.estimateTransfers(distanceMeters),
-        description: '公共交通：经济实惠',
-      };
-      options.push(transitOption);
+    // 2. 公共交通选项：> 1.5km 或 无大件行李
+    if (distanceMeters > 1500 || !context.hasLuggage) {
+      // 优先使用 Google Routes API（如果配置）
+      let transitOptions: TransportOption[] = [];
+      
+      if (!isShortDistance) {
+        // 检查缓存
+        const cachedRoute = await this.routeCacheService.getCachedRoute(
+          fromLat,
+          fromLng,
+          toLat,
+          toLng,
+          'TRANSIT'
+        );
+
+        if (cachedRoute) {
+          transitOptions = cachedRoute;
+        } else {
+          // 调用 Google Routes API
+          const googleOptions = await this.googleRoutesService.getRoutes(
+            fromLat,
+            fromLng,
+            toLat,
+            toLng,
+            'TRANSIT',
+            {
+              lessWalking: context.hasElderly || context.hasLimitedMobility, // 老人模式：少步行
+            }
+          );
+
+          if (googleOptions.length > 0) {
+            transitOptions = googleOptions;
+            // 保存到缓存
+            await this.routeCacheService.saveCachedRoute(
+              fromLat,
+              fromLng,
+              toLat,
+              toLng,
+              'TRANSIT',
+              googleOptions
+            );
+          }
+        }
+      }
+
+      // 如果没有 Google API 数据，使用估算
+      if (transitOptions.length === 0) {
+        const transitOption: TransportOption = {
+          mode: TransportMode.TRANSIT,
+          durationMinutes: this.estimateTransitTime(distanceMeters),
+          cost: this.estimateTransitCost(distanceMeters),
+          walkDistance: 500, // 到车站的步行距离
+          transfers: this.estimateTransfers(distanceMeters),
+          description: '公共交通：经济实惠',
+        };
+        transitOptions.push(transitOption);
+      }
+
+      options.push(...transitOptions);
     }
 
     // 3. 打车选项（总是提供，让算法决定是否推荐）
-    const taxiOption: TransportOption = {
-      mode: TransportMode.TAXI,
-      durationMinutes: this.estimateTaxiTime(distanceMeters),
-      cost: this.estimateTaxiCost(distanceMeters),
-      walkDistance: 0,
-      description: '打车：门到门，最方便',
-    };
-    options.push(taxiOption);
+    // 优先使用 Google Routes API（如果配置）
+    let taxiOptions: TransportOption[] = [];
+    
+    if (!isShortDistance) {
+      const googleOptions = await this.googleRoutesService.getRoutes(
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        'DRIVING'
+      );
+
+      if (googleOptions.length > 0) {
+        taxiOptions = googleOptions;
+      }
+    }
+
+    // 如果没有 Google API 数据，使用估算
+    if (taxiOptions.length === 0) {
+      const taxiOption: TransportOption = {
+        mode: TransportMode.TAXI,
+        durationMinutes: this.estimateTaxiTime(distanceMeters),
+        cost: this.estimateTaxiCost(distanceMeters),
+        walkDistance: 0,
+        description: '打车：门到门，最方便',
+      };
+      taxiOptions.push(taxiOption);
+    }
+
+    options.push(...taxiOptions);
 
     // 使用决策服务进行排序
     return this.decisionService.rankOptions(options, context);

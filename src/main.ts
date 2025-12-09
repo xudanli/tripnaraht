@@ -26,6 +26,11 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('trips', '行程管理相关接口')
     .addTag('places', '地点查询相关接口')
+    .addTag('itinerary-items', '行程项管理相关接口')
+    .addTag('itinerary-optimization', '路线优化相关接口（节奏感算法）')
+    .addTag('transport', '交通规划相关接口')
+    .addTag('flight-prices', '机票价格参考相关接口')
+    .addTag('countries', '国家档案相关接口')
     .addServer('http://localhost:3000', '开发环境')
     .build();
   

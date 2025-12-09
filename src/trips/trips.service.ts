@@ -4,10 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
+import { FlightPriceService } from './services/flight-price.service';
 
 @Injectable()
 export class TripsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private flightPriceService: FlightPriceService
+  ) {}
 
   /**
    * 创建行程
@@ -56,8 +60,13 @@ export class TripsService {
     // ============================================
     // 步骤 3: 🧠 策略二：预算切分 (Budget Strategy)
     // ============================================
-    // 假设机票和签证费用（后续可对接 Amadeus API 获取实时价格）
-    const estimatedFlightVisa = 5000; 
+    // 从估算数据库查询机票+签证费用（保守估算：使用旺季价格）
+    const estimatedFlightVisa = await this.flightPriceService.getEstimatedCost(
+      dto.destination,
+      undefined, // 暂时不指定出发城市，后续可以从 DTO 中获取
+      true // 使用保守估算（旺季价格）
+    );
+    
     const remainingBudget = dto.totalBudget - estimatedFlightVisa;
     const dailyBudget = remainingBudget / durationDays;
     

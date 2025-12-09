@@ -1,150 +1,150 @@
-// prisma/schema.prisma
-
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"] // 开启扩展支持
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [postgis] // 声明使用 PostGIS
+  extensions = [postgis]
 }
 
-// --------------------------------------
-// 🌍 核心数据模型：地点 (餐厅/景点)
-// --------------------------------------
 model Place {
-  id        Int      @id @default(autoincrement())
-  uuid      String   @default(uuid()) @unique
-  
-  name      String   // 默认名称 (通常存中文)
-  nameEN    String?  // 英文名称 (可选)
-  category  PlaceCategory // 枚举：景点、餐厅等
-  
-  // 📍 地理位置 (PostGIS)
-  // 注意：Prisma 目前用 Unsupported 处理原生 GIS 类型
-  location  Unsupported("geography(Point, 4326)")? 
-  
-  address   String?
-  
-  // 🔗 关联
-  cityId    Int?
-  city      City?    @relation(fields: [cityId], references: [id])
+  id               Int                       @id @default(autoincrement())
+  uuid             String                    @unique @default(uuid())
+  name             String
+  nameEN           String?
+  category         PlaceCategory
+  location         Unsupported("geography")?
+  address          String?
+  cityId           Int?
+  metadata         Json?
+  physicalMetadata Json?
+  googlePlaceId    String?                   @unique
+  rating           Float?                    @default(0)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  itineraryItems   ItineraryItem[]
+  city             City?                     @relation(fields: [cityId], references: [id])
 
-  // 💎 核心灵活字段 (JSONB)
-  // 包含：营业时间、设施(无障碍)、穿衣指南、餐饮锚点属性
-  metadata  Json?    @db.JsonB 
-  
-  // 🥵 体力消耗元数据 (新增)
-  // { "terrain": "STAIRS_ONLY", "fatigue_score": "HIGH" }
-  physicalMetadata Json? @db.JsonB
-
-  googlePlaceId String? @unique 
-  rating        Float?  @default(0)
-
-  itineraryItems ItineraryItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 索引
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
 }
 
-// --------------------------------------
-// 🗺️ 行程模型
-// --------------------------------------
 model Trip {
-  id          String   @id @default(uuid())
-  destination String   // ISO Code, e.g. "JP"
-  
-  startDate   DateTime
-  endDate     DateTime
-  
-  // 💰 预算配置
-  budgetConfig Json?   
-  // { "total": 20000, "currency": "CNY", "hotel_tier": "4-Star" }
-
-  // 🔋 体能/木桶配置 (新增)
-  // { "pacing_factor": "LOW", "daily_step_limit": 10000, "forced_rest_interval": 90 }
-  pacingConfig Json?   
-
-  days        TripDay[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(uuid())
+  destination  String
+  startDate    DateTime
+  endDate      DateTime
+  budgetConfig Json?
+  pacingConfig Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  days         TripDay[]
 }
 
 model TripDay {
-  id     String @id @default(uuid())
+  id     String          @id @default(uuid())
   date   DateTime
   tripId String
-  trip   Trip   @relation(fields: [tripId], references: [id])
-  
   items  ItineraryItem[]
+  trip   Trip            @relation(fields: [tripId], references: [id])
 }
 
 model ItineraryItem {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   startTime DateTime?
   endTime   DateTime?
-  
-  type      ItemType // ACTIVITY, REST, MEAL, TRANSIT
-  
+  type      ItemType
   placeId   Int?
-  place     Place?   @relation(fields: [placeId], references: [id])
-  
   tripDayId String
-  tripDay   TripDay  @relation(fields: [tripDayId], references: [id])
-  
   note      String?
+  place     Place?    @relation(fields: [placeId], references: [id])
+  tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
 }
 
-// --------------------------------------
-// 🏳️ 国家/城市档案
-// --------------------------------------
 model City {
-  id      Int     @id @default(autoincrement())
-  name    String
+  id          Int     @id @default(autoincrement())
+  name        String
   countryCode String
-  places  Place[]
+  places      Place[]
 }
 
 model CountryProfile {
-  isoCode     String @id @unique // "JP"
-  nameCN      String
-  
-  // 💱 货币信息
-  currencyCode String? // "JPY"
-  currencyName String? // "Yen"
-  
-  // 💳 支付画像 (关键字段)
-  paymentType  PaymentType? // 枚举: CASH_HEAVY, BALANCED, DIGITAL_ONLY
-  
-  // 📝 支付实用建议 (JSONB)
-  // 存: {"tipping": "No tipping", "atm_network": "7-Bank is best", "wallet_apps": ["Suica", "PayPay"], "cash_preparation": "硬币使用极高，务必准备零钱袋"}
-  paymentInfo Json? @db.JsonB
-  
-  // 💱 汇率 (缓存值，每天更新一次)
-  // 1 外币 = 多少 CNY，例如 0.048 (1 JPY = 0.048 CNY)
+  isoCode           String       @id @unique
+  nameCN            String
+  powerInfo         Json?
+  emergency         Json?
+  paymentInfo       Json?
+  visaForCN         Json?
+  flightEstimates   Json?
+  updatedAt         DateTime     @updatedAt
+  currencyCode      String?
+  currencyName      String?
   exchangeRateToCNY Float?
-  
-  // 🔌 电压、插座
-  powerInfo   Json? 
-  // 🚑 紧急电话
-  emergency   Json?
-  // 🛂 签证政策
-  visaForCN   Json? 
-  // ✈️ 机票估算
-  flightEstimates Json?
-
-  updatedAt   DateTime @updatedAt
+  paymentType       PaymentType?
 }
 
-// --------------------------------------
-// ⚙️ 枚举
-// --------------------------------------
+model FlightPriceReference {
+  id              Int      @id @default(autoincrement())
+  countryCode     String   @db.VarChar(2)
+  originCity      String?  @db.VarChar(10)
+  lowSeasonPrice  Int
+  highSeasonPrice Int
+  averagePrice    Int
+  visaCost        Int      @default(0)
+  source          String?  @db.VarChar(255)
+  lastUpdated     DateTime @default(now()) @db.Timestamp(6)
+  notes           String?
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@index([countryCode])
+  @@index([countryCode, originCity])
+}
+
+/// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model postgres_log {
+  log_time               DateTime? @db.Timestamptz(3)
+  user_name              String?
+  database_name          String?
+  process_id             Int?
+  connection_from        String?
+  session_id             String
+  session_line_num       BigInt
+  command_tag            String?
+  session_start_time     DateTime? @db.Timestamptz(6)
+  virtual_transaction_id String?
+  transaction_id         BigInt?
+  error_severity         String?
+  sql_state_code         String?
+  message                String?
+  detail                 String?
+  hint                   String?
+  internal_query         String?
+  internal_query_pos     Int?
+  context                String?
+  query                  String?
+  query_pos              Int?
+  location               String?
+  application_name       String?
+  backend_type           String?
+  leader_pid             Int?
+  query_id               BigInt?
+
+  @@ignore
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
+}
+
 enum PlaceCategory {
   ATTRACTION
   RESTAURANT
@@ -162,7 +162,86 @@ enum ItemType {
 }
 
 enum PaymentType {
-  CASH_HEAVY   // 必须带大量现金（日本、德国、大部分东南亚）
-  BALANCED     // 卡+现金混合（美国、法国、大部分欧洲）
-  DIGITAL_ONLY // 基本不用现金（中国、瑞典、新加坡、英国伦敦）
+  CASH_HEAVY
+  BALANCED
+  DIGITAL_ONLY
+}
+
+// --------------------------------------
+// ✈️ 国内航线价格详细表 (基于历史数据)
+// --------------------------------------
+model FlightPriceDetail {
+  id Int @id @default(autoincrement())
+
+  // 航线标识符（出发城市->到达城市）
+  routeId String // "成都->深圳"
+
+  // 出发城市
+  originCity String // "成都"
+
+  // 到达城市
+  destinationCity String // "深圳"
+
+  // 起飞机场信息
+  originAirport          String? // "成都双流国际机场"
+  originAirportLongitude Float? // 机场经度
+  originAirportLatitude  Float? // 机场纬度
+
+  // 降落机场信息
+  destinationAirport          String? // "深圳宝安国际机场"
+  destinationAirportLongitude Float? // 机场经度
+  destinationAirportLatitude  Float? // 机场纬度
+
+  // 月份（1-12）
+  month Int
+
+  // 星期几（0=周一, 6=周日）
+  dayOfWeek Int?
+
+  // 月度基准价（该航线在该月的平均价格）
+  monthlyBasePrice Float // P_month
+
+  // 周内因子（该星期几相对于总平均价的倍数）
+  dayOfWeekFactor Float? // F_day
+
+  // 统计信息
+  sampleCount Int    @default(0) // 样本数量
+  minPrice    Float? // 最低价格
+  maxPrice    Float? // 最高价格
+  stdDev      Float? // 标准差
+
+  // 数据来源
+  source      String?  @default("2024年历史数据")
+  lastUpdated DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 唯一约束：同一航线、月份、星期几只能有一条记录
+  @@unique([routeId, month, dayOfWeek])
+  // 索引：按航线、月份、星期几查询
+  @@index([routeId, month])
+  @@index([routeId, month, dayOfWeek])
+  @@index([originCity, destinationCity])
+}
+
+// --------------------------------------
+// ✈️ 周内因子查找表（全局因子）
+// --------------------------------------
+model DayOfWeekFactor {
+  id Int @id @default(autoincrement())
+
+  // 星期几（0=周一, 6=周日）
+  dayOfWeek Int @unique
+
+  // 周内因子（相对于总平均价的倍数）
+  factor Float // F_day
+
+  // 统计信息
+  sampleCount   Int    @default(0)
+  avgPrice      Float? // 该星期几的平均价格
+  totalAvgPrice Float? // 总平均价格
+
+  lastUpdated DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

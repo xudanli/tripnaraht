@@ -82,16 +82,18 @@ export class TransportDecisionService {
     score += option.cost;
     score += option.durationMinutes * timeValue;
 
-    // 2. 行李场景惩罚
+    // 2. 行李场景惩罚（换酒店日时惩罚更严重）
     if (context.hasLuggage) {
+      const luggagePenalty = context.isMovingDay ? 1000 : 500; // 换酒店日时惩罚加倍
+      
       if (option.mode === TransportMode.TRANSIT) {
-        score += 500; // 带着箱子坐地铁，痛苦
+        score += luggagePenalty; // 带着箱子坐地铁，痛苦
       }
       if (option.mode === TransportMode.WALKING && option.walkDistance > 500) {
         score += 1000; // 拖着箱子走500米以上，非常痛苦
       }
       if (option.mode === TransportMode.TAXI) {
-        score -= 100; // 鼓励打车
+        score -= context.isMovingDay ? 200 : 100; // 换酒店日时更鼓励打车
       }
     }
 

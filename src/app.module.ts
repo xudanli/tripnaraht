@@ -8,6 +8,8 @@ import { ItineraryItemsModule } from './itinerary-items/itinerary-items.module';
 import { TasksModule } from './tasks/tasks.module';
 import { CountriesModule } from './countries/countries.module';
 import { TransportModule } from './transport/transport.module';
+import { FlightPricesModule } from './flight-prices/flight-prices.module';
+import { ItineraryOptimizationModule } from './itinerary-optimization/itinerary-optimization.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { TransportModule } from './transport/transport.module';
     TasksModule, // 定时任务模块
     CountriesModule, // 国家档案模块
     TransportModule, // 交通规划模块
+    FlightPricesModule, // 机票价格参考模块
+    ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
   ],
 })
 export class AppModule {}
