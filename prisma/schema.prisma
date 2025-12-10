@@ -9,63 +9,11 @@ datasource db {
   extensions = [postgis]
 }
 
-model Place {
-  id               Int                       @id @default(autoincrement())
-  uuid             String                    @unique @default(uuid())
-  name             String
-  nameEN           String?
-  category         PlaceCategory
-  location         Unsupported("geography")?
-  address          String?
-  cityId           Int?
-  metadata         Json?
-  physicalMetadata Json?
-  googlePlaceId    String?                   @unique
-  rating           Float?                    @default(0)
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
-  itineraryItems   ItineraryItem[]
-  city             City?                     @relation(fields: [cityId], references: [id])
-
-  @@index([metadata(ops: JsonbPathOps)], type: Gin)
-}
-
-model Trip {
-  id           String    @id @default(uuid())
-  destination  String
-  startDate    DateTime
-  endDate      DateTime
-  budgetConfig Json?
-  pacingConfig Json?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  days         TripDay[]
-}
-
-model TripDay {
-  id     String          @id @default(uuid())
-  date   DateTime
-  tripId String
-  items  ItineraryItem[]
-  trip   Trip            @relation(fields: [tripId], references: [id])
-}
-
-model ItineraryItem {
-  id        String    @id @default(uuid())
-  startTime DateTime?
-  endTime   DateTime?
-  type      ItemType
-  placeId   Int?
-  tripDayId String
-  note      String?
-  place     Place?    @relation(fields: [placeId], references: [id])
-  tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
-}
-
 model City {
   id          Int     @id @default(autoincrement())
   name        String
   countryCode String
+  adcode      String? // 行政区划代码，从酒店数据表提取
   places      Place[]
 }
 
@@ -77,11 +25,59 @@ model CountryProfile {
   paymentInfo       Json?
   visaForCN         Json?
   flightEstimates   Json?
-  updatedAt         DateTime     @updatedAt
+  updatedAt         DateTime
   currencyCode      String?
   currencyName      String?
   exchangeRateToCNY Float?
   paymentType       PaymentType?
+}
+
+model DayOfWeekFactor {
+  id            Int      @id @default(autoincrement())
+  dayOfWeek     Int      @unique
+  factor        Float
+  sampleCount   Int      @default(0)
+  avgPrice      Float?
+  totalAvgPrice Float?
+  lastUpdated   DateTime @default(now())
+  updatedAt     DateTime
+}
+
+model FlightPriceDetail {
+  id                          Int      @id @default(autoincrement())
+  routeId                     String
+  originCity                  String
+  destinationCity             String
+  month                       Int
+  dayOfWeek                   Int?
+  monthlyBasePrice            Float
+  dayOfWeekFactor             Float?
+  sampleCount                 Int      @default(0)
+  minPrice                    Float?
+  maxPrice                    Float?
+  stdDev                      Float?
+  source                      String?  @default("2023-2024年历史数据")
+  lastUpdated                 DateTime @default(now())
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime
+  destinationAirport          String?
+  destinationAirportLatitude  Float?
+  destinationAirportLongitude Float?
+  originAirport               String?
+  originAirportLatitude       Float?
+  originAirportLongitude      Float?
+  airlineCount                Int?     @default(0)
+  arrivalTime                 String?
+  departureTime               String?
+  distanceKm                  Float?
+  isWeekend                   Boolean? @default(false)
+  monthFactor                 Float?
+  timeOfDayFactor             Float?
+
+  @@unique([routeId, month, dayOfWeek])
+  @@index([originCity, destinationCity])
+  @@index([routeId, month, dayOfWeek])
+  @@index([routeId, month])
 }
 
 model FlightPriceReference {
@@ -96,10 +92,95 @@ model FlightPriceReference {
   lastUpdated     DateTime @default(now()) @db.Timestamp(6)
   notes           String?
   createdAt       DateTime @default(now()) @db.Timestamp(6)
-  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamp(6)
+  updatedAt       DateTime @default(now()) @db.Timestamp(6)
 
   @@index([countryCode])
   @@index([countryCode, originCity])
+}
+
+model ItineraryItem {
+  id        String    @id
+  startTime DateTime?
+  endTime   DateTime?
+  type      ItemType
+  placeId   Int?
+  tripDayId String
+  note      String?
+  place     Place?    @relation(fields: [placeId], references: [id])
+  tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
+}
+
+model Place {
+  id               Int                       @id @default(autoincrement())
+  uuid             String                    @unique
+  name             String
+  nameEN           String?
+  category         PlaceCategory
+  location         Unsupported("geography")?
+  address          String?
+  cityId           Int?
+  metadata         Json?
+  physicalMetadata Json?
+  googlePlaceId    String?                   @unique
+  rating           Float?                    @default(0)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime
+  itineraryItems   ItineraryItem[]
+  city             City?                     @relation(fields: [cityId], references: [id])
+
+  @@index([metadata(ops: JsonbPathOps)], type: Gin)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model RawFlightData {
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 出发城市 String? @map("出发城市") @db.VarChar(50)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 到达城市 String? @map("到达城市") @db.VarChar(50)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 里程公里 Decimal? @map("里程公里") @db.Decimal
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 航班班次 String? @map("航班班次") @db.VarChar(20)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 航空公司 String? @map("航空公司") @db.VarChar(50)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 起飞机场 String? @map("起飞机场") @db.VarChar(100)
+  originAirportY Decimal? @map("起飞机场y") @db.Decimal
+  originAirportX Decimal? @map("起飞机场x") @db.Decimal
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 降落机场 String? @map("降落机场") @db.VarChar(100)
+  destinationAirportY Decimal? @map("降落机场y") @db.Decimal
+  destinationAirportX Decimal? @map("降落机场x") @db.Decimal
+
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 起飞时间 DateTime? @map("起飞时间") @db.Time(6)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 降落时间 DateTime? @map("降落时间") @db.Time(6)
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 日期 DateTime? @map("日期") @db.Date
+  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
+  // 价格元 Int? @map("价格元")
+  @@ignore
+}
+
+model Trip {
+  id           String    @id
+  destination  String
+  startDate    DateTime
+  endDate      DateTime
+  budgetConfig Json?
+  pacingConfig Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  days         TripDay[]
+}
+
+model TripDay {
+  id            String          @id
+  date          DateTime
+  tripId        String
+  items         ItineraryItem[]
+  trip          Trip            @relation(fields: [tripId], references: [id])
 }
 
 /// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.
@@ -145,14 +226,6 @@ model spatial_ref_sys {
   proj4text String? @db.VarChar(2048)
 }
 
-enum PlaceCategory {
-  ATTRACTION
-  RESTAURANT
-  SHOPPING
-  HOTEL
-  TRANSIT_HUB
-}
-
 enum ItemType {
   ACTIVITY
   REST
@@ -167,81 +240,249 @@ enum PaymentType {
   DIGITAL_ONLY
 }
 
-// --------------------------------------
-// ✈️ 国内航线价格详细表 (基于历史数据)
-// --------------------------------------
-model FlightPriceDetail {
-  id Int @id @default(autoincrement())
-
-  // 航线标识符（出发城市->到达城市）
-  routeId String // "成都->深圳"
-
-  // 出发城市
-  originCity String // "成都"
-
-  // 到达城市
-  destinationCity String // "深圳"
-
-  // 起飞机场信息
-  originAirport          String? // "成都双流国际机场"
-  originAirportLongitude Float? // 机场经度
-  originAirportLatitude  Float? // 机场纬度
-
-  // 降落机场信息
-  destinationAirport          String? // "深圳宝安国际机场"
-  destinationAirportLongitude Float? // 机场经度
-  destinationAirportLatitude  Float? // 机场纬度
-
-  // 月份（1-12）
-  month Int
-
-  // 星期几（0=周一, 6=周日）
-  dayOfWeek Int?
-
-  // 月度基准价（该航线在该月的平均价格）
-  monthlyBasePrice Float // P_month
-
-  // 周内因子（该星期几相对于总平均价的倍数）
-  dayOfWeekFactor Float? // F_day
-
-  // 统计信息
-  sampleCount Int    @default(0) // 样本数量
-  minPrice    Float? // 最低价格
-  maxPrice    Float? // 最高价格
-  stdDev      Float? // 标准差
-
-  // 数据来源
-  source      String?  @default("2024年历史数据")
-  lastUpdated DateTime @default(now())
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 唯一约束：同一航线、月份、星期几只能有一条记录
-  @@unique([routeId, month, dayOfWeek])
-  // 索引：按航线、月份、星期几查询
-  @@index([routeId, month])
-  @@index([routeId, month, dayOfWeek])
-  @@index([originCity, destinationCity])
+enum PlaceCategory {
+  ATTRACTION
+  RESTAURANT
+  SHOPPING
+  HOTEL
+  TRANSIT_HUB
 }
 
-// --------------------------------------
-// ✈️ 周内因子查找表（全局因子）
-// --------------------------------------
-model DayOfWeekFactor {
-  id Int @id @default(autoincrement())
+/**
+ * 原始酒店基本信息表
+ * 
+ * 包含酒店的基本信息：名称、品牌、地址、位置等
+ * 
+ * 数据来源：hotel_basic_info.csv
+ * 字段：id, name, brand, address, city, district, lat, lng, phone, type, adcode
+ */
+model RawHotelData_Slim {
+  id        String  @id  // 酒店ID，如 "B0K1PZBE68"
+  name      String? // 酒店名称，如 "桔子酒店(洛阳龙门站店)"
+  brand     String? // 品牌，如 "桔子"
+  address   String? // 地址，如 "通衢路与厚载门街交叉口西南角新唐街3号楼"
+  city      String? // 城市，如 "洛阳市"
+  district  String? // 区县，如 "洛龙区"
+  lat       Float?  // 纬度，如 34.596104
+  lng       Float?  // 经度，如 112.46321
+  phone     String? // 电话，如 "0379-63168888;18603798508"
+  type      String? // 类型，如 "住宿服务;宾馆酒店;宾馆酒店"
+  adcode    String? // 行政区划代码，如 "410300"
 
-  // 星期几（0=周一, 6=周日）
-  dayOfWeek Int @unique
+  @@index([city])
+  @@index([brand])
+  @@index([city, brand])
+  @@index([city, district])
+}
 
-  // 周内因子（相对于总平均价的倍数）
-  factor Float // F_day
+/**
+ * 酒店季度价格数据表（宽表格式）
+ * 
+ * 按城市、星级、季度存储价格数据
+ * 季度字段：2018_Q1 到 2024_Q1
+ */
+model HotelWideData_Quarterly {
+  id        Int     @id @default(autoincrement())
+  city      String?
+  starRating Int?
+  /// 2018年第一季度价格
+  /// @map("2018_Q1")
+  q2018_Q1  Float?  @map("2018_Q1")
+  /// 2018年第二季度价格
+  /// @map("2018_Q2")
+  q2018_Q2  Float?  @map("2018_Q2")
+  /// 2018年第三季度价格
+  /// @map("2018_Q3")
+  q2018_Q3  Float?  @map("2018_Q3")
+  /// 2018年第四季度价格
+  /// @map("2018_Q4")
+  q2018_Q4  Float?  @map("2018_Q4")
+  /// 2019年第一季度价格
+  /// @map("2019_Q1")
+  q2019_Q1  Float?  @map("2019_Q1")
+  /// 2019年第二季度价格
+  /// @map("2019_Q2")
+  q2019_Q2  Float?  @map("2019_Q2")
+  /// 2019年第三季度价格
+  /// @map("2019_Q3")
+  q2019_Q3  Float?  @map("2019_Q3")
+  /// 2019年第四季度价格
+  /// @map("2019_Q4")
+  q2019_Q4  Float?  @map("2019_Q4")
+  /// 2020年第一季度价格
+  /// @map("2020_Q1")
+  q2020_Q1  Float?  @map("2020_Q1")
+  /// 2020年第二季度价格
+  /// @map("2020_Q2")
+  q2020_Q2  Float?  @map("2020_Q2")
+  /// 2020年第三季度价格
+  /// @map("2020_Q3")
+  q2020_Q3  Float?  @map("2020_Q3")
+  /// 2020年第四季度价格
+  /// @map("2020_Q4")
+  q2020_Q4  Float?  @map("2020_Q4")
+  /// 2021年第一季度价格
+  /// @map("2021_Q1")
+  q2021_Q1  Float?  @map("2021_Q1")
+  /// 2021年第二季度价格
+  /// @map("2021_Q2")
+  q2021_Q2  Float?  @map("2021_Q2")
+  /// 2021年第三季度价格
+  /// @map("2021_Q3")
+  q2021_Q3  Float?  @map("2021_Q3")
+  /// 2021年第四季度价格
+  /// @map("2021_Q4")
+  q2021_Q4  Float?  @map("2021_Q4")
+  /// 2022年第一季度价格
+  /// @map("2022_Q1")
+  q2022_Q1  Float?  @map("2022_Q1")
+  /// 2022年第二季度价格
+  /// @map("2022_Q2")
+  q2022_Q2  Float?  @map("2022_Q2")
+  /// 2022年第三季度价格
+  /// @map("2022_Q3")
+  q2022_Q3  Float?  @map("2022_Q3")
+  /// 2022年第四季度价格
+  /// @map("2022_Q4")
+  q2022_Q4  Float?  @map("2022_Q4")
+  /// 2023年第一季度价格
+  /// @map("2023_Q1")
+  q2023_Q1  Float?  @map("2023_Q1")
+  /// 2023年第二季度价格
+  /// @map("2023_Q2")
+  q2023_Q2  Float?  @map("2023_Q2")
+  /// 2023年第三季度价格
+  /// @map("2023_Q3")
+  q2023_Q3  Float?  @map("2023_Q3")
+  /// 2023年第四季度价格
+  /// @map("2023_Q4")
+  q2023_Q4  Float?  @map("2023_Q4")
+  /// 2024年第一季度价格
+  /// @map("2024_Q1")
+  q2024_Q1  Float?  @map("2024_Q1")
 
-  // 统计信息
-  sampleCount   Int    @default(0)
-  avgPrice      Float? // 该星期几的平均价格
-  totalAvgPrice Float? // 总平均价格
+  @@index([city])
+  @@index([starRating])
+  @@index([city, starRating])
+}
 
-  lastUpdated DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+/**
+ * 原始景点数据表
+ * 
+ * 存储从外部数据源导入的景点基础信息
+ * 数据来源：中国景点数据 CSV 文件
+ * 
+ * 字段说明：
+ * - name: 景区名称
+ * - level: 等级（如 5A, 4A 等）
+ * - address: 详细地址
+ * - province: 省级行政区
+ * - publishDate: 相关文件发布时间
+ * - documentUrl: 文件网址链接
+ * - encodedAddress: 编码地址（完整地址字符串）
+ * - lng: 经度（WGS84）
+ * - lat: 纬度（WGS84）
+ */
+model RawAttractionData {
+  id              Int      @id @default(autoincrement())
+  name            String   // 景区名称
+  level           String?  // 等级（5A, 4A, 3A 等）
+  address         String?  // 地址
+  province        String?  // 省级行政区
+  publishDate     String?  // 相关文件发布时间（如 2025.04.15）
+  documentUrl     String?  // 文件网址链接
+  encodedAddress  String?  // 编码地址
+  lng             Float?   // 经度（WGS84）
+  lat             Float?   // 纬度（WGS84）
+  importedAt      DateTime @default(now()) // 导入时间
+  processed       Boolean  @default(false) // 是否已处理（转换为 Place）
+
+  @@index([province])
+  @@index([level])
+  @@index([province, level])
+  @@index([processed])
+}
+
+/**
+ * 原始火车站数据表
+ * 
+ * 存储从外部数据源导入的火车站基础信息
+ * 数据来源：全国火车站数据 CSV 文件
+ * 
+ * 字段说明：
+ * - name: 站名
+ * - address: 车站地址
+ * - railwayBureau: 铁路局
+ * - category: 类别
+ * - nature: 性质（客运站、货运站等）
+ * - province: 省
+ * - city: 市
+ * - wgs84Lng: 经度（WGS84）
+ * - wgs84Lat: 纬度（WGS84）
+ */
+model RawTrainStationData {
+  id              Int      @id @default(autoincrement())
+  name            String   // 站名
+  address         String?  // 车站地址
+  railwayBureau   String?  // 铁路局
+  category        String?  // 类别
+  nature          String?  // 性质（客运站、货运站等）
+  province        String?  // 省
+  city            String?  // 市
+  wgs84Lng        Float?   // 经度（WGS84）
+  wgs84Lat        Float?   // 纬度（WGS84）
+  importedAt      DateTime @default(now()) // 导入时间
+  processed       Boolean  @default(false) // 是否已处理（转换为 Place）
+
+  @@index([province])
+  @@index([city])
+  @@index([province, city])
+  @@index([railwayBureau])
+  @@index([nature])
+  @@index([processed])
+}
+
+/**
+ * 酒店价格查找表（城市维度）
+ * 
+ * 从 HotelWideData_Quarterly 聚合生成
+ * 包含每个城市的基础价格统计信息
+ */
+model HotelPriceDetail {
+  city        String   @id
+  avgPrice    Float?   // 平均价格
+  medianPrice Float?   // 中位数价格（主要使用）
+  cityFactor  Float?   // 城市因子（相对于全国平均价的倍数）
+  sampleCount Int      @default(0) // 样本数量
+  minPrice    Float?   // 最低价格
+  maxPrice    Float?   // 最高价格
+  stdDev      Float?   // 标准差
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([city])
+}
+
+/**
+ * 城市-星级价格查找表（质量维度）
+ * 
+ * 从 HotelWideData_Quarterly 聚合生成
+ * 包含每个城市-星级组合的价格统计和质量调整因子
+ */
+model StarCityPriceDetail {
+  city            String
+  starRating      Int
+  avgPrice        Float?   // 该城市-星级的平均价格
+  cityStarFactor  Float?   // 城市-星级因子（相对于该城市平均价的倍数）
+  sampleCount     Int      @default(0) // 样本数量
+  minPrice        Float?   // 最低价格
+  maxPrice        Float?   // 最高价格
+  stdDev          Float?   // 标准差
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@id([city, starRating])
+  @@index([city])
+  @@index([starRating])
+  @@index([city, starRating])
 }
