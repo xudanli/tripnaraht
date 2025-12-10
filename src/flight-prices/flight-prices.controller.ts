@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { FlightPriceService } from '../trips/services/flight-price.service';
 import { FlightPriceDetailService } from '../trips/services/flight-price-detail.service';
+import { FlightPriceDetailEnhancedService } from '../trips/services/flight-price-detail-enhanced.service';
 import { EstimatePriceDto, EstimatePriceResponseDto } from './dto/estimate-price.dto';
 import { CreateFlightPriceDto } from './dto/create-flight-price.dto';
 import { UpdateFlightPriceDto } from './dto/update-flight-price.dto';
@@ -31,7 +32,8 @@ import { UpdateFlightPriceDto } from './dto/update-flight-price.dto';
 export class FlightPricesController {
   constructor(
     private readonly flightPriceService: FlightPriceService,
-    private readonly flightPriceDetailService: FlightPriceDetailService
+    private readonly flightPriceDetailService: FlightPriceDetailService,
+    private readonly flightPriceDetailEnhancedService: FlightPriceDetailEnhancedService
   ) {}
 
   @Get('estimate')
@@ -159,111 +161,16 @@ export class FlightPricesController {
     return this.flightPriceService.findAll();
   }
 
-  @Get(':id')
-  @ApiOperation({
-    summary: '根据 ID 获取价格参考数据',
-    description: '返回指定 ID 的价格参考数据详情。',
-  })
-  @ApiParam({
-    name: 'id',
-    description: '价格参考数据 ID',
-    example: 1,
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回价格参考数据',
-  })
-  @ApiResponse({
-    status: 404,
-    description: '未找到指定 ID 的价格参考数据',
-  })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const priceRef = await this.flightPriceService.findOne(id);
-    if (!priceRef) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
-    }
-    return priceRef;
-  }
-
-  @Post()
-  @ApiOperation({
-    summary: '创建价格参考数据',
-    description: '创建新的机票价格参考数据。系统会自动计算平均价格。',
-  })
-  @ApiBody({ type: CreateFlightPriceDto })
-  @ApiResponse({
-    status: 201,
-    description: '成功创建价格参考数据',
-  })
-  create(@Body() createDto: CreateFlightPriceDto) {
-    return this.flightPriceService.create(createDto);
-  }
-
-  @Put(':id')
-  @ApiOperation({
-    summary: '更新价格参考数据',
-    description: '更新指定 ID 的价格参考数据。如果更新了价格，系统会自动重新计算平均价格。',
-  })
-  @ApiParam({
-    name: 'id',
-    description: '价格参考数据 ID',
-    example: 1,
-  })
-  @ApiBody({ type: UpdateFlightPriceDto })
-  @ApiResponse({
-    status: 200,
-    description: '成功更新价格参考数据',
-  })
-  @ApiResponse({
-    status: 404,
-    description: '未找到指定 ID 的价格参考数据',
-  })
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateFlightPriceDto,
-  ) {
-    const existing = await this.flightPriceService.findOne(id);
-    if (!existing) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
-    }
-    return this.flightPriceService.update(id, updateDto);
-  }
-
-  @Delete(':id')
-  @ApiOperation({
-    summary: '删除价格参考数据',
-    description: '删除指定 ID 的价格参考数据。',
-  })
-  @ApiParam({
-    name: 'id',
-    description: '价格参考数据 ID',
-    example: 1,
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功删除价格参考数据',
-  })
-  @ApiResponse({
-    status: 404,
-    description: '未找到指定 ID 的价格参考数据',
-  })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    const existing = await this.flightPriceService.findOne(id);
-    if (!existing) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
-    }
-    return this.flightPriceService.remove(id);
-  }
-
+  // 特定路由必须放在 :id 之前，避免路由冲突
   @Get('domestic/estimate')
   @ApiOperation({
     summary: '估算国内航线价格（基于历史数据）',
     description:
-      '根据2024年历史数据估算国内航线价格。\n\n' +
+      '根据2023-2024年历史数据估算国内航线价格。\n\n' +
       '**计算公式：**\n' +
       '预算价格 = 月度基准价 (P_month) × 周内因子 (F_day)\n\n' +
       '**数据来源：**\n' +
-      '- 基于2024年中国航空航班历史数据\n' +
+      '- 基于2023-2024年中国航空航班历史数据\n' +
       '- 自动计算周内因子（周一至周日的价格波动）\n' +
       '- 自动计算月度基准价（1-12月的季节性波动）',
   })
@@ -380,6 +287,199 @@ export class FlightPricesController {
   })
   async getDayOfWeekFactors() {
     return this.flightPriceDetailService.getAllDayOfWeekFactors();
+  }
+
+  @Get('domestic/detailed-options')
+  @ApiOperation({
+    summary: '获取详细价格选项（按航空公司和起飞时间）',
+    description:
+      '返回指定航线的详细价格选项，包括不同航空公司和不同起飞时间段的价格。\n\n' +
+      '**返回内容：**\n' +
+      '- 按航空公司分组的价格统计（平均价、最低价、最高价、样本数）\n' +
+      '- 每个航空公司不同起飞时间段的价格\n' +
+      '- 按起飞时间段分组的价格统计（包含该时段的所有航空公司）',
+  })
+  @ApiQuery({
+    name: 'originCity',
+    description: '出发城市',
+    example: '成都',
+  })
+  @ApiQuery({
+    name: 'destinationCity',
+    description: '到达城市',
+    example: '深圳',
+  })
+  @ApiQuery({
+    name: 'month',
+    description: '月份（1-12）',
+    example: 3,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'dayOfWeek',
+    description: '星期几（0=周一, 6=周日，可选）',
+    example: 4,
+    type: Number,
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回详细价格选项',
+    schema: {
+      type: 'object',
+      example: {
+        airlines: [
+          {
+            airline: '东方航空',
+            avgPrice: 1200,
+            minPrice: 800,
+            maxPrice: 1800,
+            sampleCount: 45,
+            departureTimes: [
+              {
+                timeSlot: '06:00-12:00',
+                avgPrice: 1300,
+                sampleCount: 20,
+              },
+              {
+                timeSlot: '12:00-18:00',
+                avgPrice: 1100,
+                sampleCount: 25,
+              },
+            ],
+          },
+        ],
+        timeSlots: [
+          {
+            timeSlot: '06:00-12:00',
+            avgPrice: 1250,
+            minPrice: 800,
+            maxPrice: 2000,
+            sampleCount: 120,
+            airlines: ['东方航空', '南方航空', '国航'],
+          },
+        ],
+      },
+    },
+  })
+  async getDetailedPriceOptions(
+    @Query('originCity') originCity: string,
+    @Query('destinationCity') destinationCity: string,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('dayOfWeek') dayOfWeek?: string
+  ) {
+    const dayOfWeekNum = dayOfWeek ? parseInt(dayOfWeek) : undefined;
+
+    if (month < 1 || month > 12) {
+      throw new BadRequestException('月份必须在 1-12 之间');
+    }
+
+    if (dayOfWeekNum !== undefined && (dayOfWeekNum < 0 || dayOfWeekNum > 6)) {
+      throw new BadRequestException('星期几必须在 0-6 之间（0=周一, 6=周日）');
+    }
+
+    return this.flightPriceDetailEnhancedService.getDetailedPriceOptions(
+      originCity,
+      destinationCity,
+      month,
+      dayOfWeekNum
+    );
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: '根据 ID 获取价格参考数据',
+    description: '返回指定 ID 的价格参考数据详情。',
+  })
+  @ApiParam({
+    name: 'id',
+    description: '价格参考数据 ID',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回价格参考数据',
+  })
+  @ApiResponse({
+    status: 404,
+    description: '未找到指定 ID 的价格参考数据',
+  })
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    const priceRef = await this.flightPriceService.findOne(id);
+    if (!priceRef) {
+      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    }
+    return priceRef;
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: '创建价格参考数据',
+    description: '创建新的机票价格参考数据。系统会自动计算平均价格。',
+  })
+  @ApiBody({ type: CreateFlightPriceDto })
+  @ApiResponse({
+    status: 201,
+    description: '成功创建价格参考数据',
+  })
+  create(@Body() createDto: CreateFlightPriceDto) {
+    return this.flightPriceService.create(createDto);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary: '更新价格参考数据',
+    description: '更新指定 ID 的价格参考数据。如果更新了价格，系统会自动重新计算平均价格。',
+  })
+  @ApiParam({
+    name: 'id',
+    description: '价格参考数据 ID',
+    example: 1,
+  })
+  @ApiBody({ type: UpdateFlightPriceDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新价格参考数据',
+  })
+  @ApiResponse({
+    status: 404,
+    description: '未找到指定 ID 的价格参考数据',
+  })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDto: UpdateFlightPriceDto,
+  ) {
+    const existing = await this.flightPriceService.findOne(id);
+    if (!existing) {
+      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    }
+    return this.flightPriceService.update(id, updateDto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: '删除价格参考数据',
+    description: '删除指定 ID 的价格参考数据。',
+  })
+  @ApiParam({
+    name: 'id',
+    description: '价格参考数据 ID',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除价格参考数据',
+  })
+  @ApiResponse({
+    status: 404,
+    description: '未找到指定 ID 的价格参考数据',
+  })
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    const existing = await this.flightPriceService.findOne(id);
+    if (!existing) {
+      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    }
+    return this.flightPriceService.remove(id);
   }
 }
 

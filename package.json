@@ -20,12 +20,20 @@
     "seed:visa": "ts-node --project tsconfig.backend.json scripts/seed-visa-requirements.ts",
     "seed:flight-prices": "ts-node --project tsconfig.backend.json scripts/seed-flight-prices.ts",
     "clear:flight-prices": "ts-node --project tsconfig.backend.json scripts/clear-flight-prices.ts",
+    "clear:flight-price-data": "ts-node --project tsconfig.backend.json scripts/clear-flight-price-data.ts",
     "import:flight-data": "ts-node --project tsconfig.backend.json scripts/import-flight-data.ts",
     "import:flight-data:streaming": "ts-node --project tsconfig.backend.json scripts/import-flight-data-streaming.ts",
     "convert:excel-to-csv": "ts-node --project tsconfig.backend.json scripts/convert-excel-to-csv.ts",
     "clear:test-data": "ts-node --project tsconfig.backend.json scripts/clear-test-data.ts",
     "create:flight-table": "ts-node --project tsconfig.backend.json scripts/create-flight-price-table.ts",
-    "check:visa": "ts-node --project tsconfig.backend.json scripts/check-visa-data.ts"
+    "check:visa": "ts-node --project tsconfig.backend.json scripts/check-visa-data.ts",
+    "verify:flight-data": "ts-node --project tsconfig.backend.json scripts/verify-flight-data.ts",
+    "check:data-columns": "ts-node --project tsconfig.backend.json scripts/check-data-columns.ts",
+    "import:attractions": "ts-node --project tsconfig.backend.json scripts/import-attractions.ts",
+    "convert:attractions": "ts-node --project tsconfig.backend.json scripts/convert-attractions-to-places.ts",
+    "import:hotels": "ts-node --project tsconfig.backend.json scripts/import-hotels-by-brand.ts",
+    "import:train-stations": "ts-node --project tsconfig.backend.json scripts/import-train-stations.ts",
+    "convert:train-stations": "ts-node --project tsconfig.backend.json scripts/convert-train-stations-to-places.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateItineraryItemDto, ItemType } from './dto/create-itinerary-item.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -117,13 +118,14 @@ export class ItineraryItemsService {
     // ============================================
     return this.prisma.itineraryItem.create({
       data: {
+        id: randomUUID(),
         tripDayId: dto.tripDayId,
         placeId: dto.placeId,
         type: dto.type as any, // Prisma 枚举类型
         startTime: start,
         endTime: end,
         note: dto.note,
-      },
+      } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
         place: {
           include: {

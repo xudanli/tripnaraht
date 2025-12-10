@@ -5,6 +5,7 @@ import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
 import { FlightPriceService } from './services/flight-price.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class TripsService {
@@ -96,12 +97,14 @@ export class TripsService {
       // A. 创建 Trip 主记录
       const trip = await tx.trip.create({
         data: {
+          id: randomUUID(),
           destination: dto.destination,
           startDate: start.toJSDate(),
           endDate: end.toJSDate(),
           budgetConfig: budgetConfig as any,
           pacingConfig: pacingConfig as any,
-        },
+          updatedAt: new Date(),
+        } as any, // Use UncheckedCreateInput to allow direct field assignment
       });
 
       // B. 自动生成每一天的容器 (TripDay)
@@ -111,9 +114,10 @@ export class TripsService {
         const dayDate = start.plus({ days: i });
         const tripDay = await tx.tripDay.create({
           data: {
+            id: randomUUID(),
             date: dayDate.toJSDate(),
             tripId: trip.id,
-          },
+          } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
         });
         tripDays.push(tripDay);
       }

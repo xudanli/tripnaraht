@@ -5,7 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 /**
  * 国内航线价格详细服务
  * 
- * 基于2024年历史数据计算的价格估算
+ * 基于2023-2024年历史数据计算的价格估算
  * 使用公式：预算价格 = P_month × F_day
  */
 @Injectable()
@@ -35,19 +35,126 @@ export class FlightPriceDetailService {
     monthlyBasePrice: number;
     dayOfWeekFactor?: number;
     sampleCount: number;
+    distanceKm?: number | null;
+    monthFactor?: number | null;
+    airlineCount?: number | null;
+    isWeekend?: boolean | null;
+    departureTime?: string | null;
+    arrivalTime?: string | null;
+    timeOfDayFactor?: number | null;
   }> {
     const routeId = `${originCity}->${destinationCity}`;
+    this.logger.debug(`查询航线: ${routeId}, 月份: ${month}, 星期: ${dayOfWeek}`);
+    this.logger.debug(`routeId 长度: ${routeId.length}, 编码: ${Buffer.from(routeId).toString('hex')}`);
 
-    // 1. 查找月度基准价
-    const monthlyData = await this.prisma.flightPriceDetail.findFirst({
+    // 如果指定了星期几，直接查询对应的数据
+    if (dayOfWeek !== undefined) {
+      const dayData = await this.prisma.flightPriceDetail.findFirst({
+        where: {
+          routeId,
+          month,
+          dayOfWeek,
+        },
+        select: {
+          id: true,
+          routeId: true,
+          originCity: true,
+          destinationCity: true,
+          month: true,
+          dayOfWeek: true,
+          monthlyBasePrice: true,
+          dayOfWeekFactor: true,
+          sampleCount: true,
+          distanceKm: true,
+          monthFactor: true,
+          airlineCount: true,
+          isWeekend: true,
+          departureTime: true,
+          arrivalTime: true,
+          timeOfDayFactor: true,
+        },
+      });
+
+      this.logger.debug(`查询结果: ${dayData ? `找到数据 (ID: ${dayData.id}, 基准价: ${dayData.monthlyBasePrice})` : '未找到数据'}`);
+      
+      // 如果没找到，尝试查询该月份的所有数据看看是否存在
+      if (!dayData) {
+        const allMonthData = await this.prisma.flightPriceDetail.findMany({
+          where: {
+            routeId,
+            month,
+          },
+        });
+        this.logger.debug(`该月份所有数据数量: ${allMonthData.length}`);
+        if (allMonthData.length > 0) {
+          // 显示所有可用的 dayOfWeek 值
+          const availableDayOfWeeks = allMonthData
+            .map(d => d.dayOfWeek)
+            .filter((dow): dow is number => dow !== null)
+            .sort((a, b) => a - b);
+          const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          const dayOfWeekNames = availableDayOfWeeks.map(dow => `${dow}(${dayNames[dow]})`).join(', ');
+          this.logger.debug(`可用的星期值: [${dayOfWeekNames}] (请求的是: ${dayOfWeek}(${dayNames[dayOfWeek] || '未知'}))`);
+        }
+      }
+
+      if (dayData) {
+        // 使用该星期几的数据
+        const dayOfWeekFactor = dayData.dayOfWeekFactor || 1.0;
+        const estimatedPrice = Math.round(dayData.monthlyBasePrice * dayOfWeekFactor);
+        const lowerBound = Math.round(estimatedPrice * 0.9);
+        const upperBound = Math.round(estimatedPrice * 1.1);
+
+        return {
+          estimatedPrice,
+          lowerBound,
+          upperBound,
+          monthlyBasePrice: dayData.monthlyBasePrice,
+          dayOfWeekFactor,
+          sampleCount: dayData.sampleCount,
+          distanceKm: dayData.distanceKm,
+          monthFactor: dayData.monthFactor,
+          airlineCount: dayData.airlineCount,
+          isWeekend: dayData.isWeekend,
+          departureTime: dayData.departureTime,
+          arrivalTime: dayData.arrivalTime,
+          timeOfDayFactor: dayData.timeOfDayFactor,
+        };
+      } else {
+        // 如果没找到具体星期几的数据，降级到月度平均值
+        this.logger.warn(
+          `未找到航线 ${routeId} 在 ${month} 月 ${dayOfWeek} 的数据，使用月度平均值`
+        );
+      }
+    }
+
+    // 1. 查找月度基准价（计算该月份所有星期的平均值）
+    const monthlyDataList = await this.prisma.flightPriceDetail.findMany({
       where: {
         routeId,
         month,
-        dayOfWeek: null, // 汇总数据
+      },
+      select: {
+        id: true,
+        routeId: true,
+        originCity: true,
+        destinationCity: true,
+        month: true,
+        dayOfWeek: true,
+        monthlyBasePrice: true,
+        dayOfWeekFactor: true,
+        sampleCount: true,
+        distanceKm: true,
+        monthFactor: true,
+        airlineCount: true,
+        isWeekend: true,
+        departureTime: true,
+        arrivalTime: true,
+        timeOfDayFactor: true,
       },
     });
 
-    if (!monthlyData) {
+    if (monthlyDataList.length === 0) {
       this.logger.warn(
         `未找到航线 ${routeId} 在 ${month} 月的数据，使用默认值`
       );
@@ -60,45 +167,51 @@ export class FlightPriceDetailService {
       };
     }
 
-    // 2. 如果指定了星期几，查找周内因子
+    // 计算月度平均基准价（加权平均，按样本数）
+    const totalSamples = monthlyDataList.reduce((sum, d) => sum + d.sampleCount, 0);
+    const weightedPrice = monthlyDataList.reduce(
+      (sum, d) => sum + d.monthlyBasePrice * d.sampleCount,
+      0
+    ) / totalSamples;
+
+    const monthlyBasePrice = Math.round(weightedPrice);
+
+    // 2. 如果指定了星期几，使用全局周内因子
     let dayOfWeekFactor: number | undefined;
     if (dayOfWeek !== undefined) {
-      const dayData = await this.prisma.flightPriceDetail.findFirst({
-        where: {
-          routeId,
-          month,
-          dayOfWeek,
-        },
+      const globalFactor = await this.prisma.dayOfWeekFactor.findUnique({
+        where: { dayOfWeek },
       });
-
-      if (dayData && dayData.dayOfWeekFactor) {
-        dayOfWeekFactor = dayData.dayOfWeekFactor;
-      } else {
-        // 降级：使用全局周内因子
-        const globalFactor = await this.prisma.dayOfWeekFactor.findUnique({
-          where: { dayOfWeek },
-        });
-        dayOfWeekFactor = globalFactor?.factor || 1.0;
-      }
+      dayOfWeekFactor = globalFactor?.factor || 1.0;
     }
 
     // 3. 计算估算价格
     // 公式：预算价格 = P_month × F_day
     const estimatedPrice = dayOfWeekFactor
-      ? Math.round(monthlyData.monthlyBasePrice * dayOfWeekFactor)
-      : Math.round(monthlyData.monthlyBasePrice);
+      ? Math.round(monthlyBasePrice * dayOfWeekFactor)
+      : monthlyBasePrice;
 
     // 4. 计算价格范围（±10%）
     const lowerBound = Math.round(estimatedPrice * 0.9);
     const upperBound = Math.round(estimatedPrice * 1.1);
 
+    // 获取第一条记录的新字段（用于返回）
+    const firstRecord = monthlyDataList[0];
+
     return {
       estimatedPrice,
       lowerBound,
       upperBound,
-      monthlyBasePrice: monthlyData.monthlyBasePrice,
+      monthlyBasePrice,
       dayOfWeekFactor,
-      sampleCount: monthlyData.sampleCount,
+      sampleCount: totalSamples,
+      distanceKm: firstRecord.distanceKm,
+      monthFactor: firstRecord.monthFactor,
+      airlineCount: firstRecord.airlineCount,
+      isWeekend: firstRecord.isWeekend,
+      departureTime: firstRecord.departureTime,
+      arrivalTime: firstRecord.arrivalTime,
+      timeOfDayFactor: firstRecord.timeOfDayFactor,
     };
   }
 
@@ -131,19 +244,43 @@ export class FlightPriceDetailService {
   ): Promise<Array<{ month: number; basePrice: number; sampleCount: number }>> {
     const routeId = `${originCity}->${destinationCity}`;
 
-    const data = await this.prisma.flightPriceDetail.findMany({
+    // 查询该航线的所有数据，按月份分组计算平均值
+    const allData = await this.prisma.flightPriceDetail.findMany({
       where: {
         routeId,
-        dayOfWeek: null, // 只取汇总数据
       },
-      orderBy: { month: 'asc' },
     });
 
-    return data.map((d) => ({
-      month: d.month,
-      basePrice: d.monthlyBasePrice,
-      sampleCount: d.sampleCount,
-    }));
+    if (allData.length === 0) {
+      return [];
+    }
+
+    // 按月份分组，计算加权平均价格
+    const monthlyMap = new Map<number, { totalPrice: number; totalSamples: number }>();
+
+    allData.forEach((d) => {
+      const existing = monthlyMap.get(d.month);
+      if (existing) {
+        existing.totalPrice += d.monthlyBasePrice * d.sampleCount;
+        existing.totalSamples += d.sampleCount;
+      } else {
+        monthlyMap.set(d.month, {
+          totalPrice: d.monthlyBasePrice * d.sampleCount,
+          totalSamples: d.sampleCount,
+        });
+      }
+    });
+
+    // 转换为数组并按月份排序
+    const result = Array.from(monthlyMap.entries())
+      .map(([month, stats]) => ({
+        month,
+        basePrice: Math.round(stats.totalPrice / stats.totalSamples),
+        sampleCount: stats.totalSamples,
+      }))
+      .sort((a, b) => a.month - b.month);
+
+    return result;
   }
 }
 

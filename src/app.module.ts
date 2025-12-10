@@ -10,6 +10,7 @@ import { CountriesModule } from './countries/countries.module';
 import { TransportModule } from './transport/transport.module';
 import { FlightPricesModule } from './flight-prices/flight-prices.module';
 import { ItineraryOptimizationModule } from './itinerary-optimization/itinerary-optimization.module';
+import { HotelsModule } from './hotels/hotels.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ItineraryOptimizationModule } from './itinerary-optimization/itinerary-
     TransportModule, // 交通规划模块
     FlightPricesModule, // 机票价格参考模块
     ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
+    HotelsModule, // 酒店价格模块
   ],
 })
 export class AppModule {}

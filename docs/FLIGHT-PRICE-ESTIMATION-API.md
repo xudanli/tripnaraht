@@ -4,7 +4,7 @@
 
 航班价格估算 API 提供两种数据源的价格查询：
 1. **国际航线**：基于手动维护的估算数据库（FlightPriceReference）
-2. **国内航线**：基于2024年历史数据的统计模型（FlightPriceDetail）
+2. **国内航线**：基于2023-2024年历史数据的统计模型（FlightPriceDetail）
 
 ## 数据模型
 
@@ -56,7 +56,7 @@ GET /flight-prices/estimate?countryCode=JP&originCity=PEK&useConservative=true
 
 **接口：** `GET /flight-prices/domestic/estimate`
 
-**描述：** 根据2024年历史数据估算国内航线价格。
+**描述：** 根据2023-2024年历史数据估算国内航线价格。
 
 **查询参数：**
 - `originCity` (必填): 出发城市，如 "成都"

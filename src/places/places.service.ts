@@ -6,6 +6,7 @@ import { PlaceWithDistance, RawPlaceResult } from './dto/geo-result.dto';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { PlaceMetadata } from './interfaces/place-metadata.interface';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class PlacesService {
@@ -24,8 +25,10 @@ export class PlacesService {
     const place = await this.prisma.place.create({
       data: {
         ...rest,
+        uuid: randomUUID(),
         metadata: dto.metadata as any, // 存入 JSON
-      },
+        updatedAt: new Date(),
+      } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
     });
 
     // 更新地理位置 (使用 PostGIS 函数 ST_MakePoint)
