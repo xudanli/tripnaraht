@@ -36,6 +36,7 @@
     "convert:train-stations": "ts-node --project tsconfig.backend.json scripts/convert-train-stations-to-places.ts"
   },
   "dependencies": {
+    "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.9",
@@ -47,6 +48,8 @@
     "@types/pg": "^8.15.6",
     "apify-client": "^2.20.0",
     "axios": "^1.13.2",
+    "cache-manager": "^7.2.7",
+    "cache-manager-redis-store": "^3.0.1",
     "cheerio": "^1.1.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
@@ -60,6 +63,7 @@
     "prisma": "^6.19.0",
     "react": "^18",
     "react-dom": "^18",
+    "redis": "^5.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "xlsx": "^0.18.5"
