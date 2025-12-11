@@ -33,7 +33,14 @@
     "convert:attractions": "ts-node --project tsconfig.backend.json scripts/convert-attractions-to-places.ts",
     "import:hotels": "ts-node --project tsconfig.backend.json scripts/import-hotels-by-brand.ts",
     "import:train-stations": "ts-node --project tsconfig.backend.json scripts/import-train-stations.ts",
-    "convert:train-stations": "ts-node --project tsconfig.backend.json scripts/convert-train-stations-to-places.ts"
+    "convert:train-stations": "ts-node --project tsconfig.backend.json scripts/convert-train-stations-to-places.ts",
+    "enrich:attractions": "ts-node --project tsconfig.backend.json scripts/enrich-attractions-from-amap.ts",
+    "diagnose:poi": "ts-node --project tsconfig.backend.json scripts/diagnose-poi-issue.ts",
+    "fix:coordinates": "ts-node --project tsconfig.backend.json scripts/fix-coordinates-by-name.ts",
+    "scrape:mafengwo": "ts-node --project tsconfig.backend.json scripts/scrape-mafengwo-attractions.ts",
+    "scrape:fliggy": "ts-node --project tsconfig.backend.json scripts/scrape-fliggy-attractions.ts",
+    "update:attractions": "ts-node --project tsconfig.backend.json scripts/manual-update-attractions.ts",
+    "enrich:amap": "ts-node --project tsconfig.backend.json scripts/enrich-attractions-from-amap.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
@@ -60,7 +67,9 @@
     "next": "14.2.5",
     "node-fetch": "^2.7.0",
     "pg": "^8.16.3",
+    "playwright": "^1.57.0",
     "prisma": "^6.19.0",
+    "puppeteer": "^24.32.1",
     "react": "^18",
     "react-dom": "^18",
     "redis": "^5.10.0",
