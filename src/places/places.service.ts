@@ -7,10 +7,14 @@ import { CreatePlaceDto } from './dto/create-place.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { PlaceMetadata } from './interfaces/place-metadata.interface';
 import { randomUUID } from 'crypto';
+import { AmapPOIService } from './services/amap-poi.service';
 
 @Injectable()
 export class PlacesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private amapPOIService: AmapPOIService
+  ) {}
 
   /**
    * 创建地点
@@ -168,6 +172,279 @@ export class PlacesService {
   private checkIfOpen(openingHours: any): boolean {
     // 这里写解析 "Mon-Fri 09:00-18:00" 的逻辑
     return true; // 占位
+  }
+
+  /**
+   * 从高德地图获取景点详细信息并更新
+   * 
+   * @param placeId 地点 ID
+   * @returns 更新后的地点信息
+   */
+  async enrichPlaceFromAmap(placeId: number): Promise<any> {
+    // 获取地点信息
+    const place = await this.prisma.place.findUnique({
+      where: { id: placeId },
+      include: { city: true },
+    });
+
+    if (!place) {
+      throw new Error(`地点 ${placeId} 不存在`);
+    }
+
+    if (place.category !== 'ATTRACTION') {
+      throw new Error('此接口仅支持景点（ATTRACTION）类别');
+    }
+
+    // 提取坐标
+    const location = (place as any).location;
+    if (!location) {
+      throw new Error('地点缺少坐标信息');
+    }
+
+    // 解析坐标（PostGIS POINT 格式）
+    const coords = this.extractCoordinates(location);
+    if (!coords) {
+      throw new Error('无法解析坐标信息');
+    }
+
+    // 调用高德 POI 服务获取详细信息
+    const poiData = await this.amapPOIService.getPOIDetails(
+      place.name,
+      coords.lat,
+      coords.lng
+    );
+
+    if (!poiData) {
+      throw new Error('未从高德地图获取到 POI 信息');
+    }
+
+    // 更新 metadata（使用新的结构化格式）
+    const currentMetadata = (place.metadata as any) || {};
+    const updatedMetadata: any = {
+      ...currentMetadata,
+      // 基础结构字段（新格式）
+      basic: {
+        ...currentMetadata.basic,
+        // 开放时间（原始字符串 + 结构化）
+        openingHours: poiData.openingHours || currentMetadata.basic?.openingHours,
+        openingHoursStructured: poiData.openingHoursStructured || currentMetadata.basic?.openingHoursStructured,
+        // 门票价格（原始字符串 + 结构化）
+        ticketPrice: poiData.ticketPrice || currentMetadata.basic?.ticketPrice,
+        ticketPriceStructured: poiData.ticketPriceStructured || currentMetadata.basic?.ticketPriceStructured,
+        // 联系方式
+        contact: {
+          ...currentMetadata.basic?.contact,
+          phone: poiData.tel || currentMetadata.basic?.contact?.phone,
+          email: poiData.email || currentMetadata.basic?.contact?.email,
+          website: poiData.website || currentMetadata.basic?.contact?.website,
+        },
+        // 官方网址
+        officialWebsite: poiData.website || currentMetadata.basic?.officialWebsite,
+        // 类型
+        type: poiData.type || currentMetadata.basic?.type,
+      },
+      // 向后兼容字段（保留旧格式）
+      openingHours: poiData.openingHours 
+        ? this.parseOpeningHours(poiData.openingHours)
+        : currentMetadata.openingHours,
+      ticketPrice: poiData.ticketPrice || currentMetadata.ticketPrice,
+      type: poiData.type || currentMetadata.type,
+      highlights: poiData.highlights || currentMetadata.highlights,
+      interestDimensions: poiData.interestDimensions || currentMetadata.interestDimensions,
+      amapId: poiData.amapId || currentMetadata.amapId,
+      contact: {
+        ...currentMetadata.contact,
+        phone: poiData.tel || currentMetadata.contact?.phone,
+        email: poiData.email || currentMetadata.contact?.email,
+        website: poiData.website || currentMetadata.contact?.website,
+      },
+      address: poiData.address || place.address,
+      lastEnrichedAt: new Date().toISOString(),
+    };
+
+    // 更新数据库
+    const updated = await this.prisma.place.update({
+      where: { id: placeId },
+      data: {
+        metadata: updatedMetadata as any,
+        address: poiData.address || place.address,
+        updatedAt: new Date(),
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * 批量更新景点信息
+   * 
+   * @param placeIds 地点 ID 列表（可选，如果不提供则更新所有景点）
+   * @param batchSize 批次大小
+   * @param delay 批次间延迟（毫秒）
+   */
+  async batchEnrichPlacesFromAmap(
+    placeIds?: number[],
+    batchSize: number = 10,
+    delay: number = 200
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    results: Array<{
+      placeId: number;
+      name: string;
+      status: 'success' | 'failed';
+      error?: string;
+    }>;
+  }> {
+    // 获取要更新的地点列表
+    const places = placeIds
+      ? await this.prisma.place.findMany({
+          where: {
+            id: { in: placeIds },
+            category: 'ATTRACTION',
+          },
+          include: { city: true },
+        })
+      : await this.prisma.place.findMany({
+          where: { category: 'ATTRACTION' },
+          include: { city: true },
+        });
+
+    const results: Array<{
+      placeId: number;
+      name: string;
+      status: 'success' | 'failed';
+      error?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+
+    // 分批处理
+    for (let i = 0; i < places.length; i += batchSize) {
+      const batch = places.slice(i, i + batchSize);
+
+      const batchResults = await Promise.allSettled(
+        batch.map(async (place) => {
+          try {
+            await this.enrichPlaceFromAmap(place.id);
+            return {
+              placeId: place.id,
+              name: place.name,
+              status: 'success' as const,
+            };
+          } catch (error: any) {
+            return {
+              placeId: place.id,
+              name: place.name,
+              status: 'failed' as const,
+              error: error.message,
+            };
+          }
+        })
+      );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+          if (result.value.status === 'success') {
+            success++;
+          } else {
+            failed++;
+          }
+        } else {
+          failed++;
+        }
+      }
+
+      // 批次间延迟
+      if (i + batchSize < places.length) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    return {
+      total: places.length,
+      success,
+      failed,
+      results,
+    };
+  }
+
+  /**
+   * 提取坐标（从 PostGIS POINT 格式）
+   */
+  private extractCoordinates(location: any): { lat: number; lng: number } | null {
+    if (!location) return null;
+
+    if (typeof location === 'string') {
+      const match = location.match(/POINT\(([^)]+)\)/);
+      if (match) {
+        const [lng, lat] = match[1].split(/\s+/).map(parseFloat);
+        return { lat, lng };
+      }
+    }
+
+    if (typeof location === 'object') {
+      if (location.coordinates) {
+        return { lng: location.coordinates[0], lat: location.coordinates[1] };
+      }
+      if (location.lat && location.lng) {
+        return { lat: location.lat, lng: location.lng };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 解析开放时间字符串
+   * 
+   * 高德返回的格式示例：
+   * "周一至周五:08:30-17:30(延时服务时间:12:00-13:30)；周六延时服务时间:09:00-13:00(法定节假日除外)"
+   */
+  private parseOpeningHours(businessTime: string): PlaceMetadata['openingHours'] {
+    if (!businessTime) return undefined;
+
+    const result: PlaceMetadata['openingHours'] = {};
+
+    // 简单的解析逻辑（可以根据实际格式优化）
+    // 提取工作日和周末的时间
+    const weekdayMatch = businessTime.match(/周一至周五[：:]([^；;]+)/);
+    const weekendMatch = businessTime.match(/周六[^：:]*[：:]([^；;]+)/);
+
+    if (weekdayMatch) {
+      const timeRange = weekdayMatch[1].split(/[（(]/)[0].trim();
+      result.weekday = timeRange;
+      // 也可以解析为 mon-fri
+      const [start, end] = timeRange.split(/[-~]/).map(t => t.trim());
+      if (start && end) {
+        result.mon = `${start}-${end}`;
+        result.tue = `${start}-${end}`;
+        result.wed = `${start}-${end}`;
+        result.thu = `${start}-${end}`;
+        result.fri = `${start}-${end}`;
+      }
+    }
+
+    if (weekendMatch) {
+      const timeRange = weekendMatch[1].split(/[（(]/)[0].trim();
+      result.weekend = timeRange;
+      // 也可以解析为 sat-sun
+      const [start, end] = timeRange.split(/[-~]/).map(t => t.trim());
+      if (start && end) {
+        result.sat = `${start}-${end}`;
+        result.sun = `${start}-${end}`;
+      }
+    }
+
+    // 如果无法解析，保存原始字符串
+    if (!result.weekday && !result.weekend) {
+      result.weekday = businessTime;
+    }
+
+    return result;
   }
 }
 

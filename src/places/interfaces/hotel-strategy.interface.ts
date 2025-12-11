@@ -46,8 +46,8 @@ export interface HotelRecommendationRequest {
   /** 景点 ID 列表（如果直接提供） */
   attractionIds?: number[];
   
-  /** 推荐策略 */
-  strategy: HotelRecommendationStrategy;
+  /** 推荐策略（如果未指定，将根据行程密度自动选择） */
+  strategy?: HotelRecommendationStrategy;
   
   /** 预算上限（每晚，元） */
   maxBudget?: number;
@@ -55,7 +55,10 @@ export interface HotelRecommendationRequest {
   /** 最低星级要求 */
   minTier?: number;
   
-  /** 时间价值（元/小时），默认 50 */
+  /** 最高星级要求 */
+  maxTier?: number;
+  
+  /** 时间价值（元/小时），如果未指定且提供了 tripId，将自动计算 */
   timeValuePerHour?: number;
   
   /** 是否考虑隐形成本 */

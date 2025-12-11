@@ -25,13 +25,14 @@ export class HotelRecommendationDto {
   @IsOptional()
   attractionIds?: number[];
 
-  @ApiProperty({
-    description: '推荐策略',
+  @ApiPropertyOptional({
+    description: '推荐策略（如果未指定，将根据行程密度自动选择）',
     enum: HotelRecommendationStrategy,
     example: HotelRecommendationStrategy.HUB,
   })
   @IsEnum(HotelRecommendationStrategy)
-  strategy!: HotelRecommendationStrategy;
+  @IsOptional()
+  strategy?: HotelRecommendationStrategy;
 
   @ApiPropertyOptional({
     description: '预算上限（每晚，元）',
@@ -53,10 +54,19 @@ export class HotelRecommendationDto {
   minTier?: number;
 
   @ApiPropertyOptional({
-    description: '时间价值（元/小时），默认 50',
+    description: '最高星级要求',
+    example: 3,
+    minimum: 1,
+    maximum: 5,
+  })
+  @IsNumber()
+  @IsOptional()
+  maxTier?: number;
+
+  @ApiPropertyOptional({
+    description: '时间价值（元/小时）。如果未指定且提供了 tripId，系统会根据预算、行程密度、旅行者类型自动计算',
     example: 50,
     minimum: 0,
-    default: 50,
   })
   @IsNumber()
   @IsOptional()

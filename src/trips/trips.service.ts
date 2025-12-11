@@ -81,12 +81,16 @@ export class TripsService {
   }
 
     const budgetConfig = {
-      total: dto.totalBudget,
+      totalBudget: dto.totalBudget, // 使用 totalBudget 保持一致性
       currency: 'CNY', // 人民币
       estimated_flight_visa: estimatedFlightVisa,
       remaining_for_ground: remainingBudget,
       daily_budget: Math.round(dailyBudget),
-      hotel_tier_recommendation: hotelTier
+      hotel_tier_recommendation: hotelTier,
+      travelers: dto.travelers.map(t => ({
+        type: t.type,
+        mobilityTag: t.mobilityTag,
+      })), // 保存旅行者信息，用于时间价值计算
     };
 
     // ============================================
