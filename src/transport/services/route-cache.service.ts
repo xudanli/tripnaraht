@@ -1,12 +1,13 @@
 // src/transport/services/route-cache.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 
 /**
  * 路线缓存服务
  * 
  * 功能：
- * 1. 缓存热门路线（如"成田机场 → 新宿站"），避免重复调用 API
+ * 1. 使用 Redis 缓存热门路线（如"成田机场 → 新宿站"），避免重复调用 API
  * 2. 短距离（< 1km）使用 PostGIS 直接计算，不调 API
  * 3. 缓存有效期：24 小时
  */
@@ -14,8 +15,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class RouteCacheService {
   private readonly logger = new Logger(RouteCacheService.name);
   private readonly cacheExpiryHours = 24;
+  private readonly cachePrefix = 'route';
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redisService: RedisService
+  ) {}
 
   /**
    * 检查是否为短距离（使用 PostGIS 计算，不调 API）
@@ -114,10 +119,7 @@ export class RouteCacheService {
   }
 
   /**
-   * 从缓存获取路线（未来可以扩展为数据库缓存表）
-   * 
-   * 目前返回 null，表示未实现数据库缓存
-   * 可以后续添加 RouteCache 表来存储热门路线
+   * 从 Redis 缓存获取路线
    */
   async getCachedRoute(
     fromLat: number,
@@ -126,25 +128,26 @@ export class RouteCacheService {
     toLng: number,
     travelMode: string
   ): Promise<any | null> {
-    // TODO: 实现数据库缓存
-    // 可以创建一个 RouteCache 表：
-    // - cacheKey (string, unique)
-    // - routeData (JSONB)
-    // - expiresAt (DateTime)
-    // 
-    // 查询逻辑：
-    // const cached = await this.prisma.routeCache.findUnique({
-    //   where: { cacheKey: this.generateCacheKey(...) },
-    // });
-    // if (cached && cached.expiresAt > new Date()) {
-    //   return cached.routeData;
-    // }
-    
-    return null;
+    try {
+      const cacheKey = this.generateCacheKey(fromLat, fromLng, toLat, toLng, travelMode);
+      const redisKey = this.redisService.generateKey(this.cachePrefix, cacheKey);
+      
+      const cached = await this.redisService.get<any>(redisKey);
+      
+      if (cached) {
+        this.logger.debug(`缓存命中: ${redisKey}`);
+        return cached;
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error('从 Redis 获取缓存失败', error);
+      return null;
+    }
   }
 
   /**
-   * 保存路线到缓存（未来可以扩展为数据库缓存表）
+   * 保存路线到 Redis 缓存
    */
   async saveCachedRoute(
     fromLat: number,
@@ -154,19 +157,19 @@ export class RouteCacheService {
     travelMode: string,
     routeData: any
   ): Promise<void> {
-    // TODO: 实现数据库缓存
-    // await this.prisma.routeCache.upsert({
-    //   where: { cacheKey: this.generateCacheKey(...) },
-    //   create: {
-    //     cacheKey: this.generateCacheKey(...),
-    //     routeData: routeData,
-    //     expiresAt: new Date(Date.now() + this.cacheExpiryHours * 60 * 60 * 1000),
-    //   },
-    //   update: {
-    //     routeData: routeData,
-    //     expiresAt: new Date(Date.now() + this.cacheExpiryHours * 60 * 60 * 1000),
-    //   },
-    // });
+    try {
+      const cacheKey = this.generateCacheKey(fromLat, fromLng, toLat, toLng, travelMode);
+      const redisKey = this.redisService.generateKey(this.cachePrefix, cacheKey);
+      
+      // TTL: 24 小时（秒）
+      const ttl = this.cacheExpiryHours * 60 * 60;
+      
+      await this.redisService.set(redisKey, routeData, ttl);
+      this.logger.debug(`缓存已保存: ${redisKey}, TTL: ${ttl}秒`);
+    } catch (error) {
+      this.logger.error('保存到 Redis 缓存失败', error);
+      // 不抛出错误，允许系统继续运行
+    }
   }
 }
 

@@ -6,9 +6,13 @@ import { SpatialClusteringService } from './services/spatial-clustering.service'
 import { HappinessScorerService } from './services/happiness-scorer.service';
 import { RouteOptimizerService } from './services/route-optimizer.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { TransportModule } from '../transport/transport.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    PrismaModule,
+    TransportModule, // 导入 TransportModule 以使用 RouteCacheService 和 SmartRoutesService
+  ],
   controllers: [ItineraryOptimizationController],
   providers: [
     RouteOptimizationService,

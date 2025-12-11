@@ -9,19 +9,28 @@ import {
 } from '../interfaces/route-optimization.interface';
 import { SpatialClusteringService } from './spatial-clustering.service';
 import { HappinessScorerService } from './happiness-scorer.service';
+import { SmartRoutesService } from '../../transport/services/smart-routes.service';
+import { RouteCacheService } from '../../transport/services/route-cache.service';
 
 /**
  * 路线优化服务
  * 
  * 使用模拟退火算法优化路线，最大化"快乐值"
+ * 
+ * 改进：集成真实的交通规划服务，使用 Google Routes API 获取准确的旅行时间
  */
 @Injectable()
 export class RouteOptimizerService {
   private readonly logger = new Logger(RouteOptimizerService.name);
+  
+  // 时间矩阵缓存：存储所有点对之间的旅行时间（分钟）
+  private timeMatrix: Map<string, number> = new Map();
 
   constructor(
     private clusteringService: SpatialClusteringService,
-    private scorerService: HappinessScorerService
+    private scorerService: HappinessScorerService,
+    private smartRoutesService: SmartRoutesService,
+    private routeCacheService: RouteCacheService
   ) {}
 
   /**
@@ -46,13 +55,16 @@ export class RouteOptimizerService {
 
     this.logger.debug(`聚类完成：${zones.length} 个 Zone`);
 
-    // 2. 生成初始解（随机排列）
+    // 2. 批量预计算所有点对之间的旅行时间（优化 TSP 算法性能）
+    await this.precomputeTimeMatrix(places, config);
+
+    // 3. 生成初始解（随机排列）
     let currentRoute = this.generateInitialRoute(places, config);
     let currentScore = this.calculateTotalScore(currentRoute, config, zones);
 
     this.logger.debug(`初始解分数：${currentScore}`);
 
-    // 3. 模拟退火优化
+    // 4. 模拟退火优化
     const optimizedRoute = this.simulatedAnnealing(
       currentRoute,
       currentScore,
@@ -60,10 +72,10 @@ export class RouteOptimizerService {
       zones
     );
 
-    // 4. 生成时间安排
+    // 5. 生成时间安排
     const schedule = this.generateSchedule(optimizedRoute, config);
 
-    // 5. 计算最终分数
+    // 6. 计算最终分数
     const scoreBreakdown = this.scorerService.calculateHappinessScore(
       optimizedRoute.nodes,
       schedule,
@@ -80,6 +92,9 @@ export class RouteOptimizerService {
       scoreBreakdown.clusteringBonus +
       scoreBreakdown.bufferBonus;
 
+    // 7. 清理缓存
+    this.timeMatrix.clear();
+
     return {
       nodes: optimizedRoute.nodes,
       schedule,
@@ -87,6 +102,154 @@ export class RouteOptimizerService {
       scoreBreakdown,
       zones,
     };
+  }
+
+  /**
+   * 批量预计算所有点对之间的旅行时间
+   * 
+   * 在 TSP 优化开始前，预先计算所有 N×(N-1) 个点对的时间
+   * 这样可以避免在优化过程中重复调用 API
+   */
+  private async precomputeTimeMatrix(
+    places: PlaceNode[],
+    config: OptimizationConfig
+  ): Promise<void> {
+    this.logger.debug(`开始预计算时间矩阵：${places.length} 个地点`);
+
+    const travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING' = 'TRANSIT'; // 默认使用公共交通模式
+    const promises: Promise<void>[] = [];
+
+    // 并行计算所有点对的时间（但限制并发数，避免 API 限流）
+    const batchSize = 10; // 每批处理 10 个请求
+    for (let i = 0; i < places.length; i++) {
+      for (let j = i + 1; j < places.length; j++) {
+        const from = places[i];
+        const to = places[j];
+
+        // 检查是否是短距离，可以使用 PostGIS 快速计算
+        const distance = this.calculateDistance(from.location, to.location);
+        
+        // 短距离步行，使用 PostGIS 计算（无论什么模式，短距离都可以用步行时间估算）
+        if (distance < 1000) {
+          const walkTime = await this.routeCacheService.calculateShortDistanceWalkTime(
+            from.location.lat,
+            from.location.lng,
+            to.location.lat,
+            to.location.lng
+          );
+          this.setTimeInMatrix(String(from.id), String(to.id), walkTime);
+          continue;
+        }
+
+        // 长距离或非步行，调用智能路由服务
+        const promise = this.fetchAndCacheTransportTime(
+          from.location,
+          to.location,
+          String(from.id),
+          String(to.id),
+          travelMode
+        );
+
+        promises.push(promise);
+
+        // 批量处理，避免过多并发请求
+        if (promises.length >= batchSize) {
+          await Promise.all(promises);
+          promises.length = 0;
+          // 短暂延迟，避免 API 限流
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    }
+
+    // 处理剩余的请求
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+
+    this.logger.debug(`时间矩阵预计算完成：${this.timeMatrix.size} 个点对`);
+  }
+
+  /**
+   * 获取并缓存交通时间
+   */
+  private async fetchAndCacheTransportTime(
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number },
+    fromId: string,
+    toId: string,
+    travelMode: string
+  ): Promise<void> {
+    try {
+      // 1. 检查缓存
+      const cached = await this.routeCacheService.getCachedRoute(
+        from.lat,
+        from.lng,
+        to.lat,
+        to.lng,
+        travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
+      );
+
+      if (cached) {
+        this.setTimeInMatrix(fromId, toId, cached.durationMinutes);
+        return;
+      }
+
+      // 2. 调用智能路由服务（自动选择高德或Google）
+      const options = await this.smartRoutesService.getRoutes(
+        from.lat,
+        from.lng,
+        to.lat,
+        to.lng,
+        travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
+      );
+
+      if (options.length > 0) {
+        const duration = options[0].durationMinutes;
+        this.setTimeInMatrix(fromId, toId, duration);
+
+        // 3. 保存到缓存
+        await this.routeCacheService.saveCachedRoute(
+          from.lat,
+          from.lng,
+          to.lat,
+          to.lng,
+          travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING',
+          options[0]
+        );
+      } else {
+        // API 失败，使用降级估算
+        const fallbackTime = this.fallbackEstimateTransportTime(from, to, travelMode);
+        this.setTimeInMatrix(fromId, toId, fallbackTime);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `获取交通时间失败 (${fromId} -> ${toId}): ${error}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      // 使用降级估算
+      const fallbackTime = this.fallbackEstimateTransportTime(from, to, travelMode);
+      this.setTimeInMatrix(fromId, toId, fallbackTime);
+    }
+  }
+
+  /**
+   * 设置时间矩阵中的值
+   */
+  private setTimeInMatrix(fromId: number | string, toId: number | string, time: number): void {
+    // 双向存储（A->B 和 B->A 时间相同）
+    const key1 = `${fromId}->${toId}`;
+    const key2 = `${toId}->${fromId}`;
+    this.timeMatrix.set(key1, time);
+    this.timeMatrix.set(key2, time);
+  }
+
+  /**
+   * 从时间矩阵获取时间
+   */
+  private getTimeFromMatrix(fromId: number | string, toId: number | string): number | null {
+    const key = `${fromId}->${toId}`;
+    return this.timeMatrix.get(key) ?? null;
   }
 
   /**
@@ -285,8 +448,8 @@ export class RouteOptimizerService {
         endTime: endTimeForNode!,
         transportTime: i < route.nodes.length - 1
           ? this.estimateTransportTime(
-              node.location,
-              route.nodes[i + 1].location
+              { ...node.location, id: String(node.id) },
+              { ...route.nodes[i + 1].location, id: String(route.nodes[i + 1].id) }
             )
           : undefined,
       });
@@ -295,8 +458,8 @@ export class RouteOptimizerService {
       const transportTime =
         i < route.nodes.length - 1
           ? this.estimateTransportTime(
-              node.location,
-              route.nodes[i + 1].location
+              { ...node.location, id: String(node.id) },
+              { ...route.nodes[i + 1].location, id: String(route.nodes[i + 1].id) }
             )
           : 0;
 
@@ -311,22 +474,53 @@ export class RouteOptimizerService {
   /**
    * 估算交通时间（分钟）
    * 
-   * 简化：使用直线距离估算
-   * 实际应该调用交通规划服务
+   * 改进：优先使用预计算的时间矩阵，如果不存在则使用降级估算
    */
   private estimateTransportTime(
+    from: { lat: number; lng: number; id?: string },
+    to: { lat: number; lng: number; id?: string }
+  ): number {
+    // 如果有点 ID，尝试从时间矩阵获取
+    if (from.id && to.id) {
+      const cachedTime = this.getTimeFromMatrix(from.id, to.id);
+      if (cachedTime !== null) {
+        return cachedTime;
+      }
+    }
+
+    // 降级：使用简单估算
+    return this.fallbackEstimateTransportTime(from, to, 'TRANSIT');
+  }
+
+  /**
+   * 降级估算：使用距离和固定速度估算
+   */
+  private fallbackEstimateTransportTime(
     from: { lat: number; lng: number },
-    to: { lat: number; lng: number }
+    to: { lat: number; lng: number },
+    travelMode: string
   ): number {
     const distance = this.calculateDistance(from, to);
 
-    // 市内交通：平均速度 30 km/h（包含等车、换乘）
-    if (distance < 5000) {
-      // < 5km：公共交通
-      return Math.round((distance / 1000 / 30) * 60);
-    } else {
-      // >= 5km：打车或地铁
-      return Math.round((distance / 1000 / 40) * 60);
+    switch (travelMode) {
+      case 'WALKING':
+        // 步行速度：5 km/h
+        return Math.round((distance / 1000 / 5) * 60);
+      
+      case 'DRIVING':
+        // 自驾/打车：平均速度 25 km/h（考虑堵车）
+        return Math.round((distance / 1000 / 25) * 60);
+      
+      case 'TRANSIT':
+      default:
+        // 公共交通：平均速度 30 km/h（包含等车、换乘）
+        if (distance < 5000) {
+          // < 5km：公共交通
+          return Math.round((distance / 1000 / 30) * 60);
+        } else {
+          // >= 5km：地铁或快速公交
+          return Math.round((distance / 1000 / 40) * 60);
+        }
     }
   }
 

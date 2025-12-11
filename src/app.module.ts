@@ -11,6 +11,7 @@ import { TransportModule } from './transport/transport.module';
 import { FlightPricesModule } from './flight-prices/flight-prices.module';
 import { ItineraryOptimizationModule } from './itinerary-optimization/itinerary-optimization.module';
 import { HotelsModule } from './hotels/hotels.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { HotelsModule } from './hotels/hotels.module';
       isGlobal: true,
     }),
     PrismaModule,
+    RedisModule, // Redis 缓存模块
     PlacesModule,
     TripsModule,
     ItineraryItemsModule,

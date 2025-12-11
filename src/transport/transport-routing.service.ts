@@ -8,7 +8,7 @@ import {
   TransportRecommendation,
 } from './interfaces/transport.interface';
 import { TransportDecisionService } from './transport-decision.service';
-import { GoogleRoutesService } from './services/google-routes.service';
+import { SmartRoutesService } from './services/smart-routes.service';
 import { RouteCacheService } from './services/route-cache.service';
 
 /**
@@ -23,7 +23,7 @@ export class TransportRoutingService {
   constructor(
     private prisma: PrismaService,
     private decisionService: TransportDecisionService,
-    private googleRoutesService: GoogleRoutesService,
+    private smartRoutesService: SmartRoutesService,
     private routeCacheService: RouteCacheService,
   ) {}
 
@@ -231,8 +231,8 @@ export class TransportRoutingService {
         if (cachedRoute) {
           transitOptions = cachedRoute;
         } else {
-          // 调用 Google Routes API
-          const googleOptions = await this.googleRoutesService.getRoutes(
+          // 调用智能路由服务（自动选择高德或Google）
+          const routeOptions = await this.smartRoutesService.getRoutes(
             fromLat,
             fromLng,
             toLat,
@@ -243,8 +243,8 @@ export class TransportRoutingService {
             }
           );
 
-          if (googleOptions.length > 0) {
-            transitOptions = googleOptions;
+          if (routeOptions.length > 0) {
+            transitOptions = routeOptions;
             // 保存到缓存
             await this.routeCacheService.saveCachedRoute(
               fromLat,
@@ -252,7 +252,7 @@ export class TransportRoutingService {
               toLat,
               toLng,
               'TRANSIT',
-              googleOptions
+              routeOptions
             );
           }
         }
@@ -275,11 +275,11 @@ export class TransportRoutingService {
     }
 
     // 3. 打车选项（总是提供，让算法决定是否推荐）
-    // 优先使用 Google Routes API（如果配置）
+    // 优先使用智能路由服务（自动选择高德或Google）
     let taxiOptions: TransportOption[] = [];
     
     if (!isShortDistance) {
-      const googleOptions = await this.googleRoutesService.getRoutes(
+      const routeOptions = await this.smartRoutesService.getRoutes(
         fromLat,
         fromLng,
         toLat,
@@ -287,8 +287,8 @@ export class TransportRoutingService {
         'DRIVING'
       );
 
-      if (googleOptions.length > 0) {
-        taxiOptions = googleOptions;
+      if (routeOptions.length > 0) {
+        taxiOptions = routeOptions;
       }
     }
 
