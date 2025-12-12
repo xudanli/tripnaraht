@@ -8,12 +8,17 @@ import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { PlaceMetadata } from './interfaces/place-metadata.interface';
 import { randomUUID } from 'crypto';
 import { AmapPOIService } from './services/amap-poi.service';
+import { GooglePlacesService, GooglePlacesPOI } from './services/google-places.service';
+// 保持向后兼容的类型别名
+type OverpassPOI = GooglePlacesPOI;
+import { PhysicalMetadataGenerator } from './utils/physical-metadata-generator.util';
 
 @Injectable()
 export class PlacesService {
   constructor(
     private prisma: PrismaService,
-    private amapPOIService: AmapPOIService
+    private amapPOIService: AmapPOIService,
+    private googlePlacesService: GooglePlacesService
   ) {}
 
   /**
@@ -21,6 +26,12 @@ export class PlacesService {
    */
   async createPlace(dto: CreatePlaceDto) {
     const { lat, lng, ...rest } = dto;
+    
+    // 自动生成 physicalMetadata
+    const physicalMetadata = PhysicalMetadataGenerator.generateByCategory(
+      dto.category,
+      dto.metadata as any
+    );
     
     // ⚠️ 注意：Prisma 不支持直接写入 Unsupported 字段
     // 我们通常创建一个带有经纬度的 Place，然后用 raw SQL 更新它的 location，
@@ -31,6 +42,7 @@ export class PlacesService {
         ...rest,
         uuid: randomUUID(),
         metadata: dto.metadata as any, // 存入 JSON
+        physicalMetadata: physicalMetadata as any, // 自动生成的体力消耗元数据
         updatedAt: new Date(),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
     });
@@ -66,7 +78,8 @@ export class PlacesService {
     const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
       SELECT 
         id, 
-        name, 
+        "nameCN", 
+        "nameEN",
         category,
         metadata,
         address,
@@ -109,7 +122,7 @@ export class PlacesService {
 
     const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
       SELECT 
-        id, name, metadata, address, rating,
+        id, "nameCN", "nameEN", metadata, address, rating,
         ST_Distance(
           location, 
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
@@ -148,9 +161,14 @@ export class PlacesService {
     // 2. 计算状态
     const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);
     
+    // 3. 显示名称：优先使用 nameEN，如果没有则使用 nameCN
+    const displayName = row.nameEN || row.nameCN;
+    
     return {
       id: row.id,
-      name: row.name,
+      name: displayName, // 显示名称（优先 nameEN）
+      nameCN: row.nameCN,
+      nameEN: row.nameEN,
       category: row.category,
       distance: Math.round(row.distance_meters), // 取整
       address: row.address,
@@ -209,7 +227,7 @@ export class PlacesService {
 
     // 调用高德 POI 服务获取详细信息
     const poiData = await this.amapPOIService.getPOIDetails(
-      place.name,
+      place.nameCN, // 使用 nameCN 作为搜索关键词
       coords.lat,
       coords.lng
     );
@@ -331,13 +349,13 @@ export class PlacesService {
             await this.enrichPlaceFromAmap(place.id);
             return {
               placeId: place.id,
-              name: place.name,
+              name: place.nameEN || place.nameCN,
               status: 'success' as const,
             };
           } catch (error: any) {
             return {
               placeId: place.id,
-              name: place.name,
+              name: place.nameEN || place.nameCN,
               status: 'failed' as const,
               error: error.message,
             };
@@ -445,6 +463,178 @@ export class PlacesService {
     }
 
     return result;
+  }
+
+  /**
+   * 从 Google Places API 获取指定国家的景点数据
+   * 
+   * @param countryCode ISO 3166-1 国家代码（如 'US' 表示美国）
+   * @param tourismTypes 旅游类型过滤（可选，如 ['attraction', 'viewpoint', 'museum']）
+   * @returns 景点列表
+   */
+  async fetchAttractionsFromOverpass(
+    countryCode: string,
+    tourismTypes?: string[]
+  ): Promise<OverpassPOI[]> {
+    return this.googlePlacesService.fetchAttractionsByCountry(countryCode, tourismTypes);
+  }
+
+  /**
+   * 从 Overpass API 获取冰岛景点并保存到数据库
+   * 
+   * @param tourismTypes 旅游类型过滤（可选）
+   * @param cityId 城市 ID（可选，如果不提供则尝试查找或创建冰岛城市）
+   * @returns 保存结果统计
+   */
+  async importIcelandAttractionsFromOverpass(
+    tourismTypes?: string[],
+    cityId?: number
+  ): Promise<{
+    total: number;
+    created: number;
+    skipped: number;
+    errors: number;
+    results: Array<{
+      osmId: number;
+      name: string;
+      status: 'created' | 'skipped' | 'error';
+      error?: string;
+    }>;
+  }> {
+    // 1. 获取或创建冰岛城市
+    let icelandCityId = cityId;
+    if (!icelandCityId) {
+      // 查找冰岛城市（通常冰岛只有一个主要城市记录，或者可以创建一个通用记录）
+      let city = await this.prisma.city.findFirst({
+        where: { countryCode: 'IS' },
+      });
+
+      if (!city) {
+        // 创建冰岛城市记录
+        city = await this.prisma.city.create({
+          data: {
+            name: 'Iceland',
+            countryCode: 'IS',
+          },
+        });
+      }
+
+      icelandCityId = city.id;
+    }
+
+    // 2. 从 Google Places 获取景点数据
+    const pois = await this.googlePlacesService.fetchAttractionsByCountry('IS', tourismTypes);
+
+    const results: Array<{
+      osmId: number;
+      name: string;
+      status: 'created' | 'skipped' | 'error';
+      error?: string;
+    }> = [];
+
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    // 3. 批量保存到数据库
+    for (const poi of pois) {
+      try {
+        // 检查是否已存在（通过 OSM ID 或名称+坐标）
+        // 使用 raw SQL 查询 JSONB 字段
+        const existingByOsmId = await this.prisma.$queryRaw<Array<{ id: number }>>`
+          SELECT id FROM "Place"
+          WHERE metadata->>'osmId' = ${poi.osmId.toString()}
+          LIMIT 1
+        `;
+
+        // 如果通过 OSM ID 没找到，再通过名称和坐标查找（坐标相近，误差在 100 米内）
+        let existing = existingByOsmId.length > 0 
+          ? await this.prisma.place.findUnique({ where: { id: existingByOsmId[0].id } })
+          : null;
+
+        if (!existing) {
+          const existingByNameAndLocation = await this.prisma.$queryRaw<Array<{ id: number }>>`
+            SELECT id FROM "Place"
+            WHERE "nameEN" = ${poi.nameEn || poi.name}
+              AND location IS NOT NULL
+              AND ST_DWithin(
+                location,
+                ST_SetSRID(ST_MakePoint(${poi.lng}, ${poi.lat}), 4326)::geography,
+                100
+              )
+            LIMIT 1
+          `;
+
+          if (existingByNameAndLocation.length > 0) {
+            existing = await this.prisma.place.findUnique({ 
+              where: { id: existingByNameAndLocation[0].id } 
+            });
+          }
+        }
+
+        if (existing) {
+          skipped++;
+          results.push({
+            osmId: poi.osmId,
+            name: poi.name,
+            status: 'skipped',
+          });
+          continue;
+        }
+
+        // 创建新地点
+        const place = await this.prisma.place.create({
+          data: {
+            uuid: randomUUID(),
+            nameCN: poi.name, // 如果没有中文名，使用英文名
+            nameEN: poi.nameEn || poi.name,
+            category: 'ATTRACTION',
+            cityId: icelandCityId,
+            address: poi.rawTags['addr:full'] || poi.rawTags.address || undefined,
+            metadata: {
+              osmId: poi.osmId,
+              osmType: poi.osmType,
+              category: poi.category,
+              type: poi.type,
+              rawTags: poi.rawTags,
+              source: 'google_places',
+              importedAt: new Date().toISOString(),
+            } as any,
+            updatedAt: new Date(),
+          } as any,
+        });
+
+        // 更新地理位置
+        await this.prisma.$executeRaw`
+          UPDATE "Place"
+          SET location = ST_SetSRID(ST_MakePoint(${poi.lng}, ${poi.lat}), 4326)
+          WHERE id = ${place.id}
+        `;
+
+        created++;
+        results.push({
+          osmId: poi.osmId,
+          name: poi.name,
+          status: 'created',
+        });
+      } catch (error: any) {
+        errors++;
+        results.push({
+          osmId: poi.osmId,
+          name: poi.name,
+          status: 'error',
+          error: error.message,
+        });
+      }
+    }
+
+    return {
+      total: pois.length,
+      created,
+      skipped,
+      errors,
+      results,
+    };
   }
 }
 

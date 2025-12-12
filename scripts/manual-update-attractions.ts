@@ -35,7 +35,7 @@ async function updateAttractionsFromFile(filePath: string) {
     for (const item of data) {
       const existing = await prisma.place.findFirst({
         where: {
-          name: item.name,
+          nameCN: item.name,
           category: 'ATTRACTION',
         },
       });

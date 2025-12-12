@@ -61,6 +61,14 @@ export class TasksService {
       let updatedCount = 0;
       let errorCount = 0;
 
+      // 获取 USD/CNY 汇率（用于计算 exchangeRateToUSD）
+      const usdRateFromCNY = rates['USD'];
+      let usdToCny: number | undefined;
+      if (usdRateFromCNY && usdRateFromCNY > 0) {
+        // API 返回 1 CNY = X USD，所以 1 USD = 1 / X CNY
+        usdToCny = 1 / usdRateFromCNY;
+      }
+
       // 遍历所有国家，更新汇率
       for (const country of countries) {
         if (!country.currencyCode) {
@@ -82,16 +90,30 @@ export class TasksService {
         // 转换为 1 外币 = 多少 CNY
         const rateToCNY = 1 / rateFromCNY;
 
+        // 计算 exchangeRateToUSD
+        let rateToUSD: number | undefined;
+        if (country.currencyCode === 'USD') {
+          rateToUSD = 1.0;
+        } else if (usdToCny) {
+          // exchangeRateToUSD = exchangeRateToCNY / usdToCny
+          rateToUSD = rateToCNY / usdToCny;
+        }
+
         // 更新数据库
         try {
+          const updateData: any = { exchangeRateToCNY: rateToCNY };
+          if (rateToUSD !== undefined) {
+            updateData.exchangeRateToUSD = rateToUSD;
+          }
+
           await this.prisma.countryProfile.update({
             where: { isoCode: country.isoCode },
-            data: { exchangeRateToCNY: rateToCNY },
+            data: updateData,
           });
 
           updatedCount++;
           this.logger.debug(
-            `已更新 ${country.isoCode} (${country.currencyCode}): 1 ${country.currencyCode} = ${rateToCNY.toFixed(4)} CNY`
+            `已更新 ${country.isoCode} (${country.currencyCode}): 1 ${country.currencyCode} = ${rateToCNY.toFixed(4)} CNY${rateToUSD ? ` = ${rateToUSD.toFixed(6)} USD` : ''}`
           );
         } catch (error) {
           this.logger.error(

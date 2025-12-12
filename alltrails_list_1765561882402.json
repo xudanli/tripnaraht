@@ -1,0 +1,315 @@
+[
+  {
+    "difficultyMetadata": {
+      "level": "HARD",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 25.9,
+      "elevationGain": 1131
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/skogafoss-skalabrekkufoss-waterfalls",
+      "name": "Skógafoss, Steinbogafoss and Skálabrekkufoss via Fimmvörðuháls Trail",
+      "rating": "4.92927",
+      "description": "Skõgarfoss is one of the  most splendid waterfalls in Iceland. It's located next the the main road number 1  and has featured in many films from Thor to Walter Mitty. The start is next to the camping in Skógar. This route is also used to reach the Thórsmörk valley via the Fimmvörðuháls pass. Fantastic views of the waterfall from the ground to the top. This is an extended hike where you can see the huge canyon above the waterfall.",
+      "length": "25.9 km",
+      "elevationGain": "1,131 m"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 3.4,
+      "elevationGain": 133
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/eastern/svartifoss-and-manusafoss",
+      "name": "Svartifoss Trail (Waterfalls Trail)",
+      "rating": "4.72934",
+      "description": "This fantastic trail will show you several waterfalls in Skaftafell. The first one is called Hundafoss and it's the is the tallest and first of three waterfalls encountered along the popular trail to Svartifoss in Skaftafell National Park. The second is called Magnúsarfoss and it's the smallest of the 3 waterfalls. Before reaching out the last waterfall called Svartifoss you will pass amazing Columnar Basalt. Svartifoss is surrounded by dark lava columns which gave rise to his name.",
+      "length": "3.4 km",
+      "elevationGain": "133 m",
+      "estimatedTime": "1–1.5 hr",
+      "visitDuration": "1–1.5 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice",
+        "winter_ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 9,
+      "elevationGain": 379
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/reykjadalur-hot-spring-thermal-river",
+      "name": "Reykjadalur Hot Spring Thermal River",
+      "rating": "4.73368",
+      "description": "This is one of the most famous places in Iceland. Located next to Hveragerði that is just 40 minutes drive from Reykjavík. The Reykjadalur Valley is an active geothermal area and they are famous for the hot spring river. It's a 3 hour long hike through fantastic Icelandic nature with a lot of different colors and great views. The water is boiling out of dozens of hot springs in the hills trickle into one body, which is also fed with glacier and rainwater. The results of this is a warm and gentle stream. It's totally free to bath there at any time of the year. In the winter time you might need mini-spikes due to the ice on the path.",
+      "length": "9 km",
+      "elevationGain": "379 m",
+      "estimatedTime": "3–3.5 hr",
+      "visitDuration": "3–3.5 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 4.7,
+      "elevationGain": 259
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/oxararfoss-waterfall-trail",
+      "name": "Öxarárfoss Waterfall via Almannagjá Trail",
+      "rating": "4.52306",
+      "description": "This trail will take you to Öxarárfoss Waterfall via the Almannagjá Trail, which runs through the the Mid-Atlantic rift (the rift between the North American and Eurasian tectonic plates).\nÖxarárfoss Waterfall is located in the National Park of Þingvellir. This waterfall flows from the river called  Öxará over the Almannagjá. The base of the fall is filled with rocks. Can be icy during winter times. An interesting fact about this waterfall is that it's a human-made waterfall. The path also goes to the church Þingvallakirkja.\nIf you are visiting with your own or rented vehicle, there is a parking fee valid for the entire day.",
+      "length": "4.7 km",
+      "elevationGain": "259 m",
+      "estimatedTime": "1.5–2 hr",
+      "visitDuration": "1.5–2 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice",
+        "snow"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 7.1,
+      "elevationGain": 385
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/eastern/hangandifoss-waterfall-mulagljufur-canyon",
+      "name": "Hangandifoss Waterfall - Múlagljúfur Canyon",
+      "rating": "4.92839",
+      "description": "Hangandifoss is one of Iceland's tallest waterfalls and offers you amazing views. It's part of the Múlagljúfur canyon with several other waterfalls. \n\nMúlagljúfur offers amazing nature like canyons, rivers, waterfalls, volcanoes and breathtaking views. Múlaá, which is fed from the snow covered volcano Öræfajökull, runs through Múlagljúfur canyon and past Hangandi waterfall.",
+      "length": "7.1 km",
+      "elevationGain": "385 m",
+      "estimatedTime": "2.5–3 hr",
+      "visitDuration": "2.5–3 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "EASY",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 2.4,
+      "elevationGain": 87
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/fjadrargljufur-canyon",
+      "name": "Fjaðrárgljúfur Canyon",
+      "rating": "4.72543",
+      "description": "Fjaðrárgljúfur Canyon is located in the southeast part of Iceland, just off the famous Ring Road. \n\nIt is estimated that this canyon was formed at the end of the last Ice Age, about 9,000 years ago, through glacial erosion. But it is worth noting that the bedrock itself is thought to be about two million years old. Today, the river Fjaðrá flows through it and its picturesque Mögárfoss Waterfall. The canyon is about 2 km (1.25 miles) long and reaches a depth of 100 meters (328 feet).\n\nTrampling has led to the trail closures in the past, so it is important to stay on the trail and respect the fences and signs to protect the surrounding vegetation.",
+      "length": "2.4 km",
+      "elevationGain": "87 m",
+      "estimatedTime": "0.5–1 hr",
+      "visitDuration": "0.5–1 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "EASY",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 4,
+      "elevationGain": 236
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/almannagja-trail",
+      "name": "Almannagjá  Trail",
+      "rating": "4.51794",
+      "description": "This trail starts at the parking lot P2 of Thingvellir National Park and takes you on a loop to discover the Almannagjá Trail, along the Öxará River. It leads you to the the Mid-Atlantic rift, which is the rift between the North American and Eurasian tectonic plates. \nAlternatively, you can start this trail at the Visitor Center parking lot, on the other side of the loop, and extend it to Öxarárfoss Waterfall.",
+      "length": "4 km",
+      "elevationGain": "236 m",
+      "estimatedTime": "1.5–2 hr",
+      "visitDuration": "1.5–2 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 7.4,
+      "elevationGain": 269
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/sjonarnipa-svartifoss-magnusafoss-hundafoss-via-austurbrekkur",
+      "name": "Sjónarnípa - Svartifoss Waterfall - Magnúsafoss Waterfall - Hundafoss Waterfall via Austurbrekkur",
+      "rating": "4.81571",
+      "description": "This beautiful trail starts from the parking lot in Skaftafell. It takes the Austrubrekkur path to join the Sjónarnípa waterfall. The route continues to the most famous one called Svartifoss with amazing Basalt Columnar. Enjoy the view up there. The next waterfall is called  Magnúsarfoss and it's the smallest of the 4 waterfalls. The last one is named Hundafoss and it's the is the tallest.",
+      "length": "7.4 km",
+      "elevationGain": "269 m",
+      "estimatedTime": "2–2.5 hr",
+      "visitDuration": "2–2.5 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "EASY",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "exposure",
+        "ice",
+        "winter_ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 1.9,
+      "elevationGain": 75
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/seljalandsfoss-and-gljufrafoss-waterfalls",
+      "name": "Seljalandsfoss - Gljúfrabúi Waterfalls",
+      "rating": "4.71803",
+      "description": "Seljalandsfoss is located in the South Region in Iceland right by Route 1 and the road that leads to Þórsmörk Road 249. The waterfall is one of the most popular waterfalls and natural wonders in Iceland. The waterfall drops 60 m (197 ft) and is part of the Seljalands River that has its origin in the volcano glacier Eyjafjallajökull. The Gljufrafoss waterfall is located North of  the Seljalandsfoss waterfall and is a little bit smaller. The falls are partially obscured by the cliff rock in a narrow canyon. One of the interesting things about this waterfall is that visitors can walk behind it into a small cave, be prepared to get splashed be water. \n\nThe top of this trail near the waterfall can sometimes be closed during winter months and if the trail is muddy or after bad weather conditions. However, one can still hike sections of this trail even if the top of the falls is closed. Visitors must pay a fee at the parking lot. Access to the smaller waterfall is very narrow and there is often a queue of visitors waiting to get in for their photo. Hikers recommend visiting outside of peak hours.",
+      "length": "1.9 km",
+      "elevationGain": "75 m",
+      "estimatedTime": "0.5–1 hr",
+      "visitDuration": "0.5–1 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 9.7,
+      "elevationGain": 193
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/eastern/studlagil-canyon--2",
+      "name": "Stuðlagil Canyon",
+      "rating": "4.61617",
+      "description": "This is a wonderful hike that reaches the well known Stuðlagil canyon, located in Jökuldalur, Múlaþing in the Eastern Region of Iceland. This hidden gem destination is characterized by its columnar basalt rock formations, the blue-green glacial river that runs through it, the spectacular waterfalls and the majestic vista points. The trail can be shortened by starting at the second parking lot and there are a few options to wonder around to different outlooks. The terrain on this hike is relatively untouched and in spring and summer (May-June) is populated by nesting birds such as pink-footed geese.",
+      "length": "9.7 km",
+      "elevationGain": "193 m"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "HARD",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 979.9,
+      "elevationGain": 15476
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/capital/reykjavik-gullfoss-landmannalaugar-skaftafell-skogar-grindavik",
+      "name": "Reykjavik - Landmannalaugar - Skaftafell - Grindavík",
+      "rating": "4.94",
+      "description": "Experience this 979.9-km loop trail near Reykjavík, Capital Region. Generally considered a challenging route, it takes an average of 226 h 13 min to complete. This trail is great for backpacking, camping, and mountain biking, and it's unlikely you'll encounter many other people while exploring.",
+      "length": "979.9 km",
+      "elevationGain": "15,476 m",
+      "estimatedTime": "24 hr+",
+      "visitDuration": "24 hr+ hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "EASY",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "elevationGain": 50215
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern-peninsula/iceland-ring-road-1",
+      "name": "Iceland Ring Road 1",
+      "rating": "4.441",
+      "description": "This tour follows the main road number 1 in Iceland and goes all over the whole country. Fantastic scenery everywhere. The route leaves the road number one in order to discover and enjoy the Westfjords. It's recommanded for 10 days trip without the Westjords. This should be an extra trip, because it's remote and has so much amazing places that is worth.",
+      "length": "3K km",
+      "elevationGain": "50,215 m"
+    }
+  }
+]

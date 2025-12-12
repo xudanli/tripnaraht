@@ -40,7 +40,16 @@
     "scrape:mafengwo": "ts-node --project tsconfig.backend.json scripts/scrape-mafengwo-attractions.ts",
     "scrape:fliggy": "ts-node --project tsconfig.backend.json scripts/scrape-fliggy-attractions.ts",
     "update:attractions": "ts-node --project tsconfig.backend.json scripts/manual-update-attractions.ts",
-    "enrich:amap": "ts-node --project tsconfig.backend.json scripts/enrich-attractions-from-amap.ts"
+    "enrich:amap": "ts-node --project tsconfig.backend.json scripts/enrich-attractions-from-amap.ts",
+    "optimize:countries": "ts-node --project tsconfig.backend.json scripts/optimize-country-profiles.ts",
+    "fill:name-en": "ts-node --project tsconfig.backend.json scripts/fill-place-name-en.ts",
+    "import:nature-poi": "ts-node --project tsconfig.backend.json scripts/import-nature-poi-from-geojson.ts",
+    "generate:physical-metadata": "ts-node --project tsconfig.backend.json scripts/generate-physical-metadata.ts",
+    "scrape:alltrails": "ts-node --project tsconfig.backend.json scripts/scrape-alltrails.ts",
+    "scrape:alltrails:puppeteer": "ts-node --project tsconfig.backend.json scripts/scrape-alltrails-puppeteer.ts",
+    "scrape:alltrails:batch": "ts-node --project tsconfig.backend.json scripts/scrape-alltrails-batch.ts",
+    "scrape:tibet": "ts-node --project tsconfig.backend.json scripts/scrape-tibet-trails.ts",
+    "import:alltrails": "ts-node --project tsconfig.backend.json scripts/import-alltrails-to-db.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

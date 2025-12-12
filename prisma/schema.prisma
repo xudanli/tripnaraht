@@ -17,19 +17,40 @@ model City {
   places      Place[]
 }
 
+/// 国家档案表
+/// 
+/// 字段分类：
+/// 🌍 通用字段：适用于所有国家用户（isoCode, currencyCode, paymentType, powerInfo, emergency等）
+/// 🇨🇳 中国特定字段：仅对中国用户有意义（visaForCN, exchangeRateToCNY）
+/// 
+/// 国际化扩展建议：
+/// - 添加 nameEN 字段支持英文名称
+/// - exchangeRateToCNY 可扩展为 exchangeRateToUSD（国际标准基准）
+/// - visaForCN 可扩展为 VisaPolicy 表支持多国家组合
 model CountryProfile {
-  isoCode           String       @id @unique
-  nameCN            String
-  powerInfo         Json?
-  emergency         Json?
-  paymentInfo       Json?
-  visaForCN         Json?
-  flightEstimates   Json?
-  updatedAt         DateTime
-  currencyCode      String?
-  currencyName      String?
-  exchangeRateToCNY Float?
-  paymentType       PaymentType?
+  // ========== 🌍 通用字段 ==========
+  isoCode String  @id @unique // 国家代码（ISO 3166-1 alpha-2）
+  nameCN  String // 中文名称（主要显示）
+  nameEN  String? // 英文名称（用于国际化）
+
+  // 货币信息（通用）
+  currencyCode String? // 货币代码（ISO 4217）
+  currencyName String? // 货币名称
+  paymentType  PaymentType? // 支付画像（CASH_HEAVY, BALANCED, DIGITAL_ONLY）
+  paymentInfo  Json? // 支付实用建议（小费、ATM、钱包App等）
+
+  // 实用信息（通用）
+  powerInfo Json? // 插座信息（电压、频率、插座类型）
+  emergency Json? // 紧急电话（报警、火警、医疗）
+
+  // ========== 🇨🇳 中国特定字段 ==========
+  exchangeRateToCNY Float? // 🇨🇳 汇率（1 外币 = 多少 CNY）- 仅对中国用户
+  visaForCN         Json? // 🇨🇳 针对中国公民的签证政策（status, requirement, allowedStay, notes）
+
+  // ========== 🌍 国际化扩展字段 ==========
+  exchangeRateToUSD Float? // 🌍 汇率（1 外币 = 多少 USD）- 国际标准基准，适用于所有用户
+
+  updatedAt DateTime
 }
 
 model DayOfWeekFactor {
@@ -113,8 +134,8 @@ model ItineraryItem {
 model Place {
   id               Int                       @id @default(autoincrement())
   uuid             String                    @unique
-  name             String
-  nameEN           String?
+  nameCN           String // 中文名称（主要显示）
+  nameEN           String? // 英文名称（用于国际化）
   category         PlaceCategory
   location         Unsupported("geography")?
   address          String?
@@ -145,8 +166,8 @@ model RawFlightData {
   // 航空公司 String? @map("航空公司") @db.VarChar(50)
   /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
   // 起飞机场 String? @map("起飞机场") @db.VarChar(100)
-  originAirportY Decimal? @map("起飞机场y") @db.Decimal
-  originAirportX Decimal? @map("起飞机场x") @db.Decimal
+  originAirportY      Decimal? @map("起飞机场y") @db.Decimal
+  originAirportX      Decimal? @map("起飞机场x") @db.Decimal
   /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
   // 降落机场 String? @map("降落机场") @db.VarChar(100)
   destinationAirportY Decimal? @map("降落机场y") @db.Decimal
@@ -176,11 +197,11 @@ model Trip {
 }
 
 model TripDay {
-  id            String          @id
-  date          DateTime
-  tripId        String
-  items         ItineraryItem[]
-  trip          Trip            @relation(fields: [tripId], references: [id])
+  id     String          @id
+  date   DateTime
+  tripId String
+  items  ItineraryItem[]
+  trip   Trip            @relation(fields: [tripId], references: [id])
 }
 
 /// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.
@@ -250,24 +271,22 @@ enum PlaceCategory {
 
 /**
  * 原始酒店基本信息表
- * 
  * 包含酒店的基本信息：名称、品牌、地址、位置等
- * 
  * 数据来源：hotel_basic_info.csv
  * 字段：id, name, brand, address, city, district, lat, lng, phone, type, adcode
  */
 model RawHotelData_Slim {
-  id        String  @id  // 酒店ID，如 "B0K1PZBE68"
-  name      String? // 酒店名称，如 "桔子酒店(洛阳龙门站店)"
-  brand     String? // 品牌，如 "桔子"
-  address   String? // 地址，如 "通衢路与厚载门街交叉口西南角新唐街3号楼"
-  city      String? // 城市，如 "洛阳市"
-  district  String? // 区县，如 "洛龙区"
-  lat       Float?  // 纬度，如 34.596104
-  lng       Float?  // 经度，如 112.46321
-  phone     String? // 电话，如 "0379-63168888;18603798508"
-  type      String? // 类型，如 "住宿服务;宾馆酒店;宾馆酒店"
-  adcode    String? // 行政区划代码，如 "410300"
+  id       String  @id // 酒店ID，如 "B0K1PZBE68"
+  name     String? // 酒店名称，如 "桔子酒店(洛阳龙门站店)"
+  brand    String? // 品牌，如 "桔子"
+  address  String? // 地址，如 "通衢路与厚载门街交叉口西南角新唐街3号楼"
+  city     String? // 城市，如 "洛阳市"
+  district String? // 区县，如 "洛龙区"
+  lat      Float? // 纬度，如 34.596104
+  lng      Float? // 经度，如 112.46321
+  phone    String? // 电话，如 "0379-63168888;18603798508"
+  type     String? // 类型，如 "住宿服务;宾馆酒店;宾馆酒店"
+  adcode   String? // 行政区划代码，如 "410300"
 
   @@index([city])
   @@index([brand])
@@ -277,89 +296,88 @@ model RawHotelData_Slim {
 
 /**
  * 酒店季度价格数据表（宽表格式）
- * 
  * 按城市、星级、季度存储价格数据
  * 季度字段：2018_Q1 到 2024_Q1
  */
 model HotelWideData_Quarterly {
-  id        Int     @id @default(autoincrement())
-  city      String?
+  id         Int     @id @default(autoincrement())
+  city       String?
   starRating Int?
   /// 2018年第一季度价格
   /// @map("2018_Q1")
-  q2018_Q1  Float?  @map("2018_Q1")
+  q2018_Q1   Float?  @map("2018_Q1")
   /// 2018年第二季度价格
   /// @map("2018_Q2")
-  q2018_Q2  Float?  @map("2018_Q2")
+  q2018_Q2   Float?  @map("2018_Q2")
   /// 2018年第三季度价格
   /// @map("2018_Q3")
-  q2018_Q3  Float?  @map("2018_Q3")
+  q2018_Q3   Float?  @map("2018_Q3")
   /// 2018年第四季度价格
   /// @map("2018_Q4")
-  q2018_Q4  Float?  @map("2018_Q4")
+  q2018_Q4   Float?  @map("2018_Q4")
   /// 2019年第一季度价格
   /// @map("2019_Q1")
-  q2019_Q1  Float?  @map("2019_Q1")
+  q2019_Q1   Float?  @map("2019_Q1")
   /// 2019年第二季度价格
   /// @map("2019_Q2")
-  q2019_Q2  Float?  @map("2019_Q2")
+  q2019_Q2   Float?  @map("2019_Q2")
   /// 2019年第三季度价格
   /// @map("2019_Q3")
-  q2019_Q3  Float?  @map("2019_Q3")
+  q2019_Q3   Float?  @map("2019_Q3")
   /// 2019年第四季度价格
   /// @map("2019_Q4")
-  q2019_Q4  Float?  @map("2019_Q4")
+  q2019_Q4   Float?  @map("2019_Q4")
   /// 2020年第一季度价格
   /// @map("2020_Q1")
-  q2020_Q1  Float?  @map("2020_Q1")
+  q2020_Q1   Float?  @map("2020_Q1")
   /// 2020年第二季度价格
   /// @map("2020_Q2")
-  q2020_Q2  Float?  @map("2020_Q2")
+  q2020_Q2   Float?  @map("2020_Q2")
   /// 2020年第三季度价格
   /// @map("2020_Q3")
-  q2020_Q3  Float?  @map("2020_Q3")
+  q2020_Q3   Float?  @map("2020_Q3")
   /// 2020年第四季度价格
   /// @map("2020_Q4")
-  q2020_Q4  Float?  @map("2020_Q4")
+  q2020_Q4   Float?  @map("2020_Q4")
   /// 2021年第一季度价格
   /// @map("2021_Q1")
-  q2021_Q1  Float?  @map("2021_Q1")
+  q2021_Q1   Float?  @map("2021_Q1")
   /// 2021年第二季度价格
   /// @map("2021_Q2")
-  q2021_Q2  Float?  @map("2021_Q2")
+  q2021_Q2   Float?  @map("2021_Q2")
   /// 2021年第三季度价格
   /// @map("2021_Q3")
-  q2021_Q3  Float?  @map("2021_Q3")
+  q2021_Q3   Float?  @map("2021_Q3")
   /// 2021年第四季度价格
   /// @map("2021_Q4")
-  q2021_Q4  Float?  @map("2021_Q4")
+  q2021_Q4   Float?  @map("2021_Q4")
   /// 2022年第一季度价格
   /// @map("2022_Q1")
-  q2022_Q1  Float?  @map("2022_Q1")
+  q2022_Q1   Float?  @map("2022_Q1")
   /// 2022年第二季度价格
   /// @map("2022_Q2")
-  q2022_Q2  Float?  @map("2022_Q2")
+  q2022_Q2   Float?  @map("2022_Q2")
   /// 2022年第三季度价格
   /// @map("2022_Q3")
-  q2022_Q3  Float?  @map("2022_Q3")
+  q2022_Q3   Float?  @map("2022_Q3")
   /// 2022年第四季度价格
   /// @map("2022_Q4")
-  q2022_Q4  Float?  @map("2022_Q4")
+  q2022_Q4   Float?  @map("2022_Q4")
   /// 2023年第一季度价格
   /// @map("2023_Q1")
-  q2023_Q1  Float?  @map("2023_Q1")
+  q2023_Q1   Float?  @map("2023_Q1")
   /// 2023年第二季度价格
   /// @map("2023_Q2")
-  q2023_Q2  Float?  @map("2023_Q2")
+  q2023_Q2   Float?  @map("2023_Q2")
   /// 2023年第三季度价格
   /// @map("2023_Q3")
-  q2023_Q3  Float?  @map("2023_Q3")
+  q2023_Q3   Float?  @map("2023_Q3")
   /// 2023年第四季度价格
   /// @map("2023_Q4")
-  q2023_Q4  Float?  @map("2023_Q4")
+  q2023_Q4   Float?  @map("2023_Q4")
   /// 2024年第一季度价格
   /// @map("2024_Q1")
-  q2024_Q1  Float?  @map("2024_Q1")
+  q2024_Q1   Float?  @map("2024_Q1")
 
   @@index([city])
   @@index([starRating])
@@ -368,10 +386,8 @@ model HotelWideData_Quarterly {
 
 /**
  * 原始景点数据表
- * 
  * 存储从外部数据源导入的景点基础信息
  * 数据来源：中国景点数据 CSV 文件
- * 
  * 字段说明：
  * - name: 景区名称
  * - level: 等级（如 5A, 4A 等）
@@ -384,18 +400,18 @@ model HotelWideData_Quarterly {
  * - lat: 纬度（WGS84）
  */
 model RawAttractionData {
-  id              Int      @id @default(autoincrement())
-  name            String   // 景区名称
-  level           String?  // 等级（5A, 4A, 3A 等）
-  address         String?  // 地址
-  province        String?  // 省级行政区
-  publishDate     String?  // 相关文件发布时间（如 2025.04.15）
-  documentUrl     String?  // 文件网址链接
-  encodedAddress  String?  // 编码地址
-  lng             Float?   // 经度（WGS84）
-  lat             Float?   // 纬度（WGS84）
-  importedAt      DateTime @default(now()) // 导入时间
-  processed       Boolean  @default(false) // 是否已处理（转换为 Place）
+  id             Int      @id @default(autoincrement())
+  name           String // 景区名称
+  level          String? // 等级（5A, 4A, 3A 等）
+  address        String? // 地址
+  province       String? // 省级行政区
+  publishDate    String? // 相关文件发布时间（如 2025.04.15）
+  documentUrl    String? // 文件网址链接
+  encodedAddress String? // 编码地址
+  lng            Float? // 经度（WGS84）
+  lat            Float? // 纬度（WGS84）
+  importedAt     DateTime @default(now()) // 导入时间
+  processed      Boolean  @default(false) // 是否已处理（转换为 Place）
 
   @@index([province])
   @@index([level])
@@ -405,10 +421,8 @@ model RawAttractionData {
 
 /**
  * 原始火车站数据表
- * 
  * 存储从外部数据源导入的火车站基础信息
  * 数据来源：全国火车站数据 CSV 文件
- * 
  * 字段说明：
  * - name: 站名
  * - address: 车站地址
@@ -421,18 +435,18 @@ model RawAttractionData {
  * - wgs84Lat: 纬度（WGS84）
  */
 model RawTrainStationData {
-  id              Int      @id @default(autoincrement())
-  name            String   // 站名
-  address         String?  // 车站地址
-  railwayBureau   String?  // 铁路局
-  category        String?  // 类别
-  nature          String?  // 性质（客运站、货运站等）
-  province        String?  // 省
-  city            String?  // 市
-  wgs84Lng        Float?   // 经度（WGS84）
-  wgs84Lat        Float?   // 纬度（WGS84）
-  importedAt      DateTime @default(now()) // 导入时间
-  processed       Boolean  @default(false) // 是否已处理（转换为 Place）
+  id            Int      @id @default(autoincrement())
+  name          String // 站名
+  address       String? // 车站地址
+  railwayBureau String? // 铁路局
+  category      String? // 类别
+  nature        String? // 性质（客运站、货运站等）
+  province      String? // 省
+  city          String? // 市
+  wgs84Lng      Float? // 经度（WGS84）
+  wgs84Lat      Float? // 纬度（WGS84）
+  importedAt    DateTime @default(now()) // 导入时间
+  processed     Boolean  @default(false) // 是否已处理（转换为 Place）
 
   @@index([province])
   @@index([city])
@@ -444,19 +458,18 @@ model RawTrainStationData {
 
 /**
  * 酒店价格查找表（城市维度）
- * 
  * 从 HotelWideData_Quarterly 聚合生成
  * 包含每个城市的基础价格统计信息
  */
 model HotelPriceDetail {
   city        String   @id
-  avgPrice    Float?   // 平均价格
-  medianPrice Float?   // 中位数价格（主要使用）
-  cityFactor  Float?   // 城市因子（相对于全国平均价的倍数）
+  avgPrice    Float? // 平均价格
+  medianPrice Float? // 中位数价格（主要使用）
+  cityFactor  Float? // 城市因子（相对于全国平均价的倍数）
   sampleCount Int      @default(0) // 样本数量
-  minPrice    Float?   // 最低价格
-  maxPrice    Float?   // 最高价格
-  stdDev      Float?   // 标准差
+  minPrice    Float? // 最低价格
+  maxPrice    Float? // 最高价格
+  stdDev      Float? // 标准差
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now())
 
@@ -465,21 +478,20 @@ model HotelPriceDetail {
 
 /**
  * 城市-星级价格查找表（质量维度）
- * 
  * 从 HotelWideData_Quarterly 聚合生成
  * 包含每个城市-星级组合的价格统计和质量调整因子
  */
 model StarCityPriceDetail {
-  city            String
-  starRating      Int
-  avgPrice        Float?   // 该城市-星级的平均价格
-  cityStarFactor  Float?   // 城市-星级因子（相对于该城市平均价的倍数）
-  sampleCount     Int      @default(0) // 样本数量
-  minPrice        Float?   // 最低价格
-  maxPrice        Float?   // 最高价格
-  stdDev          Float?   // 标准差
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now())
+  city           String
+  starRating     Int
+  avgPrice       Float? // 该城市-星级的平均价格
+  cityStarFactor Float? // 城市-星级因子（相对于该城市平均价的倍数）
+  sampleCount    Int      @default(0) // 样本数量
+  minPrice       Float? // 最低价格
+  maxPrice       Float? // 最高价格
+  stdDev         Float? // 标准差
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
 
   @@id([city, starRating])
   @@index([city])

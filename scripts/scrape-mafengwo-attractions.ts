@@ -1784,7 +1784,7 @@ async function saveAttraction(attraction: MafengwoAttraction): Promise<boolean> 
     // 检查是否已存在 - 优先使用名称精确匹配
     let existing = await prisma.place.findFirst({
       where: {
-        name: attraction.name,
+        nameCN: attraction.name,
         category: 'ATTRACTION',
       },
     });
@@ -1798,7 +1798,7 @@ async function saveAttraction(attraction: MafengwoAttraction): Promise<boolean> 
             { address: { not: '' } },
             { category: 'ATTRACTION' },
             // 确保名称相似度较高（避免误匹配）
-            { name: { contains: attraction.name.substring(0, 2) } }
+            { nameCN: { contains: attraction.name.substring(0, 2) } }
           ]
         },
       });
@@ -1806,10 +1806,10 @@ async function saveAttraction(attraction: MafengwoAttraction): Promise<boolean> 
 
     // 调试日志
     if (existing) {
-      console.log(`   🔍 找到已存在记录: ID=${existing.id}, 名称="${existing.name}"`);
+      console.log(`   🔍 找到已存在记录: ID=${existing.id}, 名称="${existing.nameCN}"`);
       // 如果名称不匹配，说明可能是误匹配，应该创建新记录
-      if (existing.name !== attraction.name) {
-        console.log(`   ⚠️  名称不匹配（"${existing.name}" vs "${attraction.name}"），将创建新记录`);
+      if (existing.nameCN !== attraction.name) {
+        console.log(`   ⚠️  名称不匹配（"${existing.nameCN}" vs "${attraction.name}"），将创建新记录`);
         existing = null;
       }
     } else {
@@ -1877,7 +1877,7 @@ async function saveAttraction(attraction: MafengwoAttraction): Promise<boolean> 
     const place = await prisma.place.create({
       data: {
         uuid: randomUUID(),
-        name: attraction.name,
+        nameCN: attraction.name,
         nameEN: attraction.nameEN || null,
         category: 'ATTRACTION',
         address: attraction.address || null,

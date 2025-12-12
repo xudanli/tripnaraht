@@ -230,7 +230,7 @@ export class HotelRecommendationService {
       return places.map((p) => ({
         id: p.id,
         location: (p as any).location, // PostGIS 字段
-        name: p.name,
+        name: p.nameEN || p.nameCN, // 优先显示英文名称
       }));
     } else if (request.tripId) {
       // 从行程中获取景点
@@ -267,7 +267,7 @@ export class HotelRecommendationService {
             attractions.push({
               id: item.place.id,
               location: (item.place as any).location, // PostGIS 字段
-              name: item.place.name,
+              name: item.place.nameEN || item.place.nameCN, // 优先显示英文名称
             });
             seenIds.add(item.place.id);
           }
@@ -309,7 +309,8 @@ export class HotelRecommendationService {
         );
         return {
           id: hotel.id,
-          name: hotel.name,
+          nameCN: hotel.nameCN,
+          nameEN: hotel.nameEN,
           metadata: hotel.metadata,
           city: hotel.city, // 包含城市信息
           distance_meters: avgDistance,
@@ -365,7 +366,8 @@ export class HotelRecommendationService {
         );
         return {
           id: item.hotel.id,
-          name: item.hotel.name,
+          nameCN: item.hotel.nameCN,
+          nameEN: item.hotel.nameEN,
           metadata: item.hotel.metadata,
           city: item.hotel.city, // 包含城市信息
           distance_meters: avgDistance,
@@ -437,7 +439,8 @@ export class HotelRecommendationService {
         );
         return {
           id: item.hotel.id,
-          name: item.hotel.name,
+          nameCN: item.hotel.nameCN,
+          nameEN: item.hotel.nameEN,
           metadata: item.hotel.metadata,
           city: item.hotel.city, // 包含城市信息
           distance_meters: avgDistance,
@@ -620,7 +623,8 @@ export class HotelRecommendationService {
   private async formatRecommendations(
     hotels: Array<{
       id: number;
-      name: string;
+      nameCN: string;
+      nameEN?: string | null;
       metadata: any;
       city?: { name: string } | null;
       distance_meters: number;
@@ -693,7 +697,7 @@ export class HotelRecommendationService {
 
       const recommendation: HotelRecommendation = {
         hotelId: hotel.id,
-        name: hotel.name,
+        name: hotel.nameEN || hotel.nameCN, // 优先显示英文名称
         roomRate,
         tier,
         locationScore: locationScore as LocationScore,
@@ -868,8 +872,8 @@ export class HotelRecommendationService {
 
     return {
       options,
-      recommendation,
-      densityAnalysis,
+      recommendation: recommendation || undefined,
+      densityAnalysis: densityAnalysis || undefined,
     };
   }
 }

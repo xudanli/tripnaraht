@@ -81,7 +81,7 @@ export class ItineraryItemsService {
         if (hoursStr === 'Closed' || !hoursStr) {
           const dateStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('yyyy-MM-dd cccc', { locale: 'zh-CN' });
           throw new BadRequestException(
-            `${place.name} 在 ${dateStr} 不营业`
+            `${place.nameEN || place.nameCN} 在 ${dateStr} 不营业`
           );
         }
 
@@ -94,7 +94,7 @@ export class ItineraryItemsService {
           const dateStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('yyyy-MM-dd cccc', { locale: 'zh-CN' });
           
           throw new BadRequestException(
-            `时间冲突警告：${place.name} 在 ${dateStr} ${startTimeStr} 可能未营业 (营业时间: ${hoursStr})`
+            `时间冲突警告：${place.nameEN || place.nameCN} 在 ${dateStr} ${startTimeStr} 可能未营业 (营业时间: ${hoursStr})`
           );
   }
 
@@ -235,7 +235,7 @@ export class ItineraryItemsService {
           const isOpen = OpeningHoursUtil.isOpenAt(hoursStr, start, timezone);
           if (!isOpen) {
             throw new BadRequestException(
-              `时间冲突警告：${existing.place.name} 在指定时间可能未营业 (营业时间: ${hoursStr})`
+              `时间冲突警告：${existing.place.nameEN || existing.place.nameCN} 在指定时间可能未营业 (营业时间: ${hoursStr})`
             );
           }
         }

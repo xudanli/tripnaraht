@@ -1,8 +1,11 @@
 // src/places/places.controller.ts
-import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
+import { NaturePoiService } from './services/nature-poi.service';
+import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
+import { NaraHintService } from './services/nara-hint.service';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { PlaceCategory } from '@prisma/client';
@@ -13,6 +16,9 @@ export class PlacesController {
   constructor(
     private readonly placesService: PlacesService,
     private readonly hotelRecommendationService: HotelRecommendationService,
+    private readonly naturePoiService: NaturePoiService,
+    private readonly naturePoiMapperService: NaturePoiMapperService,
+    private readonly naraHintService: NaraHintService,
   ) {}
 
   @Get('nearby')
@@ -366,6 +372,451 @@ export class PlacesController {
       body?.placeIds,
       body?.batchSize || 10,
       body?.delay || 200
+    );
+  }
+
+  @Get('overpass/:countryCode')
+  @ApiOperation({
+    summary: '从 Google Places API 获取指定国家的景点数据',
+    description:
+      '从 Google Places API 获取指定国家的旅游景点数据。\n\n' +
+      '支持的国家代码：ISO 3166-1 标准（如 IS=冰岛，JP=日本等）\n\n' +
+      '返回的数据包括：\n' +
+      '- 景点名称（中英文）\n' +
+      '- 经纬度坐标\n' +
+      '- 景点类型（attraction, viewpoint, museum 等）\n' +
+      '- OSM 原始标签数据',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: 'ISO 3166-1 国家代码',
+    example: 'IS',
+    type: String,
+  })
+  @ApiQuery({
+    name: 'tourismTypes',
+    description: '旅游类型过滤（可选，多个用逗号分隔）',
+    example: 'attraction,viewpoint,museum',
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回景点列表',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          osmId: { type: 'number', example: 123456 },
+          osmType: { type: 'string', enum: ['node', 'way', 'relation'], example: 'node' },
+          name: { type: 'string', example: 'Hallgrímskirkja' },
+          nameEn: { type: 'string', example: 'Hallgrimskirkja' },
+          lat: { type: 'number', example: 64.1466 },
+          lng: { type: 'number', example: -21.9426 },
+          category: { type: 'string', example: 'tourism' },
+          type: { type: 'string', example: 'attraction' },
+          rawTags: { type: 'object' },
+        },
+      },
+    },
+  })
+  async getAttractionsFromOverpass(
+    @Param('countryCode') countryCode: string,
+    @Query('tourismTypes') tourismTypes?: string,
+  ) {
+    const types = tourismTypes
+      ? tourismTypes.split(',').map((t) => t.trim())
+      : undefined;
+    
+    // 设置超时时间（45 秒），如果超时则返回 504
+    const timeoutMs = 45000;
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new GatewayTimeoutException('Google Places API 请求超时，请稍后重试或减少搜索范围'));
+      }, timeoutMs);
+    });
+
+    try {
+      // 使用 Promise.race 实现超时控制
+      const result = await Promise.race([
+        this.placesService.fetchAttractionsFromOverpass(countryCode, types),
+        timeoutPromise,
+      ]);
+      return result;
+    } catch (error: any) {
+      // 如果是超时错误，直接抛出
+      if (error instanceof GatewayTimeoutException) {
+        throw error;
+      }
+      // 其他错误也抛出
+      throw error;
+    }
+  }
+
+  @Post('overpass/iceland/import')
+  @ApiOperation({
+    summary: '从 Google Places API 导入冰岛景点到数据库',
+    description:
+      '从 Google Places API 获取冰岛的所有旅游景点，并保存到数据库。\n\n' +
+      '**功能说明**：\n' +
+      '- 自动获取或创建冰岛城市记录\n' +
+      '- 从 Google Places 获取景点数据\n' +
+      '- 自动去重（通过 OSM ID 或名称+坐标）\n' +
+      '- 批量保存到数据库\n\n' +
+      '**返回结果**：\n' +
+      '- total: 总数量\n' +
+      '- created: 成功创建数量\n' +
+      '- skipped: 跳过数量（已存在）\n' +
+      '- errors: 错误数量\n' +
+      '- results: 详细结果列表',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tourismTypes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '旅游类型过滤（可选）',
+          example: ['attraction', 'viewpoint', 'museum'],
+        },
+        cityId: {
+          type: 'number',
+          description: '城市 ID（可选，不提供则自动查找或创建）',
+          example: 1,
+        },
+      },
+      required: [],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '导入完成',
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number', example: 500 },
+        created: { type: 'number', example: 450 },
+        skipped: { type: 'number', example: 30 },
+        errors: { type: 'number', example: 20 },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              osmId: { type: 'number' },
+              name: { type: 'string' },
+              status: { type: 'string', enum: ['created', 'skipped', 'error'] },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async importIcelandAttractions(
+    @Body()
+    body?: {
+      tourismTypes?: string[];
+      cityId?: number;
+    }
+  ) {
+    return this.placesService.importIcelandAttractionsFromOverpass(
+      body?.tourismTypes,
+      body?.cityId
+    );
+  }
+
+  @Post('nature-poi/import')
+  @ApiOperation({
+    summary: '从 GeoJSON 导入自然 POI 数据',
+    description:
+      '从冰岛官方地理数据（Landmælingar Íslands / Náttúrufræðistofnun Íslands）导入自然 POI。\n\n' +
+      '**支持的数据源**：\n' +
+      '- iceland_lmi: 冰岛土地测量局数据\n' +
+      '- iceland_nsi: 冰岛自然历史研究所数据\n' +
+      '- manual: 手工维护数据\n\n' +
+      '**GeoJSON 格式要求**：\n' +
+      '- 必须是 FeatureCollection\n' +
+      '- 每个 Feature 的 properties 应包含：name, subCategory, accessType 等字段\n' +
+      '- 坐标系统应为 WGS84 (EPSG:4326)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        geojson: {
+          type: 'object',
+          description: 'GeoJSON FeatureCollection',
+        },
+        source: {
+          type: 'string',
+          enum: ['iceland_lmi', 'iceland_nsi', 'manual'],
+          example: 'iceland_nsi',
+        },
+        countryCode: {
+          type: 'string',
+          example: 'IS',
+        },
+        cityId: {
+          type: 'number',
+          description: '城市 ID（可选）',
+          example: 1,
+        },
+      },
+      required: ['geojson', 'source', 'countryCode'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '导入完成',
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number', example: 100 },
+        created: { type: 'number', example: 85 },
+        skipped: { type: 'number', example: 10 },
+        errors: { type: 'number', example: 5 },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              status: { type: 'string', enum: ['created', 'skipped', 'error'] },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async importNaturePoiFromGeoJSON(
+    @Body()
+    body: {
+      geojson: any;
+      source: 'iceland_lmi' | 'iceland_nsi' | 'manual';
+      countryCode: string;
+      cityId?: number;
+    }
+  ) {
+    return this.naturePoiService.importFromGeoJSON(
+      body.geojson,
+      body.source,
+      body.countryCode,
+      body.cityId
+    );
+  }
+
+  @Get('nature-poi/nearby')
+  @ApiOperation({
+    summary: '查找附近的自然 POI',
+    description: '根据中心点和半径查找附近的自然 POI（火山、冰川、瀑布等）',
+  })
+  @ApiQuery({ name: 'lat', description: '纬度', example: 64.1466, type: Number, required: true })
+  @ApiQuery({ name: 'lng', description: '经度', example: -21.9426, type: Number, required: true })
+  @ApiQuery({ name: 'radius', description: '搜索半径（米）', example: 5000, type: Number, required: false })
+  @ApiQuery({
+    name: 'subCategory',
+    description: '子类别过滤（可选）',
+    example: 'volcano',
+    required: false,
+  })
+  @ApiResponse({ status: 200, description: '成功返回自然 POI 列表' })
+  async getNearbyNaturePois(
+    @Query('lat', ParseFloatPipe) lat: number,
+    @Query('lng', ParseFloatPipe) lng: number,
+    @Query('radius') radius?: string,
+    @Query('subCategory') subCategory?: string,
+  ) {
+    const radiusMeters = radius ? parseFloat(radius) : 5000;
+    return this.naturePoiService.findNaturePoisByArea(
+      { lat, lng },
+      radiusMeters,
+      subCategory
+    );
+  }
+
+  @Get('nature-poi/category/:subCategory')
+  @ApiOperation({
+    summary: '按类别查找自然 POI',
+    description: '根据子类别查找自然 POI（如 volcano, glacier, waterfall 等）',
+  })
+  @ApiParam({
+    name: 'subCategory',
+    description: '子类别',
+    example: 'volcano',
+    type: String,
+  })
+  @ApiQuery({
+    name: 'countryCode',
+    description: '国家代码（可选）',
+    example: 'IS',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: '返回数量限制',
+    example: 100,
+    type: Number,
+    required: false,
+  })
+  @ApiResponse({ status: 200, description: '成功返回自然 POI 列表' })
+  async getNaturePoisByCategory(
+    @Param('subCategory') subCategory: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 100;
+    return this.naturePoiService.findNaturePoisByCategory(
+      subCategory,
+      countryCode,
+      limitNum
+    );
+  }
+
+  @Post('nature-poi/map-to-activity')
+  @ApiOperation({
+    summary: '将自然 POI 映射为活动时间片',
+    description: '将自然 POI 转换为 TimeSlotActivity 格式，用于行程生成',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        poi: {
+          type: 'object',
+          description: '自然 POI 对象',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            time: { type: 'string', example: '09:30' },
+            template: { type: 'string', enum: ['photoStop', 'shortWalk', 'halfDayHike'] },
+            language: { type: 'string', enum: ['zh-CN', 'en'] },
+          },
+        },
+      },
+      required: ['poi'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '成功返回活动时间片' })
+  async mapNaturePoiToActivity(
+    @Body()
+    body: {
+      poi: any;
+      options?: {
+        time?: string;
+        template?: 'photoStop' | 'shortWalk' | 'halfDayHike';
+        language?: 'zh-CN' | 'en';
+      };
+    }
+  ) {
+    return this.naturePoiMapperService.mapNaturePoiToActivitySlot(
+      body.poi,
+      body.options
+    );
+  }
+
+  @Post('nature-poi/generate-nara-hints')
+  @ApiOperation({
+    summary: '为自然 POI 生成 NARA 提示信息',
+    description:
+      '为自然 POI 生成 LLM 提示信息，包括叙事种子、行动提示、反思提示和锚点提示。\n\n' +
+      '这些提示信息可以用于：\n' +
+      '- 生成行程描述\n' +
+      '- 创建叙事性内容\n' +
+      '- 提供深度体验建议',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        poi: {
+          type: 'object',
+          description: '自然 POI 对象',
+        },
+      },
+      required: ['poi'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回 NARA 提示信息',
+    schema: {
+      type: 'object',
+      properties: {
+        narrativeSeed: { type: 'string' },
+        actionHint: { type: 'string' },
+        reflectionHint: { type: 'string' },
+        anchorHint: { type: 'string' },
+      },
+    },
+  })
+  async generateNaraHint(@Body() body: { poi: any }) {
+    return this.naraHintService.generateNaraHint(body.poi);
+  }
+
+  @Post('nature-poi/batch-map-to-activities')
+  @ApiOperation({
+    summary: '批量将自然 POI 映射为活动时间片',
+    description: '批量将多个自然 POI 转换为活动时间片，用于行程生成',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pois: {
+          type: 'array',
+          items: { type: 'object' },
+          description: '自然 POI 对象数组',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            time: { type: 'string', example: '09:30' },
+            template: { type: 'string', enum: ['photoStop', 'shortWalk', 'halfDayHike'] },
+            language: { type: 'string', enum: ['zh-CN', 'en'] },
+          },
+        },
+      },
+      required: ['pois'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回活动时间片数组',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          time: { type: 'string' },
+          title: { type: 'string' },
+          activity: { type: 'string' },
+          type: { type: 'string' },
+          durationMinutes: { type: 'number' },
+          coordinates: { type: 'object' },
+          notes: { type: 'string' },
+          details: { type: 'object' },
+        },
+      },
+    },
+  })
+  async batchMapNaturePoisToActivities(
+    @Body()
+    body: {
+      pois: any[];
+      options?: {
+        time?: string;
+        template?: 'photoStop' | 'shortWalk' | 'halfDayHike';
+        language?: 'zh-CN' | 'en';
+      };
+    }
+  ) {
+    return this.naturePoiMapperService.mapMultiplePoisToActivities(
+      body.pois,
+      body.options
     );
   }
 }

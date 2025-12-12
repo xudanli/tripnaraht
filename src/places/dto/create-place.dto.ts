@@ -5,7 +5,11 @@ import { PlaceMetadata } from '../interfaces/place-metadata.interface';
 
 export class CreatePlaceDto {
   @IsString()
-  name!: string;
+  nameCN!: string; // 中文名称
+
+  @IsOptional()
+  @IsString()
+  nameEN?: string; // 英文名称（可选）
 
   @IsEnum(PlaceCategory)
   category!: PlaceCategory;

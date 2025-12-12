@@ -108,7 +108,7 @@ export class RouteOptimizationService {
 
       return {
         id: place.id,
-        name: place.name,
+        name: place.nameEN || place.nameCN, // 优先显示英文名称
         category: place.category,
         location,
         physicalMetadata: physicalMetadata as PhysicalMetadata,

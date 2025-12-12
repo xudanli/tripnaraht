@@ -315,7 +315,7 @@ async function enrichAttractions(city?: string, limit?: number) {
   if (city) {
     where.OR = [
       { address: { contains: city } },
-      { name: { contains: city } },
+      { nameCN: { contains: city } },
     ];
   }
 
@@ -326,25 +326,25 @@ async function enrichAttractions(city?: string, limit?: number) {
     where,
     select: {
       id: true,
-      name: true,
+      nameCN: true,
       address: true,
       metadata: true,
     },
     take: limit || 50,
     orderBy: [
       // 优先处理常见景点
-      { name: { sort: 'asc', nulls: 'last' } },
+      { nameCN: 'asc' },
     ],
   });
 
   // 按常见景点优先排序
   places.sort((a, b) => {
-    const aIndex = commonAttractions.indexOf(a.name);
-    const bIndex = commonAttractions.indexOf(b.name);
+    const aIndex = commonAttractions.indexOf(a.nameCN);
+    const bIndex = commonAttractions.indexOf(b.nameCN);
     if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
     if (aIndex !== -1) return -1;
     if (bIndex !== -1) return 1;
-    return a.name.localeCompare(b.name);
+    return a.nameCN.localeCompare(b.nameCN);
   });
 
   console.log(`📊 找到 ${places.length} 个景点需要补充信息\n`);
@@ -356,7 +356,7 @@ async function enrichAttractions(city?: string, limit?: number) {
 
   for (let i = 0; i < places.length; i++) {
     const place = places[i];
-    console.log(`[${i + 1}/${places.length}] 📍 ${place.name}`);
+    console.log(`[${i + 1}/${places.length}] 📍 ${place.nameCN}`);
 
     // 检查是否已有详细信息
     const metadata = (place.metadata as any) || {};
@@ -366,7 +366,7 @@ async function enrichAttractions(city?: string, limit?: number) {
       continue;
     }
 
-    const success = await enrichAttractionFromAmap(place.id, place.name, city);
+    const success = await enrichAttractionFromAmap(place.id, place.nameCN, city);
     if (success) {
       successCount++;
     } else {

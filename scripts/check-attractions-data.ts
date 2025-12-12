@@ -21,13 +21,13 @@ async function checkAttractions() {
   const results = await prisma.place.findMany({
     where: {
       category: 'ATTRACTION',
-      name: {
+      nameCN: {
         in: attractionNames,
       },
     },
     select: {
       id: true,
-      name: true,
+      nameCN: true,
       nameEN: true,
       address: true,
       rating: true,
@@ -37,7 +37,7 @@ async function checkAttractions() {
       updatedAt: true,
     },
     orderBy: {
-      name: 'asc',
+      nameCN: 'asc',
     },
   });
 
@@ -47,7 +47,7 @@ async function checkAttractions() {
     console.log('✅ 已存在的景点：\n');
     results.forEach((place) => {
       const metadata = place.metadata as any;
-      console.log(`📍 ${place.name}`);
+      console.log(`📍 ${place.nameCN}`);
       console.log(`   ID: ${place.id}`);
       if (place.nameEN) {
         console.log(`   英文名: ${place.nameEN}`);
@@ -80,7 +80,7 @@ async function checkAttractions() {
   }
 
   // 检查缺失的景点
-  const foundNames = results.map((p) => p.name);
+  const foundNames = results.map((p) => p.nameCN);
   const missingNames = attractionNames.filter((name) => !foundNames.includes(name));
 
   if (missingNames.length > 0) {

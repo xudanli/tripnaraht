@@ -180,7 +180,7 @@ async function saveAttraction(attraction: FliggyAttraction, cityId?: number): Pr
     // 检查是否已存在
     const existing = await prisma.place.findFirst({
       where: {
-        name: attraction.name,
+        nameCN: attraction.name,
         category: 'ATTRACTION',
       },
     });
@@ -194,7 +194,7 @@ async function saveAttraction(attraction: FliggyAttraction, cityId?: number): Pr
     const place = await prisma.place.create({
       data: {
         uuid: randomUUID(),
-        name: attraction.name,
+        nameCN: attraction.name,
         category: 'ATTRACTION',
         address: attraction.address || null,
         cityId: cityId || null,

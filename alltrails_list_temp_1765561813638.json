@@ -1,0 +1,135 @@
+[
+  {
+    "difficultyMetadata": {
+      "level": "HARD",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 25.9,
+      "elevationGain": 1131
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/skogafoss-skalabrekkufoss-waterfalls",
+      "name": "Skógafoss, Steinbogafoss and Skálabrekkufoss via Fimmvörðuháls Trail",
+      "rating": "4.92927",
+      "description": "Skõgarfoss is one of the  most splendid waterfalls in Iceland. It's located next the the main road number 1  and has featured in many films from Thor to Walter Mitty. The start is next to the camping in Skógar. This route is also used to reach the Thórsmörk valley via the Fimmvörðuháls pass. Fantastic views of the waterfall from the ground to the top. This is an extended hike where you can see the huge canyon above the waterfall.",
+      "length": "25.9 km",
+      "elevationGain": "1,131 m"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 3.4,
+      "elevationGain": 133
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/eastern/svartifoss-and-manusafoss",
+      "name": "Svartifoss Trail (Waterfalls Trail)",
+      "rating": "4.72934",
+      "description": "This fantastic trail will show you several waterfalls in Skaftafell. The first one is called Hundafoss and it's the is the tallest and first of three waterfalls encountered along the popular trail to Svartifoss in Skaftafell National Park. The second is called Magnúsarfoss and it's the smallest of the 3 waterfalls. Before reaching out the last waterfall called Svartifoss you will pass amazing Columnar Basalt. Svartifoss is surrounded by dark lava columns which gave rise to his name.",
+      "length": "3.4 km",
+      "elevationGain": "133 m",
+      "estimatedTime": "1–1.5 hr",
+      "visitDuration": "1–1.5 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice",
+        "winter_ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 9,
+      "elevationGain": 379
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/reykjadalur-hot-spring-thermal-river",
+      "name": "Reykjadalur Hot Spring Thermal River",
+      "rating": "4.73368",
+      "description": "This is one of the most famous places in Iceland. Located next to Hveragerði that is just 40 minutes drive from Reykjavík. The Reykjadalur Valley is an active geothermal area and they are famous for the hot spring river. It's a 3 hour long hike through fantastic Icelandic nature with a lot of different colors and great views. The water is boiling out of dozens of hot springs in the hills trickle into one body, which is also fed with glacier and rainwater. The results of this is a warm and gentle stream. It's totally free to bath there at any time of the year. In the winter time you might need mini-spikes due to the ice on the path.",
+      "length": "9 km",
+      "elevationGain": "379 m",
+      "estimatedTime": "3–3.5 hr",
+      "visitDuration": "3–3.5 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 4.7,
+      "elevationGain": 259
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/southern/oxararfoss-waterfall-trail",
+      "name": "Öxarárfoss Waterfall via Almannagjá Trail",
+      "rating": "4.52306",
+      "description": "This trail will take you to Öxarárfoss Waterfall via the Almannagjá Trail, which runs through the the Mid-Atlantic rift (the rift between the North American and Eurasian tectonic plates).\nÖxarárfoss Waterfall is located in the National Park of Þingvellir. This waterfall flows from the river called  Öxará over the Almannagjá. The base of the fall is filled with rocks. Can be icy during winter times. An interesting fact about this waterfall is that it's a human-made waterfall. The path also goes to the church Þingvallakirkja.\nIf you are visiting with your own or rented vehicle, there is a parking fee valid for the entire day.",
+      "length": "4.7 km",
+      "elevationGain": "259 m",
+      "estimatedTime": "1.5–2 hr",
+      "visitDuration": "1.5–2 hr hours"
+    }
+  },
+  {
+    "difficultyMetadata": {
+      "level": "MODERATE",
+      "source": "alltrails",
+      "confidence": 0.9,
+      "riskFactors": [
+        "ice",
+        "snow"
+      ],
+      "requiresEquipment": false,
+      "requiresGuide": false
+    },
+    "fatigueMetadata": {
+      "totalDistance": 7.1,
+      "elevationGain": 385
+    },
+    "metadata": {
+      "source": "alltrails",
+      "sourceUrl": "https://www.alltrails.com/trail/iceland/eastern/hangandifoss-waterfall-mulagljufur-canyon",
+      "name": "Hangandifoss Waterfall - Múlagljúfur Canyon",
+      "rating": "4.92839",
+      "description": "Hangandifoss is one of Iceland's tallest waterfalls and offers you amazing views. It's part of the Múlagljúfur canyon with several other waterfalls. \n\nMúlagljúfur offers amazing nature like canyons, rivers, waterfalls, volcanoes and breathtaking views. Múlaá, which is fed from the snow covered volcano Öræfajökull, runs through Múlagljúfur canyon and past Hangandi waterfall.",
+      "length": "7.1 km",
+      "elevationGain": "385 m",
+      "estimatedTime": "2.5–3 hr",
+      "visitDuration": "2.5–3 hr hours"
+    }
+  }
+]
