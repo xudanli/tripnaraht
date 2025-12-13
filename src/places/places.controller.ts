@@ -6,8 +6,10 @@ import { HotelRecommendationService } from './services/hotel-recommendation.serv
 import { NaturePoiService } from './services/nature-poi.service';
 import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
 import { NaraHintService } from './services/nara-hint.service';
+import { RouteDifficultyService } from './services/route-difficulty.service';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
+import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { PlaceCategory } from '@prisma/client';
 
 @ApiTags('places')
@@ -19,6 +21,7 @@ export class PlacesController {
     private readonly naturePoiService: NaturePoiService,
     private readonly naturePoiMapperService: NaturePoiMapperService,
     private readonly naraHintService: NaraHintService,
+    private readonly routeDifficultyService: RouteDifficultyService,
   ) {}
 
   @Get('nearby')
@@ -818,6 +821,72 @@ export class PlacesController {
       body.pois,
       body.options
     );
+  }
+
+  @Post('metrics/difficulty')
+  @ApiOperation({
+    summary: '计算路线难度',
+    description:
+      '计算两点间路线的难度等级，包括距离、爬升、坡度等指标。\n\n' +
+      '**功能流程**：\n' +
+      '1. 从 Google Maps 或 Mapbox 获取路线\n' +
+      '2. 对路线进行等距重采样\n' +
+      '3. 获取高程数据（Google Elevation API 或 Mapbox Terrain-RGB）\n' +
+      '4. 计算距离、累计爬升、平均坡度\n' +
+      '5. 评估难度等级（EASY/MODERATE/HARD/EXTREME）\n' +
+      '6. 可选返回 GeoJSON 格式的路线数据\n\n' +
+      '**难度评估规则**：\n' +
+      '- 优先级1：trailDifficulty（官方评级，直接使用）\n' +
+      '- 优先级2：基于距离和爬升计算（S_km = D + E/100）\n' +
+      '- 高海拔（≥2000m）修正：×1.3\n' +
+      '- 陡坡（≥15%）修正：上调一档\n' +
+      '- accessType为VEHICLE/CABLE_CAR：至少EASY\n' +
+      '- subCategory为glacier/volcano：至少MODERATE',
+  })
+  @ApiBody({
+    type: RouteDifficultyRequestDto,
+    description: '路线难度计算请求参数',
+    examples: {
+      google: {
+        summary: 'Google示例',
+        value: {
+          provider: 'google',
+          origin: '39.9042,116.4074',
+          destination: '39.914,116.403',
+          profile: 'walking',
+          sampleM: 30,
+          category: 'ATTRACTION',
+          accessType: 'HIKING',
+          elevationMeters: 2300,
+          includeGeoJson: false,
+        },
+      },
+      mapbox: {
+        summary: 'Mapbox示例',
+        value: {
+          provider: 'mapbox',
+          origin: '7.9904,46.5763',
+          destination: '7.985,46.577',
+          profile: 'walking',
+          sampleM: 30,
+          category: 'ATTRACTION',
+          visitDuration: '半天',
+          z: 14,
+          workers: 8,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回路线难度评估结果',
+  })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 503, description: '服务不可用（API密钥未配置或外部API错误）' })
+  async calculateRouteDifficulty(
+    @Body() request: RouteDifficultyRequestDto,
+  ) {
+    return this.routeDifficultyService.calculateDifficulty(request);
   }
 }
 

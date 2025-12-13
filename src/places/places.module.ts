@@ -8,6 +8,7 @@ import { GooglePlacesService } from './services/google-places.service';
 import { NaturePoiService } from './services/nature-poi.service';
 import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
 import { NaraHintService } from './services/nara-hint.service';
+import { RouteDifficultyService } from './services/route-difficulty.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
@@ -22,6 +23,7 @@ import { HotelsModule } from '../hotels/hotels.module';
     NaturePoiService,
     NaraHintService, // NaraHintService 需要在 NaturePoiMapperService 之前
     NaturePoiMapperService,
+    RouteDifficultyService,
   ],
   exports: [
     PlacesService,
