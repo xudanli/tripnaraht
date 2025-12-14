@@ -150,12 +150,20 @@ async function scrapeWithPlaywright(url: string, waitForSelector?: string): Prom
       // 额外等待 JavaScript 执行
       await page.waitForTimeout(3000);
       
-      // 滚动页面以触发懒加载
+      // 多次滚动页面以触发懒加载
+      for (let i = 0; i < 5; i++) {
+        await page.evaluate(() => {
+          // @ts-ignore - window 和 document 在浏览器环境中存在
+          (window as any).scrollTo(0, (document as any).body.scrollHeight * (i + 1) / 5);
+        });
+        await page.waitForTimeout(2000);
+      }
+      // 最后滚动到底部
       await page.evaluate(() => {
         // @ts-ignore - window 和 document 在浏览器环境中存在
-        (window as any).scrollTo(0, (document as any).body.scrollHeight / 2);
+        (window as any).scrollTo(0, (document as any).body.scrollHeight);
       });
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(3000);
     } else if (waitForSelector) {
       // 如果指定了选择器，等待它出现
       try {
@@ -344,13 +352,14 @@ function parseTrailList(html: string, debug: boolean = false): string[] {
   if (trailUrls.length === 0) {
     $('script:not([type])').each((_, element) => {
       const scriptContent = $(element).html() || '';
-      // 尝试匹配 URL 模式
-      const urlMatches = scriptContent.match(/https?:\/\/[^"'\s]+\/trail\/[^"'\s]+/g);
+      // 尝试匹配 URL 模式（包括相对路径）
+      const urlMatches = scriptContent.match(/(https?:\/\/[^"'\s]+\/trail\/[^"'\s]+|\/trail\/[^"'\s]+)/g);
       if (urlMatches) {
         urlMatches.forEach((url: string) => {
           const cleanUrl = url.split('?')[0].split('#')[0];
-          if (!trailUrls.includes(cleanUrl)) {
-            trailUrls.push(cleanUrl);
+          const fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `${BASE_URL}${cleanUrl}`;
+          if (!trailUrls.includes(fullUrl)) {
+            trailUrls.push(fullUrl);
           }
         });
       }
@@ -358,6 +367,27 @@ function parseTrailList(html: string, debug: boolean = false): string[] {
     
     if (debug) {
       console.log(`   - 方法4 (JavaScript): 找到 ${trailUrls.length} 条`);
+    }
+  }
+  
+  // 方法4.5: 从所有可能的属性中提取（包括 data-url, data-href 等）
+  if (trailUrls.length === 0) {
+    $('[href*="trail"], [data-url*="trail"], [data-href*="trail"], [data-link*="trail"]').each((_, element) => {
+      const href = $(element).attr('href') || 
+                   $(element).attr('data-url') || 
+                   $(element).attr('data-href') ||
+                   $(element).attr('data-link');
+      if (href && href.includes('trail')) {
+        const cleanHref = href.split('?')[0].split('#')[0];
+        const fullUrl = cleanHref.startsWith('http') ? cleanHref : `${BASE_URL}${cleanHref}`;
+        if (fullUrl.includes('/trail/') && !trailUrls.includes(fullUrl)) {
+          trailUrls.push(fullUrl);
+        }
+      }
+    });
+    
+    if (debug) {
+      console.log(`   - 方法4.5 (所有属性): 找到 ${trailUrls.length} 条`);
     }
   }
 
@@ -951,6 +981,12 @@ export function convertToSystemFormat(trail: AllTrailsTrail): {
     estimatedTime: trail.estimatedTime,
     // 用于 PhysicalMetadataGenerator
     visitDuration: trail.estimatedTime ? `${trail.estimatedTime} hours` : undefined,
+    // ⚠️ 重要：AllTrails 数据都是徒步路线，设置 accessType 确保正确生成 physicalMetadata
+    // 这会让 PhysicalMetadataGenerator 设置 seated_ratio: 0, terrain_type: HILLY
+    accessType: 'HIKING',
+    // ⚠️ 重要：传递海拔信息，用于高海拔路线体力消耗计算
+    // PhysicalMetadataGenerator 会检查 elevationMeters，如果 > 2000m 会增加 intensity_factor: 1.3
+    elevationMeters: trail.maxElevation || undefined,
   };
 
   // Difficulty Metadata

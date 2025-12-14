@@ -5,13 +5,18 @@ import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
 import { FlightPriceService } from './services/flight-price.service';
+import { ScheduleConverterService } from './services/schedule-converter.service';
+import { ActionHistoryService } from './services/action-history.service';
+import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { randomUUID } from 'crypto';
 
 @Injectable()
 export class TripsService {
   constructor(
     private prisma: PrismaService,
-    private flightPriceService: FlightPriceService
+    private flightPriceService: FlightPriceService,
+    private scheduleConverter: ScheduleConverterService,
+    private actionHistory: ActionHistoryService
   ) {}
 
   /**
@@ -287,5 +292,227 @@ export class TripsService {
         budgetStats: budgetStats,
       }
     };
+  }
+
+  /**
+   * 获取行程当前状态
+   * 
+   * @param tripId 行程 ID
+   * @param nowISO 当前时间（ISO 格式，可选，默认使用服务器时间）
+   * @returns 行程当前状态
+   */
+  async getTripState(tripId: string, nowISO?: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        days: {
+          include: {
+            items: {
+              include: {
+                place: true,
+              },
+              orderBy: { startTime: 'asc' },
+            },
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const now = nowISO ? DateTime.fromISO(nowISO) : DateTime.now();
+    const timezone = 'Asia/Tokyo'; // TODO: 从 trip 或 city 获取时区
+
+    // 找到当前日期
+    let currentDayId: string | null = null;
+    let currentItemId: string | null = null;
+    let nextStop: any = null;
+
+    for (const day of trip.days) {
+      const dayDate = DateTime.fromJSDate(day.date);
+      if (dayDate.hasSame(now, 'day')) {
+        currentDayId = day.id;
+
+        // 找到当前或下一个行程项
+        for (const item of day.items) {
+          if (!item.startTime || !item.endTime) continue;
+
+          const startTime = DateTime.fromJSDate(item.startTime);
+          const endTime = DateTime.fromJSDate(item.endTime);
+
+          if (now >= startTime && now <= endTime) {
+            // 当前正在进行的项
+            currentItemId = item.id;
+          } else if (now < startTime && !nextStop) {
+            // 下一个项
+            nextStop = {
+              itemId: item.id,
+              placeId: item.placeId,
+              placeName: item.place?.nameEN || item.place?.nameCN || '未知地点',
+              startTime: startTime.toISO(),
+              estimatedArrivalTime: startTime.toISO(),
+            };
+            break;
+          }
+        }
+
+        // 如果没找到当前项，找第一个未来的项
+        if (!currentItemId && !nextStop && day.items.length > 0) {
+          const firstItem = day.items.find(item => item.startTime && DateTime.fromJSDate(item.startTime) > now);
+          if (firstItem && firstItem.startTime) {
+            const startTime = DateTime.fromJSDate(firstItem.startTime);
+            nextStop = {
+              itemId: firstItem.id,
+              placeId: firstItem.placeId,
+              placeName: firstItem.place?.nameEN || firstItem.place?.nameCN || '未知地点',
+              startTime: startTime.toISO(),
+              estimatedArrivalTime: startTime.toISO(),
+            };
+          }
+        }
+
+        break;
+      }
+    }
+
+    return {
+      currentDayId,
+      currentItemId,
+      nextStop,
+      timezone,
+      now: now.toISO(),
+    };
+  }
+
+  /**
+   * 获取指定日期的 Schedule
+   * 
+   * @param tripId 行程 ID
+   * @param dateISO 日期（YYYY-MM-DD）
+   * @returns Schedule 或 null
+   */
+  async getSchedule(tripId: string, dateISO: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        days: true,
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const date = DateTime.fromISO(dateISO);
+    const tripDay = trip.days.find(day => {
+      const dayDate = DateTime.fromJSDate(day.date);
+      return dayDate.hasSame(date, 'day');
+    });
+
+    if (!tripDay) {
+      return {
+        date: dateISO,
+        schedule: null,
+        persisted: false,
+      };
+    }
+
+    const schedule = await this.scheduleConverter.loadScheduleFromDatabase(
+      tripDay.id,
+      dateISO
+    );
+
+    return {
+      date: dateISO,
+      schedule,
+      persisted: schedule !== null,
+    };
+  }
+
+  /**
+   * 保存指定日期的 Schedule
+   * 
+   * @param tripId 行程 ID
+   * @param dateISO 日期（YYYY-MM-DD）
+   * @param schedule DayScheduleResult
+   */
+  async saveSchedule(tripId: string, dateISO: string, schedule: DayScheduleResult) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        days: true,
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const date = DateTime.fromISO(dateISO);
+    let tripDay = trip.days.find(day => {
+      const dayDate = DateTime.fromJSDate(day.date);
+      return dayDate.hasSame(date, 'day');
+    });
+
+    // 如果不存在该日期，创建一个新的 TripDay
+    if (!tripDay) {
+      tripDay = await this.prisma.tripDay.create({
+        data: {
+          id: randomUUID(),
+          date: date.toJSDate(),
+          tripId: trip.id,
+        } as any,
+      });
+    }
+
+    // 保存 Schedule 到数据库
+    await this.scheduleConverter.saveScheduleToDatabase(
+      tripId,
+      tripDay.id,
+      schedule,
+      dateISO
+    );
+
+    return {
+      date: dateISO,
+      schedule,
+      persisted: true,
+    };
+  }
+
+  /**
+   * 获取操作历史
+   * 
+   * @param tripId 行程 ID
+   * @param dateISO 日期（可选）
+   * @returns 操作历史列表
+   */
+  async getActionHistory(tripId: string, dateISO?: string) {
+    return this.actionHistory.getActionHistory(tripId, dateISO);
+  }
+
+  /**
+   * 撤销操作
+   * 
+   * @param tripId 行程 ID
+   * @param dateISO 日期
+   * @returns 撤销后的 Schedule
+   */
+  async undoAction(tripId: string, dateISO: string) {
+    return this.actionHistory.undoAction(tripId, dateISO);
+  }
+
+  /**
+   * 重做操作
+   * 
+   * @param tripId 行程 ID
+   * @param dateISO 日期
+   * @returns 重做后的 Schedule
+   */
+  async redoAction(tripId: string, dateISO: string) {
+    return this.actionHistory.redoAction(tripId, dateISO);
   }
 }

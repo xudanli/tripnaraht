@@ -1,8 +1,12 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { TripStateDto } from './dto/trip-state.dto';
+import { ScheduleResponseDto, SaveScheduleDto } from './dto/schedule.dto';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('trips')
 @Controller('trips')
@@ -15,36 +19,25 @@ export class TripsController {
     description: '创建新行程并自动计算节奏策略（木桶效应）和预算切分。系统会根据旅行者信息自动计算体力限制和地形限制，并根据预算推荐酒店档次。'
   })
   @ApiResponse({ 
-    status: 201, 
-    description: '行程创建成功',
-    schema: {
-      example: {
-        id: 'uuid-xxxx',
-        destination: 'JP',
-        startDate: '2024-05-01T00:00:00.000Z',
-        endDate: '2024-05-05T00:00:00.000Z',
-        budgetConfig: {
-          total: 20000,
-          currency: 'CNY',
-          daily_budget: 3000,
-          remaining_for_ground: 15000,
-          estimated_flight_visa: 5000,
-          hotel_tier_recommendation: '4-Star'
-        },
-        pacingConfig: {
-          mobility_profile: 'STAMINA_60_TERRAIN_NO_STAIRS',
-          desc: '检测到体力短板，建议每 90 分钟休息一次；避免楼梯和陡坡',
-          forced_rest_interval: 90,
-          terrain_filter: 'NO_STAIRS',
-          min_stamina: 60
-        },
-        days: []
-      }
-    }
+    status: 200, 
+    description: '行程创建成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
-  @ApiResponse({ status: 400, description: '输入数据验证失败' })
-  create(@Body() createTripDto: CreateTripDto) {
-    return this.tripsService.create(createTripDto);
+  @ApiResponse({ 
+    status: 200, 
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async create(@Body() createTripDto: CreateTripDto) {
+    try {
+      const trip = await this.tripsService.create(createTripDto);
+      return successResponse(trip);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Get()
@@ -52,9 +45,14 @@ export class TripsController {
     summary: '获取所有行程',
     description: '返回所有行程列表，包含每个行程的基本信息和关联的 TripDay'
   })
-  @ApiResponse({ status: 200, description: '成功返回行程列表' })
-  findAll() {
-    return this.tripsService.findAll();
+  @ApiResponse({ 
+    status: 200, 
+    description: '成功返回行程列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async findAll() {
+    const trips = await this.tripsService.findAll();
+    return successResponse(trips);
   }
 
   @Get(':id')
@@ -69,82 +67,222 @@ export class TripsController {
   @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
   @ApiResponse({ 
     status: 200, 
-    description: '成功返回行程详情（全景视图）',
-    schema: {
-      example: {
-        id: 'trip-123',
-        destination: 'IS',
-        startDate: '2024-07-01T00:00:00.000Z',
-        endDate: '2024-07-05T00:00:00.000Z',
-        budgetConfig: {
-          total: 20000,
-          currency: 'CNY',
-          daily_budget: 3000,
-          hotel_tier_recommendation: '4-Star'
-        },
-        pacingConfig: {
-          mobility_profile: 'STAMINA_60_TERRAIN_NO_STAIRS',
-          desc: '检测到体力短板，建议每 90 分钟休息一次',
-          forced_rest_interval: 90,
-          terrain_filter: 'NO_STAIRS'
-        },
-        stats: {
-          totalDays: 5,
-          daysWithActivities: 3,
-          totalItems: 8,
-          totalActivities: 5,
-          totalMeals: 2,
-          totalRest: 1,
-          totalTransit: 0,
-          progress: 'PLANNING',
-          budgetStats: {
-            total: 20000,
-            currency: 'CNY',
-            daily_budget: 3000,
-            hotel_tier_recommendation: '4-Star'
-          }
-        },
-        days: [
-          {
-            id: 'day-1',
-            date: '2024-07-01T00:00:00.000Z',
-            items: [
-              {
-                id: 'item-abc',
-                type: 'ACTIVITY',
-                startTime: '2024-07-01T10:00:00.000Z',
-                endTime: '2024-07-01T12:00:00.000Z',
-                note: '记得穿雨衣',
-                place: {
-                  id: 1,
-                  name: '古佛斯瀑布',
-                  nameEN: 'Gullfoss Waterfall',
-                  category: 'ATTRACTION',
-                  address: 'Iceland',
-                  rating: 4.8,
-                  metadata: {
-                    openingHours: { mon: '09:00-18:00' },
-                    timezone: 'Atlantic/Reykjavik'
-                  },
-                  physicalMetadata: {
-                    terrain: 'STAIRS',
-                    fatigue_score: 'MEDIUM'
-                  }
-                }
-              }
-            ]
-          },
-          {
-            id: 'day-2',
-            date: '2024-07-02T00:00:00.000Z',
-            items: []
-          }
-        ]
+    description: '成功返回行程详情（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async findOne(@Param('id') id: string) {
+    try {
+      const trip = await this.tripsService.findOne(id);
+      return successResponse(trip);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
+      throw error;
     }
+  }
+
+  @Get(':id/state')
+  @ApiOperation({
+    summary: '获取行程当前状态',
+    description: '返回行程的当前状态，包括当前日期、当前行程项、下一站信息等。用于语音问"下一站"和按钮操作。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiQuery({ name: 'now', description: '当前时间（ISO 格式，可选）', example: '2024-05-01T10:30:00.000Z', required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程当前状态',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({ status: 404, description: '行程不存在' })
-  findOne(@Param('id') id: string) {
-    return this.tripsService.findOne(id);
+  async getTripState(
+    @Param('id') id: string,
+    @Query('now') nowISO?: string,
+  ) {
+    try {
+      const state = await this.tripsService.getTripState(id, nowISO);
+      return successResponse(state);
+    } catch (error: any) {
+      if (error.status === 404) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/schedule')
+  @ApiOperation({
+    summary: '获取指定日期的 Schedule',
+    description: '从数据库读取指定日期的 Schedule（DayScheduleResult 格式）。如果该日期没有 Schedule，返回 null。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiQuery({ name: 'date', description: '日期（YYYY-MM-DD）', example: '2024-05-01', required: true })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回 Schedule',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '行程不存在' })
+  async getSchedule(
+    @Param('id') id: string,
+    @Query('date') dateISO: string,
+  ) {
+    try {
+      const result = await this.tripsService.getSchedule(id, dateISO);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error.status === 404) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Put(':id/schedule')
+  @ApiOperation({
+    summary: '保存指定日期的 Schedule',
+    description: '将 Schedule（DayScheduleResult）保存到数据库，转换为 ItineraryItem。用于保存 apply-action、what-if apply 后的新 schedule。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiQuery({ name: 'date', description: '日期（YYYY-MM-DD）', example: '2024-05-01', required: true })
+  @ApiResponse({
+    status: 200,
+    description: '成功保存 Schedule',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '行程不存在' })
+  async saveSchedule(
+    @Param('id') id: string,
+    @Query('date') dateISO: string,
+    @Body() body: SaveScheduleDto,
+  ) {
+    try {
+      const result = await this.tripsService.saveSchedule(id, dateISO, body.schedule);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error.status === 404) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/actions')
+  @ApiOperation({
+    summary: '获取操作历史',
+    description: '获取行程的操作历史记录，支持按日期筛选。用于审计回放和撤销功能。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiQuery({ name: 'date', description: '日期（YYYY-MM-DD，可选）', example: '2024-05-01', required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回操作历史列表',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '行程不存在' })
+  async getActionHistory(
+    @Param('id') id: string,
+    @Query('date') dateISO?: string,
+  ) {
+    try {
+      const history = await this.tripsService.getActionHistory(id, dateISO);
+      return successResponse(history);
+    } catch (error: any) {
+      if (error.message?.includes('不存在')) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Post(':id/actions/undo')
+  @ApiOperation({
+    summary: '撤销操作',
+    description: '撤销最后一次操作，返回操作前的 Schedule。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description: '日期（YYYY-MM-DD）',
+          example: '2024-05-01',
+        },
+      },
+      required: ['date'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回撤销后的 Schedule',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '行程不存在或没有可撤销的操作' })
+  async undoAction(
+    @Param('id') id: string,
+    @Body() body: { date: string },
+  ) {
+    try {
+      const schedule = await this.tripsService.undoAction(id, body.date);
+      if (!schedule) {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, '没有可撤销的操作');
+      }
+      return successResponse({ schedule });
+    } catch (error: any) {
+      if (error.message?.includes('不存在')) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Post(':id/actions/redo')
+  @ApiOperation({
+    summary: '重做操作',
+    description: '重做最后一次撤销的操作，返回操作后的 Schedule。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description: '日期（YYYY-MM-DD）',
+          example: '2024-05-01',
+        },
+      },
+      required: ['date'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回重做后的 Schedule',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '行程不存在或没有可重做的操作' })
+  async redoAction(
+    @Param('id') id: string,
+    @Body() body: { date: string },
+  ) {
+    try {
+      const schedule = await this.tripsService.redoAction(id, body.date);
+      if (!schedule) {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, '没有可重做的操作');
+      }
+      return successResponse({ schedule });
+    } catch (error: any) {
+      if (error.message?.includes('不存在')) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
   }
 }

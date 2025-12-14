@@ -1,5 +1,5 @@
 // src/places/places.controller.ts
-import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
@@ -11,6 +11,8 @@ import { CreatePlaceDto } from './dto/create-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { PlaceCategory } from '@prisma/client';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('places')
 @Controller('places')
@@ -38,15 +40,27 @@ export class PlacesController {
     enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
     required: false 
   })
-  @ApiResponse({ status: 200, description: '成功返回附近地点列表' })
+  @ApiResponse({ 
+    status: 200, 
+    description: '成功返回附近地点列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
   async getNearby(
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
     @Query('radius') radius?: string,
     @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
   ) {
-    const radiusMeters = radius ? parseFloat(radius) : 2000;
-    return this.placesService.findNearby(lat, lng, radiusMeters, type);
+    try {
+      const radiusMeters = radius ? parseFloat(radius) : 2000;
+      const places = await this.placesService.findNearby(lat, lng, radiusMeters, type);
+      return successResponse(places);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Get('nearby/restaurants')
@@ -74,10 +88,26 @@ export class PlacesController {
     summary: '创建地点',
     description: '创建新的地点记录，包括地理位置（PostGIS）和元数据（JSONB）'
   })
-  @ApiResponse({ status: 201, description: '地点创建成功' })
-  @ApiResponse({ status: 400, description: '输入数据验证失败' })
+  @ApiResponse({ 
+    status: 200, 
+    description: '地点创建成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
   async createPlace(@Body() createPlaceDto: CreatePlaceDto) {
-    return this.placesService.createPlace(createPlaceDto);
+    try {
+      const place = await this.placesService.createPlace(createPlaceDto);
+      return successResponse(place);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Post('hotels/recommend')
@@ -821,6 +851,128 @@ export class PlacesController {
       body.pois,
       body.options
     );
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: '获取地点详情',
+    description: '根据地点 ID 获取完整的地点信息，包括元数据、物理元数据、营业状态等。用于时间轴、地点详情页、加入行程前的确认弹窗。',
+  })
+  @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  async getPlaceById(@Param('id', ParseIntPipe) id: number) {
+    const place = await this.placesService.findOne(id);
+    if (!place) {
+      return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
+    }
+    return successResponse(place);
+  }
+
+  @Post('batch')
+  @ApiOperation({
+    summary: '批量获取地点详情',
+    description: '根据地点 ID 列表批量获取地点详情，避免前端 N 次请求。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'number' },
+          description: '地点 ID 列表',
+          example: [1, 2, 3],
+        },
+      },
+      required: ['ids'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点详情列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getPlacesBatch(@Body() body: { ids: number[] }) {
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'ids 必须是非空数组');
+    }
+    const places = await this.placesService.findBatch(body.ids);
+    return successResponse(places);
+  }
+
+  @Get('search')
+  @ApiOperation({
+    summary: '关键词搜索地点',
+    description: '根据关键词搜索地点，支持中英文名称、地址搜索。支持按类别筛选和距离排序。',
+  })
+  @ApiQuery({ name: 'q', description: '搜索关键词', example: '东京塔', required: true })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'radius', description: '搜索半径（米，可选）', example: 5000, type: Number, required: false })
+  @ApiQuery({
+    name: 'type',
+    description: '地点类型（可选）',
+    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    required: false,
+  })
+  @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点列表',
+    type: ApiSuccessResponseDto,
+  })
+  async searchPlaces(
+    @Query('q') query: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('radius') radius?: string,
+    @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    @Query('limit') limit?: string,
+  ) {
+    if (!query) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '搜索关键词不能为空');
+    }
+    const latNum = lat ? parseFloat(lat) : undefined;
+    const lngNum = lng ? parseFloat(lng) : undefined;
+    const radiusNum = radius ? parseFloat(radius) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : 20;
+    const places = await this.placesService.search(query, latNum, lngNum, radiusNum, type, limitNum);
+    return successResponse(places);
+  }
+
+  @Get('autocomplete')
+  @ApiOperation({
+    summary: '地点名称自动补全',
+    description: '根据输入关键词返回地点名称建议，用于搜索框下拉建议。',
+  })
+  @ApiQuery({ name: 'q', description: '搜索关键词', example: '东京', required: true })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'limit', description: '返回数量限制（默认 10）', example: 10, type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点名称建议列表',
+    type: ApiSuccessResponseDto,
+  })
+  async autocompletePlaces(
+    @Query('q') query: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!query) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '搜索关键词不能为空');
+    }
+    const latNum = lat ? parseFloat(lat) : undefined;
+    const lngNum = lng ? parseFloat(lng) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const suggestions = await this.placesService.autocomplete(query, latNum, lngNum, limitNum);
+    return successResponse(suggestions);
   }
 
   @Post('metrics/difficulty')

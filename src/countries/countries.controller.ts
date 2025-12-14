@@ -1,8 +1,10 @@
 // src/countries/countries.controller.ts
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { CountriesService } from './countries.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('countries')
 @Controller('countries')
@@ -16,11 +18,12 @@ export class CountriesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回国家列表',
-    type: [Object],
+    description: '成功返回国家列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
-  findAll() {
-    return this.countriesService.findAll();
+  async findAll() {
+    const countries = await this.countriesService.findAll();
+    return successResponse(countries);
   }
 
   @Get(':countryCode/currency-strategy')
@@ -43,15 +46,24 @@ export class CountriesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回货币策略',
-    type: CurrencyStrategyDto,
+    description: '成功返回货币策略（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({
-    status: 404,
-    description: '未找到指定国家的档案',
+    status: 200,
+    description: '未找到指定国家的档案（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
-  getCurrencyStrategy(@Param('countryCode') countryCode: string): Promise<CurrencyStrategyDto> {
-    return this.countriesService.getCurrencyStrategy(countryCode);
+  async getCurrencyStrategy(@Param('countryCode') countryCode: string) {
+    try {
+      const strategy = await this.countriesService.getCurrencyStrategy(countryCode);
+      return successResponse(strategy);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
   }
 }
 

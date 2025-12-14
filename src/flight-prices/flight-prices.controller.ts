@@ -26,6 +26,8 @@ import { FlightPriceDetailEnhancedService } from '../trips/services/flight-price
 import { EstimatePriceDto, EstimatePriceResponseDto } from './dto/estimate-price.dto';
 import { CreateFlightPriceDto } from './dto/create-flight-price.dto';
 import { UpdateFlightPriceDto } from './dto/update-flight-price.dto';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('flight-prices')
 @Controller('flight-prices')
@@ -62,47 +64,56 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回估算成本',
-    type: EstimatePriceResponseDto,
+    description: '成功返回估算成本（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   async estimatePrice(
     @Query('countryCode') countryCode: string,
     @Query('originCity') originCity?: string,
     @Query('useConservative') useConservative: string = 'true',
-  ): Promise<EstimatePriceResponseDto> {
-    const useConservativeBool = useConservative !== 'false';
-    const totalCost = await this.flightPriceService.getEstimatedCost(
-      countryCode,
-      originCity,
-      useConservativeBool,
-    );
+  ) {
+    try {
+      const useConservativeBool = useConservative !== 'false';
+      const totalCost = await this.flightPriceService.getEstimatedCost(
+        countryCode,
+        originCity,
+        useConservativeBool,
+      );
 
-    const details = await this.flightPriceService.getPriceDetails(
-      countryCode,
-      originCity,
-    );
+      const details = await this.flightPriceService.getPriceDetails(
+        countryCode,
+        originCity,
+      );
 
-    if (!details) {
-      return {
-        totalCost,
-        flightPrice: totalCost,
-        visaCost: 0,
-        useConservative: useConservativeBool,
-        countryCode: countryCode.toUpperCase(),
-        originCity: originCity?.toUpperCase(),
-      };
+      let result;
+      if (!details) {
+        result = {
+          totalCost,
+          flightPrice: totalCost,
+          visaCost: 0,
+          useConservative: useConservativeBool,
+          countryCode: countryCode.toUpperCase(),
+          originCity: originCity?.toUpperCase(),
+        };
+      } else {
+        result = {
+          totalCost,
+          flightPrice: useConservativeBool
+            ? details.flightPrice.highSeason
+            : details.flightPrice.average,
+          visaCost: details.visaCost,
+          useConservative: useConservativeBool,
+          countryCode: countryCode.toUpperCase(),
+          originCity: originCity?.toUpperCase(),
+        };
+      }
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-
-    return {
-      totalCost,
-      flightPrice: useConservativeBool
-        ? details.flightPrice.highSeason
-        : details.flightPrice.average,
-      visaCost: details.visaCost,
-      useConservative: useConservativeBool,
-      countryCode: countryCode.toUpperCase(),
-      originCity: originCity?.toUpperCase(),
-    };
   }
 
   @Get('details')
@@ -124,28 +135,38 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回详细价格信息',
+    description: '成功返回详细价格信息（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({
-    status: 404,
-    description: '未找到价格参考数据',
+    status: 200,
+    description: '未找到价格参考数据（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async getPriceDetails(
     @Query('countryCode') countryCode: string,
     @Query('originCity') originCity?: string,
   ) {
-    const details = await this.flightPriceService.getPriceDetails(
-      countryCode,
-      originCity,
-    );
-
-    if (!details) {
-      throw new NotFoundException(
-        `未找到 ${countryCode}${originCity ? ` (${originCity})` : ''} 的价格参考数据`,
+    try {
+      const details = await this.flightPriceService.getPriceDetails(
+        countryCode,
+        originCity,
       );
-    }
 
-    return details;
+      if (!details) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          `未找到 ${countryCode}${originCity ? ` (${originCity})` : ''} 的价格参考数据`,
+        );
+      }
+
+      return successResponse(details);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
   }
 
   @Get()
@@ -155,10 +176,12 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回价格参考数据列表',
+    description: '成功返回价格参考数据列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
-  findAll() {
-    return this.flightPriceService.findAll();
+  async findAll() {
+    const prices = await this.flightPriceService.findAll();
+    return successResponse(prices);
   }
 
   // 特定路由必须放在 :id 之前，避免路由冲突
@@ -199,18 +222,13 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回估算价格',
-    schema: {
-      type: 'object',
-      example: {
-        estimatedPrice: 2375,
-        lowerBound: 2138,
-        upperBound: 2613,
-        monthlyBasePrice: 2200,
-        dayOfWeekFactor: 1.08,
-        sampleCount: 45,
-      },
-    },
+    description: '成功返回估算价格（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async estimateDomesticPrice(
     @Query('originCity') originCity: string,
@@ -218,22 +236,30 @@ export class FlightPricesController {
     @Query('month', ParseIntPipe) month: number,
     @Query('dayOfWeek') dayOfWeek?: string
   ) {
-    const dayOfWeekNum = dayOfWeek ? parseInt(dayOfWeek) : undefined;
-    
-    if (month < 1 || month > 12) {
-      throw new BadRequestException('月份必须在 1-12 之间');
-    }
-    
-    if (dayOfWeekNum !== undefined && (dayOfWeekNum < 0 || dayOfWeekNum > 6)) {
-      throw new BadRequestException('星期几必须在 0-6 之间（0=周一, 6=周日）');
-    }
+    try {
+      const dayOfWeekNum = dayOfWeek ? parseInt(dayOfWeek) : undefined;
+      
+      if (month < 1 || month > 12) {
+        throw new BadRequestException('月份必须在 1-12 之间');
+      }
+      
+      if (dayOfWeekNum !== undefined && (dayOfWeekNum < 0 || dayOfWeekNum > 6)) {
+        throw new BadRequestException('星期几必须在 0-6 之间（0=周一, 6=周日）');
+      }
 
-    return this.flightPriceDetailService.estimateDomesticPrice(
-      originCity,
-      destinationCity,
-      month,
-      dayOfWeekNum
-    );
+      const result = await this.flightPriceDetailService.estimateDomesticPrice(
+        originCity,
+        destinationCity,
+        month,
+        dayOfWeekNum
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Get('domestic/monthly-trend')
@@ -253,27 +279,18 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回月度趋势',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          month: { type: 'number' },
-          basePrice: { type: 'number' },
-          sampleCount: { type: 'number' },
-        },
-      },
-    },
+    description: '成功返回月度趋势（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   async getMonthlyTrend(
     @Query('originCity') originCity: string,
     @Query('destinationCity') destinationCity: string
   ) {
-    return this.flightPriceDetailService.getMonthlyTrend(
+    const trend = await this.flightPriceDetailService.getMonthlyTrend(
       originCity,
       destinationCity
     );
+    return successResponse(trend);
   }
 
   @Get('day-of-week-factors')
@@ -283,10 +300,12 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回周内因子列表',
+    description: '成功返回周内因子列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   async getDayOfWeekFactors() {
-    return this.flightPriceDetailService.getAllDayOfWeekFactors();
+    const factors = await this.flightPriceDetailService.getAllDayOfWeekFactors();
+    return successResponse(factors);
   }
 
   @Get('domestic/detailed-options')
@@ -324,43 +343,13 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回详细价格选项',
-    schema: {
-      type: 'object',
-      example: {
-        airlines: [
-          {
-            airline: '东方航空',
-            avgPrice: 1200,
-            minPrice: 800,
-            maxPrice: 1800,
-            sampleCount: 45,
-            departureTimes: [
-              {
-                timeSlot: '06:00-12:00',
-                avgPrice: 1300,
-                sampleCount: 20,
-              },
-              {
-                timeSlot: '12:00-18:00',
-                avgPrice: 1100,
-                sampleCount: 25,
-              },
-            ],
-          },
-        ],
-        timeSlots: [
-          {
-            timeSlot: '06:00-12:00',
-            avgPrice: 1250,
-            minPrice: 800,
-            maxPrice: 2000,
-            sampleCount: 120,
-            airlines: ['东方航空', '南方航空', '国航'],
-          },
-        ],
-      },
-    },
+    description: '成功返回详细价格选项（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async getDetailedPriceOptions(
     @Query('originCity') originCity: string,
@@ -368,22 +357,30 @@ export class FlightPricesController {
     @Query('month', ParseIntPipe) month: number,
     @Query('dayOfWeek') dayOfWeek?: string
   ) {
-    const dayOfWeekNum = dayOfWeek ? parseInt(dayOfWeek) : undefined;
+    try {
+      const dayOfWeekNum = dayOfWeek ? parseInt(dayOfWeek) : undefined;
 
-    if (month < 1 || month > 12) {
-      throw new BadRequestException('月份必须在 1-12 之间');
+      if (month < 1 || month > 12) {
+        throw new BadRequestException('月份必须在 1-12 之间');
+      }
+
+      if (dayOfWeekNum !== undefined && (dayOfWeekNum < 0 || dayOfWeekNum > 6)) {
+        throw new BadRequestException('星期几必须在 0-6 之间（0=周一, 6=周日）');
+      }
+
+      const result = await this.flightPriceDetailEnhancedService.getDetailedPriceOptions(
+        originCity,
+        destinationCity,
+        month,
+        dayOfWeekNum
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-
-    if (dayOfWeekNum !== undefined && (dayOfWeekNum < 0 || dayOfWeekNum > 6)) {
-      throw new BadRequestException('星期几必须在 0-6 之间（0=周一, 6=周日）');
-    }
-
-    return this.flightPriceDetailEnhancedService.getDetailedPriceOptions(
-      originCity,
-      destinationCity,
-      month,
-      dayOfWeekNum
-    );
   }
 
   @Get(':id')
@@ -398,18 +395,27 @@ export class FlightPricesController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回价格参考数据',
+    description: '成功返回价格参考数据（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({
-    status: 404,
-    description: '未找到指定 ID 的价格参考数据',
+    status: 200,
+    description: '未找到指定 ID 的价格参考数据（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const priceRef = await this.flightPriceService.findOne(id);
-    if (!priceRef) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    try {
+      const priceRef = await this.flightPriceService.findOne(id);
+      if (!priceRef) {
+        return errorResponse(ErrorCode.NOT_FOUND, `价格参考数据 ID ${id} 不存在`);
+      }
+      return successResponse(priceRef);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
     }
-    return priceRef;
   }
 
   @Post()
@@ -419,11 +425,25 @@ export class FlightPricesController {
   })
   @ApiBody({ type: CreateFlightPriceDto })
   @ApiResponse({
-    status: 201,
-    description: '成功创建价格参考数据',
+    status: 200,
+    description: '成功创建价格参考数据（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
-  create(@Body() createDto: CreateFlightPriceDto) {
-    return this.flightPriceService.create(createDto);
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async create(@Body() createDto: CreateFlightPriceDto) {
+    try {
+      const priceRef = await this.flightPriceService.create(createDto);
+      return successResponse(priceRef);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Put(':id')
@@ -439,21 +459,34 @@ export class FlightPricesController {
   @ApiBody({ type: UpdateFlightPriceDto })
   @ApiResponse({
     status: 200,
-    description: '成功更新价格参考数据',
+    description: '成功更新价格参考数据（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({
-    status: 404,
-    description: '未找到指定 ID 的价格参考数据',
+    status: 200,
+    description: '未找到指定 ID 的价格参考数据（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateFlightPriceDto,
   ) {
-    const existing = await this.flightPriceService.findOne(id);
-    if (!existing) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    try {
+      const existing = await this.flightPriceService.findOne(id);
+      if (!existing) {
+        return errorResponse(ErrorCode.NOT_FOUND, `价格参考数据 ID ${id} 不存在`);
+      }
+      const updated = await this.flightPriceService.update(id, updateDto);
+      return successResponse(updated);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-    return this.flightPriceService.update(id, updateDto);
   }
 
   @Delete(':id')
@@ -475,11 +508,19 @@ export class FlightPricesController {
     description: '未找到指定 ID 的价格参考数据',
   })
   async remove(@Param('id', ParseIntPipe) id: number) {
-    const existing = await this.flightPriceService.findOne(id);
-    if (!existing) {
-      throw new NotFoundException(`价格参考数据 ID ${id} 不存在`);
+    try {
+      const existing = await this.flightPriceService.findOne(id);
+      if (!existing) {
+        return errorResponse(ErrorCode.NOT_FOUND, `价格参考数据 ID ${id} 不存在`);
+      }
+      await this.flightPriceService.remove(id);
+      return successResponse({ message: '删除成功' });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
     }
-    return this.flightPriceService.remove(id);
   }
 }
 

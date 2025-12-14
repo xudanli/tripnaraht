@@ -1,9 +1,11 @@
 // src/transport/transport.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { TransportPlanDto } from './dto/transport-plan.dto';
 import { TransportRoutingService } from './transport-routing.service';
 import { UserContext } from './interfaces/transport.interface';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('transport')
 @Controller('transport')
@@ -70,54 +72,42 @@ export class TransportController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回交通推荐',
-    schema: {
-      type: 'object',
-      properties: {
-        options: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              mode: { type: 'string', example: 'TAXI' },
-              durationMinutes: { type: 'number', example: 15 },
-              cost: { type: 'number', example: 1200 },
-              walkDistance: { type: 'number', example: 0 },
-              score: { type: 'number', example: 150 },
-              recommendationReason: { type: 'string', example: '适合携带行李、避免淋雨' },
-              warnings: { type: 'array', items: { type: 'string' } },
-            },
-          },
-        },
-        recommendationReason: { type: 'string', example: '您带着行李，且外面正在下雨，建议打车出行' },
-        specialAdvice: {
-          type: 'array',
-          items: { type: 'string' },
-          example: ['💡 建议使用宅急便（Yamato）将行李直接寄到下一家酒店，今日轻装游玩'],
-        },
-      },
-    },
+    description: '成功返回交通推荐（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async planRoute(@Body() dto: TransportPlanDto) {
-    const context: UserContext = {
-      hasLuggage: dto.hasLuggage || false,
-      hasElderly: dto.hasElderly || false,
-      isRaining: dto.isRaining || false,
-      budgetSensitivity: dto.budgetSensitivity || 'MEDIUM',
-      timeSensitivity: dto.timeSensitivity || 'MEDIUM',
-      hasLimitedMobility: dto.hasLimitedMobility || false,
-      currentCity: dto.currentCity,
-      targetCity: dto.targetCity,
-      isMovingDay: dto.isMovingDay || (dto.currentCity !== dto.targetCity && !!dto.currentCity && !!dto.targetCity),
-    };
+    try {
+      const context: UserContext = {
+        hasLuggage: dto.hasLuggage || false,
+        hasElderly: dto.hasElderly || false,
+        isRaining: dto.isRaining || false,
+        budgetSensitivity: dto.budgetSensitivity || 'MEDIUM',
+        timeSensitivity: dto.timeSensitivity || 'MEDIUM',
+        hasLimitedMobility: dto.hasLimitedMobility || false,
+        currentCity: dto.currentCity,
+        targetCity: dto.targetCity,
+        isMovingDay: dto.isMovingDay || (dto.currentCity !== dto.targetCity && !!dto.currentCity && !!dto.targetCity),
+      };
 
-    return this.routingService.planRoute(
-      dto.fromLat,
-      dto.fromLng,
-      dto.toLat,
-      dto.toLng,
-      context
-    );
+      const result = await this.routingService.planRoute(
+        dto.fromLat,
+        dto.fromLng,
+        dto.toLat,
+        dto.toLng,
+        context
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 }
 

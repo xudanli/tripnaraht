@@ -76,6 +76,12 @@ async function importTrail(data: AllTrailsData): Promise<boolean> {
       metadata.difficultyMetadata = data.difficultyMetadata;
     }
 
+    // ⚠️ 重要：如果 fatigueMetadata 中有 maxElevation，也添加到 metadata.elevationMeters
+    // 这样 PhysicalMetadataGenerator 可以识别高海拔路线（>2000m 会增加体力消耗）
+    if (data.fatigueMetadata?.maxElevation && !metadata.elevationMeters) {
+      metadata.elevationMeters = data.fatigueMetadata.maxElevation;
+    }
+
     // 准备 physicalMetadata（Fatigue）
     let physicalMetadata: any = null;
     if (data.fatigueMetadata) {

@@ -10,8 +10,6 @@ coverage/
 # Production
 dist/
 build/
-.next/
-out/
 
 # Environment variables
 .env

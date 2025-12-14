@@ -10,11 +10,21 @@ datasource db {
 }
 
 model City {
-  id          Int     @id @default(autoincrement())
-  name        String
-  countryCode String
-  adcode      String? // 行政区划代码，从酒店数据表提取
+  id          Int                       @id @default(autoincrement())
+  name        String // 本地名称（主名称）
+  nameCN      String? // 中文名称
+  nameEN      String? // 英文名称
+  countryCode String // ISO 3166-1 alpha-2
+  location    Unsupported("geography")? // PostGIS Point（经纬度）
+  timezone    String? // 时区（如 "Asia/Shanghai", "America/New_York"）
+  adcode      String? // 行政区划代码（主要用于中国城市）
+  metadata    Json? // 扩展信息（行政区划、外部ID、其他语言名称等）
   places      Place[]
+
+  @@index([countryCode])
+  @@index([name])
+  @@index([nameCN])
+  @@index([nameEN])
 }
 
 /// 国家档案表

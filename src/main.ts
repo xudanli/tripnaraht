@@ -9,10 +9,19 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
   // 启用全局验证管道
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      skipMissingProperties: false, // 不跳过缺失属性（保持严格验证）
+      skipNullProperties: true, // 跳过 null 值（允许 undefined）
+      skipUndefinedProperties: true, // 跳过 undefined 值（允许可选字段）
+      forbidNonWhitelisted: false, // 允许额外的属性
+      transformOptions: {
+        enableImplicitConversion: true, // 启用隐式类型转换
+      },
+    })
+  );
   
   // 启用 CORS（如果需要前端调用）
   app.enableCors();
@@ -31,6 +40,10 @@ async function bootstrap() {
     .addTag('transport', '交通规划相关接口')
     .addTag('flight-prices', '机票价格参考相关接口')
     .addTag('countries', '国家档案相关接口')
+    .addTag('planning-policy', '规划策略相关接口（画像驱动、稳健度评估、What-If）')
+    .addTag('voice', '语音解析相关接口')
+    .addTag('vision', '视觉识别相关接口（拍照识别 POI）')
+    .addTag('schedule-action', '行程动作执行相关接口')
     .addServer('http://localhost:3000', '开发环境')
     .build();
   

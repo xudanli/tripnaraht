@@ -636,5 +636,246 @@ export class PlacesService {
       results,
     };
   }
+
+  /**
+   * 根据 ID 获取地点详情
+   * 
+   * @param id 地点 ID
+   * @returns 地点详情（包含完整元数据）
+   */
+  async findOne(id: number) {
+    const place = await this.prisma.place.findUnique({
+      where: { id },
+      include: {
+        city: true,
+      },
+    });
+
+    if (!place) {
+      return null;
+    }
+
+    // 提取坐标
+    const location = (place as any).location;
+    const coords = location ? this.extractCoordinates(location) : null;
+
+    // 解析元数据
+    const metadata = (place.metadata as any) || {};
+    const physicalMetadata = (place.physicalMetadata as any) || {};
+    const city = place.city as any;
+    const timezone = metadata?.timezone || city?.timezone || 'Asia/Tokyo';
+    const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
+    const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);
+
+    return {
+      id: place.id,
+      uuid: place.uuid,
+      nameCN: place.nameCN,
+      nameEN: place.nameEN,
+      category: place.category,
+      address: place.address,
+      rating: place.rating,
+      googlePlaceId: place.googlePlaceId,
+      location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+      metadata,
+      physicalMetadata,
+      city: city ? {
+        id: city.id,
+        name: city.name,
+        nameCN: city.nameCN,
+        nameEN: city.nameEN,
+        countryCode: city.countryCode,
+        timezone: city.timezone,
+      } : null,
+      status: {
+        isOpen,
+        text: isOpen ? '营业中' : '已打烊',
+        hoursToday: todayHours || '休息',
+      },
+      createdAt: place.createdAt,
+      updatedAt: place.updatedAt,
+    };
+  }
+
+  /**
+   * 批量获取地点详情
+   * 
+   * @param ids 地点 ID 列表
+   * @returns 地点详情列表
+   */
+  async findBatch(ids: number[]) {
+    if (!ids || ids.length === 0) {
+      return [];
+    }
+
+    const places = await this.prisma.place.findMany({
+      where: {
+        id: { in: ids },
+      },
+      include: {
+        city: true,
+      },
+    });
+
+    return places.map(place => {
+      const location = (place as any).location;
+      const coords = location ? this.extractCoordinates(location) : null;
+      const metadata = (place.metadata as any) || {};
+      const physicalMetadata = (place.physicalMetadata as any) || {};
+      const city = place.city as any;
+      const timezone = metadata?.timezone || city?.timezone || 'Asia/Tokyo';
+      const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
+      const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);
+
+      return {
+        id: place.id,
+        uuid: place.uuid,
+        nameCN: place.nameCN,
+        nameEN: place.nameEN,
+        category: place.category,
+        address: place.address,
+        rating: place.rating,
+        googlePlaceId: place.googlePlaceId,
+        location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+        metadata,
+        physicalMetadata,
+        city: city ? {
+          id: city.id,
+          name: city.name,
+          nameCN: city.nameCN,
+          nameEN: city.nameEN,
+          countryCode: city.countryCode,
+          timezone: city.timezone,
+        } : null,
+        status: {
+          isOpen,
+          text: isOpen ? '营业中' : '已打烊',
+          hoursToday: todayHours || '休息',
+        },
+        createdAt: place.createdAt,
+        updatedAt: place.updatedAt,
+      };
+    });
+  }
+
+  /**
+   * 关键词搜索地点
+   * 
+   * @param query 搜索关键词
+   * @param lat 纬度（可选，用于距离排序）
+   * @param lng 经度（可选，用于距离排序）
+   * @param radius 搜索半径（米，可选）
+   * @param category 类别过滤（可选）
+   * @param limit 返回数量限制（默认 20）
+   * @returns 地点列表
+   */
+  async search(
+    query: string,
+    lat?: number,
+    lng?: number,
+    radius?: number,
+    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    limit: number = 20
+  ) {
+    // 构建搜索条件
+    const searchCondition = Prisma.sql`
+      (
+        "nameCN" ILIKE ${`%${query}%`} OR
+        "nameEN" ILIKE ${`%${query}%`} OR
+        address ILIKE ${`%${query}%`} OR
+        metadata::text ILIKE ${`%${query}%`}
+      )
+    `;
+
+    const categoryFilter = category
+      ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+      : Prisma.sql``;
+
+    const locationFilter = lat && lng && radius
+      ? Prisma.sql`AND ST_DWithin(
+          location,
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+          ${radius}
+        )`
+      : Prisma.sql``;
+
+    const orderBy = lat && lng
+      ? Prisma.sql`ORDER BY ST_Distance(
+          location,
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+        ) ASC`
+      : Prisma.sql`ORDER BY rating DESC NULLS LAST, "nameCN" ASC`;
+
+    const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
+      SELECT 
+        id, "nameCN", "nameEN", metadata, address, rating, category,
+        ${lat && lng ? Prisma.sql`ST_Distance(
+          location,
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+        ) as distance_meters` : Prisma.sql`NULL as distance_meters`}
+      FROM "Place"
+      WHERE ${searchCondition}
+        ${categoryFilter}
+        ${locationFilter}
+      ${orderBy}
+      LIMIT ${limit}
+    `;
+
+    return rawResults.map((row) => this.mapToDto(row));
+  }
+
+  /**
+   * 自动补全搜索
+   * 
+   * @param query 搜索关键词
+   * @param lat 纬度（可选，用于距离排序）
+   * @param lng 经度（可选，用于距离排序）
+   * @param limit 返回数量限制（默认 10）
+   * @returns 地点名称建议列表
+   */
+  async autocomplete(
+    query: string,
+    lat?: number,
+    lng?: number,
+    limit: number = 10
+  ) {
+    const searchCondition = Prisma.sql`
+      (
+        "nameCN" ILIKE ${`%${query}%`} OR
+        "nameEN" ILIKE ${`%${query}%`}
+      )
+    `;
+
+    const orderBy = lat && lng
+      ? Prisma.sql`ORDER BY ST_Distance(
+          location,
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+        ) ASC`
+      : Prisma.sql`ORDER BY rating DESC NULLS LAST, "nameCN" ASC`;
+
+    const results = await this.prisma.$queryRaw<Array<{
+      id: number;
+      nameCN: string;
+      nameEN: string | null;
+      category: string;
+      address: string | null;
+    }>>`
+      SELECT 
+        id, "nameCN", "nameEN", category, address
+      FROM "Place"
+      WHERE ${searchCondition}
+      ${orderBy}
+      LIMIT ${limit}
+    `;
+
+    return results.map(row => ({
+      id: row.id,
+      name: row.nameEN || row.nameCN,
+      nameCN: row.nameCN,
+      nameEN: row.nameEN,
+      category: row.category,
+      address: row.address,
+    }));
+  }
 }
 

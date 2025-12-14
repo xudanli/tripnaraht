@@ -13,6 +13,8 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { HotelPriceService } from './services/hotel-price.service';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('hotels')
 @Controller('hotels')
@@ -71,31 +73,13 @@ export class HotelsController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回估算价格（可选包含推荐酒店）',
-    schema: {
-      type: 'object',
-      example: {
-        estimatedPrice: 450,
-        lowerBound: 360,
-        upperBound: 540,
-        basePrice: 400,
-        cityStarFactor: 1.125,
-        quarterPrice: 420,
-        sampleCount: 150,
-        recommendations: [
-          {
-            id: 'B0K1PZBE68',
-            name: '桔子酒店(洛阳龙门站店)',
-            brand: '桔子',
-            address: '通衢路与厚载门街交叉口西南角新唐街3号楼',
-            district: '洛龙区',
-            lat: 34.596104,
-            lng: 112.46321,
-            phone: '0379-63168888;18603798508',
-          },
-        ],
-      },
-    },
+    description: '成功返回估算价格（可选包含推荐酒店，统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async estimatePrice(
     @Query('city') city: string,
@@ -122,23 +106,32 @@ export class HotelsController {
       throw new BadRequestException('指定季度时必须同时指定年份');
     }
 
-    if (includeRecs) {
-      return this.hotelPriceService.estimatePriceWithRecommendations(
-        city,
-        starRating,
-        yearNum,
-        quarterNum,
-        true,
-        recLimit
-      );
+    try {
+      let result;
+      if (includeRecs) {
+        result = await this.hotelPriceService.estimatePriceWithRecommendations(
+          city,
+          starRating,
+          yearNum,
+          quarterNum,
+          true,
+          recLimit
+        );
+      } else {
+        result = await this.hotelPriceService.estimatePrice(
+          city,
+          starRating,
+          yearNum,
+          quarterNum
+        );
+      }
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-
-    return this.hotelPriceService.estimatePrice(
-      city,
-      starRating,
-      yearNum,
-      quarterNum
-    );
   }
 
   @Get('price/city-options')
@@ -153,24 +146,12 @@ export class HotelsController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回星级价格选项',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          starRating: { type: 'number' },
-          avgPrice: { type: 'number' },
-          cityStarFactor: { type: 'number' },
-          sampleCount: { type: 'number' },
-          minPrice: { type: 'number', nullable: true },
-          maxPrice: { type: 'number', nullable: true },
-        },
-      },
-    },
+    description: '成功返回星级价格选项（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   async getCityStarOptions(@Query('city') city: string) {
-    return this.hotelPriceService.getCityStarOptions(city);
+    const options = await this.hotelPriceService.getCityStarOptions(city);
+    return successResponse(options);
   }
 
   @Get('price/quarterly-trend')
@@ -192,30 +173,33 @@ export class HotelsController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回季度价格趋势',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          year: { type: 'number' },
-          quarter: { type: 'number' },
-          price: { type: 'number' },
-        },
-      },
-    },
+    description: '成功返回季度价格趋势（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async getQuarterlyTrend(
     @Query('city') city: string,
     @Query('starRating') starRating?: string
   ) {
-    const starRatingNum = starRating ? parseInt(starRating) : undefined;
+    try {
+      const starRatingNum = starRating ? parseInt(starRating) : undefined;
 
-    if (starRatingNum !== undefined && (starRatingNum < 1 || starRatingNum > 5)) {
-      throw new BadRequestException('星级必须在 1-5 之间');
+      if (starRatingNum !== undefined && (starRatingNum < 1 || starRatingNum > 5)) {
+        throw new BadRequestException('星级必须在 1-5 之间');
+      }
+
+      const trend = await this.hotelPriceService.getQuarterlyTrend(city, starRatingNum);
+      return successResponse(trend);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-
-    return this.hotelPriceService.getQuarterlyTrend(city, starRatingNum);
   }
 
   @Get('recommendations')
@@ -259,23 +243,13 @@ export class HotelsController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回推荐酒店列表',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', example: 'B0K1PZBE68' },
-          name: { type: 'string', example: '桔子酒店(洛阳龙门站店)' },
-          brand: { type: 'string', nullable: true, example: '桔子' },
-          address: { type: 'string', nullable: true },
-          district: { type: 'string', nullable: true, example: '洛龙区' },
-          lat: { type: 'number', nullable: true, example: 34.596104 },
-          lng: { type: 'number', nullable: true, example: 112.46321 },
-          phone: { type: 'string', nullable: true },
-        },
-      },
-    },
+    description: '成功返回推荐酒店列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async getRecommendations(
     @Query('city') city: string,
@@ -284,20 +258,28 @@ export class HotelsController {
     @Query('maxPrice') maxPrice?: string,
     @Query('limit') limit?: string
   ) {
-    if (starRating < 1 || starRating > 5) {
-      throw new BadRequestException('星级必须在 1-5 之间');
+    try {
+      if (starRating < 1 || starRating > 5) {
+        throw new BadRequestException('星级必须在 1-5 之间');
+      }
+
+      const minPriceNum = minPrice ? parseFloat(minPrice) : undefined;
+      const maxPriceNum = maxPrice ? parseFloat(maxPrice) : undefined;
+      const limitNum = limit ? parseInt(limit) : 10;
+
+      const recommendations = await this.hotelPriceService.recommendHotels(
+        city,
+        starRating,
+        minPriceNum,
+        maxPriceNum,
+        limitNum
+      );
+      return successResponse(recommendations);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
     }
-
-    const minPriceNum = minPrice ? parseFloat(minPrice) : undefined;
-    const maxPriceNum = maxPrice ? parseFloat(maxPrice) : undefined;
-    const limitNum = limit ? parseInt(limit) : 10;
-
-    return this.hotelPriceService.recommendHotels(
-      city,
-      starRating,
-      minPriceNum,
-      maxPriceNum,
-      limitNum
-    );
   }
 }

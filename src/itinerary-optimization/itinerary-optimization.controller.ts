@@ -1,8 +1,10 @@
 // src/itinerary-optimization/itinerary-optimization.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { OptimizeRouteDto } from './dto/optimize-route.dto';
 import { RouteOptimizationService } from './itinerary-optimization.service';
+import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('itinerary-optimization')
 @Controller('itinerary-optimization')
@@ -86,73 +88,32 @@ export class ItineraryOptimizationController {
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回优化后的路线',
-    schema: {
-      type: 'object',
-      example: {
-        nodes: [
-          {
-            id: 1,
-            name: '浅草寺',
-            category: 'ATTRACTION',
-            location: { lat: 35.7148, lng: 139.7967 },
-            intensity: 'MEDIUM',
-            estimatedDuration: 90,
-          },
-          {
-            id: 2,
-            name: '午餐餐厅',
-            category: 'RESTAURANT',
-            location: { lat: 35.7150, lng: 139.7970 },
-            isRestaurant: true,
-            estimatedDuration: 60,
-          },
-        ],
-        schedule: [
-          {
-            nodeIndex: 0,
-            startTime: '2024-05-01T09:00:00.000Z',
-            endTime: '2024-05-01T10:30:00.000Z',
-            transportTime: 20,
-          },
-          {
-            nodeIndex: 1,
-            startTime: '2024-05-01T12:00:00.000Z',
-            endTime: '2024-05-01T13:00:00.000Z',
-            transportTime: 15,
-          },
-        ],
-        happinessScore: 850,
-        scoreBreakdown: {
-          interestScore: 500,
-          distancePenalty: 50,
-          tiredPenalty: 0,
-          boredPenalty: 0,
-          starvePenalty: 0,
-          clusteringBonus: 100,
-          bufferBonus: 30,
-        },
-        zones: [
-          {
-            id: 0,
-            centroid: { lat: 35.7148, lng: 139.7967 },
-            places: [],
-            radius: 1500,
-          },
-        ],
-      },
-    },
+    description: '成功返回优化后的路线（统一响应格式）',
+    type: ApiSuccessResponseDto,
   })
   @ApiResponse({
-    status: 404,
-    description: '未找到指定的地点',
+    status: 200,
+    description: '未找到指定的地点（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   @ApiResponse({
-    status: 400,
-    description: '输入数据验证失败',
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
   })
   async optimizeRoute(@Body() dto: OptimizeRouteDto) {
-    return this.optimizationService.optimizeRoute(dto);
+    try {
+      const result = await this.optimizationService.optimizeRoute(dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 }
 
