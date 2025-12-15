@@ -177,7 +177,12 @@ def get_route_google(
     max_retries: int = 2,
 ) -> Tuple[List[Tuple[float, float]], float]:
     """
-    从 Google Directions API 获取路线
+    从 Google Routes API (v2) 获取路线
+    
+    注意：此函数使用新版 Routes API，需要：
+    1. 在 Google Cloud Console 启用 Routes API
+    2. 项目需要启用计费
+    3. 使用有效的 API Key
     
     Args:
         api_key: Google Maps API Key
@@ -192,31 +197,99 @@ def get_route_google(
         - coords: [(lat, lon), ...] 坐标列表
         - distance_m: 路线距离（米）
     """
-    url = "https://maps.googleapis.com/maps/api/directions/json"
+    # 解析坐标
+    lat1, lng1 = map(float, origin.split(","))
+    lat2, lng2 = map(float, destination.split(","))
     
-    params = {
-        "origin": origin,
-        "destination": destination,
-        "mode": profile,
-        "key": api_key,
+    # 映射路线模式
+    mode_map = {
+        "walking": "WALK",
+        "driving": "DRIVE",
+        "bicycling": "BICYCLE",
+        "transit": "TRANSIT",
+    }
+    travel_mode = mode_map.get(profile, "WALK")
+    
+    # 新版 Routes API 端点
+    url = "https://routes.googleapis.com/directions/v2:computeRoutes"
+    
+    # 请求头
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key or os.getenv("GOOGLE_MAPS_API_KEY", ""),
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.polyline.encodedPolyline",
+    }
+    
+    # 请求体
+    payload = {
+        "origin": {
+            "location": {
+                "latLng": {
+                    "latitude": lat1,
+                    "longitude": lng1,
+                }
+            }
+        },
+        "destination": {
+            "location": {
+                "latLng": {
+                    "latitude": lat2,
+                    "longitude": lng2,
+                }
+            }
+        },
+        "travelMode": travel_mode,
+        "computeAlternativeRoutes": False,
+        "units": "METRIC",
     }
     
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
-            response.raise_for_status()
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=timeout
+            )
+            # 检查HTTP状态码
+            if response.status_code != 200:
+                try:
+                    data = response.json()
+                    error_msg = data.get("error", {}).get("message", f"HTTP {response.status_code}")
+                except:
+                    error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
+                raise Exception(f"Google Routes API error: {response.status_code} - {error_msg}")
+            
             data = response.json()
             
-            if data.get("status") != "OK":
-                raise Exception(f"Google Directions API error: {data.get('status')} - {data.get('error_message', '')}")
+            # 检查是否有错误响应（新Routes API格式）
+            if "error" in data:
+                error_info = data["error"]
+                error_code = error_info.get("code", "UNKNOWN")
+                error_message = error_info.get("message", "Unknown error")
+                raise Exception(f"Google Routes API error: {error_code} - {error_message}")
+            
+            # 检查旧版Directions API错误格式（兼容性检查）
+            if "status" in data and data.get("status") != "OK":
+                status = data.get("status", "UNKNOWN")
+                error_message = data.get("error_message", "")
+                raise Exception(f"Google Directions API error: {status} - {error_message}")
+            
+            if "routes" not in data or not data["routes"]:
+                raise Exception(f"Google Routes API error: No routes found in response - {data}")
             
             route = data["routes"][0]
-            leg = route["legs"][0]
-            distance_m = leg["distance"]["value"]
+            distance_m = route.get("distanceMeters", 0)
+            
+            # 获取 polyline
+            polyline_data = route.get("polyline", {})
+            encoded_polyline = polyline_data.get("encodedPolyline", "")
+            
+            if not encoded_polyline:
+                raise Exception(f"Google Routes API error: No polyline in response - {data}")
             
             # 解码 polyline
-            polyline = route["overview_polyline"]["points"]
-            coords = decode_polyline(polyline)
+            coords = decode_polyline(encoded_polyline)
             
             return coords, distance_m
             
@@ -977,7 +1050,6 @@ def main():
         )
         
         # 打印结果到stderr（便于调试）
-        import sys
         print("\n" + "="*60, file=sys.stderr)
         print("路线难度评估结果", file=sys.stderr)
         print("="*60, file=sys.stderr)
