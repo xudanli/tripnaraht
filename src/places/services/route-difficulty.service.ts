@@ -1,6 +1,7 @@
 // src/places/services/route-difficulty.service.ts
 import { Injectable, Logger, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -24,9 +25,232 @@ export class RouteDifficultyService {
   private readonly cacheTTL = 3600 * 1000; // 1小时
   private readonly pythonScriptPath: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService,
+  ) {
     // Python脚本路径
     this.pythonScriptPath = path.join(process.cwd(), 'tools', 'end2end_difficulty_with_geojson.py');
+  }
+
+  /**
+   * 解析字符串格式的距离（如 "17.4 km"）
+   */
+  private parseDistanceString(distanceStr: string): number | null {
+    if (!distanceStr) return null;
+    
+    // 移除千分位逗号和空格
+    const cleaned = distanceStr.replace(/,/g, '').trim();
+    
+    // 匹配数字和单位
+    const match = cleaned.match(/([\d.]+)\s*(km|m|mi|mile)/i);
+    if (!match) return null;
+    
+    const value = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    
+    // 转换为公里
+    if (unit === 'km') return value;
+    if (unit === 'm') return value / 1000;
+    if (unit === 'mi' || unit === 'mile') return value * 1.60934;
+    
+    return null;
+  }
+
+  /**
+   * 解析字符串格式的爬升（如 "1,077 m"）
+   */
+  private parseElevationGainString(elevationStr: string): number | null {
+    if (!elevationStr) return null;
+    
+    // 移除千分位逗号和空格
+    const cleaned = elevationStr.replace(/,/g, '').trim();
+    
+    // 匹配数字和单位
+    const match = cleaned.match(/([\d.]+)\s*(m|ft|feet)/i);
+    if (!match) return null;
+    
+    const value = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    
+    // 转换为米
+    if (unit === 'm') return value;
+    if (unit === 'ft' || unit === 'feet') return value * 0.3048;
+    
+    return null;
+  }
+
+  /**
+   * 从 Place 数据计算难度（如果数据完整）
+   */
+  private async calculateFromPlaceData(
+    placeId: number,
+    request: RouteDifficultyRequestDto,
+  ): Promise<RouteDifficultyResponseDto | null> {
+    try {
+      const place = await this.prisma.place.findUnique({
+        where: { id: placeId },
+        select: {
+          id: true,
+          nameCN: true,
+          nameEN: true,
+          metadata: true,
+          physicalMetadata: true,
+        },
+      });
+
+      if (!place) {
+        this.logger.warn(`Place ID ${placeId} not found`);
+        return null;
+      }
+
+      const metadata = (place.metadata as any) || {};
+      const physicalMetadata = (place.physicalMetadata as any) || {};
+
+      // 检查是否有必要的数据
+      const hasLength = metadata.length || physicalMetadata.totalDistance;
+      const hasElevationGain = metadata.elevationGain || physicalMetadata.elevationGain;
+      const hasDifficultyMetadata = metadata.difficultyMetadata;
+
+      if (!hasLength || !hasElevationGain) {
+        this.logger.debug(`Place ID ${placeId} missing required data (length or elevationGain)`);
+        return null;
+      }
+
+      // 解析距离
+      let distance_km: number | null = null;
+      if (metadata.length) {
+        distance_km = this.parseDistanceString(metadata.length);
+      }
+      if (!distance_km && physicalMetadata.totalDistance) {
+        distance_km = typeof physicalMetadata.totalDistance === 'number'
+          ? physicalMetadata.totalDistance
+          : null;
+      }
+
+      // 解析爬升
+      let elevation_gain_m: number | null = null;
+      if (metadata.elevationGain) {
+        elevation_gain_m = this.parseElevationGainString(metadata.elevationGain);
+      }
+      if (!elevation_gain_m && physicalMetadata.elevationGain) {
+        elevation_gain_m = typeof physicalMetadata.elevationGain === 'number'
+          ? physicalMetadata.elevationGain
+          : null;
+      }
+
+      if (!distance_km || !elevation_gain_m) {
+        this.logger.debug(`Place ID ${placeId} failed to parse distance or elevation gain`);
+        return null;
+      }
+
+      // 计算平均坡度
+      const slope_avg = distance_km > 0
+        ? elevation_gain_m / (distance_km * 1000)
+        : 0;
+
+      // 准备输入数据用于难度评估
+      const inputData: any = {
+        category: request.category || 'ATTRACTION',
+        accessType: metadata.accessType || request.accessType || 'HIKING',
+        visitDuration: metadata.visitDuration || request.visitDuration,
+        typicalStay: metadata.typicalStay || request.typicalStay,
+        elevationMeters: metadata.elevationMeters || request.elevationMeters,
+        latitude: request.latitude,
+        subCategory: metadata.subCategory || request.subCategory,
+        trailDifficulty: hasDifficultyMetadata?.level || request.trailDifficulty,
+        hasAcclimatization: request.hasAcclimatization,
+        avgSleepElevation: request.avgSleepElevation,
+        exposureHours: request.exposureHours,
+        feelsLikeTemp: request.feelsLikeTemp,
+        coldDurationHours: request.coldDurationHours,
+        loadWeightKg: request.loadWeightKg,
+      };
+
+      // 调用 Python 脚本的难度评估逻辑（只评估，不获取路线）
+      // 这里我们需要直接调用 Python 的 DifficultyEstimator
+      // 但为了简化，我们可以创建一个本地评估函数
+      const result = await this.estimateDifficultyFromData(
+        inputData,
+        distance_km,
+        elevation_gain_m,
+        metadata.elevationMeters || request.elevationMeters,
+        slope_avg,
+      );
+
+      this.logger.debug(`Calculated difficulty from Place ID ${placeId} data`);
+      return result;
+    } catch (error: any) {
+      this.logger.warn(`Failed to calculate from Place data: ${error?.message || String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * 从数据评估难度（调用 Python 脚本的评估逻辑）
+   */
+  private async estimateDifficultyFromData(
+    inputData: any,
+    distance_km: number,
+    elevation_gain_m: number,
+    elevationMeters: number | undefined,
+    slope_avg: number,
+  ): Promise<RouteDifficultyResponseDto> {
+    // 调用 Python 的 DifficultyEstimator 进行评估
+    // 使用临时 Python 脚本
+    const inputDataJson = JSON.stringify(inputData).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const pythonCode = `
+import sys
+import json
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from models.trail_difficulty import DifficultyEstimator
+
+input_data_str = '${inputDataJson}'
+input_data = json.loads(input_data_str)
+distance_km = ${distance_km}
+gain_m = ${elevation_gain_m}
+max_elev_m = ${elevationMeters !== undefined ? elevationMeters : 'None'}
+slope_avg = ${slope_avg}
+
+label, S_km, notes = DifficultyEstimator.estimate_difficulty(
+    input_data,
+    distance_km=distance_km,
+    gain_m=gain_m,
+    max_elev_m=max_elev_m,
+    slope_avg=slope_avg,
+)
+
+result = {
+    "distance_km": round(distance_km, 3),
+    "elevation_gain_m": round(gain_m, 1),
+    "slope_avg": round(slope_avg, 4),
+    "label": label.value,
+    "S_km": S_km,
+    "notes": notes,
+}
+
+print(json.dumps(result, ensure_ascii=False))
+`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        'python3',
+        ['-c', pythonCode],
+        {
+          cwd: process.cwd(),
+          timeout: 10000,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+
+      const result = JSON.parse(stdout.trim());
+      return this.mapToResponseDto(result, false, false);
+    } catch (error: any) {
+      this.logger.error(`Failed to estimate difficulty: ${error?.message || String(error)}`);
+      throw error;
+    }
   }
 
   /**
@@ -35,6 +259,16 @@ export class RouteDifficultyService {
   async calculateDifficulty(
     request: RouteDifficultyRequestDto,
   ): Promise<RouteDifficultyResponseDto> {
+    // 如果提供了 placeId，优先尝试从 Place 数据计算
+    if (request.placeId) {
+      const placeResult = await this.calculateFromPlaceData(request.placeId, request);
+      if (placeResult) {
+        this.logger.debug(`Using Place ID ${request.placeId} data for difficulty calculation`);
+        return placeResult;
+      }
+      this.logger.debug(`Place ID ${request.placeId} data incomplete, falling back to route calculation`);
+    }
+
     // 生成缓存键
     const cacheKey = this.generateCacheKey(request);
 
@@ -46,6 +280,9 @@ export class RouteDifficultyService {
       if (!request.includeGeoJson) {
         delete result.geojson;
       }
+      if (!request.includeGpx) {
+        delete result.gpx;
+      }
       return result;
     }
 
@@ -56,10 +293,13 @@ export class RouteDifficultyService {
     try {
       const result = await this.callPythonScript(request);
       
-      // 缓存结果（不包含geojson以节省内存）
+      // 缓存结果（不包含geojson和gpx以节省内存）
       const resultToCache = { ...result };
       if (!request.includeGeoJson) {
         delete resultToCache.geojson;
+      }
+      if (!request.includeGpx) {
+        delete resultToCache.gpx;
       }
       this.cache.set(cacheKey, {
         result: resultToCache,
@@ -167,7 +407,7 @@ export class RouteDifficultyService {
       }
 
       const result = JSON.parse(jsonLine);
-      return this.mapToResponseDto(result, request.includeGeoJson);
+      return this.mapToResponseDto(result, request.includeGeoJson, request.includeGpx);
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
       
@@ -273,6 +513,7 @@ export class RouteDifficultyService {
   private mapToResponseDto(
     pythonResult: any,
     includeGeoJson?: boolean,
+    includeGpx?: boolean,
   ): RouteDifficultyResponseDto {
     const dto: RouteDifficultyResponseDto = {
       distance_km: pythonResult.distance_km || 0,
@@ -285,6 +526,10 @@ export class RouteDifficultyService {
 
     if (includeGeoJson && pythonResult.geojson) {
       dto.geojson = pythonResult.geojson;
+    }
+
+    if (includeGpx && pythonResult.gpx) {
+      dto.gpx = pythonResult.gpx;
     }
 
     return dto;

@@ -198,11 +198,26 @@ export class RouteDifficultyRequestDto {
   workers?: number = 8;
 
   @ApiPropertyOptional({
+    description: 'Place ID（如果提供，将优先使用Place表中的数据，如length、elevationGain等）',
+    example: 28497,
+  })
+  @IsOptional()
+  @IsNumber()
+  placeId?: number;
+
+  @ApiPropertyOptional({
     description: '是否返回GeoJSON',
     default: false,
   })
   @IsOptional()
   includeGeoJson?: boolean = false;
+
+  @ApiPropertyOptional({
+    description: '是否返回GPX',
+    default: false,
+  })
+  @IsOptional()
+  includeGpx?: boolean = false;
 }
 
 export class RouteDifficultyResponseDto {
@@ -226,5 +241,8 @@ export class RouteDifficultyResponseDto {
 
   @ApiPropertyOptional({ description: 'GeoJSON（如果请求时includeGeoJson=true）' })
   geojson?: any;
+
+  @ApiPropertyOptional({ description: 'GPX XML字符串（如果请求时includeGpx=true）' })
+  gpx?: string;
 }
 

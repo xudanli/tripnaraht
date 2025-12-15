@@ -866,8 +866,12 @@ def end2end(
         slope_avg=slope_avg,
     )
     
-    # 6. 生成GeoJSON（可选）
+    # 6. 生成GeoJSON和GPX（可选）
     geojson = make_geojson(coords, elevations, distance_km, gain_m, label.value)
+    
+    # 生成GPX（使用原始坐标和高程数据）
+    route_name = meta.get('name') or f"Route {origin} to {destination}"
+    gpx = make_gpx(coords, elevations, route_name)
     
     return {
         "distance_km": round(distance_km, 3),
@@ -877,7 +881,58 @@ def end2end(
         "S_km": S_km,
         "notes": notes,
         "geojson": geojson,
+        "gpx": gpx,
     }
+
+
+def make_gpx(
+    coords: List[Tuple[float, float]],
+    elevations: List[float],
+    name: str = "Route",
+) -> str:
+    """
+    生成GPX格式的路线数据
+    
+    Args:
+        coords: 坐标列表 [(lat, lon), ...]
+        elevations: 高程列表（米）
+        name: 路线名称
+    
+    Returns:
+        GPX XML 字符串
+    """
+    from datetime import datetime
+    
+    gpx_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gpx version="1.1" creator="Route Difficulty Calculator"',
+        '  xmlns="http://www.topografix.com/GPX/1/1"',
+        '  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
+        '  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">',
+        f'  <metadata>',
+        f'    <name>{name}</name>',
+        f'    <time>{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}</time>',
+        f'  </metadata>',
+        '  <trk>',
+        f'    <name>{name}</name>',
+        '    <trkseg>',
+    ]
+    
+    # 添加轨迹点
+    for i, (lat, lon) in enumerate(coords):
+        elev = elevations[i] if i < len(elevations) else None
+        gpx_lines.append(f'      <trkpt lat="{lat:.6f}" lon="{lon:.6f}">')
+        if elev is not None:
+            gpx_lines.append(f'        <ele>{elev:.1f}</ele>')
+        gpx_lines.append('      </trkpt>')
+    
+    gpx_lines.extend([
+        '    </trkseg>',
+        '  </trk>',
+        '</gpx>',
+    ])
+    
+    return '\n'.join(gpx_lines)
 
 
 def make_geojson(
@@ -988,6 +1043,11 @@ def main():
         "--out",
         type=str,
         help="输出GeoJSON文件路径（可选）",
+    )
+    parser.add_argument(
+        "--out-gpx",
+        type=str,
+        help="输出GPX文件路径（可选）",
     )
     
     # 元数据参数
@@ -1152,14 +1212,17 @@ def main():
             print(f"说明: {', '.join(result['notes'])}", file=sys.stderr)
         print("="*60 + "\n", file=sys.stderr)
         
-        # 输出JSON到stdout（供API调用解析）
-        print(json.dumps(result, ensure_ascii=False))
-        
         # 输出GeoJSON到文件（如果指定了--out）
-        if args.out and result['geojson']:
+        if args.out and result.get('geojson'):
             with open(args.out, 'w', encoding='utf-8') as f:
                 json.dump(result['geojson'], f, ensure_ascii=False, indent=2)
             print(f"GeoJSON已保存至: {args.out}", file=sys.stderr)
+        
+        # 输出GPX到文件（如果指定了--out-gpx）
+        if args.out_gpx and result.get('gpx'):
+            with open(args.out_gpx, 'w', encoding='utf-8') as f:
+                f.write(result['gpx'])
+            print(f"GPX已保存至: {args.out_gpx}", file=sys.stderr)
         
         # 输出JSON结果到stdout（最后一行，供API调用解析）
         print(json.dumps(result, ensure_ascii=False))

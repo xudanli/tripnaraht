@@ -53,6 +53,7 @@
     "update:alltrails:elevation": "ts-node --project tsconfig.backend.json scripts/update-alltrails-elevation.ts",
     "update:potala": "ts-node --project tsconfig.backend.json scripts/update-potala-palace.ts",
     "update:physical-metadata": "ts-node --project tsconfig.backend.json scripts/update-physical-metadata-from-template.ts",
+    "batch:calculate:difficulty": "ts-node --project tsconfig.backend.json scripts/batch-calculate-route-difficulty.ts",
     "import:cities": "ts-node --project tsconfig.backend.json scripts/import-cities-to-db.ts",
     "import:cities:csv": "ts-node --project tsconfig.backend.json scripts/import-cities-from-csv.ts",
     "convert:cities": "ts-node --project tsconfig.backend.json scripts/convert-city-data-to-import-format.ts",
