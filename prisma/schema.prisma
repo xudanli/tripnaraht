@@ -201,9 +201,14 @@ model Trip {
   endDate      DateTime
   budgetConfig Json?
   pacingConfig Json?
+  metadata     Json? // 扩展信息（分享链接、离线数据包等）
   createdAt    DateTime  @default(now())
   updatedAt    DateTime
   days         TripDay[]
+  collaborators TripCollaborator[]
+  shares       TripShare[]
+  collections  TripCollection[]
+  likes        TripLike[]
 }
 
 model TripDay {
@@ -507,4 +512,107 @@ model StarCityPriceDetail {
   @@index([city])
   @@index([starRating])
   @@index([city, starRating])
+}
+
+/// 用户画像表
+/// 存储用户的长期偏好信息（景点偏好、饮食禁忌、出行偏好等）
+model UserProfile {
+  userId      String   @id // 用户ID（可以是外部系统的用户ID）
+  preferences Json? // 用户偏好（景点类型、饮食禁忌、是否偏好小众景点等）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// 行程模板表
+/// 存储不同主题的行程模板（如亲子游、特种兵旅游、休闲度假）
+model TripTemplate {
+  id          String   @id @default(uuid())
+  name        String // 模板名称
+  nameCN      String? // 中文名称
+  description String? // 模板描述
+  theme       String // 主题（FAMILY, BACKPACKER, LEISURE, BUSINESS 等）
+  destination String? // 推荐目的地（国家代码）
+  config      Json // 模板配置（budgetConfig, pacingConfig 等）
+  isPublic    Boolean  @default(false) // 是否公开
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([theme])
+  @@index([destination])
+  @@index([isPublic])
+}
+
+/// 行程协作者表
+/// 存储行程的协作者信息（多人协作编辑）
+model TripCollaborator {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String // 协作者用户ID
+  role      String // 角色（VIEWER, EDITOR, OWNER）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+/// 行程分享表
+/// 存储行程分享链接和权限设置
+model TripShare {
+  id          String   @id @default(uuid())
+  tripId      String
+  shareToken  String   @unique // 分享令牌（用于生成分享链接）
+  permission  String   @default("VIEW") // 权限（VIEW, EDIT）
+  expiresAt   DateTime? // 过期时间（可选）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([shareToken])
+}
+
+/// 行程收藏表
+/// 存储用户收藏的行程
+model TripCollection {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String // 收藏者用户ID
+  createdAt DateTime @default(now())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+/// 行程点赞表
+/// 存储用户对行程的点赞
+model TripLike {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String // 点赞者用户ID
+  createdAt DateTime @default(now())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+/// 离线数据包表
+/// 存储行程的离线数据包信息
+model TripOfflinePack {
+  id          String   @id @default(uuid())
+  tripId      String   @unique
+  data        Json // 离线数据包内容（包含地点详情、路线、Schedule）
+  version     Int      @default(1) // 数据包版本
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tripId])
 }

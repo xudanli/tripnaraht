@@ -17,6 +17,9 @@ import { VoiceModule } from './voice/voice.module';
 import { VisionModule } from './vision/vision.module';
 import { ScheduleActionModule } from './schedule-action/schedule-action.module';
 import { SystemModule } from './system/system.module';
+import { UsersModule } from './users/users.module';
+import { TripTemplatesModule } from './trip-templates/trip-templates.module';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
   imports: [
@@ -39,6 +42,9 @@ import { SystemModule } from './system/system.module';
     VisionModule, // 视觉识别模块（拍照识别 POI）
     ScheduleActionModule, // 行程动作执行模块
     SystemModule, // 系统状态模块
+    UsersModule, // 用户画像模块
+    TripTemplatesModule, // 行程模板模块
+    LlmModule, // LLM 通用服务模块
   ],
 })
 export class AppModule {}

@@ -2,6 +2,7 @@
 
 import {
   Controller,
+  Get,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -19,7 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { VisionService } from './vision.service';
 import { AssistantSuggestion } from '../assist/dto/action.dto';
-import { StandardResponse } from '../common/dto/standard-response.dto';
+import { StandardResponse, successResponse } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 // Multer file type

@@ -57,7 +57,10 @@ export class GooglePoiProvider implements PoiProvider {
         throw new Error(`Google Places API error: ${response.status} ${errorText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        status: string;
+        results?: any[];
+      };
 
       if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
         throw new Error(`Google Places API returned status: ${data.status}`);
@@ -133,7 +136,10 @@ export class GooglePoiProvider implements PoiProvider {
         throw new Error(`Google Places API error: ${response.status} ${errorText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        status: string;
+        results?: any[];
+      };
 
       if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
         throw new Error(`Google Places API returned status: ${data.status}`);

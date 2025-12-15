@@ -22,6 +22,7 @@
     "noFallthroughCasesInSwitch": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,
+    "noEmit": false, // 覆盖父配置，允许生成输出文件
     "paths": {
       "@/*": ["./src/*"]
     }

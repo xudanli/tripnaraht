@@ -1,17 +1,28 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
-import { CreateTripDto } from './dto/create-trip.dto';
+import { TripExtendedService } from './services/trip-extended.service';
+import { LlmService } from '../llm/services/llm.service';
+import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
+import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
 import { TripStateDto } from './dto/trip-state.dto';
 import { ScheduleResponseDto, SaveScheduleDto } from './dto/schedule.dto';
+import { CreateTripShareDto } from './dto/trip-share.dto';
+import { AddCollaboratorDto } from './dto/trip-collaborator.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('trips')
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  private readonly logger = new Logger(TripsController.name);
+
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly tripExtendedService: TripExtendedService,
+    private readonly llmService: LlmService
+  ) {}
 
   @Post()
   @ApiOperation({ 
@@ -37,6 +48,108 @@ export class TripsController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       throw error;
+    }
+  }
+
+  @Post('from-natural-language')
+  @ApiOperation({
+    summary: '自然语言创建行程',
+    description: '使用自然语言描述创建行程，大模型会自动解析需求并转换为接口参数。例如："帮我规划带娃去东京5天的行程，预算2万"',
+  })
+  @ApiBody({ type: CreateTripFromNaturalLanguageDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功创建行程或需要澄清（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async createFromNaturalLanguage(@Body() dto: CreateTripFromNaturalLanguageDto) {
+    try {
+      // 使用 LLM 解析自然语言
+      const parseResult = await this.llmService.naturalLanguageToTripParams({
+        text: dto.text,
+        provider: dto.llmProvider,
+      });
+
+      // 如果需要澄清，返回澄清问题
+      if (parseResult.needsClarification) {
+        return successResponse({
+          needsClarification: true,
+          clarificationQuestions: parseResult.clarificationQuestions,
+          partialParams: parseResult.params,
+        });
+      }
+
+      // 转换为 CreateTripDto
+      const travelers: Array<{ type: 'ADULT' | 'ELDERLY' | 'CHILD'; mobilityTag: MobilityTag }> = [];
+      
+      if (parseResult.params.hasChildren) {
+        travelers.push({ type: 'CHILD', mobilityTag: MobilityTag.CITY_POTATO });
+      }
+      if (parseResult.params.hasElderly) {
+        travelers.push({ type: 'ELDERLY', mobilityTag: MobilityTag.ACTIVE_SENIOR });
+      }
+      // 默认至少一个成人
+      if (travelers.length === 0 || !travelers.some(t => t.type === 'ADULT' && t.mobilityTag !== MobilityTag.LIMITED)) {
+        travelers.push({ type: 'ADULT', mobilityTag: MobilityTag.CITY_POTATO });
+      }
+
+      // 确保日期格式正确（YYYY-MM-DD）
+      let startDate = parseResult.params.startDate;
+      let endDate = parseResult.params.endDate;
+      
+      // 如果是 ISO 格式，转换为日期格式
+      if (startDate && startDate.includes('T')) {
+        startDate = startDate.split('T')[0];
+      }
+      if (endDate && endDate.includes('T')) {
+        endDate = endDate.split('T')[0];
+      }
+
+      this.logger.debug(`Creating trip with params: ${JSON.stringify({ destination: parseResult.params.destination, startDate, endDate, totalBudget: parseResult.params.totalBudget, travelersCount: travelers.length })}`);
+
+      const createTripDto: CreateTripDto = {
+        destination: parseResult.params.destination,
+        startDate: startDate,
+        endDate: endDate,
+        totalBudget: parseResult.params.totalBudget,
+        travelers: travelers as any,
+      };
+
+      // 创建行程
+      const trip = await this.tripsService.create(createTripDto);
+      
+      return successResponse({
+        trip,
+        parsedParams: parseResult.params,
+      });
+    } catch (error: any) {
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      this.logger.error(`Failed to create trip from natural language: ${errorMessage}`, error?.stack);
+      
+      // 尝试使用 LLM 处理错误并生成友好的错误信息
+      try {
+        const errorHandling = await this.llmService.handleErrorAndClarify(error, `创建行程: ${dto.text}`);
+        const message = errorHandling?.message || errorMessage || '处理您的请求时遇到了问题。请检查输入参数是否正确。';
+        const details = {
+          clarificationQuestions: errorHandling?.clarificationQuestions || ['请提供更详细的行程信息'],
+          suggestedActions: errorHandling?.suggestedActions || ['重试', '联系客服'],
+          originalError: errorMessage,
+        };
+        this.logger.debug(`Error handling response: ${JSON.stringify({ message, details })}`);
+        return errorResponse(ErrorCode.BUSINESS_ERROR, message, details);
+      } catch (llmError: any) {
+        // 如果 LLM 错误处理也失败，返回默认错误信息
+        this.logger.warn(`LLM error handling failed: ${llmError?.message || llmError}`);
+        const defaultMessage = errorMessage || '处理您的请求时遇到了问题。请检查输入参数是否正确，或稍后重试。';
+        const defaultDetails = {
+          originalError: errorMessage,
+          errorType: error?.constructor?.name || 'Error',
+          clarificationQuestions: ['请提供更详细的行程信息（目的地、日期、预算等）'],
+          suggestedActions: ['重试', '使用标准创建行程接口'],
+        };
+        this.logger.debug(`Default error response: ${JSON.stringify({ message: defaultMessage, details: defaultDetails })}`);
+        return errorResponse(ErrorCode.BUSINESS_ERROR, defaultMessage, defaultDetails);
+      }
     }
   }
 
@@ -283,6 +396,323 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;
+    }
+  }
+
+  @Post(':id/share')
+  @ApiOperation({
+    summary: '生成行程分享链接',
+    description: '生成行程分享链接/二维码，设置查看/编辑权限。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: CreateTripShareDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功生成分享链接（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async createShare(
+    @Param('id') id: string,
+    @Body() dto: CreateTripShareDto
+  ) {
+    try {
+      const share = await this.tripExtendedService.createShare(id, dto);
+      return successResponse(share);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/collaborators')
+  @ApiOperation({
+    summary: '添加行程协作者',
+    description: '添加行程协作者，设置查看/编辑权限。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: AddCollaboratorDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功添加协作者（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async addCollaborator(
+    @Param('id') id: string,
+    @Body() dto: AddCollaboratorDto
+  ) {
+    try {
+      const collaborator = await this.tripExtendedService.addCollaborator(id, dto);
+      return successResponse(collaborator);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/collaborators')
+  @ApiOperation({
+    summary: '获取协作者列表',
+    description: '获取行程的所有协作者列表。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回协作者列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getCollaborators(@Param('id') id: string) {
+    try {
+      const collaborators = await this.tripExtendedService.getCollaborators(id);
+      return successResponse(collaborators);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Delete(':id/collaborators/:userId')
+  @ApiOperation({
+    summary: '移除协作者',
+    description: '移除行程的指定协作者。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'userId', description: '用户 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功移除协作者（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async removeCollaborator(
+    @Param('id') id: string,
+    @Param('userId') userId: string
+  ) {
+    try {
+      const result = await this.tripExtendedService.removeCollaborator(id, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/collect')
+  @ApiOperation({
+    summary: '收藏行程',
+    description: '收藏行程，用于后续参考。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功收藏行程（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async collectTrip(@Param('id') id: string) {
+    try {
+      // TODO: 从认证中间件获取当前用户ID
+      const userId = 'default-user';
+      const result = await this.tripExtendedService.collectTrip(id, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Delete(':id/collect')
+  @ApiOperation({
+    summary: '取消收藏行程',
+    description: '取消收藏行程。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功取消收藏（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async uncollectTrip(@Param('id') id: string) {
+    try {
+      // TODO: 从认证中间件获取当前用户ID
+      const userId = 'default-user';
+      const result = await this.tripExtendedService.uncollectTrip(id, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('collected')
+  @ApiOperation({
+    summary: '获取用户收藏的行程列表',
+    description: '获取当前用户收藏的所有行程列表。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回收藏列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getCollectedTrips() {
+    try {
+      // TODO: 从认证中间件获取当前用户ID
+      const userId = 'default-user';
+      const trips = await this.tripExtendedService.getCollectedTrips(userId);
+      return successResponse(trips);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/like')
+  @ApiOperation({
+    summary: '点赞行程',
+    description: '点赞行程，用于热门行程推荐。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功点赞行程（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async likeTrip(@Param('id') id: string) {
+    try {
+      // TODO: 从认证中间件获取当前用户ID
+      const userId = 'default-user';
+      const result = await this.tripExtendedService.likeTrip(id, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Delete(':id/like')
+  @ApiOperation({
+    summary: '取消点赞行程',
+    description: '取消点赞行程。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功取消点赞（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async unlikeTrip(@Param('id') id: string) {
+    try {
+      // TODO: 从认证中间件获取当前用户ID
+      const userId = 'default-user';
+      const result = await this.tripExtendedService.unlikeTrip(id, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('featured')
+  @ApiOperation({
+    summary: '获取热门推荐行程',
+    description: '根据点赞数和收藏数获取热门推荐行程列表。',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '返回数量限制', example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回热门行程列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getFeaturedTrips(@Query('limit') limit?: number) {
+    try {
+      const trips = await this.tripExtendedService.getFeaturedTrips(limit ? parseInt(limit.toString()) : 10);
+      return successResponse(trips);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/offline-pack')
+  @ApiOperation({
+    summary: '导出行程离线数据包',
+    description: '导出行程离线数据包（包含地点详情、路线、Schedule），用于离线查看和编辑。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功导出离线数据包（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async exportOfflinePack(@Param('id') id: string) {
+    try {
+      const pack = await this.tripExtendedService.exportOfflinePack(id);
+      return successResponse(pack);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/offline-status')
+  @ApiOperation({
+    summary: '查询离线数据包状态',
+    description: '查询行程的离线数据包是否存在及其版本信息。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回离线数据包状态（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getOfflinePackStatus(@Param('id') id: string) {
+    try {
+      const status = await this.tripExtendedService.getOfflinePackStatus(id);
+      return successResponse(status);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/offline-sync')
+  @ApiOperation({
+    summary: '同步离线修改',
+    description: '联网后同步离线修改的内容。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      description: '离线数据',
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功同步离线数据（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async syncOfflineChanges(
+    @Param('id') id: string,
+    @Body() offlineData: any
+  ) {
+    try {
+      const result = await this.tripExtendedService.syncOfflineChanges(id, offlineData);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 }

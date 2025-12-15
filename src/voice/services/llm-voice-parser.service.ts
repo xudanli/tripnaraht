@@ -243,8 +243,10 @@ ${pois || '（暂无）'}
       throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    const data = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
     
     if (!content) {
       throw new Error('OpenAI API returned empty content');
@@ -290,7 +292,9 @@ ${pois || '（暂无）'}
       throw new Error(`Gemini API error: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!content) {
@@ -334,8 +338,10 @@ ${pois || '（暂无）'}
       throw new Error(`DeepSeek API error: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    const data = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
     
     if (!content) {
       throw new Error('DeepSeek API returned empty content');
@@ -497,9 +503,11 @@ ${pois || '（暂无）'}
 
     // 生成稳定的 suggestion ID（如果 LLM 没有提供或需要覆盖）
     if (suggestion.action) {
+      // 只有非 QUERY_NEXT_STOP 类型的 action 才有 poiId
+      const poiId = 'poiId' in suggestion.action ? suggestion.action.poiId : undefined;
       const stableId = generateVoiceSuggestionId(
         suggestion.action.type,
-        suggestion.action.poiId,
+        poiId,
         transcript
       );
       suggestion.id = stableId;
