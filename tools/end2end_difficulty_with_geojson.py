@@ -128,40 +128,36 @@ def decode_polyline(polyline: str) -> List[Tuple[float, float]]:
 
 def encode_polyline(coords: List[Tuple[float, float]]) -> str:
     """
-    编码坐标列表为 Google Polyline
-    
-    Args:
-        coords: [(lat, lon), ...] 坐标列表
-    
-    Returns:
-        编码后的 polyline 字符串
+    正确的 Google Polyline 编码实现：
+    1) 对绝对 lat/lon 乘 1e5 取整
+    2) 与上一个点做差分
+    3) 差分做 ZigZag 和 5bit 分组
     """
-    def encode_value(value: float) -> str:
-        value = int(round(value * 1e5))
-        value = ~(value << 1) if value < 0 else (value << 1)
-        chunks = []
-        while value >= 0x20:
-            chunks.append(chr((0x20 | (value & 0x1f)) + 63))
-            value >>= 5
-        chunks.append(chr(value + 63))
-        return ''.join(chunks)
-    
     if not coords:
         return ""
-    
+
     result = []
-    prev_lat = 0
-    prev_lon = 0
-    
-    for lat, lon in coords:
-        dlat = int(round((lat - prev_lat) * 1e5))
-        dlon = int(round((lon - prev_lon) * 1e5))
-        result.append(encode_value(dlat))
-        result.append(encode_value(dlon))
-        prev_lat = lat
-        prev_lon = lon
-    
-    return ''.join(result)
+    prev_lat_e5 = 0
+    prev_lng_e5 = 0
+
+    for lat, lng in coords:
+        lat_e5 = int(round(lat * 1e5))
+        lng_e5 = int(round(lng * 1e5))
+
+        dlat = lat_e5 - prev_lat_e5
+        dlng = lng_e5 - prev_lng_e5
+
+        for value in (dlat, dlng):
+            value = ~(value << 1) if value < 0 else (value << 1)
+            while value >= 0x20:
+                result.append(chr((0x20 | (value & 0x1F)) + 63))
+                value >>= 5
+            result.append(chr(value + 63))
+
+        prev_lat_e5 = lat_e5
+        prev_lng_e5 = lng_e5
+
+    return "".join(result)
 
 
 # ============================================================================
@@ -454,67 +450,78 @@ def sample_elevation_google(
     max_retries: int = 2,
 ) -> List[float]:
     """
-    从 Google Elevation API 获取高程数据
-    
-    Args:
-        api_key: Google Maps API Key
-        coords: 坐标列表 [(lat, lon), ...]
-        timeout: 请求超时（秒）
-        max_retries: 最大重试次数
-    
-    Returns:
-        高程列表（米）
+    从 Google Elevation API 获取高程数据（带 samples 上限与多 key 兜底）
     """
     url = "https://maps.googleapis.com/maps/api/elevation/json"
-    
-    # 编码 polyline（Google 支持路径采样）
+
+    # ✅ Key 兜底：优先显式传入，其次环境变量
+    key = (
+        api_key
+        or os.getenv("GOOGLE_ELEVATION_API_KEY")
+        or os.getenv("GOOGLE_MAPS_API_KEY")
+        or os.getenv("GOOGLE_ROUTES_API_KEY")
+    )
+    if not key:
+        raise Exception("No Google API key provided for Elevation API")
+
     encoded = encode_polyline(coords)
-    
+
+    # ✅ 控制 samples 上限（建议 ≤ 512）
+    samples = min(len(coords), 512)
+
     params = {
         "path": f"enc:{encoded}",
-        "samples": len(coords),
-        "key": api_key,
+        "samples": samples,
+        "key": key,
     }
-    
+
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
-            response.raise_for_status()
-            data = response.json()
-            
+            resp = requests.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+
             if data.get("status") != "OK":
                 status = data.get("status", "UNKNOWN")
-                error_message = data.get("error_message", "")
-                
-                # 提供更详细的错误信息
+                msg = data.get("error_message", "")
                 if status == "REQUEST_DENIED":
-                    full_error = (
-                        f"Google Elevation API error: {status} - {error_message}\n"
-                        f"Please ensure that:\n"
-                        f"1. Elevation API is enabled in Google Cloud Console\n"
-                        f"2. Your API key has the necessary permissions\n"
-                        f"3. Billing is enabled for your Google Cloud project\n"
-                        f"Alternatively, you can use Mapbox provider with --provider mapbox"
+                    raise Exception(
+                        "Google Elevation API error: REQUEST_DENIED - "
+                        f"{msg}\nPlease ensure Elevation API is enabled and billing is on."
                     )
-                else:
-                    full_error = f"Google Elevation API error: {status} - {error_message}"
-                
-                raise Exception(full_error)
-            
-            elevations = [result["elevation"] for result in data["results"]]
+                if status == "INVALID_REQUEST":
+                    raise Exception(
+                        "Google Elevation API error: INVALID_REQUEST - "
+                        f"{msg}\nHint: check polyline encoding and ensure samples ≤ 512."
+                    )
+                raise Exception(f"Google Elevation API error: {status} - {msg}")
+
+            elevations = [r["elevation"] for r in data["results"]]
+
+            # 若被截断（samples<原长度），做简单线性插值回填到 coords 长度（可选）
+            if len(elevations) != len(coords) and len(elevations) >= 2:
+                out = []
+                for i in range(len(coords)):
+                    t = i * (len(elevations) - 1) / max(1, len(coords) - 1)
+                    j = int(math.floor(t))
+                    k = min(j + 1, len(elevations) - 1)
+                    frac = t - j
+                    out.append(elevations[j] * (1 - frac) + elevations[k] * frac)
+                elevations = out
+            elif len(elevations) == 1:
+                elevations = elevations * len(coords)
+
             return elevations
-            
+
         except requests.exceptions.Timeout:
             if attempt < max_retries:
                 time.sleep(2 ** attempt)
                 continue
             raise
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException:
             if attempt < max_retries:
                 time.sleep(2 ** attempt)
                 continue
-            raise
-        except Exception as e:
             raise
 
 
