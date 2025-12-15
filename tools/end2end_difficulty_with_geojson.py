@@ -483,7 +483,23 @@ def sample_elevation_google(
             data = response.json()
             
             if data.get("status") != "OK":
-                raise Exception(f"Google Elevation API error: {data.get('status')} - {data.get('error_message', '')}")
+                status = data.get("status", "UNKNOWN")
+                error_message = data.get("error_message", "")
+                
+                # 提供更详细的错误信息
+                if status == "REQUEST_DENIED":
+                    full_error = (
+                        f"Google Elevation API error: {status} - {error_message}\n"
+                        f"Please ensure that:\n"
+                        f"1. Elevation API is enabled in Google Cloud Console\n"
+                        f"2. Your API key has the necessary permissions\n"
+                        f"3. Billing is enabled for your Google Cloud project\n"
+                        f"Alternatively, you can use Mapbox provider with --provider mapbox"
+                    )
+                else:
+                    full_error = f"Google Elevation API error: {status} - {error_message}"
+                
+                raise Exception(full_error)
             
             elevations = [result["elevation"] for result in data["results"]]
             return elevations
@@ -806,11 +822,30 @@ def end2end(
     coords = resample_path(coords_raw, sample_m)
     
     # 3. 获取高程
+    elevations = None
     if provider.lower() == "google":
-        elevations = sample_elevation_google(api_key_or_token, coords)
+        try:
+            elevations = sample_elevation_google(api_key_or_token, coords)
+        except Exception as e:
+            # 如果 Google Elevation API 失败，尝试使用 Mapbox 作为回退
+            mapbox_token = os.getenv("MAPBOX_ACCESS_TOKEN")
+            if mapbox_token and HAS_PIL:
+                print(f"Warning: Google Elevation API failed: {e}", file=sys.stderr)
+                print("Falling back to Mapbox Terrain-RGB for elevation data...", file=sys.stderr)
+                try:
+                    elevations = sample_elevation_mapbox(mapbox_token, coords, z=z, workers=workers)
+                except Exception as e2:
+                    print(f"Warning: Mapbox fallback also failed: {e2}", file=sys.stderr)
+                    raise e  # 抛出原始 Google API 错误
+            else:
+                raise  # 没有 Mapbox token 或 PIL，抛出原始错误
     elif provider.lower() == "mapbox":
         elevations = sample_elevation_mapbox(api_key_or_token, coords, z=z, workers=workers)
     else:
+        elevations = [0.0] * len(coords)
+    
+    # 如果仍然没有高程数据，使用默认值
+    if elevations is None:
         elevations = [0.0] * len(coords)
     
     # 4. 计算指标
