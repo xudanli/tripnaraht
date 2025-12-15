@@ -110,6 +110,53 @@ export class RouteDifficultyRequestDto {
   latitude?: number;
 
   @ApiPropertyOptional({
+    description: '是否有高海拔适应（是否在高海拔过夜或最近3天平均睡眠海拔≥2500m）',
+    example: false,
+  })
+  @IsOptional()
+  hasAcclimatization?: boolean;
+
+  @ApiPropertyOptional({
+    description: '最近3天平均睡眠海拔（米）',
+    example: 2000,
+  })
+  @IsOptional()
+  @IsNumber()
+  avgSleepElevation?: number;
+
+  @ApiPropertyOptional({
+    description: '暴露时间（小时，用于判断超长暴露）',
+    example: 6,
+  })
+  @IsOptional()
+  @IsNumber()
+  exposureHours?: number;
+
+  @ApiPropertyOptional({
+    description: '体感温度（摄氏度，用于判断极寒条件）',
+    example: -5,
+  })
+  @IsOptional()
+  @IsNumber()
+  feelsLikeTemp?: number;
+
+  @ApiPropertyOptional({
+    description: '极寒持续时间（小时，体感温度<-10℃的持续时间）',
+    example: 2,
+  })
+  @IsOptional()
+  @IsNumber()
+  coldDurationHours?: number;
+
+  @ApiPropertyOptional({
+    description: '背负重量（公斤，用于判断高背负）',
+    example: 10,
+  })
+  @IsOptional()
+  @IsNumber()
+  loadWeightKg?: number;
+
+  @ApiPropertyOptional({
     description: '子类别（如 glacier, volcano）',
     example: 'volcano',
   })

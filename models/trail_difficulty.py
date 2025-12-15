@@ -37,6 +37,23 @@ class DifficultyEstimator:
     # 陡坡阈值（坡度百分比）
     STEEP_SLOPE_THRESHOLD = 0.15  # 15%
     
+    # 高海拔修正锚点（海拔米, 修正系数）
+    ELEVATION_ANCHORS = [
+        (1500, 1.00),
+        (2500, 1.05),
+        (3000, 1.10),
+        (3500, 1.20),
+        (4000, 1.30),
+        (4500, 1.45),
+        (5000, 1.60),
+        (5500, 1.80),
+        (6000, 2.10),
+        (7000, 2.50),
+    ]
+    
+    # 总修正系数上限
+    MAX_TOTAL_MULTIPLIER = 3.0
+    
     @staticmethod
     def estimate_difficulty(
         input_data: dict,
@@ -58,6 +75,12 @@ class DifficultyEstimator:
                 - elevationMeters: 海拔（米）
                 - latitude: 纬度（用于高纬度地区判断，范围-90到90）
                 - subCategory: 子类别
+                - hasAcclimatization: 是否有高海拔适应（布尔值）
+                - avgSleepElevation: 最近3天平均睡眠海拔（米）
+                - exposureHours: 暴露时间（小时）
+                - feelsLikeTemp: 体感温度（摄氏度）
+                - coldDurationHours: 极寒持续时间（小时）
+                - loadWeightKg: 背负重量（公斤）
             distance_km: 实际路线距离（公里）
             gain_m: 累计爬升（米）
             max_elev_m: 最高海拔（米）
@@ -90,12 +113,54 @@ class DifficultyEstimator:
         E = gain_m if gain_m is not None else 0
         
         # 基础强度：S_km = D + E/100
-        S_km = D + (E / 100.0)
+        base_S_km = D + (E / 100.0)
         
-        # 高海拔修正
-        if DifficultyEstimator._is_high_elevation(max_elev_m, input_data.get('elevationMeters')):
-            S_km *= 1.3
-            notes.append("altitude: ×1.3")
+        # 高海拔修正（分段线性插值）
+        elevation_m = max_elev_m or input_data.get('elevationMeters')
+        altitude_multiplier = DifficultyEstimator._get_elevation_multiplier(elevation_m)
+        
+        # 可选修正项
+        optional_multipliers = []
+        optional_notes = []
+        
+        # 缺乏适应惩罚
+        if DifficultyEstimator._needs_acclimatization_penalty(input_data):
+            optional_multipliers.append(1.10)
+            optional_notes.append("lack acclimatization: ×1.10")
+        
+        # 超长暴露时间
+        if DifficultyEstimator._has_long_exposure(input_data, distance_km):
+            optional_multipliers.append(1.05)
+            optional_notes.append("long exposure (>8h): ×1.05")
+        
+        # 极寒/风寒
+        if DifficultyEstimator._has_extreme_cold(input_data):
+            optional_multipliers.append(1.05)
+            optional_notes.append("extreme cold (<-10°C >3h): ×1.05")
+        
+        # 高背负
+        if DifficultyEstimator._has_heavy_load(input_data):
+            optional_multipliers.append(1.05)
+            optional_notes.append("heavy load (>12kg): ×1.05")
+        
+        # 计算总修正系数
+        total_multiplier = altitude_multiplier
+        for mult in optional_multipliers:
+            total_multiplier *= mult
+        
+        # 应用总修正（有上限）
+        if total_multiplier > DifficultyEstimator.MAX_TOTAL_MULTIPLIER:
+            capped_multiplier = DifficultyEstimator.MAX_TOTAL_MULTIPLIER
+            S_km = base_S_km * capped_multiplier
+            if altitude_multiplier > 1.0:
+                notes.append(f"altitude: ×{altitude_multiplier:.2f}")
+            notes.extend(optional_notes)
+            notes.append(f"total multiplier capped at {capped_multiplier:.2f}")
+        else:
+            S_km = base_S_km * total_multiplier
+            if altitude_multiplier > 1.0:
+                notes.append(f"altitude: ×{altitude_multiplier:.2f}")
+            notes.extend(optional_notes)
         
         # 高纬度修正（高纬度地区气候恶劣，增加难度）
         if DifficultyEstimator._is_high_latitude(input_data.get('latitude')):
@@ -246,9 +311,40 @@ class DifficultyEstimator:
             return DifficultyLabel.MODERATE
     
     @staticmethod
+    def _get_elevation_multiplier(elevation_m: Optional[float]) -> float:
+        """
+        根据海拔高度计算修正系数（分段线性插值）
+        
+        Args:
+            elevation_m: 海拔（米）
+        
+        Returns:
+            修正系数（≥1.0）
+        """
+        if elevation_m is None or elevation_m < 1500:
+            return 1.0
+        
+        # 如果超过最高锚点，使用最高系数
+        if elevation_m >= DifficultyEstimator.ELEVATION_ANCHORS[-1][0]:
+            return DifficultyEstimator.ELEVATION_ANCHORS[-1][1]
+        
+        # 分段线性插值
+        anchors = DifficultyEstimator.ELEVATION_ANCHORS
+        for i in range(len(anchors) - 1):
+            h1, k1 = anchors[i]
+            h2, k2 = anchors[i + 1]
+            
+            if h1 <= elevation_m < h2:
+                # 线性插值
+                t = (elevation_m - h1) / (h2 - h1)
+                return k1 + t * (k2 - k1)
+        
+        return 1.0
+    
+    @staticmethod
     def _is_high_elevation(max_elev_m: Optional[float], elevation_meters: Optional[float]) -> bool:
         """
-        判断是否为高海拔地区
+        判断是否为高海拔地区（兼容旧代码）
         
         Args:
             max_elev_m: 最高海拔（米）
@@ -259,6 +355,84 @@ class DifficultyEstimator:
         """
         elevation_m = max_elev_m or elevation_meters
         return elevation_m is not None and elevation_m >= DifficultyEstimator.HIGH_ELEVATION_THRESHOLD
+    
+    @staticmethod
+    def _needs_acclimatization_penalty(input_data: dict) -> bool:
+        """
+        判断是否需要适应惩罚
+        
+        Args:
+            input_data: 输入数据字典
+        
+        Returns:
+            如果缺乏适应（未在高海拔过夜或最近3天平均睡眠海拔 <2500m）返回 True
+        """
+        has_acclimatization = input_data.get('hasAcclimatization', False)
+        avg_sleep_elevation = input_data.get('avgSleepElevation')
+        
+        if has_acclimatization:
+            return False
+        
+        if avg_sleep_elevation is not None and avg_sleep_elevation >= 2500:
+            return False
+        
+        return True
+    
+    @staticmethod
+    def _has_long_exposure(input_data: dict, distance_km: Optional[float]) -> bool:
+        """
+        判断是否有超长暴露时间
+        
+        Args:
+            input_data: 输入数据字典
+            distance_km: 距离（公里）
+        
+        Returns:
+            如果行程 > 8小时返回 True
+        """
+        exposure_hours = input_data.get('exposureHours')
+        if exposure_hours is not None:
+            return exposure_hours > 8.0
+        
+        # 如果没有提供，尝试从距离推断（假设平均速度3.5 km/h）
+        if distance_km is not None:
+            estimated_hours = distance_km / 3.5
+            return estimated_hours > 8.0
+        
+        return False
+    
+    @staticmethod
+    def _has_extreme_cold(input_data: dict) -> bool:
+        """
+        判断是否有极寒/风寒条件
+        
+        Args:
+            input_data: 输入数据字典
+        
+        Returns:
+            如果体感温度 < -10℃ 且时间 >3小时返回 True
+        """
+        feels_like_temp = input_data.get('feelsLikeTemp')
+        cold_duration_hours = input_data.get('coldDurationHours', 0)
+        
+        if feels_like_temp is not None and feels_like_temp < -10:
+            return cold_duration_hours > 3.0
+        
+        return False
+    
+    @staticmethod
+    def _has_heavy_load(input_data: dict) -> bool:
+        """
+        判断是否有高背负
+        
+        Args:
+            input_data: 输入数据字典
+        
+        Returns:
+            如果背负重量 > 12kg 返回 True
+        """
+        load_weight_kg = input_data.get('loadWeightKg')
+        return load_weight_kg is not None and load_weight_kg > 12.0
     
     @staticmethod
     def _is_high_latitude(latitude: Optional[float]) -> bool:

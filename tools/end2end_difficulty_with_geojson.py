@@ -524,8 +524,6 @@ def sample_elevation_google(
                 continue
             raise
 
-
-
 # ============================================================================
 # 高程采样：Mapbox Terrain-RGB
 # ============================================================================
@@ -1024,6 +1022,36 @@ def main():
         help="纬度（用于高海拔地区判断，范围-90到90）",
     )
     parser.add_argument(
+        "--hasAcclimatization",
+        type=lambda x: x.lower() == 'true',
+        help="是否有高海拔适应（true/false）",
+    )
+    parser.add_argument(
+        "--avgSleepElevation",
+        type=float,
+        help="最近3天平均睡眠海拔（米）",
+    )
+    parser.add_argument(
+        "--exposureHours",
+        type=float,
+        help="暴露时间（小时）",
+    )
+    parser.add_argument(
+        "--feelsLikeTemp",
+        type=float,
+        help="体感温度（摄氏度）",
+    )
+    parser.add_argument(
+        "--coldDurationHours",
+        type=float,
+        help="极寒持续时间（小时）",
+    )
+    parser.add_argument(
+        "--loadWeightKg",
+        type=float,
+        help="背负重量（公斤）",
+    )
+    parser.add_argument(
         "--subCategory",
         type=str,
         help="子类别（如 glacier, volcano）",
@@ -1080,6 +1108,18 @@ def main():
         meta["elevationMeters"] = args.elevationMeters
     if args.latitude is not None:
         meta["latitude"] = args.latitude
+    if args.hasAcclimatization is not None:
+        meta["hasAcclimatization"] = args.hasAcclimatization
+    if args.avgSleepElevation is not None:
+        meta["avgSleepElevation"] = args.avgSleepElevation
+    if args.exposureHours is not None:
+        meta["exposureHours"] = args.exposureHours
+    if args.feelsLikeTemp is not None:
+        meta["feelsLikeTemp"] = args.feelsLikeTemp
+    if args.coldDurationHours is not None:
+        meta["coldDurationHours"] = args.coldDurationHours
+    if args.loadWeightKg is not None:
+        meta["loadWeightKg"] = args.loadWeightKg
     if args.subCategory:
         meta["subCategory"] = args.subCategory
     if args.trailDifficulty:

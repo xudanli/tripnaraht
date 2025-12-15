@@ -225,6 +225,24 @@ export class RouteDifficultyService {
     if (request.latitude !== undefined) {
       args.push('--latitude', request.latitude.toString());
     }
+    if (request.hasAcclimatization !== undefined) {
+      args.push('--hasAcclimatization', request.hasAcclimatization.toString());
+    }
+    if (request.avgSleepElevation !== undefined) {
+      args.push('--avgSleepElevation', request.avgSleepElevation.toString());
+    }
+    if (request.exposureHours !== undefined) {
+      args.push('--exposureHours', request.exposureHours.toString());
+    }
+    if (request.feelsLikeTemp !== undefined) {
+      args.push('--feelsLikeTemp', request.feelsLikeTemp.toString());
+    }
+    if (request.coldDurationHours !== undefined) {
+      args.push('--coldDurationHours', request.coldDurationHours.toString());
+    }
+    if (request.loadWeightKg !== undefined) {
+      args.push('--loadWeightKg', request.loadWeightKg.toString());
+    }
     if (request.subCategory) {
       args.push('--subCategory', request.subCategory);
     }
