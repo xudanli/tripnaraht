@@ -222,6 +222,9 @@ export class RouteDifficultyService {
     if (request.elevationMeters) {
       args.push('--elevationMeters', request.elevationMeters.toString());
     }
+    if (request.latitude !== undefined) {
+      args.push('--latitude', request.latitude.toString());
+    }
     if (request.subCategory) {
       args.push('--subCategory', request.subCategory);
     }
@@ -283,6 +286,7 @@ export class RouteDifficultyService {
       request.category || '',
       request.accessType || '',
       request.elevationMeters?.toString() || '',
+      request.latitude?.toString() || '',
       request.trailDifficulty || '',
     ];
     

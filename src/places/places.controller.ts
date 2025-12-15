@@ -991,6 +991,7 @@ export class PlacesController {
       '- 优先级1：trailDifficulty（官方评级，直接使用）\n' +
       '- 优先级2：基于距离和爬升计算（S_km = D + E/100）\n' +
       '- 高海拔（≥2000m）修正：×1.3\n' +
+      '- 高纬度（|纬度|≥60°）修正：×1.2\n' +
       '- 陡坡（≥15%）修正：上调一档\n' +
       '- accessType为VEHICLE/CABLE_CAR：至少EASY\n' +
       '- subCategory为glacier/volcano：至少MODERATE',

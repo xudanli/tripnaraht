@@ -1012,6 +1012,11 @@ def main():
         help="海拔（米）",
     )
     parser.add_argument(
+        "--latitude",
+        type=float,
+        help="纬度（用于高海拔地区判断，范围-90到90）",
+    )
+    parser.add_argument(
         "--subCategory",
         type=str,
         help="子类别（如 glacier, volcano）",
@@ -1066,6 +1071,8 @@ def main():
         meta["typicalStay"] = args.typicalStay
     if args.elevationMeters:
         meta["elevationMeters"] = args.elevationMeters
+    if args.latitude is not None:
+        meta["latitude"] = args.latitude
     if args.subCategory:
         meta["subCategory"] = args.subCategory
     if args.trailDifficulty:

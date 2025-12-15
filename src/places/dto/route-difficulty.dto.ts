@@ -100,6 +100,16 @@ export class RouteDifficultyRequestDto {
   elevationMeters?: number;
 
   @ApiPropertyOptional({
+    description: '纬度（用于高海拔地区判断，范围-90到90）',
+    example: 39.9042,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiPropertyOptional({
     description: '子类别（如 glacier, volcano）',
     example: 'volcano',
   })

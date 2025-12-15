@@ -31,6 +31,9 @@ class DifficultyEstimator:
     # 高海拔阈值（米）
     HIGH_ELEVATION_THRESHOLD = 2000
     
+    # 高纬度阈值（绝对纬度，度）
+    HIGH_LATITUDE_THRESHOLD = 60.0  # 60度以上为高纬度地区
+    
     # 陡坡阈值（坡度百分比）
     STEEP_SLOPE_THRESHOLD = 0.15  # 15%
     
@@ -53,6 +56,7 @@ class DifficultyEstimator:
                 - visitDuration: 访问时长（文本，如"半天"、"2小时"）
                 - typicalStay: 典型停留时间
                 - elevationMeters: 海拔（米）
+                - latitude: 纬度（用于高纬度地区判断，范围-90到90）
                 - subCategory: 子类别
             distance_km: 实际路线距离（公里）
             gain_m: 累计爬升（米）
@@ -89,10 +93,14 @@ class DifficultyEstimator:
         S_km = D + (E / 100.0)
         
         # 高海拔修正
-        elevation_m = max_elev_m or input_data.get('elevationMeters')
-        if elevation_m and elevation_m >= DifficultyEstimator.HIGH_ELEVATION_THRESHOLD:
+        if DifficultyEstimator._is_high_elevation(max_elev_m, input_data.get('elevationMeters')):
             S_km *= 1.3
             notes.append("altitude: ×1.3")
+        
+        # 高纬度修正（高纬度地区气候恶劣，增加难度）
+        if DifficultyEstimator._is_high_latitude(input_data.get('latitude')):
+            S_km *= 1.2
+            notes.append(f"high latitude (|lat|≥{DifficultyEstimator.HIGH_LATITUDE_THRESHOLD}°): ×1.2")
         
         # 基础难度映射
         if S_km <= DifficultyEstimator.THRESHOLD_EASY:
@@ -236,6 +244,37 @@ class DifficultyEstimator:
             return DifficultyLabel.MODERATE
         else:
             return DifficultyLabel.MODERATE
+    
+    @staticmethod
+    def _is_high_elevation(max_elev_m: Optional[float], elevation_meters: Optional[float]) -> bool:
+        """
+        判断是否为高海拔地区
+        
+        Args:
+            max_elev_m: 最高海拔（米）
+            elevation_meters: 海拔（米）
+        
+        Returns:
+            如果海拔 >= HIGH_ELEVATION_THRESHOLD 返回 True
+        """
+        elevation_m = max_elev_m or elevation_meters
+        return elevation_m is not None and elevation_m >= DifficultyEstimator.HIGH_ELEVATION_THRESHOLD
+    
+    @staticmethod
+    def _is_high_latitude(latitude: Optional[float]) -> bool:
+        """
+        判断是否为高纬度地区
+        
+        Args:
+            latitude: 纬度（度，范围-90到90）
+        
+        Returns:
+            如果绝对纬度 >= HIGH_LATITUDE_THRESHOLD 返回 True
+        """
+        if latitude is None:
+            return False
+        abs_latitude = abs(latitude)
+        return abs_latitude >= DifficultyEstimator.HIGH_LATITUDE_THRESHOLD
     
     @staticmethod
     def _bump_one_level(label: DifficultyLabel) -> DifficultyLabel:
