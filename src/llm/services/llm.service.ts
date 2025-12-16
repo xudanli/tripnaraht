@@ -267,8 +267,8 @@ export class LlmService {
     const model = this.configService.get<string>('OPENAI_MODEL') || 'gpt-3.5-turbo';
     let baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
     
-    // 记录原始 baseUrl
-    this.logger.debug(`Original OPENAI_BASE_URL: ${baseUrl}`);
+    // 记录原始 baseUrl（使用 error 级别确保可见）
+    this.logger.error(`[DEBUG] Original OPENAI_BASE_URL from env: ${baseUrl}`);
     
     // 确保使用 HTTPS（OpenAI API 要求）
     if (baseUrl.startsWith('http://')) {
@@ -285,6 +285,9 @@ export class LlmService {
     // 移除末尾的斜杠（如果有）
     baseUrl = baseUrl.replace(/\/$/, '');
     
+    // 记录处理后的 baseUrl
+    this.logger.error(`[DEBUG] Processed baseUrl: ${baseUrl}`);
+    
     const body: any = {
       model,
       messages: [{ role: 'user', content: prompt }],
@@ -299,7 +302,9 @@ export class LlmService {
 
     try {
       const url = `${baseUrl}/chat/completions`;
-      this.logger.debug(`Calling OpenAI API with URL: ${url}`);
+      // 使用 error 级别确保可见
+      this.logger.error(`[DEBUG] Calling OpenAI API with URL: ${url}`);
+      this.logger.error(`[DEBUG] URL starts with https://: ${url.startsWith('https://')}`);
       const response = await axios.post(url, body, {
         headers: {
           'Content-Type': 'application/json',
@@ -313,6 +318,10 @@ export class LlmService {
       };
       return data.choices?.[0]?.message?.content || '';
     } catch (error: any) {
+      // 记录实际使用的 URL（从错误中提取）
+      const actualUrl = error.config?.url || `${baseUrl}/chat/completions`;
+      this.logger.error(`[DEBUG] Actual URL used in request: ${actualUrl}`);
+      this.logger.error(`[DEBUG] Request config: ${JSON.stringify({ url: error.config?.url, baseURL: error.config?.baseURL, method: error.config?.method })}`);
       this.logger.error(`OpenAI API error: ${error.message}`, error.stack);
       if (error.response) {
         this.logger.error(`OpenAI API response: ${JSON.stringify(error.response.data)}`);
