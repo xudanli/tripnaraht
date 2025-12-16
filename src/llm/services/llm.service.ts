@@ -265,6 +265,7 @@ export class LlmService {
     }
 
     const model = this.configService.get<string>('OPENAI_MODEL') || 'gpt-3.5-turbo';
+    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
     
     const body: any = {
       model,
@@ -279,7 +280,8 @@ export class LlmService {
     }
 
     try {
-      const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
+      const url = `${baseUrl}/chat/completions`;
+      const response = await axios.post(url, body, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,

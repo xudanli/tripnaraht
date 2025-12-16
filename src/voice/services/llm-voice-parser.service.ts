@@ -208,7 +208,10 @@ ${pois || '（暂无）'}
    * 调用 OpenAI API（使用 Structured Outputs）
    */
   private async callOpenAI(prompt: string, schema: any): Promise<string> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+    const url = `${baseUrl}/chat/completions`;
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
