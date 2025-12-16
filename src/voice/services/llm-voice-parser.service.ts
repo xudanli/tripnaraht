@@ -208,7 +208,19 @@ ${pois || '（暂无）'}
    * 调用 OpenAI API（使用 Structured Outputs）
    */
   private async callOpenAI(prompt: string, schema: any): Promise<string> {
-    const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+    let baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+    
+    // 确保使用 HTTPS（OpenAI API 要求）
+    if (baseUrl.startsWith('http://')) {
+      this.logger.warn(`OPENAI_BASE_URL uses HTTP, converting to HTTPS: ${baseUrl}`);
+      baseUrl = baseUrl.replace('http://', 'https://');
+    }
+    
+    // 确保 URL 以 https:// 开头
+    if (!baseUrl.startsWith('https://')) {
+      throw new Error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
+    }
+    
     const url = `${baseUrl}/chat/completions`;
     
     const response = await fetch(url, {
