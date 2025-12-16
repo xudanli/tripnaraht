@@ -3,6 +3,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, BadRequestExcep
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { TripExtendedService } from './services/trip-extended.service';
+import { TripRecapService } from './services/trip-recap.service';
 import { LlmService } from '../llm/services/llm.service';
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
@@ -21,6 +22,7 @@ export class TripsController {
   constructor(
     private readonly tripsService: TripsService,
     private readonly tripExtendedService: TripExtendedService,
+    private readonly tripRecapService: TripRecapService,
     private readonly llmService: LlmService
   ) {}
 
@@ -711,6 +713,126 @@ export class TripsController {
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/recap')
+  @ApiOperation({ 
+    summary: '生成行程复盘报告',
+    description: '生成包含景点打卡顺序、徒步总里程、海拔变化等数据的完整复盘报告'
+  })
+  @ApiResponse({ status: 200, description: '生成成功' })
+  async generateRecap(@Param('id') id: string) {
+    try {
+      const recap = await this.tripRecapService.generateRecap(id);
+      return successResponse(recap);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/recap/export')
+  @ApiOperation({ 
+    summary: '导出行程复盘报告（用于分享）',
+    description: '导出为可分享的格式，包含完整的景点和徒步轨迹数据'
+  })
+  @ApiResponse({ status: 200, description: '导出成功' })
+  async exportRecap(@Param('id') id: string) {
+    try {
+      const exportData = await this.tripRecapService.exportForSharing(id);
+      return successResponse(exportData);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/trail-video-data')
+  @ApiOperation({ 
+    summary: '生成3D轨迹视频数据',
+    description: '返回GPX和关键点信息，前端可据此生成3D轨迹视频'
+  })
+  @ApiResponse({ status: 200, description: '生成成功' })
+  async generateTrailVideoData(@Param('id') id: string) {
+    try {
+      const videoData = await this.tripRecapService.generateTrailVideoData(id);
+      return successResponse(videoData);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('shared/:shareToken')
+  @ApiOperation({ 
+    summary: '根据分享令牌获取行程',
+    description: '获取分享的行程数据，包括所有Trail信息、行程项、景点等完整数据。可用于预览分享的行程。'
+  })
+  @ApiParam({ name: 'shareToken', description: '分享令牌', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiResponse({ status: 200, description: '获取成功，返回完整的行程数据（包括Trail）' })
+  @ApiResponse({ status: 404, description: '分享链接不存在或已失效' })
+  @ApiResponse({ status: 400, description: '分享链接已过期' })
+  async getTripByShareToken(@Param('shareToken') shareToken: string) {
+    try {
+      const tripData = await this.tripExtendedService.getTripByShareToken(shareToken);
+      return successResponse(tripData);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post('shared/:shareToken/import')
+  @ApiOperation({ 
+    summary: '导入分享的行程',
+    description: '从分享链接导入行程，包括所有Trail数据，创建新的行程副本。会完整复制所有行程项、Trail关联、GPX数据等。'
+  })
+  @ApiParam({ name: 'shareToken', description: '分享令牌', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiBody({
+    description: '导入行程请求',
+    schema: {
+      type: 'object',
+      required: ['destination', 'startDate', 'endDate'],
+      properties: {
+        destination: { type: 'string', description: '目的地', example: '武功山' },
+        startDate: { type: 'string', description: '开始日期（ISO 8601）', example: '2024-05-01' },
+        endDate: { type: 'string', description: '结束日期（ISO 8601）', example: '2024-05-03' },
+        userId: { type: 'string', description: '用户ID（可选）', example: 'user123' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '导入成功，返回新创建的行程ID' })
+  @ApiResponse({ status: 404, description: '分享链接不存在或已失效' })
+  @ApiResponse({ status: 400, description: '分享链接已过期或数据验证失败' })
+  async importTripFromShare(
+    @Param('shareToken') shareToken: string,
+    @Body() body: {
+      destination: string;
+      startDate: string;
+      endDate: string;
+      userId?: string;
+    }
+  ) {
+    try {
+      const result = await this.tripExtendedService.importTripFromShare(shareToken, body);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }

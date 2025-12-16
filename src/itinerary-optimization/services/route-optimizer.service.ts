@@ -432,7 +432,12 @@ export class RouteOptimizerService {
 
     for (let i = 0; i < route.nodes.length; i++) {
       const node = route.nodes[i];
-      const duration = node.estimatedDuration || 60; // 默认 60 分钟
+      
+      // 如果节点关联了Trail，使用Trail的预计耗时
+      let duration = node.estimatedDuration || 60; // 默认 60 分钟
+      if (node.trailData?.estimatedDurationHours) {
+        duration = node.trailData.estimatedDurationHours * 60;
+      }
 
       // 检查是否超过结束时间
       if (currentTime.plus({ minutes: duration }) > endTime) {

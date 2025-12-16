@@ -434,8 +434,8 @@ async function main() {
       successCount++;
     } else if (result === false) {
       // 检查是否是跳过（已有数据）
-      const metadata = place.metadata || {};
-      if (!options.force && metadata.difficultyMetadata?.level) {
+      const metadata = place.metadata as any || {};
+      if (!options.force && metadata?.difficultyMetadata?.level) {
         skipCount++;
       } else {
         failCount++;

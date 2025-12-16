@@ -135,11 +135,11 @@ def encode_polyline(coords: List[Tuple[float, float]]) -> str:
     """
     if not coords:
         return ""
-
+    
     result = []
     prev_lat_e5 = 0
     prev_lng_e5 = 0
-
+    
     for lat, lng in coords:
         lat_e5 = int(round(lat * 1e5))
         lng_e5 = int(round(lng * 1e5))
@@ -251,7 +251,7 @@ def get_route_google(
             if response.status_code != 200:
                 try:
                     data = response.json()
-                    error_msg = data.get("error", {}).get("message", f"HTTP {response.status_code}")
+                error_msg = data.get("error", {}).get("message", f"HTTP {response.status_code}")
                 except:
                     error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
                 raise Exception(f"Google Routes API error: {response.status_code} - {error_msg}")
@@ -453,7 +453,7 @@ def sample_elevation_google(
     从 Google Elevation API 获取高程数据（带 samples 上限与多 key 兜底）
     """
     url = "https://maps.googleapis.com/maps/api/elevation/json"
-
+    
     # ✅ Key 兜底：优先显式传入，其次环境变量
     key = (
         api_key
@@ -468,19 +468,19 @@ def sample_elevation_google(
 
     # ✅ 控制 samples 上限（建议 ≤ 512）
     samples = min(len(coords), 512)
-
+    
     params = {
         "path": f"enc:{encoded}",
         "samples": samples,
         "key": key,
     }
-
+    
     for attempt in range(max_retries + 1):
         try:
             resp = requests.get(url, params=params, timeout=timeout)
             resp.raise_for_status()
             data = resp.json()
-
+            
             if data.get("status") != "OK":
                 status = data.get("status", "UNKNOWN")
                 msg = data.get("error_message", "")
@@ -495,7 +495,7 @@ def sample_elevation_google(
                         f"{msg}\nHint: check polyline encoding and ensure samples ≤ 512."
                     )
                 raise Exception(f"Google Elevation API error: {status} - {msg}")
-
+            
             elevations = [r["elevation"] for r in data["results"]]
 
             # 若被截断（samples<原长度），做简单线性插值回填到 coords 长度（可选）
@@ -512,7 +512,7 @@ def sample_elevation_google(
                 elevations = elevations * len(coords)
 
             return elevations
-
+            
         except requests.exceptions.Timeout:
             if attempt < max_retries:
                 time.sleep(2 ** attempt)
@@ -830,7 +830,7 @@ def end2end(
     elevations = None
     if provider.lower() == "google":
         try:
-            elevations = sample_elevation_google(api_key_or_token, coords)
+        elevations = sample_elevation_google(api_key_or_token, coords)
         except Exception as e:
             # 如果 Google Elevation API 失败，尝试使用 Mapbox 作为回退
             mapbox_token = os.getenv("MAPBOX_ACCESS_TOKEN")

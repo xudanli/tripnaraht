@@ -114,6 +114,30 @@ export class ItineraryItemsService {
     }
 
     // ============================================
+    // 步骤 3.5: 验证 Trail（如果提供了trailId）
+    // ============================================
+    if (dto.trailId) {
+      const trail = await this.prisma.trail.findUnique({
+        where: { id: dto.trailId },
+      });
+
+      if (!trail) {
+        throw new NotFoundException(`找不到指定徒步路线 (ID: ${dto.trailId})`);
+      }
+
+      // 如果关联了Trail，验证时间是否合理（至少需要estimatedDurationHours）
+      if (trail.estimatedDurationHours) {
+        const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        const minDuration = trail.estimatedDurationHours * 0.8; // 允许20%的误差
+        if (durationHours < minDuration) {
+          throw new BadRequestException(
+            `徒步路线预计耗时 ${trail.estimatedDurationHours} 小时，但行程时间仅 ${durationHours.toFixed(1)} 小时，可能不够`
+          );
+        }
+      }
+    }
+
+    // ============================================
     // 步骤 4: 写入数据库
     // ============================================
     return this.prisma.itineraryItem.create({
@@ -121,6 +145,7 @@ export class ItineraryItemsService {
         id: randomUUID(),
         tripDayId: dto.tripDayId,
         placeId: dto.placeId,
+        trailId: dto.trailId,
         type: dto.type as any, // Prisma 枚举类型
         startTime: start,
         endTime: end,
@@ -130,6 +155,20 @@ export class ItineraryItemsService {
         place: {
           include: {
             city: true,
+          },
+        },
+        trail: {
+          include: {
+            startPlace: true,
+            endPlace: true,
+            waypoints: {
+              include: {
+                place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
           },
         },
         tripDay: {
@@ -148,6 +187,20 @@ export class ItineraryItemsService {
     return this.prisma.itineraryItem.findMany({
       include: {
         place: true,
+        trail: {
+          include: {
+            startPlace: true,
+            endPlace: true,
+            waypoints: {
+              include: {
+                place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+        },
         tripDay: {
           include: {
             trip: true,
@@ -172,6 +225,20 @@ export class ItineraryItemsService {
             city: true,
           },
         },
+        trail: {
+          include: {
+            startPlace: true,
+            endPlace: true,
+            waypoints: {
+              include: {
+                place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+        },
         tripDay: {
           include: {
             trip: true,
@@ -194,6 +261,20 @@ export class ItineraryItemsService {
       where: { tripDayId },
       include: {
         place: true,
+        trail: {
+          include: {
+            startPlace: true,
+            endPlace: true,
+            waypoints: {
+              include: {
+                place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+        },
       },
       orderBy: {
         startTime: 'asc',
@@ -246,6 +327,7 @@ export class ItineraryItemsService {
       where: { id },
       data: {
         ...(updateDto.placeId !== undefined && { placeId: updateDto.placeId }),
+        ...(updateDto.trailId !== undefined && { trailId: updateDto.trailId }),
         ...(updateDto.type && { type: updateDto.type as any }),
         ...(updateDto.startTime && { startTime: new Date(updateDto.startTime) }),
         ...(updateDto.endTime && { endTime: new Date(updateDto.endTime) }),
@@ -253,6 +335,20 @@ export class ItineraryItemsService {
       },
       include: {
         place: true,
+        trail: {
+          include: {
+            startPlace: true,
+            endPlace: true,
+            waypoints: {
+              include: {
+                place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+        },
         tripDay: true,
       },
     });

@@ -38,6 +38,15 @@ export class CreateItineraryItemDto {
   @IsOptional()
   placeId?: number;
 
+  @ApiPropertyOptional({
+    description: '徒步路线 ID（关联到 Trail）。当type为ACTIVITY且是徒步活动时使用',
+    example: 1,
+    type: Number
+  })
+  @IsInt()
+  @IsOptional()
+  trailId?: number;
+
   @ApiProperty({
     description: '行程项类型',
     enum: ItemType,

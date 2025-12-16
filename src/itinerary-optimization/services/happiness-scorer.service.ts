@@ -103,9 +103,10 @@ export class HappinessScorerService {
   }
 
   /**
-   * 计算疲劳惩罚
+   * 计算疲劳惩罚（集成Trail体力消耗）
    * 
    * 如果连续两个高强度活动，扣 50 分
+   * 如果包含Trail，根据Trail的体力消耗增加惩罚
    */
   private calculateTiredPenalty(nodes: PlaceNode[]): number {
     let penalty = 0;
@@ -131,9 +132,62 @@ export class HappinessScorerService {
       ) {
         penalty += 30;
       }
+
+      // Trail体力消耗惩罚
+      if (current.trailData) {
+        const trailPenalty = this.calculateTrailFatiguePenalty(current.trailData);
+        penalty += trailPenalty;
+      }
+    }
+
+    // 检查最后一个节点是否包含Trail
+    const lastNode = nodes[nodes.length - 1];
+    if (lastNode?.trailData) {
+      const trailPenalty = this.calculateTrailFatiguePenalty(lastNode.trailData);
+      penalty += trailPenalty;
     }
 
     return penalty;
+  }
+
+  /**
+   * 计算Trail的疲劳惩罚
+   * 
+   * 将Trail的体力消耗转换为疲劳惩罚分数
+   */
+  private calculateTrailFatiguePenalty(trailData: PlaceNode['trailData']): number {
+    if (!trailData) return 0;
+
+    // 基础惩罚：距离 + 爬升
+    // 每公里扣5分，每100米爬升扣3分
+    let penalty = trailData.distanceKm * 5 + trailData.elevationGainM / 100 * 3;
+
+    // 难度惩罚
+    switch (trailData.difficultyLevel) {
+      case 'EASY':
+        penalty *= 0.8; // 简单路线减少20%惩罚
+        break;
+      case 'MODERATE':
+        // 无调整
+        break;
+      case 'HARD':
+        penalty *= 1.3; // 困难路线增加30%惩罚
+        break;
+      case 'EXTREME':
+        penalty *= 1.8; // 极限路线增加80%惩罚
+        break;
+    }
+
+    // 海拔惩罚（高海拔额外惩罚）
+    if (trailData.maxElevationM) {
+      if (trailData.maxElevationM > 4000) {
+        penalty *= 1.5; // 4000米以上增加50%惩罚
+      } else if (trailData.maxElevationM > 3000) {
+        penalty *= 1.3; // 3000-4000米增加30%惩罚
+      }
+    }
+
+    return Math.round(penalty);
   }
 
   /**

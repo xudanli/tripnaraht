@@ -39,6 +39,18 @@ export interface PlaceNode {
   
   /** 是否为休息点 */
   isRest?: boolean;
+
+  /** 关联的Trail ID（如果是徒步路线） */
+  trailId?: number;
+
+  /** Trail数据（如果关联了Trail） */
+  trailData?: {
+    distanceKm: number;
+    elevationGainM: number;
+    maxElevationM?: number;
+    difficultyLevel?: string;
+    estimatedDurationHours?: number;
+  };
 }
 
 /**

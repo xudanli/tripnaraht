@@ -135,9 +135,11 @@ model ItineraryItem {
   endTime   DateTime?
   type      ItemType
   placeId   Int?
+  trailId   Int? // 新增：徒步路线ID
   tripDayId String
   note      String?
   place     Place?    @relation(fields: [placeId], references: [id])
+  trail     Trail?    @relation(fields: [trailId], references: [id])
   tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
 }
 
@@ -158,6 +160,10 @@ model Place {
   updatedAt        DateTime
   itineraryItems   ItineraryItem[]
   city             City?                     @relation(fields: [cityId], references: [id])
+  // 新增：徒步路线关联
+  trailsAsStart    Trail[]                   @relation("TrailStartPlace")
+  trailsAsEnd      Trail[]                   @relation("TrailEndPlace")
+  trailWaypoints   TrailWaypoint[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
 }
@@ -195,20 +201,20 @@ model RawFlightData {
 }
 
 model Trip {
-  id           String    @id
-  destination  String
-  startDate    DateTime
-  endDate      DateTime
-  budgetConfig Json?
-  pacingConfig Json?
-  metadata     Json? // 扩展信息（分享链接、离线数据包等）
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime
-  days         TripDay[]
+  id            String             @id
+  destination   String
+  startDate     DateTime
+  endDate       DateTime
+  budgetConfig  Json?
+  pacingConfig  Json?
+  metadata      Json? // 扩展信息（分享链接、离线数据包等）
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime
+  days          TripDay[]
   collaborators TripCollaborator[]
-  shares       TripShare[]
-  collections  TripCollection[]
-  likes        TripLike[]
+  shares        TripShare[]
+  collections   TripCollection[]
+  likes         TripLike[]
 }
 
 model TripDay {
@@ -217,6 +223,84 @@ model TripDay {
   tripId String
   items  ItineraryItem[]
   trip   Trip            @relation(fields: [tripId], references: [id])
+}
+
+/**
+ * 徒步路线表
+ * 存储徒步路线的完整信息，包括GPX轨迹、难度评估等
+ */
+model Trail {
+  id          Int     @id @default(autoincrement())
+  uuid        String  @unique
+  nameCN      String // 中文名称（主要显示）
+  nameEN      String? // 英文名称
+  description String? // 路线描述
+
+  // 路线基本信息
+  distanceKm     Float? // 总距离（公里）
+  elevationGainM Float? // 累计爬升（米）
+  elevationLossM Float? // 累计下降（米）
+  maxElevationM  Float? // 最高海拔（米）
+  minElevationM  Float? // 最低海拔（米）
+  averageSlope   Float? // 平均坡度（%）
+
+  // 难度评估
+  difficultyLevel      String? // EXTREME, HARD, MODERATE, EASY
+  equivalentDistanceKm Float? // 等效距离（公里）
+  fatigueScore         Float? // 疲劳评分
+
+  // 轨迹数据
+  gpxData    Json? // GPX轨迹数据（JSON格式，包含坐标点数组）
+  gpxFileUrl String? // GPX文件URL（如果存储在外部）
+  bounds     Json? // 边界框 {minlat, minlon, maxlat, maxlon}
+
+  // 关联的Place
+  startPlaceId Int? // 起点Place ID
+  endPlaceId   Int? // 终点Place ID
+  startPlace   Place? @relation("TrailStartPlace", fields: [startPlaceId], references: [id])
+  endPlace     Place? @relation("TrailEndPlace", fields: [endPlaceId], references: [id])
+
+  // 途经点（多对多关系）
+  waypoints TrailWaypoint[]
+
+  // 元数据
+  metadata  Json? // 扩展信息（来源、评分、注意事项等）
+  source    String? // 数据来源（alltrails, gpx, manual等）
+  sourceUrl String? // 来源链接
+  rating    Float? // 评分
+
+  // 时间估算
+  estimatedDurationHours Float? // 预计耗时（小时）
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  itineraryItems ItineraryItem[]
+
+  @@index([startPlaceId])
+  @@index([endPlaceId])
+  @@index([difficultyLevel])
+  @@index([source])
+}
+
+/**
+ * 徒步路线途经点表
+ * 存储路线的途经点（中间点）
+ */
+model TrailWaypoint {
+  id      Int     @id @default(autoincrement())
+  trailId Int
+  placeId Int
+  order   Int // 途经点顺序（从起点到终点，从0开始）
+  note    String? // 途经点备注
+
+  trail Trail @relation(fields: [trailId], references: [id], onDelete: Cascade)
+  place Place @relation(fields: [placeId], references: [id])
+
+  @@unique([trailId, placeId])
+  @@index([trailId])
+  @@index([placeId])
 }
 
 /// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.
@@ -563,14 +647,14 @@ model TripCollaborator {
 /// 行程分享表
 /// 存储行程分享链接和权限设置
 model TripShare {
-  id          String   @id @default(uuid())
-  tripId      String
-  shareToken  String   @unique // 分享令牌（用于生成分享链接）
-  permission  String   @default("VIEW") // 权限（VIEW, EDIT）
-  expiresAt   DateTime? // 过期时间（可选）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid())
+  tripId     String
+  shareToken String    @unique // 分享令牌（用于生成分享链接）
+  permission String    @default("VIEW") // 权限（VIEW, EDIT）
+  expiresAt  DateTime? // 过期时间（可选）
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  trip       Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId])
   @@index([shareToken])
@@ -607,12 +691,12 @@ model TripLike {
 /// 离线数据包表
 /// 存储行程的离线数据包信息
 model TripOfflinePack {
-  id          String   @id @default(uuid())
-  tripId      String   @unique
-  data        Json // 离线数据包内容（包含地点详情、路线、Schedule）
-  version     Int      @default(1) // 数据包版本
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  tripId    String   @unique
+  data      Json // 离线数据包内容（包含地点详情、路线、Schedule）
+  version   Int      @default(1) // 数据包版本
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tripId])
 }

@@ -89,6 +89,132 @@ export class TripExtendedService {
   }
 
   /**
+   * 根据分享令牌获取行程（用于导入）
+   */
+  async getTripByShareToken(shareToken: string) {
+    const share = await this.prisma.tripShare.findUnique({
+      where: { shareToken },
+      include: {
+        trip: {
+          include: {
+            days: {
+              include: {
+                items: {
+                  include: {
+                    place: true,
+                    trail: {
+                      include: {
+                        startPlace: true,
+                        endPlace: true,
+                        waypoints: {
+                          include: {
+                            place: true,
+                          },
+                          orderBy: {
+                            order: 'asc',
+                          },
+                        },
+                      },
+                    },
+                  },
+                  orderBy: {
+                    startTime: 'asc',
+                  },
+                },
+              },
+              orderBy: {
+                date: 'asc',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!share) {
+      throw new NotFoundException('分享链接不存在或已失效');
+    }
+
+    // 检查是否过期
+    if (share.expiresAt && share.expiresAt < new Date()) {
+      throw new BadRequestException('分享链接已过期');
+    }
+
+    return {
+      trip: share.trip,
+      permission: share.permission,
+      shareToken: share.shareToken,
+    };
+  }
+
+  /**
+   * 导入行程（从分享链接）
+   */
+  async importTripFromShare(
+    shareToken: string,
+    newTripData: {
+      destination: string;
+      startDate: string;
+      endDate: string;
+      userId?: string;
+    }
+  ) {
+    // 获取原行程
+    const shareData = await this.getTripByShareToken(shareToken);
+    const originalTrip = shareData.trip;
+
+    // 创建新行程
+    const newTrip = await this.prisma.trip.create({
+      data: {
+        id: randomUUID(),
+        destination: newTripData.destination,
+        startDate: new Date(newTripData.startDate),
+        endDate: new Date(newTripData.endDate),
+        budgetConfig: originalTrip.budgetConfig as any,
+        pacingConfig: originalTrip.pacingConfig as any,
+        metadata: {
+          ...((originalTrip.metadata as any) || {}),
+          importedFrom: shareToken,
+          importedAt: new Date().toISOString(),
+        } as any,
+      } as any,
+    });
+
+    // 复制行程日期和行程项（包括Trail数据）
+    for (const day of originalTrip.days) {
+      const newDay = await this.prisma.tripDay.create({
+        data: {
+          id: randomUUID(),
+          tripId: newTrip.id,
+          date: day.date,
+        },
+      });
+
+      // 复制行程项
+      for (const item of day.items) {
+        await this.prisma.itineraryItem.create({
+          data: {
+            id: randomUUID(),
+            tripDayId: newDay.id,
+            placeId: item.placeId,
+            trailId: item.trailId, // 复制Trail关联
+            type: item.type as any,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            note: item.note,
+          } as any,
+        });
+      }
+    }
+
+    return {
+      tripId: newTrip.id,
+      importedFrom: shareToken,
+      message: '行程导入成功，包括所有Trail数据',
+    };
+  }
+
+  /**
    * 获取协作者列表
    */
   async getCollaborators(tripId: string) {

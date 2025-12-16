@@ -1,16 +1,19 @@
 // scripts/import-gpx-to-place.ts
 
 /**
- * 从 GPX 文件导入数据到 Place 表
+ * 从 GPX 文件导入数据到 Place 表或 Trail 表
  * 
  * 使用方法:
- *   npm run import:gpx -- docs/武功山.gpx [--place-id=123] [--name=武功山]
+ *   # 创建Trail（推荐）
+ *   npm run import:gpx -- docs/武功山.gpx --create-trail [--start-place-id=123] [--end-place-id=456]
+ *   
+ *   # 更新Place（旧方式，向后兼容）
+ *   npm run import:gpx -- docs/武功山.gpx --place-id=123 [--name=武功山]
  * 
  * 功能:
  *   1. 解析 GPX 文件，提取轨迹点、距离、爬升、高程等信息
- *   2. 查找或指定 Place 记录
- *   3. 更新 Place 的 metadata 和 physicalMetadata
- *   4. 计算路线难度
+ *   2. 创建 Trail 记录（推荐）或更新 Place 记录（向后兼容）
+ *   3. 计算路线难度
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -18,6 +21,7 @@ import { GPXParser } from '../src/places/utils/gpx-parser.util';
 import { GPXFatigueCalculator } from '../src/places/utils/gpx-fatigue-calculator.util';
 import { PhysicalMetadataGenerator } from '../src/places/utils/physical-metadata-generator.util';
 import { PlaceCategory } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -317,6 +321,109 @@ async function updatePlaceFromGPX(
 }
 
 /**
+ * 创建Trail记录
+ */
+async function createTrailFromGPX(
+  gpxAnalysis: any,
+  gpxMetadata: any,
+  points: any[],
+  startPlaceId?: number,
+  endPlaceId?: number,
+  dryRun: boolean = false
+): Promise<boolean> {
+  try {
+    // 计算难度
+    const difficultyMeta = {
+      category: 'ATTRACTION',
+      accessType: 'HIKING',
+      elevationMeters: gpxAnalysis.maxElevation,
+      latitude: gpxMetadata.bounds 
+        ? (gpxMetadata.bounds.minlat + gpxMetadata.bounds.maxlat) / 2
+        : undefined,
+    };
+    
+    const difficultyResult = await calculateDifficulty(
+      gpxAnalysis.totalDistance,
+      gpxAnalysis.elevationGain,
+      gpxAnalysis.maxElevation,
+      gpxAnalysis.averageSlope / 100,
+      difficultyMeta
+    );
+    
+    if (difficultyResult) {
+      console.log(`  📊 难度计算结果:`);
+      console.log(`     距离: ${difficultyResult.distance_km} km`);
+      console.log(`     爬升: ${difficultyResult.elevation_gain_m} m`);
+      console.log(`     难度: ${difficultyResult.label}`);
+      console.log(`     等效强度: ${difficultyResult.S_km} km`);
+    }
+    
+    // 准备Trail数据
+    const trailData: any = {
+      uuid: randomUUID(),
+      nameCN: gpxMetadata.name || '未命名路线',
+      nameEN: gpxMetadata.name || undefined,
+      description: gpxMetadata.description,
+      distanceKm: gpxAnalysis.totalDistance,
+      elevationGainM: gpxAnalysis.elevationGain,
+      elevationLossM: gpxAnalysis.elevationLoss,
+      maxElevationM: gpxAnalysis.maxElevation,
+      minElevationM: gpxAnalysis.minElevation,
+      averageSlope: gpxAnalysis.averageSlope,
+      difficultyLevel: difficultyResult?.label,
+      equivalentDistanceKm: difficultyResult?.S_km,
+      fatigueScore: gpxAnalysis.fatigueScore,
+      gpxData: points.map(p => ({
+        lat: p.lat,
+        lng: p.lng,
+        elevation: p.elevation,
+        time: p.time,
+      })),
+      bounds: gpxMetadata.bounds,
+      startPlaceId: startPlaceId,
+      endPlaceId: endPlaceId,
+      metadata: {
+        source: 'gpx',
+        sourceUrl: gpxMetadata.name ? `gpx:${gpxMetadata.name}` : undefined,
+        calculatedAt: new Date().toISOString(),
+        difficultyMetadata: difficultyResult ? {
+          level: difficultyResult.label,
+          source: 'calculated',
+          confidence: 0.9,
+          calculatedAt: new Date().toISOString(),
+          distance_km: difficultyResult.distance_km,
+          elevation_gain_m: difficultyResult.elevation_gain_m,
+          slope_avg: difficultyResult.slope_avg,
+          S_km: difficultyResult.S_km,
+          notes: difficultyResult.notes,
+        } : undefined,
+      },
+      source: 'gpx',
+      estimatedDurationHours: gpxAnalysis.totalDistance > 0 
+        ? gpxAnalysis.totalDistance / 3.0 // 假设平均速度3km/h
+        : undefined,
+    };
+    
+    if (dryRun) {
+      console.log(`  🔍 [DRY RUN] 将创建以下Trail:`);
+      console.log(JSON.stringify(trailData, null, 2));
+      return true;
+    }
+    
+    // 创建Trail
+    const trail = await prisma.trail.create({
+      data: trailData as any,
+    });
+    
+    console.log(`  ✅ 已创建 Trail: ${trail.nameCN} (ID: ${trail.id})`);
+    return true;
+  } catch (error: any) {
+    console.error(`  ❌ 创建Trail失败: ${error?.message || String(error)}`);
+    return false;
+  }
+}
+
+/**
  * 主函数
  */
 async function main() {
@@ -324,21 +431,32 @@ async function main() {
   const gpxFilePath = args[0];
   const placeIdArg = args.find(arg => arg.startsWith('--place-id='));
   const nameArg = args.find(arg => arg.startsWith('--name='));
+  const createTrail = args.includes('--create-trail');
+  const startPlaceIdArg = args.find(arg => arg.startsWith('--start-place-id='));
+  const endPlaceIdArg = args.find(arg => arg.startsWith('--end-place-id='));
   const dryRun = args.includes('--dry-run');
   
   if (!gpxFilePath) {
     console.error('❌ 请提供 GPX 文件路径');
     console.log('\n使用方法:');
-    console.log('  npm run import:gpx -- <gpx文件路径> [选项]');
+    console.log('  # 创建Trail（推荐）');
+    console.log('  npm run import:gpx -- <gpx文件路径> --create-trail [--start-place-id=123] [--end-place-id=456]');
+    console.log('\n  # 更新Place（向后兼容）');
+    console.log('  npm run import:gpx -- <gpx文件路径> --place-id=123 [--name=武功山]');
     console.log('\n选项:');
-    console.log('  --place-id=123     # 指定 Place ID');
-    console.log('  --name=武功山      # 通过名称查找 Place');
-    console.log('  --dry-run          # 预览模式，不实际更新');
+    console.log('  --create-trail          # 创建Trail记录（推荐）');
+    console.log('  --start-place-id=123    # 起点Place ID');
+    console.log('  --end-place-id=456      # 终点Place ID');
+    console.log('  --place-id=123          # 指定 Place ID（更新Place模式）');
+    console.log('  --name=武功山           # 通过名称查找 Place（更新Place模式）');
+    console.log('  --dry-run               # 预览模式，不实际更新');
     return;
   }
   
   const placeId = placeIdArg ? parseInt(placeIdArg.split('=')[1].trim()) : undefined;
   const name = nameArg ? nameArg.split('=')[1].trim() : undefined;
+  const startPlaceId = startPlaceIdArg ? parseInt(startPlaceIdArg.split('=')[1].trim()) : undefined;
+  const endPlaceId = endPlaceIdArg ? parseInt(endPlaceIdArg.split('=')[1].trim()) : undefined;
   
   console.log('📂 读取 GPX 文件...\n');
   console.log(`   文件路径: ${gpxFilePath}`);
@@ -376,30 +494,83 @@ async function main() {
     console.log(`   平均坡度: ${gpxAnalysis.averageSlope.toFixed(2)}%`);
     console.log(`   等效距离: ${gpxAnalysis.equivalentDistance.toFixed(2)} km`);
     
-    // 查找或创建 Place
-    console.log(`\n🔍 查找 Place 记录...`);
-    const place = await findOrCreatePlace(placeId, name, gpxMetadata);
-    
-    if (!place) {
-      return;
-    }
-    
-    console.log(`   ✅ 找到 Place: ${place.nameCN || place.nameEN} (ID: ${place.id})`);
-    
-    if (dryRun) {
-      console.log(`\n🔍 [DRY RUN 模式] 仅预览，不会实际更新数据库\n`);
-    }
-    
-    // 更新 Place
-    const success = await updatePlaceFromGPX(place.id, gpxAnalysis, gpxMetadata, dryRun);
-    
-    if (success) {
-      console.log(`\n${'='.repeat(60)}`);
+    // 根据模式选择创建Trail或更新Place
+    if (createTrail) {
+      // 创建Trail模式
+      console.log(`\n🏔️  创建 Trail 记录...`);
+      
+      if (startPlaceId) {
+        const startPlace = await prisma.place.findUnique({
+          where: { id: startPlaceId },
+          select: { id: true, nameCN: true, nameEN: true },
+        });
+        if (startPlace) {
+          console.log(`   起点: ${startPlace.nameCN || startPlace.nameEN} (ID: ${startPlace.id})`);
+        } else {
+          console.warn(`   ⚠️  起点Place ID ${startPlaceId} 不存在，将跳过`);
+        }
+      }
+      
+      if (endPlaceId) {
+        const endPlace = await prisma.place.findUnique({
+          where: { id: endPlaceId },
+          select: { id: true, nameCN: true, nameEN: true },
+        });
+        if (endPlace) {
+          console.log(`   终点: ${endPlace.nameCN || endPlace.nameEN} (ID: ${endPlace.id})`);
+        } else {
+          console.warn(`   ⚠️  终点Place ID ${endPlaceId} 不存在，将跳过`);
+        }
+      }
+      
       if (dryRun) {
-        console.log(`💡 这是 DRY RUN 模式，未实际更新数据库`);
-        console.log(`   如需实际更新，请移除 --dry-run 参数`);
-      } else {
-        console.log(`✅ GPX 数据已成功更新到 Place ID ${place.id}`);
+        console.log(`\n🔍 [DRY RUN 模式] 仅预览，不会实际创建数据库\n`);
+      }
+      
+      const success = await createTrailFromGPX(
+        gpxAnalysis,
+        gpxMetadata,
+        points,
+        startPlaceId,
+        endPlaceId,
+        dryRun
+      );
+      
+      if (success) {
+        console.log(`\n${'='.repeat(60)}`);
+        if (dryRun) {
+          console.log(`💡 这是 DRY RUN 模式，未实际创建数据库`);
+          console.log(`   如需实际创建，请移除 --dry-run 参数`);
+        } else {
+          console.log(`✅ GPX 数据已成功创建为 Trail 记录`);
+        }
+      }
+    } else {
+      // 更新Place模式（向后兼容）
+      console.log(`\n🔍 查找 Place 记录...`);
+      const place = await findOrCreatePlace(placeId, name, gpxMetadata);
+      
+      if (!place) {
+        return;
+      }
+      
+      console.log(`   ✅ 找到 Place: ${place.nameCN || place.nameEN} (ID: ${place.id})`);
+      
+      if (dryRun) {
+        console.log(`\n🔍 [DRY RUN 模式] 仅预览，不会实际更新数据库\n`);
+      }
+      
+      // 更新 Place
+      const success = await updatePlaceFromGPX(place.id, gpxAnalysis, gpxMetadata, dryRun);
+      
+      if (success) {
+        console.log(`\n${'='.repeat(60)}`);
+        if (dryRun) {
+          console.log(`💡 这是 DRY RUN 模式，未实际更新数据库`);
+          console.log(`   如需实际更新，请移除 --dry-run 参数`);
+        } else {
+          console.log(`✅ GPX 数据已成功更新到 Place ID ${place.id}`);
+        }
       }
     }
   } catch (error: any) {

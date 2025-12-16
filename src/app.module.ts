@@ -20,6 +20,7 @@ import { SystemModule } from './system/system.module';
 import { UsersModule } from './users/users.module';
 import { TripTemplatesModule } from './trip-templates/trip-templates.module';
 import { LlmModule } from './llm/llm.module';
+import { TrailsModule } from './trails/trails.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { LlmModule } from './llm/llm.module';
     UsersModule, // 用户画像模块
     TripTemplatesModule, // 行程模板模块
     LlmModule, // LLM 通用服务模块
+    TrailsModule, // 徒步路线模块
   ],
 })
 export class AppModule {}
