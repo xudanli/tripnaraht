@@ -1,5 +1,5 @@
 // src/places/places.controller.ts
-import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
@@ -17,6 +17,8 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 @ApiTags('places')
 @Controller('places')
 export class PlacesController {
+  private readonly logger = new Logger(PlacesController.name);
+
   constructor(
     private readonly placesService: PlacesService,
     private readonly hotelRecommendationService: HotelRecommendationService,
@@ -903,6 +905,70 @@ export class PlacesController {
     }
     const places = await this.placesService.findBatch(body.ids);
     return successResponse(places);
+  }
+
+  @Get('search/semantic')
+  @ApiOperation({
+    summary: '语义地点搜索',
+    description:
+      '使用向量搜索理解自然语言查询，找到语义相关但不含关键词的地点。\n\n' +
+      '**功能特点：**\n' +
+      '- 支持自然语言查询（如"像京都那样的地方"、"适合冥想的安静庭院"）\n' +
+      '- 混合搜索：向量搜索（语义） + 关键词搜索（精确匹配）\n' +
+      '- 显示推荐原因（如"根据评论提到的\'静谧\'和\'日式庭院\'推荐"）\n' +
+      '- 支持按类别筛选和距离排序',
+  })
+  @ApiQuery({ name: 'q', description: '自然语言查询', example: '像京都那样的地方', required: true })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'radius', description: '搜索半径（米，可选）', example: 5000, type: Number, required: false })
+  @ApiQuery({
+    name: 'type',
+    description: '地点类型（可选）',
+    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    required: false,
+  })
+  @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回语义搜索结果',
+    type: ApiSuccessResponseDto,
+  })
+  async semanticSearch(
+    @Query('q') query: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('radius') radius?: string,
+    @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    @Query('limit') limit?: string,
+  ) {
+    if (!query) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '搜索查询不能为空');
+    }
+
+    try {
+      const latNum = lat ? parseFloat(lat) : undefined;
+      const lngNum = lng ? parseFloat(lng) : undefined;
+      const radiusNum = radius ? parseFloat(radius) : undefined;
+      const limitNum = limit ? parseInt(limit, 10) : 20;
+
+      const results = await this.placesService.semanticSearch(
+        query,
+        latNum,
+        lngNum,
+        radiusNum,
+        type,
+        limitNum
+      );
+
+      return successResponse({
+        results,
+        total: results.length,
+      });
+    } catch (error: any) {
+      this.logger.error(`语义搜索失败: ${error.message}`);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `语义搜索失败: ${error.message}`);
+    }
   }
 
   @Get('search')

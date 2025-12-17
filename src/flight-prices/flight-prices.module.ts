@@ -4,6 +4,8 @@ import { FlightPricesController } from './flight-prices.controller';
 import { FlightPriceService } from '../trips/services/flight-price.service';
 import { FlightPriceDetailService } from '../trips/services/flight-price-detail.service';
 import { FlightPriceDetailEnhancedService } from '../trips/services/flight-price-detail-enhanced.service';
+import { PricePredictionService } from './services/price-prediction.service';
+import { ProphetService } from './services/prophet-service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
@@ -13,11 +15,14 @@ import { PrismaModule } from '../prisma/prisma.module';
     FlightPriceService,
     FlightPriceDetailService,
     FlightPriceDetailEnhancedService,
+    ProphetService,
+    PricePredictionService,
   ],
   exports: [
     FlightPriceService,
     FlightPriceDetailService,
     FlightPriceDetailEnhancedService,
+    ProphetService, // 导出以供其他模块使用
   ],
 })
 export class FlightPricesModule {}

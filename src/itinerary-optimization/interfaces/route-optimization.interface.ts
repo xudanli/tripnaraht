@@ -34,6 +34,15 @@ export interface PlaceNode {
     end?: string;   // "18:00"
   };
   
+  /** VRPTW 时间窗约束 [最早到达时间, 最晚到达时间] (ISO 8601 datetime) */
+  timeWindow?: {
+    earliest: string; // ISO 8601 datetime, 例如: "2024-01-01T09:00:00+09:00"
+    latest: string;   // ISO 8601 datetime, 例如: "2024-01-01T22:00:00+09:00"
+  };
+  
+  /** VRPTW 服务时长（分钟）- 在地点必须停留的时间 */
+  serviceTime?: number; // 分钟，例如: 120 (游玩2小时)
+  
   /** 是否为餐厅 */
   isRestaurant?: boolean;
   
@@ -144,5 +153,58 @@ export interface OptimizationConfig {
     /** 聚类半径（米） */
     epsilon?: number;
   };
+  
+  /** 是否启用 VRPTW 算法（带时间窗约束） */
+  useVRPTW?: boolean;
+}
+
+/**
+ * VRPTW 输入数据结构
+ */
+export interface VRPTWInput {
+  /** 地点列表 */
+  locations: Array<{
+    id: number;
+    name: string;
+    /** 时间窗 [最早到达时间, 最晚到达时间] (ISO 8601 datetime) */
+    window?: [string, string];
+    /** 服务时长（分钟） */
+    duration: number;
+  }>;
+  
+  /** 时间矩阵 (N×N 矩阵，表示从地点 i 到地点 j 的旅行时间，单位：分钟) */
+  timeMatrix: number[][];
+  
+  /** 起点索引（通常是酒店，索引为 0） */
+  startIndex?: number;
+  
+  /** 终点索引（如果与起点不同） */
+  endIndex?: number;
+}
+
+/**
+ * VRPTW 输出结果
+ */
+export interface VRPTWResult {
+  /** 优化后的路线（地点索引序列） */
+  route: number[];
+  
+  /** 每个地点的到达时间 (ISO 8601 datetime) */
+  arrivalTimes: string[];
+  
+  /** 每个地点的离开时间 (ISO 8601 datetime) */
+  departureTimes: string[];
+  
+  /** 是否满足所有时间窗约束 */
+  feasible: boolean;
+  
+  /** 违反的时间窗约束（如果有） */
+  violations?: Array<{
+    locationId: number;
+    locationName: string;
+    expectedWindow: [string, string];
+    actualArrival: string;
+    violationType: 'EARLY' | 'LATE';
+  }>;
 }
 

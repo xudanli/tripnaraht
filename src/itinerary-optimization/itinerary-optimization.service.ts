@@ -136,6 +136,7 @@ export class RouteOptimizationService {
       hasElderly: dto.config.hasElderly || false,
       lunchWindow: dto.config.lunchWindow,
       dinnerWindow: dto.config.dinnerWindow,
+      useVRPTW: dto.config.useVRPTW || false,
       clustering: {
         minPoints: 2,
         epsilon: 2000, // 2 公里

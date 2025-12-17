@@ -1,7 +1,8 @@
 // src/places/places.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { VectorSearchService } from './services/vector-search.service';
 import { PlaceWithDistance, RawPlaceResult } from './dto/geo-result.dto';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
@@ -18,7 +19,8 @@ export class PlacesService {
   constructor(
     private prisma: PrismaService,
     private amapPOIService: AmapPOIService,
-    private googlePlacesService: GooglePlacesService
+    private googlePlacesService: GooglePlacesService,
+    @Optional() @Inject(VectorSearchService) private vectorSearchService?: VectorSearchService
   ) {}
 
   /**
@@ -875,6 +877,78 @@ export class PlacesService {
       nameEN: row.nameEN,
       category: row.category,
       address: row.address,
+    }));
+  }
+
+  /**
+   * 语义地点搜索
+   * 
+   * 使用向量搜索理解自然语言查询，找到语义相关但不含关键词的地点
+   * 
+   * @param query 自然语言查询（如"像京都那样的地方"）
+   * @param lat 纬度（可选，用于距离排序）
+   * @param lng 经度（可选，用于距离排序）
+   * @param radius 搜索半径（米，可选）
+   * @param category 类别过滤（可选）
+   * @param limit 返回数量限制（默认 20）
+   * @returns 搜索结果列表（包含推荐原因）
+   */
+  async semanticSearch(
+    query: string,
+    lat?: number,
+    lng?: number,
+    radius?: number,
+    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    limit: number = 20
+  ): Promise<Array<{
+    id: number;
+    nameCN: string;
+    nameEN?: string | null;
+    address?: string | null;
+    category: string;
+    matchReasons: string[];
+    vectorScore: number;
+    keywordScore: number;
+    finalScore: number;
+    distance?: number;
+  }>> {
+    if (!this.vectorSearchService) {
+      // 如果向量搜索服务不可用，降级到关键词搜索
+      const results = await this.search(query, lat, lng, radius, category, limit);
+      return results.map((r) => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        matchReasons: ['关键词匹配'],
+        vectorScore: 0,
+        keywordScore: 1.0,
+        finalScore: 1.0,
+        distance: r.distance,
+      }));
+    }
+
+    const results = await this.vectorSearchService.hybridSearch(
+      query,
+      lat,
+      lng,
+      radius,
+      category,
+      limit
+    );
+
+    return results.map((r) => ({
+      id: r.id,
+      nameCN: r.nameCN,
+      nameEN: r.nameEN,
+      address: r.address,
+      category: r.category,
+      matchReasons: r.matchReasons,
+      vectorScore: r.vectorScore,
+      keywordScore: r.keywordScore,
+      finalScore: r.finalScore,
+      distance: r.distance,
     }));
   }
 }

@@ -32,6 +32,27 @@ export class PlaceNodeDto {
   @IsOptional()
   estimatedDuration?: number;
 
+  @ApiPropertyOptional({
+    description: 'VRPTW 时间窗约束 [最早到达时间, 最晚到达时间] (ISO 8601 datetime)',
+    example: {
+      earliest: '2024-05-01T09:00:00+09:00',
+      latest: '2024-05-01T22:00:00+09:00',
+    },
+  })
+  @IsOptional()
+  timeWindow?: {
+    earliest: string;
+    latest: string;
+  };
+
+  @ApiPropertyOptional({
+    description: 'VRPTW 服务时长（分钟）- 在地点必须停留的时间',
+    example: 120,
+  })
+  @IsNumber()
+  @IsOptional()
+  serviceTime?: number;
+
   @ApiPropertyOptional({ description: '是否为餐厅', example: false })
   @IsBoolean()
   @IsOptional()
@@ -92,6 +113,15 @@ export class OptimizationConfigDto {
   })
   @IsOptional()
   dinnerWindow?: { start: string; end: string };
+
+  @ApiPropertyOptional({
+    description: '是否启用 VRPTW 算法（带时间窗约束）',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  useVRPTW?: boolean;
 }
 
 /**

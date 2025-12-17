@@ -30,6 +30,22 @@ const execFileAsync = promisify(execFile);
 const prisma = new PrismaClient();
 
 /**
+ * 计算两点之间的距离（公里）
+ * 使用 Haversine 公式
+ */
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // 地球半径（公里）
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * 从 GPX 文件提取元数据（名称、描述等）
  */
 function extractGPXMetadata(gpxXml: string): {
@@ -471,12 +487,40 @@ async function main() {
     console.log(`   路线名称: ${gpxMetadata.name || '未命名'}`);
     if (gpxMetadata.bounds) {
       console.log(`   边界: ${gpxMetadata.bounds.minlat},${gpxMetadata.bounds.minlon} 到 ${gpxMetadata.bounds.maxlat},${gpxMetadata.bounds.maxlon}`);
+      // 验证边界坐标是否合理（中国境内大致范围：纬度18-54，经度73-135）
+      if (gpxMetadata.bounds.minlat < 18 || gpxMetadata.bounds.maxlat > 54 || 
+          gpxMetadata.bounds.minlon < 73 || gpxMetadata.bounds.maxlon > 135) {
+        console.warn(`   ⚠️  警告：边界坐标超出中国境内范围，可能经纬度顺序错误！`);
+        console.warn(`      如果这是中国境内的路线，请检查GPX文件中的lat和lon属性是否被交换了`);
+      }
     }
     
     // 解析 GPX 轨迹点
     console.log(`\n📊 解析 GPX 轨迹点...`);
     const points = GPXParser.parse(gpxXml);
     console.log(`   轨迹点数: ${points.length}`);
+    
+    // 验证第一个和最后一个点的坐标
+    if (points.length > 0) {
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
+      console.log(`   起点坐标: 纬度 ${firstPoint.lat.toFixed(6)}, 经度 ${firstPoint.lng.toFixed(6)}`);
+      console.log(`   终点坐标: 纬度 ${lastPoint.lat.toFixed(6)}, 经度 ${lastPoint.lng.toFixed(6)}`);
+      
+      // 验证坐标是否合理（中国境内大致范围）
+      const isFirstPointValid = firstPoint.lat >= 18 && firstPoint.lat <= 54 && 
+                                firstPoint.lng >= 73 && firstPoint.lng <= 135;
+      const isLastPointValid = lastPoint.lat >= 18 && lastPoint.lat <= 54 && 
+                               lastPoint.lng >= 73 && lastPoint.lng <= 135;
+      
+      if (!isFirstPointValid || !isLastPointValid) {
+        console.warn(`   ⚠️  警告：起点或终点坐标超出中国境内范围！`);
+        console.warn(`      起点: 纬度 ${firstPoint.lat.toFixed(6)}, 经度 ${firstPoint.lng.toFixed(6)}`);
+        console.warn(`      终点: 纬度 ${lastPoint.lat.toFixed(6)}, 经度 ${lastPoint.lng.toFixed(6)}`);
+        console.warn(`      如果这是中国境内的路线，可能GPX文件中的lat和lon属性被交换了`);
+        console.warn(`      或者坐标系统不是WGS84（EPSG:4326）`);
+      }
+    }
     
     if (points.length < 2) {
       console.error('❌ GPX 文件至少需要 2 个轨迹点');
@@ -505,7 +549,38 @@ async function main() {
           select: { id: true, nameCN: true, nameEN: true },
         });
         if (startPlace) {
-          console.log(`   起点: ${startPlace.nameCN || startPlace.nameEN} (ID: ${startPlace.id})`);
+          // 获取起点坐标用于验证
+          const startLocation = await prisma.$queryRaw<Array<{
+            lat: number;
+            lng: number;
+          }>>`
+            SELECT 
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ${startPlaceId}
+          `;
+          
+          if (startLocation[0]) {
+            console.log(`   起点: ${startPlace.nameCN || startPlace.nameEN} (ID: ${startPlace.id})`);
+            console.log(`   起点坐标: 纬度 ${startLocation[0].lat.toFixed(6)}, 经度 ${startLocation[0].lng.toFixed(6)}`);
+            
+            // 验证起点坐标是否与GPX起点接近
+            if (points.length > 0) {
+              const gpxStart = points[0];
+              const distance = calculateDistance(
+                gpxStart.lat, gpxStart.lng,
+                startLocation[0].lat, startLocation[0].lng
+              );
+              console.log(`   GPX起点与Place起点距离: ${distance.toFixed(2)} 公里`);
+              if (distance > 10) {
+                console.warn(`   ⚠️  警告：GPX起点与Place起点距离较远（${distance.toFixed(2)}公里），请确认是否正确`);
+              }
+            }
+          } else {
+            console.log(`   起点: ${startPlace.nameCN || startPlace.nameEN} (ID: ${startPlace.id})`);
+            console.warn(`   ⚠️  起点Place没有坐标信息`);
+          }
         } else {
           console.warn(`   ⚠️  起点Place ID ${startPlaceId} 不存在，将跳过`);
         }
@@ -517,7 +592,38 @@ async function main() {
           select: { id: true, nameCN: true, nameEN: true },
         });
         if (endPlace) {
-          console.log(`   终点: ${endPlace.nameCN || endPlace.nameEN} (ID: ${endPlace.id})`);
+          // 获取终点坐标用于验证
+          const endLocation = await prisma.$queryRaw<Array<{
+            lat: number;
+            lng: number;
+          }>>`
+            SELECT 
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ${endPlaceId}
+          `;
+          
+          if (endLocation[0]) {
+            console.log(`   终点: ${endPlace.nameCN || endPlace.nameEN} (ID: ${endPlace.id})`);
+            console.log(`   终点坐标: 纬度 ${endLocation[0].lat.toFixed(6)}, 经度 ${endLocation[0].lng.toFixed(6)}`);
+            
+            // 验证终点坐标是否与GPX终点接近
+            if (points.length > 0) {
+              const gpxEnd = points[points.length - 1];
+              const distance = calculateDistance(
+                gpxEnd.lat, gpxEnd.lng,
+                endLocation[0].lat, endLocation[0].lng
+              );
+              console.log(`   GPX终点与Place终点距离: ${distance.toFixed(2)} 公里`);
+              if (distance > 10) {
+                console.warn(`   ⚠️  警告：GPX终点与Place终点距离较远（${distance.toFixed(2)}公里），请确认是否正确`);
+              }
+            }
+          } else {
+            console.log(`   终点: ${endPlace.nameCN || endPlace.nameEN} (ID: ${endPlace.id})`);
+            console.warn(`   ⚠️  终点Place没有坐标信息`);
+          }
         } else {
           console.warn(`   ⚠️  终点Place ID ${endPlaceId} 不存在，将跳过`);
         }

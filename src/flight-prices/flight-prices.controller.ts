@@ -23,9 +23,11 @@ import {
 import { FlightPriceService } from '../trips/services/flight-price.service';
 import { FlightPriceDetailService } from '../trips/services/flight-price-detail.service';
 import { FlightPriceDetailEnhancedService } from '../trips/services/flight-price-detail-enhanced.service';
+import { PricePredictionService } from './services/price-prediction.service';
 import { EstimatePriceDto, EstimatePriceResponseDto } from './dto/estimate-price.dto';
 import { CreateFlightPriceDto } from './dto/create-flight-price.dto';
 import { UpdateFlightPriceDto } from './dto/update-flight-price.dto';
+import { FlightPricePredictionDto } from './dto/predict-price.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
@@ -35,7 +37,8 @@ export class FlightPricesController {
   constructor(
     private readonly flightPriceService: FlightPriceService,
     private readonly flightPriceDetailService: FlightPriceDetailService,
-    private readonly flightPriceDetailEnhancedService: FlightPriceDetailEnhancedService
+    private readonly flightPriceDetailEnhancedService: FlightPriceDetailEnhancedService,
+    private readonly pricePredictionService: PricePredictionService
   ) {}
 
   @Get('estimate')
@@ -306,6 +309,45 @@ export class FlightPricesController {
   async getDayOfWeekFactors() {
     const factors = await this.flightPriceDetailService.getAllDayOfWeekFactors();
     return successResponse(factors);
+  }
+
+  @Post('predict')
+  @ApiOperation({
+    summary: '预测机票价格趋势',
+    description:
+      '使用 Prophet 模型（或历史同期均值法）预测未来30天的机票价格趋势，并提供买入信号。\n\n' +
+      '**功能：**\n' +
+      '- 显示价格趋势红绿灯（BUY/WAIT/NEUTRAL）\n' +
+      '- 预测未来30天的价格走势（含置信区间）\n' +
+      '- 提供历史价格统计（均值、最低、最高）\n' +
+      '- 自然语言建议（如"当前价格处于低位，建议立即购买"）',
+  })
+  @ApiBody({ type: FlightPricePredictionDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回价格预测（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async predictPrice(@Body() dto: FlightPricePredictionDto) {
+    try {
+      const result = await this.pricePredictionService.predictFlightPrice({
+        from_city: dto.from_city,
+        to_city: dto.to_city,
+        departure_date: dto.departure_date,
+        return_date: dto.return_date,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
   }
 
   @Get('domestic/detailed-options')

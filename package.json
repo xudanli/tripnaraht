@@ -55,11 +55,14 @@
     "update:physical-metadata": "ts-node --project tsconfig.backend.json scripts/update-physical-metadata-from-template.ts",
     "batch:calculate:difficulty": "ts-node --project tsconfig.backend.json scripts/batch-calculate-route-difficulty.ts",
     "import:gpx": "ts-node --project tsconfig.backend.json scripts/import-gpx-to-place.ts",
+    "check:place-coords": "ts-node --project tsconfig.backend.json scripts/check-place-coordinates.ts",
     "import:cities": "ts-node --project tsconfig.backend.json scripts/import-cities-to-db.ts",
     "import:cities:csv": "ts-node --project tsconfig.backend.json scripts/import-cities-from-csv.ts",
     "convert:cities": "ts-node --project tsconfig.backend.json scripts/convert-city-data-to-import-format.ts",
     "import:airports": "ts-node --project tsconfig.backend.json scripts/import-airports.ts",
-    "test:optimize": "ts-node --project tsconfig.backend.json scripts/test-itinerary-optimization.ts"
+    "test:optimize": "ts-node --project tsconfig.backend.json scripts/test-itinerary-optimization.ts",
+    "test:prophet": "ts-node --project tsconfig.backend.json scripts/test-prophet.ts",
+    "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

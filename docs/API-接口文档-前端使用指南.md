@@ -17,6 +17,7 @@
 11. [行程项管理](#行程项管理)
 12. [数据模型边界说明](#数据模型边界说明)
 13. [LLM 智能服务](#13-llm-智能服务)
+14. [徒步路线（Trail）](#14-徒步路线trail)
 
 ---
 
@@ -271,6 +272,135 @@ const response = await fetch(
 **前端使用**:
 - 用户点击"重做"按钮时调用
 - 获取重做后的 Schedule，然后调用 `PUT /trips/:id/schedule` 保存
+
+---
+
+### 1.10 生成行程复盘报告
+**接口**: `GET /trips/:id/recap`
+
+**使用场景**:
+- **场景 1**: 行程结束后，生成包含景点打卡顺序、徒步总里程、海拔变化等数据的完整复盘报告
+- **场景 2**: 分享行程前，生成可分享的复盘报告
+- **场景 3**: 查看行程统计信息（总里程、总爬升、总下降等）
+
+**请求示例**:
+```typescript
+const recap = await fetch(`http://localhost:3000/trips/${tripId}/recap`).then(r => r.json());
+// 返回格式：{ success: true, data: { trip, summary, places, trails, statistics } }
+```
+
+**返回内容**:
+- `trip`: 行程基本信息
+- `summary`: 行程总结（总天数、总活动数等）
+- `places`: 景点列表（按访问顺序）
+- `trails`: 徒步路线列表（包含距离、爬升、下降等）
+- `statistics`: 统计信息（总里程、总爬升、总下降等）
+
+**前端使用**:
+- 显示行程复盘报告页面
+- 展示景点打卡顺序和徒步数据
+- 用于生成可分享的行程报告
+
+---
+
+### 1.11 导出行程复盘报告
+**接口**: `GET /trips/:id/recap/export`
+
+**使用场景**:
+- **场景 1**: 导出为可分享的格式（JSON/PDF等）
+- **场景 2**: 分享行程到社区
+- **场景 3**: 保存行程记录
+
+**请求示例**:
+```typescript
+const exportData = await fetch(`http://localhost:3000/trips/${tripId}/recap/export`).then(r => r.json());
+// 返回格式：{ success: true, data: { ... } }
+```
+
+**前端使用**:
+- 导出为可分享的格式
+- 用于社区分享功能
+
+---
+
+### 1.12 生成3D轨迹视频数据
+**接口**: `GET /trips/:id/trail-video-data`
+
+**使用场景**:
+- **场景 1**: 生成3D轨迹视频，展示行程中的徒步路线
+- **场景 2**: 可视化行程轨迹，包含海拔变化
+- **场景 3**: 分享行程时，生成动态轨迹视频
+
+**请求示例**:
+```typescript
+const videoData = await fetch(`http://localhost:3000/trips/${tripId}/trail-video-data`).then(r => r.json());
+// 返回格式：{ success: true, data: { trails: [{ gpxPoints, waypoints, ... }] } }
+```
+
+**返回内容**:
+- `trails`: 轨迹数据列表，每个包含 GPX 点、途经点、海拔信息等
+
+**前端使用**:
+- 使用返回的轨迹数据生成3D视频
+- 展示行程中的徒步路线可视化
+
+---
+
+### 1.13 根据分享令牌获取行程
+**接口**: `GET /trips/shared/:shareToken`
+
+**使用场景**:
+- **场景 1**: 用户点击分享链接，预览分享的行程
+- **场景 2**: 查看分享行程的完整信息（包括Trail数据）
+- **场景 3**: 导入前预览行程内容
+
+**请求示例**:
+```typescript
+const tripData = await fetch(`http://localhost:3000/trips/shared/${shareToken}`).then(r => r.json());
+// 返回格式：{ success: true, data: { trip, days, items, trails, ... } }
+```
+
+**返回内容**:
+- 完整的行程数据，包括所有Trail信息、行程项、景点等
+
+**前端使用**:
+- 显示分享行程的预览页面
+- 展示行程的完整信息供用户查看
+
+---
+
+### 1.14 导入分享的行程
+**接口**: `POST /trips/shared/:shareToken/import`
+
+**使用场景**:
+- **场景 1**: 从分享链接导入行程，创建新的行程副本
+- **场景 2**: 复用其他用户的行程规划（包括Trail数据）
+- **场景 3**: 社区分享功能，一键导入行程
+
+**请求示例**:
+```typescript
+const result = await fetch(`http://localhost:3000/trips/shared/${shareToken}/import`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    destination: '武功山',
+    startDate: '2024-05-01',
+    endDate: '2024-05-03',
+    userId: 'user123', // 可选
+  }),
+}).then(r => r.json());
+// 返回格式：{ success: true, data: { tripId, ... } }
+```
+
+**返回内容**:
+- `tripId`: 新创建的行程ID
+- 其他导入结果信息
+
+**前端使用**:
+- 一键导入分享的行程
+- 创建新的行程副本，用户可以在此基础上修改
+
+**注意**: 导入时会完整复制所有行程项、Trail关联、GPX数据等。
 
 ---
 
@@ -554,9 +684,11 @@ const pois = await fetch(
 - **场景 4**: 带老人/小孩时，自动调整节奏和休息时间
 - **场景 5**: 显示优化后的快乐值和分数详情
 - **场景 6**: 在地图上显示优化后的路线和聚类区域
+- **场景 7**: 使用 VRPTW 算法，确保地点在营业时间窗内访问
 
 **请求示例**:
 ```typescript
+// 标准优化（模拟退火算法）
 const optimized = await fetch('http://localhost:3000/itinerary-optimization/optimize', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -573,10 +705,38 @@ const optimized = await fetch('http://localhost:3000/itinerary-optimization/opti
         start: '12:00',
         end: '13:30',
       },
+      useVRPTW: false, // 使用传统模拟退火算法
+    },
+  }),
+}).then(r => r.json());
+
+// VRPTW 优化（带时间窗约束）
+const optimizedVRPTW = await fetch('http://localhost:3000/itinerary-optimization/optimize', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    placeIds: [1, 2, 3, 4, 5],
+    config: {
+      date: '2024-05-01',
+      startTime: '2024-05-01T08:00:00+09:00',
+      endTime: '2024-05-01T18:00:00+09:00',
+      pacingFactor: 1.0,
+      hasChildren: false,
+      hasElderly: false,
+      useVRPTW: true, // 启用 VRPTW 算法
     },
   }),
 }).then(r => r.json());
 ```
+
+**VRPTW 说明**:
+- **用途**: 解决时间窗约束问题，确保地点在营业时间内访问
+- **适用场景**: 
+  - 餐厅有午市/晚市时间限制
+  - 景点有营业时间限制
+  - 特殊活动有固定时间
+- **时间窗设置**: 地点需要设置 `timeWindow` 和 `serviceTime` 字段
+- **详细文档**: 参见 [VRPTW 优化指南](./vrptw-optimization-guide.md)
 
 **返回内容**:
 - `nodes`: 优化后的地点顺序
@@ -589,6 +749,7 @@ const optimized = await fetch('http://localhost:3000/itinerary-optimization/opti
 - 显示优化后的路线时间轴
 - 在地图上显示路线和聚类区域
 - 显示快乐值和分数详情
+- 如果使用 VRPTW，显示时间窗约束验证结果
 
 ---
 
@@ -1693,6 +1854,432 @@ const response = await fetch('http://localhost:3000/llm/decision-support', {
 - 显示推荐建议卡片
 - 根据置信度排序显示
 - 提供"应用建议"按钮
+
+---
+
+## 14. 徒步路线（Trail）
+
+### 14.1 创建徒步路线
+**接口**: `POST /trails`
+
+**使用场景**:
+- **场景 1**: 导入 GPX 文件后创建 Trail 记录
+- **场景 2**: 手动创建徒步路线
+- **场景 3**: 从其他来源（如 AllTrails）导入路线数据
+
+**请求示例**:
+```typescript
+const trail = await fetch('http://localhost:3000/trails', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    nameCN: '武功山金顶路线',
+    nameEN: 'Wugong Mountain Golden Summit Trail',
+    description: '从沈子村到金顶的经典路线',
+    distanceKm: 12.5,
+    elevationGainM: 1800,
+    elevationLossM: 200,
+    difficultyLevel: 'HARD',
+    startPlaceId: 1,
+    endPlaceId: 2,
+    gpxData: { /* GPX 数据 */ },
+    source: 'gpx',
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- 创建的 Trail 记录（包含自动计算的疲劳分数、等效距离等）
+
+**前端使用**:
+- 导入 GPX 后创建 Trail
+- 手动创建路线时调用
+
+---
+
+### 14.2 查询徒步路线列表
+**接口**: `GET /trails`
+
+**使用场景**:
+- **场景 1**: 显示所有可用的徒步路线
+- **场景 2**: 按地点筛选（起点、终点或途经点）
+- **场景 3**: 按难度、距离、来源筛选
+
+**请求示例**:
+```typescript
+// 查询所有路线
+const trails = await fetch('http://localhost:3000/trails').then(r => r.json());
+
+// 按地点筛选
+const trails = await fetch('http://localhost:3000/trails?placeId=1').then(r => r.json());
+
+// 按难度和距离筛选
+const trails = await fetch('http://localhost:3000/trails?difficulty=MODERATE&minDistance=5&maxDistance=20').then(r => r.json());
+```
+
+**参数说明**:
+- `placeId`: 关联的Place ID（起点、终点或途经点）
+- `difficulty`: 难度等级（EXTREME, HARD, MODERATE, EASY）
+- `minDistance`: 最小距离（公里）
+- `maxDistance`: 最大距离（公里）
+- `source`: 数据来源（alltrails, gpx, manual等）
+
+**前端使用**:
+- 显示路线列表页面
+- 支持多条件筛选
+
+---
+
+### 14.3 根据ID查询徒步路线
+**接口**: `GET /trails/:id`
+
+**使用场景**:
+- **场景 1**: 查看路线详情页
+- **场景 2**: 获取路线的完整信息（距离、爬升、GPX数据等）
+- **场景 3**: 在地图上显示路线轨迹
+
+**请求示例**:
+```typescript
+const trail = await fetch(`http://localhost:3000/trails/${trailId}`).then(r => r.json());
+```
+
+**返回内容**:
+- 完整的 Trail 信息（包括关联的起点、终点、途经点、GPX数据等）
+
+**前端使用**:
+- 显示路线详情页
+- 在地图上绘制路线轨迹
+
+---
+
+### 14.4 更新徒步路线
+**接口**: `PATCH /trails/:id`
+
+**使用场景**:
+- **场景 1**: 修正路线信息（名称、描述等）
+- **场景 2**: 更新路线数据（距离、爬升等）
+- **场景 3**: 更新 GPX 数据
+
+**请求示例**:
+```typescript
+const updated = await fetch(`http://localhost:3000/trails/${trailId}`, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    description: '更新后的描述',
+    difficultyLevel: 'MODERATE',
+  }),
+}).then(r => r.json());
+```
+
+---
+
+### 14.5 删除徒步路线
+**接口**: `DELETE /trails/:id`
+
+**使用场景**:
+- **场景 1**: 删除错误的路线数据
+- **场景 2**: 清理测试数据
+
+**注意**: 如果路线已被行程使用，删除会失败。
+
+---
+
+### 14.6 根据多个景点推荐徒步路线
+**接口**: `POST /trails/recommend-for-places`
+
+**使用场景**:
+- **场景 1**: 用户选择多个景点后，自动推荐能够串联这些景点的徒步路线
+- **场景 2**: 优先推荐小众步道而非公路
+- **场景 3**: 根据距离、难度筛选合适的路线
+
+**请求示例**:
+```typescript
+const recommendations = await fetch('http://localhost:3000/trails/recommend-for-places', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    placeIds: [1, 2, 3, 4],
+    maxDistance: 30, // 最大距离（公里）
+    preferOffRoad: true, // 优先非公路步道
+    maxDifficulty: 'HARD', // 最大难度
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- 推荐的 Trail 列表，按匹配度排序
+
+**前端使用**:
+- 用户选择景点后自动推荐路线
+- 显示推荐理由和路线信息
+
+---
+
+### 14.7 识别Trail沿途的景点
+**接口**: `GET /trails/:id/places-along`
+
+**使用场景**:
+- **场景 1**: 导入 GPX 轨迹后，自动识别沿途3公里内的景点
+- **场景 2**: 推荐用户将沿途景点加入行程
+- **场景 3**: 显示路线周边的景点分布
+
+**请求示例**:
+```typescript
+const places = await fetch(`http://localhost:3000/trails/${trailId}/places-along?radiusKm=3`).then(r => r.json());
+```
+
+**参数说明**:
+- `radiusKm`: 搜索半径（公里），默认3km
+
+**返回内容**:
+- 沿途的景点列表（包含距离、类别等信息）
+
+**前端使用**:
+- 导入轨迹后推荐沿途景点
+- 显示路线周边的景点分布
+
+---
+
+### 14.8 拆分长徒步路线为多个分段
+**接口**: `GET /trails/:id/split-segments`
+
+**使用场景**:
+- **场景 1**: 将长路线拆分成适合单日游玩的分段行程
+- **场景 2**: 根据用户体力自动拆分
+- **场景 3**: 规划多日徒步行程
+
+**请求示例**:
+```typescript
+const segments = await fetch(`http://localhost:3000/trails/${trailId}/split-segments?maxSegmentLengthKm=15`).then(r => r.json());
+```
+
+**参数说明**:
+- `maxSegmentLengthKm`: 每段最大长度（公里）
+
+**返回内容**:
+- 分段列表，每个分段包含起点、终点、距离、爬升等信息
+
+**前端使用**:
+- 显示分段行程规划
+- 自动分配到不同的行程日期
+
+---
+
+### 14.9 推荐徒步路线配套服务
+**接口**: `GET /trails/:id/support-services`
+
+**使用场景**:
+- **场景 1**: 根据路线难度推荐装备租赁或采购
+- **场景 2**: 高海拔路线推荐高原反应保险
+- **场景 3**: 推荐沿途补给点和应急服务
+- **场景 4**: 显示医疗点和避难所位置
+
+**请求示例**:
+```typescript
+const services = await fetch(`http://localhost:3000/trails/${trailId}/support-services`).then(r => r.json());
+```
+
+**返回内容**:
+- `equipment`: 装备推荐
+- `insurance`: 保险推荐
+- `supplies`: 补给点推荐
+- `emergency`: 应急服务推荐
+
+**前端使用**:
+- 显示配套服务推荐卡片
+- 提供装备采购链接
+- 显示补给点和应急服务位置
+
+---
+
+### 14.10 检查Trail是否适合用户的体力配置
+**接口**: `POST /trails/:id/check-suitability`
+
+**使用场景**:
+- **场景 1**: 路线规划时，评估路线是否适合用户体力
+- **场景 2**: 显示难度警告，避免用户选择超出能力的路线
+- **场景 3**: 根据用户 pacingConfig 自动过滤不适合的路线
+
+**请求示例**:
+```typescript
+const suitability = await fetch(`http://localhost:3000/trails/${trailId}/check-suitability`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    max_daily_hp: 100, // 每日最大HP上限
+    walk_speed_factor: 1.0, // 步行速度系数
+    terrain_filter: 'ALL', // 地形限制
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- `suitable`: 是否适合
+- `fatigueCost`: 疲劳消耗
+- `estimatedDurationHours`: 预计耗时
+- `warnings`: 警告信息（如有）
+
+**前端使用**:
+- 显示路线适合性评估
+- 显示警告信息
+- 自动过滤不适合的路线
+
+---
+
+### 14.11 智能路线规划
+**接口**: `POST /trails/smart-plan`
+
+**使用场景**:
+- **场景 1**: 根据用户体力和偏好，自动规划最优的景点+轨迹组合
+- **场景 2**: 系统自动评估每个Trail的适合性
+- **场景 3**: 根据体力限制自动拆分到多天
+- **场景 4**: 优先推荐匹配度高且适合用户体力的路线
+
+**请求示例**:
+```typescript
+const plan = await fetch('http://localhost:3000/trails/smart-plan', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    placeIds: [1, 2, 3],
+    pacingConfig: {
+      max_daily_hp: 100,
+      walk_speed_factor: 1.0,
+      terrain_filter: 'ALL',
+    },
+    preferences: {
+      maxTotalDistanceKm: 30,
+      maxSegmentDistanceKm: 15,
+      preferredDifficulty: 'MODERATE',
+      preferOffRoad: true,
+      allowSplit: true,
+    },
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- `recommendedTrails`: 推荐的Trail组合
+- `assessment`: 总体评估
+- `suggestedItinerary`: 建议的行程安排
+
+**前端使用**:
+- 一键生成智能路线规划
+- 显示推荐的路线组合和行程安排
+
+---
+
+### 14.12 开始实时轨迹追踪
+**接口**: `POST /trails/tracking/start`
+
+**使用场景**:
+- **场景 1**: 开始追踪用户位置，与计划轨迹对比
+- **场景 2**: 实时显示用户位置和计划轨迹的偏差
+- **场景 3**: 记录实际行走轨迹
+
+**请求示例**:
+```typescript
+const session = await fetch('http://localhost:3000/trails/tracking/start', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    trailId: 1,
+    itineraryItemId: 'item-uuid', // 可选
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- `sessionId`: 追踪会话ID，用于后续添加追踪点和结束追踪
+
+**前端使用**:
+- 开始追踪时调用
+- 保存 `sessionId` 用于后续操作
+
+---
+
+### 14.13 添加追踪点
+**接口**: `POST /trails/tracking/:sessionId/point`
+
+**使用场景**:
+- **场景 1**: 定期添加当前位置点（如每10秒或每50米）
+- **场景 2**: 实时显示与计划轨迹的偏差
+- **场景 3**: 更新统计信息（总距离、爬升、速度等）
+
+**请求示例**:
+```typescript
+const result = await fetch(`http://localhost:3000/trails/tracking/${sessionId}/point`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    latitude: 27.5,
+    longitude: 114.2,
+    elevation: 1200, // 可选
+    accuracy: 10, // 可选，精度（米）
+    speed: 1.2, // 可选，速度（米/秒）
+  }),
+}).then(r => r.json());
+```
+
+**返回内容**:
+- `deviationMeters`: 与计划轨迹的偏差（米）
+- `statistics`: 实时统计信息（总距离、爬升、速度等）
+
+**前端使用**:
+- 定期调用（建议每10秒或每50米）
+- 显示实时偏差和统计信息
+
+---
+
+### 14.14 结束追踪
+**接口**: `POST /trails/tracking/:sessionId/stop`
+
+**使用场景**:
+- **场景 1**: 结束追踪会话
+- **场景 2**: 获取完整的统计信息
+- **场景 3**: 生成追踪报告
+
+**请求示例**:
+```typescript
+const summary = await fetch(`http://localhost:3000/trails/tracking/${sessionId}/stop`, {
+  method: 'POST',
+}).then(r => r.json());
+```
+
+**返回内容**:
+- `totalDistanceKm`: 总距离（公里）
+- `totalElevationGainM`: 总爬升（米）
+- `averageSpeedKmh`: 平均速度（公里/小时）
+- `maxSpeedKmh`: 最大速度（公里/小时）
+- `durationMinutes`: 持续时间（分钟）
+- `points`: 所有追踪点列表
+
+**前端使用**:
+- 结束追踪时调用
+- 显示完整的统计信息和追踪报告
+
+---
+
+### 14.15 获取追踪会话
+**接口**: `GET /trails/tracking/:sessionId`
+
+**使用场景**:
+- **场景 1**: 获取当前追踪会话的状态和统计信息
+- **场景 2**: 查看所有轨迹点
+- **场景 3**: 恢复追踪会话（如应用重启后）
+
+**请求示例**:
+```typescript
+const session = await fetch(`http://localhost:3000/trails/tracking/${sessionId}`).then(r => r.json());
+```
+
+**返回内容**:
+- 完整的追踪会话信息（包括所有轨迹点、实时统计等）
+
+**前端使用**:
+- 查看追踪状态
+- 在地图上显示已记录的轨迹点
 
 ---
 

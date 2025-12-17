@@ -2,7 +2,9 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
+  Body,
   ParseIntPipe,
   BadRequestException,
 } from '@nestjs/common';
@@ -11,15 +13,21 @@ import {
   ApiOperation,
   ApiQuery,
   ApiResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { HotelPriceService } from './services/hotel-price.service';
+import { HotelPricePredictionService } from './services/hotel-price-prediction.service';
+import { HotelPricePredictionDto } from './dto/predict-price.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
 @ApiTags('hotels')
 @Controller('hotels')
 export class HotelsController {
-  constructor(private readonly hotelPriceService: HotelPriceService) {}
+  constructor(
+    private readonly hotelPriceService: HotelPriceService,
+    private readonly hotelPricePredictionService: HotelPricePredictionService
+  ) {}
 
   @Get('price/estimate')
   @ApiOperation({
@@ -280,6 +288,49 @@ export class HotelsController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       throw error;
+    }
+  }
+
+  @Post('price/predict')
+  @ApiOperation({
+    summary: '预测酒店价格趋势',
+    description:
+      '使用 Prophet 模型（或历史同期均值法）预测未来30天的酒店价格趋势，并提供买入信号。\n\n' +
+      '**功能：**\n' +
+      '- 显示价格趋势红绿灯（BUY/WAIT/NEUTRAL）\n' +
+      '- 预测未来30天的价格走势（含置信区间）\n' +
+      '- 提供历史价格统计（均值、最低、最高）\n' +
+      '- 自然语言建议（如"当前价格处于低位，建议立即预订"）',
+  })
+  @ApiBody({ type: HotelPricePredictionDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回价格预测（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '输入数据验证失败（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async predictPrice(@Body() dto: HotelPricePredictionDto) {
+    try {
+      if (dto.star_level < 1 || dto.star_level > 5) {
+        throw new BadRequestException('星级必须在 1-5 之间');
+      }
+
+      const result = await this.hotelPricePredictionService.predictHotelPrice({
+        city: dto.city,
+        star_level: dto.star_level,
+        check_in_date: dto.check_in_date,
+        check_out_date: dto.check_out_date,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 }

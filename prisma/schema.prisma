@@ -156,6 +156,7 @@ model Place {
   physicalMetadata Json?
   googlePlaceId    String?                   @unique
   rating           Float?                    @default(0)
+  embedding        Unsupported("vector(1536)")? // 向量表示，用于语义搜索
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime
   itineraryItems   ItineraryItem[]

@@ -9,6 +9,8 @@ import { NaturePoiService } from './services/nature-poi.service';
 import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
 import { NaraHintService } from './services/nara-hint.service';
 import { RouteDifficultyService } from './services/route-difficulty.service';
+import { EmbeddingService } from './services/embedding.service';
+import { VectorSearchService } from './services/vector-search.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
@@ -24,6 +26,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     NaraHintService, // NaraHintService 需要在 NaturePoiMapperService 之前
     NaturePoiMapperService,
     RouteDifficultyService,
+    EmbeddingService,
+    VectorSearchService,
   ],
   exports: [
     PlacesService,
@@ -33,6 +37,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     NaturePoiService,
     NaturePoiMapperService,
     NaraHintService,
+    EmbeddingService,
+    VectorSearchService,
   ],
 })
 export class PlacesModule {}

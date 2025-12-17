@@ -11,6 +11,7 @@ import { SpatialClusteringService } from './spatial-clustering.service';
 import { HappinessScorerService } from './happiness-scorer.service';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { RouteCacheService } from '../../transport/services/route-cache.service';
+import { VRPTWOptimizerService } from './vrptw-optimizer.service';
 
 /**
  * 路线优化服务
@@ -30,7 +31,8 @@ export class RouteOptimizerService {
     private clusteringService: SpatialClusteringService,
     private scorerService: HappinessScorerService,
     private smartRoutesService: SmartRoutesService,
-    private routeCacheService: RouteCacheService
+    private routeCacheService: RouteCacheService,
+    private vrptwOptimizer: VRPTWOptimizerService
   ) {}
 
   /**
@@ -58,22 +60,30 @@ export class RouteOptimizerService {
     // 2. 批量预计算所有点对之间的旅行时间（优化 TSP 算法性能）
     await this.precomputeTimeMatrix(places, config);
 
-    // 3. 生成初始解（随机排列）
-    let currentRoute = this.generateInitialRoute(places, config);
-    let currentScore = this.calculateTotalScore(currentRoute, config, zones);
+    // 3. 根据配置选择优化算法
+    let optimizedRoute: RouteSolution;
 
-    this.logger.debug(`初始解分数：${currentScore}`);
+    if (config.useVRPTW) {
+      // 使用 VRPTW 算法（带时间窗约束）
+      optimizedRoute = await this.optimizeWithVRPTW(places, config, zones);
+    } else {
+      // 使用传统的模拟退火算法
+      let currentRoute = this.generateInitialRoute(places, config);
+      let currentScore = this.calculateTotalScore(currentRoute, config, zones);
 
-    // 4. 模拟退火优化
-    const optimizedRoute = this.simulatedAnnealing(
-      currentRoute,
-      currentScore,
-      config,
-      zones
-    );
+      this.logger.debug(`初始解分数：${currentScore}`);
 
-    // 5. 生成时间安排
-    const schedule = this.generateSchedule(optimizedRoute, config);
+      // 4. 模拟退火优化
+      optimizedRoute = this.simulatedAnnealing(
+        currentRoute,
+        currentScore,
+        config,
+        zones
+      );
+    }
+
+    // 5. 生成时间安排（如果 VRPTW 已经生成，这里会验证和调整）
+    const schedule = this.generateSchedule(optimizedRoute, config, config.useVRPTW);
 
     // 6. 计算最终分数
     const scoreBreakdown = this.scorerService.calculateHappinessScore(
@@ -418,13 +428,106 @@ export class RouteOptimizerService {
   }
 
   /**
+   * 使用 VRPTW 算法优化路线
+   */
+  private async optimizeWithVRPTW(
+    places: PlaceNode[],
+    config: OptimizationConfig,
+    zones: Zone[]
+  ): Promise<RouteSolution> {
+    this.logger.debug('使用 VRPTW 算法优化路线');
+
+    // 1. 构建时间矩阵（N×N 矩阵）
+    const n = places.length;
+    const timeMatrix: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < n; j++) {
+        if (i === j) {
+          row.push(0);
+        } else {
+          const time = this.getTimeFromMatrix(String(places[i].id), String(places[j].id));
+          row.push(time ?? this.fallbackEstimateTransportTime(places[i].location, places[j].location, 'TRANSIT'));
+        }
+      }
+      timeMatrix.push(row);
+    }
+
+    // 2. 构建 VRPTW 输入
+    const vrptwInput = this.vrptwOptimizer.buildVRPTWInput(
+      places,
+      timeMatrix,
+      config.startTime,
+      config.date
+    );
+
+    // 3. 求解 VRPTW
+    const vrptwResult = await this.vrptwOptimizer.solveVRPTW(vrptwInput);
+
+    // 4. 将 VRPTW 结果转换为 RouteSolution
+    const optimizedNodes = vrptwResult.route.map((index) => places[index]);
+    
+    // 5. 构建时间安排
+    const schedule: RouteSolution['schedule'] = [];
+    for (let i = 0; i < optimizedNodes.length; i++) {
+      const arrivalTime = vrptwResult.arrivalTimes[i];
+      const departureTime = vrptwResult.departureTimes[i];
+      
+      schedule.push({
+        nodeIndex: i,
+        startTime: arrivalTime,
+        endTime: departureTime,
+        transportTime: i < optimizedNodes.length - 1
+          ? this.getTimeFromMatrix(
+              String(optimizedNodes[i].id),
+              String(optimizedNodes[i + 1].id)
+            ) ?? undefined
+          : undefined,
+      });
+    }
+
+    // 6. 计算分数
+    const scoreBreakdown = this.scorerService.calculateHappinessScore(
+      optimizedNodes,
+      schedule,
+      config,
+      zones
+    );
+
+    const totalScore =
+      scoreBreakdown.interestScore -
+      scoreBreakdown.distancePenalty -
+      scoreBreakdown.tiredPenalty -
+      scoreBreakdown.boredPenalty -
+      scoreBreakdown.starvePenalty +
+      scoreBreakdown.clusteringBonus +
+      scoreBreakdown.bufferBonus;
+
+    // 如果有时间窗违反，降低分数
+    if (!vrptwResult.feasible && vrptwResult.violations) {
+      const violationPenalty = vrptwResult.violations.length * 100;
+      this.logger.warn(`VRPTW 时间窗违反惩罚：-${violationPenalty}`);
+    }
+
+    return {
+      nodes: optimizedNodes,
+      schedule,
+      happinessScore: totalScore,
+      scoreBreakdown,
+      zones,
+    };
+  }
+
+  /**
    * 生成时间安排
    * 
    * 根据路线和配置，为每个节点分配时间
+   * 如果 useVRPTW=true，会验证时间窗约束
    */
   private generateSchedule(
     route: RouteSolution,
-    config: OptimizationConfig
+    config: OptimizationConfig,
+    validateTimeWindows: boolean = false
   ): RouteSolution['schedule'] {
     const schedule: RouteSolution['schedule'] = [];
     let currentTime = DateTime.fromISO(config.startTime);
@@ -434,9 +537,27 @@ export class RouteOptimizerService {
       const node = route.nodes[i];
       
       // 如果节点关联了Trail，使用Trail的预计耗时
-      let duration = node.estimatedDuration || 60; // 默认 60 分钟
+      let duration = node.serviceTime || node.estimatedDuration || 60; // 默认 60 分钟
       if (node.trailData?.estimatedDurationHours) {
         duration = node.trailData.estimatedDurationHours * 60;
+      }
+
+      // VRPTW 时间窗约束检查
+      if (validateTimeWindows && node.timeWindow) {
+        const earliest = DateTime.fromISO(node.timeWindow.earliest);
+        const latest = DateTime.fromISO(node.timeWindow.latest);
+
+        // 如果当前时间早于最早时间，等待到最早时间
+        if (currentTime < earliest) {
+          currentTime = earliest;
+        }
+
+        // 如果当前时间晚于最晚时间，违反约束（记录警告但继续）
+        if (currentTime > latest) {
+          this.logger.warn(
+            `时间窗违反：${node.name} 应在 ${node.timeWindow.earliest} - ${node.timeWindow.latest} 访问，实际到达 ${currentTime.toISO()}`
+          );
+        }
       }
 
       // 检查是否超过结束时间
