@@ -233,13 +233,34 @@ export class OrchestratorService {
   private async plan(state: AgentState): Promise<Array<{ name: string; input: any }> | null> {
     this.logger.debug(`Plan: 当前状态 - nodes: ${state.draft.nodes.length}, facts: ${state.memory.semantic_facts.pois.length}, time_matrix: ${state.compute.time_matrix_robust ? 'exists' : 'null'}, optimizations: ${state.compute.optimization_results.length}`);
     
+    // 检查 resolve_entities 是否应该被禁用（硬规则停止条件）
+    // 检查是否已经尝试过解析（避免无限循环）
+    const resolveEntitiesAttempts = state.react.decision_log.filter(
+      log => log.chosen_action === 'places.resolve_entities'
+    ).length;
+    
+    // 检查最近两次 resolve_entities 的结果是否都是空节点（硬规则停止条件）
+    const recentResolveAttempts = state.react.decision_log
+      .filter(log => log.chosen_action === 'places.resolve_entities')
+      .slice(-2); // 最近两次
+    
+    const recentEmptyResults = recentResolveAttempts.length >= 2 && 
+      state.draft.nodes.length === 0; // 如果最近尝试了至少2次，且当前节点仍为空
+    
+    const shouldBlockResolveEntities = recentEmptyResults && resolveEntitiesAttempts >= 2;
+
     // 1. 优先尝试使用 LLM Plan（如果启用）
     if (this.llmPlan) {
       try {
         const llmAction = await this.llmPlan.selectAction(state);
         if (llmAction) {
-          this.logger.debug(`Plan: LLM selected action: ${llmAction.name}`);
-          return [llmAction];
+          // 如果 LLM 选择了已被禁用的 action，拒绝并回退到规则引擎
+          if (shouldBlockResolveEntities && llmAction.name === 'places.resolve_entities') {
+            this.logger.warn(`Plan: LLM selected blocked action (places.resolve_entities), falling back to rule-based planning`);
+          } else {
+            this.logger.debug(`Plan: LLM selected action: ${llmAction.name}`);
+            return [llmAction];
+          }
         }
       } catch (error: any) {
         this.logger.warn(`LLM Plan failed: ${error?.message || String(error)}, falling back to rule-based planning`);
@@ -265,10 +286,12 @@ export class OrchestratorService {
     }
 
     // 规则 3: 如果缺少 POI 节点，先解析实体
-    // 检查是否已经尝试过解析（避免无限循环）
-    const resolveEntitiesAttempts = state.react.decision_log.filter(
-      log => log.chosen_action === 'places.resolve_entities'
-    ).length;
+    // 硬规则：如果 resolve_entities 返回空节点连续2次，直接停止
+    if (shouldBlockResolveEntities) {
+      this.logger.warn(`Plan: resolve_entities 连续2次返回空节点，停止循环并返回 NEED_MORE_INFO`);
+      // 直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
+      return null;
+    }
     
     // 检查用户输入是否有效
     const userInput = state.user_input?.trim() || '';
@@ -281,7 +304,8 @@ export class OrchestratorService {
       return null;
     }
     
-    if (state.draft.nodes.length === 0 && userInput && resolveEntitiesAttempts < 3) {
+    // 最多尝试2次（降低从3次到2次，配合硬规则）
+    if (state.draft.nodes.length === 0 && userInput && resolveEntitiesAttempts < 2) {
       this.logger.debug(`Plan: 缺少节点，选择 places.resolve_entities (尝试次数: ${resolveEntitiesAttempts})`);
       candidateActions.push({
         name: 'places.resolve_entities',
@@ -295,7 +319,7 @@ export class OrchestratorService {
     }
     
     // 如果已经尝试过多次解析但仍然没有节点，跳过解析，尝试其他步骤
-    if (state.draft.nodes.length === 0 && resolveEntitiesAttempts >= 3) {
+    if (state.draft.nodes.length === 0 && resolveEntitiesAttempts >= 2) {
       this.logger.warn(`Plan: 已尝试 ${resolveEntitiesAttempts} 次解析实体但未成功，跳过解析步骤`);
       // 继续执行后续规则，即使没有节点
     }

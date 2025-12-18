@@ -261,7 +261,37 @@ export class VectorSearchService {
   }
 
   /**
-   * 关键词搜索
+   * 从整句中提取关键词（城市 + POI 词列表）
+   * 
+   * 示例：
+   * "规划5天北京游，包含故宫、天安门" -> ["北京", "故宫", "天安门"]
+   */
+  private extractKeywords(raw: string): string[] {
+    // 移除常见的时间、规划类词汇
+    const q = raw
+      .replace(/\s+/g, '')
+      .replace(/规划|安排|行程|旅行|旅游|游玩|游|天|日|一共|包含|包括|想去|打卡|去|到|在/g, ' ')
+      .replace(/[，,。.!！？?]/g, ' ')
+      .replace(/[、/]/g, ' ')
+      .replace(/和|以及|还有|跟|与/g, ' ');
+
+    // 分割成词
+    let terms = q.split(' ').map(s => s.trim()).filter(Boolean);
+
+    // 如果仍然只有一条很长的，再按中文逗号/顿号切一次
+    terms = terms.flatMap(t => t.split(/[，、,]/)).map(s => s.trim()).filter(Boolean);
+
+    // 去重并过滤太短的词（少于2个字符）
+    const uniqueTerms = Array.from(new Set(terms))
+      .filter(term => term.length >= 2)
+      .slice(0, 8); // 最多8个关键词
+
+    this.logger.debug(`关键词抽取: "${raw}" -> [${uniqueTerms.join(', ')}]`);
+    return uniqueTerms;
+  }
+
+  /**
+   * 关键词搜索（使用抽取的关键词做 OR 查询）
    */
   private async keywordSearch(
     query: string,
@@ -271,13 +301,28 @@ export class VectorSearchService {
     category?: string,
     limit: number = 20
   ): Promise<KeywordSearchResult[]> {
-    const searchCondition = Prisma.sql`
-      (
-        "nameCN" ILIKE ${`%${query}%`} OR
-        "nameEN" ILIKE ${`%${query}%`} OR
-        address ILIKE ${`%${query}%`}
-      )
-    `;
+    // 抽取关键词
+    const keywords = this.extractKeywords(query);
+    
+    // 如果没有关键词，使用原始 query（降级）
+    if (keywords.length === 0) {
+      this.logger.warn(`关键词抽取失败，使用原始 query: ${query}`);
+      keywords.push(query);
+    }
+
+    // 构建 OR 查询条件：每个关键词匹配 nameCN、nameEN 或 address
+    const keywordConditions = keywords.map(keyword => 
+      Prisma.sql`(
+        "nameCN" ILIKE ${`%${keyword}%`} OR
+        "nameEN" ILIKE ${`%${keyword}%`} OR
+        address ILIKE ${`%${keyword}%`}
+      )`
+    );
+
+    // 所有关键词条件用 OR 连接
+    const searchCondition = keywordConditions.length > 0
+      ? Prisma.sql`(${Prisma.join(keywordConditions, ' OR ')})`
+      : Prisma.sql`FALSE`;
 
     const categoryFilter = category
       ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
@@ -298,6 +343,22 @@ export class VectorSearchService {
         ) as distance_meters`
       : Prisma.sql``;
 
+    // 构建评分逻辑：检查是否有任何关键词匹配
+    // 优先匹配 nameCN（1.0），然后是 nameEN（0.8），最后是 address（0.6）
+    // 如果匹配多个关键词，分数累加（但不超过 1.0）
+    const keywordMatches = keywords.map(keyword => 
+      Prisma.sql`(
+        CASE WHEN "nameCN" ILIKE ${`%${keyword}%`} THEN 1.0
+             WHEN "nameEN" ILIKE ${`%${keyword}%`} THEN 0.8
+             WHEN address ILIKE ${`%${keyword}%`} THEN 0.6
+             ELSE 0 END
+      )`
+    );
+
+    const scoreCase = keywordMatches.length > 0
+      ? Prisma.sql`LEAST(${Prisma.join(keywordMatches, ' + ')}, 1.0)`
+      : Prisma.sql`0.4`;
+
     const results = await this.prisma.$queryRaw<KeywordSearchResult[]>`
       SELECT 
         id,
@@ -307,12 +368,7 @@ export class VectorSearchService {
         category,
         ST_Y(location::geometry) as lat,
         ST_X(location::geometry) as lng,
-        CASE
-          WHEN "nameCN" ILIKE ${`%${query}%`} THEN 1.0
-          WHEN "nameEN" ILIKE ${`%${query}%`} THEN 0.8
-          WHEN address ILIKE ${`%${query}%`} THEN 0.6
-          ELSE 0.4
-        END as "keywordScore"
+        ${scoreCase} as "keywordScore"
         ${distanceSelect}
       FROM "Place"
       WHERE ${searchCondition}
