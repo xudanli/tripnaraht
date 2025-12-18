@@ -99,6 +99,32 @@ export class VectorSearchService {
   limit: ${limit}
 }`);
 
+    // 0. 检查数据库中是否有 embedding 数据（如果没有，直接使用关键词搜索）
+    const placesWithEmbedding = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM "Place" WHERE embedding IS NOT NULL
+    `;
+    const embeddingCount = Number(placesWithEmbedding[0]?.count || 0);
+    
+    if (embeddingCount === 0) {
+      this.logger.warn('[hybridSearch] 数据库中没有 embedding 数据，直接使用关键词搜索');
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
+      this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
+      return keywordResults.map(r => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（无 embedding 数据）'],
+        distance: r.distance,
+      }));
+    }
+
     // 1. 生成查询向量
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
     
@@ -107,7 +133,8 @@ export class VectorSearchService {
     
     this.logger.debug(`[hybridSearch] Embedding 信息: {
   dimension: ${queryEmbedding.length},
-  isZeroVector: ${isZeroVector}
+  isZeroVector: ${isZeroVector},
+  placesWithEmbedding: ${embeddingCount}
 }`);
     
     if (isZeroVector) {
