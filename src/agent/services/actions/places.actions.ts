@@ -41,6 +41,25 @@ export function createPlacesActions(
       },
       execute: async (input: { query: string; lat?: number; lng?: number; limit?: number }, state: any) => {
         try {
+          // 优先使用原始用户输入，而不是 input.query（可能被错误设置为 "unknown"）
+          const query = (
+            state?.user_input?.trim() ||
+            state?.userQuery?.trim() ||
+            state?.rawInput?.trim() ||
+            input.query?.trim() ||
+            ''
+          );
+
+          // 如果 query 是 "unknown" 或空，直接返回空结果
+          if (!query || query.toLowerCase() === 'unknown') {
+            console.warn(`places.resolve_entities: Invalid query (${query}), returning empty result`);
+            return {
+              nodes: [],
+              count: 0,
+              error: `Invalid query: ${query || 'empty'}`,
+            };
+          }
+
           // 优先使用向量搜索（如果可用）
           let results: any[];
           
@@ -48,7 +67,7 @@ export function createPlacesActions(
             try {
               // 使用混合搜索（向量 + 关键词）
               const hybridResults = await vectorSearchService.hybridSearch(
-                input.query,
+                query,
                 input.lat,
                 input.lng,
                 undefined, // radius
@@ -60,7 +79,7 @@ export function createPlacesActions(
               // 向量搜索失败，降级到关键词搜索
               console.warn(`向量搜索失败，降级到关键词搜索: ${vectorError?.message || String(vectorError)}`);
               results = await placesService.search(
-                input.query,
+                query,
                 input.lat,
                 input.lng,
                 undefined, // radius
@@ -71,7 +90,7 @@ export function createPlacesActions(
           } else {
             // 降级到关键词搜索
             results = await placesService.search(
-              input.query,
+              query,
               input.lat,
               input.lng,
               undefined, // radius
@@ -81,21 +100,46 @@ export function createPlacesActions(
           }
 
           // 转换为节点格式
-          const nodes = results.map((place: any, index: number) => ({
-            id: place.id,
-            name: place.nameCN || place.nameEN,
-            type: 'poi',
-            geo: {
-              lat: place.lat || (place as any).location?.lat,
-              lng: place.lng || (place as any).location?.lng,
-            },
-            category: place.category,
-            metadata: {
-              address: place.address,
-              rating: place.rating,
-              score: (place as any).score || (place as any).vectorScore,
-            },
-          }));
+          // 注意：results 可能是 HybridSearchResult[] 或 Place[]
+          const nodes = results.map((place: any, index: number) => {
+            // 处理 HybridSearchResult 类型（来自 vector-search）
+            if (place.finalScore !== undefined) {
+              return {
+                id: place.id,
+                name: place.nameCN || place.nameEN,
+                type: 'poi',
+                geo: {
+                  lat: place.lat || (place as any).location?.lat,
+                  lng: place.lng || (place as any).location?.lng,
+                },
+                category: place.category,
+                metadata: {
+                  address: place.address,
+                  rating: place.rating,
+                  score: place.finalScore,
+                  vectorScore: place.vectorScore,
+                  keywordScore: place.keywordScore,
+                  matchReasons: place.matchReasons,
+                },
+              };
+            }
+            // 处理 Place 类型（来自 placesService.search）
+            return {
+              id: place.id,
+              name: place.nameCN || place.nameEN,
+              type: 'poi',
+              geo: {
+                lat: place.lat || (place as any).location?.lat,
+                lng: place.lng || (place as any).location?.lng,
+              },
+              category: place.category,
+              metadata: {
+                address: place.address,
+                rating: place.rating,
+                score: (place as any).score || (place as any).vectorScore,
+              },
+            };
+          });
 
           return {
             nodes,

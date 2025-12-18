@@ -88,6 +88,7 @@
     "class-validator": "^0.14.3",
     "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
+    "https-proxy-agent": "^7.0.6",
     "i18n-iso-countries": "^7.14.0",
     "luxon": "^3.7.2",
     "node-fetch": "^2.7.0",

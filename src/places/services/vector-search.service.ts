@@ -27,6 +27,8 @@ interface KeywordSearchResult {
   address?: string | null;
   category: string;
   keywordScore: number;
+  lat?: number;
+  lng?: number;
   distance?: number;
 }
 
@@ -95,10 +97,18 @@ export class VectorSearchService {
       // 直接使用关键词搜索，跳过向量搜索
       const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
       return keywordResults.map(r => ({
-        ...r,
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
         vectorScore: 0,
+        keywordScore: r.keywordScore,
         finalScore: r.keywordScore,
         matchReasons: ['关键词匹配（embedding 降级）'],
+        distance: r.distance,
       }));
     }
 
@@ -295,6 +305,8 @@ export class VectorSearchService {
         "nameEN",
         address,
         category,
+        ST_Y(location::geometry) as lat,
+        ST_X(location::geometry) as lng,
         CASE
           WHEN "nameCN" ILIKE ${`%${query}%`} THEN 1.0
           WHEN "nameEN" ILIKE ${`%${query}%`} THEN 0.8
@@ -313,6 +325,8 @@ export class VectorSearchService {
     return results.map((r) => ({
       ...r,
       keywordScore: parseFloat(r.keywordScore as any),
+      lat: r.lat ? parseFloat(r.lat as any) : undefined,
+      lng: r.lng ? parseFloat(r.lng as any) : undefined,
       distance: r.distance ? parseFloat(r.distance as any) : undefined,
     }));
   }

@@ -1,9 +1,10 @@
 // src/llm/services/llm.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import dns from 'node:dns';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 
 /**
@@ -21,17 +22,64 @@ export class LlmService {
   private readonly defaultProvider: LlmProvider;
   private readonly useMock: boolean;
   
-  // 共享的 HTTPS Agent，强制使用 IPv4
-  private readonly httpsAgent: https.Agent;
+  // OpenAI HTTP 客户端（使用显式代理配置）
+  private readonly openaiHttp: AxiosInstance;
+  // 共享的 HTTPS Agent（用于其他 LLM 提供商）
+  private readonly httpsAgent: https.Agent | HttpsProxyAgent<string>;
 
   constructor(private configService: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
-    // 创建共享的 HTTPS Agent，强制使用 IPv4
-    this.httpsAgent = new https.Agent({
-      keepAlive: true,
-      family: 4, // 强制 IPv4
+    // 检查代理环境变量
+    const proxyUrl =
+      process.env.HTTPS_PROXY ||
+      process.env.https_proxy ||
+      process.env.ALL_PROXY ||
+      process.env.all_proxy;
+
+    if (!proxyUrl) {
+      this.logger.warn('No proxy env found, but curl shows CONNECT; check your shell env / network proxy.');
+    } else {
+      this.logger.debug(`Using proxy: ${proxyUrl}`);
+    }
+
+    // 处理 baseURL
+    let baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+    
+    // 确保使用 HTTPS（OpenAI API 要求）
+    if (baseUrl.startsWith('http://')) {
+      this.logger.warn(`OPENAI_BASE_URL uses HTTP, converting to HTTPS: ${baseUrl}`);
+      baseUrl = baseUrl.replace('http://', 'https://');
+    }
+    
+    // 确保 URL 以 https:// 开头
+    if (!baseUrl.startsWith('https://')) {
+      this.logger.error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
+      throw new Error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
+    }
+    
+    // 移除末尾的斜杠（如果有）
+    baseUrl = baseUrl.replace(/\/$/, '');
+    
+    this.logger.error(`[DEBUG] Original OPENAI_BASE_URL from env: ${baseUrl}`);
+    this.logger.error(`[DEBUG] Processed baseUrl: ${baseUrl}`);
+
+    // 创建 HTTPS Agent（显式代理或直接连接）
+    this.httpsAgent = proxyUrl
+      ? new HttpsProxyAgent(proxyUrl)
+      : new https.Agent({
+          keepAlive: true,
+          family: 4, // 强制 IPv4
+        });
+
+    // 创建 OpenAI HTTP 客户端实例
+    this.openaiHttp = axios.create({
+      baseURL: baseUrl,
+      timeout: 60000,
+      proxy: false, // ✅ 关键：禁止 axios 自己处理 proxy 逻辑
+      httpsAgent: this.httpsAgent, // ✅ 关键：我们自己指定走哪个代理
+      headers: { 'Content-Type': 'application/json' },
     });
     
     // 检查是否启用 Mock 模式（用于测试或网络不可用时）
@@ -278,28 +326,6 @@ export class LlmService {
     }
 
     const model = this.configService.get<string>('OPENAI_MODEL') || 'gpt-3.5-turbo';
-    let baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
-    
-    // 记录原始 baseUrl（使用 error 级别确保可见）
-    this.logger.error(`[DEBUG] Original OPENAI_BASE_URL from env: ${baseUrl}`);
-    
-    // 确保使用 HTTPS（OpenAI API 要求）
-    if (baseUrl.startsWith('http://')) {
-      this.logger.warn(`OPENAI_BASE_URL uses HTTP, converting to HTTPS: ${baseUrl}`);
-      baseUrl = baseUrl.replace('http://', 'https://');
-    }
-    
-    // 确保 URL 以 https:// 开头
-    if (!baseUrl.startsWith('https://')) {
-      this.logger.error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
-      throw new Error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
-    }
-    
-    // 移除末尾的斜杠（如果有）
-    baseUrl = baseUrl.replace(/\/$/, '');
-    
-    // 记录处理后的 baseUrl
-    this.logger.error(`[DEBUG] Processed baseUrl: ${baseUrl}`);
     
     const body: any = {
       model,
@@ -314,19 +340,13 @@ export class LlmService {
     }
 
     try {
-      const url = `${baseUrl}/chat/completions`;
-      // 使用 error 级别确保可见
-      this.logger.error(`[DEBUG] Calling OpenAI API with URL: ${url}`);
-      this.logger.error(`[DEBUG] URL starts with https://: ${url.startsWith('https://')}`);
+      // 使用显式配置的 openaiHttp 实例
+      this.logger.error(`[DEBUG] Calling OpenAI API with URL: ${this.openaiHttp.defaults.baseURL}/chat/completions`);
       
-      const response = await axios.post(url, body, {
+      const response = await this.openaiHttp.post('/chat/completions', body, {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        timeout: 60000, // 增加超时时间
-        proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
-        httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
       });
 
       const data = response.data as {
@@ -335,7 +355,7 @@ export class LlmService {
       return data.choices?.[0]?.message?.content || '';
     } catch (error: any) {
       // 记录实际使用的 URL（从错误中提取）
-      const actualUrl = error.config?.url || `${baseUrl}/chat/completions`;
+      const actualUrl = error.config?.url || `${this.openaiHttp.defaults.baseURL}/chat/completions`;
       this.logger.error(`[DEBUG] Actual URL used in request: ${actualUrl}`);
       this.logger.error(`[DEBUG] Request config: ${JSON.stringify({ url: error.config?.url, baseURL: error.config?.baseURL, method: error.config?.method })}`);
       

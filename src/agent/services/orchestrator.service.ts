@@ -270,12 +270,23 @@ export class OrchestratorService {
       log => log.chosen_action === 'places.resolve_entities'
     ).length;
     
-    if (state.draft.nodes.length === 0 && state.user_input && resolveEntitiesAttempts < 3) {
+    // 检查用户输入是否有效
+    const userInput = state.user_input?.trim() || '';
+    const isInvalidQuery = !userInput || userInput.toLowerCase() === 'unknown';
+    
+    // 如果 query 无效，直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
+    if (isInvalidQuery && state.draft.nodes.length === 0) {
+      this.logger.warn(`Plan: 用户输入无效 (${userInput}), 无法解析实体，跳过解析步骤`);
+      // 不添加 action，让系统自然结束并返回 NEED_MORE_INFO
+      return null;
+    }
+    
+    if (state.draft.nodes.length === 0 && userInput && resolveEntitiesAttempts < 3) {
       this.logger.debug(`Plan: 缺少节点，选择 places.resolve_entities (尝试次数: ${resolveEntitiesAttempts})`);
       candidateActions.push({
         name: 'places.resolve_entities',
         input: { 
-          query: state.user_input,
+          query: userInput, // 使用已验证的 userInput
           limit: 20, // 最多解析 20 个实体
         },
       });
@@ -286,13 +297,6 @@ export class OrchestratorService {
     // 如果已经尝试过多次解析但仍然没有节点，跳过解析，尝试其他步骤
     if (state.draft.nodes.length === 0 && resolveEntitiesAttempts >= 3) {
       this.logger.warn(`Plan: 已尝试 ${resolveEntitiesAttempts} 次解析实体但未成功，跳过解析步骤`);
-      // 尝试使用关键词搜索作为最后的降级方案
-      // 如果用户输入包含明确的地点名称，可以尝试直接搜索
-      const hasExplicitPlaceNames = /(浅草寺|东京塔|新宿|东京|京都|大阪)/.test(state.user_input);
-      if (hasExplicitPlaceNames && candidateActions.length === 0) {
-        this.logger.debug('Plan: 检测到明确的地点名称，尝试使用关键词搜索');
-        // 这里可以添加一个降级的搜索 action，但为了简化，我们继续执行后续规则
-      }
       // 继续执行后续规则，即使没有节点
     }
     
@@ -752,6 +756,26 @@ export class OrchestratorService {
       const updatedNodes = result.nodes || [];
       this.logger.debug(`Updated nodes: ${updatedNodes.length} nodes from ${actionName}`);
       
+      // 检查是否有错误（query 无效）
+      if (result.error && (result.error.includes('Invalid query') || result.error.includes('unknown'))) {
+        this.logger.error(`places.resolve_entities failed: ${result.error}`);
+        // 如果 query 无效，直接标记为 NEED_MORE_INFO，不要继续循环
+        return this.stateService.update(state.request_id, {
+          draft: {
+            ...state.draft,
+            nodes: [], // 保持空数组
+          },
+          result: {
+            ...state.result,
+            status: 'NEED_MORE_INFO',
+            explanations: [
+              ...(state.result.explanations || []),
+              `无法解析用户输入中的地点信息，请提供更具体的地点名称`,
+            ],
+          },
+        });
+      }
+      
       // 即使返回空数组，也要更新状态（标记为已尝试）
       // 这样可以避免无限循环执行同一个 action
       const newState = this.stateService.update(state.request_id, {
@@ -763,7 +787,8 @@ export class OrchestratorService {
       
       // 如果返回空数组，记录警告
       if (updatedNodes.length === 0) {
-        this.logger.warn(`places.resolve_entities returned empty nodes. Query: ${result.query || 'unknown'}`);
+        const query = state.user_input || 'unknown';
+        this.logger.warn(`places.resolve_entities returned empty nodes. Query: ${query}`);
       }
       
       return newState;
