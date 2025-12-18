@@ -158,7 +158,7 @@ export class VectorSearchService {
       }));
     }
 
-    // 2. 向量搜索
+    // 2. 向量搜索（传递 city 参数以支持城市过滤）
     this.logger.debug(`[hybridSearch] 开始向量搜索，topK: ${limit * 2}`);
     const vectorResults = await this.vectorSearch(
       queryEmbedding,
@@ -166,6 +166,7 @@ export class VectorSearchService {
       lng,
       radius,
       category,
+      city, // 传递城市名以支持城市过滤
       limit * 2 // 召回更多结果用于混合
     );
     this.logger.debug(`[hybridSearch] 向量搜索结果数: ${vectorResults.length}`);
@@ -263,12 +264,14 @@ export class VectorSearchService {
     lng?: number,
     radius?: number,
     category?: string,
+    city?: string | null,
     limit: number = 20
   ): Promise<VectorSearchResult[]> {
     // 诊断信息：打印过滤条件
     const filterInfo = {
       locationFilter: lat && lng && radius ? `ST_DWithin(${lat}, ${lng}, ${radius}m)` : 'none',
       categoryFilter: category || 'none',
+      cityFilter: city || 'none',
       embeddingDimension: queryEmbedding.length,
       limit,
     };
@@ -285,6 +288,28 @@ export class VectorSearchService {
     const categoryFilter = category
       ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
       : Prisma.sql``;
+    
+    // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
+    let cityFilter = Prisma.sql``;
+    if (city) {
+      // 先查询 City 表获取匹配的 cityId
+      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number }>>`
+        SELECT id FROM "City" 
+        WHERE "nameCN" = ${city} OR name = ${city}
+      `;
+      
+      const cityIds = matchingCities.map(c => c.id);
+      
+      if (cityIds.length > 0) {
+        // 使用 IN 子查询过滤，比 EXISTS 更高效
+        const cityIdSqls = cityIds.map(id => Prisma.sql`${id}`);
+        cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
+        this.logger.debug(`[vectorSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}]`);
+      } else {
+        this.logger.warn(`[vectorSearch] 未找到匹配的城市: ${city}`);
+        // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
+      }
+    }
 
     const distanceSelect = lat && lng
       ? Prisma.sql`, ST_Distance(
@@ -307,6 +332,7 @@ export class VectorSearchService {
       FROM "Place"
       WHERE embedding IS NOT NULL
         ${categoryFilter}
+        ${cityFilter}
         ${locationFilter}
       ORDER BY embedding <=> ${queryEmbedding}::vector
       LIMIT ${limit}
@@ -452,15 +478,28 @@ export class VectorSearchService {
       ? Prisma.sql`AND category = ${preferredCategory}::"PlaceCategory"`
       : Prisma.sql``;
     
-    // 城市过滤：如果 query 明确提到城市，只返回该城市的 POI
-    // 通过 city.nameCN 或 city.name 匹配
-    const cityFilter = city
-      ? Prisma.sql`AND EXISTS (
-          SELECT 1 FROM "City" c 
-          WHERE c.id = "Place"."cityId" 
-          AND (c."nameCN" = ${city} OR c.name = ${city})
-        )`
-      : Prisma.sql``;
+    // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
+    let cityFilter = Prisma.sql``;
+    if (city) {
+      // 先查询 City 表获取匹配的 cityId
+      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number }>>`
+        SELECT id FROM "City" 
+        WHERE "nameCN" = ${city} OR name = ${city}
+      `;
+      
+      const cityIds = matchingCities.map(c => c.id);
+      
+      if (cityIds.length > 0) {
+        // 使用 IN 子查询过滤，比 EXISTS 更高效
+        // 将 cityIds 转换为 Prisma.sql 数组
+        const cityIdSqls = cityIds.map(id => Prisma.sql`${id}`);
+        cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
+        this.logger.debug(`[keywordSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}]`);
+      } else {
+        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${city}`);
+        // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
+      }
+    }
 
     const locationFilter = lat && lng && radius
       ? Prisma.sql`AND ST_DWithin(
