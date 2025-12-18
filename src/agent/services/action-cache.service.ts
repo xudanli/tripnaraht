@@ -54,13 +54,70 @@ export class ActionCacheService {
       return this.processCustomCacheKey(customKey, input);
     }
 
-    // 默认：基于 actionName + 序列化的 input 生成哈希
-    const inputStr = JSON.stringify(input, this.sortKeys);
+    // 默认：基于 actionName + 归一化的 input 生成哈希
+    // 关键：只使用稳定的参数，排除 state 等不稳定的对象
+    const normalizedInput = this.normalizeInput(input);
+    const inputStr = this.stableStringify(normalizedInput);
     const hash = createHash('sha256')
       .update(`${actionName}:${inputStr}`)
       .digest('hex');
     
     return `${actionName}:${hash.substring(0, 16)}`;
+  }
+
+  /**
+   * 归一化输入参数（只保留会影响结果的稳定字段）
+   * 排除 state、request_id 等不稳定的对象
+   */
+  private normalizeInput(input: any): any {
+    if (!input || typeof input !== 'object') {
+      return input;
+    }
+
+    // 对于 places.resolve_entities，只保留 query, lat, lng, limit
+    // 对于其他 action，保留所有原始字段（但排除 state）
+    const normalized: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(input)) {
+      // 排除不稳定的字段
+      if (key === 'state' || key === 'request_id' || key === 'timestamp') {
+        continue;
+      }
+      
+      // 递归处理嵌套对象
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        normalized[key] = this.normalizeInput(value);
+      } else {
+        normalized[key] = value;
+      }
+    }
+    
+    return normalized;
+  }
+
+  /**
+   * 稳定序列化（确保键顺序固定）
+   */
+  private stableStringify(obj: any): string {
+    if (obj === null || obj === undefined) {
+      return String(obj);
+    }
+    
+    if (typeof obj !== 'object') {
+      return JSON.stringify(obj);
+    }
+    
+    if (Array.isArray(obj)) {
+      return '[' + obj.map(item => this.stableStringify(item)).join(',') + ']';
+    }
+    
+    // 对象：按键排序后序列化
+    const sortedKeys = Object.keys(obj).sort();
+    const pairs = sortedKeys.map(key => {
+      return JSON.stringify(key) + ':' + this.stableStringify(obj[key]);
+    });
+    
+    return '{' + pairs.join(',') + '}';
   }
 
   /**
@@ -200,21 +257,6 @@ export class ActionCacheService {
     }
   }
 
-  /**
-   * 排序对象键（用于 JSON.stringify 时保持一致性）
-   */
-  private sortKeys(key: string, value: any): any {
-    if (value instanceof Object && !Array.isArray(value)) {
-      const sortedObj: Record<string, any> = {};
-      Object.keys(value)
-        .sort()
-        .forEach(k => {
-          sortedObj[k] = value[k];
-        });
-      return sortedObj;
-    }
-    return value;
-  }
 
   /**
    * 清理过期缓存

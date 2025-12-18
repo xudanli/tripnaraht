@@ -312,7 +312,7 @@ export class LlmService {
 
     try {
       // 使用显式配置的 openaiHttp 实例
-      this.logger.error(`[DEBUG] Calling OpenAI API with URL: ${this.openaiHttp.defaults.baseURL}/chat/completions`);
+      this.logger.debug(`Calling OpenAI API with URL: ${this.openaiHttp.defaults.baseURL}/chat/completions`);
       
       const response = await this.openaiHttp.post('/chat/completions', body, {
         headers: {
@@ -327,8 +327,8 @@ export class LlmService {
     } catch (error: any) {
       // 记录实际使用的 URL（从错误中提取）
       const actualUrl = error.config?.url || `${this.openaiHttp.defaults.baseURL}/chat/completions`;
-      this.logger.error(`[DEBUG] Actual URL used in request: ${actualUrl}`);
-      this.logger.error(`[DEBUG] Request config: ${JSON.stringify({ url: error.config?.url, baseURL: error.config?.baseURL, method: error.config?.method })}`);
+      this.logger.debug(`Actual URL used in request: ${actualUrl}`);
+      this.logger.debug(`Request config: ${JSON.stringify({ url: error.config?.url, baseURL: error.config?.baseURL, method: error.config?.method })}`);
       
       // 输出底层错误信息（AggregateError 的根因）
       const errorDetails = {

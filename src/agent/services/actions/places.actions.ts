@@ -40,6 +40,8 @@ export function createPlacesActions(
         },
       },
       execute: async (input: { query: string; lat?: number; lng?: number; limit?: number }, state: any) => {
+        const logger = console; // 使用 console 作为 logger（可以后续改为注入 Logger）
+        
         try {
           // 优先使用原始用户输入，而不是 input.query（可能被错误设置为 "unknown"）
           const query = (
@@ -52,7 +54,7 @@ export function createPlacesActions(
 
           // 如果 query 是 "unknown" 或空，直接返回空结果
           if (!query || query.toLowerCase() === 'unknown') {
-            console.warn(`places.resolve_entities: Invalid query (${query}), returning empty result`);
+            logger.warn(`places.resolve_entities: Invalid query (${query}), returning empty result`);
             return {
               nodes: [],
               count: 0,
@@ -60,12 +62,17 @@ export function createPlacesActions(
             };
           }
 
+          logger.debug(`[resolve_entities] 开始解析实体，query: "${query}"`);
+
           // 优先使用向量搜索（如果可用）
           let results: any[];
+          let rawHitCount = 0;
+          let searchMethod = '';
           
           if (vectorSearchService) {
             try {
               // 使用混合搜索（向量 + 关键词）
+              searchMethod = 'hybridSearch';
               const hybridResults = await vectorSearchService.hybridSearch(
                 query,
                 input.lat,
@@ -75,9 +82,26 @@ export function createPlacesActions(
                 input.limit || 10
               );
               results = hybridResults;
+              rawHitCount = results.length;
+              logger.debug(`[resolve_entities] VectorSearch 原始命中数: ${rawHitCount}`);
+              
+              // 输出前 3 条结果的详细信息
+              if (rawHitCount > 0) {
+                const top3 = results.slice(0, 3).map((r: any, idx: number) => ({
+                  index: idx + 1,
+                  id: r.id,
+                  nameCN: r.nameCN,
+                  nameEN: r.nameEN,
+                  category: r.category,
+                  score: r.finalScore || r.vectorScore || r.keywordScore,
+                  hasLatLng: !!(r.lat && r.lng),
+                }));
+                logger.debug(`[resolve_entities] Top 3 结果: ${JSON.stringify(top3, null, 2)}`);
+              }
             } catch (vectorError: any) {
               // 向量搜索失败，降级到关键词搜索
-              console.warn(`向量搜索失败，降级到关键词搜索: ${vectorError?.message || String(vectorError)}`);
+              logger.warn(`[resolve_entities] 向量搜索失败，降级到关键词搜索: ${vectorError?.message || String(vectorError)}`);
+              searchMethod = 'placesService.search';
               results = await placesService.search(
                 query,
                 input.lat,
@@ -86,9 +110,12 @@ export function createPlacesActions(
                 undefined, // category
                 input.limit || 10
               );
+              rawHitCount = results.length;
+              logger.debug(`[resolve_entities] 关键词搜索原始命中数: ${rawHitCount}`);
             }
           } else {
             // 降级到关键词搜索
+            searchMethod = 'placesService.search';
             results = await placesService.search(
               query,
               input.lat,
@@ -97,58 +124,125 @@ export function createPlacesActions(
               undefined, // category
               input.limit || 10
             );
+            rawHitCount = results.length;
+            logger.debug(`[resolve_entities] 关键词搜索原始命中数: ${rawHitCount}`);
           }
 
-          // 转换为节点格式
+          // 转换为节点格式，并统计过滤情况
           // 注意：results 可能是 HybridSearchResult[] 或 Place[]
-          const nodes = results.map((place: any, index: number) => {
-            // 处理 HybridSearchResult 类型（来自 vector-search）
-            if (place.finalScore !== undefined) {
-              return {
-                id: place.id,
-                name: place.nameCN || place.nameEN,
-                type: 'poi',
-                geo: {
-                  lat: place.lat || (place as any).location?.lat,
-                  lng: place.lng || (place as any).location?.lng,
-                },
-                category: place.category,
-                metadata: {
-                  address: place.address,
-                  rating: place.rating,
-                  score: place.finalScore,
-                  vectorScore: place.vectorScore,
-                  keywordScore: place.keywordScore,
-                  matchReasons: place.matchReasons,
-                },
-              };
-            }
-            // 处理 Place 类型（来自 placesService.search）
-            return {
-              id: place.id,
-              name: place.nameCN || place.nameEN,
-              type: 'poi',
-              geo: {
-                lat: place.lat || (place as any).location?.lat,
-                lng: place.lng || (place as any).location?.lng,
-              },
-              category: place.category,
-              metadata: {
-                address: place.address,
-                rating: place.rating,
-                score: (place as any).score || (place as any).vectorScore,
-              },
-            };
-          });
+          let filteredCount = 0;
+          let mappingErrors: Array<{ index: number; error: string; placeId?: number }> = [];
+          
+          const nodes = results
+            .map((place: any, index: number) => {
+              try {
+                // 检查必要字段
+                if (!place.id) {
+                  mappingErrors.push({ index, error: 'Missing id', placeId: place.id });
+                  return null;
+                }
+                
+                // 处理 HybridSearchResult 类型（来自 vector-search）
+                if (place.finalScore !== undefined) {
+                  const node = {
+                    id: place.id,
+                    name: place.nameCN || place.nameEN,
+                    type: 'poi',
+                    geo: {
+                      lat: place.lat || (place as any).location?.lat,
+                      lng: place.lng || (place as any).location?.lng,
+                    },
+                    category: place.category,
+                    metadata: {
+                      address: place.address,
+                      rating: place.rating,
+                      score: place.finalScore,
+                      vectorScore: place.vectorScore,
+                      keywordScore: place.keywordScore,
+                      matchReasons: place.matchReasons,
+                    },
+                  };
+                  
+                  // 检查是否有坐标（如果没有坐标，可能被后续过滤）
+                  if (!node.geo.lat || !node.geo.lng) {
+                    filteredCount++;
+                    logger.debug(`[resolve_entities] 节点 ${place.id} (${node.name}) 缺少坐标，将被过滤`);
+                  }
+                  
+                  return node;
+                }
+                
+                // 处理 Place 类型（来自 placesService.search）
+                const node = {
+                  id: place.id,
+                  name: place.nameCN || place.nameEN,
+                  type: 'poi',
+                  geo: {
+                    lat: place.lat || (place as any).location?.lat,
+                    lng: place.lng || (place as any).location?.lng,
+                  },
+                  category: place.category,
+                  metadata: {
+                    address: place.address,
+                    rating: place.rating,
+                    score: (place as any).score || (place as any).vectorScore,
+                  },
+                };
+                
+                // 检查是否有坐标
+                if (!node.geo.lat || !node.geo.lng) {
+                  filteredCount++;
+                  logger.debug(`[resolve_entities] 节点 ${place.id} (${node.name}) 缺少坐标，将被过滤`);
+                }
+                
+                return node;
+              } catch (error: any) {
+                mappingErrors.push({ 
+                  index, 
+                  error: error?.message || String(error),
+                  placeId: place.id 
+                });
+                logger.error(`[resolve_entities] 映射节点失败 (index: ${index}, id: ${place.id}): ${error?.message || String(error)}`);
+                return null;
+              }
+            })
+            .filter((node: any) => node !== null); // 过滤掉 null
+
+          const finalCount = nodes.length;
+          
+          // 输出诊断信息
+          logger.debug(`[resolve_entities] 诊断信息: {
+  searchMethod: "${searchMethod}",
+  rawHitCount: ${rawHitCount},
+  filteredCount: ${filteredCount} (缺少坐标),
+  mappingErrors: ${mappingErrors.length},
+  finalCount: ${finalCount}
+}`);
+          
+          if (mappingErrors.length > 0) {
+            logger.warn(`[resolve_entities] 映射错误详情: ${JSON.stringify(mappingErrors, null, 2)}`);
+          }
+          
+          if (finalCount === 0 && rawHitCount > 0) {
+            logger.warn(`[resolve_entities] 警告：原始命中 ${rawHitCount} 条，但最终节点数为 0（可能被过滤或映射失败）`);
+          }
 
           return {
             nodes,
-            count: nodes.length,
+            count: finalCount,
+            diagnostics: {
+              searchMethod,
+              rawHitCount,
+              filteredCount,
+              mappingErrors: mappingErrors.length,
+              finalCount,
+            },
           };
         } catch (error: any) {
           // 如果所有搜索方法都失败，返回空结果而不是抛出错误
           // 这样可以让系统继续执行其他步骤
-          console.error(`实体解析失败，返回空结果: ${error?.message || String(error)}`);
+          logger.error(`[resolve_entities] 实体解析失败，返回空结果: ${error?.message || String(error)}`);
+          logger.error(`[resolve_entities] 错误堆栈: ${error?.stack || 'N/A'}`);
           return {
             nodes: [],
             count: 0,

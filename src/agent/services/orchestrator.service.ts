@@ -759,14 +759,15 @@ export class OrchestratorService {
       this.logger.debug(`Repairing violation: ${violationType}`);
 
       // ROBUST_TIME_MISSING → transport.build_time_matrix
+      // 关键：如果 nodes=0，不能构建 time_matrix，应该标记为 NEED_MORE_INFO
       if (violationType === 'ROBUST_TIME_MISSING') {
-        if (state.draft.nodes.length > 0) {
+        if (updatedState.draft.nodes.length > 0) {
           const buildTimeMatrixAction = this.actionRegistry.get('transport.build_time_matrix');
           if (buildTimeMatrixAction) {
             try {
               this.logger.debug('Repair: 执行 transport.build_time_matrix');
               const result = await buildTimeMatrixAction.execute(
-                { nodes: state.draft.nodes, robust: true },
+                { nodes: updatedState.draft.nodes, robust: true },
                 updatedState
               );
               updatedState = this.updateStateFromAction(updatedState, 'transport.build_time_matrix', result);
@@ -774,6 +775,19 @@ export class OrchestratorService {
               this.logger.error(`Repair action error (build_time_matrix): ${error?.message || String(error)}`);
             }
           }
+        } else {
+          // 如果 nodes=0，不能构建 time_matrix，标记为 NEED_MORE_INFO
+          this.logger.warn('Repair: ROBUST_TIME_MISSING 但 nodes=0，无法构建 time_matrix，标记为 NEED_MORE_INFO');
+          updatedState = this.stateService.update(updatedState.request_id, {
+            result: {
+              ...updatedState.result,
+              status: 'NEED_MORE_INFO',
+              explanations: [
+                ...(updatedState.result.explanations || []),
+                '无法解析用户输入中的地点信息，请提供更具体的地点名称',
+              ],
+            },
+          });
         }
       }
 
