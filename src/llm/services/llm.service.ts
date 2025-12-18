@@ -6,6 +6,7 @@ import https from 'https';
 import dns from 'node:dns';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
+import { createOpenAIHttp } from '../utils/openai-http.factory';
 
 /**
  * 通用 LLM 服务
@@ -24,63 +25,33 @@ export class LlmService {
   
   // OpenAI HTTP 客户端（使用显式代理配置）
   private readonly openaiHttp: AxiosInstance;
-  // 共享的 HTTPS Agent（用于其他 LLM 提供商）
+  // 共享的 HTTPS Agent（用于其他 LLM 提供商，如 DeepSeek、Anthropic）
   private readonly httpsAgent: https.Agent | HttpsProxyAgent<string>;
 
   constructor(private configService: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
-    // 检查代理环境变量
+    // 检查代理环境变量（用于创建共享的 httpsAgent）
     const proxyUrl =
       process.env.HTTPS_PROXY ||
       process.env.https_proxy ||
       process.env.ALL_PROXY ||
       process.env.all_proxy;
 
-    if (!proxyUrl) {
-      this.logger.warn('No proxy env found, but curl shows CONNECT; check your shell env / network proxy.');
-    } else {
-      this.logger.debug(`Using proxy: ${proxyUrl}`);
-    }
-
-    // 处理 baseURL
-    let baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
-    
-    // 确保使用 HTTPS（OpenAI API 要求）
-    if (baseUrl.startsWith('http://')) {
-      this.logger.warn(`OPENAI_BASE_URL uses HTTP, converting to HTTPS: ${baseUrl}`);
-      baseUrl = baseUrl.replace('http://', 'https://');
-    }
-    
-    // 确保 URL 以 https:// 开头
-    if (!baseUrl.startsWith('https://')) {
-      this.logger.error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
-      throw new Error(`OPENAI_BASE_URL must start with https://, got: ${baseUrl}`);
-    }
-    
-    // 移除末尾的斜杠（如果有）
-    baseUrl = baseUrl.replace(/\/$/, '');
-    
-    this.logger.error(`[DEBUG] Original OPENAI_BASE_URL from env: ${baseUrl}`);
-    this.logger.error(`[DEBUG] Processed baseUrl: ${baseUrl}`);
-
-    // 创建 HTTPS Agent（显式代理或直接连接）
+    // 创建共享的 HTTPS Agent（用于其他 LLM 提供商）
     this.httpsAgent = proxyUrl
-      ? new HttpsProxyAgent(proxyUrl)
+      ? new HttpsProxyAgent<string>(proxyUrl)
       : new https.Agent({
           keepAlive: true,
           family: 4, // 强制 IPv4
         });
-
-    // 创建 OpenAI HTTP 客户端实例
-    this.openaiHttp = axios.create({
-      baseURL: baseUrl,
-      timeout: 60000,
-      proxy: false, // ✅ 关键：禁止 axios 自己处理 proxy 逻辑
-      httpsAgent: this.httpsAgent, // ✅ 关键：我们自己指定走哪个代理
-      headers: { 'Content-Type': 'application/json' },
-    });
+    
+    // 处理 baseURL
+    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+    
+    // 使用统一的工厂函数创建 OpenAI HTTP 客户端
+    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
     
     // 检查是否启用 Mock 模式（用于测试或网络不可用时）
     this.useMock = this.configService.get<string>('LLM_USE_MOCK') === 'true';

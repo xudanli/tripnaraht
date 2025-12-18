@@ -43,9 +43,15 @@ export class CriticService {
     const dayBoundaryViolations = this.checkDayBoundaries(state);
     violations.push(...dayBoundaryViolations);
 
-    // 3. 检查午餐锚点
-    const lunchViolations = this.checkLunchAnchors(state);
-    violations.push(...lunchViolations);
+    // 3. 检查午餐锚点（只有在已有 schedule/timeline 时才检查）
+    // 如果还没生成 schedule，不报 LUNCH_MISSING（避免过早触发 repair 循环）
+    const hasSchedule = state.result.timeline && state.result.timeline.length > 0;
+    if (hasSchedule) {
+      const lunchViolations = this.checkLunchAnchors(state);
+      violations.push(...lunchViolations);
+    } else {
+      this.logger.debug('Critic: 尚未生成 schedule，跳过 LUNCH_MISSING 检查');
+    }
 
     // 4. 检查鲁棒交通时间
     const robustTimeViolations = this.checkRobustTravelTime(state);

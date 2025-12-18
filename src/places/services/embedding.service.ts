@@ -1,9 +1,9 @@
 // src/places/services/embedding.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
-import https from 'https';
+import axios, { AxiosInstance } from 'axios';
 import dns from 'node:dns';
+import { createOpenAIHttp } from '../../llm/utils/openai-http.factory';
 
 /**
  * Embedding 服务
@@ -18,6 +18,8 @@ export class EmbeddingService {
   private readonly provider: string;
   private readonly openaiApiKey?: string;
   private readonly huggingfaceApiKey?: string;
+  // OpenAI HTTP 客户端（使用统一的工厂函数，确保代理配置一致）
+  private readonly openaiHttp: AxiosInstance;
 
   constructor(private configService: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
@@ -26,6 +28,10 @@ export class EmbeddingService {
     this.provider = this.configService.get<string>('EMBEDDING_PROVIDER') || 'openai';
     this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
     this.huggingfaceApiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
+    
+    // 使用统一的工厂函数创建 OpenAI HTTP 客户端（与 LlmService 使用相同配置）
+    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
   }
 
   /**
@@ -69,14 +75,9 @@ export class EmbeddingService {
     }
 
     try {
-      // 创建 HTTPS Agent，强制使用 IPv4
-      const httpsAgent = new https.Agent({
-        keepAlive: true,
-        family: 4, // 强制 IPv4
-      });
-      
-      const response = await axios.post(
-        'https://api.openai.com/v1/embeddings',
+      // 使用统一的 OpenAI HTTP 客户端（与 LlmService 使用相同配置，包括代理设置）
+      const response = await this.openaiHttp.post(
+        '/embeddings',
         {
           model: 'text-embedding-3-small',
           input: text,
@@ -84,11 +85,7 @@ export class EmbeddingService {
         {
           headers: {
             'Authorization': `Bearer ${this.openaiApiKey}`,
-            'Content-Type': 'application/json',
           },
-          timeout: 60000, // 增加超时时间
-          proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
-          httpsAgent, // 使用自定义 HTTPS Agent
         }
       );
 

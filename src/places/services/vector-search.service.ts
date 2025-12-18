@@ -261,19 +261,63 @@ export class VectorSearchService {
   }
 
   /**
+   * 从整句中提取城市名
+   * 
+   * 示例：
+   * "规划5天北京游" -> "北京"
+   * "去上海旅游" -> "上海"
+   */
+  private extractCityName(raw: string): string | null {
+    // 常见城市名称（中国主要城市）
+    const cities = ['北京', '上海', '广州', '深圳', '杭州', '南京', '成都', '重庆', '武汉', '西安', 
+                   '天津', '苏州', '长沙', '郑州', '青岛', '大连', '厦门', '福州', '济南', '合肥',
+                   '昆明', '哈尔滨', '长春', '沈阳', '石家庄', '太原', '南昌', '南宁', '海口', '贵阳',
+                   '乌鲁木齐', '拉萨', '银川', '西宁', '呼和浩特'];
+    
+    for (const city of cities) {
+      if (raw.includes(city)) {
+        return city;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * 从整句中提取关键词（城市 + POI 词列表）
    * 
    * 示例：
-   * "规划5天北京游，包含故宫、天安门" -> ["北京", "故宫", "天安门"]
+   * "规划5天北京游，包含故宫、天安门" -> { city: "北京", keywords: ["故宫", "天安门"] }
+   * 
+   * 关键规则：
+   * 1. 保留原始短语实体：对 2-3 字地标，不要二次切分
+   * 2. 先提取已知地标，再处理其他词汇
    */
-  private extractKeywords(raw: string): string[] {
-    // 移除常见的时间、规划类词汇
-    const q = raw
-      .replace(/\s+/g, '')
-      .replace(/规划|安排|行程|旅行|旅游|游玩|游|天|日|一共|包含|包括|想去|打卡|去|到|在/g, ' ')
+  private extractKeywords(raw: string): { city: string | null; keywords: string[] } {
+    // 常见地标名称（2-3 字，需要完整保留）
+    const landmarks = ['故宫', '天安门', '长城', '颐和园', '天坛', '圆明园', '北海', '景山', 
+                      '太和殿', '乾清宫', '养心殿', '坤宁宫', '午门', '神武门', '东华门', '西华门',
+                      '天安门广场', '人民大会堂', '国家博物馆', '毛主席纪念堂', '人民英雄纪念碑'];
+    
+    // 先提取已知地标（完整匹配）
+    const foundLandmarks: string[] = [];
+    let remainingText = raw;
+    for (const landmark of landmarks) {
+      if (remainingText.includes(landmark)) {
+        foundLandmarks.push(landmark);
+        // 从剩余文本中移除已找到的地标（避免重复）
+        remainingText = remainingText.replace(landmark, ' ');
+      }
+    }
+    
+    // 处理剩余文本：移除常见的时间、规划类词汇（但要小心不要误删地标中的字）
+    // 注意：不要替换"天"字，因为"天安门"、"天坛"都包含它
+    const q = remainingText
+      .replace(/规划|安排|行程|旅行|旅游|游玩|游|日|一共|包含|包括|想去|打卡|去|到|在/g, ' ')
       .replace(/[，,。.!！？?]/g, ' ')
       .replace(/[、/]/g, ' ')
-      .replace(/和|以及|还有|跟|与/g, ' ');
+      .replace(/和|以及|还有|跟|与/g, ' ')
+      .replace(/\s+/g, ' '); // 统一多个空格为单个空格
 
     // 分割成词
     let terms = q.split(' ').map(s => s.trim()).filter(Boolean);
@@ -281,17 +325,27 @@ export class VectorSearchService {
     // 如果仍然只有一条很长的，再按中文逗号/顿号切一次
     terms = terms.flatMap(t => t.split(/[，、,]/)).map(s => s.trim()).filter(Boolean);
 
+    // 合并地标和其他词汇
+    const allTerms = [...foundLandmarks, ...terms];
+
     // 去重并过滤太短的词（少于2个字符）
-    const uniqueTerms = Array.from(new Set(terms))
+    const uniqueTerms = Array.from(new Set(allTerms))
       .filter(term => term.length >= 2)
       .slice(0, 8); // 最多8个关键词
 
-    this.logger.debug(`关键词抽取: "${raw}" -> [${uniqueTerms.join(', ')}]`);
-    return uniqueTerms;
+    // 提取城市名
+    const city = this.extractCityName(raw);
+
+    this.logger.debug(`关键词抽取: "${raw}" -> city: ${city || 'null'}, keywords: [${uniqueTerms.join(', ')}]`);
+    return { city, keywords: uniqueTerms };
   }
 
   /**
    * 关键词搜索（使用抽取的关键词做 OR 查询）
+   * 
+   * 增强功能：
+   * 1. 城市过滤：如果 query 明确提到城市，只返回该城市的 POI
+   * 2. 类别过滤：如果检测到地标关键词（如"故宫"、"天安门"），优先 ATTRACTION
    */
   private async keywordSearch(
     query: string,
@@ -301,14 +355,16 @@ export class VectorSearchService {
     category?: string,
     limit: number = 20
   ): Promise<KeywordSearchResult[]> {
-    // 抽取关键词
-    const keywords = this.extractKeywords(query);
+    // 抽取关键词和城市
+    const { city, keywords: extractedKeywords } = this.extractKeywords(query);
     
     // 如果没有关键词，使用原始 query（降级）
-    if (keywords.length === 0) {
-      this.logger.warn(`关键词抽取失败，使用原始 query: ${query}`);
-      keywords.push(query);
-    }
+    const keywords = extractedKeywords.length > 0 ? extractedKeywords : [query];
+    
+    // 检测地标关键词，如果存在则优先 ATTRACTION 类别
+    const landmarkKeywords = ['故宫', '天安门', '长城', '颐和园', '天坛', '圆明园', '北海', '景山'];
+    const hasLandmark = keywords.some(k => landmarkKeywords.includes(k));
+    const preferredCategory = hasLandmark && !category ? 'ATTRACTION' : category;
 
     // 构建 OR 查询条件：每个关键词匹配 nameCN、nameEN 或 address
     const keywordConditions = keywords.map(keyword => 
@@ -324,8 +380,19 @@ export class VectorSearchService {
       ? Prisma.sql`(${Prisma.join(keywordConditions, ' OR ')})`
       : Prisma.sql`FALSE`;
 
-    const categoryFilter = category
-      ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+    // 类别过滤：优先 ATTRACTION（如果检测到地标），否则使用传入的 category
+    const categoryFilter = preferredCategory
+      ? Prisma.sql`AND category = ${preferredCategory}::"PlaceCategory"`
+      : Prisma.sql``;
+    
+    // 城市过滤：如果 query 明确提到城市，只返回该城市的 POI
+    // 通过 city.nameCN 或 city.name 匹配
+    const cityFilter = city
+      ? Prisma.sql`AND EXISTS (
+          SELECT 1 FROM "City" c 
+          WHERE c.id = "Place"."cityId" 
+          AND (c."nameCN" = ${city} OR c.name = ${city})
+        )`
       : Prisma.sql``;
 
     const locationFilter = lat && lng && radius
@@ -373,6 +440,7 @@ export class VectorSearchService {
       FROM "Place"
       WHERE ${searchCondition}
         ${categoryFilter}
+        ${cityFilter}
         ${locationFilter}
       ORDER BY "keywordScore" DESC
       LIMIT ${limit}

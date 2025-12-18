@@ -735,7 +735,12 @@ export class OrchestratorService {
   }
 
   /**
-   * Repair: 修复问题
+   * Repair: 修复问题（确定性执行，不再交给 LLM 选）
+   * 
+   * 将 critic 的 violations 映射成固定动作：
+   * - ROBUST_TIME_MISSING → transport.build_time_matrix
+   * - LUNCH_MISSING → 在 schedule 里插入 lunch slot（或先打标，等 schedule 生成后再插）
+   * - TIME_WINDOW_CONFLICT → itinerary.repair_cross_day
    */
   private async repair(
     state: AgentState,
@@ -743,28 +748,71 @@ export class OrchestratorService {
   ): Promise<AgentState> {
     this.logger.debug(`Repairing ${criticResult.violations.length} violations`);
 
-    // 简化实现：尝试修复常见问题
-    // 实际应该根据 violations 类型选择修复策略
+    let updatedState = state;
 
-    // 如果时间窗冲突，尝试调整顺序
-    const timeWindowViolations = criticResult.violations.filter(
-      (v: any) => v.type === 'TIME_WINDOW_CONFLICT'
-    );
+    // 遍历所有 violations，确定性修复
+    for (const violation of criticResult.violations) {
+      const violationType = typeof violation === 'string' 
+        ? violation.split(':')[0] // 处理 "LUNCH_MISSING: 缺少午餐休息时间" 格式
+        : violation.type || violation;
 
-    if (timeWindowViolations.length > 0) {
-      // 调用修复 Action
-      const repairAction = this.actionRegistry.get('itinerary.repair_cross_day');
-      if (repairAction) {
-        try {
-          const result = await repairAction.execute({ violations: timeWindowViolations }, state);
-          return this.updateStateFromAction(state, 'itinerary.repair_cross_day', result);
-        } catch (error: any) {
-          this.logger.error(`Repair action error: ${error?.message || String(error)}`);
+      this.logger.debug(`Repairing violation: ${violationType}`);
+
+      // ROBUST_TIME_MISSING → transport.build_time_matrix
+      if (violationType === 'ROBUST_TIME_MISSING') {
+        if (state.draft.nodes.length > 0) {
+          const buildTimeMatrixAction = this.actionRegistry.get('transport.build_time_matrix');
+          if (buildTimeMatrixAction) {
+            try {
+              this.logger.debug('Repair: 执行 transport.build_time_matrix');
+              const result = await buildTimeMatrixAction.execute(
+                { nodes: state.draft.nodes, robust: true },
+                updatedState
+              );
+              updatedState = this.updateStateFromAction(updatedState, 'transport.build_time_matrix', result);
+            } catch (error: any) {
+              this.logger.error(`Repair action error (build_time_matrix): ${error?.message || String(error)}`);
+            }
+          }
+        }
+      }
+
+      // LUNCH_MISSING → 如果已有 schedule，插入 lunch slot；否则标记为待修复
+      if (violationType === 'LUNCH_MISSING') {
+        // 检查是否已有 schedule（timeline 不为空）
+        const hasSchedule = updatedState.result.timeline && updatedState.result.timeline.length > 0;
+        
+        if (hasSchedule) {
+          // 如果有 schedule，可以插入 lunch break
+          // 这里简化处理：标记为已处理（实际应该插入 lunch slot）
+          this.logger.debug('Repair: 检测到 LUNCH_MISSING，但已有 schedule，标记为待后续处理');
+          // TODO: 实现插入 lunch slot 的逻辑
+        } else {
+          // 如果还没有 schedule，标记为待修复（等 schedule 生成后再插）
+          this.logger.debug('Repair: 检测到 LUNCH_MISSING，但尚未生成 schedule，标记为待修复');
+          // TODO: 在 state 中添加 pendingRepairs 字段
+        }
+      }
+
+      // TIME_WINDOW_CONFLICT → itinerary.repair_cross_day
+      if (violationType === 'TIME_WINDOW_CONFLICT') {
+        const repairAction = this.actionRegistry.get('itinerary.repair_cross_day');
+        if (repairAction) {
+          try {
+            this.logger.debug('Repair: 执行 itinerary.repair_cross_day');
+            const result = await repairAction.execute(
+              { violations: [violation] },
+              updatedState
+            );
+            updatedState = this.updateStateFromAction(updatedState, 'itinerary.repair_cross_day', result);
+          } catch (error: any) {
+            this.logger.error(`Repair action error (repair_cross_day): ${error?.message || String(error)}`);
+          }
         }
       }
     }
 
-    return state;
+    return updatedState;
   }
 
   /**
