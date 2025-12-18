@@ -63,6 +63,7 @@
     "test:optimize": "ts-node --project tsconfig.backend.json scripts/test-itinerary-optimization.ts",
     "test:prophet": "ts-node --project tsconfig.backend.json scripts/test-prophet.ts",
     "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts",
+    "fill:cityid": "ts-node --project tsconfig.backend.json scripts/fill-place-cityid.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
