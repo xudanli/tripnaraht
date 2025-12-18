@@ -86,16 +86,35 @@ export class VectorSearchService {
   ): Promise<HybridSearchResult[]> {
     this.logger.debug(`混合搜索: ${query}, limit: ${limit}`);
 
+    // 诊断信息：打印查询参数
+    const { city, keywords } = this.extractKeywords(query);
+    this.logger.debug(`[hybridSearch] 查询参数: {
+  query: "${query}",
+  city: ${city || 'null'},
+  keywords: [${keywords.join(', ')}],
+  lat: ${lat || 'null'},
+  lng: ${lng || 'null'},
+  radius: ${radius || 'null'},
+  category: ${category || 'null'},
+  limit: ${limit}
+}`);
+
     // 1. 生成查询向量
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
     
     // 检查是否为降级后的零向量（embedding 失败时的降级策略）
     const isZeroVector = queryEmbedding.every(v => v === 0);
     
+    this.logger.debug(`[hybridSearch] Embedding 信息: {
+  dimension: ${queryEmbedding.length},
+  isZeroVector: ${isZeroVector}
+}`);
+    
     if (isZeroVector) {
       this.logger.warn('检测到零向量（embedding 失败），降级到纯关键词搜索');
       // 直接使用关键词搜索，跳过向量搜索
       const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
+      this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -113,6 +132,7 @@ export class VectorSearchService {
     }
 
     // 2. 向量搜索
+    this.logger.debug(`[hybridSearch] 开始向量搜索，topK: ${limit * 2}`);
     const vectorResults = await this.vectorSearch(
       queryEmbedding,
       lat,
@@ -121,8 +141,10 @@ export class VectorSearchService {
       category,
       limit * 2 // 召回更多结果用于混合
     );
+    this.logger.debug(`[hybridSearch] 向量搜索结果数: ${vectorResults.length}`);
 
     // 3. 关键词搜索
+    this.logger.debug(`[hybridSearch] 开始关键词搜索，topK: ${limit * 2}`);
     const keywordResults = await this.keywordSearch(
       query,
       lat,
@@ -131,6 +153,7 @@ export class VectorSearchService {
       category,
       limit * 2
     );
+    this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
 
     // 4. 合并结果并计算混合得分
     const resultMap = new Map<number, HybridSearchResult>();
@@ -215,6 +238,15 @@ export class VectorSearchService {
     category?: string,
     limit: number = 20
   ): Promise<VectorSearchResult[]> {
+    // 诊断信息：打印过滤条件
+    const filterInfo = {
+      locationFilter: lat && lng && radius ? `ST_DWithin(${lat}, ${lng}, ${radius}m)` : 'none',
+      categoryFilter: category || 'none',
+      embeddingDimension: queryEmbedding.length,
+      limit,
+    };
+    this.logger.debug(`[vectorSearch] 过滤条件: ${JSON.stringify(filterInfo, null, 2)}`);
+
     const locationFilter = lat && lng && radius
       ? Prisma.sql`AND ST_DWithin(
           location,
@@ -252,6 +284,14 @@ export class VectorSearchService {
       ORDER BY embedding <=> ${queryEmbedding}::vector
       LIMIT ${limit}
     `;
+
+    this.logger.debug(`[vectorSearch] 数据库查询结果数: ${results.length}`);
+    
+    // 检查是否有 embedding 字段的数据
+    const totalCount = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM "Place" WHERE embedding IS NOT NULL
+    `;
+    this.logger.debug(`[vectorSearch] 数据库中有 embedding 的 Place 总数: ${totalCount[0]?.count || 0}`);
 
     return results.map((r) => ({
       ...r,
@@ -426,6 +466,15 @@ export class VectorSearchService {
       ? Prisma.sql`LEAST(${Prisma.join(keywordMatches, ' + ')}, 1.0)`
       : Prisma.sql`0.4`;
 
+    // 诊断信息：打印 SQL 查询条件
+    this.logger.debug(`[keywordSearch] SQL 查询条件: {
+  keywords: [${keywords.join(', ')}],
+  cityFilter: ${city || 'none'},
+  categoryFilter: ${preferredCategory || 'none'},
+  locationFilter: ${lat && lng && radius ? `ST_DWithin(${lat}, ${lng}, ${radius}m)` : 'none'},
+  limit: ${limit}
+}`);
+
     const results = await this.prisma.$queryRaw<KeywordSearchResult[]>`
       SELECT 
         id,
@@ -445,6 +494,25 @@ export class VectorSearchService {
       ORDER BY "keywordScore" DESC
       LIMIT ${limit}
     `;
+
+    this.logger.debug(`[keywordSearch] 数据库查询结果数: ${results.length}`);
+    
+    // 检查总数据量
+    const totalCount = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM "Place"
+    `;
+    this.logger.debug(`[keywordSearch] 数据库中 Place 总数: ${totalCount[0]?.count || 0}`);
+    
+    // 检查城市匹配的数据量
+    if (city) {
+      const cityCount = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*) as count 
+        FROM "Place" p
+        INNER JOIN "City" c ON c.id = p."cityId"
+        WHERE c."nameCN" = ${city} OR c.name = ${city}
+      `;
+      this.logger.debug(`[keywordSearch] 数据库中 ${city} 的 Place 总数: ${cityCount[0]?.count || 0}`);
+    }
 
     return results.map((r) => ({
       ...r,

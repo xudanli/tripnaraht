@@ -305,7 +305,19 @@ export class OrchestratorService {
     }
     
     // 最多尝试2次（降低从3次到2次，配合硬规则）
+    // 关键：如果已经尝试过1次且返回空节点，不再继续尝试（避免浪费）
     if (state.draft.nodes.length === 0 && userInput && resolveEntitiesAttempts < 2) {
+      // 检查最近一次 resolve_entities 的结果
+      const lastAttempt = state.react.decision_log
+        .filter(log => log.chosen_action === 'places.resolve_entities')
+        .slice(-1)[0];
+      
+      // 如果最近一次尝试返回了空节点，且当前 nodes 仍为 0，说明检索失败，不再继续
+      if (lastAttempt && state.draft.nodes.length === 0 && resolveEntitiesAttempts >= 1) {
+        this.logger.warn(`Plan: resolve_entities 已尝试 ${resolveEntitiesAttempts} 次且返回空节点，停止继续尝试`);
+        return null; // 直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
+      }
+      
       this.logger.debug(`Plan: 缺少节点，选择 places.resolve_entities (尝试次数: ${resolveEntitiesAttempts})`);
       candidateActions.push({
         name: 'places.resolve_entities',

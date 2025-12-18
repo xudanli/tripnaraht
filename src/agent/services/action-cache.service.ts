@@ -58,11 +58,23 @@ export class ActionCacheService {
     // 关键：只使用稳定的参数，排除 state 等不稳定的对象
     const normalizedInput = this.normalizeInput(input);
     const inputStr = this.stableStringify(normalizedInput);
+    
+    // 调试日志：帮助定位 key 不稳定的问题
+    if (actionName === 'places.resolve_entities') {
+      this.logger.debug(`[CacheKey] action: ${actionName}, normalizedInput: ${JSON.stringify(normalizedInput)}, inputStr: ${inputStr.substring(0, 100)}...`);
+    }
+    
     const hash = createHash('sha256')
       .update(`${actionName}:${inputStr}`)
       .digest('hex');
     
-    return `${actionName}:${hash.substring(0, 16)}`;
+    const key = `${actionName}:${hash.substring(0, 16)}`;
+    
+    if (actionName === 'places.resolve_entities') {
+      this.logger.debug(`[CacheKey] Generated key: ${key}`);
+    }
+    
+    return key;
   }
 
   /**
@@ -80,13 +92,23 @@ export class ActionCacheService {
     
     for (const [key, value] of Object.entries(input)) {
       // 排除不稳定的字段
-      if (key === 'state' || key === 'request_id' || key === 'timestamp') {
+      if (key === 'state' || key === 'request_id' || key === 'timestamp' || 
+          key === 'requestId' || key === 'timestamp_ms' || key === '_timestamp') {
+        continue;
+      }
+      
+      // 排除函数、undefined、null（但保留 null 作为有效值）
+      if (typeof value === 'function' || value === undefined) {
         continue;
       }
       
       // 递归处理嵌套对象
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        normalized[key] = this.normalizeInput(value);
+        const normalizedValue = this.normalizeInput(value);
+        // 只添加非空对象
+        if (Object.keys(normalizedValue).length > 0) {
+          normalized[key] = normalizedValue;
+        }
       } else {
         normalized[key] = value;
       }
