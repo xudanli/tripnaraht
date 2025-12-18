@@ -2,6 +2,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import https from 'https';
+import dns from 'node:dns';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 
 /**
@@ -17,10 +19,21 @@ import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, Deci
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
   private readonly defaultProvider: LlmProvider;
-
   private readonly useMock: boolean;
+  
+  // 共享的 HTTPS Agent，强制使用 IPv4
+  private readonly httpsAgent: https.Agent;
 
   constructor(private configService: ConfigService) {
+    // 强制 IPv4 优先（解决 IPv6 连接失败问题）
+    dns.setDefaultResultOrder('ipv4first');
+    
+    // 创建共享的 HTTPS Agent，强制使用 IPv4
+    this.httpsAgent = new https.Agent({
+      keepAlive: true,
+      family: 4, // 强制 IPv4
+    });
+    
     // 检查是否启用 Mock 模式（用于测试或网络不可用时）
     this.useMock = this.configService.get<string>('LLM_USE_MOCK') === 'true';
     
@@ -305,12 +318,15 @@ export class LlmService {
       // 使用 error 级别确保可见
       this.logger.error(`[DEBUG] Calling OpenAI API with URL: ${url}`);
       this.logger.error(`[DEBUG] URL starts with https://: ${url.startsWith('https://')}`);
+      
       const response = await axios.post(url, body, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        timeout: 30000,
+        timeout: 60000, // 增加超时时间
+        proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
+        httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
       });
 
       const data = response.data as {
@@ -322,7 +338,26 @@ export class LlmService {
       const actualUrl = error.config?.url || `${baseUrl}/chat/completions`;
       this.logger.error(`[DEBUG] Actual URL used in request: ${actualUrl}`);
       this.logger.error(`[DEBUG] Request config: ${JSON.stringify({ url: error.config?.url, baseURL: error.config?.baseURL, method: error.config?.method })}`);
+      
+      // 输出底层错误信息（AggregateError 的根因）
+      const errorDetails = {
+        message: error?.message,
+        code: error?.code,
+        errno: error?.errno,
+        syscall: error?.syscall,
+        address: error?.address,
+        port: error?.port,
+        cause: error?.cause?.message ?? error?.cause,
+        errors: error?.errors?.map((e: any) => ({
+          message: e?.message,
+          code: e?.code,
+          errno: e?.errno,
+          syscall: e?.syscall,
+        })),
+      };
+      this.logger.error(`OpenAI API error details: ${JSON.stringify(errorDetails, null, 2)}`);
       this.logger.error(`OpenAI API error: ${error.message}`, error.stack);
+      
       if (error.response) {
         this.logger.error(`OpenAI API response: ${JSON.stringify(error.response.data)}`);
         throw new Error(`OpenAI API error: ${error.response.status} ${JSON.stringify(error.response.data)}`);
@@ -367,7 +402,9 @@ export class LlmService {
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 30000,
+          timeout: 60000, // 增加超时时间
+          proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
+          httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
         }
       );
 
@@ -410,7 +447,9 @@ export class LlmService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        timeout: 30000,
+        timeout: 60000, // 增加超时时间
+        proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
+        httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
       });
 
       const data = response.data as {
@@ -453,7 +492,9 @@ export class LlmService {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
-        timeout: 30000,
+        timeout: 60000, // 增加超时时间
+        proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
+        httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
       });
 
       const data = response.data as {

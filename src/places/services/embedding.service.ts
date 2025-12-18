@@ -2,6 +2,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import https from 'https';
+import dns from 'node:dns';
 
 /**
  * Embedding 服务
@@ -18,6 +20,9 @@ export class EmbeddingService {
   private readonly huggingfaceApiKey?: string;
 
   constructor(private configService: ConfigService) {
+    // 强制 IPv4 优先（解决 IPv6 连接失败问题）
+    dns.setDefaultResultOrder('ipv4first');
+    
     this.provider = this.configService.get<string>('EMBEDDING_PROVIDER') || 'openai';
     this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
     this.huggingfaceApiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
@@ -25,6 +30,8 @@ export class EmbeddingService {
 
   /**
    * 生成文本的 embedding
+   * 
+   * 如果失败，返回空向量（降级策略），让流程能继续
    */
   async generateEmbedding(text: string): Promise<number[]> {
     if (!text || text.trim().length === 0) {
@@ -44,7 +51,12 @@ export class EmbeddingService {
       }
     } catch (error: any) {
       this.logger.error(`生成 embedding 失败: ${error.message}`);
-      throw error;
+      
+      // 降级策略：返回固定维度的零向量，让流程能继续
+      // 这样 VectorSearchService 可以降级到纯关键词搜索
+      const dimension = this.getEmbeddingDimension();
+      this.logger.warn(`Embedding 失败，返回零向量（维度: ${dimension}），将降级到关键词搜索`);
+      return new Array(dimension).fill(0);
     }
   }
 
@@ -57,6 +69,12 @@ export class EmbeddingService {
     }
 
     try {
+      // 创建 HTTPS Agent，强制使用 IPv4
+      const httpsAgent = new https.Agent({
+        keepAlive: true,
+        family: 4, // 强制 IPv4
+      });
+      
       const response = await axios.post(
         'https://api.openai.com/v1/embeddings',
         {
@@ -68,7 +86,9 @@ export class EmbeddingService {
             'Authorization': `Bearer ${this.openaiApiKey}`,
             'Content-Type': 'application/json',
           },
-          timeout: 30000,
+          timeout: 60000, // 增加超时时间
+          proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
+          httpsAgent, // 使用自定义 HTTPS Agent
         }
       );
 
@@ -78,6 +98,24 @@ export class EmbeddingService {
 
       throw new Error('OpenAI API 返回格式错误');
     } catch (error: any) {
+      // 输出底层错误信息
+      const errorDetails = {
+        message: error?.message,
+        code: error?.code,
+        errno: error?.errno,
+        syscall: error?.syscall,
+        address: error?.address,
+        port: error?.port,
+        cause: error?.cause?.message ?? error?.cause,
+        errors: error?.errors?.map((e: any) => ({
+          message: e?.message,
+          code: e?.code,
+          errno: e?.errno,
+          syscall: e?.syscall,
+        })),
+      };
+      this.logger.error(`OpenAI Embedding API error details: ${JSON.stringify(errorDetails, null, 2)}`);
+      
       if (error.response) {
         const errorMsg = error.response.data?.error?.message || error.response.statusText || 'Unknown error';
         throw new Error(`OpenAI API 错误 (${error.response.status}): ${errorMsg}`);

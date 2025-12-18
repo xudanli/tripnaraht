@@ -44,6 +44,7 @@ async function bootstrap() {
     .addTag('voice', '语音解析相关接口')
     .addTag('vision', '视觉识别相关接口（拍照识别 POI）')
     .addTag('schedule-action', '行程动作执行相关接口')
+    .addTag('agent', '智能体统一入口（COALA + ReAct 双系统架构）')
     .addServer('http://localhost:3000', '开发环境')
     .build();
   

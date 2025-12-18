@@ -28,7 +28,13 @@ import { TransportModule } from '../transport/transport.module';
     RobustTimeMatrixService,
     ExplanationService,
   ],
-  exports: [RouteOptimizationService],
+  exports: [
+    RouteOptimizationService,
+    EnhancedVRPTWOptimizerService,
+    VRPTWOptimizerService,
+    RobustTimeMatrixService,
+    ExplanationService,
+  ],
 })
 export class ItineraryOptimizationModule {}
 

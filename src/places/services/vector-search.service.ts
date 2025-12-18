@@ -86,6 +86,21 @@ export class VectorSearchService {
 
     // 1. 生成查询向量
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    
+    // 检查是否为降级后的零向量（embedding 失败时的降级策略）
+    const isZeroVector = queryEmbedding.every(v => v === 0);
+    
+    if (isZeroVector) {
+      this.logger.warn('检测到零向量（embedding 失败），降级到纯关键词搜索');
+      // 直接使用关键词搜索，跳过向量搜索
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
+      return keywordResults.map(r => ({
+        ...r,
+        vectorScore: 0,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（embedding 降级）'],
+      }));
+    }
 
     // 2. 向量搜索
     const vectorResults = await this.vectorSearch(

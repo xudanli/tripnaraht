@@ -62,7 +62,11 @@
     "import:airports": "ts-node --project tsconfig.backend.json scripts/import-airports.ts",
     "test:optimize": "ts-node --project tsconfig.backend.json scripts/test-itinerary-optimization.ts",
     "test:prophet": "ts-node --project tsconfig.backend.json scripts/test-prophet.ts",
-    "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts"
+    "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:agent": "jest --testPathPatterns=agent"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
@@ -99,12 +103,16 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.14",
     "@nestjs/schematics": "^11.0.9",
+    "@nestjs/testing": "^11.1.9",
     "@types/cheerio": "^0.22.35",
+    "@types/jest": "^30.0.0",
     "@types/luxon": "^3.7.1",
     "@types/node": "^20",
     "@types/node-fetch": "^2.6.13",
     "eslint": "^8",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.11",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5"
   }

@@ -21,6 +21,7 @@ import { UsersModule } from './users/users.module';
 import { TripTemplatesModule } from './trip-templates/trip-templates.module';
 import { LlmModule } from './llm/llm.module';
 import { TrailsModule } from './trails/trails.module';
+import { AgentModule } from './agent/agent.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TrailsModule } from './trails/trails.module';
     TripTemplatesModule, // 行程模板模块
     LlmModule, // LLM 通用服务模块
     TrailsModule, // 徒步路线模块
+    AgentModule, // Agent 模块（Router + Orchestrator）
   ],
 })
 export class AppModule {}
