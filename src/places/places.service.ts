@@ -1,5 +1,5 @@
 // src/places/places.service.ts
-import { Injectable, Optional, Inject } from '@nestjs/common';
+import { Injectable, Optional, Inject, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { VectorSearchService } from './services/vector-search.service';
@@ -13,15 +13,111 @@ import { GooglePlacesService, GooglePlacesPOI } from './services/google-places.s
 // 保持向后兼容的类型别名
 type OverpassPOI = GooglePlacesPOI;
 import { PhysicalMetadataGenerator } from './utils/physical-metadata-generator.util';
+import { EmbeddingService } from './services/embedding.service';
 
 @Injectable()
 export class PlacesService {
+  private readonly logger = new Logger(PlacesService.name);
+
   constructor(
     private prisma: PrismaService,
     private amapPOIService: AmapPOIService,
     private googlePlacesService: GooglePlacesService,
-    @Optional() @Inject(VectorSearchService) private vectorSearchService?: VectorSearchService
+    @Optional() @Inject(VectorSearchService) private vectorSearchService?: VectorSearchService,
+    @Optional() @Inject(EmbeddingService) private embeddingService?: EmbeddingService
   ) {}
+
+  /**
+   * 构建搜索文本（用于生成 embedding）
+   */
+  private buildSearchText(place: {
+    nameCN: string;
+    nameEN?: string | null;
+    address?: string | null;
+    metadata?: any;
+  }): string {
+    const parts: string[] = [];
+
+    // 名称
+    if (place.nameCN) parts.push(place.nameCN);
+    if (place.nameEN) parts.push(place.nameEN);
+
+    // 地址
+    if (place.address) parts.push(place.address);
+
+    // 从 metadata 中提取
+    const metadata = place.metadata as any;
+    if (metadata?.description) parts.push(metadata.description);
+    
+    if (metadata?.tags) {
+      if (Array.isArray(metadata.tags)) {
+        parts.push(metadata.tags.join(' '));
+      }
+    }
+    
+    if (metadata?.reviews) {
+      // 提取前3条评论的关键词
+      const reviews = Array.isArray(metadata.reviews) ? metadata.reviews.slice(0, 3) : [];
+      reviews.forEach((review: any) => {
+        if (review.text) {
+          // 只提取评论的前100个字符，避免文本过长
+          parts.push(review.text.substring(0, 100));
+        }
+      });
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
+   * 更新 Place 的 embedding（如果文本信息发生变化）
+   * 
+   * 注意：这是一个异步操作，可能会失败，但不应该阻塞 Place 的更新
+   */
+  private async updatePlaceEmbedding(placeId: number, place: {
+    nameCN: string;
+    nameEN?: string | null;
+    address?: string | null;
+    metadata?: any;
+  }): Promise<void> {
+    if (!this.embeddingService) {
+      this.logger.debug(`EmbeddingService 未注入，跳过更新 embedding`);
+      return;
+    }
+
+    try {
+      // 构建搜索文本
+      const searchText = this.buildSearchText(place);
+      
+      if (!searchText || searchText.trim().length === 0) {
+        this.logger.debug(`Place ${placeId} 没有可用的文本，跳过 embedding 更新`);
+        return;
+      }
+
+      // 生成 embedding
+      const embedding = await this.embeddingService.generateEmbedding(searchText);
+
+      // 检查是否为降级后的零向量
+      const isZeroVector = embedding.every(v => v === 0);
+      if (isZeroVector) {
+        this.logger.warn(`Place ${placeId} embedding 生成失败（零向量），跳过更新`);
+        return;
+      }
+
+      // 更新数据库
+      const embeddingStr = `[${embedding.join(',')}]`;
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE "Place" SET embedding = $1::vector WHERE id = $2`,
+        embeddingStr,
+        placeId
+      );
+
+      this.logger.debug(`Place ${placeId} embedding 已更新`);
+    } catch (error: any) {
+      // 不抛出错误，只记录日志，避免影响 Place 的更新
+      this.logger.warn(`更新 Place ${placeId} embedding 失败: ${error?.message || String(error)}`);
+    }
+  }
 
   /**
    * 创建地点
@@ -55,6 +151,16 @@ export class PlacesService {
       SET location = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)
       WHERE id = ${place.id}
     `;
+
+    // 异步生成 embedding（不阻塞创建操作）
+    this.updatePlaceEmbedding(place.id, {
+      nameCN: place.nameCN,
+      nameEN: place.nameEN,
+      address: place.address,
+      metadata: dto.metadata,
+    }).catch(error => {
+      this.logger.warn(`创建 Place ${place.id} 后生成 embedding 失败: ${error?.message || String(error)}`);
+    });
 
     return place;
   }
@@ -282,6 +388,12 @@ export class PlacesService {
       lastEnrichedAt: new Date().toISOString(),
     };
 
+    // 检查是否有影响 embedding 的字段发生变化
+    const textFieldsChanged = 
+      (poiData.address && poiData.address !== place.address) ||
+      (updatedMetadata.description && updatedMetadata.description !== currentMetadata?.description) ||
+      (updatedMetadata.tags && JSON.stringify(updatedMetadata.tags) !== JSON.stringify(currentMetadata?.tags));
+
     // 更新数据库
     const updated = await this.prisma.place.update({
       where: { id: placeId },
@@ -291,6 +403,19 @@ export class PlacesService {
         updatedAt: new Date(),
       },
     });
+
+    // 如果文本信息发生变化，异步更新 embedding
+    if (textFieldsChanged) {
+      this.logger.debug(`Place ${placeId} 文本信息已更新，触发 embedding 更新`);
+      this.updatePlaceEmbedding(placeId, {
+        nameCN: updated.nameCN,
+        nameEN: updated.nameEN,
+        address: updated.address,
+        metadata: updatedMetadata,
+      }).catch(error => {
+        this.logger.warn(`更新 Place ${placeId} embedding 失败: ${error?.message || String(error)}`);
+      });
+    }
 
     return updated;
   }
