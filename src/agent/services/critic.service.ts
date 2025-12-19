@@ -77,6 +77,75 @@ export class CriticService {
       this.logger.warn('Critic: 检测到优化结果但 schedule 为空，标记为失败');
     }
 
+    // 7. 硬规则：如果状态为 READY 但 schedule 为空，必须失败
+    // 这是最严格的检查：没有 schedule 就不能标记为完成
+    if (state.result.status === 'READY' && !hasSchedule) {
+      violations.push({
+        type: 'SCHEDULE_MISSING',
+        message: `状态为 READY 但 schedule 为空，无法返回给用户`,
+        details: {
+          status: state.result.status,
+          timeline_length: state.result?.timeline?.length || 0,
+          nodes_count: state.draft.nodes.length,
+        },
+      });
+      this.logger.warn(`Critic: 状态 READY 但 schedule 为空，标记为失败`);
+    }
+
+    // 8. 硬规则：检查用户指定的 POI 是否已解析（CONSTRAINTS_UNSATISFIED）
+    // 从 user_input 中提取 POI 关键词，检查是否都在 nodes 中
+    const userInput = state.user_input || '';
+    const requiredPoiKeywords = this.extractRequiredPoiKeywords(userInput);
+    if (requiredPoiKeywords.length > 0 && state.draft.nodes.length > 0) {
+      const nodeNames = state.draft.nodes.map(n => (n.name || '').toLowerCase());
+      const missingPois = requiredPoiKeywords.filter(
+        keyword => !nodeNames.some(name => name.includes(keyword.toLowerCase()))
+      );
+      if (missingPois.length > 0) {
+        violations.push({
+          type: 'CONSTRAINTS_UNSATISFIED',
+          message: `用户指定的 POI 未完全解析: ${missingPois.join(', ')}`,
+          details: {
+            required_pois: requiredPoiKeywords,
+            missing_pois: missingPois,
+            resolved_nodes: state.draft.nodes.map(n => n.name),
+          },
+        });
+        this.logger.warn(`Critic: 用户指定的 POI 未完全解析: ${missingPois.join(', ')}`);
+      }
+    }
+
+    // 9. 硬规则：检查天数是否匹配（DAYS_COUNT_MISMATCH）
+    // 从 user_input 中提取天数，检查是否与 trip.days 匹配
+    const requiredDays = this.extractRequiredDays(userInput);
+    if (requiredDays > 0 && state.trip?.days) {
+      const actualDays = state.trip.days;
+      if (actualDays !== requiredDays) {
+        violations.push({
+          type: 'DAYS_COUNT_MISMATCH',
+          message: `用户要求 ${requiredDays} 天，但行程只有 ${actualDays} 天`,
+          details: {
+            required_days: requiredDays,
+            actual_days: actualDays,
+          },
+        });
+        this.logger.warn(`Critic: 天数不匹配: 要求 ${requiredDays} 天，实际 ${actualDays} 天`);
+      }
+    }
+
+    // 10. 硬规则：如果要优化就必须有 time_matrix（TIME_MATRIX_REQUIRED_WHEN_OPTIMIZE）
+    if (hasOptimizationResults && !state.compute?.time_matrix_robust && !state.compute?.time_matrix_api) {
+      violations.push({
+        type: 'TIME_MATRIX_REQUIRED_WHEN_OPTIMIZE',
+        message: '优化已完成但缺少 time_matrix，优化结果可能不准确',
+        details: {
+          has_time_matrix_robust: !!state.compute?.time_matrix_robust,
+          has_time_matrix_api: !!state.compute?.time_matrix_api,
+        },
+      });
+      this.logger.warn('Critic: 优化已完成但缺少 time_matrix');
+    }
+
     // 计算指标
     const min_slack = this.calculateMinSlack(state);
     const total_wait = this.calculateTotalWait(state);
@@ -263,6 +332,86 @@ export class CriticService {
     }
 
     return violations;
+  }
+
+  /**
+   * 从用户输入中提取要求的 POI 关键词
+   * 常见模式：包含、去、参观、游览 + POI 名称
+   */
+  private extractRequiredPoiKeywords(userInput: string): string[] {
+    if (!userInput || userInput.trim().length === 0) {
+      return [];
+    }
+
+    const keywords: string[] = [];
+    const input = userInput.toLowerCase();
+
+    // 常见 POI 关键词模式
+    const patterns = [
+      /包含\s*([^，,。.\n]+)/g,
+      /去\s*([^，,。.\n]+)/g,
+      /参观\s*([^，,。.\n]+)/g,
+      /游览\s*([^，,。.\n]+)/g,
+      /包括\s*([^，,。.\n]+)/g,
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(input)) !== null) {
+        const poiName = match[1].trim();
+        // 过滤掉常见停用词和数字
+        if (poiName && !poiName.match(/^\d+/) && poiName.length > 1) {
+          keywords.push(poiName);
+        }
+      }
+    }
+
+    // 提取逗号分隔的 POI 列表（如"故宫、长城、天安门"）
+    const commaSeparated = input.match(/([^，,。.\n]+[、,，]([^，,。.\n]+[、,，])*[^，,。.\n]+)/);
+    if (commaSeparated) {
+      const parts = commaSeparated[0].split(/[、,，]/);
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed && trimmed.length > 1 && !trimmed.match(/^\d+/)) {
+          keywords.push(trimmed);
+        }
+      }
+    }
+
+    // 去重并返回
+    return Array.from(new Set(keywords));
+  }
+
+  /**
+   * 从用户输入中提取要求的天数
+   * 常见模式：N天、N日、N晚
+   */
+  private extractRequiredDays(userInput: string): number {
+    if (!userInput || userInput.trim().length === 0) {
+      return 0;
+    }
+
+    const input = userInput.toLowerCase();
+    
+    // 匹配 "N天"、"N日"、"N晚" 等模式
+    const patterns = [
+      /(\d+)\s*天/,
+      /(\d+)\s*日/,
+      /(\d+)\s*晚/,
+      /(\d+)\s*days?/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = input.match(pattern);
+      if (match) {
+        const days = parseInt(match[1], 10);
+        if (days > 0 && days <= 30) { // 合理范围
+          return days;
+        }
+      }
+    }
+
+    return 0; // 未找到或无效
   }
 
   /**

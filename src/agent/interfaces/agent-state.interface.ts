@@ -82,6 +82,7 @@ export interface AgentState {
     browser_steps: number;
     cost_est_usd: number;
     fallback_used: boolean;
+    planner_type?: 'llm' | 'rule_based'; // 规划器类型（LLM 或规则引擎）
   };
 }
 

@@ -250,6 +250,7 @@ export class OrchestratorService {
     const shouldBlockResolveEntities = recentEmptyResults && resolveEntitiesAttempts >= 2;
 
     // 1. 优先尝试使用 LLM Plan（如果启用）
+    let plannerType: 'llm' | 'rule_based' = 'rule_based'; // 默认使用规则引擎
     if (this.llmPlan) {
       try {
         const llmAction = await this.llmPlan.selectAction(state);
@@ -257,15 +258,36 @@ export class OrchestratorService {
           // 如果 LLM 选择了已被禁用的 action，拒绝并回退到规则引擎
           if (shouldBlockResolveEntities && llmAction.name === 'places.resolve_entities') {
             this.logger.warn(`Plan: LLM selected blocked action (places.resolve_entities), falling back to rule-based planning`);
+            plannerType = 'rule_based'; // 明确标记为规则引擎
           } else {
             this.logger.debug(`Plan: LLM selected action: ${llmAction.name}`);
+            plannerType = 'llm'; // 标记为 LLM 规划
+            // 记录 planner 类型到状态（用于可观测性）
+            this.stateService.update(state.request_id, {
+              observability: {
+                ...state.observability,
+                planner_type: plannerType,
+              },
+            });
             return [llmAction];
           }
+        } else {
+          this.logger.debug(`Plan: LLM determined no more actions needed, falling back to rule-based planning`);
+          plannerType = 'rule_based';
         }
       } catch (error: any) {
         this.logger.warn(`LLM Plan failed: ${error?.message || String(error)}, falling back to rule-based planning`);
+        plannerType = 'rule_based';
       }
     }
+    
+    // 记录 planner 类型到状态（用于可观测性）
+    this.stateService.update(state.request_id, {
+      observability: {
+        ...state.observability,
+        planner_type: plannerType,
+      },
+    });
     
     // 收集所有可以执行的候选 Actions
     const candidateActions: Array<{ name: string; input: any }> = [];

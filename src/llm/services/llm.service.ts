@@ -8,6 +8,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
+import { CircuitBreaker } from '../utils/circuit-breaker';
 
 /**
  * 通用 LLM 服务
@@ -28,6 +29,8 @@ export class LlmService {
   private readonly openaiHttp: AxiosInstance;
   // 共享的 HTTPS Agent（用于其他 LLM 提供商，如 DeepSeek、Anthropic）
   private readonly httpsAgent: https.Agent | HttpsProxyAgent<string>;
+  // 熔断器（用于在连续失败后禁用 API 调用）
+  private readonly circuitBreaker: CircuitBreaker;
 
   constructor(private configService: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
@@ -53,6 +56,13 @@ export class LlmService {
     
     // 使用统一的工厂函数创建 OpenAI HTTP 客户端
     this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
+    
+    // 创建熔断器（连续 5 次失败后熔断，1 分钟后进入 HALF_OPEN）
+    this.circuitBreaker = new CircuitBreaker('LlmService', {
+      failureThreshold: 5,
+      resetTimeoutMs: 60000, // 1分钟
+      halfOpenMaxCalls: 2,
+    });
     
     // 检查是否启用 Mock 模式（用于测试或网络不可用时）
     this.useMock = this.configService.get<string>('LLM_USE_MOCK') === 'true';
@@ -212,6 +222,13 @@ export class LlmService {
       return this.getMockResponse(prompt, schema);
     }
 
+    // 检查熔断器状态
+    if (this.circuitBreaker.isOpen()) {
+      const state = this.circuitBreaker.getState();
+      this.logger.warn(`Circuit breaker is ${state}, falling back to mock mode`);
+      return this.getMockResponse(prompt, schema);
+    }
+
     try {
       switch (provider) {
         case LlmProvider.OPENAI:
@@ -227,7 +244,13 @@ export class LlmService {
       }
     } catch (error: any) {
       // 如果网络请求失败，自动回退到 Mock 模式
-      if (error.message?.includes('no response received') || error.message?.includes('network') || error.code === 'ECONNREFUSED') {
+      const isNetworkError = error.message?.includes('no response received') || 
+        error.message?.includes('network') || 
+        error.code === 'ECONNREFUSED' ||
+        error.code === 'ECONNRESET' ||
+        error.code === 'ETIMEDOUT';
+      
+      if (isNetworkError) {
         this.logger.warn(`LLM API call failed (${error.message}), falling back to mock mode`);
         return this.getMockResponse(prompt, schema);
       }
@@ -237,55 +260,103 @@ export class LlmService {
 
   /**
    * Mock 响应（用于测试或网络不可用时）
+   * 
+   * 关键：根据调用场景返回正确的 mock 数据结构
+   * - selectAction: 返回 action 选择结果（action_name, input, reasoning 等）
+   * - naturalLanguageToTripParams: 返回 trip 参数（destination, startDate 等）
+   * - 其他: 返回符合 schema 的默认结构
    */
   private getMockResponse(prompt: string, schema?: any): string {
     this.logger.debug(`Mock LLM response for prompt: ${prompt.substring(0, 100)}...`);
     
-    // 尝试提取天数
-    const dayMatch = prompt.match(/(\d+)\s*天/);
-    const days = dayMatch ? parseInt(dayMatch[1]) : 5;
+    // 判断调用场景：检查 schema 结构
+    const isActionSelection = schema?.properties?.action_name !== undefined;
+    const isTripParams = schema?.properties?.destination !== undefined;
     
-    // 尝试提取预算
-    const budgetMatch = prompt.match(/(\d+)\s*万/);
-    const budget = budgetMatch ? parseInt(budgetMatch[1]) * 10000 : 20000;
-    
-    // 生成日期（使用日期格式，不带时间）
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + days);
-    
-    // 格式化为 YYYY-MM-DD
-    const formatDate = (date: Date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-    
-    const startDateStr = formatDate(today);
-    const endDateStr = formatDate(endDate);
-    
-    // 检测目的地
-    let destination: string | null = null;
-    if (prompt.includes('东京') || prompt.includes('日本') || prompt.includes('JP')) {
-      destination = 'JP';
-    } else if (prompt.includes('杭州') || prompt.includes('中国') || prompt.includes('CN')) {
-      destination = 'CN';
+    if (isActionSelection) {
+      // 场景：LLM Plan Service 的 selectAction 调用
+      // 返回一个合法的 action 选择，而不是 trip 参数
+      // 根据 prompt 内容智能选择 action
+      let actionName = 'places.resolve_entities';
+      let input: any = {};
+      
+      // 尝试从 prompt 中提取信息
+      if (prompt.includes('缺少 POI 节点') || prompt.includes('节点已解析但缺少事实')) {
+        actionName = 'places.get_poi_facts';
+        // 尝试提取 node IDs
+        const nodeIdsMatch = prompt.match(/nodes:\s*(\d+)/);
+        if (nodeIdsMatch) {
+          input = { poi_ids: [parseInt(nodeIdsMatch[1])] };
+        }
+      } else if (prompt.includes('缺少时间矩阵')) {
+        actionName = 'transport.build_time_matrix';
+      } else if (prompt.includes('所有前置条件满足')) {
+        actionName = 'itinerary.optimize_day_vrptw';
+      }
+      
+      const result = {
+        action_name: actionName,
+        input,
+        reasoning: `Mock mode: 根据当前状态选择 ${actionName}`,
+        confidence: 0.5, // Mock 模式置信度较低
+        should_continue: true,
+      };
+      
+      this.logger.warn(`Mock mode: returning action selection (${actionName}), confidence=0.5`);
+      this.logger.debug(`Mock response: ${JSON.stringify(result)}`);
+      return JSON.stringify(result);
     }
     
-    const result = {
-      destination: destination || 'JP', // 默认日本
-      startDate: startDateStr,
-      endDate: endDateStr,
-      totalBudget: budget,
-      hasChildren: (prompt.includes('带娃') || prompt.includes('小孩') || prompt.includes('孩子')) && !prompt.includes('去日本玩'),
-      hasElderly: prompt.includes('老人') || prompt.includes('父母') || prompt.includes('长辈'),
-      preferences: {},
-    };
+    if (isTripParams) {
+      // 场景：naturalLanguageToTripParams 调用
+      // 返回 trip 参数（这是唯一应该返回 destination/startDate 的场景）
+      const dayMatch = prompt.match(/(\d+)\s*天/);
+      const days = dayMatch ? parseInt(dayMatch[1]) : 5;
+      
+      const budgetMatch = prompt.match(/(\d+)\s*万/);
+      const budget = budgetMatch ? parseInt(budgetMatch[1]) * 10000 : 20000;
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const endDate = new Date(today);
+      endDate.setDate(today.getDate() + days);
+      
+      const formatDate = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      
+      const startDateStr = formatDate(today);
+      const endDateStr = formatDate(endDate);
+      
+      // 检测目的地
+      let destination: string | null = null;
+      if (prompt.includes('北京') || prompt.includes('中国') || prompt.includes('CN')) {
+        destination = 'CN';
+      } else if (prompt.includes('东京') || prompt.includes('日本') || prompt.includes('JP')) {
+        destination = 'JP';
+      }
+      
+      const result = {
+        destination: destination || 'CN', // 默认中国（更符合常见场景）
+        startDate: startDateStr,
+        endDate: endDateStr,
+        totalBudget: budget,
+        hasChildren: (prompt.includes('带娃') || prompt.includes('小孩') || prompt.includes('孩子')) && !prompt.includes('去日本玩'),
+        hasElderly: prompt.includes('老人') || prompt.includes('父母') || prompt.includes('长辈'),
+        preferences: {},
+      };
+      
+      this.logger.warn(`Mock mode: returning trip params (destination=${destination})`);
+      this.logger.debug(`Mock response: ${JSON.stringify(result)}`);
+      return JSON.stringify(result);
+    }
     
-    this.logger.debug(`Mock response: ${JSON.stringify(result)}`);
-    return JSON.stringify(result);
+    // 其他场景：返回符合 schema 的默认结构
+    this.logger.warn(`Mock mode: unknown schema, returning empty object`);
+    return JSON.stringify({});
   }
 
   /**
@@ -333,8 +404,16 @@ export class LlmService {
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
       };
-      return data.choices?.[0]?.message?.content || '';
+      const result = data.choices?.[0]?.message?.content || '';
+      
+      // 记录成功
+      this.circuitBreaker.recordSuccess();
+      
+      return result;
     } catch (error: any) {
+      // 记录失败
+      this.circuitBreaker.recordFailure();
+      
       // 记录实际使用的 URL（从错误中提取）
       const actualUrl = error.config?.url || `${this.openaiHttp.defaults.baseURL}/chat/completions`;
       this.logger.debug(`Actual URL used in request: ${actualUrl}`);

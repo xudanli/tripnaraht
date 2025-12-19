@@ -47,19 +47,34 @@ export function createOpenAIHttp(
   processedBaseUrl = processedBaseUrl.replace(/\/$/, '');
 
   // 创建 HTTPS Agent（显式代理或直接连接）
+  // 关键配置：
+  // - keepAlive: true - 复用连接，减少握手开销
+  // - keepAliveMsecs: 1000 - keep-alive 探测间隔
+  // - maxSockets: 50 - 每个主机最大并发连接数
+  // - maxFreeSockets: 10 - 空闲连接池大小
+  // - timeout: 60000 - 连接超时（毫秒）
+  // - family: 4 - 强制 IPv4（避免 IPv6 连接问题）
   const httpsAgent = proxyUrl
     ? new HttpsProxyAgent<string>(proxyUrl)
     : new https.Agent({
         keepAlive: true,
+        keepAliveMsecs: 1000,
+        maxSockets: 50,
+        maxFreeSockets: 10,
+        timeout: 60000,
         family: 4, // 强制 IPv4
       });
 
   // 创建 OpenAI HTTP 客户端实例
+  // 关键配置：
+  // - timeout: 60000 - 请求超时（60秒，包括连接+响应）
+  // - proxy: false - 禁止 axios 自己处理 proxy，使用我们配置的 httpsAgent
+  // - httpsAgent - 使用优化的 HTTPS Agent（keepAlive、连接池等）
   return axios.create({
     baseURL: processedBaseUrl,
-    timeout: 60000,
+    timeout: 60000, // 60秒超时（包括连接建立和响应接收）
     proxy: false, // ✅ 关键：禁止 axios 自己处理 proxy 逻辑
-    httpsAgent, // ✅ 关键：我们自己指定走哪个代理
+    httpsAgent, // ✅ 关键：我们自己指定走哪个代理，并配置连接池
     httpAgent: proxyUrl ? new HttpsProxyAgent<string>(proxyUrl) : undefined, // HTTP 也走代理（如果需要）
     headers: { 'Content-Type': 'application/json' },
   });
