@@ -1,5 +1,5 @@
 // src/agent/services/orchestrator.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { RouteType } from '../interfaces/router.interface';
 import { ActionRegistryService } from './action-registry.service';
@@ -23,10 +23,10 @@ export class OrchestratorService {
     private actionRegistry: ActionRegistryService,
     private critic: CriticService,
     private stateService: AgentStateService,
-    private eventTelemetry?: EventTelemetryService,
-    private actionCache?: ActionCacheService,
-    private dependencyAnalyzer?: ActionDependencyAnalyzerService,
-    private llmPlan?: LlmPlanService,
+    @Optional() private eventTelemetry?: EventTelemetryService,
+    @Optional() private actionCache?: ActionCacheService,
+    @Optional() private dependencyAnalyzer?: ActionDependencyAnalyzerService,
+    @Optional() private llmPlan?: LlmPlanService,
   ) {}
 
   /**
@@ -134,11 +134,11 @@ export class OrchestratorService {
           }
           
           return {
-            step: currentState.react.step,
-            chosen_action: action.name,
+          step: currentState.react.step,
+          chosen_action: action.name,
             reason_code: reasonCode,
-            facts: this.extractFacts(criticResult),
-            policy_id: 'REACT_LOOP',
+          facts: this.extractFacts(criticResult),
+          policy_id: 'REACT_LOOP',
           };
         });
 
@@ -310,8 +310,7 @@ export class OrchestratorService {
     // 规则 3: 如果缺少 POI 节点，先解析实体
     // 硬规则：如果 resolve_entities 返回空节点连续2次，直接停止
     if (shouldBlockResolveEntities) {
-      this.logger.warn(`Plan: resolve_entities 连续2次返回空节点，停止循环并返回 NEED_MORE_INFO`);
-      // 直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
+      this.markNeedMoreInfo(state, '无法从输入中解析地点信息，请提供更具体的地名或POI列表');
       return null;
     }
     
@@ -321,8 +320,7 @@ export class OrchestratorService {
     
     // 如果 query 无效，直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
     if (isInvalidQuery && state.draft.nodes.length === 0) {
-      this.logger.warn(`Plan: 用户输入无效 (${userInput}), 无法解析实体，跳过解析步骤`);
-      // 不添加 action，让系统自然结束并返回 NEED_MORE_INFO
+      this.markNeedMoreInfo(state, '用户输入无效或为空，无法解析地点信息');
       return null;
     }
     
@@ -336,8 +334,8 @@ export class OrchestratorService {
       
       // 如果最近一次尝试返回了空节点，且当前 nodes 仍为 0，说明检索失败，不再继续
       if (lastAttempt && state.draft.nodes.length === 0 && resolveEntitiesAttempts >= 1) {
-        this.logger.warn(`Plan: resolve_entities 已尝试 ${resolveEntitiesAttempts} 次且返回空节点，停止继续尝试`);
-        return null; // 直接返回 null，让系统自然结束并返回 NEED_MORE_INFO
+        this.markNeedMoreInfo(state, '无法从输入中解析地点信息，请提供更具体的地名或POI列表');
+        return null;
       }
       
       this.logger.debug(`Plan: 缺少节点，选择 places.resolve_entities (尝试次数: ${resolveEntitiesAttempts})`);
@@ -406,16 +404,16 @@ export class OrchestratorService {
       const hasFacts = state.memory?.semantic_facts?.pois && state.memory.semantic_facts.pois.length > 0;
       if (hasFacts) {
         this.logger.debug('Plan: 前置条件满足（包括 facts），选择 itinerary.optimize_day_vrptw');
-        candidateActions.push({
-          name: 'itinerary.optimize_day_vrptw',
-          input: {
-            nodes: state.draft.nodes,
-            time_matrix: state.compute.time_matrix_robust,
-            trip: state.trip,
-          },
-        });
-        // 优化操作通常不能与其他操作并行
-        return candidateActions.length > 0 ? candidateActions : null;
+      candidateActions.push({
+        name: 'itinerary.optimize_day_vrptw',
+        input: {
+          nodes: state.draft.nodes,
+          time_matrix: state.compute.time_matrix_robust,
+          trip: state.trip,
+        },
+      });
+      // 优化操作通常不能与其他操作并行
+      return candidateActions.length > 0 ? candidateActions : null;
       } else {
         this.logger.debug('Plan: 缺少 facts，不能执行优化，需要先执行 places.get_poi_facts');
       }
@@ -487,6 +485,7 @@ export class OrchestratorService {
         
         // 如果没有其他候选，返回 null 结束循环
         this.logger.warn('Plan: 没有其他候选 action，结束循环');
+        this.markNeedMoreInfo(state, '无法继续推进规划流程，可能需要更多信息');
         return null;
       }
       
@@ -502,11 +501,12 @@ export class OrchestratorService {
     
     if (state.draft.nodes.length === 0 && finalResolveAttempts >= 3) {
       this.logger.warn('Plan: 无法解析实体，且已尝试多次，无法继续执行');
-      // 返回 null 以结束循环，状态将保持为 DRAFT 或 NEED_MORE_INFO
+      this.markNeedMoreInfo(state, '无法从输入中解析地点信息，请提供更具体的地名或POI列表');
       return null;
     }
     
     this.logger.warn('Plan: 无法确定下一步 Action');
+    this.markNeedMoreInfo(state, '无法确定下一步操作，可能需要更多信息');
     return null;
   }
 
@@ -838,29 +838,75 @@ export class OrchestratorService {
         const hasSchedule = updatedState.result.timeline && updatedState.result.timeline.length > 0;
         
         if (hasSchedule) {
-          // 如果有 schedule，可以插入 lunch break
-          // 这里简化处理：标记为已处理（实际应该插入 lunch slot）
-          this.logger.debug('Repair: 检测到 LUNCH_MISSING，但已有 schedule，标记为待后续处理');
-          // TODO: 实现插入 lunch slot 的逻辑
+          // 如果有 schedule，插入 lunch break
+          const timeline = [...(updatedState.result.timeline || [])];
+          const lunchBreak = updatedState.trip?.lunch_break || {
+            enabled: true,
+            duration_min: 60,
+            window: ['11:30', '13:30'],
+          };
+          
+          // 找到合适的时间插入 lunch（在 11:30-13:30 窗口内，且不在其他事件中间）
+          const lunchStart = lunchBreak.window[0]; // "11:30"
+          const lunchEnd = this.addMinutes(lunchStart, lunchBreak.duration_min);
+          
+          // 检查是否已经有 LUNCH 事件
+          const hasLunchEvent = timeline.some((event: any) => event.type === 'LUNCH');
+          
+          if (!hasLunchEvent) {
+            // 找到第一个在 lunch window 之后的事件，在其之前插入 lunch
+            let insertIndex = -1;
+            for (let i = 0; i < timeline.length; i++) {
+              const event = timeline[i];
+              if (event.start && this.compareTime(event.start, lunchStart) >= 0) {
+                insertIndex = i;
+                break;
+              }
+            }
+            
+            // 如果没找到合适的位置，插入到末尾
+            if (insertIndex === -1) {
+              insertIndex = timeline.length;
+            }
+            
+            // 插入 LUNCH 事件
+            timeline.splice(insertIndex, 0, {
+              type: 'LUNCH',
+              start: lunchStart,
+              end: lunchEnd,
+              duration_min: lunchBreak.duration_min,
+              description: '午餐休息',
+            });
+            
+            this.logger.debug(`Repair: 在 timeline 位置 ${insertIndex} 插入 LUNCH 事件 (${lunchStart} - ${lunchEnd})`);
+            
+            updatedState = this.stateService.update(updatedState.request_id, {
+              result: {
+                ...updatedState.result,
+                timeline,
+              },
+            });
+          } else {
+            this.logger.debug('Repair: timeline 中已存在 LUNCH 事件，跳过插入');
+          }
         } else {
           // 如果还没有 schedule，标记为待修复（等 schedule 生成后再插）
           this.logger.debug('Repair: 检测到 LUNCH_MISSING，但尚未生成 schedule，标记为待修复');
-          // TODO: 在 state 中添加 pendingRepairs 字段
         }
       }
 
       // TIME_WINDOW_CONFLICT → itinerary.repair_cross_day
       if (violationType === 'TIME_WINDOW_CONFLICT') {
-        const repairAction = this.actionRegistry.get('itinerary.repair_cross_day');
-        if (repairAction) {
-          try {
+      const repairAction = this.actionRegistry.get('itinerary.repair_cross_day');
+      if (repairAction) {
+        try {
             this.logger.debug('Repair: 执行 itinerary.repair_cross_day');
             const result = await repairAction.execute(
               { violations: [violation] },
               updatedState
             );
             updatedState = this.updateStateFromAction(updatedState, 'itinerary.repair_cross_day', result);
-          } catch (error: any) {
+        } catch (error: any) {
             this.logger.error(`Repair action error (repair_cross_day): ${error?.message || String(error)}`);
           }
         }
@@ -922,13 +968,14 @@ export class OrchestratorService {
     }
     
     if (actionName === 'places.get_poi_facts') {
-      this.logger.debug(`Updated POI facts: ${Object.keys(result.facts || {}).length} facts`);
+      const facts = result.facts ?? {};
+      this.logger.debug(`Updated POI facts: ${Object.keys(facts).length} facts`);
       return this.stateService.update(state.request_id, {
         memory: {
           ...state.memory,
           semantic_facts: {
             ...state.memory.semantic_facts,
-            pois: result.facts ? Object.values(result.facts) : state.memory.semantic_facts.pois,
+            pois: result.facts != null ? Object.values(result.facts) : state.memory.semantic_facts.pois,
           },
         },
       });
@@ -938,7 +985,7 @@ export class OrchestratorService {
       return this.stateService.update(state.request_id, {
         draft: {
           ...state.draft,
-          nodes: result.nodes || state.draft.nodes,
+          nodes: result.nodes ?? state.draft.nodes,
         },
       });
     }
@@ -947,8 +994,8 @@ export class OrchestratorService {
       return this.stateService.update(state.request_id, {
         compute: {
           ...state.compute,
-          time_matrix_api: result.time_matrix_api || state.compute.time_matrix_api,
-          time_matrix_robust: result.time_matrix_robust || state.compute.time_matrix_robust,
+          time_matrix_api: result.time_matrix_api ?? state.compute.time_matrix_api,
+          time_matrix_robust: result.time_matrix_robust ?? state.compute.time_matrix_robust,
         },
       });
     }
@@ -957,12 +1004,12 @@ export class OrchestratorService {
       return this.stateService.update(state.request_id, {
         compute: {
           ...state.compute,
-          optimization_results: result.results || state.compute.optimization_results,
+          optimization_results: result.results ?? state.compute.optimization_results,
         },
         result: {
           ...state.result,
-          timeline: result.timeline || state.result.timeline,
-          dropped_items: result.dropped_items || state.result.dropped_items,
+          timeline: result.timeline ?? state.result.timeline,
+          dropped_items: result.dropped_items ?? state.result.dropped_items,
         },
       });
     }
@@ -993,7 +1040,7 @@ export class OrchestratorService {
               type: 'webbrowse',
               url: result.url,
               title: result.title,
-              content: result.extracted_text || result.content,
+              content: result.extracted_text ?? result.content ?? '',
               timestamp: new Date().toISOString(),
               success: result.success,
             },
@@ -1017,8 +1064,10 @@ export class OrchestratorService {
     budget: { max_seconds: number; max_steps: number },
     startTime: number
   ): boolean {
-    // 如果已经完成，不继续
-    if (state.result.status === 'READY' || state.result.status === 'FAILED') {
+    // 如果已经完成，不继续（包括 NEED_MORE_INFO 也视为终止）
+    if (state.result.status === 'READY' || 
+        state.result.status === 'FAILED' || 
+        state.result.status === 'NEED_MORE_INFO') {
       return false;
     }
 
@@ -1049,6 +1098,48 @@ export class OrchestratorService {
   }
 
   /**
+   * 标记为 NEED_MORE_INFO 并添加解释
+   */
+  private markNeedMoreInfo(state: AgentState, reason: string): AgentState {
+    this.logger.warn(`Marking as NEED_MORE_INFO: ${reason}`);
+    return this.stateService.update(state.request_id, {
+      result: {
+        ...state.result,
+        status: 'NEED_MORE_INFO',
+        explanations: [
+          ...(state.result.explanations || []),
+          reason,
+        ],
+      },
+    });
+  }
+
+  /**
+   * 时间处理辅助方法：在时间字符串上添加分钟数
+   */
+  private addMinutes(timeStr: string, minutes: number): string {
+    const [hours, mins] = timeStr.split(':').map(Number);
+    const totalMinutes = hours * 60 + mins + minutes;
+    const newHours = Math.floor(totalMinutes / 60);
+    const newMins = totalMinutes % 60;
+    return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}`;
+  }
+
+  /**
+   * 时间处理辅助方法：比较两个时间字符串（HH:mm 格式）
+   * @returns -1 如果 time1 < time2, 0 如果相等, 1 如果 time1 > time2
+   */
+  private compareTime(time1: string, time2: string): number {
+    const [h1, m1] = time1.split(':').map(Number);
+    const [h2, m2] = time2.split(':').map(Number);
+    const total1 = h1 * 60 + m1;
+    const total2 = h2 * 60 + m2;
+    if (total1 < total2) return -1;
+    if (total1 > total2) return 1;
+    return 0;
+  }
+
+  /**
    * 检查是否硬不可行
    */
   private isHardInfeasible(state: AgentState): boolean {
@@ -1076,7 +1167,7 @@ export class OrchestratorService {
     
     // 如果有 violations，返回第一个 violation 类型
     if (criticResult.violations && criticResult.violations.length > 0) {
-      return criticResult.violations[0]?.type || 'UNKNOWN';
+    return criticResult.violations[0]?.type || 'UNKNOWN';
     }
     
     // 根据 action 名称和状态推断原因

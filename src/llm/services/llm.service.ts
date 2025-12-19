@@ -377,9 +377,30 @@ export class LlmService {
     };
 
     // 如果提供了 schema，使用 structured outputs
-    if (schema && model.includes('gpt-4')) {
-      body.response_format = { type: 'json_object' };
-      body.messages[0].content += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
+    if (schema) {
+      // 检查是否支持新的 json_schema 格式（gpt-4o-2024-08-06 及以后版本）
+      const supportsJsonSchema = model.includes('gpt-4o') && (
+        model.includes('2024-08-06') || 
+        model.includes('2024-07-18') ||
+        model === 'gpt-4o' || 
+        model === 'gpt-4o-mini'
+      );
+      
+      if (supportsJsonSchema) {
+        // 使用新的 json_schema 格式（更稳定、更严格）
+        body.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: 'response_schema',
+            strict: true,
+            schema: schema,
+          },
+        };
+      } else if (model.includes('gpt-4') || model.includes('gpt-3.5')) {
+        // 降级到 json_object 格式（向后兼容）
+        body.response_format = { type: 'json_object' };
+        body.messages[0].content += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
+      }
     }
 
     try {

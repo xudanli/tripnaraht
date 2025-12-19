@@ -324,7 +324,8 @@ export class CriticService {
     }> = [];
 
     // 确保使用鲁棒时间矩阵而不是原始 API 时间
-    if (state.compute.time_matrix_robust === null) {
+    // 只在节点已解析时才检查（避免过早触发）
+    if (state.draft.nodes.length > 0 && state.compute.time_matrix_robust === null) {
       violations.push({
         type: 'ROBUST_TIME_MISSING',
         message: '缺少鲁棒时间矩阵',
