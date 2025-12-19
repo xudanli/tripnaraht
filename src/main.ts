@@ -45,6 +45,7 @@ async function bootstrap() {
     .addTag('vision', '视觉识别相关接口（拍照识别 POI）')
     .addTag('schedule-action', '行程动作执行相关接口')
     .addTag('agent', '智能体统一入口（COALA + ReAct 双系统架构）')
+    .addTag('decision', '决策层接口（Abu/Dr.Dre/Neptune 策略、约束校验、可解释性、学习机制）')
     .addServer('http://localhost:3000', '开发环境')
     .build();
   
