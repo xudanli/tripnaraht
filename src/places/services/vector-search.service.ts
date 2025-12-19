@@ -292,10 +292,16 @@ export class VectorSearchService {
     // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
     let cityFilter = Prisma.sql``;
     if (city) {
-      // 先查询 City 表获取匹配的 cityId
-      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number }>>`
-        SELECT id FROM "City" 
-        WHERE "nameCN" = ${city} OR name = ${city}
+      // 先查询 City 表获取匹配的 cityId（支持模糊匹配）
+      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string; name: string }>>`
+        SELECT id, "nameCN", name FROM "City" 
+        WHERE "nameCN" = ${city} 
+           OR "nameCN" LIKE ${`%${city}%`}
+           OR name = ${city}
+           OR name LIKE ${`%${city}%`}
+           OR "nameEN" = ${city}
+           OR "nameEN" LIKE ${`%${city}%`}
+        LIMIT 10
       `;
       
       const cityIds = matchingCities.map(c => c.id);
@@ -304,9 +310,9 @@ export class VectorSearchService {
         // 使用 IN 子查询过滤，比 EXISTS 更高效
         const cityIdSqls = cityIds.map(id => Prisma.sql`${id}`);
         cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
-        this.logger.debug(`[vectorSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}]`);
+        this.logger.debug(`[vectorSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
       } else {
-        this.logger.warn(`[vectorSearch] 未找到匹配的城市: ${city}`);
+        this.logger.warn(`[vectorSearch] 未找到匹配的城市: ${city}，将搜索所有城市`);
         // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
       }
     }
@@ -421,13 +427,21 @@ export class VectorSearchService {
     // 合并地标和其他词汇
     const allTerms = [...foundLandmarks, ...terms];
 
-    // 去重并过滤太短的词（少于2个字符）
-    const uniqueTerms = Array.from(new Set(allTerms))
-      .filter(term => term.length >= 2)
-      .slice(0, 8); // 最多8个关键词
-
-    // 提取城市名
+    // 提取城市名（用于后续过滤）
     const city = this.extractCityName(raw);
+
+    // 去重并过滤：
+    // 1. 太短的词（少于2个字符）
+    // 2. 包含城市名的词（如"5天北京"、"北京游"等，这些不是 POI 实体）
+    // 3. 纯数字词（如"5天"、"3日"等）
+    const uniqueTerms = Array.from(new Set(allTerms))
+      .filter(term => {
+        if (term.length < 2) return false;
+        if (/^\d+$/.test(term)) return false; // 纯数字
+        if (city && term.includes(city)) return false; // 包含城市名（如"5天北京"）
+        return true;
+      })
+      .slice(0, 8); // 最多8个关键词
 
     this.logger.debug(`关键词抽取: "${raw}" -> city: ${city || 'null'}, keywords: [${uniqueTerms.join(', ')}]`);
     return { city, keywords: uniqueTerms };
@@ -481,10 +495,16 @@ export class VectorSearchService {
     // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
     let cityFilter = Prisma.sql``;
     if (city) {
-      // 先查询 City 表获取匹配的 cityId
-      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number }>>`
-        SELECT id FROM "City" 
-        WHERE "nameCN" = ${city} OR name = ${city}
+      // 先查询 City 表获取匹配的 cityId（支持模糊匹配）
+      const matchingCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string; name: string }>>`
+        SELECT id, "nameCN", name FROM "City" 
+        WHERE "nameCN" = ${city} 
+           OR "nameCN" LIKE ${`%${city}%`}
+           OR name = ${city}
+           OR name LIKE ${`%${city}%`}
+           OR "nameEN" = ${city}
+           OR "nameEN" LIKE ${`%${city}%`}
+        LIMIT 10
       `;
       
       const cityIds = matchingCities.map(c => c.id);
@@ -494,9 +514,9 @@ export class VectorSearchService {
         // 将 cityIds 转换为 Prisma.sql 数组
         const cityIdSqls = cityIds.map(id => Prisma.sql`${id}`);
         cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
-        this.logger.debug(`[keywordSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}]`);
+        this.logger.debug(`[keywordSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
       } else {
-        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${city}`);
+        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${city}，将搜索所有城市`);
         // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
       }
     }

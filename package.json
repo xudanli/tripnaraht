@@ -64,6 +64,7 @@
     "test:prophet": "ts-node --project tsconfig.backend.json scripts/test-prophet.ts",
     "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts",
     "fill:cityid": "npx tsx scripts/fill-place-cityid.ts",
+    "diagnose:place": "npx tsx scripts/diagnose-place-data.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -103,7 +104,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.14",
+    "@nestjs/cli": "^11.0.15",
     "@nestjs/schematics": "^11.0.9",
     "@nestjs/testing": "^11.1.9",
     "@types/cheerio": "^0.22.35",
