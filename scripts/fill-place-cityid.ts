@@ -15,17 +15,17 @@ function extractCityFromAddress(address: string | null): string | null {
   if (!address) return null;
   
   // 中国地址格式：省市区街道，例如："北京市东城区天安门广场"
-  // 提取城市名（通常是第二个词，如"北京市"、"上海市"）
-  const parts = address.split(/[省市区县]/);
+  // 支持多种行政区划：省、市、区、县、旗、盟、自治州等
+  const parts = address.split(/[省市区县旗盟州]/);
   if (parts.length >= 2) {
     const cityPart = parts[1] || parts[0];
-    // 移除"市"、"区"等后缀
-    return cityPart.replace(/[市区县]$/, '');
+    // 移除"市"、"区"、"县"、"旗"、"盟"等后缀
+    return cityPart.replace(/[市区县旗盟州]$/, '');
   }
   
-  // 尝试匹配常见城市名
+  // 尝试匹配常见城市名（包括内蒙古等地区）
   const cityPatterns = [
-    /(北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|天津|苏州|长沙|郑州|青岛|大连|厦门|福州|济南|合肥|昆明|哈尔滨|长春|沈阳|石家庄|太原|南昌|南宁|海口|贵阳|乌鲁木齐|拉萨|银川|西宁|呼和浩特)/,
+    /(北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|天津|苏州|长沙|郑州|青岛|大连|厦门|福州|济南|合肥|昆明|哈尔滨|长春|沈阳|石家庄|太原|南昌|南宁|海口|贵阳|乌鲁木齐|拉萨|银川|西宁|呼和浩特|乌兰察布|包头|赤峰|通辽|鄂尔多斯|呼伦贝尔|巴彦淖尔|乌海|锡林郭勒|兴安|阿拉善)/,
   ];
   
   for (const pattern of cityPatterns) {
@@ -67,8 +67,8 @@ async function findNearestCityByLocation(
       LIMIT 1
     `;
     
-    if (nearestCity.length > 0 && nearestCity[0].distance < 50000) {
-      // 如果距离小于 50 公里，认为是该城市
+    if (nearestCity.length > 0 && nearestCity[0].distance < 100000) {
+      // 如果距离小于 100 公里，认为是该城市（增加半径以覆盖偏远景点）
       return nearestCity[0].id;
     }
     
@@ -81,13 +81,15 @@ async function findNearestCityByLocation(
 
 /**
  * 根据城市名匹配 City 表
+ * 支持模糊匹配：如"乌兰察布市"匹配"乌兰察布"
  */
 async function findCityByName(
   prisma: PrismaClient,
   cityName: string
 ): Promise<number | null> {
   try {
-    const city = await prisma.city.findFirst({
+    // 先尝试精确匹配
+    let city = await prisma.city.findFirst({
       where: {
         OR: [
           { nameCN: cityName },
@@ -97,7 +99,48 @@ async function findCityByName(
       },
     });
     
-    return city?.id || null;
+    if (city) {
+      return city.id;
+    }
+    
+    // 如果精确匹配失败，尝试模糊匹配（移除常见后缀）
+    const normalizedName = cityName.replace(/[市区县旗盟州]$/, '');
+    if (normalizedName !== cityName) {
+      city = await prisma.city.findFirst({
+        where: {
+          OR: [
+            { nameCN: { startsWith: normalizedName } },
+            { name: { startsWith: normalizedName } },
+            { nameEN: { startsWith: normalizedName } },
+          ],
+        },
+      });
+      
+      if (city) {
+        return city.id;
+      }
+    }
+    
+    // 尝试包含匹配（用于处理"太仆寺旗"匹配"太仆寺"等情况）
+    if (cityName.includes('旗') || cityName.includes('盟') || cityName.includes('市')) {
+      const baseName = cityName.replace(/[市区县旗盟州].*$/, '');
+      if (baseName && baseName.length >= 2) {
+        city = await prisma.city.findFirst({
+          where: {
+            OR: [
+              { nameCN: { contains: baseName } },
+              { name: { contains: baseName } },
+            ],
+          },
+        });
+        
+        if (city) {
+          return city.id;
+        }
+      }
+    }
+    
+    return null;
   } catch (error: any) {
     console.error(`查找城市失败: ${error.message}`);
     return null;
