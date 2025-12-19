@@ -110,7 +110,19 @@ export class LlmPlanService {
       };
     } catch (error: any) {
       this.logger.error(`LLM Plan error: ${error?.message || String(error)}`, error?.stack);
-      // 出错时回退到规则引擎
+      
+      // 检查是否是网络错误（ECONNRESET 等）
+      const errorMessage = error?.message || String(error);
+      const isNetworkError = errorMessage.includes('ECONNRESET') ||
+        errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('no response received') ||
+        errorMessage.includes('network');
+      
+      if (isNetworkError) {
+        this.logger.warn('LLM Plan failed due to network error, falling back to rule-based planning');
+      }
+      
+      // 出错时回退到规则引擎（返回 null，而不是错误的 mock 数据）
       return null;
     }
   }

@@ -17,7 +17,7 @@ export function createItineraryActions(
         kind: ActionKind.INTERNAL,
         cost: ActionCost.HIGH,
         side_effect: ActionSideEffect.NONE,
-        preconditions: ['draft.nodes', 'compute.time_matrix_robust'],
+        preconditions: ['draft.nodes', 'compute.time_matrix_robust', 'memory.semantic_facts.pois'],
         idempotent: true,
         cacheable: false, // 优化结果可能因状态变化而不同
       },
@@ -50,6 +50,11 @@ export function createItineraryActions(
         timeline: any[];
         dropped_items: any[];
       }> => {
+        // 检查前置条件：确保 facts 已准备好
+        if (!state.memory?.semantic_facts?.pois || state.memory.semantic_facts.pois.length === 0) {
+          throw new Error('PRECONDITION_FAILED: FACTS_MISSING - places.get_poi_facts must be executed first');
+        }
+
         try {
           // 转换节点格式为 PlanNode
           const planNodes: PlanNode[] = input.nodes.map((node: any, index: number) => ({

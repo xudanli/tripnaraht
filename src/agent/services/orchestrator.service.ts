@@ -374,22 +374,29 @@ export class OrchestratorService {
     }
 
     // 规则 6: 如果所有前置条件满足但缺少优化结果，执行优化
+    // 关键：必须确保 facts 已准备好（不能与 get_poi_facts 并行）
     if (
       state.draft.nodes.length > 0 &&
       state.compute.time_matrix_robust !== null &&
       state.compute.optimization_results.length === 0
     ) {
-      this.logger.debug('Plan: 前置条件满足，选择 itinerary.optimize_day_vrptw');
-      candidateActions.push({
-        name: 'itinerary.optimize_day_vrptw',
-        input: {
-          nodes: state.draft.nodes,
-          time_matrix: state.compute.time_matrix_robust,
-          trip: state.trip,
-        },
-      });
-      // 优化操作通常不能与其他操作并行
-      return candidateActions.length > 0 ? candidateActions : null;
+      // 检查 facts 是否已准备好
+      const hasFacts = state.memory?.semantic_facts?.pois && state.memory.semantic_facts.pois.length > 0;
+      if (hasFacts) {
+        this.logger.debug('Plan: 前置条件满足（包括 facts），选择 itinerary.optimize_day_vrptw');
+        candidateActions.push({
+          name: 'itinerary.optimize_day_vrptw',
+          input: {
+            nodes: state.draft.nodes,
+            time_matrix: state.compute.time_matrix_robust,
+            trip: state.trip,
+          },
+        });
+        // 优化操作通常不能与其他操作并行
+        return candidateActions.length > 0 ? candidateActions : null;
+      } else {
+        this.logger.debug('Plan: 缺少 facts，不能执行优化，需要先执行 places.get_poi_facts');
+      }
     }
 
     // 规则 7: 如果优化已完成但需要验证可行性，调用 policy.validate_feasibility

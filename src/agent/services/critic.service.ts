@@ -61,6 +61,22 @@ export class CriticService {
     const waitViolations = this.checkWaitVisibility(state);
     violations.push(...waitViolations);
 
+    // 6. 硬规则：如果优化已完成但 schedule 为空，必须失败
+    // 这可以避免"优化失败但 Critic 还通过"的问题
+    const hasOptimizationResults = state.compute?.optimization_results?.length > 0;
+    // 重用上面已声明的 hasSchedule 变量
+    if (hasOptimizationResults && !hasSchedule) {
+      violations.push({
+        type: 'SCHEDULE_MISSING',
+        message: '优化已完成但未生成 schedule，可能是优化失败',
+        details: {
+          optimization_results_count: state.compute?.optimization_results?.length || 0,
+          timeline_length: state.result?.timeline?.length || 0,
+        },
+      });
+      this.logger.warn('Critic: 检测到优化结果但 schedule 为空，标记为失败');
+    }
+
     // 计算指标
     const min_slack = this.calculateMinSlack(state);
     const total_wait = this.calculateTotalWait(state);

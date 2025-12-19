@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import dns from 'node:dns';
 import { createOpenAIHttp } from '../../llm/utils/openai-http.factory';
+import { retryWithBackoff } from '../../llm/utils/retry-with-backoff';
 
 /**
  * Embedding 服务
@@ -75,17 +76,26 @@ export class EmbeddingService {
     }
 
     try {
-      // 使用统一的 OpenAI HTTP 客户端（与 LlmService 使用相同配置，包括代理设置）
-      const response = await this.openaiHttp.post(
-        '/embeddings',
-        {
-          model: 'text-embedding-3-small',
-          input: text,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.openaiApiKey}`,
+      // 使用统一的 OpenAI HTTP 客户端（与 LlmService 使用相同配置，包括代理设置），带重试机制
+      const response = await retryWithBackoff(
+        () => this.openaiHttp.post(
+          '/embeddings',
+          {
+            model: 'text-embedding-3-small',
+            input: text,
           },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.openaiApiKey}`,
+            },
+          }
+        ),
+        {
+          maxRetries: 3,
+          initialDelayMs: 200,
+          maxDelayMs: 2000,
+          factor: 2,
+          jitter: true,
         }
       );
 

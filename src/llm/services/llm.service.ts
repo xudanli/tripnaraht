@@ -7,6 +7,7 @@ import dns from 'node:dns';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 import { createOpenAIHttp } from '../utils/openai-http.factory';
+import { retryWithBackoff } from '../utils/retry-with-backoff';
 
 /**
  * 通用 LLM 服务
@@ -311,14 +312,23 @@ export class LlmService {
     }
 
     try {
-      // 使用显式配置的 openaiHttp 实例
+      // 使用显式配置的 openaiHttp 实例，带重试机制
       this.logger.debug(`Calling OpenAI API with URL: ${this.openaiHttp.defaults.baseURL}/chat/completions`);
       
-      const response = await this.openaiHttp.post('/chat/completions', body, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
-      });
+      const response = await retryWithBackoff(
+        () => this.openaiHttp.post('/chat/completions', body, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 200,
+          maxDelayMs: 2000,
+          factor: 2,
+          jitter: true,
+        }
+      );
 
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
