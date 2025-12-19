@@ -111,18 +111,22 @@ async function fillPlaceCityId() {
     console.log('开始填充 Place 表的 cityId...\n');
 
     // 1. 查询所有 cityId 为 null 的 Place
+    // 注意：将 location 转换为文本格式，避免 Prisma 反序列化问题
     const placesWithoutCityId = await prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       address: string | null;
-      location: any;
+      location: string | null;
       metadata: any;
     }>>`
       SELECT 
         id,
         "nameCN",
         address,
-        location,
+        CASE 
+          WHEN location IS NOT NULL THEN ST_AsText(location::geometry)
+          ELSE NULL
+        END as location,
         metadata
       FROM "Place"
       WHERE "cityId" IS NULL
@@ -178,23 +182,15 @@ async function fillPlaceCityId() {
           if (!cityId && place.location) {
             try {
               // 提取坐标
-              const location = place.location as any;
+              // location 现在是 WKT 格式的字符串，例如 "POINT(116.3974 39.9093)"
               let lat: number | null = null;
               let lng: number | null = null;
 
-              if (location?.coordinates) {
-                [lng, lat] = location.coordinates;
-              } else if (location?.lat && location?.lng) {
-                lat = location.lat;
-                lng = location.lng;
-              } else {
-                // 尝试从 PostGIS 格式提取
-                const locationStr = String(location);
-                const match = locationStr.match(/POINT\(([\d.]+)\s+([\d.]+)\)/);
-                if (match) {
-                  lng = parseFloat(match[1]);
-                  lat = parseFloat(match[2]);
-                }
+              const locationStr = String(place.location);
+              const match = locationStr.match(/POINT\(([\d.+\-]+)\s+([\d.+\-]+)\)/);
+              if (match) {
+                lng = parseFloat(match[1]);
+                lat = parseFloat(match[2]);
               }
 
               if (lat && lng) {
