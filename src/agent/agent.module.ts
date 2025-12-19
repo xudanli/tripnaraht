@@ -21,6 +21,7 @@ import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module'
 import { ItineraryOptimizationModule } from '../itinerary-optimization/itinerary-optimization.module';
 import { TransportModule } from '../transport/transport.module';
 import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
+import { RailPassModule } from '../railpass/railpass.module';
 import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
 import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
@@ -28,12 +29,14 @@ import { VectorSearchService } from '../places/services/vector-search.service';
 import { TransportRoutingService } from '../transport/transport-routing.service';
 import { EnhancedVRPTWOptimizerService } from '../itinerary-optimization/services/enhanced-vrptw-optimizer.service';
 import { FeasibilityService } from '../planning-policy/services/feasibility.service';
+import { RailPassService } from '../railpass/railpass.service';
 import { createTripActions } from './services/actions/trip.actions';
 import { createPlacesActions } from './services/actions/places.actions';
 import { createTransportActions } from './services/actions/transport.actions';
 import { createItineraryActions } from './services/actions/itinerary.actions';
 import { createPolicyActions } from './services/actions/policy.actions';
 import { createWebBrowseActions } from './services/actions/webbrowse.actions';
+import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
 
 /**
  * Agent Module
@@ -49,6 +52,7 @@ import { createWebBrowseActions } from './services/actions/webbrowse.actions';
     ItineraryOptimizationModule,
     TransportModule,
     PlanningPolicyModule,
+    RailPassModule,
   ],
   controllers: [AgentController],
   providers: [
@@ -82,6 +86,7 @@ export class AgentModule {
     private transportRoutingService?: TransportRoutingService,
     private vrptwOptimizer?: EnhancedVRPTWOptimizerService,
     private feasibilityService?: FeasibilityService,
+    private railPassService?: RailPassService,
   ) {
     // 注册基础 Actions（在模块初始化时）
     this.registerBasicActions();
@@ -123,6 +128,12 @@ export class AgentModule {
     // 注册 WebBrowse Actions
     const webBrowseActions = createWebBrowseActions(this.webBrowseExecutor);
     this.actionRegistry.registerMany(webBrowseActions);
+
+    // 注册 RailPass Actions
+    if (this.railPassService) {
+      const railPassActions = createRailPassActions(this.railPassService);
+      this.actionRegistry.registerMany(railPassActions);
+    }
   }
 }
 

@@ -141,6 +141,7 @@ model ItineraryItem {
   place     Place?    @relation(fields: [placeId], references: [id])
   trail     Trail?    @relation(fields: [trailId], references: [id])
   tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
+  railSegment RailSegment? // Rail Segment（如果是 rail transport）
 }
 
 model Place {
@@ -216,6 +217,7 @@ model Trip {
   shares        TripShare[]
   collections   TripCollection[]
   likes         TripLike[]
+  railPassProfile RailPassProfile? // RailPass 配置（可选）
 }
 
 model TripDay {
@@ -700,4 +702,109 @@ model TripOfflinePack {
   updatedAt DateTime @updatedAt
 
   @@index([tripId])
+}
+
+/// RailPass Profile
+/// 存储用户的 RailPass 配置（挂到 Trip）
+model RailPassProfile {
+  id String @id @default(uuid())
+
+  // 关联到 Trip
+  tripId String @unique
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  // Pass 基本信息
+  residencyCountry      String // ISO 3166-1 alpha-2
+  passFamily            String // EURAIL | INTERRAIL
+  passType              String // GLOBAL | ONE_COUNTRY
+  validityType          String // FLEXI | CONTINUOUS
+  travelDaysTotal       Int? // Flexi 才有
+  homeCountryOutboundUsed Int @default(0) // Interrail 居住国出境使用次数
+  homeCountryInboundUsed  Int @default(0) // Interrail 居住国入境使用次数
+  class                 String // FIRST | SECOND
+  mobileOrPaper         String // MOBILE | PAPER
+  validityStartDate     DateTime
+  validityEndDate       DateTime
+
+  // 元数据
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  segments        RailSegment[]
+  reservationTasks ReservationTask[]
+
+  @@index([tripId])
+}
+
+/// Rail Segment
+/// 存储 rail 行程段信息（作为一种 Transport Plan）
+model RailSegment {
+  id String @id @default(uuid())
+
+  // 关联到 RailPassProfile
+  railPassProfileId String
+  railPassProfile   RailPassProfile @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
+
+  // 关联到 ItineraryItem（可选，如果是已规划的行程项）
+  itineraryItemId String? @unique
+  itineraryItem   ItineraryItem? @relation(fields: [itineraryItemId], references: [id], onDelete: SetNull)
+
+  // Segment 基本信息
+  fromPlaceId      Int
+  toPlaceId        Int
+  fromCountryCode  String // ISO 3166-1 alpha-2
+  toCountryCode    String // ISO 3166-1 alpha-2
+  departureDate    DateTime
+  departureTimeWindow Json? // { earliest: ISODatetime, latest: ISODatetime }
+  arrivalDeadline  DateTime?
+  operatorHint     String?
+  isNightTrain     Boolean @default(false)
+  isHighSpeed      Boolean @default(false)
+  isInternational  Boolean @default(false)
+  crossesMidnight  Boolean @default(false)
+  t_api            Int? // 预计 API 时间（分钟）
+  t_robust         Int? // 鲁棒时间（分钟）
+
+  // 元数据
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  reservationTasks ReservationTask[]
+
+  @@index([railPassProfileId])
+  @@index([itineraryItemId])
+  @@index([departureDate])
+}
+
+/// Reservation Task
+/// 存储订座任务状态
+model ReservationTask {
+  id String @id @default(uuid())
+
+  // 关联到 RailSegment
+  segmentId      String
+  railSegment    RailSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  // 关联到 RailPassProfile
+  railPassProfileId String
+  railPassProfile   RailPassProfile @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
+
+  // 任务状态
+  status String // NEEDED | PLANNED | BOOKED | FAILED | FALLBACK_APPLIED
+  bookingRef     String? // 订座引用号
+  cost           Float? // 实际费用（EUR）
+  failReason     String? // 失败原因
+  fallbackPlanId String? // 备用方案 ID
+  travelDay      DateTime? // 关联的 Travel Day
+
+  // 元数据
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([segmentId])
+  @@index([railPassProfileId])
+  @@index([status])
+  @@index([travelDay])
 }
