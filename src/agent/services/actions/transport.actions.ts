@@ -102,6 +102,7 @@ export function createTransportActions(
                   rowRobust.push(robustTime);
                 } catch (error: any) {
                   // 如果计算失败，使用估算值
+                  // 注意：这通常发生在 Google Routes API 不可用时（如 403 错误）
                   const estimatedTime = 30;
                   rowApi.push(estimatedTime);
                   rowRobust.push(Math.round(estimatedTime * 1.2 + 15));

@@ -20,6 +20,13 @@ export class GoogleRoutesService {
   private readonly apiKey: string | undefined;
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+  
+  // Circuit breaker: 如果连续失败超过阈值，暂时禁用 API
+  private consecutiveFailures = 0;
+  private readonly maxConsecutiveFailures = 3;
+  private isCircuitOpen = false;
+  private circuitOpenUntil: number | null = null;
+  private readonly circuitResetMs = 5 * 60 * 1000; // 5分钟后重试
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('GOOGLE_ROUTES_API_KEY');
@@ -62,6 +69,20 @@ export class GoogleRoutesService {
       return [];
     }
 
+    // 检查熔断器状态
+    if (this.isCircuitOpen) {
+      if (this.circuitOpenUntil && Date.now() < this.circuitOpenUntil) {
+        this.logger.debug('Google Routes API 熔断器开启，使用估算数据');
+        return [];
+      } else {
+        // 熔断器超时，尝试重置
+        this.logger.debug('Google Routes API 熔断器超时，尝试重置');
+        this.isCircuitOpen = false;
+        this.circuitOpenUntil = null;
+        this.consecutiveFailures = 0;
+      }
+    }
+
     try {
       const requestBody = {
         origin: {
@@ -98,13 +119,65 @@ export class GoogleRoutesService {
 
       const response = await this.axiosInstance.post(this.baseUrl, requestBody);
 
+      // 成功：重置失败计数
+      this.consecutiveFailures = 0;
+      this.isCircuitOpen = false;
+      this.circuitOpenUntil = null;
+
       // 解析 Google Routes API 响应
       return this.parseGoogleRoutesResponse(response.data, travelMode);
     } catch (error: any) {
-      this.logger.error(
-        `Google Routes API 调用失败: ${error.message}`,
-        error.stack
-      );
+      // 增加失败计数
+      this.consecutiveFailures++;
+      
+      // 检查是否是 403 错误（权限问题）
+      const is403 = error.response?.status === 403;
+      const is401 = error.response?.status === 401;
+      
+      if (is403 || is401) {
+        const errorDetails = error.response?.data || {};
+        const errorMessage = errorDetails.error?.message || error.message;
+        
+        this.logger.warn(
+          `Google Routes API 认证失败 (${error.response?.status}): ${errorMessage}`,
+          {
+            apiKeyPresent: !!this.apiKey,
+            apiKeyLength: this.apiKey?.length || 0,
+            errorCode: errorDetails.error?.code,
+            errorStatus: errorDetails.error?.status,
+            consecutiveFailures: this.consecutiveFailures,
+          }
+        );
+        
+        // 如果是认证错误，立即打开熔断器（不需要等待多次失败）
+        if (this.consecutiveFailures >= 1) {
+          this.isCircuitOpen = true;
+          this.circuitOpenUntil = Date.now() + this.circuitResetMs;
+          this.logger.warn(
+            `Google Routes API 因认证错误被暂时禁用，将在 ${this.circuitResetMs / 1000 / 60} 分钟后重试。` +
+            `请检查：1) API Key 是否正确 2) Routes API 是否已启用 3) 计费是否已开启 4) API Key 是否有 Routes API 权限`
+          );
+        }
+      } else {
+        // 其他错误（网络、超时等）
+        this.logger.debug(
+          `Google Routes API 调用失败: ${error.message}`,
+          {
+            status: error.response?.status,
+            consecutiveFailures: this.consecutiveFailures,
+          }
+        );
+        
+        // 如果连续失败超过阈值，打开熔断器
+        if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
+          this.isCircuitOpen = true;
+          this.circuitOpenUntil = Date.now() + this.circuitResetMs;
+          this.logger.warn(
+            `Google Routes API 因连续失败被暂时禁用，将在 ${this.circuitResetMs / 1000 / 60} 分钟后重试`
+          );
+        }
+      }
+      
       // 返回空数组，让系统使用估算数据
       return [];
     }
