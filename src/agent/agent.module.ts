@@ -26,6 +26,7 @@ import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
 import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
 import { VectorSearchService } from '../places/services/vector-search.service';
+import { EntityResolutionService } from '../places/services/entity-resolution.service';
 import { TransportRoutingService } from '../transport/transport-routing.service';
 import { EnhancedVRPTWOptimizerService } from '../itinerary-optimization/services/enhanced-vrptw-optimizer.service';
 import { FeasibilityService } from '../planning-policy/services/feasibility.service';
@@ -83,6 +84,7 @@ export class AgentModule {
     private itineraryItemsService: ItineraryItemsService,
     private webBrowseExecutor: WebBrowseExecutorService,
     private vectorSearchService?: VectorSearchService,
+    private entityResolutionService?: EntityResolutionService,
     private transportRoutingService?: TransportRoutingService,
     private vrptwOptimizer?: EnhancedVRPTWOptimizerService,
     private feasibilityService?: FeasibilityService,
@@ -103,7 +105,8 @@ export class AgentModule {
     // 注册 Places Actions
     const placesActions = createPlacesActions(
       this.placesService,
-      this.vectorSearchService
+      this.vectorSearchService,
+      this.entityResolutionService
     );
     this.actionRegistry.registerMany(placesActions);
 

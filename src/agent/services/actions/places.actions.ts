@@ -2,13 +2,55 @@
 import { Action, ActionKind, ActionCost, ActionSideEffect } from '../../interfaces/action.interface';
 import { PlacesService } from '../../../places/places.service';
 import { VectorSearchService } from '../../../places/services/vector-search.service';
+import { EntityResolutionService } from '../../../places/services/entity-resolution.service';
+
+/**
+ * 提取must-have POI列表（从用户输入中）
+ */
+function extractMustHavePois(userInput: string): string[] {
+  if (!userInput || userInput.trim().length === 0) {
+    return [];
+  }
+
+  const pois: string[] = [];
+  const input = userInput;
+
+  // 提取"包含"、"去"、"参观"、"游览"等关键词后的POI
+  const patterns = [
+    /包含\s*([^，,。.\n]+)/g,
+    /去\s*([^，,。.\n]+)/g,
+    /参观\s*([^，,。.\n]+)/g,
+    /游览\s*([^，,。.\n]+)/g,
+    /包括\s*([^，,。.\n]+)/g,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(input)) !== null) {
+      const poiName = match[1].trim();
+      if (poiName && !poiName.match(/^\d+/) && poiName.length > 1) {
+        pois.push(poiName);
+      }
+    }
+  }
+
+  // 提取逗号/顿号分隔的POI列表
+  const commaSeparated = input.match(/([^，,。.\n]+[、,，]([^，,。.\n]+[、,，])*[^，,。.\n]+)/);
+  if (commaSeparated) {
+    const parts = commaSeparated[1].split(/[、,，]/).map(s => s.trim()).filter(s => s.length > 1);
+    pois.push(...parts);
+  }
+
+  return Array.from(new Set(pois)); // 去重
+}
 
 /**
  * Places Actions
  */
 export function createPlacesActions(
   placesService: PlacesService,
-  vectorSearchService?: VectorSearchService
+  vectorSearchService?: VectorSearchService,
+  entityResolutionService?: EntityResolutionService
 ): Action[] {
   return [
     {
@@ -72,7 +114,78 @@ export function createPlacesActions(
 
           logger.debug(`[resolve_entities] 开始解析实体，query: "${query}"`);
 
-          // 优先使用向量搜索（如果可用）
+          // 提取must-have POI列表
+          const mustHavePois = extractMustHavePois(query);
+          logger.debug(`[resolve_entities] 提取的must-have POI: [${mustHavePois.join(', ')}]`);
+
+          // 优先使用新的策略链服务（如果可用）
+          if (entityResolutionService) {
+            try {
+              const resolutionResult = await entityResolutionService.resolveEntities(
+                query,
+                mustHavePois,
+                input.lat,
+                input.lng,
+                input.limit || 10
+              );
+
+              // 转换为节点格式
+              const nodes = resolutionResult.results
+                .filter(r => r.lat && r.lng) // 只保留有坐标的结果
+                .map(r => ({
+                  id: r.id,
+                  name: r.nameCN || r.nameEN || r.name,
+                  type: 'poi',
+                  geo: {
+                    lat: r.lat,
+                    lng: r.lng,
+                  },
+                  category: r.category,
+                  metadata: {
+                    address: r.address,
+                    score: r.score,
+                    source: r.source,
+                    matchReasons: r.matchReasons,
+                    ...r.metadata,
+                  },
+                }));
+
+              // 输出诊断信息
+              logger.debug(`[resolve_entities] 策略链解析结果: {
+  totalResults: ${resolutionResult.results.length},
+  nodesWithCoords: ${nodes.length},
+  missingPois: [${resolutionResult.missingPois.join(', ')}],
+  needsClarification: ${resolutionResult.needsClarification.length}
+}`);
+
+              if (resolutionResult.missingPois.length > 0) {
+                logger.warn(`[resolve_entities] 缺失的must-have POI: [${resolutionResult.missingPois.join(', ')}]`);
+              }
+
+              if (resolutionResult.needsClarification.length > 0) {
+                logger.warn(`[resolve_entities] 需要澄清的POI: ${JSON.stringify(resolutionResult.needsClarification, null, 2)}`);
+              }
+
+              return {
+                nodes,
+                count: nodes.length,
+                diagnostics: {
+                  searchMethod: 'entity_resolution_strategy_chain',
+                  rawHitCount: resolutionResult.results.length,
+                  filteredCount: resolutionResult.results.length - nodes.length,
+                  mappingErrors: 0,
+                  finalCount: nodes.length,
+                  missingPois: resolutionResult.missingPois,
+                  needsClarification: resolutionResult.needsClarification,
+                },
+              };
+            } catch (strategyError: any) {
+              logger.warn(`[resolve_entities] 策略链服务失败，降级到传统搜索: ${strategyError?.message || String(strategyError)}`);
+              // 降级到传统搜索逻辑
+            }
+          }
+
+          // 降级：使用传统向量搜索（如果可用）
           let results: any[];
           let rawHitCount = 0;
           let searchMethod = '';

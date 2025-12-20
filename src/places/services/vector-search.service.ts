@@ -453,25 +453,28 @@ export class VectorSearchService {
     const cities = this.extractCities(raw);
     
     // 使用正则匹配"城市+景点"模式，如"杭州西湖" -> 提取"西湖"
-    // 支持更长的POI名称（最多8个字符，如"十里红妆"）
+    // 支持更长的POI名称（最多30个字符，如"十里红妆"）
     // 注意：需要处理嵌套城市名的情况，如"宁波宁海十里红妆"
-    const cityPattern = /(?:北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|天津|苏州|长沙|郑州|青岛|大连|厦门|福州|济南|合肥|昆明|哈尔滨|长春|沈阳|石家庄|太原|南昌|南宁|海口|贵阳|乌鲁木齐|拉萨|银川|西宁|呼和浩特|宁波|温州|台州|嘉兴|湖州|绍兴|金华|衢州|舟山|丽水|宁海|象山|余姚|慈溪|奉化)([^\s，,。.!！？?和以及还有跟与省市县区]{2,8})/g;
+    const cityPattern = /(?:北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|天津|苏州|长沙|郑州|青岛|大连|厦门|福州|济南|合肥|昆明|哈尔滨|长春|沈阳|石家庄|太原|南昌|南宁|海口|贵阳|乌鲁木齐|拉萨|银川|西宁|呼和浩特|宁波|温州|台州|嘉兴|湖州|绍兴|金华|衢州|舟山|丽水|宁海|象山|余姚|慈溪|奉化)([^\s，,。.!！？?和以及还有跟与省市县区]{2,30})/g;
     let match;
     const matchedRanges: Array<{ start: number; end: number; landmark: string }> = [];
     while ((match = cityPattern.exec(raw)) !== null) {
+      const matchedCity = match[0].substring(0, match[0].length - match[1].length); // 提取匹配到的城市名
       const landmark = match[1];
-      // 验证：POI名称应该是2-8个字符，且不包含常见行政区划词
+      // 验证：POI名称应该是2-30个字符，且不包含常见行政区划词
       // 特别检查：如果landmark包含其他城市名（如"宁海十里红妆"中的"宁海"），需要特殊处理
-      if (landmark.length >= 2 && landmark.length <= 8 && !/省|市|县|区|镇|村/.test(landmark)) {
-        // 检查landmark是否包含其他城市名
+      if (landmark.length >= 2 && landmark.length <= 30 && !/省|市|县|区|镇|村/.test(landmark)) {
+        // 检查landmark是否包含其他城市名（排除当前匹配的城市名）
         let containsOtherCity = false;
         for (const otherCity of cities) {
-          if (landmark.includes(otherCity) && otherCity !== match[0].substring(0, otherCity.length)) {
+          // 确保 otherCity 不是当前匹配的城市名，且 landmark 包含它
+          if (otherCity !== matchedCity && landmark.includes(otherCity)) {
             // 如果landmark包含其他城市名，提取城市名之后的部分
             const otherCityIndex = landmark.indexOf(otherCity);
             if (otherCityIndex >= 0) {
               const afterOtherCity = landmark.substring(otherCityIndex + otherCity.length);
-              if (afterOtherCity.length >= 2 && afterOtherCity.length <= 8) {
+              // 支持更长的POI名称（最多30个字符）
+              if (afterOtherCity.length >= 2 && afterOtherCity.length <= 30) {
                 // 找到"城市+POI"组合，如"宁海十里红妆" -> "十里红妆"
                 foundLandmarks.push(afterOtherCity);
                 matchedRanges.push({

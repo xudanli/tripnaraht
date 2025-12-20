@@ -11,6 +11,8 @@ import { NaraHintService } from './services/nara-hint.service';
 import { RouteDifficultyService } from './services/route-difficulty.service';
 import { EmbeddingService } from './services/embedding.service';
 import { VectorSearchService } from './services/vector-search.service';
+import { AdminDivisionService } from './services/admin-division.service';
+import { EntityResolutionService } from './services/entity-resolution.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
@@ -28,6 +30,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     RouteDifficultyService,
     EmbeddingService,
     VectorSearchService,
+    AdminDivisionService,
+    EntityResolutionService,
   ],
   exports: [
     PlacesService,
@@ -39,6 +43,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     NaraHintService,
     EmbeddingService,
     VectorSearchService,
+    AdminDivisionService,
+    EntityResolutionService,
   ],
 })
 export class PlacesModule {}
