@@ -123,7 +123,7 @@ export class VectorSearchService {
     
     if (embeddingCount === 0) {
       this.logger.warn('[hybridSearch] 数据库中没有 embedding 数据，直接使用关键词搜索');
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
@@ -156,7 +156,7 @@ export class VectorSearchService {
     if (isZeroVector) {
       this.logger.warn('检测到零向量（embedding 失败），降级到纯关键词搜索');
       // 直接使用关键词搜索，跳过向量搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
@@ -175,8 +175,6 @@ export class VectorSearchService {
     }
 
     // 2. 向量搜索（传递 city 参数以支持城市过滤）
-    // 如果检测到多个城市，禁用 cityFilter
-    const effectiveCity = cities.length >= 2 ? null : city;
     this.logger.debug(`[hybridSearch] 开始向量搜索，topK: ${limit * 2}, city: ${effectiveCity || 'null'}`);
     const vectorResults = await this.vectorSearch(
       queryEmbedding,
@@ -184,14 +182,12 @@ export class VectorSearchService {
       lng,
       radius,
       category,
-      effectiveCity, // 多城市时为 null，禁用城市过滤
+      effectiveCity, // 单城市时使用 city，多城市时为 null
       limit * 2 // 召回更多结果用于混合
     );
     this.logger.debug(`[hybridSearch] 向量搜索结果数: ${vectorResults.length}`);
 
     // 3. 关键词搜索
-    // 如果检测到多个城市，禁用 cityFilter
-    const effectiveCity = cities.length >= 2 ? null : city;
     this.logger.debug(`[hybridSearch] 开始关键词搜索，topK: ${limit * 2}, city: ${effectiveCity || 'null'}`);
     const keywordResults = await this.keywordSearch(
       query,
@@ -199,7 +195,7 @@ export class VectorSearchService {
       lng,
       radius,
       category,
-      effectiveCity, // 多城市时为 null，禁用城市过滤
+      effectiveCity, // 单城市时使用 city，多城市时为 null
       limit * 2
     );
     this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
@@ -1006,7 +1002,7 @@ export class VectorSearchService {
         });
 
         if (keywords.length > 0) {
-          const uniqueKeywords = [...new Set(keywords)];
+          const uniqueKeywords = Array.from(new Set(keywords));
           reasons.push(`根据评论提到的"${uniqueKeywords.join('"、"')}"推荐`);
         }
       }
