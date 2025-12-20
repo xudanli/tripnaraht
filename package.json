@@ -104,7 +104,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.15",
+    "@nestjs/cli": "^11.0.14",
     "@nestjs/schematics": "^11.0.9",
     "@nestjs/testing": "^11.1.9",
     "@types/cheerio": "^0.22.35",
