@@ -1177,6 +1177,49 @@ export class OrchestratorService {
         });
       }
       
+      // Patch A: 检查 needsClarification 和 missingPois，如果存在则标记为 NEED_MORE_INFO
+      const diagnostics = result.diagnostics || {};
+      const needsClarification = diagnostics.needsClarification || [];
+      const missingPois = diagnostics.missingPois || [];
+      
+      if (needsClarification.length > 0 || missingPois.length > 0) {
+        // 构建澄清消息
+        let clarificationMessage = '需要澄清以下地点信息：\n';
+        for (const item of needsClarification) {
+          clarificationMessage += `\n"${item.poi}" 可能指：\n`;
+          for (const option of item.options) {
+            clarificationMessage += `  - ${option}\n`;
+          }
+        }
+        if (missingPois.length > 0 && needsClarification.length === 0) {
+          clarificationMessage += `\n无法找到以下地点：${missingPois.join(', ')}\n请提供更具体的地名或POI信息。`;
+        }
+        
+        this.logger.warn(`[Orchestrator] 检测到需要澄清的POI，停止循环并返回澄清问题`);
+        this.logger.debug(`[Orchestrator] 澄清消息: ${clarificationMessage}`);
+        
+        // 标记状态为 NEED_MORE_INFO，并保存澄清信息
+        return this.stateService.update(state.request_id, {
+          draft: {
+            ...state.draft,
+            nodes: updatedNodes, // 仍然保留已找到的节点
+          },
+          result: {
+            ...state.result,
+            status: 'NEED_MORE_INFO',
+            explanations: [
+              ...(state.result.explanations || []),
+              {
+                type: 'clarification',
+                message: clarificationMessage,
+                missing_pois: missingPois,
+                clarification_options: needsClarification,
+              },
+            ],
+          },
+        });
+      }
+      
       // 即使返回空数组，也要更新状态（标记为已尝试）
       // 这样可以避免无限循环执行同一个 action
       const newState = this.stateService.update(state.request_id, {
