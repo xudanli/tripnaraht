@@ -280,24 +280,60 @@ export class LlmService {
       let actionName = 'places.resolve_entities';
       let input: any = {};
       
-      // 尝试从 prompt 中提取信息
-      if (prompt.includes('缺少 POI 节点') || prompt.includes('节点已解析但缺少事实')) {
+      // 从 prompt 中提取状态信息
+      const nodesMatch = prompt.match(/nodes:\s*(\d+)/);
+      const nodesCount = nodesMatch ? parseInt(nodesMatch[1]) : 0;
+      const factsMatch = prompt.match(/facts:\s*(\d+)/);
+      const factsCount = factsMatch ? parseInt(factsMatch[1]) : 0;
+      const hasTimeMatrix = prompt.includes('time_matrix:') && !prompt.includes('time_matrix: null');
+      
+      // 检查是否有违规信息
+      const hasDaysMismatch = prompt.includes('DAYS_COUNT_MISMATCH') || prompt.includes('天数不匹配');
+      const hasTimeMissing = prompt.includes('ROBUST_TIME_MISSING') || prompt.includes('缺少时间矩阵');
+      const hasLunchMissing = prompt.includes('LUNCH_MISSING') || prompt.includes('缺少午餐');
+      
+      // 优先级规则：
+      // 1. 如果 nodes=0，必须先解析实体（不能获取 facts）
+      if (nodesCount === 0) {
+        actionName = 'places.resolve_entities';
+        input = {};
+      }
+      // 2. 如果有节点但没有 facts，获取 facts
+      else if (nodesCount > 0 && factsCount === 0) {
         actionName = 'places.get_poi_facts';
-        // 尝试提取 node IDs
-        const nodeIdsMatch = prompt.match(/nodes:\s*(\d+)/);
+        // 尝试提取 node IDs（如果有的话）
+        const nodeIdsMatch = prompt.match(/node_ids:\s*\[([\d,\s]+)\]/);
         if (nodeIdsMatch) {
-          input = { poi_ids: [parseInt(nodeIdsMatch[1])] };
+          input = { poi_ids: nodeIdsMatch[1].split(',').map((id: string) => parseInt(id.trim())) };
+        } else {
+          input = {};
         }
-      } else if (prompt.includes('缺少时间矩阵')) {
+      }
+      // 3. 如果有节点和 facts 但没有时间矩阵，构建时间矩阵
+      else if (nodesCount > 0 && factsCount > 0 && !hasTimeMatrix) {
         actionName = 'transport.build_time_matrix';
-      } else if (prompt.includes('所有前置条件满足')) {
+        input = {};
+      }
+      // 4. 如果所有前置条件满足，执行优化
+      else if (nodesCount > 0 && factsCount > 0 && hasTimeMatrix) {
         actionName = 'itinerary.optimize_day_vrptw';
+        input = {};
+      }
+      // 5. 根据违规类型选择修复 action
+      else if (hasTimeMissing && nodesCount > 0) {
+        actionName = 'transport.build_time_matrix';
+        input = {};
+      }
+      // 默认：解析实体
+      else {
+        actionName = 'places.resolve_entities';
+        input = {};
       }
       
       const result = {
         action_name: actionName,
         input,
-        reasoning: `Mock mode: 根据当前状态选择 ${actionName}`,
+        reasoning: `Mock mode: 根据当前状态选择 ${actionName} (nodes=${nodesCount}, facts=${factsCount}, hasTimeMatrix=${hasTimeMatrix})`,
         confidence: 0.5, // Mock 模式置信度较低
         should_continue: true,
       };

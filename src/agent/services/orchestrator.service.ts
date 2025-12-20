@@ -469,13 +469,53 @@ export class OrchestratorService {
       
       const selectedAction = candidateActions[0];
       
-      // 如果连续 3 次执行相同的 action，跳过它
+      // 如果连续 2 次执行相同的 action，检查状态是否真的改变了
       const recentSameActions = state.react.decision_log
+        .slice(-2)
+        .filter(log => log.chosen_action === selectedAction.name);
+      
+      if (recentSameActions.length >= 2 && lastAction === selectedAction.name) {
+        // 检查最近两次执行后的状态是否真的改变了
+        // 获取最近两次执行前的状态快照（从 decision_log 的 facts 字段）
+        const lastTwoLogs = state.react.decision_log.slice(-2);
+        if (lastTwoLogs.length >= 2) {
+          const prevState = lastTwoLogs[0].facts || {};
+          const currentState = {
+            nodes: state.draft.nodes.length,
+            facts: state.memory.semantic_facts.pois.length,
+            time_matrix: state.compute.time_matrix_robust ? 'exists' : 'null',
+          };
+          
+          // 如果状态没有改变，说明陷入了循环
+          const stateChanged = 
+            prevState.nodes !== currentState.nodes ||
+            prevState.facts !== currentState.facts ||
+            prevState.time_matrix !== currentState.time_matrix;
+          
+          if (!stateChanged) {
+            this.logger.warn(`Plan: 已连续执行 ${recentSameActions.length} 次 ${selectedAction.name}，且状态未改变，跳过以避免无限循环`);
+            
+            // 尝试选择其他候选 action
+            if (candidateActions.length > 1) {
+              this.logger.debug(`Plan: 选择替代 action: ${candidateActions[1].name}`);
+              return [candidateActions[1]];
+            }
+            
+            // 如果没有其他候选，返回 null 结束循环
+            this.logger.warn('Plan: 没有其他候选 action，结束循环');
+            this.markNeedMoreInfo(state, '无法继续推进规划流程，可能需要更多信息');
+            return null;
+          }
+        }
+      }
+      
+      // 如果连续 3 次执行相同的 action（即使状态改变了），也跳过它
+      const recentSameActions3 = state.react.decision_log
         .slice(-3)
         .filter(log => log.chosen_action === selectedAction.name);
       
-      if (recentSameActions.length >= 3 && lastAction === selectedAction.name) {
-        this.logger.warn(`Plan: 已连续执行 ${recentSameActions.length} 次 ${selectedAction.name}，跳过以避免无限循环`);
+      if (recentSameActions3.length >= 3 && lastAction === selectedAction.name) {
+        this.logger.warn(`Plan: 已连续执行 ${recentSameActions3.length} 次 ${selectedAction.name}，跳过以避免无限循环`);
         
         // 尝试选择其他候选 action
         if (candidateActions.length > 1) {
@@ -909,6 +949,30 @@ export class OrchestratorService {
         } catch (error: any) {
             this.logger.error(`Repair action error (repair_cross_day): ${error?.message || String(error)}`);
           }
+        }
+      }
+
+      // DAYS_COUNT_MISMATCH → 更新 trip.days
+      if (violationType === 'DAYS_COUNT_MISMATCH') {
+        const violationDetails = typeof violation === 'string'
+          ? { required_days: 0, actual_days: 0 }
+          : violation.details || {};
+        
+        const requiredDays = violationDetails.required_days || 
+          (typeof violation === 'string' 
+            ? parseInt(violation.match(/(\d+)\s*天/)?.[1] || '0')
+            : 0);
+        
+        if (requiredDays > 0 && requiredDays !== updatedState.trip.days) {
+          this.logger.debug(`Repair: 更新 trip.days 从 ${updatedState.trip.days} 到 ${requiredDays}`);
+          updatedState = this.stateService.update(updatedState.request_id, {
+            trip: {
+              ...updatedState.trip,
+              days: requiredDays,
+            },
+          });
+        } else {
+          this.logger.warn(`Repair: DAYS_COUNT_MISMATCH 但无法确定正确的天数，跳过修复`);
         }
       }
     }
