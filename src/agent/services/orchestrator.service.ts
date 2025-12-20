@@ -492,11 +492,19 @@ export class OrchestratorService {
       
       const selectedAction = candidateActions[0];
       
-      // 如果连续 2 次执行相同的 action，检查状态是否真的改变了
+      // 检查最近3次执行（增加检测范围，更早发现循环）
       const recentSameActions = state.react.decision_log
-        .slice(-2)
+        .slice(-3)
         .filter(log => log.chosen_action === selectedAction.name);
       
+      // 如果连续3次执行相同action，立即中断（强制停止循环）
+      if (recentSameActions.length >= 3 && lastAction === selectedAction.name) {
+        this.logger.warn(`Plan: 已连续执行 ${recentSameActions.length} 次 ${selectedAction.name}，强制中断以避免无限循环`);
+        this.markNeedMoreInfo(state, `已多次尝试执行 ${selectedAction.name}，但未能推进规划流程。可能需要调整搜索策略或提供更具体的信息。`);
+        return null;
+      }
+      
+      // 如果连续 2 次执行相同的 action，检查状态是否真的改变了
       if (recentSameActions.length >= 2 && lastAction === selectedAction.name) {
         // 检查最近两次执行后的状态是否真的改变了
         // 获取最近两次执行前的状态快照（从 decision_log 的 facts 字段）
