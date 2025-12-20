@@ -449,21 +449,52 @@ export class VectorSearchService {
     const foundLandmarks: string[] = [];
     let remainingText = raw;
     
+    // 先提取所有城市名
+    const cities = this.extractCities(raw);
+    
     // 使用正则匹配"城市+景点"模式，如"杭州西湖" -> 提取"西湖"
     // 支持更长的POI名称（最多8个字符，如"十里红妆"）
+    // 注意：需要处理嵌套城市名的情况，如"宁波宁海十里红妆"
     const cityPattern = /(?:北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|天津|苏州|长沙|郑州|青岛|大连|厦门|福州|济南|合肥|昆明|哈尔滨|长春|沈阳|石家庄|太原|南昌|南宁|海口|贵阳|乌鲁木齐|拉萨|银川|西宁|呼和浩特|宁波|温州|台州|嘉兴|湖州|绍兴|金华|衢州|舟山|丽水|宁海|象山|余姚|慈溪|奉化)([^\s，,。.!！？?和以及还有跟与省市县区]{2,8})/g;
     let match;
-    const matchedRanges: Array<{ start: number; end: number }> = [];
+    const matchedRanges: Array<{ start: number; end: number; landmark: string }> = [];
     while ((match = cityPattern.exec(raw)) !== null) {
       const landmark = match[1];
       // 验证：POI名称应该是2-8个字符，且不包含常见行政区划词
+      // 特别检查：如果landmark包含其他城市名（如"宁海十里红妆"中的"宁海"），需要特殊处理
       if (landmark.length >= 2 && landmark.length <= 8 && !/省|市|县|区|镇|村/.test(landmark)) {
-        foundLandmarks.push(landmark);
-        // 记录匹配范围，避免重复替换
-        matchedRanges.push({
-          start: match.index,
-          end: match.index + match[0].length
-        });
+        // 检查landmark是否包含其他城市名
+        let containsOtherCity = false;
+        for (const otherCity of cities) {
+          if (landmark.includes(otherCity) && otherCity !== match[0].substring(0, otherCity.length)) {
+            // 如果landmark包含其他城市名，提取城市名之后的部分
+            const otherCityIndex = landmark.indexOf(otherCity);
+            if (otherCityIndex >= 0) {
+              const afterOtherCity = landmark.substring(otherCityIndex + otherCity.length);
+              if (afterOtherCity.length >= 2 && afterOtherCity.length <= 8) {
+                // 找到"城市+POI"组合，如"宁海十里红妆" -> "十里红妆"
+                foundLandmarks.push(afterOtherCity);
+                matchedRanges.push({
+                  start: match.index,
+                  end: match.index + match[0].length,
+                  landmark: afterOtherCity
+                });
+                containsOtherCity = true;
+                break;
+              }
+            }
+          }
+        }
+        
+        // 如果landmark不包含其他城市名，直接使用
+        if (!containsOtherCity) {
+          foundLandmarks.push(landmark);
+          matchedRanges.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            landmark: landmark
+          });
+        }
       }
     }
     
@@ -487,7 +518,6 @@ export class VectorSearchService {
 
     // 如果仍然只有一条很长的，再按中文逗号/顿号切一次
     // 但要注意：不要破坏"城市+POI"组合（如"宁波宁海十里红妆"）
-    const cities = this.extractCities(raw);
     terms = terms.flatMap(t => {
       // 如果包含多个城市名，不要按顿号分割（保持完整，由实体拆分逻辑处理）
       const cityCount = cities.filter(city => t.includes(city)).length;
@@ -516,6 +546,8 @@ export class VectorSearchService {
         if (city && term.includes(city)) return false; // 包含城市名（如"5天北京"）
         // 过滤包含省份名的词（如"5天浙江省"、"浙江省游"），但保留已识别的地标
         if (/省|市|县|区/.test(term) && !foundLandmarks.includes(term)) return false;
+        // 过滤包含城市名但长度过短的词（如"宁波宁海十"）
+        if (cities.some(c => term.includes(c) && term.length < 4)) return false;
         return true;
       })
       .slice(0, 8); // 最多8个关键词
@@ -938,6 +970,7 @@ export class VectorSearchService {
     keywords: string[]
   ): Array<{ name: string; cityHint: string | null }> {
     const entities: Array<{ name: string; cityHint: string | null }> = [];
+    const processedKeywords = new Set<string>();
     
     // 策略1: 识别"城市+POI"组合（如"杭州西湖"、"宁波宁海十里红妆"）
     // 对于每个城市，查找紧邻的POI关键词（使用模式匹配，不依赖硬编码列表）
@@ -957,55 +990,48 @@ export class VectorSearchService {
           const landmark = match[1];
           
           // 检查landmark是否包含其他城市名（如"宁海十里红妆"中的"宁海"）
-          let isCityName = false;
+          let foundNestedCity = false;
           for (const otherCity of cities) {
             if (otherCity !== city && landmark.includes(otherCity)) {
               // 如果landmark包含其他城市名，尝试提取城市名之后的部分
               const otherCityIndex = landmark.indexOf(otherCity);
               if (otherCityIndex >= 0) {
                 const afterOtherCity = landmark.substring(otherCityIndex + otherCity.length);
-                if (afterOtherCity.length >= 2 && afterOtherCity.length <= 8) {
+                // 支持更长的POI名称（最多30个字符）
+                if (afterOtherCity.length >= 2 && afterOtherCity.length <= 30) {
                   // 找到"城市+POI"组合，如"宁海十里红妆" -> "十里红妆"
                   entities.push({
                     name: afterOtherCity,
                     cityHint: otherCity,
                   });
-                  // 从 keywords 中移除已匹配的关键词
-                  const keywordIndex = keywords.findIndex(k => k.includes(afterOtherCity) || afterOtherCity.includes(k));
-                  if (keywordIndex >= 0) {
-                    keywords.splice(keywordIndex, 1);
-                  }
+                  processedKeywords.add(afterOtherCity);
+                  foundNestedCity = true;
+                  break;
                 }
-                isCityName = true;
-                break;
               }
             }
           }
           
           // 如果landmark不包含其他城市名，且不包含当前城市名，则作为POI
-          if (!isCityName && landmark.length >= 2 && landmark.length <= 8 && !landmark.includes(city)) {
+          if (!foundNestedCity && landmark.length >= 2 && landmark.length <= 30 && !landmark.includes(city)) {
             entities.push({
               name: landmark,
               cityHint: city,
             });
-            // 从 keywords 中移除已匹配的关键词（避免重复）
-            const keywordIndex = keywords.findIndex(k => k.includes(landmark) || landmark.includes(k));
-            if (keywordIndex >= 0) {
-              keywords.splice(keywordIndex, 1);
-            }
+            processedKeywords.add(landmark);
           }
         }
       }
     }
     
-    // 策略2: 处理剩余的关键词
+    // 策略2: 处理剩余的关键词（从 extractKeywords 提取的关键词）
     for (const keyword of keywords) {
       // 跳过已经匹配的关键词
-      if (entities.some(e => e.name === keyword || keyword.includes(e.name) || e.name.includes(keyword))) {
+      if (processedKeywords.has(keyword) || entities.some(e => e.name === keyword || keyword.includes(e.name) || e.name.includes(keyword))) {
         continue;
       }
       
-      // 检查关键词是否包含城市名
+      // 检查关键词是否包含城市名，或者关键词在查询中紧邻城市名
       let matchedCity: string | null = null;
       
       for (const city of cities) {
@@ -1048,6 +1074,7 @@ export class VectorSearchService {
         name: keyword,
         cityHint: matchedCity,
       });
+      processedKeywords.add(keyword);
     }
     
     // 如果没有找到任何实体，使用原始查询（但禁用城市过滤）

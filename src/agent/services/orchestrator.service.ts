@@ -270,7 +270,14 @@ export class OrchestratorService {
     const recentEmptyResults = recentResolveAttempts.length >= 2 && 
       state.draft.nodes.length === 0; // 如果最近尝试了至少2次，且当前节点仍为空
     
-    const shouldBlockResolveEntities = recentEmptyResults && resolveEntitiesAttempts >= 2;
+    // 检查是否连续3次执行了 places.resolve_entities（无论结果如何，都可能是循环）
+    const consecutiveResolveAttempts = state.react.decision_log
+      .slice(-3)
+      .filter(log => log.chosen_action === 'places.resolve_entities');
+    
+    const shouldBlockResolveEntities = 
+      (recentEmptyResults && resolveEntitiesAttempts >= 2) ||
+      (consecutiveResolveAttempts.length >= 3); // 连续3次执行相同action，强制停止
 
     // 1. 优先尝试使用 LLM Plan（如果启用）
     let plannerType: 'llm' | 'rule_based' = 'rule_based'; // 默认使用规则引擎
@@ -280,8 +287,9 @@ export class OrchestratorService {
         if (llmAction) {
           // 如果 LLM 选择了已被禁用的 action，拒绝并回退到规则引擎
           if (shouldBlockResolveEntities && llmAction.name === 'places.resolve_entities') {
-            this.logger.warn(`Plan: LLM selected blocked action (places.resolve_entities), falling back to rule-based planning`);
-            plannerType = 'rule_based'; // 明确标记为规则引擎
+            this.logger.warn(`Plan: LLM selected blocked action (places.resolve_entities), 已连续执行 ${consecutiveResolveAttempts.length} 次，强制停止以避免无限循环`);
+            this.markNeedMoreInfo(state, '无法从输入中解析指定的地点信息（如"杭州西湖"、"宁波宁海十里红妆"），请提供更具体的地名或POI列表');
+            return null;
           } else {
             this.logger.debug(`Plan: LLM selected action: ${llmAction.name}`);
             plannerType = 'llm'; // 标记为 LLM 规划
@@ -331,9 +339,10 @@ export class OrchestratorService {
     }
 
     // 规则 3: 如果缺少 POI 节点，先解析实体
-    // 硬规则：如果 resolve_entities 返回空节点连续2次，直接停止
+    // 硬规则：如果 resolve_entities 返回空节点连续2次，或连续3次执行相同action，直接停止
     if (shouldBlockResolveEntities) {
-      this.markNeedMoreInfo(state, '无法从输入中解析地点信息，请提供更具体的地名或POI列表');
+      this.logger.warn(`Plan: 已连续执行 ${consecutiveResolveAttempts.length} 次 places.resolve_entities，强制停止以避免无限循环`);
+      this.markNeedMoreInfo(state, '无法从输入中解析指定的地点信息（如"杭州西湖"、"宁波宁海十里红妆"），请提供更具体的地名或POI列表');
       return null;
     }
     
