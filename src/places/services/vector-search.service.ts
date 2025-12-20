@@ -477,7 +477,7 @@ export class VectorSearchService {
    * 1. 保留原始短语实体：对 2-3 字地标，不要二次切分
    * 2. 先提取已知地标，再处理其他词汇
    */
-  private extractKeywords(raw: string): { city: string | null; keywords: string[] } {
+  public extractKeywords(raw: string): { city: string | null; keywords: string[] } {
     // 不再硬编码地标列表，使用模式匹配提取"城市+POI"组合
     // 例如："杭州西湖" -> 提取"西湖"
     
