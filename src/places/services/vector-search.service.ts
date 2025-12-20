@@ -838,10 +838,12 @@ export class VectorSearchService {
         return false;
       }
       // 过滤规则3: 必须包含名词特征（景点常见字）
-      const poiKeywords = ['湖', '山', '寺', '馆', '景区', '古镇', '文化园', '博物馆', '故居', '公园', '广场', '塔', '桥', '庙', '祠', '亭', '楼', '阁', '殿', '宫', '园', '林', '谷', '洞', '泉', '瀑布', '瀑布', '瀑布', '瀑布', '瀑布'];
+      const poiKeywords = ['湖', '山', '寺', '馆', '景区', '古镇', '文化园', '博物馆', '故居', '公园', '广场', '塔', '桥', '庙', '祠', '亭', '楼', '阁', '殿', '宫', '园', '林', '谷', '洞', '泉', '瀑布', '红妆', '十里红妆', '文化', '艺术', '展览', '中心', '基地', '遗址', '纪念', '景区', '风景', '名胜'];
       const hasPoiKeyword = poiKeywords.some(keyword => name.includes(keyword));
+      // 已知的完整POI名称（即使不包含POI关键词，也应该保留）
+      const knownPoiNames = ['十里红妆', '天安门', '故宫', '长城', '颐和园', '圆明园', '北海', '景山', '天坛', '地坛', '日坛', '月坛', '雍和宫', '恭王府', '什刹海', '南锣鼓巷', '798', '鸟巢', '水立方', '大观园', '大观楼', '大观塔'];
       // 如果长度>=4且不包含任何POI关键词，可能是切分错误
-      if (name.length >= 4 && !hasPoiKeyword) {
+      if (name.length >= 4 && !hasPoiKeyword && !knownPoiNames.includes(name)) {
         // 但允许已知的行政区名（如"宁海"）
         const knownDistricts = ['宁海', '象山', '余姚', '慈溪', '奉化', '临安', '建德', '富阳', '桐庐', '淳安'];
         if (!knownDistricts.includes(name)) {
@@ -895,8 +897,29 @@ export class VectorSearchService {
       }
     }
     
-    // 5. 按分数排序并返回
-    const mergedResults = Array.from(resultMap.values())
+    // 5. 按分数排序并返回（带类别加权）
+    let mergedResults = Array.from(resultMap.values());
+    
+    // Patch B: 根据query意图给类别加权（景点 > 酒店）
+    const hasAttractionIntent = /西湖|景区|公园|博物馆|古镇|文化园|景点|风景|名胜|山|湖|寺|馆|塔|桥|庙|祠|亭|楼|阁|殿|宫|园|林|谷|洞|泉|瀑布|红妆/.test(query);
+    if (hasAttractionIntent) {
+      mergedResults = mergedResults.map(r => {
+        const attractionCategories = ['ATTRACTION', 'SCENIC', 'PARK', 'MUSEUM', 'CULTURAL_SITE', 'HISTORICAL_SITE', 'NATURE_SITE'];
+        const isAttraction = attractionCategories.includes(r.category);
+        const isHotel = r.category === 'HOTEL';
+        
+        if (isAttraction) {
+          // 景点类别加权：提升1.5倍
+          r.finalScore = r.finalScore * 1.5;
+        } else if (isHotel) {
+          // 酒店类别降权：降低到0.3倍
+          r.finalScore = r.finalScore * 0.3;
+        }
+        return r;
+      });
+    }
+    
+    mergedResults = mergedResults
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, limit);
     
@@ -1034,7 +1057,28 @@ export class VectorSearchService {
     });
 
     // 获取完整地点信息并生成推荐原因
-    const results = Array.from(resultMap.values())
+    let results = Array.from(resultMap.values());
+    
+    // Patch B: 根据query意图给类别加权（景点 > 酒店）
+    const hasAttractionIntent = /西湖|景区|公园|博物馆|古镇|文化园|景点|风景|名胜|山|湖|寺|馆|塔|桥|庙|祠|亭|楼|阁|殿|宫|园|林|谷|洞|泉|瀑布|红妆/.test(query);
+    if (hasAttractionIntent) {
+      results = results.map(r => {
+        const attractionCategories = ['ATTRACTION', 'SCENIC', 'PARK', 'MUSEUM', 'CULTURAL_SITE', 'HISTORICAL_SITE', 'NATURE_SITE'];
+        const isAttraction = attractionCategories.includes(r.category);
+        const isHotel = r.category === 'HOTEL';
+        
+        if (isAttraction) {
+          // 景点类别加权：提升1.5倍
+          r.finalScore = r.finalScore * 1.5;
+        } else if (isHotel) {
+          // 酒店类别降权：降低到0.3倍
+          r.finalScore = r.finalScore * 0.3;
+        }
+        return r;
+      });
+    }
+    
+    results = results
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, limit);
 

@@ -115,6 +115,15 @@ export class OrchestratorService {
         // 再次获取最新状态
         currentState = this.stateService.get(currentState.request_id) || currentState;
 
+        // Patch A: 检查 action 结果中的 needsClarification，如果存在则直接返回
+        // 从最近执行的 action 结果中检查 diagnostics
+        if (actions.length === 1 && actions[0].name === 'places.resolve_entities') {
+          // 从状态中获取最近一次 resolve_entities 的结果
+          // 注意：结果存储在 decision_log 的 facts 中，或者我们需要从 act 方法返回的结果中获取
+          // 由于 act 方法已经更新了状态，我们需要从其他地方获取结果
+          // 暂时跳过，在 updateStateFromAction 中处理
+        }
+
         // Critic: 检查可行性
         const criticResult = await this.critic.validateFeasibility(currentState);
 
