@@ -8,7 +8,7 @@
  */
 
 import { PrismaClient, PlaceCategory } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -105,32 +105,53 @@ async function main() {
       });
 
       if (existing) {
-        // 更新现有记录
+        // 更新现有记录（先更新基本字段）
         await prisma.place.update({
           where: { id: existing.id },
           data: {
-            ...item,
-            // 使用 PostGIS ST_MakePoint 创建地理点
-            location: Prisma.raw(`ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326)`),
+            nameCN: item.nameCN,
+            nameEN: item.nameEN,
+            category: item.category,
+            address: item.address,
+            metadata: item.metadata as any,
             updatedAt: new Date(),
           },
         });
+        
+        // 使用原始SQL更新location字段
+        await prisma.$executeRaw`
+          UPDATE "Place"
+          SET location = ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326)::geography
+          WHERE id = ${existing.id}
+        `;
+        
         updatedCount++;
         console.log(`✓ 更新: ${item.nameCN}`);
       } else {
-        // 创建新记录
-        await prisma.place.create({
+        // 创建新记录（先创建基本字段）
+        const place = await prisma.place.create({
           data: {
-            uuid: Prisma.raw('gen_random_uuid()'),
-            ...item,
-            // 使用 PostGIS ST_MakePoint 创建地理点
-            location: Prisma.raw(`ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326)`),
+            uuid: randomUUID(),
+            nameCN: item.nameCN,
+            nameEN: item.nameEN,
+            category: item.category,
+            cityId: item.cityId,
+            address: item.address,
+            metadata: item.metadata as any,
             createdAt: new Date(),
             updatedAt: new Date(),
           },
         });
+        
+        // 使用原始SQL更新location字段
+        await prisma.$executeRaw`
+          UPDATE "Place"
+          SET location = ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326)::geography
+          WHERE id = ${place.id}
+        `;
+        
         createdCount++;
-        console.log(`✓ 创建: ${item.nameCN}`);
+        console.log(`✓ 创建: ${item.nameCN} (ID: ${place.id})`);
       }
     } catch (error: any) {
       console.error(`✗ 处理失败 ${item.nameCN}: ${error?.message || String(error)}`);
