@@ -439,13 +439,13 @@ export class EntityResolutionService {
       nameEN: r.nameEN,
       address: r.address,
       category: r.category,
-      lat: r.lat || 0,
-      lng: r.lng || 0,
+      lat: r.lat ?? 0, // 使用 ?? 而不是 ||，避免 0 被替换
+      lng: r.lng ?? 0,
       score: r.finalScore,
       source: 'vector_search' as const,
       matchReasons: r.matchReasons || [],
       metadata: {},
-    }));
+    })).filter(r => r.lat !== 0 && r.lng !== 0); // 过滤掉没有坐标的结果
   }
 
   /**

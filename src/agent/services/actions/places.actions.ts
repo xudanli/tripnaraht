@@ -15,30 +15,50 @@ function extractMustHavePois(userInput: string): string[] {
   const pois: string[] = [];
   const input = userInput;
 
-  // 提取"包含"、"去"、"参观"、"游览"等关键词后的POI
-  const patterns = [
-    /包含\s*([^，,。.\n]+)/g,
+  // 策略1: 提取"包含"关键词后的POI列表（如"包含杭州西湖、宁波宁海十里红妆"）
+  const containsMatch = input.match(/包含\s*([^，,。.\n]+)/);
+  if (containsMatch) {
+    const poiList = containsMatch[1].trim();
+    // 按顿号/逗号分割
+    const parts = poiList.split(/[、,，]/).map(s => s.trim()).filter(s => {
+      // 过滤掉明显不是POI的词（如"规划5天浙江省游"）
+      if (s.length < 2) return false;
+      if (/^\d+/.test(s)) return false; // 纯数字开头
+      if (/规划|安排|行程|旅行|旅游|游玩|游|日|一共|想去|打卡|去|到|在/.test(s)) return false;
+      if (/省|市|县|区/.test(s) && s.length < 5) return false; // 太短的行政区划词
+      return true;
+    });
+    pois.push(...parts);
+    // 如果通过"包含"成功提取了POI，直接返回，不再使用其他策略
+    if (pois.length > 0) {
+      return Array.from(new Set(pois)); // 去重
+    }
+  }
+
+  // 策略2: 提取其他关键词后的POI（"去"、"参观"、"游览"等）
+  // 只在策略1失败时使用
+  const otherPatterns = [
     /去\s*([^，,。.\n]+)/g,
     /参观\s*([^，,。.\n]+)/g,
     /游览\s*([^，,。.\n]+)/g,
     /包括\s*([^，,。.\n]+)/g,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of otherPatterns) {
     let match;
     while ((match = pattern.exec(input)) !== null) {
       const poiName = match[1].trim();
+      // 如果已经通过"包含"提取过了，跳过
+      if (pois.some(p => poiName.includes(p) || p.includes(poiName))) {
+        continue;
+      }
       if (poiName && !poiName.match(/^\d+/) && poiName.length > 1) {
-        pois.push(poiName);
+        // 过滤掉明显不是POI的词
+        if (!/规划|安排|行程|旅行|旅游|游玩|游|日|一共|想去|打卡|去|到|在/.test(poiName)) {
+          pois.push(poiName);
+        }
       }
     }
-  }
-
-  // 提取逗号/顿号分隔的POI列表
-  const commaSeparated = input.match(/([^，,。.\n]+[、,，]([^，,。.\n]+[、,，])*[^，,。.\n]+)/);
-  if (commaSeparated) {
-    const parts = commaSeparated[1].split(/[、,，]/).map(s => s.trim()).filter(s => s.length > 1);
-    pois.push(...parts);
   }
 
   return Array.from(new Set(pois)); // 去重
@@ -131,7 +151,7 @@ export function createPlacesActions(
 
               // 转换为节点格式
               const nodes = resolutionResult.results
-                .filter(r => r.lat && r.lng) // 只保留有坐标的结果
+                .filter(r => r.lat != null && r.lng != null && r.lat !== 0 && r.lng !== 0) // 只保留有有效坐标的结果
                 .map(r => ({
                   id: r.id,
                   name: r.nameCN || r.nameEN || r.name,
