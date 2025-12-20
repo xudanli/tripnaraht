@@ -92,8 +92,23 @@ export class EntityResolutionService {
     for (const poiQuery of mustHavePois) {
       const poiResult = await this.resolveMustHavePoi(poiQuery, extracted, lat, lng);
       if (poiResult) {
-        results.push(poiResult);
-        foundPoiNames.add(poiQuery);
+        // 关键修复：如果must-have POI仅匹配到HOTEL，强制继续召回ATTRACTION
+        if (poiResult.category === 'HOTEL') {
+          this.logger.warn(`[resolveEntities] must-have POI "${poiQuery}" 仅匹配到HOTEL，强制继续召回ATTRACTION类别`);
+          // 继续搜索ATTRACTION类别
+          const attractionResult = await this.resolveMustHavePoiWithCategory(poiQuery, extracted, lat, lng, ['ATTRACTION', 'SCENIC', 'PARK', 'MUSEUM', 'CULTURAL_SITE', 'HISTORICAL_SITE', 'NATURE_SITE']);
+          if (attractionResult) {
+            results.push(attractionResult);
+            foundPoiNames.add(poiQuery);
+          } else {
+            // 如果找不到ATTRACTION，仍然保留HOTEL作为备选，但不标记为已找到
+            results.push(poiResult);
+            missingPois.push(poiQuery);
+          }
+        } else {
+          results.push(poiResult);
+          foundPoiNames.add(poiQuery);
+        }
       } else {
         missingPois.push(poiQuery);
       }
@@ -112,36 +127,61 @@ export class EntityResolutionService {
       // 过滤低分结果
       const filteredVectorResults = vectorResults.filter(r => r.score >= this.LOW_SCORE_THRESHOLD);
       
-      // 验证must-have POI的核心token
+      // 关键修复：优先收集非HOTEL类别的must-have匹配
+      const mustHaveMatches = new Map<string, EntityResolutionResult>(); // poiQuery -> best non-HOTEL result
+      const hotelMatches = new Map<string, EntityResolutionResult>(); // poiQuery -> HOTEL result (fallback)
+      const otherResults: EntityResolutionResult[] = []; // 非must-have的高分结果
+      
       for (const result of filteredVectorResults) {
         // 检查是否匹配must-have POI
-        let isMustHave = false;
-        let isWeakMatch = false; // 弱匹配（如HOTEL类别）
+        let matchedPoiQuery: string | null = null;
         for (const poiQuery of mustHavePois) {
           if (this.matchesMustHavePoi(result, poiQuery)) {
-            // 检查是否是弱匹配（HOTEL类别且分数被降权）
-            if (result.category === 'HOTEL' && result.score < 0.1) {
-              isWeakMatch = true;
-              this.logger.debug(`[resolveEntities] must-have POI "${poiQuery}" 弱匹配到HOTEL类别，不消除missingPois`);
+            matchedPoiQuery = poiQuery;
+            if (result.category === 'HOTEL') {
+              // HOTEL类别作为备选
+              if (!hotelMatches.has(poiQuery) || result.score > hotelMatches.get(poiQuery)!.score) {
+                hotelMatches.set(poiQuery, result);
+              }
             } else {
-              isMustHave = true;
-              if (!foundPoiNames.has(poiQuery)) {
-                foundPoiNames.add(poiQuery);
-                const idx = missingPois.indexOf(poiQuery);
-                if (idx >= 0) {
-                  missingPois.splice(idx, 1);
-                }
+              // 非HOTEL类别优先
+              if (!mustHaveMatches.has(poiQuery) || result.score > mustHaveMatches.get(poiQuery)!.score) {
+                mustHaveMatches.set(poiQuery, result);
               }
             }
             break;
           }
         }
         
-        // 只添加must-have POI（非弱匹配）或高分结果
-        if ((isMustHave && !isWeakMatch) || result.score >= 0.5) {
-          results.push(result);
+        // 非must-have的高分结果
+        if (!matchedPoiQuery && result.score >= 0.5) {
+          otherResults.push(result);
         }
       }
+      
+      // 处理must-have匹配：优先使用非HOTEL结果
+      for (const poiQuery of mustHavePois) {
+        const nonHotelMatch = mustHaveMatches.get(poiQuery);
+        if (nonHotelMatch) {
+          results.push(nonHotelMatch);
+          foundPoiNames.add(poiQuery);
+          const idx = missingPois.indexOf(poiQuery);
+          if (idx >= 0) {
+            missingPois.splice(idx, 1);
+          }
+          this.logger.debug(`[resolveEntities] must-have POI "${poiQuery}" 匹配到非HOTEL类别: ${nonHotelMatch.category}`);
+        } else {
+          // 如果没有非HOTEL匹配，检查是否有HOTEL匹配
+          const hotelMatch = hotelMatches.get(poiQuery);
+          if (hotelMatch) {
+            this.logger.warn(`[resolveEntities] must-have POI "${poiQuery}" 仅匹配到HOTEL，标记为缺失以触发进一步搜索`);
+            // 不添加HOTEL匹配，让它继续在后续步骤中搜索ATTRACTION
+          }
+        }
+      }
+      
+      // 添加其他高分结果
+      results.push(...otherResults);
     }
 
     // 步骤4: 对缺失的must-have POI，尝试外部地理编码
@@ -294,11 +334,49 @@ export class EntityResolutionService {
   }
 
   /**
+   * 解析must-have POI（支持类别过滤）
+   */
+  private async resolveMustHavePoiWithCategory(
+    poiQuery: string,
+    extracted: { cities: string[]; counties: string[]; pois: string[] },
+    lat?: number,
+    lng?: number,
+    categoryFilter?: string[]
+  ): Promise<EntityResolutionResult | null> {
+    // 2.1: 别名匹配
+    const cityHint = this.adminDivisionService.mapPoiAliasToCity(poiQuery);
+    const normalizedCity = cityHint ? await this.adminDivisionService.normalizeCityName(cityHint) : null;
+
+    // 2.2: 关键词精确匹配（在指定城市范围内，支持类别过滤）
+    const keywordMatch = await this.keywordExactMatch(poiQuery, normalizedCity || undefined, categoryFilter);
+    if (keywordMatch) {
+      return {
+        ...keywordMatch,
+        source: 'keyword_match',
+        matchReasons: ['关键词精确匹配（类别过滤）'],
+      };
+    }
+
+    // 2.3: 别名匹配（检查数据库中的别名，支持类别过滤）
+    const aliasMatch = await this.aliasMatch(poiQuery, normalizedCity || undefined, categoryFilter);
+    if (aliasMatch) {
+      return {
+        ...aliasMatch,
+        source: 'alias_match',
+        matchReasons: ['别名匹配（类别过滤）'],
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * 关键词精确匹配
    */
   private async keywordExactMatch(
     poiName: string,
-    city?: string
+    city?: string,
+    categoryFilter?: string[]
   ): Promise<Omit<EntityResolutionResult, 'source' | 'matchReasons'> | null> {
     try {
       // 构建查询条件
