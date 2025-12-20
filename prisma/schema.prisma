@@ -579,6 +579,41 @@ model HotelPriceDetail {
 }
 
 /**
+ * 旅行准备度 Pack 表
+ * 存储目的地的准备度检查规则包（Readiness Pack）
+ * 支持版本管理和动态更新
+ */
+model ReadinessPack {
+  id              String   @id @default(uuid()) // UUID 主键
+  packId          String   @unique // 唯一标识符，格式：pack.{country}.{region}.{city}
+  destinationId   String   // 目的地标识，格式：{COUNTRY}-{REGION}-{CITY}
+  displayName     String   // 显示名称
+  version         String   // 语义化版本号，如 "1.0.0"
+  lastReviewedAt DateTime // 最后审核时间（ISO datetime）
+  
+  // 地理信息
+  countryCode String  // ISO 3166-1 alpha-2
+  region      String? // 地区/州/省
+  city        String? // 城市
+  latitude    Float?  // 纬度
+  longitude   Float?  // 经度
+  
+  // Pack 内容（JSON 存储完整 Pack 数据）
+  packData Json // 完整的 ReadinessPack JSON 数据
+  
+  // 元数据
+  isActive    Boolean  @default(true) // 是否激活
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([packId])
+  @@index([destinationId])
+  @@index([countryCode])
+  @@index([isActive])
+  @@index([countryCode, isActive])
+}
+
+/**
  * 城市-星级价格查找表（质量维度）
  * 从 HotelWideData_Quarterly 聚合生成
  * 包含每个城市-星级组合的价格统计和质量调整因子

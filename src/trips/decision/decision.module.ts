@@ -23,9 +23,10 @@ import { BatchProcessingService } from './performance/batch.service';
 import { MonitoringService } from './monitoring/monitoring.service';
 import { DecisionController } from './decision.controller';
 import { TransportModule } from '../../transport/transport.module';
+import { ReadinessModule } from '../readiness/readiness.module';
 
 @Module({
-  imports: [TransportModule],
+  imports: [TransportModule, ReadinessModule],
   controllers: [DecisionController],
   providers: [
     TripDecisionEngineService,

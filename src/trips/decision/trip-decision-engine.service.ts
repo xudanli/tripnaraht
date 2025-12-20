@@ -15,6 +15,7 @@ import { drdreBuildDaySchedule } from './strategies/drdre';
 import { neptuneRepairPlan } from './strategies/neptune';
 import { DecisionRunLog, DecisionTrigger } from './decision-log';
 import { SenseToolsAdapter } from './adapters/sense-tools.adapter';
+import { ReadinessService } from '../readiness/services/readiness.service';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -29,7 +30,10 @@ export interface SenseTools {
 export class TripDecisionEngineService {
   private readonly logger = new Logger(TripDecisionEngineService.name);
 
-  constructor(private readonly tools: SenseToolsAdapter) {}
+  constructor(
+    private readonly tools: SenseToolsAdapter,
+    private readonly readinessService?: ReadinessService
+  ) {}
 
   /**
    * 生成初始计划
@@ -39,6 +43,27 @@ export class TripDecisionEngineService {
   ): Promise<{ plan: TripPlan; log: DecisionRunLog }> {
     if (!state || !state.context) {
       throw new Error('Invalid state: state and state.context are required');
+    }
+
+    // 可选：运行准备度检查
+    if (this.readinessService) {
+      try {
+        const context = this.readinessService.extractTripContext(state);
+        const readinessResult = await this.readinessService.checkFromCountryFacts(
+          [state.context.destination],
+          context
+        );
+        
+        // 如果有 blocker，记录到 log
+        if (readinessResult.summary.totalBlockers > 0) {
+          this.logger.warn(
+            `Readiness check found ${readinessResult.summary.totalBlockers} blockers for destination ${state.context.destination}`
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`Readiness check failed: ${error}`);
+        // 不阻断计划生成，只记录警告
+      }
     }
 
     const now = new Date().toISOString();

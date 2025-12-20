@@ -38,6 +38,20 @@ places-data.json
 visa_requirements.json
 visa_page.html
 
+# Geographic data files (large files, should be managed separately)
+data/geographic/**/*.shp
+data/geographic/**/*.dbf
+data/geographic/**/*.shx
+data/geographic/**/*.tif
+data/geographic/**/*.tif.*
+# Keep documentation and small config files
+!data/geographic/**/*.md
+!data/geographic/**/*.txt
+!data/geographic/**/.gitkeep
+!data/geographic/**/*.prj
+!data/geographic/**/*.cpg
+!data/geographic/**/*.xml
+
 # TypeScript
 *.tsbuildinfo
 

@@ -112,9 +112,11 @@
     "@types/luxon": "^3.7.1",
     "@types/node": "^20",
     "@types/node-fetch": "^2.6.13",
+    "@types/shapefile": "^0.6.4",
     "eslint": "^8",
     "jest": "^30.2.0",
     "nodemon": "^3.1.11",
+    "shapefile": "^0.6.6",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5"

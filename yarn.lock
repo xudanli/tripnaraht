@@ -1361,6 +1361,11 @@
   resolved "https://registry.npmjs.org/@types/estree/-/estree-1.0.8.tgz"
   integrity sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==
 
+"@types/geojson@*":
+  version "7946.0.16"
+  resolved "https://registry.npmjs.org/@types/geojson/-/geojson-7946.0.16.tgz"
+  integrity sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==
+
 "@types/istanbul-lib-coverage@*", "@types/istanbul-lib-coverage@^2.0.1", "@types/istanbul-lib-coverage@^2.0.6":
   version "2.0.6"
   resolved "https://registry.npmjs.org/@types/istanbul-lib-coverage/-/istanbul-lib-coverage-2.0.6.tgz"
@@ -1421,6 +1426,14 @@
     "@types/node" "*"
     pg-protocol "*"
     pg-types "^2.2.0"
+
+"@types/shapefile@^0.6.4":
+  version "0.6.4"
+  resolved "https://registry.npmjs.org/@types/shapefile/-/shapefile-0.6.4.tgz"
+  integrity sha512-xZubzHAy4n/OQo32u4l8qx8OGVe9nG258otq4389npOKwXbTXoQSVfqUqKVVrgeR/+FfJt/YSweiVE4kqLqFTA==
+  dependencies:
+    "@types/geojson" "*"
+    "@types/node" "*"
 
 "@types/stack-utils@^2.0.3":
   version "2.0.3"
@@ -1783,6 +1796,11 @@ argparse@^2.0.1:
   version "2.0.1"
   resolved "https://mirrors.cloud.tencent.com/npm/argparse/-/argparse-2.0.1.tgz"
   integrity sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==
+
+array-source@0.0:
+  version "0.0.4"
+  resolved "https://registry.npmjs.org/array-source/-/array-source-0.0.4.tgz"
+  integrity sha512-frNdc+zBn80vipY+GdcJkLEbMWj3xmzArYApmUGxoiV8uAu/ygcs9icPdsGdA26h0MkHUMW6EN2piIvVx+M5Mw==
 
 array-timsort@^1.0.3:
   version "1.0.3"
@@ -2325,6 +2343,11 @@ combined-stream@^1.0.8:
     delayed-stream "~1.0.0"
 
 commander@^2.20.0:
+  version "2.20.3"
+  resolved "https://registry.npmjs.org/commander/-/commander-2.20.3.tgz"
+  integrity sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==
+
+commander@2:
   version "2.20.3"
   resolved "https://registry.npmjs.org/commander/-/commander-2.20.3.tgz"
   integrity sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==
@@ -3073,6 +3096,13 @@ file-entry-cache@^6.0.1:
   integrity sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==
   dependencies:
     flat-cache "^3.0.4"
+
+file-source@0.6:
+  version "0.6.1"
+  resolved "https://registry.npmjs.org/file-source/-/file-source-0.6.1.tgz"
+  integrity sha512-1R1KneL7eTXmXfKxC10V/9NeGOdbsAXJ+lQ//fvvcHUgtaZcZDWNJNblxAoVOyV1cj45pOtUrR3vZTBwqcW8XA==
+  dependencies:
+    stream-source "0.3"
 
 file-type@21.1.0:
   version "21.1.0"
@@ -4745,6 +4775,14 @@ path-scurry@^2.0.0:
     lru-cache "^11.0.0"
     minipass "^7.1.2"
 
+path-source@0.1:
+  version "0.1.3"
+  resolved "https://registry.npmjs.org/path-source/-/path-source-0.1.3.tgz"
+  integrity sha512-dWRHm5mIw5kw0cs3QZLNmpUWty48f5+5v9nWD2dw3Y0Hf+s01Ag8iJEWV0Sm0kocE8kK27DrIowha03e1YR+Qw==
+  dependencies:
+    array-source "0.0"
+    file-source "0.6"
+
 path-to-regexp@^8.0.0, path-to-regexp@8.3.0:
   version "8.3.0"
   resolved "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.3.0.tgz"
@@ -5283,6 +5321,18 @@ setprototypeof@~1.2.0:
   resolved "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz"
   integrity sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==
 
+shapefile@^0.6.6:
+  version "0.6.6"
+  resolved "https://registry.npmjs.org/shapefile/-/shapefile-0.6.6.tgz"
+  integrity sha512-rLGSWeK2ufzCVx05wYd+xrWnOOdSV7xNUW5/XFgx3Bc02hBkpMlrd2F1dDII7/jhWzv0MSyBFh5uJIy9hLdfuw==
+  dependencies:
+    array-source "0.0"
+    commander "2"
+    path-source "0.1"
+    slice-source "0.4"
+    stream-source "0.3"
+    text-encoding "^0.6.4"
+
 shebang-command@^2.0.0:
   version "2.0.0"
   resolved "https://mirrors.cloud.tencent.com/npm/shebang-command/-/shebang-command-2.0.0.tgz"
@@ -5361,6 +5411,11 @@ slash@^3.0.0:
   version "3.0.0"
   resolved "https://mirrors.cloud.tencent.com/npm/slash/-/slash-3.0.0.tgz"
   integrity sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==
+
+slice-source@0.4:
+  version "0.4.1"
+  resolved "https://registry.npmjs.org/slice-source/-/slice-source-0.4.1.tgz"
+  integrity sha512-YiuPbxpCj4hD9Qs06hGAz/OZhQ0eDuALN0lRWJez0eD/RevzKqGdUx1IOMUnXgpr+sXZLq3g8ERwbAH0bCb8vg==
 
 smart-buffer@^4.2.0:
   version "4.2.0"
@@ -5448,6 +5503,11 @@ statuses@^2.0.1, statuses@~2.0.2:
   version "2.0.2"
   resolved "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz"
   integrity sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==
+
+stream-source@0.3:
+  version "0.3.5"
+  resolved "https://registry.npmjs.org/stream-source/-/stream-source-0.3.5.tgz"
+  integrity sha512-ZuEDP9sgjiAwUVoDModftG0JtYiLUV8K4ljYD1VyUMRWtbVf92474o4kuuul43iZ8t/hRuiDAx1dIJSvirrK/g==
 
 streamsearch@^1.1.0:
   version "1.1.0"
@@ -5670,6 +5730,11 @@ text-decoder@^1.1.0:
   integrity sha512-3/o9z3X0X0fTupwsYvR03pJ/DjWuqqrfwBgTQzdWDiQSm9KitAyz/9WqsT2JQW7KV2m+bC2ol/zqpW37NHxLaA==
   dependencies:
     b4a "^1.6.4"
+
+text-encoding@^0.6.4:
+  version "0.6.4"
+  resolved "https://registry.npmjs.org/text-encoding/-/text-encoding-0.6.4.tgz"
+  integrity sha512-hJnc6Qg3dWoOMkqP53F0dzRIgtmsAge09kxUIqGrEUS4qr5rWLckGYaQAVr+opBrIMRErGgy6f5aPnyPpyGRfg==
 
 text-table@^0.2.0:
   version "0.2.0"

@@ -454,11 +454,12 @@ export class EntityResolutionService {
   }
 
   /**
-   * 别名匹配
+   * 别名匹配（支持类别过滤）
    */
   private async aliasMatch(
     poiName: string,
-    city?: string
+    city?: string,
+    categoryFilter?: string[]
   ): Promise<Omit<EntityResolutionResult, 'source' | 'matchReasons'> | null> {
     // 检查metadata中的别名
     try {
@@ -506,6 +507,7 @@ export class EntityResolutionService {
           metadata->'aliases' @> ${JSON.stringify([poiName])}::jsonb
           AND location IS NOT NULL
           ${cityFilter}
+          ${categoryFilter && categoryFilter.length > 0 ? Prisma.sql`AND category IN (${Prisma.join(categoryFilter.map(c => Prisma.sql`${c}::"PlaceCategory"`), ', ')})` : Prisma.sql``}
         LIMIT 1
       `;
 
