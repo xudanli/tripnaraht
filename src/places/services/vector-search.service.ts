@@ -316,7 +316,9 @@ export class VectorSearchService {
       : Prisma.sql``;
     
     // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
+    // Patch A: 如果 city 在 City 表中找不到，尝试作为区县（district）过滤
     let cityFilter = Prisma.sql``;
+    let districtFilter = Prisma.sql``;
     if (city) {
       // 先查询 City 表获取匹配的 cityId（支持模糊匹配）
       const matchingCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string; name: string }>>`
@@ -338,8 +340,40 @@ export class VectorSearchService {
         cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
         this.logger.debug(`[vectorSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
       } else {
-        this.logger.warn(`[vectorSearch] 未找到匹配的城市: ${city}，将搜索所有城市`);
-        // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
+        // Patch A: 如果找不到匹配的城市，尝试作为区县过滤（通过 address 或 adcode）
+        const knownCounties = ['宁海', '象山', '余姚', '慈溪', '奉化', '临安', '建德', '富阳', '桐庐', '淳安'];
+        if (knownCounties.includes(city)) {
+          districtFilter = Prisma.sql`AND (address ILIKE ${`%${city}%`} OR "nameCN" ILIKE ${`%${city}%`})`;
+          this.logger.debug(`[vectorSearch] 区县过滤: ${city} (通过 address/nameCN 匹配)`);
+          
+          // 同时尝试找到上级城市
+          const parentCityMap: { [key: string]: string } = {
+            '宁海': '宁波',
+            '象山': '宁波',
+            '余姚': '宁波',
+            '慈溪': '宁波',
+            '奉化': '宁波',
+            '临安': '杭州',
+            '建德': '杭州',
+            '富阳': '杭州',
+            '桐庐': '杭州',
+            '淳安': '杭州',
+          };
+          const parentCity = parentCityMap[city];
+          if (parentCity) {
+            const parentCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string }>>`
+              SELECT id, "nameCN" FROM "City" 
+              WHERE "nameCN" = ${parentCity} OR name = ${parentCity}
+              LIMIT 1
+            `;
+            if (parentCities.length > 0) {
+              cityFilter = Prisma.sql`AND "cityId" = ${parentCities[0].id}`;
+              this.logger.debug(`[vectorSearch] 区县 ${city} 的上级城市: ${parentCity} (cityId: ${parentCities[0].id})`);
+            }
+          }
+        } else {
+          this.logger.warn(`[vectorSearch] 未找到匹配的城市: ${city}，将搜索所有城市`);
+        }
       }
     }
 
@@ -368,6 +402,7 @@ export class VectorSearchService {
       WHERE embedding IS NOT NULL
         ${categoryFilter}
         ${cityFilter}
+        ${districtFilter}
         ${locationFilter}
       ORDER BY embedding <=> ${queryEmbedding}::vector
       LIMIT ${limit}
@@ -608,7 +643,9 @@ export class VectorSearchService {
       : Prisma.sql``;
     
     // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
+    // Patch A: 如果 city 在 City 表中找不到，尝试作为区县（district）过滤
     let cityFilter = Prisma.sql``;
+    let districtFilter = Prisma.sql``;
     if (city) {
       // 先查询 City 表获取匹配的 cityId（支持模糊匹配）
       const matchingCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string; name: string }>>`
@@ -631,8 +668,42 @@ export class VectorSearchService {
         cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
         this.logger.debug(`[keywordSearch] 城市过滤: ${effectiveCity} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
       } else {
-        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${effectiveCity}，将搜索所有城市`);
-        // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
+        // Patch A: 如果找不到匹配的城市，尝试作为区县过滤（通过 address 或 adcode）
+        // 常见区县名：宁海、象山、余姚、慈溪、奉化等
+        const knownCounties = ['宁海', '象山', '余姚', '慈溪', '奉化', '临安', '建德', '富阳', '桐庐', '淳安'];
+        if (knownCounties.includes(city)) {
+          // 通过 address 字段匹配区县名
+          districtFilter = Prisma.sql`AND (address ILIKE ${`%${city}%`} OR "nameCN" ILIKE ${`%${city}%`})`;
+          this.logger.debug(`[keywordSearch] 区县过滤: ${effectiveCity} (通过 address/nameCN 匹配)`);
+          
+          // 同时尝试找到上级城市（如"宁海" -> "宁波"）
+          const parentCityMap: { [key: string]: string } = {
+            '宁海': '宁波',
+            '象山': '宁波',
+            '余姚': '宁波',
+            '慈溪': '宁波',
+            '奉化': '宁波',
+            '临安': '杭州',
+            '建德': '杭州',
+            '富阳': '杭州',
+            '桐庐': '杭州',
+            '淳安': '杭州',
+          };
+          const parentCity = parentCityMap[city];
+          if (parentCity) {
+            const parentCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string }>>`
+              SELECT id, "nameCN" FROM "City" 
+              WHERE "nameCN" = ${parentCity} OR name = ${parentCity}
+              LIMIT 1
+            `;
+            if (parentCities.length > 0) {
+              cityFilter = Prisma.sql`AND "cityId" = ${parentCities[0].id}`;
+              this.logger.debug(`[keywordSearch] 区县 ${effectiveCity} 的上级城市: ${parentCity} (cityId: ${parentCities[0].id})`);
+            }
+          }
+        } else {
+          this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${effectiveCity}，将搜索所有城市`);
+        }
       }
     }
 
@@ -691,6 +762,7 @@ export class VectorSearchService {
       WHERE ${searchCondition}
         ${categoryFilter}
         ${cityFilter}
+        ${districtFilter}
         ${locationFilter}
       ORDER BY "keywordScore" DESC
       LIMIT ${limit}
@@ -745,9 +817,42 @@ export class VectorSearchService {
     this.logger.debug(`[hybridSearchMultiCity] 开始多城市拆分搜索: cities=[${cities.join(', ')}], keywords=[${keywords.join(', ')}]`);
     
     // 1. 将查询拆分为实体片段（每个实体关联一个城市）
-    const entities = this.splitQueryIntoEntities(query, cities, keywords);
+    let entities = this.splitQueryIntoEntities(query, cities, keywords);
     
-    this.logger.debug(`[hybridSearchMultiCity] 拆分后的实体: ${JSON.stringify(entities, null, 2)}`);
+    // Patch B: 过滤脏实体（长度<3、末尾是单字等）
+    entities = entities.filter(entity => {
+      const name = entity.name;
+      // 过滤规则1: 长度<3且不是已知行政区/POI词典命中
+      if (name.length < 3) {
+        // 检查是否是已知的短POI名称（如"西湖"、"天坛"）
+        const knownShortPois = ['西湖', '天坛', '故宫', '长城', '天安门', '颐和园', '圆明园', '北海', '景山'];
+        if (!knownShortPois.includes(name)) {
+          this.logger.debug(`[hybridSearchMultiCity] 过滤脏实体（长度<3）: "${name}"`);
+          return false;
+        }
+      }
+      // 过滤规则2: 末尾是单字（十/里/路/街等）强烈切分错误
+      const singleCharSuffixes = ['十', '里', '路', '街', '巷', '道', '号', '层', '楼', '座', '间', '个', '只', '条', '张', '把', '本', '支', '根', '块', '片', '粒', '颗', '滴', '点', '次', '回', '趟', '遍', '场', '阵', '顿', '餐', '顿', '餐', '顿', '餐'];
+      if (name.length > 0 && singleCharSuffixes.includes(name[name.length - 1])) {
+        this.logger.debug(`[hybridSearchMultiCity] 过滤脏实体（末尾单字）: "${name}"`);
+        return false;
+      }
+      // 过滤规则3: 必须包含名词特征（景点常见字）
+      const poiKeywords = ['湖', '山', '寺', '馆', '景区', '古镇', '文化园', '博物馆', '故居', '公园', '广场', '塔', '桥', '庙', '祠', '亭', '楼', '阁', '殿', '宫', '园', '林', '谷', '洞', '泉', '瀑布', '瀑布', '瀑布', '瀑布', '瀑布'];
+      const hasPoiKeyword = poiKeywords.some(keyword => name.includes(keyword));
+      // 如果长度>=4且不包含任何POI关键词，可能是切分错误
+      if (name.length >= 4 && !hasPoiKeyword) {
+        // 但允许已知的行政区名（如"宁海"）
+        const knownDistricts = ['宁海', '象山', '余姚', '慈溪', '奉化', '临安', '建德', '富阳', '桐庐', '淳安'];
+        if (!knownDistricts.includes(name)) {
+          this.logger.debug(`[hybridSearchMultiCity] 过滤脏实体（无POI关键词）: "${name}"`);
+          return false;
+        }
+      }
+      return true;
+    });
+    
+    this.logger.debug(`[hybridSearchMultiCity] 拆分后的实体（过滤后）: ${JSON.stringify(entities, null, 2)}`);
     
     // 2. 对每个实体分别搜索
     const searchPromises = entities.map(async (entity) => {

@@ -32,9 +32,12 @@ export class ActionCacheService {
   
   // 默认 TTL：5 分钟
   private readonly defaultTTL = 5 * 60 * 1000;
-  
+
   // 最大缓存项数（防止内存溢出）
   private readonly maxCacheSize = 1000;
+
+  // Patch E: 策略版本号（当策略更新时，需要更新此版本号以失效旧缓存）
+  private readonly resolverVersion = 'v3'; // 当前实体解析策略版本
 
   /**
    * 生成缓存键
@@ -64,14 +67,17 @@ export class ActionCacheService {
       this.logger.debug(`[CacheKey] action: ${actionName}, normalizedInput: ${JSON.stringify(normalizedInput)}, inputStr: ${inputStr.substring(0, 100)}...`);
     }
     
+    // Patch E: 在 cache key 中包含策略版本号（对于 places.resolve_entities）
+    const versionSuffix = actionName === 'places.resolve_entities' ? `:${this.resolverVersion}` : '';
+    
     const hash = createHash('sha256')
-      .update(`${actionName}:${inputStr}`)
+      .update(`${actionName}:${inputStr}${versionSuffix}`)
       .digest('hex');
     
-    const key = `${actionName}:${hash.substring(0, 16)}`;
+    const key = `${actionName}:${hash.substring(0, 16)}${versionSuffix}`;
     
     if (actionName === 'places.resolve_entities') {
-      this.logger.debug(`[CacheKey] Generated key: ${key}`);
+      this.logger.debug(`[CacheKey] Generated key: ${key} (resolver version: ${this.resolverVersion})`);
     }
     
     return key;
