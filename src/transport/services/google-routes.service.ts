@@ -2,6 +2,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
+import * as https from 'https';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { TransportOption, TransportMode } from '../interfaces/transport.interface';
 
 /**
@@ -19,7 +21,7 @@ export class GoogleRoutesService {
   private readonly logger = new Logger(GoogleRoutesService.name);
   private readonly apiKey: string | undefined;
   private readonly axiosInstance: AxiosInstance;
-  private readonly baseUrl = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+  private readonly baseURL: string; // 强制 HTTPS 的 baseURL
   
   // Circuit breaker: 如果连续失败超过阈值，暂时禁用 API
   private consecutiveFailures = 0;
@@ -31,13 +33,89 @@ export class GoogleRoutesService {
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('GOOGLE_ROUTES_API_KEY');
     
+    // 强制使用 HTTPS（Google Routes API 要求，避免 "SSL required" 403 错误）
+    // 从环境变量读取（如果存在），否则使用默认值
+    let baseURL = this.configService.get<string>('GOOGLE_ROUTES_BASE_URL') || 'https://routes.googleapis.com';
+    
+    // 强制转换为 HTTPS（防止配置错误）
+    if (baseURL.startsWith('http://')) {
+      this.logger.warn(`Google Routes baseURL 使用 HTTP，自动转换为 HTTPS: ${baseURL}`);
+      baseURL = baseURL.replace('http://', 'https://');
+    }
+    
+    // 确保以 https:// 开头
+    if (!baseURL.startsWith('https://')) {
+      this.logger.warn(`Google Routes baseURL 不是 HTTPS，强制添加: ${baseURL}`);
+      baseURL = `https://${baseURL.replace(/^https?:\/\//, '')}`;
+    }
+    
+    // 移除末尾的斜杠（如果有）
+    baseURL = baseURL.replace(/\/$/, '');
+    
+    // 验证 baseURL 格式
+    try {
+      const url = new URL(baseURL);
+      if (url.protocol !== 'https:') {
+        throw new Error(`Google Routes baseURL 必须使用 HTTPS，当前: ${url.protocol}`);
+      }
+      this.baseURL = baseURL;
+    } catch (error: any) {
+      this.logger.error(`Google Routes baseURL 格式无效: ${baseURL}, 错误: ${error.message}`);
+      // 使用默认值
+      this.baseURL = 'https://routes.googleapis.com';
+    }
+    
+    // 检查代理环境变量
+    const proxyUrl =
+      process.env.HTTPS_PROXY ||
+      process.env.https_proxy ||
+      process.env.ALL_PROXY ||
+      process.env.all_proxy;
+    
+    // 创建 HTTPS Agent（强制使用 HTTPS）
+    const httpsAgent = proxyUrl
+      ? new HttpsProxyAgent<string>(proxyUrl)
+      : new https.Agent({
+          keepAlive: true,
+          family: 4, // 强制 IPv4
+          rejectUnauthorized: true, // 验证 SSL 证书
+        });
+    
     this.axiosInstance = axios.create({
+      baseURL: this.baseURL, // 强制 HTTPS 的 baseURL
       timeout: 10000, // 10 秒超时
+      httpsAgent, // 使用 HTTPS Agent
+      proxy: false, // 禁用 axios 的代理（使用 httpsAgent 处理）
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': this.apiKey || '',
+        'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,distanceMeters',
       },
     });
+    
+    // 验证最终配置
+    this.logger.debug(`Google Routes 配置: baseURL=${this.baseURL}, protocol=https, proxy=${proxyUrl ? 'enabled' : 'disabled'}`);
+    
+    // 在请求拦截器中再次验证 URL
+    this.axiosInstance.interceptors.request.use(
+      (config) => {
+        // 确保请求 URL 使用 HTTPS
+        if (config.url) {
+          const fullUrl = config.baseURL ? `${config.baseURL}${config.url}` : config.url;
+          if (fullUrl.startsWith('http://')) {
+            this.logger.error(`检测到 HTTP 请求，强制转换为 HTTPS: ${fullUrl}`);
+            config.url = fullUrl.replace('http://', 'https://');
+            if (config.baseURL) {
+              config.baseURL = config.baseURL.replace('http://', 'https://');
+            }
+          }
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
   }
 
   /**
@@ -117,7 +195,19 @@ export class GoogleRoutesService {
         }),
       };
 
-      const response = await this.axiosInstance.post(this.baseUrl, requestBody);
+      // 使用相对路径（baseURL 已设置为 HTTPS）
+      // 确保路径正确
+      const apiPath = '/directions/v2:computeRoutes';
+      
+      // 验证最终请求 URL
+      const finalUrl = `${this.baseURL}${apiPath}`;
+      if (!finalUrl.startsWith('https://')) {
+        throw new Error(`Google Routes API URL 必须使用 HTTPS: ${finalUrl}`);
+      }
+      
+      this.logger.debug(`Google Routes API 请求: ${finalUrl}`);
+      
+      const response = await this.axiosInstance.post(apiPath, requestBody);
 
       // 成功：重置失败计数
       this.consecutiveFailures = 0;
@@ -133,16 +223,41 @@ export class GoogleRoutesService {
       // 检查是否是 403 错误（权限问题）
       const is403 = error.response?.status === 403;
       const is401 = error.response?.status === 401;
+      const errorDetails = error.response?.data || {};
+      const errorMessage = errorDetails.error?.message || error.message || '';
+      
+      // 特殊处理 "SSL required" 错误（这不应该发生，因为我们强制使用 HTTPS）
+      if (is403 && (errorMessage.includes('SSL') || errorMessage.includes('ssl') || errorMessage.includes('SSL is required'))) {
+        this.logger.error(
+          `Google Routes API SSL 错误 (403): ${errorMessage}`,
+          {
+            baseURL: this.baseURL,
+            requestUrl: error.config?.url,
+            fullUrl: error.config?.baseURL ? `${error.config.baseURL}${error.config.url}` : error.config?.url,
+            errorCode: errorDetails.error?.code,
+            errorStatus: errorDetails.error?.status,
+          }
+        );
+        
+        // 这是一个配置错误，不应该继续重试
+        this.isCircuitOpen = true;
+        this.circuitOpenUntil = Date.now() + this.circuitResetMs;
+        this.logger.error(
+          `Google Routes API 因 SSL 配置错误被禁用。` +
+          `请检查：1) baseURL 必须使用 HTTPS 2) 代理配置是否正确 3) 网络环境是否支持 HTTPS`
+        );
+        
+        // 返回空数组（使用估算数据）
+        return [];
+      }
       
       if (is403 || is401) {
-        const errorDetails = error.response?.data || {};
-        const errorMessage = errorDetails.error?.message || error.message;
-        
         this.logger.warn(
           `Google Routes API 认证失败 (${error.response?.status}): ${errorMessage}`,
           {
             apiKeyPresent: !!this.apiKey,
             apiKeyLength: this.apiKey?.length || 0,
+            baseURL: this.baseURL,
             errorCode: errorDetails.error?.code,
             errorStatus: errorDetails.error?.status,
             consecutiveFailures: this.consecutiveFailures,

@@ -39,16 +39,24 @@ export function createPlacesActions(
           count: { type: 'number' },
         },
       },
-      execute: async (input: { query: string; lat?: number; lng?: number; limit?: number }, state: any) => {
+      execute: async (input: { query?: string; userInput?: string; user_input?: string; lat?: number; lng?: number; limit?: number }, state: any) => {
         const logger = console; // 使用 console 作为 logger（可以后续改为注入 Logger）
         
         try {
+          // 统一规范化入参 key：支持 query、userInput、user_input
+          const normalizedInput = {
+            query: input.query || input.userInput || input.user_input,
+            lat: input.lat,
+            lng: input.lng,
+            limit: input.limit,
+          };
+          
           // 优先使用原始用户输入，而不是 input.query（可能被错误设置为 "unknown"）
           const query = (
             state?.user_input?.trim() ||
             state?.userQuery?.trim() ||
             state?.rawInput?.trim() ||
-            input.query?.trim() ||
+            normalizedInput.query?.trim() ||
             ''
           );
 
@@ -133,7 +141,8 @@ export function createPlacesActions(
           let filteredCount = 0;
           let mappingErrors: Array<{ index: number; error: string; placeId?: number }> = [];
           
-          const nodes = results
+          // 先映射所有节点，然后过滤掉缺少坐标的
+          const mappedNodes = results
             .map((place: any, index: number) => {
               try {
                 // 检查必要字段
@@ -163,12 +172,6 @@ export function createPlacesActions(
                     },
                   };
                   
-                  // 检查是否有坐标（如果没有坐标，可能被后续过滤）
-                  if (!node.geo.lat || !node.geo.lng) {
-                    filteredCount++;
-                    logger.debug(`[resolve_entities] 节点 ${place.id} (${node.name}) 缺少坐标，将被过滤`);
-                  }
-                  
                   return node;
                 }
                 
@@ -189,12 +192,6 @@ export function createPlacesActions(
                   },
                 };
                 
-                // 检查是否有坐标
-                if (!node.geo.lat || !node.geo.lng) {
-                  filteredCount++;
-                  logger.debug(`[resolve_entities] 节点 ${place.id} (${node.name}) 缺少坐标，将被过滤`);
-                }
-                
                 return node;
               } catch (error: any) {
                 mappingErrors.push({ 
@@ -207,6 +204,25 @@ export function createPlacesActions(
               }
             })
             .filter((node: any) => node !== null); // 过滤掉 null
+
+          // 真正过滤掉缺少坐标的节点（只保留前5个用于坐标补全）
+          const nodesWithCoords: any[] = [];
+          const nodesWithoutCoords: any[] = [];
+          
+          for (const node of mappedNodes) {
+            if (node.geo.lat && node.geo.lng) {
+              nodesWithCoords.push(node);
+            } else {
+              nodesWithoutCoords.push(node);
+              filteredCount++;
+              logger.debug(`[resolve_entities] 节点 ${node.id} (${node.name}) 缺少坐标，将被过滤`);
+            }
+          }
+          
+          // 如果缺少坐标的节点数量较少（<=5），尝试补全坐标
+          // TODO: 实现坐标补全流程（使用 geocode API）
+          // 目前先返回有坐标的节点
+          const nodes = nodesWithCoords;
 
           const finalCount = nodes.length;
           

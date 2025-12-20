@@ -78,8 +78,17 @@ export class OrchestratorService {
           const action = actions[0];
           this.logger.debug(`Step ${currentState.react.step}: Executing action ${action.name}`);
 
-          // Act: 执行 Action
-          currentState = await this.act(currentState, action);
+          // Act: 执行 Action（返回状态和 cache_hit 信息）
+          const actResult = await this.actWithCacheInfo(currentState, action);
+          currentState = actResult.state;
+          const cacheHit = actResult.cacheHit;
+          
+          // 存储 cache_hit 信息到临时字段（用于 decision_log）
+          currentState = this.stateService.updateNested(
+            currentState.request_id,
+            ['react', 'last_action_cache_hit'],
+            cacheHit
+          );
           
           // 重新获取最新状态（确保使用最新状态）
           currentState = this.stateService.get(currentState.request_id) || currentState;
@@ -133,12 +142,26 @@ export class OrchestratorService {
             reasonCode = criticResult.pass ? 'CRITIC_PASSED' : (criticResult.violations[0]?.type || 'UNKNOWN');
           }
           
+          // 记录状态快照（用于循环检测）
+          const stateSnapshot = {
+            nodes: currentState.draft.nodes.length,
+            facts: currentState.memory.semantic_facts.pois.length,
+            time_matrix: currentState.compute.time_matrix_robust ? 'exists' : 'null',
+          };
+          
+          // 获取 cache_hit 信息（从临时字段）
+          const cacheHit = (currentState.react as any).last_action_cache_hit || false;
+          
           return {
           step: currentState.react.step,
           chosen_action: action.name,
             reason_code: reasonCode,
-          facts: this.extractFacts(criticResult),
+          facts: {
+            ...this.extractFacts(criticResult),
+            ...stateSnapshot, // 添加状态快照
+          },
           policy_id: 'REACT_LOOP',
+          cache_hit: cacheHit, // 添加 cache_hit 信息
           };
         });
 
@@ -486,12 +509,32 @@ export class OrchestratorService {
             time_matrix: state.compute.time_matrix_robust ? 'exists' : 'null',
           };
           
+          // 检查是否都是 cache_hit（从 decision_log 中获取）
+          const allCacheHits = lastTwoLogs.every(log => (log as any).cache_hit === true);
+          
           // 如果状态没有改变，说明陷入了循环
           const stateChanged = 
             prevState.nodes !== currentState.nodes ||
             prevState.facts !== currentState.facts ||
             prevState.time_matrix !== currentState.time_matrix;
           
+          // 如果连续2次相同action且都是cache_hit且状态未改变，立即跳过
+          if (!stateChanged && allCacheHits) {
+            this.logger.warn(`Plan: 已连续执行 ${recentSameActions.length} 次 ${selectedAction.name}，且都是缓存命中且状态未改变，跳过以避免无限循环`);
+            
+            // 尝试选择其他候选 action
+            if (candidateActions.length > 1) {
+              this.logger.debug(`Plan: 选择替代 action: ${candidateActions[1].name}`);
+              return [candidateActions[1]];
+            }
+            
+            // 如果没有其他候选，返回 null 结束循环
+            this.logger.warn('Plan: 没有其他候选 action，结束循环');
+            this.markNeedMoreInfo(state, '无法继续推进规划流程，可能需要更多信息');
+            return null;
+          }
+          
+          // 如果状态没有改变（即使不是cache_hit），也跳过
           if (!stateChanged) {
             this.logger.warn(`Plan: 已连续执行 ${recentSameActions.length} 次 ${selectedAction.name}，且状态未改变，跳过以避免无限循环`);
             
@@ -573,6 +616,101 @@ export class OrchestratorService {
     }
 
     return null;
+  }
+
+  /**
+   * Act: 执行 Action（带 cache_hit 信息）
+   */
+  private async actWithCacheInfo(
+    state: AgentState,
+    action: { name: string; input: any }
+  ): Promise<{ state: AgentState; cacheHit: boolean }> {
+    const actionDef = this.actionRegistry.get(action.name);
+    
+    if (!actionDef) {
+      this.logger.warn(`Action not found: ${action.name}`);
+      return { state, cacheHit: false };
+    }
+
+    // 检查前置条件
+    if (!this.actionRegistry.checkPreconditions(action.name, state)) {
+      this.logger.warn(`Preconditions not met for action: ${action.name}`);
+      return { state, cacheHit: false };
+    }
+
+    const actStartTime = Date.now();
+    let cacheHit = false;
+    
+    try {
+      // 检查缓存（如果 Action 是可缓存的）
+      let result: any;
+      
+      if (actionDef.metadata.cacheable && this.actionCache) {
+        const cacheKey = this.actionCache.generateCacheKey(
+          action.name,
+          action.input,
+          actionDef.metadata.cache_key
+        );
+        
+        const cachedResult = this.actionCache.get(cacheKey);
+        if (cachedResult !== null) {
+          this.logger.debug(`Cache hit for action: ${action.name}, key: ${cacheKey}`);
+          result = cachedResult;
+          cacheHit = true;
+        }
+      }
+
+      // 如果缓存未命中，执行 Action
+      if (!cacheHit) {
+        result = await actionDef.execute(action.input, state);
+        
+        // 将结果存入缓存（如果 Action 是可缓存的）
+        if (actionDef.metadata.cacheable && this.actionCache) {
+          const cacheKey = this.actionCache.generateCacheKey(
+            action.name,
+            action.input,
+            actionDef.metadata.cache_key
+          );
+          this.actionCache.set(cacheKey, result);
+          this.logger.debug(`Cached result for action: ${action.name}, key: ${cacheKey}`);
+        }
+      }
+      
+      const actLatency = Date.now() - actStartTime;
+
+      // 记录 system2_step 事件
+      if (this.eventTelemetry) {
+        this.eventTelemetry.recordSystem2Step(
+          state.request_id,
+          state.react.step,
+          action.name,
+          result,
+          actLatency,
+          { phase: 'act', cache_hit: cacheHit }
+        );
+      }
+
+      // 更新状态（根据 Action 类型）
+      const updatedState = this.updateStateFromAction(state, action.name, result);
+      return { state: updatedState, cacheHit };
+    } catch (error: any) {
+      this.logger.error(`Action execution error: ${error?.message || String(error)}`, error?.stack);
+      
+      // 记录失败事件
+      if (this.eventTelemetry) {
+        this.eventTelemetry.recordSystem2Step(
+          state.request_id,
+          state.react.step,
+          action.name,
+          { error: error?.message || String(error) },
+          Date.now() - actStartTime,
+          { phase: 'act', error: true }
+        );
+      }
+      
+      // 返回未修改的状态
+      return { state, cacheHit: false };
+    }
   }
 
   /**

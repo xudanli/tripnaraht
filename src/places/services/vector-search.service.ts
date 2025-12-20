@@ -14,6 +14,8 @@ interface VectorSearchResult {
   address?: string | null;
   category: string;
   vectorScore: number;
+  lat?: number;
+  lng?: number;
   distance?: number;
 }
 
@@ -41,6 +43,8 @@ export interface HybridSearchResult {
   nameEN?: string | null;
   address?: string | null;
   category: string;
+  lat?: number;
+  lng?: number;
   vectorScore: number;
   keywordScore: number;
   finalScore: number;
@@ -88,9 +92,21 @@ export class VectorSearchService {
 
     // 诊断信息：打印查询参数
     const { city, keywords } = this.extractKeywords(query);
+    const cities = this.extractCities(query);
+    
+    // 如果检测到多个城市，按实体拆分搜索
+    if (cities.length >= 2) {
+      this.logger.debug(`[hybridSearch] 检测到多城市查询: [${cities.join(', ')}]，按实体拆分搜索`);
+      return this.hybridSearchMultiCity(query, cities, keywords, lat, lng, radius, category, limit);
+    }
+    
+    // 单城市查询：使用原有逻辑
+    const effectiveCity = city;
+    
     this.logger.debug(`[hybridSearch] 查询参数: {
   query: "${query}",
-  city: ${city || 'null'},
+  cities: [${cities.join(', ')}],
+  city: ${effectiveCity || 'null'} (单城市),
   keywords: [${keywords.join(', ')}],
   lat: ${lat || 'null'},
   lng: ${lng || 'null'},
@@ -159,26 +175,31 @@ export class VectorSearchService {
     }
 
     // 2. 向量搜索（传递 city 参数以支持城市过滤）
-    this.logger.debug(`[hybridSearch] 开始向量搜索，topK: ${limit * 2}`);
+    // 如果检测到多个城市，禁用 cityFilter
+    const effectiveCity = cities.length >= 2 ? null : city;
+    this.logger.debug(`[hybridSearch] 开始向量搜索，topK: ${limit * 2}, city: ${effectiveCity || 'null'}`);
     const vectorResults = await this.vectorSearch(
       queryEmbedding,
       lat,
       lng,
       radius,
       category,
-      city, // 传递城市名以支持城市过滤
+      effectiveCity, // 多城市时为 null，禁用城市过滤
       limit * 2 // 召回更多结果用于混合
     );
     this.logger.debug(`[hybridSearch] 向量搜索结果数: ${vectorResults.length}`);
 
     // 3. 关键词搜索
-    this.logger.debug(`[hybridSearch] 开始关键词搜索，topK: ${limit * 2}`);
+    // 如果检测到多个城市，禁用 cityFilter
+    const effectiveCity = cities.length >= 2 ? null : city;
+    this.logger.debug(`[hybridSearch] 开始关键词搜索，topK: ${limit * 2}, city: ${effectiveCity || 'null'}`);
     const keywordResults = await this.keywordSearch(
       query,
       lat,
       lng,
       radius,
       category,
+      effectiveCity, // 多城市时为 null，禁用城市过滤
       limit * 2
     );
     this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
@@ -194,6 +215,8 @@ export class VectorSearchService {
         nameEN: result.nameEN,
         address: result.address,
         category: result.category,
+        lat: result.lat ? parseFloat(result.lat as any) : undefined,
+        lng: result.lng ? parseFloat(result.lng as any) : undefined,
         vectorScore: result.vectorScore,
         keywordScore: 0,
         finalScore: result.vectorScore * 0.7, // 向量搜索权重 0.7
@@ -208,6 +231,11 @@ export class VectorSearchService {
       if (existing) {
         existing.keywordScore = result.keywordScore;
         existing.finalScore = existing.vectorScore * 0.7 + result.keywordScore * 0.3;
+        // 如果向量搜索结果没有 lat/lng，使用关键词搜索的结果
+        if (!existing.lat && result.lat) {
+          existing.lat = result.lat ? parseFloat(result.lat as any) : undefined;
+          existing.lng = result.lng ? parseFloat(result.lng as any) : undefined;
+        }
       } else {
         resultMap.set(result.id, {
           id: result.id,
@@ -215,6 +243,8 @@ export class VectorSearchService {
           nameEN: result.nameEN,
           address: result.address,
           category: result.category,
+          lat: result.lat ? parseFloat(result.lat as any) : undefined,
+          lng: result.lng ? parseFloat(result.lng as any) : undefined,
           vectorScore: 0,
           keywordScore: result.keywordScore,
           finalScore: result.keywordScore * 0.3, // 关键词搜索权重 0.3
@@ -326,6 +356,7 @@ export class VectorSearchService {
 
     // 使用 pgvector 的余弦相似度（<=> 操作符）
     // 1 - (embedding <=> query) 得到相似度分数（0-1）
+    // 关键：提取 location 的经纬度（与 keywordSearch 保持一致）
     const results = await this.prisma.$queryRaw<VectorSearchResult[]>`
       SELECT 
         id,
@@ -333,7 +364,9 @@ export class VectorSearchService {
         "nameEN",
         address,
         category,
-        1 - (embedding <=> ${queryEmbedding}::vector) as "vectorScore"
+        1 - (embedding <=> ${queryEmbedding}::vector) as "vectorScore",
+        ST_Y(location::geometry) as lat,
+        ST_X(location::geometry) as lng
         ${distanceSelect}
       FROM "Place"
       WHERE embedding IS NOT NULL
@@ -371,7 +404,8 @@ export class VectorSearchService {
     const cities = ['北京', '上海', '广州', '深圳', '杭州', '南京', '成都', '重庆', '武汉', '西安', 
                    '天津', '苏州', '长沙', '郑州', '青岛', '大连', '厦门', '福州', '济南', '合肥',
                    '昆明', '哈尔滨', '长春', '沈阳', '石家庄', '太原', '南昌', '南宁', '海口', '贵阳',
-                   '乌鲁木齐', '拉萨', '银川', '西宁', '呼和浩特'];
+                   '乌鲁木齐', '拉萨', '银川', '西宁', '呼和浩特', '宁波', '温州', '台州', '嘉兴', '湖州',
+                   '绍兴', '金华', '衢州', '舟山', '丽水', '宁海', '象山', '余姚', '慈溪', '奉化'];
     
     for (const city of cities) {
       if (raw.includes(city)) {
@@ -380,6 +414,26 @@ export class VectorSearchService {
     }
     
     return null;
+  }
+
+  /**
+   * 提取多个城市名称（用于检测跨城查询）
+   */
+  private extractCities(raw: string): string[] {
+    const cities = ['北京', '上海', '广州', '深圳', '杭州', '南京', '成都', '重庆', '武汉', '西安', 
+                   '天津', '苏州', '长沙', '郑州', '青岛', '大连', '厦门', '福州', '济南', '合肥',
+                   '昆明', '哈尔滨', '长春', '沈阳', '石家庄', '太原', '南昌', '南宁', '海口', '贵阳',
+                   '乌鲁木齐', '拉萨', '银川', '西宁', '呼和浩特', '宁波', '温州', '台州', '嘉兴', '湖州',
+                   '绍兴', '金华', '衢州', '舟山', '丽水', '宁海', '象山', '余姚', '慈溪', '奉化'];
+    
+    const foundCities: string[] = [];
+    for (const city of cities) {
+      if (raw.includes(city)) {
+        foundCities.push(city);
+      }
+    }
+    
+    return foundCities;
   }
 
   /**
@@ -460,13 +514,15 @@ export class VectorSearchService {
     lng?: number,
     radius?: number,
     category?: string,
+    city?: string | null, // 允许外部传入 city（可能为 null 表示禁用过滤）
     limit: number = 20
   ): Promise<KeywordSearchResult[]> {
-    // 抽取关键词和城市
-    const { city, keywords: extractedKeywords } = this.extractKeywords(query);
+    // 抽取关键词和城市（如果外部未传入 city）
+    const extracted = this.extractKeywords(query);
+    const effectiveCity = city !== undefined ? city : extracted.city;
     
     // 如果没有关键词，使用原始 query（降级）
-    const keywords = extractedKeywords.length > 0 ? extractedKeywords : [query];
+    const keywords = extracted.keywords.length > 0 ? extracted.keywords : [query];
     
     // 检测地标关键词，如果存在则优先 ATTRACTION 类别
     const landmarkKeywords = ['故宫', '天安门', '长城', '颐和园', '天坛', '圆明园', '北海', '景山'];
@@ -514,9 +570,9 @@ export class VectorSearchService {
         // 将 cityIds 转换为 Prisma.sql 数组
         const cityIdSqls = cityIds.map(id => Prisma.sql`${id}`);
         cityFilter = Prisma.sql`AND "cityId" IN (${Prisma.join(cityIdSqls, ', ')})`;
-        this.logger.debug(`[keywordSearch] 城市过滤: ${city} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
+        this.logger.debug(`[keywordSearch] 城市过滤: ${effectiveCity} -> cityIds: [${cityIds.join(', ')}] (匹配到: ${matchingCities.map(c => `${c.nameCN}/${c.name}`).join(', ')})`);
       } else {
-        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${city}，将搜索所有城市`);
+        this.logger.warn(`[keywordSearch] 未找到匹配的城市: ${effectiveCity}，将搜索所有城市`);
         // 如果找不到匹配的城市，不添加过滤条件（返回所有城市的 POI）
       }
     }
@@ -607,6 +663,318 @@ export class VectorSearchService {
       lng: r.lng ? parseFloat(r.lng as any) : undefined,
       distance: r.distance ? parseFloat(r.distance as any) : undefined,
     }));
+  }
+
+  /**
+   * 多城市查询：按实体拆分搜索
+   * 
+   * 策略：将查询拆分为多个实体片段，每个实体关联一个城市提示
+   * 例如："杭州西湖 + 宁波宁海十里红妆" -> 
+   *   - 实体1: "西湖" + cityHint: "杭州"
+   *   - 实体2: "十里红妆" + cityHint: "宁波" 或 "宁海"
+   */
+  private async hybridSearchMultiCity(
+    query: string,
+    cities: string[],
+    keywords: string[],
+    lat?: number,
+    lng?: number,
+    radius?: number,
+    category?: string,
+    limit: number = 20
+  ): Promise<HybridSearchResult[]> {
+    this.logger.debug(`[hybridSearchMultiCity] 开始多城市拆分搜索: cities=[${cities.join(', ')}], keywords=[${keywords.join(', ')}]`);
+    
+    // 1. 将查询拆分为实体片段（每个实体关联一个城市）
+    const entities = this.splitQueryIntoEntities(query, cities, keywords);
+    
+    this.logger.debug(`[hybridSearchMultiCity] 拆分后的实体: ${JSON.stringify(entities, null, 2)}`);
+    
+    // 2. 对每个实体分别搜索
+    const searchPromises = entities.map(async (entity) => {
+      const entityQuery = entity.name;
+      const entityCity = entity.cityHint;
+      
+      this.logger.debug(`[hybridSearchMultiCity] 搜索实体: "${entityQuery}" (cityHint: ${entityCity || 'null'})`);
+      
+      // 使用单实体搜索逻辑（传入 cityHint）
+      const results = await this.hybridSearchSingleEntity(
+        entityQuery,
+        entityCity,
+        lat,
+        lng,
+        radius,
+        category,
+        Math.ceil(limit / entities.length) // 每个实体分配一部分 limit
+      );
+      
+      return results;
+    });
+    
+    // 3. 等待所有搜索完成
+    const allResults = await Promise.all(searchPromises);
+    
+    // 4. 合并结果并去重（按 id）
+    const resultMap = new Map<number, HybridSearchResult>();
+    
+    for (const results of allResults) {
+      for (const result of results) {
+        const existing = resultMap.get(result.id);
+        if (existing) {
+          // 如果已存在，保留分数更高的
+          if (result.finalScore > existing.finalScore) {
+            resultMap.set(result.id, result);
+          }
+        } else {
+          resultMap.set(result.id, result);
+        }
+      }
+    }
+    
+    // 5. 按分数排序并返回
+    const mergedResults = Array.from(resultMap.values())
+      .sort((a, b) => b.finalScore - a.finalScore)
+      .slice(0, limit);
+    
+    this.logger.debug(`[hybridSearchMultiCity] 合并后结果数: ${mergedResults.length}`);
+    
+    return mergedResults;
+  }
+
+  /**
+   * 单实体搜索（内部方法，用于多城市拆分搜索）
+   */
+  private async hybridSearchSingleEntity(
+    query: string,
+    cityHint: string | null,
+    lat?: number,
+    lng?: number,
+    radius?: number,
+    category?: string,
+    limit: number = 20
+  ): Promise<HybridSearchResult[]> {
+    // 检查数据库中是否有 embedding 数据
+    const placesWithEmbedding = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM "Place" WHERE embedding IS NOT NULL
+    `;
+    const embeddingCount = Number(placesWithEmbedding[0]?.count || 0);
+    
+    if (embeddingCount === 0) {
+      // 无 embedding 数据，使用关键词搜索
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      return keywordResults.map(r => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（无 embedding 数据）'],
+        distance: r.distance,
+      }));
+    }
+
+    // 生成查询向量
+    const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    const isZeroVector = queryEmbedding.every(v => v === 0);
+    
+    if (isZeroVector) {
+      // 零向量，降级到关键词搜索
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      return keywordResults.map(r => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（embedding 降级）'],
+        distance: r.distance,
+      }));
+    }
+
+    // 向量搜索 + 关键词搜索
+    const vectorResults = await this.vectorSearch(
+      queryEmbedding,
+      lat,
+      lng,
+      radius,
+      category,
+      cityHint, // 使用 cityHint 而不是 null
+      limit * 2
+    );
+    
+    const keywordResults = await this.keywordSearch(
+      query,
+      lat,
+      lng,
+      radius,
+      category,
+      cityHint, // 使用 cityHint 而不是 null
+      limit * 2
+    );
+
+    // 合并结果
+    const resultMap = new Map<number, HybridSearchResult>();
+    
+    vectorResults.forEach((result) => {
+      resultMap.set(result.id, {
+        id: result.id,
+        nameCN: result.nameCN,
+        nameEN: result.nameEN,
+        address: result.address,
+        category: result.category,
+        lat: result.lat ? parseFloat(result.lat as any) : undefined,
+        lng: result.lng ? parseFloat(result.lng as any) : undefined,
+        vectorScore: result.vectorScore,
+        keywordScore: 0,
+        finalScore: result.vectorScore * 0.7,
+        matchReasons: [],
+        distance: result.distance,
+      });
+    });
+    
+    keywordResults.forEach((result) => {
+      const existing = resultMap.get(result.id);
+      if (existing) {
+        existing.keywordScore = result.keywordScore;
+        existing.finalScore = existing.vectorScore * 0.7 + result.keywordScore * 0.3;
+        if (!existing.lat && result.lat) {
+          existing.lat = result.lat ? parseFloat(result.lat as any) : undefined;
+          existing.lng = result.lng ? parseFloat(result.lng as any) : undefined;
+        }
+      } else {
+        resultMap.set(result.id, {
+          id: result.id,
+          nameCN: result.nameCN,
+          nameEN: result.nameEN,
+          address: result.address,
+          category: result.category,
+          lat: result.lat ? parseFloat(result.lat as any) : undefined,
+          lng: result.lng ? parseFloat(result.lng as any) : undefined,
+          vectorScore: 0,
+          keywordScore: result.keywordScore,
+          finalScore: result.keywordScore * 0.3,
+          matchReasons: [],
+          distance: result.distance,
+        });
+      }
+    });
+
+    // 获取完整地点信息并生成推荐原因
+    const results = Array.from(resultMap.values())
+      .sort((a, b) => b.finalScore - a.finalScore)
+      .slice(0, limit);
+
+    const placeIds = results.map((r) => r.id);
+    const places = await this.prisma.place.findMany({
+      where: { id: { in: placeIds } },
+      select: {
+        id: true,
+        metadata: true,
+      },
+    });
+
+    const placeMap = new Map(places.map((p) => [p.id, p]));
+
+    return results.map((result) => {
+      const place = placeMap.get(result.id);
+      if (place) {
+        result.matchReasons = this.extractMatchReasons(
+          place,
+          query,
+          result.vectorScore,
+          result.keywordScore
+        );
+      }
+      return result;
+    });
+  }
+
+  /**
+   * 将查询拆分为实体片段
+   * 
+   * 示例：
+   * "5天浙江省，包含杭州西湖和宁波宁海十里红妆" ->
+   * [
+   *   { name: "西湖", cityHint: "杭州" },
+   *   { name: "十里红妆", cityHint: "宁波" }
+   * ]
+   */
+  private splitQueryIntoEntities(
+    query: string,
+    cities: string[],
+    keywords: string[]
+  ): Array<{ name: string; cityHint: string | null }> {
+    const entities: Array<{ name: string; cityHint: string | null }> = [];
+    
+    // 策略：将关键词与城市进行匹配
+    // 1. 如果关键词中包含城市名，直接关联
+    // 2. 否则，尝试根据位置关联（关键词在查询中的位置）
+    
+    for (const keyword of keywords) {
+      // 检查关键词是否包含城市名
+      let matchedCity: string | null = null;
+      
+      for (const city of cities) {
+        // 如果关键词包含城市名，或者关键词在查询中紧邻城市名
+        if (keyword.includes(city) || query.includes(`${city}${keyword}`) || query.includes(`${keyword}${city}`)) {
+          matchedCity = city;
+          break;
+        }
+      }
+      
+      // 如果没有直接匹配，尝试根据查询中的位置推断
+      if (!matchedCity && cities.length > 0) {
+        // 查找关键词在查询中的位置，找到最近的城市
+        const keywordIndex = query.indexOf(keyword);
+        if (keywordIndex >= 0) {
+          let minDistance = Infinity;
+          let nearestCity: string | null = null;
+          
+          for (const city of cities) {
+            const cityIndex = query.indexOf(city);
+            if (cityIndex >= 0) {
+              const distance = Math.abs(cityIndex - keywordIndex);
+              if (distance < minDistance) {
+                minDistance = distance;
+                nearestCity = city;
+              }
+            }
+          }
+          
+          matchedCity = nearestCity;
+        }
+      }
+      
+      // 如果仍然没有匹配，使用第一个城市作为提示（降级策略）
+      if (!matchedCity && cities.length > 0) {
+        matchedCity = cities[0];
+      }
+      
+      entities.push({
+        name: keyword,
+        cityHint: matchedCity,
+      });
+    }
+    
+    // 如果没有关键词，使用原始查询（但禁用城市过滤）
+    if (entities.length === 0) {
+      entities.push({
+        name: query,
+        cityHint: null, // 多城市时禁用过滤
+      });
+    }
+    
+    return entities;
   }
 
   /**
