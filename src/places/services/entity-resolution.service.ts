@@ -255,15 +255,8 @@ export class EntityResolutionService {
   ): Promise<Omit<EntityResolutionResult, 'source' | 'matchReasons'> | null> {
     try {
       // 构建查询条件
-      const where: any = {
-        OR: [
-          { nameCN: { contains: poiName } },
-          { nameEN: { contains: poiName } },
-          { address: { contains: poiName } },
-        ],
-      };
-
-      // 如果指定了城市，添加城市过滤
+      let cityFilter = Prisma.sql``;
+      
       if (city) {
         const cityRecord = await this.prisma.city.findFirst({
           where: {
@@ -275,24 +268,45 @@ export class EntityResolutionService {
         });
 
         if (cityRecord) {
-          where.cityId = cityRecord.id;
+          cityFilter = Prisma.sql`AND "cityId" = ${cityRecord.id}`;
         }
       }
 
-      const place = await this.prisma.place.findFirst({
-        where,
-        include: {
-          city: true,
-        },
-      });
+      // 使用原始SQL查询，直接提取坐标
+      const results = await this.prisma.$queryRaw<Array<{
+        id: number;
+        nameCN: string;
+        nameEN: string | null;
+        address: string | null;
+        category: string;
+        lat: number | null;
+        lng: number | null;
+        metadata: any;
+      }>>`
+        SELECT 
+          id,
+          "nameCN",
+          "nameEN",
+          address,
+          category,
+          metadata,
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE 
+          (
+            "nameCN" ILIKE ${`%${poiName}%`}
+            OR "nameEN" ILIKE ${`%${poiName}%`}
+            OR address ILIKE ${`%${poiName}%`}
+          )
+          AND location IS NOT NULL
+          ${cityFilter}
+        LIMIT 1
+      `;
 
-      if (place && place.location) {
-        // 提取坐标
-        const location = place.location as any;
-        const lat = location.coordinates?.[1] || location.lat;
-        const lng = location.coordinates?.[0] || location.lng;
-
-        if (lat && lng) {
+      if (results.length > 0) {
+        const place = results[0];
+        if (place.lat && place.lng) {
           return {
             id: place.id,
             name: place.nameCN || place.nameEN || '',
@@ -300,8 +314,8 @@ export class EntityResolutionService {
             nameEN: place.nameEN,
             address: place.address,
             category: place.category,
-            lat: parseFloat(lat),
-            lng: parseFloat(lng),
+            lat: parseFloat(place.lat.toString()),
+            lng: parseFloat(place.lng.toString()),
             score: 1.0, // 精确匹配给满分
             metadata: place.metadata,
           };
@@ -349,7 +363,8 @@ export class EntityResolutionService {
         nameEN: string | null;
         address: string | null;
         category: string;
-        location: any;
+        lat: number | null;
+        lng: number | null;
         metadata: any;
       }>>`
         SELECT 
@@ -358,36 +373,32 @@ export class EntityResolutionService {
           "nameEN",
           address,
           category,
-          location,
-          metadata
+          metadata,
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
         FROM "Place"
         WHERE 
           metadata->'aliases' @> ${JSON.stringify([poiName])}::jsonb
+          AND location IS NOT NULL
           ${cityFilter}
         LIMIT 1
       `;
 
       if (results.length > 0) {
         const place = results[0];
-        if (place.location) {
-          const location = place.location as any;
-          const lat = location.coordinates?.[1] || location.lat;
-          const lng = location.coordinates?.[0] || location.lng;
-
-          if (lat && lng) {
-            return {
-              id: place.id,
-              name: place.nameCN || place.nameEN || '',
-              nameCN: place.nameCN || '',
-              nameEN: place.nameEN,
-              address: place.address,
-              category: place.category,
-              lat: parseFloat(lat),
-              lng: parseFloat(lng),
-              score: 0.9, // 别名匹配给高分
-              metadata: place.metadata,
-            };
-          }
+        if (place.lat && place.lng) {
+          return {
+            id: place.id,
+            name: place.nameCN || place.nameEN || '',
+            nameCN: place.nameCN || '',
+            nameEN: place.nameEN,
+            address: place.address,
+            category: place.category,
+            lat: parseFloat(place.lat.toString()),
+            lng: parseFloat(place.lng.toString()),
+            score: 0.9, // 别名匹配给高分
+            metadata: place.metadata,
+          };
         }
       }
     } catch (error) {
