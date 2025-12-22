@@ -1,0 +1,686 @@
+[
+  {
+    "type": "node",
+    "id": 4314039691,
+    "lat": 28.8343589,
+    "lon": 89.8564826,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 6110027086,
+    "lat": 29.2995808,
+    "lon": 89.7972433,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 6738855885,
+    "lat": 28.9172333,
+    "lon": 89.5974412,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 9169028217,
+    "lat": 28.8669685,
+    "lon": 89.6982604,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916368717,
+    "lat": 28.8670461,
+    "lon": 89.6980546,
+    "tags": {
+      "amenity": "police",
+      "name:en": "Police"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 810271390,
+    "center": {
+      "lat": 28.9020458,
+      "lon": 89.5875058
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322263064,
+    "center": {
+      "lat": 28.9105528,
+      "lon": 89.6051711
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "江孜县人民医院"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 2225547926,
+    "lat": 28.9176379,
+    "lon": 89.5994683,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 3207719331,
+    "lat": 29.0957104,
+    "lon": 89.337526,
+    "tags": {
+      "alt_name": "阿玛曲莫",
+      "amenity": "place_of_worship",
+      "name": "བསེ་བྲག་སྒྲུབ་སྡེ (色扎卓德寺)",
+      "name:bo": "བསེ་བྲག་སྒྲུབ་སྡེ",
+      "name:en": "Sedrak Drubde",
+      "name:zh": "色扎卓德寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 3208563650,
+    "lat": 28.9976784,
+    "lon": 89.3093166,
+    "tags": {
+      "amenity": "place_of_worship"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4005895642,
+    "lat": 28.9181402,
+    "lon": 89.5986165,
+    "tags": {
+      "alt_name": "江孜宗山",
+      "name": "宗山",
+      "name:zh": "宗山",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4081047413,
+    "lat": 29.2661516,
+    "lon": 89.901055,
+    "tags": {
+      "natural": "peak",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4084562865,
+    "lat": 28.623097,
+    "lon": 89.2629707,
+    "tags": {
+      "ele": "4760",
+      "mountain_pass": "yes",
+      "source": "OpenTopoMap"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4086514398,
+    "lat": 29.1047087,
+    "lon": 89.2605372,
+    "tags": {
+      "alt_name": "常美寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "白朗常美寺",
+      "name:zh": "白朗常美寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4314068890,
+    "lat": 28.8342501,
+    "lon": 89.8551007,
+    "tags": {
+      "name": "斯米拉神山",
+      "name:en": "Simi La Mountain",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 4808278628,
+    "lat": 28.8503718,
+    "lon": 89.8366551,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 6304966691,
+    "lat": 28.8485615,
+    "lon": 89.8417515,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 8347308713,
+    "lat": 28.8670872,
+    "lon": 89.7294563,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890770401,
+    "lat": 29.1048449,
+    "lon": 89.2598035,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890771186,
+    "lat": 29.1559584,
+    "lon": 89.2113958,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 9579884318,
+    "lat": 28.8341712,
+    "lon": 89.8563462,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 9580610143,
+    "lat": 28.9182353,
+    "lon": 89.5988113,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 9580610150,
+    "lat": 28.9178186,
+    "lon": 89.5981233,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 11624896222,
+    "lat": 29.0081609,
+    "lon": 89.4210321,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 11624897865,
+    "lat": 28.9524416,
+    "lon": 89.6067802,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 12955656631,
+    "lat": 28.7696977,
+    "lon": 89.3008603,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "金嘎查珠寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "node",
+    "id": 13095420970,
+    "lat": 28.873332,
+    "lon": 89.1260676,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 131278906,
+    "center": {
+      "lat": 28.9253673,
+      "lon": 89.595647
+    },
+    "tags": {
+      "alt_name": "Pelkor Chode;Gyangtse Monastery;Shekar Gyantse;དཔལ་འཁོར་བདེ་ཆེན;དཔལ་ཆོས་དགོན་པ;རྒྱལ་རྩེ་དགོན་པ",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "heritage": "2",
+      "heritage:operator": "ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1996",
+      "historic": "temple",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;ming",
+      "name": "白居寺 དཔལ་འཁོར་ཆོས་སྡེ",
+      "name:bo": "དཔལ་འཁོར་ཆོས་སྡེ",
+      "name:de": "Pelkhor Chöde",
+      "name:en": "Palcho Monastery",
+      "name:zh": "白居寺",
+      "ncha:inscription_date": "1996-11-20",
+      "ncha:type": "古建筑",
+      "protection_title": "全国重点文物保护单位",
+      "ref:heritage:CN": "4-0160-3-082",
+      "religion": "buddhist",
+      "tourism": "attraction",
+      "wikidata": "Q1785045",
+      "wikipedia": "en:Palcho Monastery"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 212741207,
+    "center": {
+      "lat": 28.9178869,
+      "lon": 89.5990285
+    },
+    "tags": {
+      "alt_name": "宗山遗址;江孜宗山抗英遗址",
+      "alt_name:en": "Gyantse Dzong;Jiangzi Zongshan Anti British Site",
+      "heritage": "2",
+      "heritage:operator": "ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1961",
+      "historic": "castle",
+      "historic:civilization": "imperial_chinese",
+      "historic:period": "qing;1904",
+      "name": "宗山抗英遗址",
+      "name:de": "Festung von Gyangzê",
+      "name:en": "Gyantse Fortressalt_name",
+      "name:zh": "宗山抗英遗址",
+      "ncha:inscription_date": "1961-03-04",
+      "ncha:name": "江孜宗山抗英遗址",
+      "ncha:type": "近现代重要史迹及代表性建筑",
+      "protection_title": "全国重点文物保护单位",
+      "ref:heritage:CN": "1-0005-1-005",
+      "tourism": "attraction",
+      "wikidata": "Q1297848",
+      "wikipedia": "zh:江孜宗山"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 401412967,
+    "center": {
+      "lat": 29.3598778,
+      "lon": 89.6475438
+    },
+    "tags": {
+      "alt_name": "热拉拥仲林寺;ར་ལག་གཡུང་དྲུང་གླིང;རབ་ལེགས་གཡུང་དྲུང་གླིང;རུ་ལག་གཡུང་དྲུང་གླིང་དགོན;ཡུན་པོ་རུ་ལག་གཡུང་དྲུང་གླིང་དགོན",
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "denomination": "tibetan",
+      "name": "གཡུང་དྲུང་གླིང་དགོན (雍仲林寺)",
+      "name:bo": "གཡུང་དྲུང་གླིང་དགོན",
+      "name:en": "Yungdrungling",
+      "name:zh": "雍仲林寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 404925200,
+    "center": {
+      "lat": 29.2017927,
+      "lon": 89.2663173
+    },
+    "tags": {
+      "alt_name": "白朗白日寺;པ་སྣམ་དཔལ་རི་དགོན;སྨིན་གླིང་དཔལ་རི་དགོན",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "historic": "ruins",
+      "name": "དཔལ་རི་དགོན (白日寺)",
+      "name:bo": "དཔལ་རི་དགོན",
+      "name:en": "Pelri Gon",
+      "name:zh": "白日寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 405974467,
+    "center": {
+      "lat": 29.2360326,
+      "lon": 89.8401373
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 406486940,
+    "center": {
+      "lat": 28.9401952,
+      "lon": 89.5571019
+    },
+    "tags": {
+      "alt_name": "བརྩེ་ཆེན་དགོན་པ;རྩེ་ཆེན་ཆོས་སྡེ;ཐུབ་བསྟན་རབ་རྒྱས་གླིང;བརྩེ་ཆེན་ཆོས་སྡེ་ཐུབ་བསྟན་རབ་རྒྱས་གླིང",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "བརྩེ་ཆེན་ཆོས་སྡེ (紫金寺)",
+      "name:bo": "བརྩེ་ཆེན་ཆོས་སྡེ",
+      "name:zh": "紫金寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikipedia": "zh:紫金寺 (江孜县)"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 549056970,
+    "center": {
+      "lat": 28.9241784,
+      "lon": 89.6067506
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 860684365,
+    "center": {
+      "lat": 28.8355599,
+      "lon": 90.0999043
+    },
+    "tags": {
+      "alt_name": "热隆寺;热龙棍巴;Relonggunba;Shedrub Chökhor Ling",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "gns:dsg": "GRAZ: grazing area",
+      "historic": "ruins",
+      "name": "热龙寺 ར་ལུང་དགོན།",
+      "name:bo": "ར་ལུང་དགོན།",
+      "name:de": "Ralung-Kloster",
+      "name:en": "Ralung Monastery",
+      "name:zh": "热龙寺",
+      "religion": "buddhist",
+      "source": "maxar Premium",
+      "source:name": "GNS",
+      "wikidata": "Q1365609",
+      "wikipedia": "zh:热隆寺"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  },
+  {
+    "type": "way",
+    "id": 1008195827,
+    "center": {
+      "lat": 29.1974741,
+      "lon": 89.4506196
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "卡麦查珠寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_GYANTSE",
+    "region_name": "江孜",
+    "region_center": {
+      "lat": 28.9167,
+      "lng": 89.6
+    }
+  }
+]

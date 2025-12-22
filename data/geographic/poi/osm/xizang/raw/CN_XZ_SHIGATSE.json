@@ -1,0 +1,1374 @@
+[
+  {
+    "type": "node",
+    "id": 4314040490,
+    "lat": 29.2667021,
+    "lon": 88.8816434,
+    "tags": {
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4314068889,
+    "lat": 29.2677626,
+    "lon": 88.8886955,
+    "tags": {
+      "shop": "convenience"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4805205822,
+    "lat": 29.2731743,
+    "lon": 88.8888049,
+    "tags": {
+      "shop": "convenience"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4805205823,
+    "lat": 29.1890516,
+    "lon": 88.3965217,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4824043121,
+    "lat": 29.3085851,
+    "lon": 88.9158056,
+    "tags": {
+      "amenity": "police",
+      "name:en": "police check point",
+      "name:vi": "điểm kiểm tra an ninh"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890832329,
+    "lat": 29.2527258,
+    "lon": 88.8509691,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9169369218,
+    "lat": 29.256576,
+    "lon": 88.8920407,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916368218,
+    "lat": 29.2594685,
+    "lon": 88.8932941,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916369317,
+    "lat": 29.265747,
+    "lon": 88.8748177,
+    "tags": {
+      "amenity": "hospital"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916369318,
+    "lat": 29.2608035,
+    "lon": 88.8934063,
+    "tags": {
+      "amenity": "hospital"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916369417,
+    "lat": 29.2663812,
+    "lon": 88.8748898,
+    "tags": {
+      "shop": "convenience"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 267370674,
+    "center": {
+      "lat": 29.3403932,
+      "lon": 89.2946999
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 267370704,
+    "center": {
+      "lat": 29.3390341,
+      "lon": 89.3163635
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 447771954,
+    "center": {
+      "lat": 29.2757014,
+      "lon": 88.9010164
+    },
+    "tags": {
+      "brand": "uSmile 昆仑好客",
+      "brand:en": "uSmile",
+      "brand:wikidata": "Q66480830",
+      "brand:zh": "昆仑好客",
+      "building": "yes",
+      "name": "uSmile 昆仑好客",
+      "name:en": "uSmile",
+      "name:zh": "昆仑好客",
+      "shop": "convenience"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 447771955,
+    "center": {
+      "lat": 29.2756818,
+      "lon": 88.9008505
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "uSmile 昆仑好客",
+      "brand:en": "uSmile",
+      "brand:wikidata": "Q66480830",
+      "brand:zh": "昆仑好客",
+      "building": "roof",
+      "layer": "1",
+      "name": "uSmile 昆仑好;uSmile",
+      "name:en": "uSmile",
+      "name:zh": "昆仑好客"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 448587716,
+    "center": {
+      "lat": 29.270262,
+      "lon": 88.8836659
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "日喀则市人民医院"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 810271776,
+    "center": {
+      "lat": 29.279812,
+      "lon": 88.9017602
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 964802666,
+    "center": {
+      "lat": 29.226928,
+      "lon": 88.9217584
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石油",
+      "brand:en": "PetroChina",
+      "brand:wikidata": "Q503182",
+      "brand:wikipedia": "en:PetroChina",
+      "brand:zh": "中国石油",
+      "name": "中国石油",
+      "name:en": "PetroChina",
+      "name:zh": "中国石油"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 964806402,
+    "center": {
+      "lat": 29.2130848,
+      "lon": 88.9552173
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石化",
+      "brand:en": "Sinopec",
+      "brand:wikidata": "Q831445",
+      "brand:wikipedia": "en:Sinopec",
+      "brand:zh": "中国石化",
+      "name": "中国石化",
+      "name:en": "Sinopec",
+      "name:zh": "中国石化"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 965290223,
+    "center": {
+      "lat": 29.2483366,
+      "lon": 88.8973024
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "日喀则市人民医院"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1030188932,
+    "center": {
+      "lat": 29.1836116,
+      "lon": 88.9149331
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1056026120,
+    "center": {
+      "lat": 29.2714458,
+      "lon": 88.8820817
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "日喀则市藏医医院"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1091002896,
+    "center": {
+      "lat": 29.1801329,
+      "lon": 88.7490194
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1091006504,
+    "center": {
+      "lat": 29.2108274,
+      "lon": 88.3779912
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1115023027,
+    "center": {
+      "lat": 29.2367111,
+      "lon": 88.8300581
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1115023204,
+    "center": {
+      "lat": 29.2579894,
+      "lon": 88.8757073
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "uSmile 昆仑好客",
+      "brand:en": "uSmile",
+      "brand:wikidata": "Q66480830",
+      "brand:zh": "昆仑好客",
+      "building": "roof",
+      "layer": "1",
+      "name": "U smile",
+      "name:en": "uSmile",
+      "name:zh": "昆仑好客"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1115026458,
+    "center": {
+      "lat": 29.3043552,
+      "lon": 88.9133917
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "uSmile 昆仑好客",
+      "brand:en": "uSmile",
+      "brand:wikidata": "Q66480830",
+      "brand:zh": "昆仑好客",
+      "building": "roof",
+      "layer": "1",
+      "name": "uSmile",
+      "name:en": "uSmile",
+      "name:zh": "昆仑好客"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 288097162,
+    "lat": 29.1535752,
+    "lon": 88.6142208,
+    "tags": {
+      "alt_name:en": "Gya La Pass",
+      "ele": "4044",
+      "mountain_pass": "yes",
+      "name:en": "Tra La Pass"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 336409001,
+    "lat": 29.1941896,
+    "lon": 88.7620276,
+    "tags": {
+      "alt_name": "纳唐寺;Narthang",
+      "amenity": "place_of_worship",
+      "name": "སྣར་ཐང་དགོན། (纳塘寺)",
+      "name:bo": "སྣར་ཐང་དགོན།",
+      "name:de": "Narthang-Kloster",
+      "name:en": "Narthang Monastery",
+      "name:zh": "纳塘寺",
+      "religion": "buddhist",
+      "wikidata": "Q1483753",
+      "wikipedia": "zh:纳塘寺"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 336409014,
+    "lat": 29.1553802,
+    "lon": 88.5819959,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "Ganchen",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 2148872484,
+    "lat": 29.1274282,
+    "lon": 88.9923495,
+    "tags": {
+      "alt_name": "ཞ་ལུ་དགོན།;ཞྭ་ལུ་དགོན;Zhalu Monastery",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཞ་ལུ་དགོན་པ (夏鲁寺)",
+      "name:bo": "ཞ་ལུ་དགོན་པ",
+      "name:de": "Shalu-Kloster",
+      "name:en": "Shalu Monastery",
+      "name:zh": "夏鲁寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q25681",
+      "wikipedia": "zh:夏鲁寺"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 3207719331,
+    "lat": 29.0957104,
+    "lon": 89.337526,
+    "tags": {
+      "alt_name": "阿玛曲莫",
+      "amenity": "place_of_worship",
+      "name": "བསེ་བྲག་སྒྲུབ་སྡེ (色扎卓德寺)",
+      "name:bo": "བསེ་བྲག་སྒྲུབ་སྡེ",
+      "name:en": "Sedrak Drubde",
+      "name:zh": "色扎卓德寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 3706006355,
+    "lat": 29.2539568,
+    "lon": 89.0103366,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4005833020,
+    "lat": 29.2150231,
+    "lon": 88.4084401,
+    "tags": {
+      "alt_name": "ཁྲོ་ཕུ་བྱམས་ཆེན་ཆོས་སྡེ;绰浦寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཁྲོ་ཕུ་དགོན 超浦寺",
+      "name:bo": "ཁྲོ་ཕུ་དགོན",
+      "name:de": "Throphu Chamchen Chöde",
+      "name:en": "Trupu Monastery",
+      "name:zh": "超浦寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q2429668",
+      "wikipedia": "zh:超浦寺"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4086514398,
+    "lat": 29.1047087,
+    "lon": 89.2605372,
+    "tags": {
+      "alt_name": "常美寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "白朗常美寺",
+      "name:zh": "白朗常美寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4757307121,
+    "lat": 29.2693451,
+    "lon": 88.8687094,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "扎什伦布",
+      "name:zh": "扎什伦布"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 4808320222,
+    "lat": 29.1599149,
+    "lon": 88.9968675,
+    "tags": {
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8025467205,
+    "lat": 29.6258472,
+    "lon": 88.6922835,
+    "tags": {
+      "natural": "peak",
+      "source": "openTopoMap"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8326296911,
+    "lat": 29.1194648,
+    "lon": 88.8257933,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8880964580,
+    "lat": 29.3107911,
+    "lon": 89.3156451,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890770401,
+    "lat": 29.1048449,
+    "lon": 89.2598035,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890771186,
+    "lat": 29.1559584,
+    "lon": 89.2113958,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890771203,
+    "lat": 29.1749096,
+    "lon": 89.165506,
+    "tags": {
+      "information": "guidepost",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890771282,
+    "lat": 29.1572826,
+    "lon": 89.0010566,
+    "tags": {
+      "information": "guidepost",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890832407,
+    "lat": 29.2485892,
+    "lon": 88.8861948,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890832790,
+    "lat": 29.2465629,
+    "lon": 88.8341064,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9577567290,
+    "lat": 29.2817036,
+    "lon": 88.9020297,
+    "tags": {
+      "amenity": "place_of_worship"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9577567293,
+    "lat": 29.2832173,
+    "lon": 88.8990766,
+    "tags": {
+      "name": "日喀则全景观景台",
+      "name:en": "Shigatse Panorama",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9735733976,
+    "lat": 29.339158,
+    "lon": 89.3287185,
+    "tags": {
+      "name": "鹏布晤庆",
+      "name:bo": "ཕུང་པོ་རི་བོ་ཆེ་རི",
+      "name:en": "Phungpo Riwoche Ri",
+      "name:zh-Latn-pinyin": "Péng bù wù qìng",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9735843577,
+    "lat": 29.3396719,
+    "lon": 89.3291537,
+    "tags": {
+      "alt_name": "Pungpo Riwoche",
+      "amenity": "place_of_worship",
+      "name": "Phungpo Riwoche Gompa",
+      "name:bo": "ཕུང་པོ་རི་བོ་ཆེ་དགོན་པ",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9775678517,
+    "lat": 29.3484377,
+    "lon": 89.2975261,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9775678518,
+    "lat": 29.3478512,
+    "lon": 89.2977708,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 9775678519,
+    "lat": 29.3478359,
+    "lon": 89.2984961,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 10857362721,
+    "lat": 28.8940659,
+    "lon": 88.7810635,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 11589861908,
+    "lat": 29.4829095,
+    "lon": 88.508503,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 11589862114,
+    "lat": 29.4796078,
+    "lon": 88.5524547,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 12961096500,
+    "lat": 29.1719765,
+    "lon": 88.5889971,
+    "tags": {
+      "alt_name": "Gangchen;Kanggyi;Khangkyil;Kangji",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གངས་ཆེན 刚坚寺",
+      "name:bo": "གངས་ཆེན",
+      "name:en": "Kangqên",
+      "name:zh": "刚坚寺",
+      "religion": "buddhist",
+      "source": "esriWorld",
+      "wikidata": "Q15915283",
+      "wikipedia": "zh:刚坚寺"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 12984695271,
+    "lat": 29.2381479,
+    "lon": 89.0911241,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 12989956397,
+    "lat": 28.980135,
+    "lon": 88.5188233,
+    "tags": {
+      "alt_name:zh": "萨迦白玛曲林寺",
+      "amenity": "place_of_worship",
+      "name": "白玛曲林寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 13095420970,
+    "lat": 28.873332,
+    "lon": 89.1260676,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 13133936650,
+    "lat": 29.0834414,
+    "lon": 89.0818308,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "塔巴寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "node",
+    "id": 13133936652,
+    "lat": 29.1392926,
+    "lon": 89.0661237,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "穷则寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 140501939,
+    "center": {
+      "lat": 29.2683211,
+      "lon": 88.8700343
+    },
+    "tags": {
+      "alt_name": "བཀྲ་ཤིས་ལྷུན་པོ་དགོན་པ;吉祥须弥寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "扎什伦布寺 བཀྲ་ཤིས་ལྷུན་པོ་",
+      "name:bo": "བཀྲ་ཤིས་ལྷུན་པོ་",
+      "name:en": "Tashilhunpo Monastery",
+      "name:zh": "扎什伦布寺",
+      "religion": "buddhist",
+      "wikidata": "Q877445",
+      "wikipedia": "en:Tashilhunpo Monastery"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 140616235,
+    "center": {
+      "lat": 29.33968,
+      "lon": 89.329083
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 404925200,
+    "center": {
+      "lat": 29.2017927,
+      "lon": 89.2663173
+    },
+    "tags": {
+      "alt_name": "白朗白日寺;པ་སྣམ་དཔལ་རི་དགོན;སྨིན་གླིང་དཔལ་རི་དགོན",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "historic": "ruins",
+      "name": "དཔལ་རི་དགོན (白日寺)",
+      "name:bo": "དཔལ་རི་དགོན",
+      "name:en": "Pelri Gon",
+      "name:zh": "白日寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 404925231,
+    "center": {
+      "lat": 29.2156879,
+      "lon": 89.1743228
+    },
+    "tags": {
+      "alt_name": "嘎东寺;དགའ་སྡོང་།;དགའ་སྡོང་དགོན;གཙང་དགའ་བ་གདོང",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "དགའ་གདོང་དགོན (参卓林寺)",
+      "name:bo": "དགའ་གདོང་དགོན",
+      "name:en": "Gadong Monastery",
+      "name:fr": "Monastère de Gadong",
+      "name:zh": "参卓林寺",
+      "name:zh-Latn-pinyin": "cānzhuólín sì",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikipedia": "fr:Monastère de Gadong (Shigatsé)"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 463335527,
+    "center": {
+      "lat": 29.2725281,
+      "lon": 88.8756066
+    },
+    "tags": {
+      "addr:city": "日喀则市桑珠孜区",
+      "amenity": "place_of_worship",
+      "name": "日喀则清真寺",
+      "name:de": "Shigatsé-Moschee",
+      "name:en": "Shigatsé Mosque",
+      "name:fr": "Mosquée de Shigatsé",
+      "religion": "muslim",
+      "wikidata": "Q15938484",
+      "wikipedia": "zh:日喀则清真寺"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 512577856,
+    "center": {
+      "lat": 29.2665892,
+      "lon": 88.8700513
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 970034945,
+    "center": {
+      "lat": 29.3485333,
+      "lon": 89.2982121
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1056026121,
+    "center": {
+      "lat": 29.2722474,
+      "lon": 88.8837494
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1064419777,
+    "center": {
+      "lat": 29.3471883,
+      "lon": 89.3120701
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1077110587,
+    "center": {
+      "lat": 28.9080305,
+      "lon": 88.9702086
+    },
+    "tags": {
+      "tourism": "camp_site"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1168929976,
+    "center": {
+      "lat": 29.2252833,
+      "lon": 88.9104827
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  },
+  {
+    "type": "way",
+    "id": 1413519832,
+    "center": {
+      "lat": 29.5785709,
+      "lon": 89.0106907
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "白玛曲定寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_SHIGATSE",
+    "region_name": "日喀则",
+    "region_center": {
+      "lat": 29.2675,
+      "lng": 88.88
+    }
+  }
+]

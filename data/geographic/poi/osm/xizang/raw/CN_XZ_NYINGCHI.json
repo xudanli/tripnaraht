@@ -1,0 +1,2872 @@
+[
+  {
+    "type": "node",
+    "id": 4798608129,
+    "lat": 29.7699696,
+    "lon": 94.7408723,
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4817477022,
+    "lat": 29.6552035,
+    "lon": 94.3590394,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4817477025,
+    "lat": 29.6526665,
+    "lon": 94.3526128,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024000506,
+    "lat": 29.6802614,
+    "lon": 94.3743733,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024001940,
+    "lat": 29.638297,
+    "lon": 94.3781671,
+    "tags": {
+      "amenity": "fuel",
+      "name": "中国石油东郊加油站"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024001957,
+    "lat": 29.6800373,
+    "lon": 94.3541933,
+    "tags": {
+      "amenity": "fuel",
+      "name": "珠峰加油站"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024001958,
+    "lat": 29.6874843,
+    "lon": 94.3527112,
+    "tags": {
+      "amenity": "fuel",
+      "name": "中国石油"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 6017399686,
+    "lat": 29.7266414,
+    "lon": 94.30313,
+    "tags": {
+      "amenity": "police",
+      "name:en": "Police Checkpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086811272,
+    "lat": 29.8979172,
+    "lon": 94.3386555,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086845250,
+    "lat": 29.8409975,
+    "lon": 94.4829851,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086845618,
+    "lat": 29.8154299,
+    "lon": 94.5417577,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086874832,
+    "lat": 29.8764901,
+    "lon": 94.2378205,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086878945,
+    "lat": 29.8678984,
+    "lon": 94.3300456,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086893337,
+    "lat": 29.8821136,
+    "lon": 94.5250261,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086893340,
+    "lat": 29.8588082,
+    "lon": 94.554584,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086893341,
+    "lat": 29.8388198,
+    "lon": 94.5568907,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086955441,
+    "lat": 29.8730991,
+    "lon": 94.6033412,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086955442,
+    "lat": 29.8945084,
+    "lon": 94.5947206,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092644550,
+    "lat": 29.4487538,
+    "lon": 93.9225563,
+    "tags": {
+      "amenity": "shelter",
+      "name": "确门麦日阿"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092644655,
+    "lat": 29.5101758,
+    "lon": 93.9215277,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092644716,
+    "lat": 29.5350662,
+    "lon": 93.9758009,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645287,
+    "lat": 29.4428584,
+    "lon": 94.066658,
+    "tags": {
+      "amenity": "shelter",
+      "name": "桑帕"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645792,
+    "lat": 29.4784356,
+    "lon": 94.1719884,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645837,
+    "lat": 29.391299,
+    "lon": 94.0275407,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645838,
+    "lat": 29.40074,
+    "lon": 94.0187323,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645928,
+    "lat": 29.4535511,
+    "lon": 94.0229005,
+    "tags": {
+      "amenity": "shelter",
+      "name": "笔鼓"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092646147,
+    "lat": 29.4875182,
+    "lon": 94.0463161,
+    "tags": {
+      "amenity": "shelter",
+      "name": "帮八渣？"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092646660,
+    "lat": 29.528044,
+    "lon": 94.136138,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11308826968,
+    "lat": 29.6056749,
+    "lon": 94.3629786,
+    "tags": {
+      "amenity": "charging_station",
+      "brand": "NIO Power",
+      "brand:en": "NIO Power",
+      "brand:wikidata": "Q29921278",
+      "name": "蔚来换电站",
+      "name:en": "NIO Power Swap",
+      "name:zh": "蔚来换电站"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12238761436,
+    "lat": 29.7255352,
+    "lon": 94.7327819,
+    "tags": {
+      "amenity": "police",
+      "name": "巴宜区鲁朗派出所"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12620941961,
+    "lat": 29.5182903,
+    "lon": 94.5428378,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12620946899,
+    "lat": 29.4759871,
+    "lon": 94.4820558,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 514179064,
+    "center": {
+      "lat": 29.6874206,
+      "lon": 94.3598633
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "一一五中心医院",
+      "name:en": "Yiyiwu Hospital",
+      "source:name": "GNS"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 858603257,
+    "center": {
+      "lat": 29.6270826,
+      "lon": 94.3691114
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石油",
+      "brand:en": "PetroChina",
+      "brand:wikidata": "Q503182",
+      "brand:wikipedia": "en:PetroChina",
+      "brand:zh": "中国石油",
+      "name": "中国石油",
+      "name:en": "PetroChina",
+      "name:zh": "中国石油"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 870000649,
+    "center": {
+      "lat": 29.2281042,
+      "lon": 94.2341363
+    },
+    "tags": {
+      "amenity": "fuel",
+      "name": "多嘎加油站"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1220421005,
+    "center": {
+      "lat": 29.6058242,
+      "lon": 94.3628807
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石化",
+      "brand:en": "Sinopec",
+      "brand:wikidata": "Q831445",
+      "brand:zh": "中国石化",
+      "name": "中国石化",
+      "name:en": "Sinopec",
+      "name:zh": "中国石化"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322109257,
+    "center": {
+      "lat": 29.765502,
+      "lon": 94.7396658
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石油",
+      "name": "中国石油鲁朗加油站"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 298164816,
+    "lat": 29.6108909,
+    "lon": 94.651684,
+    "tags": {
+      "alt_name": "Sikkim La",
+      "ele": "4556",
+      "mountain_pass": "yes",
+      "name": "色季拉/སེར་ཁྱིམ་ལ",
+      "name:bo": "སེར་ཁྱིམ་ལ",
+      "name:en": "Serkhyim la",
+      "name:ru": "Серкьим-Ла",
+      "name:zh": "色季拉",
+      "natural": "saddle"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 332540878,
+    "lat": 29.7604549,
+    "lon": 94.7414423,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 766913267,
+    "lat": 29.460465,
+    "lon": 94.393124,
+    "tags": {
+      "alt_name:zh": "喇嘛林寺;喇嘛宁寺",
+      "amenity": "place_of_worship",
+      "int_name": "Lamaling Gompa",
+      "name": "བླ་མ་གླིང་དགོན་པ་ (喇嘛岭寺)",
+      "name:bo": "བླ་མ་གླིང་དགོན་པ་",
+      "name:en": "Lamaling Monastery",
+      "name:zh": "喇嘛岭寺",
+      "religion": "buddhist",
+      "wikidata": "Q633025",
+      "wikipedia": "en:Lamaling Monastery"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 2136016942,
+    "lat": 29.213132,
+    "lon": 94.456855,
+    "tags": {
+      "name": "日蒲穷",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3017481143,
+    "lat": 29.6163043,
+    "lon": 94.6971367,
+    "tags": {
+      "name": "鲁朗林海观景台",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3132961303,
+    "lat": 29.6679928,
+    "lon": 94.7824823,
+    "tags": {
+      "mountain_pass": "yes",
+      "name": "亚马拉山口",
+      "name:en": "Tang La"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3315765280,
+    "lat": 29.5858302,
+    "lon": 94.6788032,
+    "tags": {
+      "mountain_pass": "yes",
+      "name": "德木拉山口",
+      "name:en": "Temo La"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3315835259,
+    "lat": 29.6223575,
+    "lon": 94.4018289,
+    "tags": {
+      "alt_name": "大柏树",
+      "name": "世界柏树王",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3316890527,
+    "lat": 29.512388,
+    "lon": 94.6334648,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "德木寺",
+      "name:en": "Demo Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3316895175,
+    "lat": 29.6759141,
+    "lon": 94.7253909,
+    "tags": {
+      "name": "鲁朗田园观景台",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320187301,
+    "lat": 29.9695259,
+    "lon": 94.2594663,
+    "tags": {
+      "ele": "4595",
+      "mountain_pass": "yes",
+      "name": "冷布雅拉垭口",
+      "name:en": "Nampu La"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320238837,
+    "lat": 29.5638165,
+    "lon": 94.4910748,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "吉日寺",
+      "name:en": "Gyelri Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320238838,
+    "lat": 29.5735055,
+    "lon": 94.4683225,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "尼池古秀寺",
+      "name:en": "Neche Goshog Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320264157,
+    "lat": 29.5410315,
+    "lon": 94.4921869,
+    "tags": {
+      "alt_name": "大神鹰寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "色迦棍钦寺",
+      "name:en": "Sigyel Gönchen Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320265195,
+    "lat": 29.5517181,
+    "lon": 94.5325986,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "达卓莎寺",
+      "name:en": "Takdrugtse Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 3320265196,
+    "lat": 29.5353114,
+    "lon": 94.4786053,
+    "tags": {
+      "alt_name:en": "Taktse Monastery",
+      "alt_name:zh": "达则雍仲林寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "达则寺",
+      "name:en": "Taktse Yungdrungling Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4043644286,
+    "lat": 29.7611489,
+    "lon": 94.7397151,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4076567266,
+    "lat": 29.4254033,
+    "lon": 94.5009166,
+    "tags": {
+      "alt_name": "Qiangna Si;Temo Chemnak Gompa",
+      "alt_name:en": "Qanag Monastery",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཆབ་ནག་དགོན། 羌纳寺",
+      "name:bo": "ཆབ་ནག་དགོན།",
+      "name:en": "Qanag Gompa",
+      "name:zh": "羌纳寺",
+      "note": "http://www.tbrc.org/?locale=en&both=yes#!rid=G1KR1873",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q108039160"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4217830176,
+    "lat": 30.0302123,
+    "lon": 94.1785758,
+    "tags": {
+      "natural": "peak",
+      "source": "cyclemap"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4707726235,
+    "lat": 29.514971,
+    "lon": 94.5153954,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 4731641742,
+    "lat": 29.5486415,
+    "lon": 94.589649,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024000507,
+    "lat": 29.6802613,
+    "lon": 94.3746776,
+    "tags": {
+      "information": "office",
+      "name": "措木及日游客中心",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024001935,
+    "lat": 29.7053093,
+    "lon": 94.3855328,
+    "tags": {
+      "name": "姻缘松",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5024001938,
+    "lat": 29.7671485,
+    "lon": 94.4056496,
+    "tags": {
+      "name": "八及隆巴",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 5638390467,
+    "lat": 29.303316,
+    "lon": 94.6535682,
+    "tags": {
+      "mountain_pass": "yes",
+      "name": "Lusha La",
+      "name:bo": "ཀླུ་ཞར་ལ",
+      "name:en": "Lusha Pass",
+      "name:zh": "鲁霞拉",
+      "wikidata": "Q26786392"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 6304965488,
+    "lat": 29.6201497,
+    "lon": 94.6662153,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 6304965490,
+    "lat": 29.6547017,
+    "lon": 94.3803625,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 6648373685,
+    "lat": 29.611693,
+    "lon": 94.6549397,
+    "tags": {
+      "name:en": "Viewpoint",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086845768,
+    "lat": 29.8690161,
+    "lon": 94.3891425,
+    "tags": {
+      "ele": "4785",
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086845834,
+    "lat": 29.796925,
+    "lon": 94.558075,
+    "tags": {
+      "ele": "4730",
+      "mountain_pass": "yes",
+      "name:zh": "洞错拉岗拉"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086845918,
+    "lat": 29.9254051,
+    "lon": 94.314562,
+    "tags": {
+      "ele": "4770",
+      "mountain_pass": "yes",
+      "name:zh": "玉绒拉"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086846387,
+    "lat": 29.8482583,
+    "lon": 94.5285025,
+    "tags": {
+      "ele": "4715",
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7086955866,
+    "lat": 29.8555446,
+    "lon": 94.6158815,
+    "tags": {
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092644635,
+    "lat": 29.4862995,
+    "lon": 93.9006293,
+    "tags": {
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092645387,
+    "lat": 29.4760025,
+    "lon": 94.0343106,
+    "tags": {
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092648704,
+    "lat": 29.483818,
+    "lon": 94.00364,
+    "tags": {
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 7092650961,
+    "lat": 29.4935515,
+    "lon": 94.123191,
+    "tags": {
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8105890123,
+    "lat": 29.4336972,
+    "lon": 94.4437677,
+    "tags": {
+      "name": "泽当宗仲",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8530476218,
+    "lat": 29.5564637,
+    "lon": 94.6966338,
+    "tags": {
+      "mountain_pass": "yes",
+      "name:bo": "སེང་གེ་ལ",
+      "name:en": "Senge La"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8530476237,
+    "lat": 29.65092,
+    "lon": 94.714272,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758934,
+    "lat": 29.4584416,
+    "lon": 94.7494948,
+    "tags": {
+      "charge": "60 CNY",
+      "name": "佛掌沙丘",
+      "name:en": "Buddha Palm Dune",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758939,
+    "lat": 29.4185352,
+    "lon": 94.4745576,
+    "tags": {
+      "name": "江河汇流",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758947,
+    "lat": 29.4495292,
+    "lon": 94.5095336,
+    "tags": {
+      "name": "雅尼湿地公园",
+      "name:en": "Yani Wetland Park",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758948,
+    "lat": 29.5616945,
+    "lon": 94.5531088,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758949,
+    "lat": 29.6105671,
+    "lon": 94.6515298,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 8795758950,
+    "lat": 29.6105858,
+    "lon": 94.6519455,
+    "tags": {
+      "name": "南迦巴瓦观景台",
+      "name:en": "Namcha Barwa Viewpoint",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 9558285731,
+    "lat": 29.6467458,
+    "lon": 94.3732908,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 9721526063,
+    "lat": 29.2746301,
+    "lon": 94.6017901,
+    "tags": {
+      "mountain_pass": "yes",
+      "place": "locality"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 10788244605,
+    "lat": 29.4571002,
+    "lon": 94.4609699,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 10788244905,
+    "lat": 29.4875357,
+    "lon": 94.5824259,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "曲觉拉康",
+      "name:en": "Chu Jowo Lakhang",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11577967892,
+    "lat": 29.4842845,
+    "lon": 94.6370539,
+    "tags": {
+      "amenity": "place_of_worship"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11577967909,
+    "lat": 29.4761986,
+    "lon": 94.6904406,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name:en": "Kongmo Gompa",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11578027773,
+    "lat": 29.6572167,
+    "lon": 94.383481,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "唐拉拉康",
+      "name:zh": "唐热寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11804777321,
+    "lat": 29.5968125,
+    "lon": 94.4378972,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 11804803870,
+    "lat": 29.5952802,
+    "lon": 94.4359124,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12240494992,
+    "lat": 29.6648327,
+    "lon": 94.7783178,
+    "tags": {
+      "name": "卓罗丁",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12620946647,
+    "lat": 29.4582157,
+    "lon": 94.4952371,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "拉日江多寺",
+      "name:en": "Lhari Gyangto Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12941886764,
+    "lat": 29.657245,
+    "lon": 94.3747753,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "格西拉康",
+      "name:en": "Geshigong Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12942343755,
+    "lat": 29.4704235,
+    "lon": 94.3750957,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "珠曲登寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12942356743,
+    "lat": 29.5859917,
+    "lon": 94.6787028,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "德木寺遗址",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 12951565807,
+    "lat": 29.4728897,
+    "lon": 94.7308115,
+    "tags": {
+      "name": "丹娘佛掌沙丘",
+      "name:zh": "佛掌沙丘",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 13357557600,
+    "lat": 29.2941347,
+    "lon": 94.4914274,
+    "tags": {
+      "name": "桑姆曲登",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 13357557601,
+    "lat": 29.2955169,
+    "lon": 94.4797743,
+    "tags": {
+      "name": "德格拉",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 13357557602,
+    "lat": 29.310667,
+    "lon": 94.4862447,
+    "tags": {
+      "name": "拉巴结果",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "node",
+    "id": 13357557603,
+    "lat": 29.3142006,
+    "lon": 94.4898017,
+    "tags": {
+      "name": "拉巴朵",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 388766766,
+    "center": {
+      "lat": 29.3095999,
+      "lon": 94.3354686
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 400031141,
+    "center": {
+      "lat": 29.8369212,
+      "lon": 94.8344464
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 400550071,
+    "center": {
+      "lat": 29.7908662,
+      "lon": 94.8568974
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 401446542,
+    "center": {
+      "lat": 29.8519787,
+      "lon": 94.8384183
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834050888,
+    "center": {
+      "lat": 29.7966524,
+      "lon": 94.8549914
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058820,
+    "center": {
+      "lat": 29.7929469,
+      "lon": 94.8203534
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058821,
+    "center": {
+      "lat": 29.803023,
+      "lon": 94.8305189
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058822,
+    "center": {
+      "lat": 29.8053503,
+      "lon": 94.8350599
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058823,
+    "center": {
+      "lat": 29.8053154,
+      "lon": 94.840368
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058824,
+    "center": {
+      "lat": 29.802974,
+      "lon": 94.8215229
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058825,
+    "center": {
+      "lat": 29.796187,
+      "lon": 94.8229497
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058826,
+    "center": {
+      "lat": 29.7902002,
+      "lon": 94.8257339
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 834058836,
+    "center": {
+      "lat": 29.7952094,
+      "lon": 94.8344028
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 835912888,
+    "center": {
+      "lat": 29.9510766,
+      "lon": 93.9974034
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 840346090,
+    "center": {
+      "lat": 29.5907927,
+      "lon": 94.0845054
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910313328,
+    "center": {
+      "lat": 29.9393724,
+      "lon": 93.9935839
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910313329,
+    "center": {
+      "lat": 29.9354535,
+      "lon": 93.988182
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910313352,
+    "center": {
+      "lat": 29.9356093,
+      "lon": 93.9635325
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322354,
+    "center": {
+      "lat": 29.919549,
+      "lon": 94.2534363
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322355,
+    "center": {
+      "lat": 29.9471723,
+      "lon": 94.2665469
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322356,
+    "center": {
+      "lat": 29.9431934,
+      "lon": 94.2623305
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322357,
+    "center": {
+      "lat": 29.929517,
+      "lon": 94.2192489
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322358,
+    "center": {
+      "lat": 29.8916993,
+      "lon": 94.1610985
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322359,
+    "center": {
+      "lat": 29.8922016,
+      "lon": 94.1580891
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322360,
+    "center": {
+      "lat": 29.9525734,
+      "lon": 94.218337
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910322361,
+    "center": {
+      "lat": 29.9607442,
+      "lon": 94.2135036
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910346394,
+    "center": {
+      "lat": 30.0237869,
+      "lon": 94.1485244
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910346395,
+    "center": {
+      "lat": 30.0225606,
+      "lon": 94.155423
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910346396,
+    "center": {
+      "lat": 30.0215087,
+      "lon": 94.1613615
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910571088,
+    "center": {
+      "lat": 30.0921641,
+      "lon": 94.2275369
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910571090,
+    "center": {
+      "lat": 30.0852577,
+      "lon": 94.2127901
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910571091,
+    "center": {
+      "lat": 30.0677894,
+      "lon": 94.1764515
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910571092,
+    "center": {
+      "lat": 30.0763174,
+      "lon": 94.1902649
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910571093,
+    "center": {
+      "lat": 30.0600314,
+      "lon": 94.1768216
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591308,
+    "center": {
+      "lat": 30.0614799,
+      "lon": 94.3847411
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591309,
+    "center": {
+      "lat": 30.066652,
+      "lon": 94.3919563
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591310,
+    "center": {
+      "lat": 30.0650828,
+      "lon": 94.3871015
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591311,
+    "center": {
+      "lat": 30.0736248,
+      "lon": 94.3937588
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591312,
+    "center": {
+      "lat": 30.1001007,
+      "lon": 94.2949676
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591313,
+    "center": {
+      "lat": 30.0865668,
+      "lon": 94.3004179
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591314,
+    "center": {
+      "lat": 30.0976783,
+      "lon": 94.3153095
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591315,
+    "center": {
+      "lat": 30.0607184,
+      "lon": 94.2932081
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910591316,
+    "center": {
+      "lat": 30.095469,
+      "lon": 94.3049348
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641624,
+    "center": {
+      "lat": 30.0664849,
+      "lon": 94.3534827
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641639,
+    "center": {
+      "lat": 30.0467146,
+      "lon": 94.2965985
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641640,
+    "center": {
+      "lat": 30.0521707,
+      "lon": 94.2931384
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641641,
+    "center": {
+      "lat": 30.0605329,
+      "lon": 94.2857837
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641642,
+    "center": {
+      "lat": 30.0658906,
+      "lon": 94.2845285
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641643,
+    "center": {
+      "lat": 30.0813447,
+      "lon": 94.2214161
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641644,
+    "center": {
+      "lat": 30.0754912,
+      "lon": 94.2211533
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641645,
+    "center": {
+      "lat": 30.0818785,
+      "lon": 94.1994006
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641649,
+    "center": {
+      "lat": 30.029077,
+      "lon": 94.1790855
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641652,
+    "center": {
+      "lat": 30.0093411,
+      "lon": 94.1120652
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 910641653,
+    "center": {
+      "lat": 30.0057758,
+      "lon": 94.0980103
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 914158783,
+    "center": {
+      "lat": 29.9216784,
+      "lon": 94.5478088
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1039482119,
+    "center": {
+      "lat": 29.5676558,
+      "lon": 94.0345847
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1077124682,
+    "center": {
+      "lat": 29.6472496,
+      "lon": 94.3662098
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1077124683,
+    "center": {
+      "lat": 29.6470143,
+      "lon": 94.3601585
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1135664648,
+    "center": {
+      "lat": 29.7616694,
+      "lon": 94.1723061
+    },
+    "tags": {
+      "name": "卡定沟许愿池",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1228860797,
+    "center": {
+      "lat": 29.230625,
+      "lon": 94.2111815
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1228860798,
+    "center": {
+      "lat": 29.2311097,
+      "lon": 94.2126114
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1228860799,
+    "center": {
+      "lat": 29.231331,
+      "lon": 94.2128602
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1245419639,
+    "center": {
+      "lat": 30.0022004,
+      "lon": 94.3313054
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1245419640,
+    "center": {
+      "lat": 30.0080671,
+      "lon": 94.3378675
+    },
+    "tags": {
+      "natural": "glacier"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322496897,
+    "center": {
+      "lat": 29.726436,
+      "lon": 94.7334022
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322497095,
+    "center": {
+      "lat": 29.7334852,
+      "lon": 94.724465
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322497139,
+    "center": {
+      "lat": 29.7328683,
+      "lon": 94.7254742
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322640248,
+    "center": {
+      "lat": 29.6844841,
+      "lon": 94.7331287
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  },
+  {
+    "type": "way",
+    "id": 1435915019,
+    "center": {
+      "lat": 29.3232299,
+      "lon": 94.3360269
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "esriWorld"
+    },
+    "region_key": "CN_XZ_NYINGCHI",
+    "region_name": "林芝",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 94.3614
+    }
+  }
+]

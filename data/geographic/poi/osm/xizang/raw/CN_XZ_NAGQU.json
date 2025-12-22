@@ -1,0 +1,1020 @@
+[
+  {
+    "type": "node",
+    "id": 2708421399,
+    "lat": 31.4543054,
+    "lon": 92.0115584,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 2708421988,
+    "lat": 31.4935171,
+    "lon": 92.0596736,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 6679962386,
+    "lat": 31.3853508,
+    "lon": 91.9567319,
+    "tags": {
+      "amenity": "police",
+      "name:en": "Police Checkpoint"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 6680754685,
+    "lat": 31.4977328,
+    "lon": 92.0637118,
+    "tags": {
+      "amenity": "fuel",
+      "name:en": "Smiles Station"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 7955839960,
+    "lat": 31.5169221,
+    "lon": 92.0604061,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 7955839969,
+    "lat": 31.5045261,
+    "lon": 92.0648854,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13127548345,
+    "lat": 31.5364041,
+    "lon": 92.0053161,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13127548346,
+    "lat": 31.5383502,
+    "lon": 92.0082809,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 265174049,
+    "center": {
+      "lat": 31.4671918,
+      "lon": 92.0347894
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 880572892,
+    "center": {
+      "lat": 31.4731109,
+      "lon": 92.0389461
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 4036989855,
+    "lat": 31.3,
+    "lon": 92.1,
+    "tags": {
+      "gns:dsg": "PK: peak",
+      "name": "昂木钦",
+      "name:en": "Ngamqen;Angmuqin",
+      "name:zh": "昂木钦",
+      "natural": "peak",
+      "source:name": "GNS",
+      "wikidata": "Q28241242"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 5344070565,
+    "lat": 31.6463577,
+    "lon": 92.4421242,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "place_of_worship:type": "prayer_flags",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 8044977621,
+    "lat": 31.7415851,
+    "lon": 92.1025515,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 9536133411,
+    "lat": 31.2509789,
+    "lon": 92.0789641,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 9577582254,
+    "lat": 31.48251,
+    "lon": 92.039423,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13073678185,
+    "lat": 31.3854846,
+    "lon": 92.0488407,
+    "tags": {
+      "name": "给马苦水",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13376353174,
+    "lat": 31.4771207,
+    "lon": 92.0477003,
+    "tags": {
+      "alt_name": "霞登寺;Xiadeng si;Xiaodeng si;Shabten Gön",
+      "alt_name:bo": "ཞབས་བརྟན་དགོན་འགྲོ་འདྲེན་བདེ་སྐྱིད་གླིང་།",
+      "alt_name:en": "Zhabten Monastery",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཞབས་བརྟན་དགོན་པ། 孝登寺",
+      "name:bo": "ཞབས་བརྟན་དགོན་པ།",
+      "name:de": "Shabden-Kloster",
+      "name:en": "Shabten Monastery",
+      "name:zh": "孝登寺",
+      "ref": "6-134",
+      "religion": "buddhist",
+      "school": "gelug",
+      "wikidata": "Q15910586",
+      "wikipedia": "zh:孝登寺"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13383776611,
+    "lat": 31.4629576,
+    "lon": 92.4592584,
+    "tags": {
+      "alt_name": "欧托寺;Outuo si",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "孜欧寺",
+      "name:en": "Zi'ou Temple",
+      "name:zh": "孜欧寺",
+      "ref": "7-177",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "node",
+    "id": 13388805518,
+    "lat": 31.3311733,
+    "lon": 92.3725131,
+    "tags": {
+      "alt_name": "土桑强秋林寺;Daren si;Daren Gongba",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཐོས་བསམ་བྱང་ཆུབ་གླིང་དགོན། 达仁寺",
+      "name:bo": "ཐོས་བསམ་བྱང་ཆུབ་གླིང་དགོན།",
+      "name:en": "Daren monastery",
+      "name:zh": "达仁寺",
+      "ref": "7-176",
+      "religion": "buddhist",
+      "school": "gelug",
+      "source": "bing",
+      "wikidata": "Q108036050"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 316422286,
+    "center": {
+      "lat": 31.4867574,
+      "lon": 92.0503229
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 553650356,
+    "center": {
+      "lat": 31.6698575,
+      "lon": 92.5253505
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "stupa",
+      "denomination": "tibetan",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 553652492,
+    "center": {
+      "lat": 31.6460329,
+      "lon": 92.442309
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "denomination": "tibetan",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 553652550,
+    "center": {
+      "lat": 31.6728949,
+      "lon": 92.4677206
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "stupa",
+      "denomination": "tibetan",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 553655291,
+    "center": {
+      "lat": 31.6945977,
+      "lon": 92.4896207
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "stupa",
+      "denomination": "tibetan",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 621043493,
+    "center": {
+      "lat": 31.4781901,
+      "lon": 92.0474711
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "赞康",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561963,
+    "center": {
+      "lat": 31.4756398,
+      "lon": 92.0629845
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561966,
+    "center": {
+      "lat": 31.4759326,
+      "lon": 92.0619166
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561970,
+    "center": {
+      "lat": 31.4687229,
+      "lon": 92.0560938
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561971,
+    "center": {
+      "lat": 31.4693748,
+      "lon": 92.0571974
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "25",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561972,
+    "center": {
+      "lat": 31.4701564,
+      "lon": 92.0563898
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561980,
+    "center": {
+      "lat": 31.4818113,
+      "lon": 92.0624312
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "122",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561997,
+    "center": {
+      "lat": 31.4725789,
+      "lon": 92.070646
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915561998,
+    "center": {
+      "lat": 31.4692558,
+      "lon": 92.0648714
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 915562003,
+    "center": {
+      "lat": 31.4705274,
+      "lon": 92.0532786
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1012859850,
+    "center": {
+      "lat": 31.4655601,
+      "lon": 92.0556156
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1040189457,
+    "center": {
+      "lat": 31.4829663,
+      "lon": 92.0444011
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "扎西桑旦林尼寺",
+      "name:en": "Samtenling Nunnery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218710741,
+    "center": {
+      "lat": 31.4642368,
+      "lon": 92.0384423
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218710742,
+    "center": {
+      "lat": 31.4642214,
+      "lon": 92.0374875
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218710743,
+    "center": {
+      "lat": 31.4634764,
+      "lon": 92.0375445
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218710744,
+    "center": {
+      "lat": 31.46236,
+      "lon": 92.0386548
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218710745,
+    "center": {
+      "lat": 31.4618797,
+      "lon": 92.0380832
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218718320,
+    "center": {
+      "lat": 31.4667526,
+      "lon": 92.039028
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218718321,
+    "center": {
+      "lat": 31.466811,
+      "lon": 92.0386163
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218718322,
+    "center": {
+      "lat": 31.4668728,
+      "lon": 92.0380705
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218725203,
+    "center": {
+      "lat": 31.4669845,
+      "lon": 92.0403328
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218725207,
+    "center": {
+      "lat": 31.466085,
+      "lon": 92.0400331
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218725208,
+    "center": {
+      "lat": 31.4661191,
+      "lon": 92.0396569
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218725209,
+    "center": {
+      "lat": 31.4673132,
+      "lon": 92.0398062
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218725257,
+    "center": {
+      "lat": 31.4669397,
+      "lon": 92.0428878
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746652,
+    "center": {
+      "lat": 31.4662292,
+      "lon": 92.0450278
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746653,
+    "center": {
+      "lat": 31.4660832,
+      "lon": 92.0444031
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746670,
+    "center": {
+      "lat": 31.4676573,
+      "lon": 92.0436695
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746673,
+    "center": {
+      "lat": 31.4675303,
+      "lon": 92.0454859
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746674,
+    "center": {
+      "lat": 31.4682587,
+      "lon": 92.0451721
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1218746678,
+    "center": {
+      "lat": 31.4681556,
+      "lon": 92.0442137
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1224472493,
+    "center": {
+      "lat": 31.5173702,
+      "lon": 92.0609643
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  },
+  {
+    "type": "way",
+    "id": 1408717853,
+    "center": {
+      "lat": 31.5064122,
+      "lon": 92.1430998
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "鲁朗日追",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_NAGQU",
+    "region_name": "那曲",
+    "region_center": {
+      "lat": 31.4769,
+      "lng": 92.0517
+    }
+  }
+]

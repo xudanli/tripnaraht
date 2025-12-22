@@ -1,0 +1,6603 @@
+[
+  {
+    "type": "node",
+    "id": 31213452,
+    "lat": 29.676305,
+    "lon": 91.1240002,
+    "tags": {
+      "amenity": "hospital",
+      "created_by": "JOSM"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 31213454,
+    "lat": 29.6662663,
+    "lon": 91.1260903,
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 770185307,
+    "lat": 29.6547363,
+    "lon": 91.1123354,
+    "tags": {
+      "shop": "convenience"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 770207261,
+    "lat": 29.6977179,
+    "lon": 91.1335426,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 770218445,
+    "lat": 29.5630563,
+    "lon": 90.9914532,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 1874076316,
+    "lat": 29.6687294,
+    "lon": 91.1322644,
+    "tags": {
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3101675420,
+    "lat": 29.6546535,
+    "lon": 91.1430882,
+    "tags": {
+      "amenity": "police",
+      "name": "西藏公安厅出入境管理局"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3103258832,
+    "lat": 29.6609991,
+    "lon": 91.1332117,
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨市公安局"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3103275939,
+    "lat": 29.6621699,
+    "lon": 91.1078325,
+    "tags": {
+      "amenity": "pharmacy",
+      "name": "平安大药房"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3134819807,
+    "lat": 29.6557255,
+    "lon": 91.1200717,
+    "tags": {
+      "name": "乐天超市",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4290945810,
+    "lat": 29.6555908,
+    "lon": 91.1271618,
+    "tags": {
+      "name": "Baiyi",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4290979338,
+    "lat": 29.6552274,
+    "lon": 91.1269577,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4461932992,
+    "lat": 29.6531688,
+    "lon": 91.093985,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4589422475,
+    "lat": 29.6347262,
+    "lon": 91.1894254,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4822707524,
+    "lat": 29.6719118,
+    "lon": 91.3460093,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5672460821,
+    "lat": 29.6603393,
+    "lon": 91.1295577,
+    "tags": {
+      "name:en": "Baiyi Supermarket",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5965429933,
+    "lat": 29.6528076,
+    "lon": 91.102525,
+    "tags": {
+      "name": "百益超市",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5965431215,
+    "lat": 29.6523515,
+    "lon": 91.1356364,
+    "tags": {
+      "amenity": "toilets",
+      "fee": "no"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6407087290,
+    "lat": 29.6604531,
+    "lon": 91.114322,
+    "tags": {
+      "amenity": "police",
+      "name": "护照管",
+      "name:en": "Passport control station"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6407087291,
+    "lat": 29.6533137,
+    "lon": 91.1135153,
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6466207686,
+    "lat": 29.6533552,
+    "lon": 91.2604457,
+    "tags": {
+      "amenity": "police",
+      "name:en": "Police Checkpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6660672424,
+    "lat": 29.6467038,
+    "lon": 91.1331907,
+    "tags": {
+      "addr:city": "两岛街道",
+      "addr:district": "城关区",
+      "addr:housenumber": "6",
+      "addr:postcode": "850000",
+      "addr:province": "西藏",
+      "addr:street": "生态园路",
+      "air_conditioning": "yes",
+      "currency:CNY": "yes",
+      "name": "Say Me",
+      "name:zh": "赛美西藏特产超市",
+      "opening_hours": "Mo-Su 09:00-21:00",
+      "payment:american_express": "yes",
+      "payment:cash": "yes",
+      "payment:credit_cards": "yes",
+      "payment:debit_cards": "yes",
+      "payment:diners_club": "yes",
+      "payment:discover_card": "yes",
+      "payment:maestro": "yes",
+      "payment:mastercard": "yes",
+      "payment:visa": "yes",
+      "payment:visa_debit": "yes",
+      "payment:visa_electron": "yes",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6768887387,
+    "lat": 29.6598236,
+    "lon": 91.1333682,
+    "tags": {
+      "name:en": "Local Markethall",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 7899858458,
+    "lat": 29.6729361,
+    "lon": 91.3539201,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 7899891761,
+    "lat": 29.6237999,
+    "lon": 91.05524,
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940692,
+    "lat": 29.291848,
+    "lon": 91.0197483,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940693,
+    "lat": 29.2917262,
+    "lon": 91.0197317,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940694,
+    "lat": 29.2916252,
+    "lon": 91.0197199,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940695,
+    "lat": 29.2915241,
+    "lon": 91.0197081,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940696,
+    "lat": 29.2914292,
+    "lon": 91.0196939,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940697,
+    "lat": 29.291423,
+    "lon": 91.0195756,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940698,
+    "lat": 29.2915757,
+    "lon": 91.0195851,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940699,
+    "lat": 29.2916912,
+    "lon": 91.0195921,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9045940700,
+    "lat": 29.2918397,
+    "lon": 91.0196205,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9162173418,
+    "lat": 29.6518711,
+    "lon": 91.1323286,
+    "tags": {
+      "amenity": "toilets",
+      "toilets:disposal": "flush"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322255688,
+    "lat": 29.6352996,
+    "lon": 91.0024087,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322330102,
+    "lat": 29.6707118,
+    "lon": 90.9712777,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322406322,
+    "lat": 29.6528597,
+    "lon": 91.0558193,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916370119,
+    "lat": 29.6606276,
+    "lon": 91.1385328,
+    "tags": {
+      "amenity": "clinic"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9916370618,
+    "lat": 29.6655622,
+    "lon": 91.1395618,
+    "tags": {
+      "amenity": "toilets",
+      "name:en": "Public Toilet"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9974004948,
+    "lat": 29.638848,
+    "lon": 91.090354,
+    "tags": {
+      "amenity": "charging_station",
+      "brand": "Nio Power",
+      "brand:en": "Nio Power",
+      "brand:wikidata": "Q29921278",
+      "name": "Nio Power",
+      "name:en": "Nio Power"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 10798197707,
+    "lat": 29.685612,
+    "lon": 91.3717196,
+    "tags": {
+      "amenity": "police",
+      "name": "检查站",
+      "name:en": "Checkpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12075495597,
+    "lat": 29.6488862,
+    "lon": 90.9950513,
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨市堆龙德庆区公安局"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155278855,
+    "lat": 29.6193694,
+    "lon": 91.1324358,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12170354407,
+    "lat": 29.6565943,
+    "lon": 90.9876486,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12175797475,
+    "lat": 29.6460909,
+    "lon": 91.0665405,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13287729858,
+    "lat": 29.262972,
+    "lon": 91.3312501,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296545621,
+    "lat": 29.7571337,
+    "lon": 91.4754577,
+    "tags": {
+      "amenity": "toilets",
+      "changing_table": "no",
+      "charge": "0",
+      "toilets:handwashing": "no",
+      "unisex": "yes",
+      "wheelchair": "no"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296587234,
+    "lat": 29.6737992,
+    "lon": 91.0480942,
+    "tags": {
+      "access": "yes",
+      "amenity": "toilets",
+      "unisex": "yes"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296587235,
+    "lat": 29.6778482,
+    "lon": 91.0493604,
+    "tags": {
+      "amenity": "toilets",
+      "unisex": "yes"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296588601,
+    "lat": 29.6545966,
+    "lon": 91.0950292,
+    "tags": {
+      "amenity": "charging_station"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 177276038,
+    "center": {
+      "lat": 29.6529802,
+      "lon": 91.1184581
+    },
+    "tags": {
+      "amenity": "toilets",
+      "building": "yes"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259889260,
+    "center": {
+      "lat": 29.6531156,
+      "lon": 91.1158126
+    },
+    "tags": {
+      "amenity": "toilets",
+      "building": "yes",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311459566,
+    "center": {
+      "lat": 29.516747,
+      "lon": 90.9402053
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311573457,
+    "center": {
+      "lat": 29.6336181,
+      "lon": 91.0817258
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311705302,
+    "center": {
+      "lat": 29.4477007,
+      "lon": 90.9469797
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311738367,
+    "center": {
+      "lat": 29.6494716,
+      "lon": 91.1487244
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311738376,
+    "center": {
+      "lat": 29.652788,
+      "lon": 91.0819113
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 576596063,
+    "center": {
+      "lat": 29.7909514,
+      "lon": 91.5019577
+    },
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 576596657,
+    "center": {
+      "lat": 29.7907887,
+      "lon": 91.5044203
+    },
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 977609295,
+    "center": {
+      "lat": 29.2906372,
+      "lon": 91.0385444
+    },
+    "tags": {
+      "amenity": "shelter",
+      "building": "yes",
+      "shelter_type": "public_transport"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 977609296,
+    "center": {
+      "lat": 29.2903507,
+      "lon": 91.0386129
+    },
+    "tags": {
+      "amenity": "shelter",
+      "building": "yes",
+      "shelter_type": "public_transport"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 990652610,
+    "center": {
+      "lat": 29.6655681,
+      "lon": 91.1236758
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏自治区藏医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1007787879,
+    "center": {
+      "lat": 29.6047237,
+      "lon": 91.0853113
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨市公安局特警支队"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010358694,
+    "center": {
+      "lat": 29.6148618,
+      "lon": 90.9899927
+    },
+    "tags": {
+      "alt_name": "西藏自治区医院",
+      "amenity": "hospital",
+      "emergency": "no",
+      "healthcare": "hospital",
+      "name": "四川大学华西医院西藏医院 ཟི་ཁྲོན་སློབ་ཆེན་ཧྭ་ཞི་སྨན་ཁང་བོད་ལྗོངས་སྨན་ཁང་།",
+      "name:bo": "ཟི་ཁྲོན་སློབ་ཆེན་ཧྭ་ཞི་སྨན་ཁང་བོད་ལྗོངས་སྨན་ཁང་།",
+      "name:en": "Xizang Hospital of West China Hospital, Sichuan University",
+      "name:zh": "四川大学华西医院西藏医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1041721614,
+    "center": {
+      "lat": 29.6405794,
+      "lon": 91.2140694
+    },
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1056635672,
+    "center": {
+      "lat": 29.6542002,
+      "lon": 91.2376474
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "拉萨市人民医院中心院区"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1056635677,
+    "center": {
+      "lat": 29.6704771,
+      "lon": 91.354887
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "达孜区人民医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1056654585,
+    "center": {
+      "lat": 29.6458514,
+      "lon": 91.2081709
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "西藏康城肿瘤医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1057654242,
+    "center": {
+      "lat": 29.6770481,
+      "lon": 91.1384132
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏司法警官医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1062380993,
+    "center": {
+      "lat": 29.3247956,
+      "lon": 90.8379026
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "森布日高海拔生态搬迁点中心卫生院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1093731987,
+    "center": {
+      "lat": 29.658461,
+      "lon": 91.1837624
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨市公安局"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1144437330,
+    "center": {
+      "lat": 29.6364738,
+      "lon": 90.9689393
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1144465359,
+    "center": {
+      "lat": 29.6050837,
+      "lon": 90.988692
+    },
+    "tags": {
+      "amenity": "fuel",
+      "building": "roof",
+      "layer": "1"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281000209,
+    "center": {
+      "lat": 29.644833,
+      "lon": 91.0597126
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏第二人民医院",
+      "ref": "2"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281261618,
+    "center": {
+      "lat": 29.6902215,
+      "lon": 91.1572535
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "西藏公安监警总队"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281261619,
+    "center": {
+      "lat": 29.6902906,
+      "lon": 91.1580035
+    },
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281261620,
+    "center": {
+      "lat": 29.6908138,
+      "lon": 91.1591426
+    },
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281261622,
+    "center": {
+      "lat": 29.6836103,
+      "lon": 91.1562812
+    },
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281327280,
+    "center": {
+      "lat": 29.699565,
+      "lon": 91.124826
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "landuse": "military",
+      "name": "西藏军区医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281327981,
+    "center": {
+      "lat": 29.6523316,
+      "lon": 91.140238
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "西藏自治区公安厅"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1282308202,
+    "center": {
+      "lat": 29.6327186,
+      "lon": 91.0870968
+    },
+    "tags": {
+      "amenity": "police"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1282308203,
+    "center": {
+      "lat": 29.6345462,
+      "lon": 91.0859188
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "西藏出入境边防检查总站"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1282308208,
+    "center": {
+      "lat": 29.6269231,
+      "lon": 91.0716186
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨车站派出所"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1282308212,
+    "center": {
+      "lat": 29.6252054,
+      "lon": 91.0620987
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "青藏铁路公安局拉萨公安处"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1305045301,
+    "center": {
+      "lat": 29.818544,
+      "lon": 90.7526521
+    },
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1311984644,
+    "center": {
+      "lat": 29.6480895,
+      "lon": 90.9948172
+    },
+    "tags": {
+      "amenity": "police",
+      "name": "拉萨市公安局堆龙德庆区公安分局"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322077932,
+    "center": {
+      "lat": 29.6560888,
+      "lon": 91.1184181
+    },
+    "tags": {
+      "amenity": "toilets",
+      "building": "yes"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322843442,
+    "center": {
+      "lat": 29.6604653,
+      "lon": 91.1227035
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏阜康医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1323182778,
+    "center": {
+      "lat": 29.6587717,
+      "lon": 91.1251133
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏自治区人民医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1421657843,
+    "center": {
+      "lat": 29.6222895,
+      "lon": 91.084366
+    },
+    "tags": {
+      "alt_name": "西藏自治区妇幼保健院;四川大学华西第二医院西藏医院;ཁང་རང་སྐྱོང་ལྗོངས་མ་བུ་བདེ་སྲུང་ཁང་",
+      "alt_name:bo": "ཁང་རང་སྐྱོང་ལྗོངས་མ་བུ་བདེ་སྲུང་ཁང་",
+      "alt_name:en": "Tibet Autonomous Region Maternal and Child Welfare Center;Xizang Hospital, West China Second Hospital, Sichuan University",
+      "alt_name:zh": "西藏自治区妇幼保健院;四川大学华西第二医院西藏医院",
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "西藏自治区妇产儿童医院 བོད་རང་སྐྱོང་ལྗོངས་བུད་མེད་དང་བྱིས་པའི་སྨན་",
+      "name:bo": "བོད་རང་སྐྱོང་ལྗོངས་བུད་མེད་དང་བྱིས་པའི་སྨན་",
+      "name:en": "Tibet Autonomous Region Women and Children's Hospital",
+      "name:zh": "西藏自治区妇产儿童医院"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 298132470,
+    "lat": 29.7586567,
+    "lon": 91.476278,
+    "tags": {
+      "alt_name": "Ganden;Gandain;噶丹寺;Gadan Si;Gandan Si",
+      "alt_name:bo": "དགའ་ལྡན་",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "int_name": "Ganden Namgyeling",
+      "name": "དགའ་ལྡན་དགོན། 甘丹寺",
+      "name:bn": "দ্গা'-ল্দান বৌদ্ধবিহার",
+      "name:bo": "དགའ་ལྡན་དགོན།",
+      "name:cs": "Gandän",
+      "name:en": "Ganden Monastery",
+      "name:fi": "Gandenin luostari",
+      "name:fr": "Ganden",
+      "name:hu": "Ganden kolostor",
+      "name:hy": "Գանդեն",
+      "name:ja": "ガンデン寺",
+      "name:ko": "간덴 사원",
+      "name:my": "ဂန်ဒန်းကျောင်းတော်",
+      "name:ru": "Ганден",
+      "name:sl": "Samostan Ganden",
+      "name:sv": "Gandenklostret",
+      "name:uk": "Ганден",
+      "name:zh": "甘丹寺",
+      "religion": "buddhist",
+      "wikidata": "Q932446",
+      "wikipedia": "bo:དགའ་ལྡན་དགོན།"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 336313317,
+    "lat": 29.4491758,
+    "lon": 91.0266431,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "修赛寺",
+      "name:de": "Shugseb-Kloster",
+      "name:en": "Shugseb Monastery",
+      "name:zh": "修赛寺",
+      "name:zh-Latn-pinyin": "xiūsài sì",
+      "religion": "buddhist",
+      "wikidata": "Q1565880",
+      "wikipedia": "zh:修赛寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 345009556,
+    "lat": 29.6767779,
+    "lon": 91.0469304,
+    "tags": {
+      "alt_name": "Drepung;འབྲས་སྤུངས་",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "historic": "yes",
+      "name": "འབྲས་སྤུངས་དགོན། 哲蚌寺",
+      "name:bo": "འབྲས་སྤུངས་དགོན།",
+      "name:en": "Drepung Monastery",
+      "name:ja": "デプン寺",
+      "name:zh": "哲蚌寺",
+      "religion": "buddhist",
+      "wikidata": "Q241937",
+      "wikipedia": "en:Drepung Monastery"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 670261456,
+    "lat": 29.719681,
+    "lon": 91.1179055,
+    "tags": {
+      "alt_name": "Pabongkha Hermitage",
+      "amenity": "place_of_worship",
+      "name": "帕邦喀寺",
+      "name:en": "Pabonka Hermitage",
+      "religion": "buddhist",
+      "wikidata": "Q7121816"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 795588886,
+    "lat": 29.6524034,
+    "lon": 91.1279808,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 996928311,
+    "lat": 29.6895286,
+    "lon": 91.5825666,
+    "tags": {
+      "ele": "5185",
+      "name": "拉木果",
+      "name:bo": "ལ་མོ་ལྷ་རི",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 996928313,
+    "lat": 29.5165191,
+    "lon": 91.1879777,
+    "tags": {
+      "alt_name": "Trenggo la;Trango la;Kusum la",
+      "ele": "5154",
+      "mountain_pass": "yes",
+      "name:bo": "འཕྲེང་འགོ་ལ",
+      "name:en": "Chênggo La",
+      "name:ru": "Ченгго-Ла",
+      "wikidata": "Q28830583"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 996928319,
+    "lat": 29.7922112,
+    "lon": 91.1753427,
+    "tags": {
+      "ele": "5007",
+      "mountain_pass": "yes",
+      "name": "彭波果拉 འཕན་པོ་སྒོ་ལ",
+      "name:bo": "འཕན་པོ་སྒོ་ལ",
+      "name:en": "Painbogo La",
+      "name:zh": "彭波果拉"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 996928320,
+    "lat": 29.59518,
+    "lon": 90.73214,
+    "tags": {
+      "ele": "5548",
+      "mountain_pass": "yes",
+      "name": "Lungsa La",
+      "name:bo": "ལུང་གསའ་ལ",
+      "source": "www.geonames.org"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 1065160422,
+    "lat": 29.6603816,
+    "lon": 91.1178114,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "龙王庙",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2444298006,
+    "lat": 29.5192471,
+    "lon": 91.5520554,
+    "tags": {
+      "tourism": "camp_site"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2444298357,
+    "lat": 29.6100674,
+    "lon": 91.5590668,
+    "tags": {
+      "tourism": "camp_site"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2444350839,
+    "lat": 29.6417965,
+    "lon": 91.533539,
+    "tags": {
+      "alt_name": "舒卡拉山口",
+      "elevation": "5250",
+      "mountain_pass": "yes",
+      "name": "许嘎拉",
+      "name:en": "Shuga La",
+      "name:zh": "许嘎拉",
+      "natural": "saddle"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2444354036,
+    "lat": 29.6510086,
+    "lon": 91.106658,
+    "tags": {
+      "amenity": "place_of_worship"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2444360759,
+    "lat": 29.6227665,
+    "lon": 91.5548019,
+    "tags": {
+      "name": "Tsotup Chu",
+      "tourism": "camp_site"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2452689275,
+    "lat": 29.5802665,
+    "lon": 91.5525562,
+    "tags": {
+      "elevation": "5225",
+      "mountain_pass": "yes",
+      "name": "Chitu La"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2452695932,
+    "lat": 29.5076373,
+    "lon": 91.5521909,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2710556658,
+    "lat": 29.7457823,
+    "lon": 91.2784356,
+    "tags": {
+      "alt_name": "Zhayeba Si;扎耶巴寺;叶巴寺;Chagyêrba;Druk Yerpa;Dagyeba;Dayerpa;Brag Yer-pa;Drak Yerpa;Yerpa;ཡེར་པ",
+      "alt_name:bo": "གཡེར་པ་དགོན།",
+      "amenity": "place_of_worship",
+      "name": "བྲག་ཡེར་པ 扎叶巴寺",
+      "name:bo": "བྲག་ཡེར་པ",
+      "name:cs": "Jerpa",
+      "name:de": "Yerpa-Kloster",
+      "name:en": "Yerpa Monastery",
+      "name:hu": "Jerpa kolostor",
+      "name:ru": "Чагъерба",
+      "name:zh": "扎叶巴寺",
+      "religion": "buddhist",
+      "wikidata": "Q1254536",
+      "wikipedia": "zh:扎叶巴寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868212913,
+    "lat": 29.7132857,
+    "lon": 91.1225121,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "曲桑日追",
+      "religion": "buddhist",
+      "wikidata": "Q5116497"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868224065,
+    "lat": 29.7238176,
+    "lon": 91.1288646,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "阿尼广巴",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868224066,
+    "lat": 29.720154,
+    "lon": 91.1240544,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "扎西曲林寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868237482,
+    "lat": 29.7102833,
+    "lon": 91.1500224,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "普布觉寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868237649,
+    "lat": 29.7026332,
+    "lon": 91.1461792,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "格桑寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868349083,
+    "lat": 29.7056233,
+    "lon": 91.1385797,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "萨卡扎日",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 2868364977,
+    "lat": 29.7389747,
+    "lon": 91.114775,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "卡日寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3223580656,
+    "lat": 29.6534718,
+    "lon": 91.1127568,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "鲁普岩寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3657350535,
+    "lat": 29.4433799,
+    "lon": 90.9087634,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3704289638,
+    "lat": 29.2419221,
+    "lon": 91.1292981,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3736977461,
+    "lat": 29.4990201,
+    "lon": 91.0284335,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3736977935,
+    "lat": 29.5224655,
+    "lon": 91.1119335,
+    "tags": {
+      "addr:street": "Sangphu Rd",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "email": "tripwithustotibet@yahoo.com",
+      "name": "གསང་ཕུ་དགོན།",
+      "name:en": "Sangphu Monastery",
+      "name:zh": "桑普寺",
+      "opening_hours": "Mo-Su 09:00-18:00",
+      "phone": "+86 135 1891 0091",
+      "religion": "buddhist",
+      "website": "https://www.tibetfocus.travel"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 3753727046,
+    "lat": 29.7463322,
+    "lon": 90.6938655,
+    "tags": {
+      "alt_name": "奈囊寺;乃囊寺;乃朗贡巴;སྟོད་ལུང་གནས་ནང་དགོན",
+      "amenity": "place_of_worship",
+      "name": "གནས་ནང་དགོན (乃贾寺)",
+      "name:bo": "གནས་ནང་དགོན",
+      "name:de": "Nenang-Kloster",
+      "name:en": "Nénang Monastery",
+      "name:zh": "乃贾寺",
+      "religion": "buddhist",
+      "wikidata": "Q6991539",
+      "wikipedia": "zh:乃朗寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4070123966,
+    "lat": 29.3963133,
+    "lon": 91.2495994,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4070204358,
+    "lat": 29.3661323,
+    "lon": 91.2733733,
+    "tags": {
+      "alt_name": "觉卧阿札;Juewo'azha;Azha si;Ngadrak Gompa",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "མངག་སྒྲ་དགོན། 阿札寺",
+      "name:bo": "མངག་སྒྲ་དགོན།",
+      "name:en": "Ngadra",
+      "name:zh": "阿札寺",
+      "religion": "buddhist",
+      "school": "kagyu",
+      "source": "bing",
+      "wikidata": "Q108036295"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4099990639,
+    "lat": 30.0067052,
+    "lon": 91.2639405,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4100177838,
+    "lat": 29.8811133,
+    "lon": 91.2119422,
+    "tags": {
+      "alt_name": "朗当寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གླང་ཐང་དགོན (朗塘寺)",
+      "name:bo": "གླང་ཐང་དགོན",
+      "name:de": "Langthang-Kloster",
+      "name:en": "Langtang Monastery",
+      "name:zh": "朗当寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q1805428",
+      "wikipedia": "zh:朗当寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4100177840,
+    "lat": 29.8647051,
+    "lon": 91.1730253,
+    "tags": {
+      "alt_name": "འཕན་ཡུལ་ན་ལེནྡྲ;那烂扎寺;那烂陀寺",
+      "amenity": "place_of_worship",
+      "name": "འཕན་པོ་ན་ལེནྡྲ་ (那兰扎寺)",
+      "name:bo": "འཕན་པོ་ན་ལེནྡྲ་",
+      "name:de": "Nalendra-Kloster",
+      "name:en": "Nalenda Monastery",
+      "name:zh": "那兰扎寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q1964070",
+      "wikipedia": "zh:那兰扎寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4101243327,
+    "lat": 29.674989,
+    "lon": 91.3560809,
+    "tags": {
+      "alt_name": "德庆桑昂寺;བདེ་ཆེན་གསང་སྔགས་མཁར",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གསང་སྔགས་མཁར (桑昂寺)",
+      "name:bo": "གསང་སྔགས་མཁར",
+      "name:en": "Sangang Monastery",
+      "name:zh": "桑昂寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4102980799,
+    "lat": 29.6714252,
+    "lon": 91.0559261,
+    "tags": {
+      "alt_name": "乃穷扎央林;乃穷寺;乃琼贡巴;乃京寺;Nechung;Nechung Chok;Nechung Gompa;གནས་ཆུང་དགོན་པ།;གནས་ཆུང་ལྕོག",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གནས་ཆུང་དགོན། 乃琼寺",
+      "name:bo": "གནས་ཆུང་དགོན།",
+      "name:de": "Nechung-Kloster",
+      "name:en": "Nechung Monastery",
+      "name:es": "Monasterio de Nechung",
+      "name:fr": "Nechung",
+      "name:hu": "Necsung",
+      "name:it": "Oracolo Nechung",
+      "name:ja": "ネチュン寺",
+      "name:my": "နီချန့်ကျောင်းတော်",
+      "name:nl": "Nechung",
+      "name:pl": "Neczung",
+      "name:zh": "乃琼寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q1773919",
+      "wikipedia": "zh:乃琼寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536554,
+    "lat": 29.683946,
+    "lon": 91.1811288,
+    "tags": {
+      "alt_name": "Ani Tsankhung",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "阿尼仓空寺",
+      "name:en": "Ani Tsankhung Nunnery",
+      "name:zh": "阿尼仓空寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q2188991",
+      "wikipedia": "zh:阿尼仓空寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536555,
+    "lat": 29.6522675,
+    "lon": 91.1103003,
+    "tags": {
+      "alt_name": "Chokpori;Chakpori;Chagpo Ri",
+      "name": "药王山 ལྕགས་པོ་རི།",
+      "name:bo": "ལྕགས་པོ་རི།",
+      "name:en": "Chagpori",
+      "name:ru": "Чагпори",
+      "name:zh": "药王山",
+      "natural": "peak",
+      "wikidata": "Q2296027",
+      "wikipedia": "zh:药王山 (拉萨)"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536556,
+    "lat": 29.7203353,
+    "lon": 91.1035682,
+    "tags": {
+      "alt_name": "格日贡巴",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "格日寺",
+      "name:en": "Garu Nunnery",
+      "name:zh": "格日寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q5524453",
+      "wikipedia": "zh:格日寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536557,
+    "lat": 29.6528791,
+    "lon": 91.1327877,
+    "tags": {
+      "alt_name": "Méru Nyingba;默如宁巴;木如宁巴",
+      "amenity": "place_of_worship",
+      "denomination": "nyingma",
+      "name": "རྨེ་རུ་སྙིང་པ་ (木如宁巴寺)",
+      "name:bo": "རྨེ་རུ་སྙིང་པ་",
+      "name:en": "Muru Nyingba Monastery",
+      "name:zh": "木如宁巴寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q1941681",
+      "wikipedia": "zh:木如宁巴寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536558,
+    "lat": 29.7186911,
+    "lon": 91.1678327,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "乃古东日追",
+      "name:en": "Negodong Nunnery",
+      "name:zh": "乃古东日追",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q6987400",
+      "wikipedia": "zh:乃古东日追"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4104536559,
+    "lat": 29.6566262,
+    "lon": 91.1300598,
+    "tags": {
+      "alt_name": "崇寿寺;Tsome Ling;Chomoling",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཚེ་སྨོན་གླིང་ (策墨林寺)",
+      "name:bo": "ཚེ་སྨོན་གླིང་",
+      "name:de": "Tshemönling",
+      "name:en": "Tsomon Ling",
+      "name:zh": "策墨林寺",
+      "religion": "buddhist",
+      "source": "bing",
+      "wikidata": "Q1249671",
+      "wikipedia": "zh:策墨林寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4500079492,
+    "lat": 29.6500417,
+    "lon": 91.1319611,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "ལྷོ་རིགས་གསུམ་ལྷ་ཁང་། (南方三怙主殿)",
+      "name:bo": "ལྷོ་རིགས་གསུམ་ལྷ་ཁང་།",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 4794910721,
+    "lat": 29.6547659,
+    "lon": 91.1135809,
+    "tags": {
+      "name:en": "Potala Palace Viewpoint",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5028480021,
+    "lat": 29.6416534,
+    "lon": 91.2187739,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name:en": "Lama Shang monastery",
+      "name:ru": "Монастырь Ламы Шанга"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5203598124,
+    "lat": 29.653373,
+    "lon": 91.1325502,
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "temple",
+      "denomination": "nyingma",
+      "name": "མ་ནི་ལྟ་ཁང། 嘛呢拉康",
+      "name:bo": "ལྷོ་ཁ་སྨིན་གྲོལ་གླིང་མ་ནི་ལྟ་ཁང།",
+      "name:zh": "山南敏珠林寺嘛呢拉康",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5203748432,
+    "lat": 29.655776,
+    "lon": 91.1349893,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name:en": "Shri Devi temple",
+      "name:ru": "Храм Палден Лхамо",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5204124927,
+    "lat": 29.6581169,
+    "lon": 91.1312944,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཚེ་དཔག་ལྷ་ཁང། 次巴拉康",
+      "name:en": "Tsepalakang temple",
+      "name:ru": "Храм Цепаме",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5447131000,
+    "lat": 29.6932535,
+    "lon": 91.0536388,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530022085,
+    "lat": 29.7914446,
+    "lon": 91.5021323,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530022086,
+    "lat": 29.7915087,
+    "lon": 91.5026222,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530022087,
+    "lat": 29.7917333,
+    "lon": 91.5029765,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530022088,
+    "lat": 29.7914419,
+    "lon": 91.5028009,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530022089,
+    "lat": 29.7913296,
+    "lon": 91.5029179,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530027278,
+    "lat": 29.7902222,
+    "lon": 91.5035021,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530027279,
+    "lat": 29.7900387,
+    "lon": 91.5036119,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530027280,
+    "lat": 29.790395,
+    "lon": 91.5044657,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530027281,
+    "lat": 29.7902786,
+    "lon": 91.5045348,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530278031,
+    "lat": 29.3090996,
+    "lon": 91.2719852,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530278032,
+    "lat": 29.3104271,
+    "lon": 91.2727698,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530278033,
+    "lat": 29.3086801,
+    "lon": 91.2717331,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5530278034,
+    "lat": 29.3108872,
+    "lon": 91.27298,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 5596062323,
+    "lat": 29.7008252,
+    "lon": 91.1410837,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6501486287,
+    "lat": 29.6589441,
+    "lon": 91.1187871,
+    "tags": {
+      "name:en": "Exit of Potala",
+      "name:es": "Salida del Potala",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 6755619085,
+    "lat": 29.6549185,
+    "lon": 91.1367465,
+    "tags": {
+      "addr:postcode": "850000",
+      "addr:street": "北京东路",
+      "email": "Info@letsgototibet.com",
+      "name": "西藏旅游开发公司",
+      "name:en": "Lets go to Tibet",
+      "opening_hours": "24/7",
+      "phone": "6348848",
+      "tourism": "information",
+      "website": "http://letsgototibet.com"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 7572334287,
+    "lat": 29.4591802,
+    "lon": 91.5087154,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "聂玛隆寺",
+      "name:en": "Yamalung Temple",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 7816655082,
+    "lat": 29.30009,
+    "lon": 91.4471874,
+    "tags": {
+      "building": "stupa",
+      "heritage": "2",
+      "name": "松卡石塔",
+      "name:de": "Sumkar-Steinstupa",
+      "name:en": "Chaka Stupa",
+      "name:zh": "松卡石塔",
+      "ref:heritage:CN": "6-0762-3-465",
+      "tourism": "attraction",
+      "wikidata": "Q1170722",
+      "wikipedia": "zh:松卡石塔"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8034906686,
+    "lat": 29.2769474,
+    "lon": 91.1067116,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8223606517,
+    "lat": 29.6232461,
+    "lon": 91.0809502,
+    "tags": {
+      "addr:postcode": "850000",
+      "addr:street": "北京大道",
+      "email": "tripwithustotibet@yahoo.com",
+      "name": "噶琼祖拉康",
+      "name:en": "Karchung Temple",
+      "opening_hours": "Mo-Su 07:00-20:00",
+      "phone": "+86 135 1891 0091",
+      "tourism": "attraction",
+      "website": "https://www.tibetfocus.travel/attractions-in-tibet/lhasa/karchung-temple"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8244410817,
+    "lat": 29.5341054,
+    "lon": 90.8073889,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "洙寺",
+      "name:en": "Druk Monastery",
+      "opening_hours": "Mo-Su 09:00-18:00"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8285588479,
+    "lat": 29.69279,
+    "lon": 91.1012087,
+    "tags": {
+      "name": "接巴果热",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8285588480,
+    "lat": 29.701688,
+    "lon": 91.0774365,
+    "tags": {
+      "name": "根布房子",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8285588487,
+    "lat": 29.7141324,
+    "lon": 91.0798076,
+    "tags": {
+      "name": "贡布沙",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8285588488,
+    "lat": 29.7079616,
+    "lon": 91.0909338,
+    "tags": {
+      "name": "娘巴",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890950925,
+    "lat": 29.6300265,
+    "lon": 91.0989122,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8890951102,
+    "lat": 29.606228,
+    "lon": 91.0374002,
+    "tags": {
+      "information": "guidepost",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 8914233412,
+    "lat": 29.4784496,
+    "lon": 90.8729678,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322254891,
+    "lat": 29.6155258,
+    "lon": 90.9768193,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322328573,
+    "lat": 29.6756812,
+    "lon": 90.8797954,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322328594,
+    "lat": 29.7025944,
+    "lon": 90.873982,
+    "tags": {
+      "attraction": "big_wheel",
+      "tourism": "attraction",
+      "wikidata": "Q202570"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329243,
+    "lat": 29.7029878,
+    "lon": 90.8745694,
+    "tags": {
+      "attraction": "drop_tower",
+      "tourism": "attraction",
+      "wikidata": "Q1454206"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329410,
+    "lat": 29.7036836,
+    "lon": 90.8741461,
+    "tags": {
+      "attraction": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329417,
+    "lat": 29.7020916,
+    "lon": 90.87341,
+    "tags": {
+      "attraction": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329512,
+    "lat": 29.7013978,
+    "lon": 90.8749627,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329513,
+    "lat": 29.7030374,
+    "lon": 90.8752594,
+    "tags": {
+      "attraction": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322329514,
+    "lat": 29.7030168,
+    "lon": 90.8765462,
+    "tags": {
+      "attraction": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322330754,
+    "lat": 29.6448734,
+    "lon": 91.028688,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322406462,
+    "lat": 29.6470149,
+    "lon": 91.0460717,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 9534828423,
+    "lat": 29.8928231,
+    "lon": 91.3173481,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 11207389513,
+    "lat": 29.6554583,
+    "lon": 91.1351337,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name:en": "Meru Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 11453688837,
+    "lat": 29.869708,
+    "lon": 91.2166285,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 11453861415,
+    "lat": 29.821471,
+    "lon": 90.7322645,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 11504779027,
+    "lat": 29.8420485,
+    "lon": 91.4538017,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 11919137970,
+    "lat": 29.6828477,
+    "lon": 91.1084203,
+    "tags": {
+      "name:en": "Potala view with wetlands",
+      "name:ru": "Необычный вид на Поталу на фоне озера",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279122,
+    "lat": 29.6237914,
+    "lon": 91.1469114,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279123,
+    "lat": 29.6245263,
+    "lon": 91.1468125,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279124,
+    "lat": 29.6244129,
+    "lon": 91.1469519,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279125,
+    "lat": 29.6244833,
+    "lon": 91.1466056,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279126,
+    "lat": 29.62471,
+    "lon": 91.1465652,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279127,
+    "lat": 29.623936,
+    "lon": 91.1454725,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279128,
+    "lat": 29.623338,
+    "lon": 91.1457243,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279129,
+    "lat": 29.6234122,
+    "lon": 91.1456029,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279130,
+    "lat": 29.623553,
+    "lon": 91.1455085,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279131,
+    "lat": 29.6242097,
+    "lon": 91.1454095,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279132,
+    "lat": 29.6237758,
+    "lon": 91.1455399,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279133,
+    "lat": 29.6238696,
+    "lon": 91.1453061,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279134,
+    "lat": 29.6240572,
+    "lon": 91.1451892,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12155279242,
+    "lat": 29.6411892,
+    "lon": 91.1420218,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12169761711,
+    "lat": 29.5096769,
+    "lon": 91.0441833,
+    "tags": {
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12170167465,
+    "lat": 29.6565368,
+    "lon": 91.099231,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12310936415,
+    "lat": 29.9714831,
+    "lon": 91.0754732,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12311151248,
+    "lat": 29.8882657,
+    "lon": 91.0083567,
+    "tags": {
+      "amenity": "place_of_worship",
+      "name:zh": "热玛强康寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12311152525,
+    "lat": 30.0191189,
+    "lon": 91.1325037,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12311152526,
+    "lat": 29.9968788,
+    "lon": 91.1850905,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12311152527,
+    "lat": 29.9784403,
+    "lon": 91.1818401,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 12311152528,
+    "lat": 29.9517099,
+    "lon": 91.1990628,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13127993454,
+    "lat": 30.0123241,
+    "lon": 91.3271993,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13127993455,
+    "lat": 30.0015925,
+    "lon": 91.3034087,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13128909819,
+    "lat": 29.9303786,
+    "lon": 91.2512174,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13128910214,
+    "lat": 29.7973191,
+    "lon": 91.1469301,
+    "tags": {
+      "ele": "5215",
+      "mountain_pass": "yes",
+      "name:zh": "嘎木拉"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13129946896,
+    "lat": 29.3773947,
+    "lon": 90.7580652,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13129947321,
+    "lat": 29.7248061,
+    "lon": 90.7916164,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13168349701,
+    "lat": 29.752126,
+    "lon": 91.2051613,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13168353301,
+    "lat": 29.7576331,
+    "lon": 91.2058595,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13285826797,
+    "lat": 29.3491383,
+    "lon": 91.2775522,
+    "tags": {
+      "alt_name": "错杰那木措拉康",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "མཚོ་རྒྱལ་ལྷ་ཁང་། 措杰拉措拉康",
+      "name:bo": "མཚོ་རྒྱལ་ལྷ་ཁང་།",
+      "name:en": "Tsogyal Lhakhang",
+      "name:zh": "措杰拉措拉康",
+      "religion": "buddhist",
+      "school": "nyingma",
+      "source": "bing",
+      "wikidata": "Q108038664"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13285829083,
+    "lat": 29.3479249,
+    "lon": 91.3181126,
+    "tags": {
+      "ele": "5150",
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13285832429,
+    "lat": 29.3639669,
+    "lon": 91.2173418,
+    "tags": {
+      "ele": "5390",
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296552268,
+    "lat": 29.7600569,
+    "lon": 91.4790881,
+    "tags": {
+      "amenity": "place_of_worship"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296552269,
+    "lat": 29.7605946,
+    "lon": 91.4782316,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296552272,
+    "lat": 29.7615459,
+    "lon": 91.4779174,
+    "tags": {
+      "direction": "0",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296552273,
+    "lat": 29.7539794,
+    "lon": 91.4795653,
+    "tags": {
+      "direction": "300",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13296587236,
+    "lat": 29.6786961,
+    "lon": 91.046995,
+    "tags": {
+      "direction": "180",
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13307373668,
+    "lat": 29.8448771,
+    "lon": 91.5725399,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13319250851,
+    "lat": 29.2547889,
+    "lon": 91.0699439,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13321999375,
+    "lat": 29.4600063,
+    "lon": 91.1818939,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13322027833,
+    "lat": 29.3709373,
+    "lon": 91.1388767,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "node",
+    "id": 13323577615,
+    "lat": 29.2947782,
+    "lon": 90.984993,
+    "tags": {
+      "alt_name": "然麦寺;ranmai si",
+      "alt_name:bo": "ཐུབ་བསྟན་ར་བ་སྨད།;སྐྱིད་གཤོངས་ར་སྨད།",
+      "alt_name:en": "Tudanremai si;Tubdän Ramä Gön;Thupten Ramye Monastery;Tubten Rawa-me;Tubdän Rinqên Bêgar Samdän Ling",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "ཐུབ་བསྟན་རྭ་སྨད་དགོན། 土旦热麦寺",
+      "name:bo": "ཐུབ་བསྟན་རྭ་སྨད་དགོན།",
+      "name:en": "Tubdain Ramai Monastery",
+      "name:zh": "土旦热麦寺",
+      "religion": "buddhist",
+      "school": "rime",
+      "source": "bing",
+      "wikidata": "Q94056046"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 176772035,
+    "center": {
+      "lat": 29.6575008,
+      "lon": 91.1166746
+    },
+    "tags": {
+      "description": "Main residence of former rulers of Tibet.",
+      "heritage": "1",
+      "heritage:operator": "whc;ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1961",
+      "historic": "castle",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;ming–morden",
+      "int_name": "Potala Palace",
+      "name": "布达拉宫 ཕོ་བྲང་པོ་ཏ་ལ།",
+      "name:bo": "ཕོ་བྲང་པོ་ཏ་ལ།",
+      "name:cs": "Potála",
+      "name:da": "Potalapaladset",
+      "name:de": "Potala-Palast",
+      "name:en": "Potala Palace",
+      "name:fr": "palais du Potala",
+      "name:nl": "Potalapaleis",
+      "name:uk": "Потала",
+      "name:zh": "布达拉宫",
+      "name:zh-Latn-pinyin": "bùdálāgōng",
+      "ncha:inscription_date": "1961-03-04",
+      "ncha:type": "古建筑",
+      "protection_title": "世界遗产;全国重点文物保护单位",
+      "ref:heritage:CN": "1-0107-3-060",
+      "tourism": "attraction",
+      "tourism:level:CN": "AAAAA",
+      "whc:inscription_date": "1994",
+      "wikidata": "Q71229",
+      "wikipedia": "zh:布达拉宫"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 176874374,
+    "center": {
+      "lat": 29.6761695,
+      "lon": 91.0480288
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "gelug",
+      "historic": "yes",
+      "name": "འབྲས་སྤུངས་དགོན། 哲蚌寺",
+      "name:bo": "འབྲས་སྤུངས་དགོན། / མཚན་རྒྱས་པར་བཀྲ་ཤིས་དཔལ་ལྡན་འབྲས་སྤུངས་དགོན། / དཔལ་ལྡན་འབྲས་སྤུངས་དགོན།",
+      "name:en": "Drepung Monastery",
+      "religion": "buddhist",
+      "tourism": "attraction",
+      "wikidata": "Q241937",
+      "wikipedia": "en:Drepung Monastery"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 176874384,
+    "center": {
+      "lat": 29.6978911,
+      "lon": 91.132997
+    },
+    "tags": {
+      "alt_name": "Sera",
+      "alt_name:bo": "སེ་ར།;སེ་ར་དགོན།;ཆོས་སྡེ་ཆེན་པོ་སེ་ར་ཐེག་ཆེན་གླིང་།;སེ་ར་ཐེག་ཆེན་གླིང་།",
+      "alt_name:en": "Chödé Chenpo Sera Tekchen Ling;Sera Tekchen Ling;Sera Gön",
+      "amenity": "place_of_worship",
+      "denomination": "gelug",
+      "historic": "yes",
+      "landuse": "religious",
+      "name": "སེ་ར་དགོན། 色拉寺",
+      "name:bo": "སེ་ར་དགོན། / སེ་ར། / ཆོས་སྡེ་ཆེན་པོ་སེ་ར་ཐེག་ཆེན་གླིང་། / སེ་ར་ཐེག་ཆེན་གླིང་།",
+      "name:de": "Sera-Kloster",
+      "name:en": "Sera Monastery",
+      "name:es": "Monasterio Sera",
+      "name:fr": "Monastère de Séra",
+      "name:ja": "セラ寺",
+      "name:ko": "세라 사원",
+      "name:my": "ဆီရာကျောင်းတော်",
+      "name:ru": "Сэра",
+      "name:zh": "色拉寺",
+      "name:zh-Latn-pinyin": "sèlā sì",
+      "religion": "buddhist",
+      "tourism": "attraction",
+      "wikidata": "Q124848",
+      "wikipedia": "zh:色拉寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 176923236,
+    "center": {
+      "lat": 29.6560653,
+      "lon": 91.1073561
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "关帝格萨拉康 ཀོན་ཡོན་གེ་སར་ལྷ་ཁང་།",
+      "name:bo": "ཀོན་ཡོན་གེ་སར་ལྷ་ཁང་།",
+      "name:zh-Hans": "关帝格萨拉康",
+      "name:zh-Hant": "關帝格薩拉康",
+      "religion": "chinese_folk"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 176923268,
+    "center": {
+      "lat": 29.6550114,
+      "lon": 91.0950793
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 177276083,
+    "center": {
+      "lat": 29.6533607,
+      "lon": 91.1210643
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 177276085,
+    "center": {
+      "lat": 29.6534577,
+      "lon": 91.1204512
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 226201282,
+    "center": {
+      "lat": 29.6526903,
+      "lon": 91.1316006
+    },
+    "tags": {
+      "area": "yes",
+      "description": "Most important buddhist temple in Tibet, controlled by the Gelug school. (Source: Wikipedia)",
+      "name:en": "Jokhang Monastery",
+      "tourism": "attraction",
+      "wikipedia": "en:Jokhang"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 232949857,
+    "center": {
+      "lat": 29.6406796,
+      "lon": 91.130684
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 232949859,
+    "center": {
+      "lat": 29.6407714,
+      "lon": 91.1297689
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 232951356,
+    "center": {
+      "lat": 29.6458287,
+      "lon": 91.1261832
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 232952411,
+    "center": {
+      "lat": 29.6740105,
+      "lon": 91.0487988
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259812492,
+    "center": {
+      "lat": 29.6822323,
+      "lon": 91.1319835
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259812507,
+    "center": {
+      "lat": 29.6823112,
+      "lon": 91.1321572
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259879213,
+    "center": {
+      "lat": 29.6714016,
+      "lon": 91.0560079
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "denomination": "nyingma",
+      "layer": "1",
+      "name": "གནས་ཆུང་དགོན། 乃琼寺",
+      "religion": "buddhist",
+      "service_times": "09:00-16:00",
+      "source": "esriWorld",
+      "tourism": "attraction",
+      "wikidata": "Q1773919",
+      "wikipedia": "zh:乃琼寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259879296,
+    "center": {
+      "lat": 29.6261746,
+      "lon": 91.0668066
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259887776,
+    "center": {
+      "lat": 29.6557302,
+      "lon": 91.1155473
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259887777,
+    "center": {
+      "lat": 29.6556674,
+      "lon": 91.1131639
+    },
+    "tags": {
+      "amenity": "parking",
+      "name": "白塔停车场",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259887815,
+    "center": {
+      "lat": 29.6555507,
+      "lon": 91.1126261
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259889258,
+    "center": {
+      "lat": 29.6552941,
+      "lon": 91.1123899
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 259889268,
+    "center": {
+      "lat": 29.6540539,
+      "lon": 91.1110602
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 282863468,
+    "center": {
+      "lat": 29.6586324,
+      "lon": 91.1303963
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "temple",
+      "denomination": "tibetan",
+      "heritage": "2",
+      "heritage:operator": "ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1962",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;tang;641",
+      "name": "小昭寺 རྒྱ་སྟག་ར་མོ་ཆེ་གཙུག་ལག་ཁང།",
+      "name:bo": "རྒྱ་སྟག་ར་མོ་ཆེ་གཙུག་ལག་ཁང།",
+      "name:en": "Ramoche Temple",
+      "name:zh": "小昭寺",
+      "ncha:inscription_date": "2001-06-25",
+      "ncha:type": "古建筑",
+      "protection_title": "全国重点文物保护单位",
+      "ref:heritage:CN": "5-0411-3-217",
+      "religion": "buddhist",
+      "start_year": "641",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 311738353,
+    "center": {
+      "lat": 29.6462885,
+      "lon": 91.078351
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 316821850,
+    "center": {
+      "lat": 29.6590432,
+      "lon": 91.1247007
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 316821851,
+    "center": {
+      "lat": 29.6590229,
+      "lon": 91.1252826
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 353916884,
+    "center": {
+      "lat": 29.6508405,
+      "lon": 91.1367117
+    },
+    "tags": {
+      "addr:city": "拉萨市城关区",
+      "addr:country": "CN",
+      "addr:housenumber": "6",
+      "addr:postcode": "850000",
+      "addr:street": "孜苏路",
+      "amenity": "place_of_worship",
+      "building": "mosque",
+      "image": "File:Mosques in Lhasa.jpg",
+      "name": "བོད་ལྗོངས་ལྷ་ས་ཨི་སི་ལན་ཕྱག་ཁང་ཆེན་མོ། - 拉萨清真大寺",
+      "name:bo": "བོད་ལྗོངས་ལྷ་ས་ཨི་སི་ལན་ཕྱག་ཁང་ཆེན་མོ།",
+      "name:de": "Gyel Lhakhang",
+      "name:en": "Lhasa Great Mosque",
+      "name:fr": "Grande mosquée de Lhassa",
+      "name:zh": "拉萨清真大寺",
+      "religion": "muslim",
+      "wikidata": "Q1557987",
+      "wikimedia_commons": "Category:Lasha Great Mosque",
+      "wikipedia": "en:Lhasa Great Mosque"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 401402076,
+    "center": {
+      "lat": 29.7456692,
+      "lon": 91.2781572
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 401402077,
+    "center": {
+      "lat": 29.7450408,
+      "lon": 91.2783017
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 402852046,
+    "center": {
+      "lat": 29.4440883,
+      "lon": 91.0224893
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 404695739,
+    "center": {
+      "lat": 29.2429816,
+      "lon": 91.3316265
+    },
+    "tags": {
+      "alt_name": "阿丹扎塘寺;Zhatang Temple;Dratang Monastery;Drathang Gön",
+      "alt_name:bo": "གྲ་ཐང་དགོན།;ལྔ་ལྡན་གྲྭ་ཚང་།",
+      "amenity": "place_of_worship",
+      "building": "monastery",
+      "denomination": "tibetan",
+      "heritage": "2",
+      "name": "扎塘寺 གྲ་ཐང་དགོན",
+      "name:bo": "གྲ་ཐང་དགོན",
+      "name:de": "Zhatang-Kloster",
+      "name:en": "Zatang Monastery",
+      "name:zh": "扎塘寺",
+      "ref:heritage:CN": "4-0111-3-033",
+      "religion": "buddhist",
+      "school": "nyingma",
+      "source": "bing",
+      "wikidata": "Q1255876",
+      "wikipedia": "en:Zatang Monastery"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 404743692,
+    "center": {
+      "lat": 29.395573,
+      "lon": 91.2519483
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 404743697,
+    "center": {
+      "lat": 29.3733008,
+      "lon": 91.3090633
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 408345542,
+    "center": {
+      "lat": 29.671207,
+      "lon": 91.055257
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 448748813,
+    "center": {
+      "lat": 29.5320884,
+      "lon": 90.9477338
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 450315674,
+    "center": {
+      "lat": 29.2925732,
+      "lon": 90.9001836
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 450647816,
+    "center": {
+      "lat": 29.7555845,
+      "lon": 91.4768137
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 451065420,
+    "center": {
+      "lat": 29.7185998,
+      "lon": 91.1176397
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 451602517,
+    "center": {
+      "lat": 29.7931087,
+      "lon": 91.5203903
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "denomination": "tibetan"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 461997621,
+    "center": {
+      "lat": 29.6503062,
+      "lon": 91.1328518
+    },
+    "tags": {
+      "addr:city": "萨市城关区",
+      "addr:housenumber": "39-41",
+      "addr:postcode": "850000",
+      "addr:street": "林廓南路",
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "拉萨小清真寺",
+      "name:en": "Lhassa Little Mosque",
+      "name:fr": "Petite mosquée de Lhassa",
+      "name:zh": "拉萨小清真寺",
+      "religion": "muslim",
+      "wikidata": "Q11077073"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 576405516,
+    "center": {
+      "lat": 29.7000984,
+      "lon": 91.4299926
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 583678792,
+    "center": {
+      "lat": 29.6506647,
+      "lon": 91.1345448
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "མཚམས་ཁུང་དགོན་པ།(仓姑寺)",
+      "name:bo": "མཚམས་ཁུང་དགོན་པ།",
+      "name:en": "Tsamkhung Nunnery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 691322535,
+    "center": {
+      "lat": 29.6253075,
+      "lon": 91.1465775
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "50",
+      "parking": "surface",
+      "surface": "paved"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 691322537,
+    "center": {
+      "lat": 29.626357,
+      "lon": 91.1457704
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "120",
+      "parking": "surface",
+      "surface": "paved"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 691322538,
+    "center": {
+      "lat": 29.6269294,
+      "lon": 91.1450569
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "35",
+      "parking": "surface",
+      "surface": "paved"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 691322539,
+    "center": {
+      "lat": 29.6276027,
+      "lon": 91.1442543
+    },
+    "tags": {
+      "amenity": "parking",
+      "capacity": "35",
+      "parking": "surface",
+      "surface": "paved"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 732068402,
+    "center": {
+      "lat": 29.6541152,
+      "lon": 91.2650672
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface",
+      "source": "Maxar Imagery 2019"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 732075773,
+    "center": {
+      "lat": 29.6549897,
+      "lon": 91.2666152
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface",
+      "source": "Maxar Imagery 2019"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 733803725,
+    "center": {
+      "lat": 29.4480384,
+      "lon": 90.9418892
+    },
+    "tags": {
+      "amenity": "parking",
+      "parking": "surface",
+      "source": "Maxar Imagery 2019",
+      "surface": "asphalt"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 837507581,
+    "center": {
+      "lat": 29.3279812,
+      "lon": 91.1079905
+    },
+    "tags": {
+      "alt_name": "土登多吉扎寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "landuse": "religious",
+      "name": "རྡོར་རྗེ་བྲག་དགོན། 多吉扎寺",
+      "name:bg": "Дордже Драк",
+      "name:bn": "র্দো-র্জে-ব্রাগ বৌদ্ধবিহার",
+      "name:bo": "རྡོར་རྗེ་བྲག་དགོན།",
+      "name:de": "Dorje Drag",
+      "name:en": "Dorje Drak",
+      "name:fr": "Dorje Drak",
+      "name:hu": "Dordzse Drak",
+      "name:ja": "ドルジェタク寺",
+      "name:nl": "Dorje Drag",
+      "name:zh": "多吉扎寺",
+      "religion": "buddhist",
+      "school": "nyingma",
+      "source": "bing",
+      "wikidata": "Q1245413",
+      "wikipedia": "zh:多吉扎寺"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 837507582,
+    "center": {
+      "lat": 29.3272927,
+      "lon": 91.1083479
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947357,
+    "center": {
+      "lat": 29.2891453,
+      "lon": 90.9002164
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947358,
+    "center": {
+      "lat": 29.2890629,
+      "lon": 90.9007817
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947359,
+    "center": {
+      "lat": 29.2929285,
+      "lon": 90.9015323
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947361,
+    "center": {
+      "lat": 29.2904617,
+      "lon": 90.9003458
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947362,
+    "center": {
+      "lat": 29.2908495,
+      "lon": 90.8992863
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947363,
+    "center": {
+      "lat": 29.2914881,
+      "lon": 90.8991791
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947364,
+    "center": {
+      "lat": 29.2913085,
+      "lon": 90.8999462
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 844947365,
+    "center": {
+      "lat": 29.2914372,
+      "lon": 90.9011116
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 961119007,
+    "center": {
+      "lat": 29.5969643,
+      "lon": 91.0838597
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 972432542,
+    "center": {
+      "lat": 29.648676,
+      "lon": 91.1448386
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 973447172,
+    "center": {
+      "lat": 29.2925409,
+      "lon": 90.8985007
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 992570271,
+    "center": {
+      "lat": 29.29081,
+      "lon": 90.8956262
+    },
+    "tags": {
+      "amenity": "parking",
+      "fee": "yes"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010358650,
+    "center": {
+      "lat": 29.6120381,
+      "lon": 90.9740068
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010358688,
+    "center": {
+      "lat": 29.6066451,
+      "lon": 90.9831401
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010358719,
+    "center": {
+      "lat": 29.6244322,
+      "lon": 91.0042588
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010358753,
+    "center": {
+      "lat": 29.612462,
+      "lon": 90.9936985
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366381,
+    "center": {
+      "lat": 29.702804,
+      "lon": 90.8727543
+    },
+    "tags": {
+      "attraction": "roller_coaster",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366408,
+    "center": {
+      "lat": 29.6973213,
+      "lon": 90.8829729
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366414,
+    "center": {
+      "lat": 29.7025312,
+      "lon": 90.8745619
+    },
+    "tags": {
+      "attraction": "roller_coaster",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366415,
+    "center": {
+      "lat": 29.7034902,
+      "lon": 90.8751796
+    },
+    "tags": {
+      "attraction": "roller_coaster",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366421,
+    "center": {
+      "lat": 29.7018392,
+      "lon": 90.8764034
+    },
+    "tags": {
+      "area": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366422,
+    "center": {
+      "lat": 29.7030169,
+      "lon": 90.8765238
+    },
+    "tags": {
+      "attraction": "maze",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366428,
+    "center": {
+      "lat": 29.7029819,
+      "lon": 90.8759077
+    },
+    "tags": {
+      "leisure": "playground",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010366429,
+    "center": {
+      "lat": 29.7024312,
+      "lon": 90.8761522
+    },
+    "tags": {
+      "leisure": "playground",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010373485,
+    "center": {
+      "lat": 29.6596588,
+      "lon": 91.0683379
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010373514,
+    "center": {
+      "lat": 29.6550725,
+      "lon": 91.0844881
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010373515,
+    "center": {
+      "lat": 29.6555597,
+      "lon": 91.0844525
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1035290807,
+    "center": {
+      "lat": 29.6562985,
+      "lon": 91.1288871
+    },
+    "tags": {
+      "alt_name": "喜德林;喜德林寺;凝禧寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "heritage": "2",
+      "heritage:operator": "ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "2013",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;qing",
+      "landuse": "religious",
+      "name": "喜德寺 བཞི་སྡེ་བསམ་གཏན་གླིང།",
+      "name:bo": "བཞི་སྡེ་བསམ་གཏན་གླིང།",
+      "name:zh": "喜德寺",
+      "ncha:inscription_date": "2013-03-05",
+      "ncha:type": "古建筑",
+      "protection_title": "全国重点文物保护单位",
+      "ref:heritage:CN": "7-1408-3-706",
+      "religion": "buddhist",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1233997817,
+    "center": {
+      "lat": 29.6941959,
+      "lon": 91.1317184
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1234010420,
+    "center": {
+      "lat": 29.6403788,
+      "lon": 91.0625714
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1234038789,
+    "center": {
+      "lat": 29.634037,
+      "lon": 91.0685573
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1234161033,
+    "center": {
+      "lat": 29.6443052,
+      "lon": 91.0765818
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1245813262,
+    "center": {
+      "lat": 29.6398412,
+      "lon": 91.0639135
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1245813265,
+    "center": {
+      "lat": 29.6370383,
+      "lon": 91.0550602
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1245950796,
+    "center": {
+      "lat": 29.6279537,
+      "lon": 91.056235
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246204741,
+    "center": {
+      "lat": 29.6213144,
+      "lon": 91.0328635
+    },
+    "tags": {
+      "access": "permissive",
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246216439,
+    "center": {
+      "lat": 29.6416028,
+      "lon": 91.1019789
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246216453,
+    "center": {
+      "lat": 29.6412235,
+      "lon": 91.0987595
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246216464,
+    "center": {
+      "lat": 29.6422659,
+      "lon": 91.1073818
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246218924,
+    "center": {
+      "lat": 29.6403006,
+      "lon": 91.0945827
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246228794,
+    "center": {
+      "lat": 29.6300025,
+      "lon": 91.0989627
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1246415620,
+    "center": {
+      "lat": 29.6387106,
+      "lon": 91.1182567
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281327288,
+    "center": {
+      "lat": 29.6766443,
+      "lon": 91.1405412
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "扎基寺 གྲ་བཞི་ལྷ་མོ",
+      "name:bo": "གྲ་བཞི་ལྷ་མོ",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1281329753,
+    "center": {
+      "lat": 29.6562437,
+      "lon": 91.1070707
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "name": "功德林寺 ཀུན་བདེ་གླིང",
+      "name:bo": "ཀུན་བདེ་གླིང",
+      "name:zh": "功德林寺",
+      "religion": "buddhist",
+      "wikidata": "Q1797062",
+      "wikipedia": "zh:功德林寺 (拉萨)"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1300518812,
+    "center": {
+      "lat": 29.7467684,
+      "lon": 91.2819789
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1300518813,
+    "center": {
+      "lat": 29.7464764,
+      "lon": 91.2804696
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223878,
+    "center": {
+      "lat": 29.6316216,
+      "lon": 91.1398903
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223885,
+    "center": {
+      "lat": 29.6301622,
+      "lon": 91.1420773
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223886,
+    "center": {
+      "lat": 29.6291699,
+      "lon": 91.1396674
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223902,
+    "center": {
+      "lat": 29.6309526,
+      "lon": 91.1348774
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223903,
+    "center": {
+      "lat": 29.629339,
+      "lon": 91.1349802
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223904,
+    "center": {
+      "lat": 29.6293127,
+      "lon": 91.1329275
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223905,
+    "center": {
+      "lat": 29.629945,
+      "lon": 91.1325236
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223906,
+    "center": {
+      "lat": 29.630617,
+      "lon": 91.132194
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223907,
+    "center": {
+      "lat": 29.6317741,
+      "lon": 91.1317024
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223912,
+    "center": {
+      "lat": 29.6254522,
+      "lon": 91.1271528
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1313223967,
+    "center": {
+      "lat": 29.6410025,
+      "lon": 91.1408098
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314711866,
+    "center": {
+      "lat": 29.4471553,
+      "lon": 90.9395454
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314800415,
+    "center": {
+      "lat": 29.4314717,
+      "lon": 90.9550555
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314824394,
+    "center": {
+      "lat": 29.5091862,
+      "lon": 91.0435093
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314877751,
+    "center": {
+      "lat": 29.6553568,
+      "lon": 91.099293
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314877754,
+    "center": {
+      "lat": 29.6554068,
+      "lon": 91.0999308
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314889242,
+    "center": {
+      "lat": 29.6601308,
+      "lon": 91.0664943
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314889282,
+    "center": {
+      "lat": 29.6477599,
+      "lon": 91.0346067
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314889283,
+    "center": {
+      "lat": 29.645522,
+      "lon": 91.043119
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314889286,
+    "center": {
+      "lat": 29.6445557,
+      "lon": 91.0443659
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314889312,
+    "center": {
+      "lat": 29.6510065,
+      "lon": 91.0746417
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314910498,
+    "center": {
+      "lat": 29.6322708,
+      "lon": 91.2061561
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1314910499,
+    "center": {
+      "lat": 29.6311672,
+      "lon": 91.2100868
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1315353021,
+    "center": {
+      "lat": 29.6138803,
+      "lon": 90.9778649
+    },
+    "tags": {
+      "amenity": "parking",
+      "source": "Bing"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1315429210,
+    "center": {
+      "lat": 29.6473019,
+      "lon": 91.1306814
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1315429218,
+    "center": {
+      "lat": 29.6461231,
+      "lon": 91.128235
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1321581960,
+    "center": {
+      "lat": 29.2839026,
+      "lon": 90.8910615
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1321581961,
+    "center": {
+      "lat": 29.2844879,
+      "lon": 90.8905167
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322060512,
+    "center": {
+      "lat": 29.6489725,
+      "lon": 91.0606254
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322060513,
+    "center": {
+      "lat": 29.648789,
+      "lon": 91.0596563
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1322061191,
+    "center": {
+      "lat": 29.6494278,
+      "lon": 91.0586629
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1410347751,
+    "center": {
+      "lat": 29.6153673,
+      "lon": 91.1370642
+    },
+    "tags": {
+      "alt_name:en": "Drib Tsechokling;Tsechokling Regency Temple;Tsechokling Monastery;Dip Tse-Chok Ling Monastery",
+      "alt_name:zh": "策觉林;次角林;慈觉林;次觉林;蔡却林;治策却林",
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "策觉林寺",
+      "name:en": "Tsechokling",
+      "note": "One of the four regency temples in Tibet. There is a new temple built and consecrated in 1987 Dharamsala, India. See \"Dip Tse-Chok Ling Monastery\"",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1428165882,
+    "center": {
+      "lat": 29.7463567,
+      "lon": 90.755499
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1444485513,
+    "center": {
+      "lat": 29.5224979,
+      "lon": 91.1119576
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "way",
+    "id": 1449643552,
+    "center": {
+      "lat": 29.6525646,
+      "lon": 91.0923218
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "relation",
+    "id": 2358701,
+    "center": {
+      "lat": 29.6528713,
+      "lon": 91.1318443
+    },
+    "tags": {
+      "alt_name": "Qoikang Monastery;Qokang;Jokang;Jokhang Temple;Zuglagkang;Dazhao Si",
+      "alt_name:bo": "གཙུག་ལག་ཁང༌;ར་ས་འཕྲུལ་སྣང་གཙུག་ལག་ཁང་།",
+      "amenity": "place_of_worship",
+      "building": "temple",
+      "denomination": "tibetan",
+      "heritage": "1",
+      "heritage:operator": "whc;ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1961",
+      "historic": "building",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;tang",
+      "int_name": "Jokhang",
+      "name": "ཇོ་ཁང། 大昭寺",
+      "name:ar": "جوكهانغ",
+      "name:bo": "ཇོ་ཁང་།",
+      "name:ca": "Temple de Jokhang",
+      "name:cs": "Džókhang",
+      "name:de": "Jokhang",
+      "name:en": "Jokhang Monastery",
+      "name:es": "Templo de Jokhang",
+      "name:fa": "جوخانگ",
+      "name:fr": "Temple de Jokhang",
+      "name:he": "מקדש ג'וקהנג",
+      "name:hi": "जोखांग मठ",
+      "name:hu": "Dzsokhang",
+      "name:it": "Jokhang",
+      "name:ja": "トゥルナン寺",
+      "name:ka": "ჯოხანგი",
+      "name:ko": "조캉 사원",
+      "name:my": "ဂျိုခန့်",
+      "name:nl": "Jokhang",
+      "name:pa": "ਜੋਖਾਂਗ ਮੰਦਰ",
+      "name:pl": "Dżokhang",
+      "name:pt": "Jokhang",
+      "name:ru": "Джоканг",
+      "name:sl": "Jokang",
+      "name:sv": "Jokhang",
+      "name:tg": "Ҷоканг",
+      "name:th": "โชคัง",
+      "name:tl": "Jokhang",
+      "name:tr": "Jokhang Tapınağı",
+      "name:uk": "Джоканг",
+      "name:vi": "Chùa Đại Chiêu",
+      "name:zh": "大昭寺",
+      "name:zh-Latn-pinyin": "Dàzhāo Sì",
+      "ncha:inscription_date": "1961-03-04",
+      "ncha:type": "古建筑",
+      "opening_hours": "Mo-Su 08:30-18:00",
+      "protection_title": "世界遗产;全国重点文物保护单位",
+      "ref:heritage:CN": "1-0081-3-034",
+      "religion": "buddhist",
+      "tourism": "attraction",
+      "tourism:level:CN": "AAAAA",
+      "type": "multipolygon",
+      "wikidata": "Q735914",
+      "wikipedia": "en:Jokhang"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  },
+  {
+    "type": "relation",
+    "id": 6658998,
+    "center": {
+      "lat": 29.5324672,
+      "lon": 90.9474242
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "religion": "buddhist",
+      "type": "multipolygon"
+    },
+    "region_key": "CN_XZ_LHASA",
+    "region_name": "拉萨",
+    "region_center": {
+      "lat": 29.6544,
+      "lng": 91.1322
+    }
+  }
+]

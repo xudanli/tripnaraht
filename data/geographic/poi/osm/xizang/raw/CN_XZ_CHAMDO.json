@@ -1,0 +1,2071 @@
+[
+  {
+    "type": "node",
+    "id": 3134776731,
+    "lat": 31.1293225,
+    "lon": 97.1820776,
+    "tags": {
+      "amenity": "hospital",
+      "name": "昌都市人民医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5139743490,
+    "lat": 31.1458123,
+    "lon": 97.1787585,
+    "tags": {
+      "amenity": "police",
+      "name": "东大桥便民警务站"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5139838333,
+    "lat": 31.1454977,
+    "lon": 97.1792199,
+    "tags": {
+      "amenity": "clinic",
+      "name": "仁和诊所"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5139862868,
+    "lat": 31.1452477,
+    "lon": 97.1791679,
+    "tags": {
+      "amenity": "clinic",
+      "name": "西藏昌都贡培藏药诊所"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5139889472,
+    "lat": 31.1404497,
+    "lon": 97.1818545,
+    "tags": {
+      "amenity": "hospital",
+      "name": "民安医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5141202945,
+    "lat": 31.1399428,
+    "lon": 97.1795378,
+    "tags": {
+      "name": "豆豆超市",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5147734133,
+    "lat": 31.1475187,
+    "lon": 97.166039,
+    "tags": {
+      "amenity": "toilets"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5147734134,
+    "lat": 31.1475022,
+    "lon": 97.166126,
+    "tags": {
+      "amenity": "police",
+      "name": "昌都西路客运站便民警务站"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5157476922,
+    "lat": 31.1148947,
+    "lon": 97.1929226,
+    "tags": {
+      "addr:housenumber": "13-14号",
+      "name": "顺隆百货超市",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5164685763,
+    "lat": 31.1594591,
+    "lon": 97.1754431,
+    "tags": {
+      "amenity": "police",
+      "name": "深圳路北段便民警务站"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5164971821,
+    "lat": 31.1393695,
+    "lon": 97.1745483,
+    "tags": {
+      "name": "嘉佰惠",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5165032538,
+    "lat": 31.1400214,
+    "lon": 97.173942,
+    "tags": {
+      "amenity": "police",
+      "name": "昌都西路南段便民警务站"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 6653888093,
+    "lat": 31.1435545,
+    "lon": 97.1802955,
+    "tags": {
+      "addr:street": "昌都市卡若区317国道",
+      "name": "Telephone Supermarket",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 6653888133,
+    "lat": 31.1294858,
+    "lon": 97.1818834,
+    "tags": {
+      "addr:street": "昌都市卡若区214国道",
+      "name": "Pingmin Store",
+      "shop": "supermarket"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322161823,
+    "lat": 31.1713076,
+    "lon": 97.1843922,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322162642,
+    "lat": 31.0821235,
+    "lon": 97.2023109,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9567073379,
+    "lat": 31.1112363,
+    "lon": 97.1949266,
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304288,
+    "lat": 31.1184844,
+    "lon": 97.1871051,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304327,
+    "lat": 31.1259744,
+    "lon": 97.1811935,
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 430008886,
+    "center": {
+      "lat": 31.1369685,
+      "lon": 97.1781316
+    },
+    "tags": {
+      "amenity": "hospital",
+      "building": "yes",
+      "name": "昌都华协医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 449021673,
+    "center": {
+      "lat": 31.1287532,
+      "lon": 97.181653
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "昌都市人民医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 528128284,
+    "center": {
+      "lat": 31.1027824,
+      "lon": 97.1919776
+    },
+    "tags": {
+      "amenity": "police",
+      "landuse": "military",
+      "name": "武警昌都支队机动一大队"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 528133708,
+    "center": {
+      "lat": 31.1500756,
+      "lon": 97.158011
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "解放军第75医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 529394056,
+    "center": {
+      "lat": 31.1418227,
+      "lon": 97.1808927
+    },
+    "tags": {
+      "amenity": "hospital",
+      "name": "昌都市藏医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 529991001,
+    "center": {
+      "lat": 31.1412408,
+      "lon": 97.1763899
+    },
+    "tags": {
+      "amenity": "shelter"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 532157040,
+    "center": {
+      "lat": 31.1546897,
+      "lon": 97.1779532
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "昌都协和医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 533191483,
+    "center": {
+      "lat": 31.159904,
+      "lon": 97.1786935
+    },
+    "tags": {
+      "amenity": "fuel"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 996259687,
+    "center": {
+      "lat": 31.1659707,
+      "lon": 97.1211801
+    },
+    "tags": {
+      "amenity": "fuel",
+      "brand": "中国石油",
+      "brand:en": "PetroChina",
+      "brand:wikidata": "Q503182",
+      "brand:wikipedia": "en:PetroChina",
+      "brand:zh": "中国石油",
+      "name": "中国石油",
+      "name:en": "PetroChina",
+      "name:zh": "中国石油"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1348151450,
+    "center": {
+      "lat": 31.1107143,
+      "lon": 97.2055148
+    },
+    "tags": {
+      "amenity": "hospital",
+      "healthcare": "hospital",
+      "name": "卡若区人民医院"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 1587402364,
+    "lat": 30.8073257,
+    "lon": 97.3379882,
+    "tags": {
+      "ele": "3492",
+      "int_name": "Nya La",
+      "mountain_pass": "yes",
+      "name": "年拉山",
+      "name:en": "Nya La"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3178562079,
+    "lat": 31.2395095,
+    "lon": 97.5797587,
+    "tags": {
+      "alt_name": "珠古寺;Zhugu si;Drugu Gön;Drugu Gompa",
+      "alt_name:bo": "ཐོ་གྲུ་གུ་དགོན།",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གྲུ་གུ་དགོན། 珠谷寺",
+      "name:bo": "གྲུ་གུ་དགོན།",
+      "name:en": "Chugu Gompa",
+      "name:zh": "珠谷寺",
+      "name:zh-Latn-pinyin": "zhūgōng sì",
+      "religion": "buddhist",
+      "wikidata": "Q108036184"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3178562884,
+    "lat": 31.2497648,
+    "lon": 97.5556301,
+    "tags": {
+      "alt_name": "Teka Gompa;Surde si",
+      "alt_name:zh": "索德寺",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "斯德日追",
+      "name:en": "Söda Gompa",
+      "name:zh": "斯德日追",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3180222231,
+    "lat": 31.0160192,
+    "lon": 97.0873457,
+    "tags": {
+      "ele": "4730",
+      "mountain_pass": "yes"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3180231175,
+    "lat": 31.4345917,
+    "lon": 97.5436861,
+    "tags": {
+      "alt_name": "Khampagar Gompa;Kangba si",
+      "amenity": "place_of_worship",
+      "name": "ཁམས་པ་སྒར 康巴寺",
+      "name:bo": "ཁམས་པ་སྒར",
+      "name:en": "Kangba Monastery",
+      "name:zh": "康巴寺",
+      "religion": "buddhist",
+      "wikidata": "Q108033407"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3180342163,
+    "lat": 31.4571361,
+    "lon": 97.1724125,
+    "tags": {
+      "alt_name": "Xiangda si",
+      "amenity": "place_of_worship",
+      "name": "向达寺",
+      "name:en": "Shangda Gompa",
+      "name:zh": "向达寺",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 3180435417,
+    "lat": 31.4096884,
+    "lon": 96.8612907,
+    "tags": {
+      "alt_name": "Shagong si",
+      "amenity": "place_of_worship",
+      "name": "沙贡寺",
+      "name:en": "Sagang Monastery",
+      "name:zh": "沙贡寺",
+      "religion": "buddhist",
+      "school": "gelug",
+      "wikidata": "Q108035787"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4089781687,
+    "lat": 31.0904435,
+    "lon": 96.9851359,
+    "tags": {
+      "alt_name": "朱古寺;ཆབ་མདོ་གྲུ་གུ་དགོན།;Trugu Monastery",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "གྲུ་གུ་དགོན། 珠古寺",
+      "name:bo": "གྲུ་གུ་དགོན།",
+      "name:en": "Drugu Monastery",
+      "name:zh": "珠古寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4097021462,
+    "lat": 31.3582006,
+    "lon": 97.4582204,
+    "tags": {
+      "ele": "5100+",
+      "name": "俄总日",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4097023328,
+    "lat": 31.4704654,
+    "lon": 97.4222384,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4459889212,
+    "lat": 31.1292169,
+    "lon": 97.1821787,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4817119630,
+    "lat": 30.8623855,
+    "lon": 96.8852357,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819705912,
+    "lat": 31.1525238,
+    "lon": 97.591199,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819705914,
+    "lat": 31.0996961,
+    "lon": 97.4043026,
+    "tags": {
+      "name": "莫金",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819705916,
+    "lat": 30.8011385,
+    "lon": 97.3161137,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710323,
+    "lat": 30.8349885,
+    "lon": 97.4303522,
+    "tags": {
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710327,
+    "lat": 31.2482218,
+    "lon": 97.5289717,
+    "tags": {
+      "ele": "5361",
+      "name": "央切隆",
+      "natural": "peak",
+      "source": "openTopoMap"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710342,
+    "lat": 30.9717302,
+    "lon": 97.6257458,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710346,
+    "lat": 31.1328363,
+    "lon": 97.4845543,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710348,
+    "lat": 30.8763796,
+    "lon": 97.518672,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710355,
+    "lat": 31.0016815,
+    "lon": 97.4741731,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710361,
+    "lat": 30.8556771,
+    "lon": 97.440566,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 4819710362,
+    "lat": 30.7884921,
+    "lon": 97.3173561,
+    "tags": {
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 5164768090,
+    "lat": 31.3740824,
+    "lon": 97.1039423,
+    "tags": {
+      "ele": "5460",
+      "name": "谷布神山",
+      "name:en": "Gubu Mountain",
+      "name:zh": "谷布神山",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 8866262548,
+    "lat": 31.0475385,
+    "lon": 97.5243688,
+    "tags": {
+      "amenity": "place_of_worship",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322161558,
+    "lat": 31.1467294,
+    "lon": 97.1818379,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322161957,
+    "lat": 31.1726122,
+    "lon": 97.1662219,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322162665,
+    "lat": 31.1013041,
+    "lon": 97.190301,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322162747,
+    "lat": 31.09282,
+    "lon": 97.2079106,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322162748,
+    "lat": 31.093894,
+    "lon": 97.207017,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9322162751,
+    "lat": 31.1664501,
+    "lon": 97.1795083,
+    "tags": {
+      "information": "board",
+      "tourism": "information"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304292,
+    "lat": 31.1186842,
+    "lon": 97.1859786,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304294,
+    "lat": 31.1186084,
+    "lon": 97.1862656,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304316,
+    "lat": 31.119458,
+    "lon": 97.1845865,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304322,
+    "lat": 31.1198024,
+    "lon": 97.1837684,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304348,
+    "lat": 31.1208541,
+    "lon": 97.1827894,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304352,
+    "lat": 31.1202364,
+    "lon": 97.1835968,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820304955,
+    "lat": 31.1370201,
+    "lon": 97.1832105,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820305000,
+    "lat": 31.1138666,
+    "lon": 97.1898758,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820305123,
+    "lat": 31.132968,
+    "lon": 97.1770361,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820305171,
+    "lat": 31.1463291,
+    "lon": 97.1770039,
+    "tags": {
+      "tourism": "viewpoint"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820622627,
+    "lat": 30.9067355,
+    "lon": 97.3587209,
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 9820623243,
+    "lat": 30.9067032,
+    "lon": 97.3585224,
+    "tags": {
+      "name": "大脚印(恐龙足迹)",
+      "name:en": "Dinosaur Footprints",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11101758607,
+    "lat": 31.3691975,
+    "lon": 97.3640046,
+    "tags": {
+      "ele": "5080+",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11101831294,
+    "lat": 31.4047307,
+    "lon": 97.2722961,
+    "tags": {
+      "ele": "5080+",
+      "name": "高吉",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11101832550,
+    "lat": 31.4241176,
+    "lon": 97.0416164,
+    "tags": {
+      "ele": "5200+",
+      "name": "其写错那玛",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11101837086,
+    "lat": 31.437227,
+    "lon": 97.0086574,
+    "tags": {
+      "ele": "5250+",
+      "name": "莫杰",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11101893929,
+    "lat": 31.3824927,
+    "lon": 97.2663509,
+    "tags": {
+      "name": "果佳布",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11109867943,
+    "lat": 31.3936824,
+    "lon": 97.2811662,
+    "tags": {
+      "name": "扎日觉多",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11109946651,
+    "lat": 31.4674928,
+    "lon": 97.4835053,
+    "tags": {
+      "name": "热火扎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11109962197,
+    "lat": 31.2766546,
+    "lon": 97.0996113,
+    "tags": {
+      "ele": "5050+",
+      "name": "日库",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110033215,
+    "lat": 31.3183016,
+    "lon": 97.3793777,
+    "tags": {
+      "name": "嘎拉扎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110035338,
+    "lat": 31.125163,
+    "lon": 97.5135758,
+    "tags": {
+      "name": "怒月扎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110037421,
+    "lat": 31.3877586,
+    "lon": 97.4135878,
+    "tags": {
+      "name": "沙龙别代玛",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110071308,
+    "lat": 31.344625,
+    "lon": 97.369761,
+    "tags": {
+      "name": "嘎拉",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110079783,
+    "lat": 31.3082894,
+    "lon": 97.0794649,
+    "tags": {
+      "ele": "5000+",
+      "name": "雄恰扎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110146282,
+    "lat": 31.1724628,
+    "lon": 97.4830769,
+    "tags": {
+      "name": "贡德勇玛",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110192130,
+    "lat": 31.070285,
+    "lon": 97.5160845,
+    "tags": {
+      "name": "乃如炯姆",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11110217353,
+    "lat": 30.9484982,
+    "lon": 97.6333799,
+    "tags": {
+      "ele": "5350",
+      "name": "尕及小杂",
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111053594,
+    "lat": 31.2565102,
+    "lon": 96.7576055,
+    "tags": {
+      "name": "罗日",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111056409,
+    "lat": 31.271234,
+    "lon": 96.7740772,
+    "tags": {
+      "name": "加圭拉",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111061239,
+    "lat": 31.2771035,
+    "lon": 96.7963038,
+    "tags": {
+      "name": "鄂玉扎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111091716,
+    "lat": 31.349792,
+    "lon": 97.425021,
+    "tags": {
+      "name": "白子巴那",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111103809,
+    "lat": 31.4897299,
+    "lon": 97.3122015,
+    "tags": {
+      "name": "东仓",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11111104052,
+    "lat": 31.2945772,
+    "lon": 97.4912642,
+    "tags": {
+      "name": "荐牙卡",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11121640945,
+    "lat": 31.0453732,
+    "lon": 97.430862,
+    "tags": {
+      "name": "崩德香嘎",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 11129194850,
+    "lat": 31.1021537,
+    "lon": 96.9463111,
+    "tags": {
+      "name": "珠角拉山",
+      "name:en": "Zhujiaola Mountain",
+      "name:zh": "珠角拉山",
+      "natural": "peak"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 12315821631,
+    "lat": 30.7306334,
+    "lon": 97.05252,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "note": "on wikimapia called Yag Gompa - possibly Q108030924 on wikidata",
+      "religion": "buddhist",
+      "source": "esriWorld"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 12977443749,
+    "lat": 31.4515362,
+    "lon": 97.1037559,
+    "tags": {
+      "alt_name:zh": "谷布神山",
+      "name": "谷布山景区",
+      "name:en": "Gubu Mountain Scenic Area",
+      "name:zh": "谷布山景区",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 13041362467,
+    "lat": 31.4555561,
+    "lon": 97.2968155,
+    "tags": {
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "果西乃寺",
+      "name:en": "Guoxinai Si",
+      "name:zh": "果西乃寺",
+      "religion": "buddhist",
+      "source": "esriWorld"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 13041391935,
+    "lat": 31.3884466,
+    "lon": 97.1674633,
+    "tags": {
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 13041391936,
+    "lat": 31.4840517,
+    "lon": 97.0979833,
+    "tags": {
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 13041391937,
+    "lat": 31.430311,
+    "lon": 97.1556186,
+    "tags": {
+      "natural": "peak",
+      "source": "cyclOSM"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "node",
+    "id": 13357034885,
+    "lat": 31.0385118,
+    "lon": 97.3903602,
+    "tags": {
+      "alt_name": "扎普寺;Zapu si",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "name": "杂普寺",
+      "name:en": "Zapu monastery",
+      "name:zh": "杂普寺",
+      "ref": "7-148",
+      "religion": "buddhist",
+      "school": "gelug",
+      "source": "bing",
+      "wikidata": "Q108037153"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 406943357,
+    "center": {
+      "lat": 31.1212331,
+      "lon": 96.8150562
+    },
+    "tags": {
+      "alt_name": "Netang Gompa;Näten Chudrug",
+      "amenity": "place_of_worship",
+      "denomination": "tibetan",
+      "landuse": "religious",
+      "name": "乃塘寺",
+      "name:en": "Naitang monastery",
+      "name:zh": "乃塘寺",
+      "religion": "buddhist",
+      "source": "bing"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 449021629,
+    "center": {
+      "lat": 31.1436688,
+      "lon": 97.1768026
+    },
+    "tags": {
+      "alt_name": "昌都强巴林寺;俱善弥勒寺;祝釐寺;昌都寺;Qamdo-Kloster;Changdu-Kloster;Chamdo Champa Ling;Changbalin;Qiangbalin",
+      "alt_name:bo": "བྱམས་པ་གླིང;ཆབ་མདོ་བྱམས་པ་གླིང",
+      "amenity": "place_of_worship",
+      "barrier": "wall",
+      "denomination": "tibetan",
+      "heritage": "2",
+      "heritage:operator": "ncha",
+      "heritage:operator:wikidata": "Q7603002",
+      "heritage:operator:wikipedia": "zh:国家文物局",
+      "heritage:since": "1962",
+      "historic": "heritage",
+      "historic:civilization": "tibetan;imperial_chinese",
+      "historic:period": "tibetan;ming",
+      "landuse": "religious",
+      "name": "ཆབ་མདོ་དགོན་པ 强巴林寺",
+      "name:bo": "ཆབ་མདོ་དགོན་པ",
+      "name:de": "Chamdo-Kloster",
+      "name:en": "Galden Jampaling Monastery",
+      "name:fr": "Galden Jampaling",
+      "name:zh": "强巴林寺",
+      "ncha:inscription_date": "2013-03-05",
+      "ncha:name": "昌都强巴林寺",
+      "ncha:type": "古建筑",
+      "protection_title": "全国重点文物保护单位",
+      "ref:heritage:CN": "7-1401-3-699",
+      "religion": "buddhist",
+      "tourism": "attraction",
+      "wikidata": "Q1060763",
+      "wikipedia": "zh:强巴林寺"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 528535090,
+    "center": {
+      "lat": 31.1464635,
+      "lon": 97.1744144
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 529619545,
+    "center": {
+      "lat": 31.1389512,
+      "lon": 97.1801696
+    },
+    "tags": {
+      "alt_name:zh": "昌都清真寺;昌都市清真寺",
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "name": "西藏昌都清真寺",
+      "religion": "muslim"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 532160770,
+    "center": {
+      "lat": 31.1539797,
+      "lon": 97.1779347
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 532205097,
+    "center": {
+      "lat": 31.1406966,
+      "lon": 97.1742819
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 532208732,
+    "center": {
+      "lat": 31.1403105,
+      "lon": 97.173262
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349277,
+    "center": {
+      "lat": 31.1462786,
+      "lon": 97.1815141
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349278,
+    "center": {
+      "lat": 31.147052,
+      "lon": 97.1803431
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349391,
+    "center": {
+      "lat": 31.1103403,
+      "lon": 97.2178608
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349393,
+    "center": {
+      "lat": 31.1103722,
+      "lon": 97.2140814
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349412,
+    "center": {
+      "lat": 31.1063967,
+      "lon": 97.2322426
+    },
+    "tags": {
+      "area": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349415,
+    "center": {
+      "lat": 31.0962896,
+      "lon": 97.2078651
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349422,
+    "center": {
+      "lat": 31.094775,
+      "lon": 97.2119669
+    },
+    "tags": {
+      "area": "yes",
+      "tourism": "attraction"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1010349451,
+    "center": {
+      "lat": 31.0952877,
+      "lon": 97.2081777
+    },
+    "tags": {
+      "amenity": "parking"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1394898853,
+    "center": {
+      "lat": 30.732997,
+      "lon": 97.3517378
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "yes",
+      "denomination": "tibetan",
+      "name": "察益寺",
+      "name:en": "Tra’e Monastery",
+      "religion": "buddhist"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  },
+  {
+    "type": "way",
+    "id": 1421691455,
+    "center": {
+      "lat": 31.1276994,
+      "lon": 96.7535501
+    },
+    "tags": {
+      "amenity": "place_of_worship",
+      "building": "monastery",
+      "denomination": "tibetan",
+      "name": "宗洛寺",
+      "name:en": "Dzonglho Monastery",
+      "religion": "buddhist",
+      "source": "esriWorld"
+    },
+    "region_key": "CN_XZ_CHAMDO",
+    "region_name": "昌都",
+    "region_center": {
+      "lat": 31.1406,
+      "lng": 97.1781
+    }
+  }
+]
