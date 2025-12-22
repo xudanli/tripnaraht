@@ -36,6 +36,31 @@ export class RuleEngine {
       return actual === condition.eq.value;
     }
 
+    if (condition.ne) {
+      const actual = this.getPathValue(context, condition.ne.path);
+      return actual !== condition.ne.value;
+    }
+
+    if (condition.gt) {
+      const actual = this.getPathValue(context, condition.gt.path);
+      return typeof actual === 'number' && actual > condition.gt.value;
+    }
+
+    if (condition.gte) {
+      const actual = this.getPathValue(context, condition.gte.path);
+      return typeof actual === 'number' && actual >= condition.gte.value;
+    }
+
+    if (condition.lt) {
+      const actual = this.getPathValue(context, condition.lt.path);
+      return typeof actual === 'number' && actual < condition.lt.value;
+    }
+
+    if (condition.lte) {
+      const actual = this.getPathValue(context, condition.lte.path);
+      return typeof actual === 'number' && actual <= condition.lte.value;
+    }
+
     if (condition.in) {
       const actual = this.getPathValue(context, condition.in.path);
       return condition.in.values.includes(actual);

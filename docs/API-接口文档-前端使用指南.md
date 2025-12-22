@@ -18,6 +18,7 @@
 12. [数据模型边界说明](#数据模型边界说明)
 13. [LLM 智能服务](#13-llm-智能服务)
 14. [徒步路线（Trail）](#14-徒步路线trail)
+15. [旅行准备度检查（Readiness）](#15-旅行准备度检查readiness)
 
 ---
 
@@ -2280,6 +2281,296 @@ const session = await fetch(`http://localhost:3000/trails/tracking/${sessionId}`
 **前端使用**:
 - 查看追踪状态
 - 在地图上显示已记录的轨迹点
+
+---
+
+## 15. 旅行准备度检查（Readiness）
+
+### 模块概述
+旅行准备度检查模块帮助用户在出发前了解目的地需要做的准备工作，包括必须事项（must）、建议事项（should）和可选事项（optional）。系统基于目的地、行程信息和地理特征，智能评估并返回个性化的准备清单。
+
+### 核心功能
+- **国家能力包**：5 个通用能力包（高海拔、补给稀疏、季节性道路、许可检查站、应急）
+- **国家特定规则**：挪威的 9 个特定规则
+- **地理特征增强**：基于河网、山脉、道路、海岸线、POI 等地理数据智能评估
+- **智能分类**：自动将准备事项分类为 blocker/must/should/optional
+
+---
+
+### 15.1 检查旅行准备度
+**接口**: `POST /readiness/check`
+
+**使用场景**:
+- **场景 1**: 用户创建行程后，系统自动检查目的地需要做的准备工作
+- **场景 2**: 用户在行程详情页点击"准备清单"，查看个性化准备事项
+- **场景 3**: 用户修改行程（如更改季节、活动类型），系统重新评估准备度
+- **场景 4**: 用户在出发前一周，系统提醒未完成的 must 事项
+
+**请求示例**:
+```typescript
+const response = await fetch('http://localhost:3000/readiness/check', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    destinationId: 'NO-TROMSO', // 目的地ID（格式：国家代码-城市）
+    traveler: {
+      nationality: 'CN',
+      residencyCountry: 'CN',
+      tags: ['photography', 'nature'],
+      budgetLevel: 'medium',
+      riskTolerance: 'medium',
+    },
+    trip: {
+      startDate: '2025-01-15',
+      endDate: '2025-01-20',
+    },
+    itinerary: {
+      countries: ['NO'],
+      activities: ['aurora', 'photography', 'self_drive'],
+      season: 'winter',
+    },
+    geo: {
+      lat: 69.6492, // 可选：目的地坐标
+      lng: 18.9553,
+      enhanceWithGeo: true, // 是否启用地理特征增强
+    },
+  }),
+});
+
+const result = await response.json();
+```
+
+**返回内容**:
+```typescript
+{
+  success: true,
+  data: {
+    findings: [
+      {
+        destinationId: 'NO-TROMSO',
+        packId: 'capability.seasonal_road',
+        packVersion: '1.0.0',
+        blockers: [], // 阻止行程的事项（如缺少必要证件）
+        must: [
+          {
+            id: 'rule.norway.ferry_dependent',
+            category: 'transport',
+            severity: 'high',
+            level: 'must',
+            message: '行程依赖渡轮。必须提前查询渡轮时刻表，并预留充足时间。',
+            tasks: [
+              {
+                title: '查询渡轮时刻表和预订信息',
+                dueOffsetDays: -14,
+                tags: ['transport', 'ferry'],
+              },
+            ],
+            askUser: [
+              '是否已查询渡轮时刻表？',
+              '是否已预订渡轮票？',
+            ],
+          },
+        ],
+        should: [
+          {
+            id: 'rule.norway.winter_mountain_pass',
+            category: 'safety_hazards',
+            severity: 'medium',
+            level: 'should',
+            message: '冬季自驾经过山口。建议准备防滑链、冬季轮胎，并查询道路封闭情况。',
+            tasks: [
+              {
+                title: '准备防滑链和冬季轮胎',
+                dueOffsetDays: -7,
+                tags: ['safety', 'driving'],
+              },
+            ],
+          },
+        ],
+        optional: [],
+        risks: [
+          {
+            type: 'weather',
+            severity: 'medium',
+            summary: '冬季天气变化快，可能影响行程',
+            mitigations: [
+              '关注天气预报',
+              '准备备用方案',
+            ],
+          },
+        ],
+        missingInfo: [], // 需要用户提供的信息
+      },
+    ],
+    summary: {
+      totalBlockers: 0,
+      totalMust: 3,
+      totalShould: 5,
+      totalOptional: 2,
+      totalRisks: 2,
+    },
+  },
+}
+```
+
+**前端使用**:
+- 显示准备清单卡片，按 must/should/optional 分类展示
+- 显示任务列表，按截止日期排序（dueOffsetDays 表示出发前 N 天）
+- 显示风险提示，用不同颜色标识严重程度
+- 提供"标记完成"功能，跟踪准备进度
+- 对于 askUser 中的问题，提供交互式问答界面
+
+**注意事项**:
+- `destinationId` 格式：`国家代码-城市`（如 `NO-TROMSO`、`IS-REYKJAVIK`）
+- `enhanceWithGeo: true` 会启用地理特征增强，提供更准确的评估（需要提供坐标）
+- `season` 可选值：`spring`、`summer`、`autumn`、`winter`
+- `activities` 常见值：`self_drive`、`hiking`、`aurora`、`photography`、`boat_tour` 等
+
+---
+
+### 15.2 获取能力包列表
+**接口**: `GET /readiness/capability-packs`
+
+**使用场景**:
+- **场景 1**: 前端展示所有可用的能力包，让用户了解系统支持哪些场景
+- **场景 2**: 帮助用户理解系统如何评估准备度
+
+**请求示例**:
+```typescript
+const response = await fetch('http://localhost:3000/readiness/capability-packs');
+const result = await response.json();
+```
+
+**返回内容**:
+```typescript
+{
+  success: true,
+  data: {
+    packs: [
+      {
+        type: 'high_altitude',
+        displayName: 'High Altitude Readiness',
+        description: '适用于高海拔地区（海拔 > 3000m）',
+      },
+      {
+        type: 'sparse_supply',
+        displayName: 'Sparse Supply Readiness',
+        description: '适用于补给稀疏、偏远地区',
+      },
+      {
+        type: 'seasonal_road',
+        displayName: 'Seasonal Road Readiness',
+        description: '适用于季节性封路、山口地区',
+      },
+      {
+        type: 'permit_checkpoint',
+        displayName: 'Permit Checkpoint Readiness',
+        description: '适用于需要许可或检查站的地区',
+      },
+      {
+        type: 'emergency',
+        displayName: 'Emergency Preparedness Readiness',
+        description: '适用于偏远、高海拔、长距离无人区',
+      },
+    ],
+  },
+}
+```
+
+**前端使用**:
+- 在准备度检查页面显示能力包说明
+- 帮助用户理解系统评估逻辑
+
+---
+
+### 15.3 评估能力包
+**接口**: `POST /readiness/capability-packs/evaluate`
+
+**使用场景**:
+- **场景 1**: 用户想了解哪些能力包会被触发，用于调试和理解评估逻辑
+- **场景 2**: 前端展示评估过程，让用户看到系统如何判断
+
+**请求示例**:
+```typescript
+const response = await fetch('http://localhost:3000/readiness/capability-packs/evaluate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    destinationId: 'NO-TROMSO',
+    traveler: {
+      nationality: 'CN',
+    },
+    trip: {
+      startDate: '2025-01-15',
+    },
+    itinerary: {
+      countries: ['NO'],
+      activities: ['self_drive'],
+      season: 'winter',
+    },
+    geo: {
+      lat: 69.6492,
+      lng: 18.9553,
+    },
+  }),
+});
+
+const result = await response.json();
+```
+
+**返回内容**:
+```typescript
+{
+  success: true,
+  data: {
+    total: 5, // 总能力包数
+    triggered: 2, // 触发的能力包数
+    results: [
+      {
+        packType: 'seasonal_road',
+        triggered: true,
+        rules: [
+          {
+            id: 'rule.seasonal_road.mountain_pass_winter',
+            triggered: true,
+            level: 'must',
+            message: '冬季山口自驾。必须准备防滑链、冬季轮胎，并查询道路封闭情况。',
+          },
+        ],
+        hazards: [
+          {
+            type: 'weather',
+            severity: 'high',
+            summary: '冬季山口可能因天气封闭',
+            mitigations: [
+              '查询道路封闭情况',
+              '准备备用路线',
+            ],
+          },
+        ],
+      },
+      {
+        packType: 'emergency',
+        triggered: true,
+        rules: [
+          {
+            id: 'rule.emergency.contact',
+            triggered: true,
+            level: 'must',
+            message: '偏远地区必须准备紧急联系方式。',
+          },
+        ],
+        hazards: [],
+      },
+    ],
+  },
+}
+```
+
+**前端使用**:
+- 显示评估结果，展示哪些能力包被触发
+- 帮助用户理解系统评估逻辑
+- 用于调试和问题排查
 
 ---
 

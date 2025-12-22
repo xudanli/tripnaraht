@@ -12,7 +12,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
 export interface RiverFeatures {
@@ -44,7 +43,7 @@ export interface Route {
 export class GeoFactsRiverService {
   private readonly logger = new Logger(GeoFactsRiverService.name);
 
-  constructor(private readonly prisma: PrismaService | PrismaClient) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 获取点位的河网特征

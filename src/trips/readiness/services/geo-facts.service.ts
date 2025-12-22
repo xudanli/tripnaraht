@@ -3,14 +3,18 @@
 /**
  * Geo Facts Service - 统一地理特征服务
  * 
- * 整合河网、山脉和道路网络数据，提供统一的地理特征查询接口
+ * 整合河网、山脉、道路网络、海岸线、港口和航线数据，提供统一的地理特征查询接口
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { GeoFactsRiverService, RiverFeatures, Point, Route } from './geo-facts-river.service';
 import { GeoFactsMountainService, MountainFeatures } from './geo-facts-mountain.service';
 import { GeoFactsRoadService, RoadFeatures } from './geo-facts-road.service';
 import { GeoFactsCoastlineService, CoastlineFeatures } from './geo-facts-coastline.service';
+import { GeoFactsPortService, PortFeatures } from './geo-facts-port.service';
+import { GeoFactsAirlineService, AirlineFeatures } from './geo-facts-airline.service';
+import { GeoFactsPOIService, POIFeatures } from './geo-facts-poi.service';
+import { GeoFactsCacheService } from './geo-facts-cache.service';
 
 export interface GeoFeatures {
   /** 河网特征 */
@@ -21,11 +25,17 @@ export interface GeoFeatures {
   roads: RoadFeatures;
   /** 海岸线特征 */
   coastlines: CoastlineFeatures;
+  /** 港口特征 */
+  ports: PortFeatures;
+  /** 航线特征 */
+  airlines: AirlineFeatures;
+  /** POI 特征 */
+  pois: POIFeatures;
   /** 综合地形复杂度（结合河网和山脉） */
   terrainComplexity: number;
   /** 综合风险评分（0-1） */
   riskScore: number;
-  /** 交通便利性评分（0-1，基于道路网络） */
+  /** 交通便利性评分（0-1，基于道路网络、港口和航线） */
   accessibilityScore: number;
 }
 
@@ -37,11 +47,15 @@ export class GeoFactsService {
     private readonly riverService: GeoFactsRiverService,
     private readonly mountainService: GeoFactsMountainService,
     private readonly roadService: GeoFactsRoadService,
-    private readonly coastlineService: GeoFactsCoastlineService
+    private readonly coastlineService: GeoFactsCoastlineService,
+    private readonly portService: GeoFactsPortService,
+    private readonly airlineService: GeoFactsAirlineService,
+    private readonly poiService: GeoFactsPOIService,
+    @Optional() private readonly cacheService?: GeoFactsCacheService
   ) {}
 
   /**
-   * 获取点位的综合地理特征
+   * 获取点位的综合地理特征（带缓存）
    */
   async getGeoFeaturesForPoint(
     lat: number,
@@ -53,9 +67,25 @@ export class GeoFactsService {
       nearRoadThresholdM?: number;
       nearCoastlineThresholdKm?: number;
       coastalAreaThresholdKm?: number;
+      nearPortThresholdKm?: number;
+      nearAirportThresholdKm?: number;
+      poiRadiusKm?: number;
+      pickupLimit?: number;
+      useCache?: boolean; // 是否使用缓存（默认 true）
     }
   ): Promise<GeoFeatures> {
-    const [rivers, mountains, roads, coastlines] = await Promise.all([
+    // 检查缓存
+    if (options?.useCache !== false && this.cacheService) {
+      const cached = this.cacheService.get(lat, lng, options);
+      if (cached) {
+        this.logger.debug(`Cache hit for point (${lat}, ${lng})`);
+        return cached;
+      }
+    }
+
+    this.logger.debug(`Fetching geo features for point (${lat}, ${lng})`);
+
+    const [rivers, mountains, roads, coastlines, ports, airlines, pois] = await Promise.all([
       this.riverService.getRiverFeaturesForPoint(
         lat,
         lng,
@@ -81,6 +111,24 @@ export class GeoFactsService {
         options?.coastalAreaThresholdKm,
         options?.densityBufferKm
       ),
+      this.portService.getPortFeaturesForPoint(
+        lat,
+        lng,
+        options?.nearPortThresholdKm,
+        options?.densityBufferKm
+      ),
+      this.airlineService.getAirlineFeaturesForPoint(
+        lat,
+        lng,
+        options?.nearAirportThresholdKm,
+        options?.densityBufferKm
+      ),
+      this.poiService.getPOIFeaturesForPoint(
+        lat,
+        lng,
+        options?.poiRadiusKm,
+        options?.pickupLimit
+      ),
     ]);
 
     return {
@@ -88,9 +136,12 @@ export class GeoFactsService {
       mountains,
       roads,
       coastlines,
+      ports,
+      airlines,
+      pois,
       terrainComplexity: this.calculateTerrainComplexity(rivers, mountains),
       riskScore: this.calculateRiskScore(rivers, mountains, roads, coastlines),
-      accessibilityScore: roads.roadAccessibility,
+      accessibilityScore: this.calculateAccessibilityScore(roads, ports, airlines),
     };
   }
 
@@ -105,9 +156,13 @@ export class GeoFactsService {
       nearRoadThresholdM?: number;
       nearCoastlineThresholdKm?: number;
       coastalAreaThresholdKm?: number;
+      nearPortThresholdKm?: number;
+      nearAirportThresholdKm?: number;
+      poiRadiusKm?: number;
+      pickupLimit?: number;
     }
   ): Promise<GeoFeatures> {
-    const [rivers, mountains, roads, coastlines] = await Promise.all([
+    const [rivers, mountains, roads, coastlines, ports, airlines, pois] = await Promise.all([
       this.riverService.getRiverFeaturesForRoute(
         route,
         options?.nearRiverThresholdM,
@@ -128,6 +183,21 @@ export class GeoFactsService {
         options?.coastalAreaThresholdKm,
         options?.densityBufferKm
       ),
+      this.portService.getPortFeaturesForRoute(
+        route,
+        options?.nearPortThresholdKm,
+        options?.densityBufferKm
+      ),
+      this.airlineService.getAirlineFeaturesForRoute(
+        route,
+        options?.nearAirportThresholdKm,
+        options?.densityBufferKm
+      ),
+      this.poiService.getPOIFeaturesForRoute(
+        route,
+        options?.poiRadiusKm,
+        options?.pickupLimit
+      ),
     ]);
 
     return {
@@ -135,9 +205,12 @@ export class GeoFactsService {
       mountains,
       roads,
       coastlines,
+      ports,
+      airlines,
+      pois,
       terrainComplexity: this.calculateTerrainComplexity(rivers, mountains),
       riskScore: this.calculateRiskScore(rivers, mountains, roads, coastlines),
-      accessibilityScore: roads.roadAccessibility,
+      accessibilityScore: this.calculateAccessibilityScore(roads, ports, airlines),
     };
   }
 
@@ -215,6 +288,41 @@ export class GeoFactsService {
     }
 
     return Math.min(Math.round(risk * 100) / 100, 1.0);
+  }
+
+  /**
+   * 计算交通便利性评分（0-1）
+   * 
+   * 结合道路网络、港口和航线可达性
+   */
+  private calculateAccessibilityScore(
+    roads: RoadFeatures,
+    ports: PortFeatures,
+    airlines: AirlineFeatures
+  ): number {
+    // 道路可达性权重：0.5
+    // 港口可达性权重：0.2（靠近港口 = 更多交通选择）
+    // 航线可达性权重：0.3（靠近机场 = 更多交通选择）
+    const roadWeight = 0.5;
+    const portWeight = 0.2;
+    const airlineWeight = 0.3;
+
+    // 港口可达性：靠近港口（10km内）= 1.0，否则 = 0.5 * portDensityScore
+    const portAccessibility = ports.nearPort 
+      ? 1.0 
+      : Math.min(ports.portDensityScore * 0.5, 0.5);
+
+    // 航线可达性：靠近机场（20km内）= 1.0，否则 = 0.5 * airlineDensityScore
+    const airlineAccessibility = airlines.nearAirport 
+      ? 1.0 
+      : Math.min(airlines.airlineDensityScore * 0.5, 0.5);
+
+    const score = 
+      roads.roadAccessibility * roadWeight +
+      portAccessibility * portWeight +
+      airlineAccessibility * airlineWeight;
+
+    return Math.min(Math.round(score * 100) / 100, 1.0);
   }
 }
 

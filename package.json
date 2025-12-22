@@ -62,9 +62,23 @@
     "import:airports": "ts-node --project tsconfig.backend.json scripts/import-airports.ts",
     "test:optimize": "ts-node --project tsconfig.backend.json scripts/test-itinerary-optimization.ts",
     "test:prophet": "ts-node --project tsconfig.backend.json scripts/test-prophet.ts",
+    "test:dem": "ts-node --project tsconfig.backend.json scripts/test-dem-elevation.ts",
+    "test:dem:scenarios": "ts-node --project tsconfig.backend.json scripts/test-dem-user-scenarios.ts",
+    "test:dem:effort": "ts-node --project tsconfig.backend.json scripts/test-dem-effort-scenarios.ts",
+    "update:place:effort": "ts-node --project tsconfig.backend.json scripts/update-place-effort-metadata.ts",
+    "update:china:mountain:effort": "ts-node --project tsconfig.backend.json scripts/update-china-mountain-effort.ts",
     "generate:embeddings": "ts-node --project tsconfig.backend.json scripts/generate-place-embeddings.ts",
     "fill:cityid": "npx tsx scripts/fill-place-cityid.ts",
     "diagnose:place": "npx tsx scripts/diagnose-place-data.ts",
+    "migrate:altitude-hint": "ts-node --project tsconfig.backend.json scripts/migrate-add-altitude-hint.ts",
+    "fetch:poi:xizang": "ts-node --project tsconfig.backend.json scripts/fetch-osm-poi-xizang.ts",
+    "import:dem:xizang": "ts-node --project tsconfig.backend.json scripts/import-dem-xizang-to-postgis.ts",
+    "import:dem:xizang:python": "python3 scripts/import-dem-xizang-python.py",
+    "import:dem:xizang:bash": "bash scripts/import-dem-xizang-simple.sh",
+    "import:dem:city": "ts-node --project tsconfig.backend.json scripts/import-dem-city.ts",
+    "import:dem:cities:batch": "ts-node --project tsconfig.backend.json scripts/import-dem-cities-batch.ts",
+    "import:dem:global": "ts-node --project tsconfig.backend.json scripts/import-dem-global.ts",
+    "update:poi:altitude:dem": "ts-node --project tsconfig.backend.json scripts/update-poi-altitude-from-dem.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -122,3 +136,4 @@
     "typescript": "^5"
   }
 }
+

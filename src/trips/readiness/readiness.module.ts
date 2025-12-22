@@ -18,10 +18,21 @@ import { GeoFactsRiverService } from './services/geo-facts-river.service';
 import { GeoFactsMountainService } from './services/geo-facts-mountain.service';
 import { GeoFactsRoadService } from './services/geo-facts-road.service';
 import { GeoFactsCoastlineService } from './services/geo-facts-coastline.service';
+import { GeoFactsPortService } from './services/geo-facts-port.service';
+import { GeoFactsAirlineService } from './services/geo-facts-airline.service';
+import { GeoFactsPOIService } from './services/geo-facts-poi.service';
+import { POIPickupScorerService } from './services/poi-pickup-scorer.service';
+import { POITrailheadService } from './services/poi-trailhead.service';
 import { GeoFactsService } from './services/geo-facts.service';
+import { GeoFactsCacheService } from './services/geo-facts-cache.service';
+import { CapabilityPackEvaluatorService } from './services/capability-pack-evaluator.service';
+import { DEMElevationService } from './services/dem-elevation.service';
+import { DEMEffortMetadataService } from './services/dem-effort-metadata.service';
+import { ReadinessController } from './readiness.controller';
 
 @Module({
   imports: [PrismaModule],
+  controllers: [ReadinessController],
   providers: [
     ReadinessService,
     ReadinessChecker,
@@ -33,7 +44,16 @@ import { GeoFactsService } from './services/geo-facts.service';
     GeoFactsMountainService,
     GeoFactsRoadService,
     GeoFactsCoastlineService,
+    GeoFactsPortService,
+    GeoFactsAirlineService,
+    POIPickupScorerService,
+    POITrailheadService,
+    GeoFactsPOIService,
     GeoFactsService,
+    GeoFactsCacheService,
+    CapabilityPackEvaluatorService,
+    DEMElevationService,
+    DEMEffortMetadataService,
   ],
   exports: [
     ReadinessService,
@@ -43,7 +63,16 @@ import { GeoFactsService } from './services/geo-facts.service';
     GeoFactsMountainService,
     GeoFactsRoadService,
     GeoFactsCoastlineService,
+    GeoFactsPortService,
+    GeoFactsAirlineService,
+    POIPickupScorerService,
+    POITrailheadService,
+    GeoFactsPOIService,
     GeoFactsService,
+    GeoFactsCacheService,
+    CapabilityPackEvaluatorService,
+    DEMElevationService,
+    DEMEffortMetadataService,
   ],
 })
 export class ReadinessModule {}

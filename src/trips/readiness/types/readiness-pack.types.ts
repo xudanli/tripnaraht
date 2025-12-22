@@ -70,6 +70,11 @@ export interface Condition {
   not?: Condition;
   exists?: string; // path
   eq?: { path: string; value: any };
+  ne?: { path: string; value: any }; // not equal
+  gt?: { path: string; value: number }; // greater than
+  gte?: { path: string; value: number }; // greater than or equal
+  lt?: { path: string; value: number }; // less than
+  lte?: { path: string; value: number }; // less than or equal
   in?: { path: string; values: any[] };
   containsAny?: { path: string; values: string[] };
 }

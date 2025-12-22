@@ -23,6 +23,7 @@ import { LlmModule } from './llm/llm.module';
 import { TrailsModule } from './trails/trails.module';
 import { AgentModule } from './agent/agent.module';
 import { RailPassModule } from './railpass/railpass.module';
+import { ReadinessModule } from './trips/readiness/readiness.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { RailPassModule } from './railpass/railpass.module';
     TrailsModule, // 徒步路线模块
     AgentModule, // Agent 模块（Router + Orchestrator）
     RailPassModule, // RailPass 合规与订座决策模块
+    ReadinessModule, // 旅行准备度检查模块
   ],
 })
 export class AppModule {}

@@ -17,6 +17,7 @@ import type { CountryFacts } from '../compilers/facts-to-readiness.compiler';
 import { ReadinessToConstraintsCompiler } from '../compilers/readiness-to-constraints.compiler';
 import { PackStorageService } from '../storage/pack-storage.service';
 import { TripWorldState, ISODate } from '../../decision/world-model';
+import { GeoFactsService, GeoFeatures } from './geo-facts.service';
 
 // 辅助函数：日期计算
 function addDays(date: string, days: number): string {
@@ -34,7 +35,8 @@ export class ReadinessService {
     private readonly readinessChecker: ReadinessChecker,
     private readonly factsCompiler: FactsToReadinessCompiler,
     private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
-    private readonly packStorage: PackStorageService
+    private readonly packStorage: PackStorageService,
+    private readonly geoFactsService?: GeoFactsService // 可选，如果未注入则不使用地理特征
   ) {}
 
   /**
@@ -159,16 +161,83 @@ export class ReadinessService {
   }
 
   /**
-   * 检查准备度（自动从目的地加载 Pack）
+   * 检查准备度（自动从目的地加载 Pack，支持地理特征增强）
    */
   async checkFromDestination(
     destinationId: string,
-    context: TripContext
+    context: TripContext,
+    options?: {
+      enhanceWithGeo?: boolean; // 是否使用地理特征增强上下文
+      geoLat?: number; // 地理坐标（用于查询地理特征）
+      geoLng?: number;
+    }
   ): Promise<ReadinessCheckResult> {
+    // 如果启用了地理特征增强且有坐标，则获取地理特征
+    let enhancedContext = context;
+    if (options?.enhanceWithGeo && options?.geoLat && options?.geoLng && this.geoFactsService) {
+      try {
+        const geoFeatures = await this.geoFactsService.getGeoFeaturesForPoint(
+          options.geoLat,
+          options.geoLng
+        );
+        
+        // 将地理特征添加到上下文
+        enhancedContext = {
+          ...context,
+          geo: {
+            rivers: {
+              nearRiver: geoFeatures.rivers.nearRiver,
+              nearestRiverDistanceM: geoFeatures.rivers.nearestRiverDistanceM ?? undefined,
+              riverCrossingCount: geoFeatures.rivers.riverCrossingCount,
+              riverDensityScore: geoFeatures.rivers.riverDensityScore,
+            },
+            mountains: {
+              inMountain: geoFeatures.mountains.inMountain,
+              mountainElevationAvg: geoFeatures.mountains.mountainElevationAvg ?? undefined,
+              terrainComplexity: geoFeatures.terrainComplexity,
+            },
+            roads: {
+              nearRoad: geoFeatures.roads.nearRoad,
+              roadDensityScore: geoFeatures.roads.roadDensityScore,
+            },
+            coastlines: {
+              nearCoastline: geoFeatures.coastlines.nearCoastline,
+              isCoastalArea: geoFeatures.coastlines.isCoastalArea,
+            },
+            pois: {
+              topPickupPoints: geoFeatures.pois.topPickupPoints.map(p => ({
+                category: p.category,
+                score: p.score,
+              })),
+              hasHarbour: geoFeatures.pois.hasHarbour,
+              trailAccessPoints: geoFeatures.pois.trailAccessPoints.map(t => ({
+                poi_id: t.trailheadId,
+                category: 'TRAILHEAD',
+              })),
+              hasEVCharger: geoFeatures.pois.supply?.hasEVCharger || false,
+              hasFerryTerminal: geoFeatures.pois.topPickupPoints.some(
+                p => p.category === 'FERRY_TERMINAL' || p.category === 'PIER_DOCK'
+              ),
+            },
+            // 西藏特有特征
+            altitude_m: geoFeatures.pois.xizang?.avgAltitudeM ?? undefined,
+            fuelDensity: geoFeatures.pois.xizang?.fuelDensity ?? undefined,
+            checkpointCount: geoFeatures.pois.xizang?.checkpointCount ?? undefined,
+            mountainPassCount: geoFeatures.pois.xizang?.mountainPassCount ?? undefined,
+            oxygenStationCount: geoFeatures.pois.xizang?.oxygenStationCount ?? undefined,
+            latitude: options.geoLat,
+          },
+        };
+      } catch (error) {
+        this.logger.warn(`Failed to enhance context with geo features: ${error}`);
+        // 如果获取地理特征失败，继续使用原始上下文
+      }
+    }
+    
     const pack = await this.packStorage.findPackByDestination(destinationId);
     
     if (pack) {
-      return this.readinessChecker.checkMultipleDestinations([pack], context);
+      return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext);
     }
 
     // 如果没有找到 Pack，尝试从国家代码加载
@@ -176,7 +245,7 @@ export class ReadinessService {
     const packs = await this.packStorage.findPacksByCountry(countryCode);
     
     if (packs.length > 0) {
-      return this.readinessChecker.checkMultipleDestinations(packs, context);
+      return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext);
     }
 
     // 如果都没有，返回空结果

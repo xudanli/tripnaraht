@@ -44,7 +44,15 @@ data/geographic/**/*.dbf
 data/geographic/**/*.shx
 data/geographic/**/*.tif
 data/geographic/**/*.tif.*
-# Keep documentation and small config files
+# Exclude all files in dem folder except documentation
+data/geographic/dem/**/*
+!data/geographic/dem/**/*.md
+!data/geographic/dem/**/*.txt
+!data/geographic/dem/**/.gitkeep
+!data/geographic/dem/**/*.prj
+!data/geographic/dem/**/*.cpg
+!data/geographic/dem/**/*.xml
+# Keep documentation and small config files in other geographic folders
 !data/geographic/**/*.md
 !data/geographic/**/*.txt
 !data/geographic/**/.gitkeep
@@ -58,3 +66,5 @@ data/geographic/**/*.tif.*
 # Misc
 .cache/
 .temp/
+data/backups/*.dump
+data/backups/*.sql

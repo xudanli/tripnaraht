@@ -38,7 +38,7 @@ export class PackStorageService {
       }
 
       // 从 packData JSON 字段恢复 Pack 对象
-      const pack = record.packData as ReadinessPack;
+      const pack = record.packData as unknown as ReadinessPack;
       return pack;
     } catch (error: any) {
       this.logger.error(`Failed to load pack ${packId}: ${error.message}`);
@@ -105,7 +105,7 @@ export class PackStorageService {
         orderBy: { updatedAt: 'desc' },
       });
 
-      return records.map(record => record.packData as ReadinessPack);
+      return records.map(record => record.packData as unknown as ReadinessPack);
     } catch (error: any) {
       this.logger.error(`Failed to find packs by country ${countryCode}: ${error.message}`);
       return [];

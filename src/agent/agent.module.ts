@@ -22,6 +22,8 @@ import { ItineraryOptimizationModule } from '../itinerary-optimization/itinerary
 import { TransportModule } from '../transport/transport.module';
 import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
 import { RailPassModule } from '../railpass/railpass.module';
+import { ReadinessModule } from '../trips/readiness/readiness.module';
+import { DecisionModule } from '../trips/decision/decision.module';
 import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
 import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
@@ -38,6 +40,8 @@ import { createItineraryActions } from './services/actions/itinerary.actions';
 import { createPolicyActions } from './services/actions/policy.actions';
 import { createWebBrowseActions } from './services/actions/webbrowse.actions';
 import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
+import { createReadinessActions } from './services/actions/readiness.actions';
+import { ReadinessService } from '../trips/readiness/services/readiness.service';
 
 /**
  * Agent Module
@@ -54,6 +58,8 @@ import { createRailPassActions } from '../railpass/actions/railpass-agent-action
     TransportModule,
     PlanningPolicyModule,
     RailPassModule,
+    ReadinessModule,
+    DecisionModule,
   ],
   controllers: [AgentController],
   providers: [
@@ -89,6 +95,7 @@ export class AgentModule {
     private vrptwOptimizer?: EnhancedVRPTWOptimizerService,
     private feasibilityService?: FeasibilityService,
     private railPassService?: RailPassService,
+    private readinessService?: ReadinessService,
   ) {
     // 注册基础 Actions（在模块初始化时）
     this.registerBasicActions();
@@ -136,6 +143,12 @@ export class AgentModule {
     if (this.railPassService) {
       const railPassActions = createRailPassActions(this.railPassService);
       this.actionRegistry.registerMany(railPassActions);
+    }
+
+    // 注册 Readiness Actions
+    if (this.readinessService) {
+      const readinessActions = createReadinessActions(this.readinessService);
+      this.actionRegistry.registerMany(readinessActions);
     }
   }
 }

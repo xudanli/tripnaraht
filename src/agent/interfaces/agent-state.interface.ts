@@ -25,6 +25,9 @@ export interface AgentState {
     pacing: 'relaxed' | 'normal' | 'tight';
   };
 
+  /** Trip 详细信息（从 trip.load_draft 加载） */
+  tripInfo?: any;
+
   /** 草稿状态 */
   draft: {
     nodes: any[];
@@ -41,6 +44,19 @@ export interface AgentState {
     };
     episodic_snippets: any[];
     user_profile: Record<string, any>;
+    readiness?: {
+      findings: any[];
+      summary: {
+        total_blockers: number;
+        total_must: number;
+        total_should: number;
+        total_optional: number;
+        total_risks: number;
+      };
+      constraints: any[];
+      tasks: any[];
+      checkedAt: string;
+    };
   };
 
   /** 计算中间结果 */

@@ -171,7 +171,17 @@ async function importShapefile(
     
     console.log(`📥 开始导入数据...`);
     
-    let result = await source.read();
+    let result: any;
+    let readErrorCount = 0;
+    const maxReadErrors = 100; // 最多允许连续读取错误次数
+    
+    try {
+      result = await source.read();
+    } catch (error) {
+      console.error(`❌ 无法读取 Shapefile:`, error);
+      throw error;
+    }
+    
     while (!result.done) {
       const feature = result.value;
       
@@ -184,6 +194,7 @@ async function importShapefile(
           });
           
           featureCount++;
+          readErrorCount = 0; // 重置错误计数
           
           // 批量插入
           if (batch.length >= batchSize) {
@@ -197,7 +208,27 @@ async function importShapefile(
         }
       }
       
-      result = await source.read();
+      // 尝试读取下一条记录，如果失败则跳过
+      try {
+        result = await source.read();
+      } catch (readError) {
+        readErrorCount++;
+        console.warn(`⚠️  读取记录失败 (错误 ${readErrorCount}/${maxReadErrors}):`, 
+          readError instanceof Error ? readError.message : readError);
+        
+        if (readErrorCount >= maxReadErrors) {
+          console.error(`❌ 连续读取错误过多 (${readErrorCount} 次)，停止导入`);
+          break;
+        }
+        
+        // 尝试继续读取下一条（如果可能）
+        try {
+          result = await source.read();
+        } catch {
+          // 如果再次失败，标记为完成以退出循环
+          result = { done: true };
+        }
+      }
     }
     
     // 插入剩余数据

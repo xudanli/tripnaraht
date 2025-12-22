@@ -2,7 +2,7 @@
 
 ## 📋 概述
 
-本文档说明如何将全球河网、山脉和道路网络数据集成到 TripNARA 系统中，并用于准备度检查和决策层。
+本文档说明如何将全球河网、山脉、道路网络、海岸线和港口数据集成到 TripNARA 系统中，并用于准备度检查和决策层。
 
 ## 🗂️ 数据准备
 
@@ -58,6 +58,26 @@
   - `lines.dbf`
   - `lines.prj` ⚠️ 必需
 
+### 5. 港口数据
+
+**必需文件**（放在 `data/geographic/ports/` 目录下）：
+
+- **全球港口** (`ports/`)：
+  - `全球港口数据 库.shp`
+  - `全球港口数据 库.shx`
+  - `全球港口数据 库.dbf`
+  - `全球港口数据 库.prj` ⚠️ 必需
+
+### 6. 航线数据
+
+**必需文件**（放在 `data/geographic/airlines/` 目录下）：
+
+- **全球航线** (`airlines/`)：
+  - `T.shp`
+  - `T.shx`
+  - `T.dbf`
+  - `T.prj` ⚠️ 必需
+
 ## 🚀 数据导入
 
 ### 导入河网数据
@@ -84,6 +104,18 @@ npx ts-node --project tsconfig.backend.json scripts/import-roads-to-postgis.ts
 npx ts-node --project tsconfig.backend.json scripts/import-coastlines-to-postgis.ts
 ```
 
+### 导入港口数据
+
+```bash
+npx ts-node --project tsconfig.backend.json scripts/import-ports-to-postgis.ts
+```
+
+### 导入航线数据
+
+```bash
+npx ts-node --project tsconfig.backend.json scripts/import-airlines-to-postgis.ts
+```
+
 ### 一次性导入所有数据
 
 ```bash
@@ -98,6 +130,12 @@ npx ts-node --project tsconfig.backend.json scripts/import-roads-to-postgis.ts
 
 # 导入海岸线
 npx ts-node --project tsconfig.backend.json scripts/import-coastlines-to-postgis.ts
+
+# 导入港口
+npx ts-node --project tsconfig.backend.json scripts/import-ports-to-postgis.ts
+
+# 导入航线
+npx ts-node --project tsconfig.backend.json scripts/import-airlines-to-postgis.ts
 ```
 
 ## 💻 使用服务
@@ -160,9 +198,10 @@ const geoFeatures = await this.geoFactsService.getGeoFeaturesForPoint(lat, lng);
 //   mountains: { ... },       // 山脉特征
 //   roads: { ... },            // 道路网络特征
 //   coastlines: { ... },       // 海岸线特征
+//   ports: { ... },            // 港口特征
 //   terrainComplexity: 0.85,   // 综合地形复杂度
 //   riskScore: 0.65,           // 综合风险评分
-//   accessibilityScore: 0.72   // 交通便利性评分
+//   accessibilityScore: 0.72   // 交通便利性评分（结合道路和港口）
 // }
 
 // 查询路线综合地理特征
@@ -209,13 +248,32 @@ const routeGeoFeatures = await this.geoFactsService.getGeoFeaturesForRoute({
 | `coastlineDensityScore` | 海岸线密度评分（0-1） | 海岸复杂度、景观丰富度 |
 | `nearestCoastlineDistanceM` | 到最近海岸线的距离（米） | 精确距离计算 |
 
+### 港口特征（PortFeatures）
+
+| 特征 | 说明 | 用途 |
+|------|------|------|
+| `nearPort` | 是否靠近港口（< 10km） | 港口城市、邮轮/渡轮交通 |
+| `nearestPortDistanceM` | 到最近港口的距离（米） | 精确距离计算 |
+| `portDensityScore` | 港口密度评分（0-1） | 港口城市群、海运发达地区 |
+| `nearestPortName` | 最近港口的名称 | 提供具体港口信息 |
+| `nearestPortProperties` | 最近港口的属性信息 | 港口详细信息（类型、规模等） |
+
+### 航线特征（AirlineFeatures）
+
+| 特征 | 说明 | 用途 |
+|------|------|------|
+| `nearAirport` | 是否靠近机场（< 20km） | 机场城市、航空交通便利 |
+| `nearestAirportDistanceM` | 到最近机场的距离（米） | 精确距离计算 |
+| `airlineDensityScore` | 航线/机场密度评分（0-1） | 航空枢纽城市、多机场区域 |
+| `nearestAirportName` | 最近机场的名称 | 提供具体机场信息 |
+
 ### 综合特征（GeoFeatures）
 
 | 特征 | 说明 | 用途 |
 |------|------|------|
 | `terrainComplexity` | 综合地形复杂度（0-1） | 结合河网和山脉的综合评估 |
 | `riskScore` | 综合风险评分（0-1） | 基于河网、山脉和道路的风险评估 |
-| `accessibilityScore` | 交通便利性评分（0-1） | 基于道路网络的可达性评估 |
+| `accessibilityScore` | 交通便利性评分（0-1） | 基于道路网络、港口和航线的可达性评估 |
 
 ## 🔗 集成到 Readiness 模块
 

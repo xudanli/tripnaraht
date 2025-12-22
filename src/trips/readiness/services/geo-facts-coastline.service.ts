@@ -39,7 +39,7 @@ export interface Route {
 export class GeoFactsCoastlineService {
   private readonly logger = new Logger(GeoFactsCoastlineService.name);
 
-  constructor(private readonly prisma: PrismaService | PrismaClient) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 获取点位的海岸线特征

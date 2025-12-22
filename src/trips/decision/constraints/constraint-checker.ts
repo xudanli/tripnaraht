@@ -70,6 +70,10 @@ export class ConstraintChecker {
     // 6. 全局预算校验
     violations.push(...this.checkGlobalBudget(state, plan));
 
+    // 7. Readiness 约束校验（如果存在）
+    const readinessViolations = this.checkReadinessConstraints(state);
+    violations.push(...readinessViolations);
+
     const errorCount = violations.filter(v => v.severity === 'error').length;
     const warningCount = violations.filter(v => v.severity === 'warning').length;
     const infoCount = violations.filter(v => v.severity === 'info').length;
@@ -83,6 +87,38 @@ export class ConstraintChecker {
         infoCount,
       },
     };
+  }
+
+  /**
+   * 7. Readiness 约束校验
+   */
+  private checkReadinessConstraints(state: TripWorldState): CheckerViolation[] {
+    const violations: CheckerViolation[] = [];
+
+    // 从 state 中获取 readiness 结果（如果存在）
+    const readinessResult = (state as any).readinessResult;
+    if (!readinessResult) {
+      return violations;
+    }
+
+    // 使用 ReadinessToConstraintsCompiler 转换为 CheckerViolation
+    // 注意：这里需要动态导入，避免循环依赖
+    try {
+      // 尝试从 readiness 模块获取编译器
+      const { ReadinessToConstraintsCompiler } = require('../../readiness/compilers/readiness-to-constraints.compiler');
+      const compiler = new ReadinessToConstraintsCompiler();
+      
+      // 为每个日期生成 violations（如果没有特定日期，使用第一个日期）
+      const firstDate = state.context.startDate;
+      const readinessViolations = compiler.toCheckerViolations(readinessResult, firstDate);
+      
+      violations.push(...readinessViolations);
+    } catch (error) {
+      // 如果导入失败，只记录警告，不阻断检查
+      console.warn('Failed to check readiness constraints:', error);
+    }
+
+    return violations;
   }
 
   /**

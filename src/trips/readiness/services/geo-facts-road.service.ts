@@ -41,7 +41,7 @@ export interface Route {
 export class GeoFactsRoadService {
   private readonly logger = new Logger(GeoFactsRoadService.name);
 
-  constructor(private readonly prisma: PrismaService | PrismaClient) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 获取点位的道路网络特征

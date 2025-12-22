@@ -144,6 +144,10 @@ export class OrchestratorService {
             reasonCode = currentState.compute.optimization_results.length === 0 ? 'MISSING_OPTIMIZATION' : 'OPTIMIZING';
           } else if (action.name === 'policy.validate_feasibility') {
             reasonCode = criticResult.pass ? 'VALIDATION_PASSED' : (criticResult.violations[0]?.type || 'VALIDATION_FAILED');
+          } else if (action.name === 'readiness.check') {
+            reasonCode = 'READINESS_CHECK_REQUIRED';
+          } else if (action.name === 'trip.load_draft') {
+            reasonCode = 'TRIP_INFO_REQUIRED';
           } else if (action.name.startsWith('webbrowse.')) {
             reasonCode = 'WEB_BROWSE_REQUIRED';
           } else {
@@ -332,7 +336,77 @@ export class OrchestratorService {
     // 收集所有可以执行的候选 Actions
     const candidateActions: Array<{ name: string; input: any }> = [];
 
-    // 2. 检查是否需要 WebBrowse（从用户输入中提取 URL）
+    // 2. 检查是否需要加载 trip（如果有 trip_id 但还没有 trip 信息）
+    if (state.trip.trip_id && !(state as any).tripInfo) {
+      const loadDraftAttempts = state.react.decision_log.filter(
+        log => log.chosen_action === 'trip.load_draft'
+      ).length;
+      
+      if (loadDraftAttempts === 0) {
+        this.logger.debug(`Plan: 检测到 trip_id，选择 trip.load_draft`);
+        candidateActions.push({
+          name: 'trip.load_draft',
+          input: { trip_id: state.trip.trip_id },
+        });
+        // 必须先加载 trip，才能检查 readiness
+        return candidateActions.length > 0 ? candidateActions : null;
+      }
+    }
+
+    // 3. 检查是否需要 Readiness 检查（如果有 trip_id 且已加载 trip 信息，但尚未检查过）
+    if (state.trip.trip_id) {
+      const readinessCheckAttempts = state.react.decision_log.filter(
+        log => log.chosen_action === 'readiness.check'
+      ).length;
+      
+      // 如果还没有检查过 readiness，且已经有 trip 信息，执行检查
+      if (readinessCheckAttempts === 0) {
+        // 尝试从 state 中获取 trip 信息（如果已加载）
+        const tripInfo = (state as any).tripInfo || null;
+        
+        if (tripInfo) {
+          // 从 trip 信息中提取目的地等信息
+          // 目的地可能是国家代码（如 'NO'）或完整的目的地ID（如 'NO-TROMSO'）
+          let destinationId = tripInfo.destination || tripInfo.destinationId;
+          
+          // 如果没有目的地，尝试从 trip 的其他字段推断
+          if (!destinationId && tripInfo.country) {
+            destinationId = tripInfo.country;
+          }
+          
+          if (destinationId) {
+            this.logger.debug(`Plan: 检测到 trip_id 和目的地，选择 readiness.check`);
+            candidateActions.push({
+              name: 'readiness.check',
+              input: {
+                destination_id: destinationId,
+                traveler: {
+                  nationality: tripInfo.traveler?.nationality,
+                  budget_level: tripInfo.budget?.style || tripInfo.budgetLevel,
+                  risk_tolerance: tripInfo.preferences?.riskTolerance || tripInfo.riskTolerance,
+                },
+                trip: {
+                  start_date: tripInfo.startDate || tripInfo.start_date,
+                  end_date: tripInfo.endDate || tripInfo.end_date,
+                },
+                itinerary: {
+                  countries: tripInfo.countries || [destinationId.split('-')[0]],
+                  activities: tripInfo.activities,
+                  season: tripInfo.season,
+                },
+                geo: tripInfo.startLocation ? {
+                  lat: tripInfo.startLocation.lat,
+                  lng: tripInfo.startLocation.lng,
+                  enhance_with_geo: true,
+                } : undefined,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // 3. 检查是否需要 WebBrowse（从用户输入中提取 URL）
     const urlMatch = this.extractUrlFromInput(state.user_input);
     if (urlMatch) {
       this.logger.debug(`Plan: Detected URL in input, selecting webbrowse.browse`);
@@ -1153,6 +1227,28 @@ export class OrchestratorService {
     result: any
   ): AgentState {
     // 根据 Action 类型更新不同的状态字段
+    if (actionName === 'readiness.check') {
+      // 存储 readiness 检查结果到 state 中
+      // 这些信息可以在后续传递给决策层使用
+      const readinessData = {
+        findings: result.findings || [],
+        summary: result.summary || {},
+        constraints: result.constraints || [],
+        tasks: result.tasks || [],
+        checkedAt: new Date().toISOString(),
+      };
+      
+      this.logger.debug(`Updated readiness data: ${readinessData.summary.totalBlockers} blockers, ${readinessData.summary.totalMust} must items`);
+      
+      // 将 readiness 数据存储到 state 的 memory 中
+      return this.stateService.update(state.request_id, {
+        memory: {
+          ...state.memory,
+          readiness: readinessData,
+        },
+      });
+    }
+    
     if (actionName === 'places.resolve_entities') {
       const updatedNodes = result.nodes || [];
       this.logger.debug(`Updated nodes: ${updatedNodes.length} nodes from ${actionName}`);
@@ -1296,6 +1392,26 @@ export class OrchestratorService {
           },
         });
       }
+      return state;
+    }
+
+    if (actionName.startsWith('trip.')) {
+      // Trip Actions 的结果存储到 state 中
+      if (actionName === 'trip.load_draft') {
+        // 存储 trip 信息，供后续 readiness.check 使用
+        const tripInfo = {
+          ...result.trip,
+          items: result.items || [],
+        };
+        
+        this.logger.debug(`Updated trip info: ${tripInfo.destination || tripInfo.country || 'unknown'}`);
+        
+        return this.stateService.update(state.request_id, {
+          tripInfo: tripInfo as any, // 存储到 state 的临时字段
+        });
+      }
+      
+      // 其他 trip actions 的处理
       return state;
     }
 

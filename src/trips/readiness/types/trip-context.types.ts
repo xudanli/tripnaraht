@@ -34,6 +34,48 @@ export interface TripContext {
     endDate?: string; // ISO date
   };
   itinerary: ItineraryInfo;
+  /** 地理特征（可选，在检查时动态添加） */
+  geo?: {
+    /** 河网特征 */
+    rivers?: {
+      nearRiver?: boolean;
+      nearestRiverDistanceM?: number;
+      riverCrossingCount?: number;
+      riverDensityScore?: number;
+    };
+    /** 山脉特征 */
+    mountains?: {
+      inMountain?: boolean;
+      mountainElevationAvg?: number;
+      terrainComplexity?: number;
+    };
+    /** 道路特征 */
+    roads?: {
+      nearRoad?: boolean;
+      roadDensityScore?: number;
+    };
+    /** 海岸线特征 */
+    coastlines?: {
+      nearCoastline?: boolean;
+      isCoastalArea?: boolean;
+    };
+    /** POI 特征 */
+    pois?: {
+      topPickupPoints?: Array<{ category: string; score: number }>;
+      hasHarbour?: boolean;
+      trailAccessPoints?: Array<{ poi_id: string; category: string }>;
+      hasEVCharger?: boolean;
+      hasFerryTerminal?: boolean;
+    };
+    /** 纬度（用于极地判断） */
+    latitude?: number;
+    /** 西藏特有特征 */
+    altitude_m?: number; // 平均海拔（米）
+    fuelDensity?: number; // 燃料密度（每 100km 的加油站数量）
+    checkpointCount?: number; // 检查站数量
+    mountainPassCount?: number; // 山口/垭口数量
+    oxygenStationCount?: number; // 氧气点数量
+  };
 }
 
 /**

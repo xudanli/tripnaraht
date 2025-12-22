@@ -45,21 +45,68 @@ export class TripDecisionEngineService {
       throw new Error('Invalid state: state and state.context are required');
     }
 
-    // 可选：运行准备度检查
+    // 可选：运行准备度检查（使用 Pack + 能力包 + 地理特征增强）
     if (this.readinessService) {
       try {
         const context = this.readinessService.extractTripContext(state);
-        const readinessResult = await this.readinessService.checkFromCountryFacts(
-          [state.context.destination],
-          context
+        
+        // 获取起始位置坐标（用于地理特征增强）
+        // 优先使用第一天的酒店位置，如果没有则尝试从候选活动中获取
+        const startLocation = state.context.anchors?.hotelLocationsByDate?.[state.context.startDate] ||
+          state.candidatesByDate[state.context.startDate]?.[0]?.location?.point;
+        
+        const readinessResult = await this.readinessService.checkFromDestination(
+          state.context.destination,
+          context,
+          {
+            enhanceWithGeo: !!startLocation, // 只有有坐标时才启用地理特征增强
+            geoLat: startLocation?.lat,
+            geoLng: startLocation?.lng,
+          }
         );
         
-        // 如果有 blocker，记录到 log
+        // 记录准备度检查结果
         if (readinessResult.summary.totalBlockers > 0) {
           this.logger.warn(
             `Readiness check found ${readinessResult.summary.totalBlockers} blockers for destination ${state.context.destination}`
           );
         }
+        
+        if (readinessResult.summary.totalMust > 0) {
+          this.logger.log(
+            `Readiness check found ${readinessResult.summary.totalMust} must items for destination ${state.context.destination}`
+          );
+        }
+        
+        // 将 Readiness Findings 转换为 Constraints，影响决策
+        const readinessConstraints = await this.readinessService.getConstraints(readinessResult);
+        
+        // 将 readiness 约束信息存储到 state 中，供后续决策使用
+        // 通过 state.signals.alerts 传递准备度信息
+        if (!state.signals.alerts) {
+          state.signals.alerts = [];
+        }
+        
+        // 添加准备度相关的 alerts
+        for (const constraint of readinessConstraints) {
+          if (constraint.type === 'hard' && constraint.severity === 'error') {
+            state.signals.alerts.push({
+              code: constraint.id,
+              severity: 'critical' as const,
+              message: constraint.message,
+            });
+          } else if (constraint.severity === 'warning') {
+            state.signals.alerts.push({
+              code: constraint.id,
+              severity: 'warn' as const,
+              message: constraint.message,
+            });
+          }
+        }
+        
+        // 存储 readiness 结果到 state 中，供后续约束检查使用
+        // 注意：这里使用了一个临时字段，实际应该扩展 TripWorldState 接口
+        (state as any).readinessResult = readinessResult;
       } catch (error) {
         this.logger.warn(`Readiness check failed: ${error}`);
         // 不阻断计划生成，只记录警告
