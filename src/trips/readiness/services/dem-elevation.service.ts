@@ -4,6 +4,11 @@
  * DEM 海拔查询服务
  * 
  * 从 PostGIS 栅格数据中查询指定坐标点的海拔信息
+ * 
+ * 查询策略：
+ * 1. 优先使用合并的城市 DEM 表（geo_dem_cities_merged）- 包含所有城市数据，性能最佳
+ * 2. 区域 DEM 表（如 geo_dem_xizang）- 作为后备
+ * 3. 全球 DEM 表（geo_dem_global）- 最终后备（覆盖全球）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -18,6 +23,9 @@ export class DEMElevationService {
   /**
    * 查找可能包含坐标的城市 DEM 表
    * 通过检查表的边界范围来判断
+   * 
+   * @deprecated 此方法已不再在主要查询路径中使用，因为已改用合并表 geo_dem_cities_merged
+   * 保留此方法仅用于调试或特殊情况
    */
   private async findCityDEMTables(lat: number, lng: number): Promise<string[]> {
     try {
@@ -56,7 +64,7 @@ export class DEMElevationService {
    * 从 DEM 数据获取坐标点的海拔
    * 
    * 查询优先级：
-   * 1. 城市 DEM 表（最精确）- 自动查找包含该坐标的城市表
+   * 1. 合并的城市 DEM 表（geo_dem_cities_merged）- 最优先，包含所有城市数据，性能最佳
    * 2. 区域 DEM 表（如 geo_dem_xizang）- 作为后备
    * 3. 全球 DEM 表（geo_dem_global）- 最终后备（覆盖全球）
    * 
@@ -70,23 +78,21 @@ export class DEMElevationService {
     lng: number,
     fallbackTable: string = 'geo_dem_xizang'
   ): Promise<number | null> {
-    // 1. 优先查询城市 DEM 表
-    const cityTables = await this.findCityDEMTables(lat, lng);
-    
-    for (const cityTable of cityTables) {
-      try {
-        const elevation = await this.queryElevationFromTable(lat, lng, cityTable);
+    // 1. 优先查询合并的城市 DEM 表（性能最佳）
+    try {
+      const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
+      if (mergedTableExists) {
+        const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_cities_merged');
         if (elevation !== null) {
-          this.logger.debug(`从城市表 ${cityTable} 获取海拔: ${elevation}m`);
+          this.logger.debug(`从合并城市DEM表获取海拔: ${elevation}m`);
           return elevation;
         }
-      } catch (error) {
-        // 继续尝试下一个表
-        this.logger.debug(`城市表 ${cityTable} 查询失败，尝试下一个`);
       }
+    } catch (error) {
+      this.logger.debug(`合并城市DEM表查询失败，尝试后备表`);
     }
 
-    // 2. 如果城市表查询失败，使用区域后备表
+    // 2. 如果合并表查询失败，使用区域后备表
     if (fallbackTable) {
       try {
         const elevation = await this.queryElevationFromTable(lat, lng, fallbackTable);
@@ -166,7 +172,7 @@ export class DEMElevationService {
     }
 
     // 对于批量查询，逐个查询（PostGIS 栅格查询较慢，批量优化需要更复杂的实现）
-    // 每个点会自动按优先级查询：城市DEM -> 区域DEM -> 全球DEM
+    // 每个点会自动按优先级查询：合并城市DEM -> 区域DEM -> 全球DEM
     const results = await Promise.all(
       points.map(point => this.getElevation(point.lat, point.lng, fallbackTable))
     );

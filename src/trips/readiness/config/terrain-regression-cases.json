@@ -1,0 +1,1124 @@
+[
+  {
+    "id": "CN_CITY_01",
+    "name": "北京天安门周边",
+    "region": "CN_BEIJING",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          116.4074,
+          39.9042
+        ],
+        [
+          116.41,
+          39.906
+        ],
+        [
+          116.405,
+          39.902
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 30,
+        "max": 100
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 50
+      },
+      "effortLevel": "RELAX"
+    }
+  },
+  {
+    "id": "CN_XIZANG_01",
+    "name": "拉萨 → 羊湖 → 日喀则",
+    "region": "CN_XIZANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          91.1322,
+          29.6544
+        ],
+        [
+          90.5,
+          29.2
+        ],
+        [
+          88.8801,
+          29.2675
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 3500,
+        "max": 6000
+      },
+      "totalAscentM": {
+        "min": 500,
+        "max": 25000
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "CN_SICHUAN_01",
+    "name": "川西四姑娘山路线",
+    "region": "CN_SICHUAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          103.0133,
+          30.6624
+        ],
+        [
+          102.9,
+          31.0
+        ],
+        [
+          102.8,
+          31.2
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 3000,
+        "max": 6000
+      },
+      "totalAscentM": {
+        "min": 500,
+        "max": 5000
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "CN_YUNNAN_01",
+    "name": "滇西北梅里雪山路线",
+    "region": "CN_YUNNAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          99.7,
+          28.4
+        ],
+        [
+          98.9,
+          28.5
+        ],
+        [
+          98.6,
+          28.6
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 2000,
+        "max": 5000
+      },
+      "totalAscentM": {
+        "min": 300,
+        "max": 3000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "NP_EBC_01",
+    "name": "尼泊尔EBC路线（卢卡拉 → 珠峰大本营）",
+    "region": "NP",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          86.71,
+          27.69
+        ],
+        [
+          86.8,
+          27.9
+        ],
+        [
+          86.85,
+          28.0
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 1000
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "NZ_SOUTH_ISLAND_01",
+    "name": "新西兰南岛Milford Track",
+    "region": "NZ",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          167.8,
+          -45.4
+        ],
+        [
+          167.9,
+          -45.3
+        ],
+        [
+          168.0,
+          -45.2
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 2000
+      },
+      "totalAscentM": {
+        "min": 100,
+        "max": 2000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_FLAT_01",
+    "name": "上海外滩（平缓路线）",
+    "region": "CN_SHANGHAI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          121.4737,
+          31.2304
+        ],
+        [
+          121.48,
+          31.235
+        ],
+        [
+          121.47,
+          31.225
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 50
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 20
+      },
+      "effortLevel": "RELAX"
+    }
+  },
+  {
+    "id": "CN_MOUNTAIN_PASS_01",
+    "name": "山口夜行拦截测试（高海拔山口）",
+    "region": "CN_XIZANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          91.0,
+          29.5
+        ],
+        [
+          91.2,
+          29.7
+        ],
+        [
+          91.4,
+          29.9
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 4000,
+        "max": 6000
+      },
+      "totalAscentM": {
+        "min": 800,
+        "max": 3000
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "CN_XINJIANG_01",
+    "name": "新疆天山天池路线",
+    "region": "CN_XINJIANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          88.1,
+          43.9
+        ],
+        [
+          88.2,
+          44.0
+        ],
+        [
+          88.3,
+          44.1
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 800,
+        "max": 2000
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_GUANGXI_01",
+    "name": "广西桂林阳朔（低海拔丘陵）",
+    "region": "CN_GUANGXI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          110.3,
+          24.8
+        ],
+        [
+          110.4,
+          24.9
+        ],
+        [
+          110.5,
+          25.0
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 100,
+        "max": 500
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 300
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_QINGHAI_01",
+    "name": "青海湖环湖路线",
+    "region": "CN_QINGHAI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          100.2,
+          36.9
+        ],
+        [
+          100.3,
+          37.0
+        ],
+        [
+          100.4,
+          37.1
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 3000,
+        "max": 4000
+      },
+      "totalAscentM": {
+        "min": 100,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_HUNAN_01",
+    "name": "湖南张家界天门山",
+    "region": "CN_HUNAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          110.4,
+          29.1
+        ],
+        [
+          110.5,
+          29.2
+        ],
+        [
+          110.6,
+          29.3
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 500,
+        "max": 2000
+      },
+      "totalAscentM": {
+        "min": 200,
+        "max": 1500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_ANHUI_01",
+    "name": "安徽黄山路线",
+    "region": "CN_ANHUI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          118.1,
+          30.1
+        ],
+        [
+          118.2,
+          30.2
+        ],
+        [
+          118.3,
+          30.3
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 400,
+        "max": 800
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_GANSU_01",
+    "name": "甘肃敦煌鸣沙山",
+    "region": "CN_GANSU",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          94.6,
+          40.1
+        ],
+        [
+          94.7,
+          40.2
+        ],
+        [
+          94.8,
+          40.3
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1000,
+        "max": 1200
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 200
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_INNER_MONGOLIA_01",
+    "name": "内蒙古呼伦贝尔草原",
+    "region": "CN_INNER_MONGOLIA",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          119.7,
+          49.2
+        ],
+        [
+          119.8,
+          49.3
+        ],
+        [
+          119.9,
+          49.4
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 500,
+        "max": 700
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 200
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CH_ALPS_01",
+    "name": "瑞士阿尔卑斯山路线",
+    "region": "CH",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          7.4,
+          46.2
+        ],
+        [
+          7.5,
+          46.3
+        ],
+        [
+          7.6,
+          46.4
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 2000,
+        "max": 4000
+      },
+      "totalAscentM": {
+        "min": 500,
+        "max": 3000
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "US_GRAND_CANYON_01",
+    "name": "美国大峡谷路线",
+    "region": "US",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          -112.1,
+          36.1
+        ],
+        [
+          -112.0,
+          36.2
+        ],
+        [
+          -111.9,
+          36.3
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1000,
+        "max": 2500
+      },
+      "totalAscentM": {
+        "min": 500,
+        "max": 2000
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "JP_FUJI_01",
+    "name": "日本富士山路线",
+    "region": "JP",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          138.7,
+          35.3
+        ],
+        [
+          138.8,
+          35.4
+        ],
+        [
+          138.9,
+          35.5
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 900,
+        "max": 1400
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "IT_DOLOMITES_01",
+    "name": "意大利多洛米蒂山",
+    "region": "IT",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          11.8,
+          46.5
+        ],
+        [
+          11.9,
+          46.6
+        ],
+        [
+          12.0,
+          46.7
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1500,
+        "max": 3500
+      },
+      "totalAscentM": {
+        "min": 500,
+        "max": 2500
+      },
+      "effortLevel": "CHALLENGE"
+    }
+  },
+  {
+    "id": "FR_PYRENEES_01",
+    "name": "法国比利牛斯山",
+    "region": "FR",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          1.4,
+          42.7
+        ],
+        [
+          1.5,
+          42.8
+        ],
+        [
+          1.6,
+          42.9
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1000,
+        "max": 1800
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 600
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "IS_ICELAND_01",
+    "name": "冰岛高地路线",
+    "region": "IS",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          -19.6,
+          64.8
+        ],
+        [
+          -19.5,
+          64.9
+        ],
+        [
+          -19.4,
+          65.0
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 500,
+        "max": 700
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 200
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "NO_FJORDS_01",
+    "name": "挪威峡湾路线",
+    "region": "NO",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          6.2,
+          60.4
+        ],
+        [
+          6.3,
+          60.5
+        ],
+        [
+          6.4,
+          60.6
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 600,
+        "max": 800
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 300
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "AU_BLUE_MOUNTAINS_01",
+    "name": "澳大利亚蓝山路线",
+    "region": "AU",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          150.3,
+          -33.7
+        ],
+        [
+          150.4,
+          -33.6
+        ],
+        [
+          150.5,
+          -33.5
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1500,
+        "max": 2500
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 1000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CA_ROCKIES_01",
+    "name": "加拿大落基山脉",
+    "region": "CA",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          -115.6,
+          51.2
+        ],
+        [
+          -115.5,
+          51.3
+        ],
+        [
+          -115.4,
+          51.4
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 2000,
+        "max": 2500
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 1000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "AR_PATAGONIA_01",
+    "name": "阿根廷巴塔哥尼亚",
+    "region": "AR",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          -71.3,
+          -41.1
+        ],
+        [
+          -71.2,
+          -41.0
+        ],
+        [
+          -71.1,
+          -40.9
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1000,
+        "max": 2000
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 1000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_XIZANG_RAPID_01",
+    "name": "西藏快速上升测试（拉萨→纳木错）",
+    "region": "CN_XIZANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          91.1322,
+          29.6544
+        ],
+        [
+          90.8,
+          30.2
+        ],
+        [
+          90.6,
+          30.8
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 1000,
+        "max": 2000
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 2000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_COASTAL_01",
+    "name": "海南三亚海岸线",
+    "region": "CN_HAINAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          109.5,
+          18.2
+        ],
+        [
+          109.6,
+          18.3
+        ],
+        [
+          109.7,
+          18.4
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 200
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 100
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_XIZANG_STEEP_01",
+    "name": "西藏陡坡测试（珠峰大本营路线）",
+    "region": "CN_XIZANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          86.85,
+          28.0
+        ],
+        [
+          86.9,
+          28.1
+        ],
+        [
+          86.95,
+          28.2
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 400,
+        "max": 600
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 200
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_SICHUAN_MODERATE_01",
+    "name": "四川成都平原（中等难度）",
+    "region": "CN_SICHUAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          104.0633,
+          30.6624
+        ],
+        [
+          104.1,
+          30.7
+        ],
+        [
+          104.15,
+          30.75
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 400,
+        "max": 600
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 200
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_XIZANG_LONG_01",
+    "name": "西藏长距离转场（日喀则→阿里）",
+    "region": "CN_XIZANG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          88.8801,
+          29.2675
+        ],
+        [
+          80.0,
+          32.5
+        ],
+        [
+          79.8,
+          33.0
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 100
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 100
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_YUNNAN_RICE_TERRACE_01",
+    "name": "云南元阳梯田路线",
+    "region": "CN_YUNNAN",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          102.8,
+          23.1
+        ],
+        [
+          102.9,
+          23.2
+        ],
+        [
+          103.0,
+          23.3
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 500,
+        "max": 2500
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 1000
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_GUANGDONG_01",
+    "name": "广东深圳（沿海低海拔）",
+    "region": "CN_GUANGDONG",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          114.0579,
+          22.5431
+        ],
+        [
+          114.1,
+          22.55
+        ],
+        [
+          114.15,
+          22.56
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 0,
+        "max": 200
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 100
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_SHAANXI_01",
+    "name": "陕西华山路线",
+    "region": "CN_SHAANXI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          110.1,
+          34.5
+        ],
+        [
+          110.2,
+          34.6
+        ],
+        [
+          110.3,
+          34.7
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 300,
+        "max": 600
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 500
+      },
+      "effortLevel": "MODERATE"
+    }
+  },
+  {
+    "id": "CN_JIANGXI_01",
+    "name": "江西庐山路线",
+    "region": "CN_JIANGXI",
+    "route": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          115.9,
+          29.5
+        ],
+        [
+          116.0,
+          29.6
+        ],
+        [
+          116.1,
+          29.7
+        ]
+      ]
+    },
+    "expected": {
+      "maxElevationM": {
+        "min": 800,
+        "max": 1500
+      },
+      "totalAscentM": {
+        "min": 0,
+        "max": 800
+      },
+      "effortLevel": "MODERATE"
+    }
+  }
+]

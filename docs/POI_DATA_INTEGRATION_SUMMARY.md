@@ -14,7 +14,8 @@
 | **冰岛** | 14 | 12,812 | ✅ 全部完成 |
 | **格陵兰** | 6 | 352 | ✅ 完成 |
 | **斯瓦尔巴** | 1 | 64 | ✅ 完成 |
-| **总计** | **35** | **133,483** | ✅ **全部完成** |
+| **新西兰** | 14 | - | 🚧 已配置 |
+| **总计** | **49+** | **133,483+** | ✅ **进行中** |
 
 ### 区域详情
 
@@ -70,6 +71,30 @@
 
 - SV_LONGYEARBYEN: 64 个
 
+#### 🇳🇿 新西兰（14 个区域）
+
+**Phase 1（MVP：覆盖 80% 行程）**:
+
+北岛:
+- NZ_AUCKLAND: 奥克兰（入境/城市补给）
+- NZ_WELLINGTON: 惠灵顿（北岛南端 + 渡轮）
+- NZ_ROTORUA: 罗托鲁瓦（地热/温泉/活动）
+- NZ_TAUPO_TONGARIRO: 陶波/汤加里罗（火山国家公园 + 徒步）
+
+南岛:
+- NZ_CHRISTCHURCH: 基督城（南岛门户）
+- NZ_QUEENSTOWN: 皇后镇（最强活动枢纽）
+- NZ_WANAKA: 瓦纳卡（徒步/湖区）
+- NZ_TEKAPO_MTCOOK: 蒂卡普/库克山（徒步入口/观景点）
+- NZ_TE_ANU_MILFORD: 蒂阿瑙/米尔福德峡湾（关键）
+- NZ_FRANZ_JOSEF: 弗朗茨约瑟夫（冰川西岸）
+- NZ_DUNEDIN: 但尼丁（东南海岸/野生动物）
+
+**Phase 2（增强：更偏远/更硬核）**:
+- NZ_NELSON_ABEL_TASMAN: 尼尔森/亚伯塔斯曼（海岸徒步）
+- NZ_PICTON_FERRY: 皮克顿渡轮枢纽（更精细）
+- NZ_FIORDLAND_REMOTE: 峡湾偏远区域（更大半径）
+
 ## 🏷️ 分类体系
 
 ### 通用分类
@@ -107,6 +132,14 @@
 
 - **SPA_POOL**: 地热池/泳池（297 个）
 
+#### 新西兰特有
+
+- **HUT**: DOC 小屋（tourism=alpine_hut + amenity=shelter）
+- **VOLCANIC**: 火山（natural=volcano）
+- **GEOTHERMAL**: 地热（natural=geyser, natural=hot_spring）
+- **EV_CHARGER**: 充电桩（电车自驾实用）
+- **FERRY_TERMINAL**: 渡轮码头（北南岛渡轮关键）
+
 ## 📁 数据文件位置
 
 ### 挪威
@@ -125,6 +158,10 @@
 - `data/geographic/poi/osm/svalbard/raw/`
 - 脚本: `scripts/fetch-osm-poi-svalbard.ts`
 
+### 新西兰
+- `data/geographic/poi/osm/newzealand/raw/`
+- 脚本: `scripts/fetch-osm-poi-newzealand.ts`
+
 ## 🔄 数据流程
 
 1. **抓取**: 使用 Overpass API 从 OSM 抓取 POI 数据
@@ -142,10 +179,14 @@
 
 ### Readiness 规则
 
-- **渡轮依赖日**: FERRY_TERMINAL 命中 + 路线跨海
+- **渡轮依赖日**: FERRY_TERMINAL 命中 + 路线跨海（挪威/新西兰）
 - **冬季山口自驾**: 日程含山地 + 月份 11–3
 - **极北极光活动**: Tromsø/Lofoten/North Cape
 - **徒步入口**: trailhead/cabin 命中
+- **Alpine & Weather**（新西兰）: TRAILHEAD/HUT 命中 + 山地覆盖高 → 分层穿衣、防雨、防风、头灯
+- **Volcanic & Geothermal**（新西兰）: volcano/geyser/hot_spring → 地热区边界/高温烫伤/硫化气体注意
+- **Ferry & Island Hops**（新西兰）: FERRY_TERMINAL + 路线跨海 → 预留排队/班次波动 buffer
+- **Sparse Supply**（新西兰）: 长路段 + FUEL/SUPPLY 密度低 → 强制插入加油/补给停靠点
 
 ## 📝 维护建议
 

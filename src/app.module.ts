@@ -24,6 +24,7 @@ import { TrailsModule } from './trails/trails.module';
 import { AgentModule } from './agent/agent.module';
 import { RailPassModule } from './railpass/railpass.module';
 import { ReadinessModule } from './trips/readiness/readiness.module';
+import { DataContractsModule } from './data-contracts/data-contracts.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ReadinessModule } from './trips/readiness/readiness.module';
     AgentModule, // Agent 模块（Router + Orchestrator）
     RailPassModule, // RailPass 合规与订座决策模块
     ReadinessModule, // 旅行准备度检查模块
+    DataContractsModule, // 数据契约模块（适配器模式）
   ],
 })
 export class AppModule {}
