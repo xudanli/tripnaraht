@@ -18,15 +18,19 @@ import { ExplainabilityService } from './explainability/explainability.service';
 import { LearningService } from './learning/learning.service';
 import { AdvancedConstraintsService } from './constraints/advanced-constraints.service';
 import { ConstraintChecker } from './constraints/constraint-checker';
+import { RouteDirectionConstraintsService } from './constraints/route-direction-constraints.service';
 import { DecisionCacheService } from './performance/cache.service';
 import { BatchProcessingService } from './performance/batch.service';
 import { MonitoringService } from './monitoring/monitoring.service';
 import { DecisionController } from './decision.controller';
 import { TransportModule } from '../../transport/transport.module';
 import { ReadinessModule } from '../readiness/readiness.module';
+import { PlacesModule } from '../../places/places.module';
+import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
+import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 
 @Module({
-  imports: [TransportModule, ReadinessModule],
+  imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule],
   controllers: [DecisionController],
   providers: [
     TripDecisionEngineService,
@@ -40,9 +44,11 @@ import { ReadinessModule } from '../readiness/readiness.module';
     LearningService,
     AdvancedConstraintsService,
     ConstraintChecker,
+    RouteDirectionConstraintsService,
     DecisionCacheService,
     BatchProcessingService,
     MonitoringService,
+    PoiFeaturesAdapterService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -55,9 +61,11 @@ import { ReadinessModule } from '../readiness/readiness.module';
     LearningService,
     AdvancedConstraintsService,
     ConstraintChecker,
+    RouteDirectionConstraintsService,
     DecisionCacheService,
     BatchProcessingService,
     MonitoringService,
+    PoiFeaturesAdapterService,
   ],
 })
 export class DecisionModule {}
