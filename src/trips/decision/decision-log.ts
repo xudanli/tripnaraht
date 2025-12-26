@@ -107,5 +107,64 @@ export interface DecisionRunLog {
     constraints?: Record<string, any>;
     matchedSignals?: Record<string, any>;
   };
+
+  // P1.1.4: 路线规划的证据链（用于解释"为什么这样排"）
+  evidenceChain?: {
+    planEvidence?: {
+      whyThisRoute?: string[];
+      whyThisItinerary?: string[];
+      segmentationEvidence?: {
+        totalDistance: number;
+        totalAscent: number;
+        steepSections: number;
+        energyBreakpoints: number;
+        mandatoryRestPoints: number;
+      };
+      riskEvidence?: {
+        consecutiveHighAltitudeDays: number;
+        consecutiveAscent: number;
+        steepConcentratedSections: number;
+        totalRiskScore: number;
+      };
+    };
+    dailyEvidences?: Array<{
+      date: string;
+      day: number;
+      slotEvidences?: Array<{
+        slotId: string;
+        activityName: string;
+        evidence?: Array<{
+          type: string;
+          title: string;
+          description: string;
+          data?: Record<string, any>;
+          severity?: string;
+          impactsDecision: boolean;
+          decisionImpact?: string;
+        }>;
+        whySelected?: string[];
+        whyThisTime?: string[];
+        whyThisLocation?: string[];
+      }>;
+      whyThisDay?: string[];
+      terrainEvidence?: {
+        maxElevation: number;
+        totalAscent: number;
+        steepSections?: number;
+        mandatoryRestPoints?: number;
+        energyBreakpoints?: number;
+      };
+      energyEvidence?: {
+        totalEnergyCost: number;
+        maxEnergyBudget: number;
+        energyRatio: number;
+        exceeded?: boolean;
+      };
+      riskEvidence?: {
+        riskScore: number;
+        riskFlags?: Array<{ type: string; severity: string; message: string }>;
+      };
+    }>;
+  };
 }
 

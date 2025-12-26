@@ -23,9 +23,10 @@ import { RouteDirectionObservabilityService } from '../../route-directions/servi
 import { CompliancePluginService } from '../../route-directions/plugins/compliance-plugin.service';
 import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
 import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
-import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
+import { DEMDailyEnergyService, DailyEnergyBudget } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
-import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
+import { DEMRiskScoringService, PlanRiskScore } from './services/dem-risk-scoring.service';
+import { DEMEvidenceChainService } from './services/dem-evidence-chain.service';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -51,7 +52,8 @@ export class TripDecisionEngineService {
     private readonly transportPlugin?: TransportPluginService,
     private readonly demDailyEnergyService?: DEMDailyEnergyService,
     private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
-    private readonly demRiskScoringService?: DEMRiskScoringService
+    private readonly demRiskScoringService?: DEMRiskScoringService,
+    private readonly demEvidenceChainService?: DEMEvidenceChainService
   ) {}
 
   /**
@@ -353,6 +355,7 @@ export class TripDecisionEngineService {
     const buffer = Math.round((state.policies?.bufferMinBetweenActivities ?? 10) * paceMultiplier.buffer);
 
     const days: TripPlan['days'] = [];
+    const dailyEnergyBudgets: Array<{ day: number; budget: DailyEnergyBudget }> = [];
 
     for (let i = 0; i < state.context.durationDays; i++) {
       const date = addDays(state.context.startDate, i);
@@ -481,6 +484,9 @@ export class TripDecisionEngineService {
           if (terrainFacts) {
             terrainFacts.effortLevel = this.inferEffortLevel(dailyEnergyBudget);
           }
+
+          // 保存每日体力预算，用于证据链生成
+          dailyEnergyBudgets.push({ day: i + 1, budget: dailyEnergyBudget });
         } catch (error) {
           this.logger.warn(`Day ${i + 1} DEM体力预算计算失败: ${error}`);
         }
@@ -499,6 +505,35 @@ export class TripDecisionEngineService {
       createdAt: now,
       days,
     };
+
+    // P1.1.4: 生成路线规划的证据链
+    let planRiskScore: PlanRiskScore | undefined;
+    if (this.demRiskScoringService) {
+      try {
+        planRiskScore = await this.demRiskScoringService.calculatePlanRiskScore(
+          plan,
+          (state as any).routeSegmentation
+        );
+      } catch (error) {
+        this.logger.warn(`计算计划风险评分失败: ${error}`);
+      }
+    }
+
+    let evidenceChain: any;
+    if (this.demEvidenceChainService) {
+      try {
+        evidenceChain = this.demEvidenceChainService.generateEvidenceChain(
+          plan,
+          (state as any).routeSegmentation,
+          planRiskScore,
+          dailyEnergyBudgets,
+          selectedRouteDirection
+        );
+        this.logger.log(`生成了路线规划证据链：${evidenceChain.dailyEvidences.length}天的证据`);
+      } catch (error) {
+        this.logger.warn(`生成证据链失败: ${error}`);
+      }
+    }
 
     const log: DecisionRunLog = {
       runId: `run_${Date.now()}`,
@@ -535,6 +570,8 @@ export class TripDecisionEngineService {
             matchedSignals: selectedRouteDirection.matchedSignals,
           }
         : undefined,
+      // P1.1.4: 记录证据链（用于前端展示和解释）
+      evidenceChain: evidenceChain,
     };
 
     // 记录观测指标

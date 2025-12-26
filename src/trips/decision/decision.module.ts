@@ -31,6 +31,7 @@ import { RouteDirectionsModule } from '../../route-directions/route-directions.m
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
 import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
+import { DEMEvidenceChainService } from './services/dem-evidence-chain.service';
 
 @Module({
   imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule],
@@ -55,6 +56,7 @@ import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
     DEMDailyEnergyService,
     DEMRouteSegmentationService,
     DEMRiskScoringService,
+    DEMEvidenceChainService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -75,6 +77,7 @@ import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
     DEMDailyEnergyService,
     DEMRouteSegmentationService,
     DEMRiskScoringService,
+    DEMEvidenceChainService,
   ],
 })
 export class DecisionModule {}
