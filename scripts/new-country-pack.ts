@@ -13,6 +13,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  RouteDirectionArchetype,
+  generateRouteDirectionFromArchetype,
+  recommendArchetypesByRegion,
+  getAllArchetypes,
+} from '../src/route-directions/templates/route-direction-archetypes';
 
 interface CountryPackSkeleton {
   countryCode: string;
@@ -69,111 +75,60 @@ interface RouteDirectionSkeleton {
   };
 }
 
-function generateCountryPack(countryCode: string, countryName: string): CountryPackSkeleton {
+function generateCountryPack(
+  countryCode: string,
+  countryName: string,
+  selectedArchetypes?: RouteDirectionArchetype[]
+): CountryPackSkeleton {
   const countryNameCN = getCountryNameCN(countryCode, countryName);
 
-  // 生成 3 条典型的 RouteDirection skeleton
-  const routeDirections: RouteDirectionSkeleton[] = [
-    {
-      name: `${countryCode}_CULTURAL_CITIES`,
-      nameCN: `${countryNameCN}城市文化之旅`,
-      nameEN: `${countryName} Cultural Cities`,
-      description: `探索${countryNameCN}的主要城市和文化景点，适合初次到访的游客。`,
-      tags: ['文化', '城市', '博物馆', '历史'],
-      regions: [`${countryCode}_CAPITAL`, `${countryCode}_MAJOR_CITY_1`],
-      entryHubs: [`${countryNameCN}首都机场`, `${countryNameCN}主要城市`],
-      seasonality: {
-        bestMonths: [5, 6, 7, 8, 9], // 默认夏季
-        avoidMonths: [12, 1, 2], // 默认冬季
-      },
-      constraints: {
-        soft: {
-          maxDailyAscentM: 200,
-          maxElevationM: 1000,
-        },
-      },
-      riskProfile: {
-        altitudeSickness: false,
-        roadClosure: false,
-      },
-      signaturePois: {
-        types: ['MUSEUM', 'HISTORIC_SITE', 'CITY_CENTER'],
-      },
-      itinerarySkeleton: {
-        dayThemes: ['抵达适应', '城市探索', '文化体验', '购物休闲', '返程'],
-        dailyPace: 'MODERATE',
-      },
-    },
-    {
-      name: `${countryCode}_NATURE_SCENIC`,
-      nameCN: `${countryNameCN}自然风光`,
-      nameEN: `${countryName} Nature & Scenic`,
-      description: `探索${countryNameCN}的自然风光和户外景点，适合喜欢自然和摄影的游客。`,
-      tags: ['自然', '摄影', '户外', '风景'],
-      regions: [`${countryCode}_NATURE_REGION_1`, `${countryCode}_NATURE_REGION_2`],
-      entryHubs: [`${countryNameCN}主要城市`, `${countryNameCN}自然区域入口`],
-      seasonality: {
-        bestMonths: [6, 7, 8, 9], // 默认夏季
-        avoidMonths: [12, 1, 2, 3], // 默认冬季
-      },
-      constraints: {
-        soft: {
-          maxDailyAscentM: 500,
-          maxElevationM: 2000,
-        },
-      },
-      riskProfile: {
-        altitudeSickness: false,
-        weatherWindow: true,
-        weatherWindowMonths: [6, 7, 8],
-      },
-      signaturePois: {
-        types: ['VIEWPOINT', 'NATIONAL_PARK', 'SCENIC_ROUTE'],
-      },
-      itinerarySkeleton: {
-        dayThemes: ['抵达', '自然探索', '摄影日', '户外活动', '返程'],
-        dailyPace: 'MODERATE',
-      },
-    },
-    {
-      name: `${countryCode}_ADVENTURE_CHALLENGE`,
-      nameCN: `${countryNameCN}挑战之旅`,
-      nameEN: `${countryName} Adventure Challenge`,
-      description: `${countryNameCN}的挑战性路线，适合喜欢冒险和挑战的游客。`,
-      tags: ['挑战', '徒步', '冒险', '户外'],
-      regions: [`${countryCode}_ADVENTURE_REGION_1`, `${countryCode}_ADVENTURE_REGION_2`],
-      entryHubs: [`${countryNameCN}挑战区域入口`],
-      seasonality: {
-        bestMonths: [6, 7, 8], // 默认夏季
-        avoidMonths: [12, 1, 2, 3, 4], // 默认冬季和早春
-      },
-      constraints: {
-        hard: {
-          maxDailyRapidAscentM: 800,
-          requiresPermit: false,
-          requiresGuide: false,
-        },
-        soft: {
-          maxDailyAscentM: 1000,
-          maxElevationM: 3000,
-        },
-      },
-      riskProfile: {
-        altitudeSickness: true,
-        roadClosure: true,
-        weatherWindow: true,
-        weatherWindowMonths: [6, 7, 8],
-      },
-      signaturePois: {
-        types: ['MOUNTAIN_PASS', 'TRAIL', 'CHALLENGE_POINT'],
-      },
-      itinerarySkeleton: {
-        dayThemes: ['抵达适应', '挑战日1', '挑战日2', '恢复日', '返程'],
-        dailyPace: 'INTENSE',
-        restDaysRequired: [3, 5],
-      },
-    },
+  // 如果没有指定母型，使用推荐的默认母型
+  let archetypesToUse: RouteDirectionArchetype[] = selectedArchetypes || [
+    'URBAN_CULTURAL_EXPLORATION',
+    'NATURE_SCENIC_LOOP',
+    'FJORD_COASTLINE_DRIVING',
   ];
+
+  // 如果只指定了部分母型，补充到3个
+  if (archetypesToUse.length < 3) {
+    const allArchetypes: RouteDirectionArchetype[] = [
+      'HIGH_ALTITUDE_CULTURAL_TREKKING',
+      'FJORD_COASTLINE_DRIVING',
+      'URBAN_CULTURAL_EXPLORATION',
+      'NATURE_SCENIC_LOOP',
+      'ADVENTURE_CHALLENGE_ROUTE',
+      'RELAXED_LEISURE_VACATION',
+    ];
+    const remaining = allArchetypes.filter(a => !archetypesToUse.includes(a));
+    archetypesToUse = [...archetypesToUse, ...remaining.slice(0, 3 - archetypesToUse.length)];
+  }
+
+  // 使用母型模板生成 RouteDirection skeleton
+  const routeDirections: RouteDirectionSkeleton[] = archetypesToUse.slice(0, 3).map((archetype, index) => {
+    const skeleton = generateRouteDirectionFromArchetype(archetype, countryCode, {
+      name: `${countryCode}_${archetype}`,
+      nameCN: `${countryNameCN}${getArchetypeNameSuffix(archetype)}`,
+      nameEN: `${countryName} ${getArchetypeNameSuffix(archetype, 'en')}`,
+      regions: [`${countryCode}_REGION_${index + 1}`],
+      entryHubs: [`${countryNameCN}入口${index + 1}`],
+    });
+
+    // 转换为 RouteDirectionSkeleton 格式
+    return {
+      name: skeleton.name!,
+      nameCN: skeleton.nameCN!,
+      nameEN: skeleton.nameEN,
+      description: skeleton.description,
+      tags: skeleton.tags || [],
+      regions: skeleton.regions || [],
+      entryHubs: skeleton.entryHubs || [],
+      seasonality: skeleton.seasonality as any,
+      constraints: skeleton.constraints as any,
+      riskProfile: skeleton.riskProfile as any,
+      signaturePois: skeleton.signaturePois as any,
+      itinerarySkeleton: skeleton.itinerarySkeleton as any,
+    };
+  });
 
   // 生成 regions 列表
   const regions = [
@@ -196,6 +151,21 @@ function generateCountryPack(countryCode: string, countryName: string): CountryP
       defaultRiskTolerance: 'medium',
     },
   };
+}
+
+/**
+ * 获取母型名称后缀
+ */
+function getArchetypeNameSuffix(archetype: RouteDirectionArchetype, lang: 'zh' | 'en' = 'zh'): string {
+  const suffixes: Record<RouteDirectionArchetype, { zh: string; en: string }> = {
+    HIGH_ALTITUDE_CULTURAL_TREKKING: { zh: '高海拔文化徒步', en: 'High-altitude Cultural Trekking' },
+    FJORD_COASTLINE_DRIVING: { zh: '峡湾海岸线自驾', en: 'Fjord/Coastline Driving' },
+    URBAN_CULTURAL_EXPLORATION: { zh: '城市文化探索', en: 'Urban Cultural Exploration' },
+    NATURE_SCENIC_LOOP: { zh: '自然风光环线', en: 'Nature Scenic Loop' },
+    ADVENTURE_CHALLENGE_ROUTE: { zh: '冒险挑战路线', en: 'Adventure Challenge Route' },
+    RELAXED_LEISURE_VACATION: { zh: '轻松休闲度假', en: 'Relaxed Leisure Vacation' },
+  };
+  return suffixes[archetype]?.[lang] || archetype;
 }
 
 function getCountryNameCN(countryCode: string, countryName: string): string {
@@ -263,13 +233,21 @@ function saveCountryPack(pack: CountryPackSkeleton, outputDir: string): void {
 
   console.log(`✅ 国家 Pack 已生成: ${outputPath}`);
   console.log(`\n包含内容：`);
-  console.log(`  - ${pack.routeDirections.length} 条 RouteDirection skeleton`);
+  console.log(`  - ${pack.routeDirections.length} 条 RouteDirection skeleton（基于母型模板）`);
   console.log(`  - ${pack.regions.length} 个 regions`);
   console.log(`  - 默认 policy 配置`);
+  console.log(`\n使用的母型：`);
+  pack.routeDirections.forEach((rd, index) => {
+    console.log(`  ${index + 1}. ${rd.nameCN} (${rd.name})`);
+  });
   console.log(`\n下一步：`);
   console.log(`  1. 编辑 ${outputPath}，填写具体的 regions、corridor、signaturePois 等信息`);
   console.log(`  2. 运行 pack-validator.ts 检查完整性`);
   console.log(`  3. 使用 seed-route-directions.ts 导入到数据库`);
+  console.log(`\n提示：`);
+  console.log(`  - 所有 RouteDirection 都基于 6 大母型模板生成`);
+  console.log(`  - 可以根据国家特点调整约束、风险画像、季节性等参数`);
+  console.log(`  - 查看 src/route-directions/templates/route-direction-archetypes.ts 了解母型详情`);
 }
 
 // 主函数

@@ -4,9 +4,23 @@
 
 国家 Pack 是一套工具，用于快速生成新国家的 RouteDirection 配置包，并验证其完整性。这套工具包括：
 
-1. **new-country-pack.ts** - 生成新国家的 RouteDirection skeleton
+1. **new-country-pack.ts** - 生成新国家的 RouteDirection skeleton（基于6大母型模板）
 2. **pack-validator.ts** - 校验 Pack 的完整性
 3. **generate-regression-tests.ts** - 自动生成回归用例框架
+4. **route-direction-archetypes.ts** - 6大母型模板定义
+
+### 6大母型
+
+所有 RouteDirection 都基于以下 6 大母型模板生成：
+
+1. **高海拔文化徒步** - 西藏、尼泊尔、秘鲁
+2. **峡湾/海岸线自驾** - 冰岛、挪威、新西兰南岛
+3. **城市文化探索** - 欧洲城市、日本、中国城市
+4. **自然风光环线** - 新西兰、加拿大、美国国家公园
+5. **冒险挑战路线** - 极限徒步、攀岩、越野
+6. **轻松休闲度假** - 海滩度假、温泉、SPA
+
+详细说明请参考 [路线方向分类母版文档](./ROUTE_DIRECTION_ARCHETYPES.md)。
 
 ## 使用流程
 
