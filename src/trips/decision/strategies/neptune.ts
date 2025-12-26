@@ -10,7 +10,7 @@ import { ActivityCandidate, TripWorldState } from '../world-model';
 import { PlanDay, PlanSlot, TripPlan } from '../plan-model';
 
 export interface RepairTrigger {
-  code: 'WEATHER' | 'CLOSED' | 'TIME_OVER' | 'BUDGET_OVER' | 'USER_CHANGE';
+  code: 'WEATHER' | 'CLOSED' | 'TIME_OVER' | 'BUDGET_OVER' | 'USER_CHANGE' | 'RISK_VIOLATION';
   date?: string;
   slotId?: string;
   details?: Record<string, any>;
@@ -19,7 +19,8 @@ export interface RepairTrigger {
 function slotViolates(
   state: TripWorldState,
   date: string,
-  slot: PlanSlot
+  slot: PlanSlot,
+  riskWeights?: Map<string, number>
 ): RepairTrigger[] {
   const violations: RepairTrigger[] = [];
 
@@ -43,6 +44,23 @@ function slotViolates(
     });
   }
 
+  // P1.1.3: 检测风险违规（高风险活动应该被替换）
+  if (slot.poiId && riskWeights) {
+    const riskWeight = riskWeights.get(slot.poiId);
+    if (riskWeight !== undefined && riskWeight > 0.7) {
+      // 风险权重>0.7（风险评分>70）时，触发风险违规
+      violations.push({
+        code: 'RISK_VIOLATION',
+        date,
+        slotId: slot.id,
+        details: { 
+          message: `高风险活动（风险评分: ${(riskWeight * 100).toFixed(1)}）`,
+          riskWeight,
+        },
+      });
+    }
+  }
+
   return violations;
 }
 
@@ -50,12 +68,14 @@ function pickReplacement(
   state: TripWorldState,
   date: string,
   oldSlot: PlanSlot,
-  candidates: ActivityCandidate[]
+  candidates: ActivityCandidate[],
+  riskWeights?: Map<string, number>
 ): ActivityCandidate | null {
   // MVP: same intentTags / same type / indoor-first under weather issues
   // You can improve with embeddings later.
   const oldTitle = oldSlot.title.toLowerCase();
 
+  // P1.1.3: 集成风险评分，优先选择低风险活动
   const score = (c: ActivityCandidate) => {
     const indoorBonus = c.indoorOutdoor === 'indoor' ? 0.6 : 0;
     const q = c.qualityScore ?? 0.5;
@@ -64,7 +84,12 @@ function pickReplacement(
       .includes(oldTitle)
       ? 0.2
       : 0;
-    return indoorBonus + q + matchBonus;
+    
+    // 风险惩罚：风险权重越高，评分越低
+    const riskWeight = riskWeights?.get(c.id) || 0;
+    const riskPenalty = riskWeight * 0.5; // 风险惩罚：最高降低0.5分
+    
+    return indoorBonus + q + matchBonus - riskPenalty;
   };
 
   const pool = candidates.filter(c => c.location?.point);
@@ -89,7 +114,8 @@ export interface NeptuneRepairResult {
  */
 export function neptuneRepairPlan(
   state: TripWorldState,
-  plan: TripPlan
+  plan: TripPlan,
+  riskWeights?: Map<string, number>
 ): NeptuneRepairResult {
   const triggers: RepairTrigger[] = [];
   const changedSlotIds: string[] = [];
@@ -100,13 +126,13 @@ export function neptuneRepairPlan(
     const newSlots = day.timeSlots.map(slot => {
       if (slot.locked || slot.priorityTag === 'anchor') return slot;
 
-      const v = slotViolates(state, day.date, slot);
+      const v = slotViolates(state, day.date, slot, riskWeights);
       if (v.length === 0) return slot;
 
       triggers.push(...v);
 
       // attempt swap
-      const rep = pickReplacement(state, day.date, slot, candidates);
+      const rep = pickReplacement(state, day.date, slot, candidates, riskWeights);
       if (!rep) {
         // fallback: mark as removed by turning into rest (or drop in your UI)
         changedSlotIds.push(slot.id);

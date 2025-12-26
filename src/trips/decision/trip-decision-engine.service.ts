@@ -16,7 +16,7 @@ import { neptuneRepairPlan } from './strategies/neptune';
 import { DecisionRunLog, DecisionTrigger } from './decision-log';
 import { SenseToolsAdapter } from './adapters/sense-tools.adapter';
 import { ReadinessService } from '../readiness/services/readiness.service';
-import { PoiFeaturesAdapterService, PoiFeatures } from './services/poi-features-adapter.service';
+// import { PoiFeaturesAdapterService, PoiFeatures } from './services/poi-features-adapter.service';
 import { RouteDirectionSelectorService, UserIntent } from '../../route-directions/services/route-direction-selector.service';
 import { RouteDirectionPoiGeneratorService } from '../../route-directions/services/route-direction-poi-generator.service';
 import { RouteDirectionObservabilityService } from '../../route-directions/services/route-direction-observability.service';
@@ -25,6 +25,7 @@ import { TransportPluginService } from '../../route-directions/plugins/transport
 import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
+import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -42,14 +43,15 @@ export class TripDecisionEngineService {
   constructor(
     private readonly tools: SenseToolsAdapter,
     private readonly readinessService?: ReadinessService,
-    private readonly poiFeaturesAdapter?: PoiFeaturesAdapterService,
+    // private readonly poiFeaturesAdapter?: PoiFeaturesAdapterService,
     private readonly routeDirectionSelector?: RouteDirectionSelectorService,
     private readonly routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService,
     private readonly observabilityService?: RouteDirectionObservabilityService,
     private readonly compliancePlugin?: CompliancePluginService,
     private readonly transportPlugin?: TransportPluginService,
     private readonly demDailyEnergyService?: DEMDailyEnergyService,
-    private readonly demRouteSegmentationService?: DEMRouteSegmentationService
+    private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
+    private readonly demRiskScoringService?: DEMRiskScoringService
   ) {}
 
   /**
@@ -315,20 +317,20 @@ export class TripDecisionEngineService {
     }
 
     // 可选：获取 POI Features（用于决策优化）
-    let poiFeatures: PoiFeatures | null = null;
-    if (this.poiFeaturesAdapter) {
-      try {
-        poiFeatures = await this.poiFeaturesAdapter.getPoiFeatures({
-          destination: state.context.destination,
-        });
-        if (poiFeatures) {
-          this.logger.log(`Loaded POI Features for destination: ${state.context.destination}`);
-        }
-      } catch (error) {
-        this.logger.warn(`Failed to load POI Features: ${error}`);
-        // 不阻断计划生成，只记录警告
-      }
-    }
+    // let poiFeatures: PoiFeatures | null = null;
+    // if (this.poiFeaturesAdapter) {
+    //   try {
+    //     poiFeatures = await this.poiFeaturesAdapter.getPoiFeatures({
+    //       destination: state.context.destination,
+    //     });
+    //     if (poiFeatures) {
+    //       this.logger.log(`Loaded POI Features for destination: ${state.context.destination}`);
+    //     }
+    //   } catch (error) {
+    //     this.logger.warn(`Failed to load POI Features: ${error}`);
+    //     // 不阻断计划生成，只记录警告
+    //   }
+    // }
 
     const now = new Date().toISOString();
     
@@ -396,6 +398,38 @@ export class TripDecisionEngineService {
           ? await this.tools.getHotelPointForDate(date)
           : undefined);
 
+      // P1.1.3: 计算风险权重（用于Dr.Dre优先级调整）
+      const riskWeights = new Map<string, number>();
+      let previousElevation: number | undefined;
+      
+      if (this.demRiskScoringService && i > 0) {
+        // 获取前一天的最后一个活动的海拔（用于计算连续上升风险）
+        const prevDay = days[i - 1];
+        if (prevDay.timeSlots.length > 0) {
+          const lastSlot = prevDay.timeSlots[prevDay.timeSlots.length - 1];
+          if (lastSlot.coordinates && this.demRiskScoringService) {
+            // 通过DEMRiskScoringService内部的DEMElevationService获取海拔
+            // 这里简化处理，直接使用前一天的terrainFacts中的maxElevation
+            previousElevation = prevDay.terrainFacts?.maxElevation;
+          }
+        }
+      }
+
+      // 为每个候选活动计算风险权重
+      if (this.demRiskScoringService) {
+        for (const activity of abu.kept) {
+          try {
+            const riskWeight = await this.demRiskScoringService.getRiskWeightForDrDre(
+              activity,
+              previousElevation
+            );
+            riskWeights.set(activity.id, riskWeight);
+          } catch (error) {
+            this.logger.warn(`计算活动 ${activity.id} 风险权重失败: ${error}`);
+          }
+        }
+      }
+
       const slots = await drdreBuildDaySchedule(
         state,
         {
@@ -404,6 +438,8 @@ export class TripDecisionEngineService {
           endTime: dayEnd,
           bufferMin: buffer,
           startPoint: hotelPoint,
+          riskWeights,
+          previousElevation,
         },
         abu.kept,
         this.tools.getTravelLeg
@@ -539,11 +575,11 @@ export class TripDecisionEngineService {
   /**
    * 修复计划（当世界状态变化时）
    */
-  repairPlan(
+  async repairPlan(
     state: TripWorldState,
     plan: TripPlan,
     trigger: DecisionTrigger = 'signal_update'
-  ): { plan: TripPlan; log: DecisionRunLog } {
+  ): Promise<{ plan: TripPlan; log: DecisionRunLog }> {
     if (!state || !state.context) {
       throw new Error('Invalid state: state and state.context are required');
     }
@@ -553,7 +589,24 @@ export class TripDecisionEngineService {
 
     const now = new Date().toISOString();
 
-    const repaired = neptuneRepairPlan(state, plan);
+    // P1.1.3: 计算风险权重（用于Neptune修复）
+    const riskWeights = new Map<string, number>();
+    if (this.demRiskScoringService) {
+      // 为所有候选活动计算风险权重
+      for (const date of Object.keys(state.candidatesByDate)) {
+        const candidates = state.candidatesByDate[date] || [];
+        for (const activity of candidates) {
+          try {
+            const riskWeight = await this.demRiskScoringService.getRiskWeightForNeptune(activity);
+            riskWeights.set(activity.id, riskWeight);
+          } catch (error) {
+            this.logger.warn(`计算活动 ${activity.id} 风险权重失败: ${error}`);
+          }
+        }
+      }
+    }
+
+    const repaired = neptuneRepairPlan(state, plan, riskWeights);
 
     const log: DecisionRunLog = {
       runId: `run_${Date.now()}`,
@@ -965,7 +1018,6 @@ export class TripDecisionEngineService {
       riskFlags: riskFlags.length > 0 ? riskFlags : undefined,
     };
   }
-}
 
   /**
    * 为合规降级过滤候选 POI 池
@@ -975,7 +1027,7 @@ export class TripDecisionEngineService {
     return pool.filter(candidate => {
       // 过滤掉高海拔、徒步、限制区域等类型的 POI
       const tags = candidate.intentTags || [];
-      const category = candidate.category || '';
+      const category = (candidate as any).category || '';
 
       // 保留城市、文化、轻松类型的 POI
       const keepTags = ['城市', '文化', '博物馆', '餐厅', '购物', 'city', 'culture', 'museum', 'restaurant'];
@@ -991,6 +1043,22 @@ export class TripDecisionEngineService {
       // 如果有保留标签且没有排除标签，则保留
       return hasKeepTag && !hasExcludeTag;
     });
+  }
+
+  /**
+   * 根据每日体力预算推断努力等级
+   */
+  private inferEffortLevel(budget: any): 'RELAX' | 'MODERATE' | 'CHALLENGE' | 'EXTREME' {
+    const ratio = budget.totalEnergyCost / budget.maxEnergyCost;
+    if (ratio >= 0.9) {
+      return 'EXTREME';
+    } else if (ratio >= 0.7) {
+      return 'CHALLENGE';
+    } else if (ratio >= 0.5) {
+      return 'MODERATE';
+    } else {
+      return 'RELAX';
+    }
   }
 }
 

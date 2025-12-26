@@ -27,9 +27,10 @@ import { TransportModule } from '../../transport/transport.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { PlacesModule } from '../../places/places.module';
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
-import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
+// import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
+import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
 
 @Module({
   imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule],
@@ -50,9 +51,10 @@ import { DEMRouteSegmentationService } from './services/dem-route-segmentation.s
     DecisionCacheService,
     BatchProcessingService,
     MonitoringService,
-    PoiFeaturesAdapterService,
+    // PoiFeaturesAdapterService,
     DEMDailyEnergyService,
     DEMRouteSegmentationService,
+    DEMRiskScoringService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -69,9 +71,10 @@ import { DEMRouteSegmentationService } from './services/dem-route-segmentation.s
     DecisionCacheService,
     BatchProcessingService,
     MonitoringService,
-    PoiFeaturesAdapterService,
+    // PoiFeaturesAdapterService,
     DEMDailyEnergyService,
     DEMRouteSegmentationService,
+    DEMRiskScoringService,
   ],
 })
 export class DecisionModule {}

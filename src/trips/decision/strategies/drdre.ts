@@ -45,6 +45,10 @@ export interface DrDreScheduleInput {
   endTime: string; // day end
   bufferMin: number;
   startPoint?: GeoPoint; // hotel location
+  /** P1.1.3: 风险权重映射（activityId -> riskWeight，0-1，越高越应该降低优先级） */
+  riskWeights?: Map<string, number>;
+  /** 前一个活动的海拔（用于计算连续上升风险） */
+  previousElevation?: number;
 }
 
 /**
@@ -67,11 +71,17 @@ export async function drdreBuildDaySchedule(
   const remaining = candidates.slice();
 
   // heuristic priority: tight opening windows first, then mustSee/quality
+  // P1.1.3: 集成风险评分，风险越高优先级越低
   const priority = (c: ActivityCandidate) => {
     const must = c.mustSee ? 1 : 0;
     const q = c.qualityScore ?? 0.5;
     const inv = c.inventoryRisk ?? 1;
-    return must * 10 + q * 3 + inv * 0.5;
+    
+    // 风险权重：0-1，越高越应该降低优先级
+    const riskWeight = input.riskWeights?.get(c.id) || 0;
+    const riskPenalty = riskWeight * 5; // 风险惩罚：最高降低5分
+    
+    return must * 10 + q * 3 + inv * 0.5 - riskPenalty;
   };
 
   remaining.sort((a, b) => priority(b) - priority(a));
@@ -106,6 +116,7 @@ export async function drdreBuildDaySchedule(
       if (!isWithinOpening(c, input.date, start, end)) continue;
 
       // scoring: shorter travel + higher priority
+      // P1.1.3: 风险权重已集成到priority函数中
       const s = priority(c) * 5 - leg.durationMin * 0.2;
       if (s > bestScore) {
         bestScore = s;
