@@ -1,0 +1,187 @@
+[
+  {
+    "name": "基础测试 - IS 默认偏好",
+    "description": "测试 Iceland 的基础路线方向选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "durationDays": 5
+    },
+    "expected": {
+      "minPoiCount": 10,
+      "hasConstraints": true,
+      "hasRiskProfile": true
+    }
+  },
+  {
+    "name": "季节性测试 - IS 最佳月份",
+    "description": "测试 Iceland 在最佳月份的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "preferences": [
+        "自然",
+        "摄影"
+      ],
+      "durationDays": 7
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "自然",
+        "摄影"
+      ],
+      "hasConstraints": true
+    }
+  },
+  {
+    "name": "季节性测试 - IS 禁忌月份",
+    "description": "测试 Iceland 在禁忌月份的选择（应该避免某些路线）",
+    "input": {
+      "countryCode": "IS",
+      "month": 1,
+      "preferences": [
+        "户外"
+      ],
+      "durationDays": 5
+    },
+    "expected": {
+      "minPoiCount": 5
+    }
+  },
+  {
+    "name": "节奏测试 - IS 轻松节奏",
+    "description": "测试 Iceland 在轻松节奏下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "pace": "relaxed",
+      "durationDays": 5
+    },
+    "expected": {
+      "minPoiCount": 8,
+      "hasConstraints": true
+    }
+  },
+  {
+    "name": "节奏测试 - IS 挑战节奏",
+    "description": "测试 Iceland 在挑战节奏下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "pace": "intense",
+      "preferences": [
+        "挑战",
+        "徒步"
+      ],
+      "durationDays": 7
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "挑战",
+        "徒步"
+      ],
+      "hasConstraints": true
+    }
+  },
+  {
+    "name": "风险测试 - IS 低风险",
+    "description": "测试 Iceland 在低风险偏好下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "riskTolerance": "low",
+      "durationDays": 5
+    },
+    "expected": {
+      "minPoiCount": 8,
+      "hasRiskProfile": true
+    }
+  },
+  {
+    "name": "风险测试 - IS 高风险",
+    "description": "测试 Iceland 在高风险偏好下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "riskTolerance": "high",
+      "preferences": [
+        "挑战",
+        "冒险"
+      ],
+      "durationDays": 7
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "挑战",
+        "冒险"
+      ],
+      "hasRiskProfile": true
+    }
+  },
+  {
+    "name": "偏好测试 - IS 文化偏好",
+    "description": "测试 Iceland 在文化偏好下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "preferences": [
+        "文化",
+        "历史",
+        "博物馆"
+      ],
+      "durationDays": 5
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "文化",
+        "历史"
+      ],
+      "minPoiCount": 8
+    }
+  },
+  {
+    "name": "偏好测试 - IS 自然偏好",
+    "description": "测试 Iceland 在自然偏好下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "preferences": [
+        "自然",
+        "摄影",
+        "户外"
+      ],
+      "durationDays": 7
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "自然",
+        "摄影"
+      ],
+      "minPoiCount": 10
+    }
+  },
+  {
+    "name": "综合测试 - IS 多条件组合",
+    "description": "测试 Iceland 在多个条件组合下的选择",
+    "input": {
+      "countryCode": "IS",
+      "month": 7,
+      "preferences": [
+        "自然",
+        "摄影"
+      ],
+      "pace": "moderate",
+      "riskTolerance": "medium",
+      "durationDays": 7
+    },
+    "expected": {
+      "routeDirectionTags": [
+        "自然",
+        "摄影"
+      ],
+      "minPoiCount": 10,
+      "hasConstraints": true,
+      "hasRiskProfile": true
+    }
+  }
+]

@@ -78,6 +78,7 @@ export interface RouteDirectionExplanation {
     scoreBreakdown: ScoreBreakdown;
     matchedSignals: MatchedSignals;
     reasons: string[]; // 推荐理由
+    version?: string; // 版本号
   };
   alternatives: {
     top3: Array<{
@@ -85,8 +86,26 @@ export interface RouteDirectionExplanation {
       routeDirectionName: string;
       score: number;
       reasons: string[];
+      version?: string; // 版本号
     }>;
     rejected: RejectedReason[]; // Top 4-6 被淘汰的原因
+    deprecated?: Array<{
+      routeDirectionId: number;
+      routeDirectionName: string;
+      score: number;
+      reasons: string[];
+      status: 'deprecated';
+      version?: string; // 版本号
+    }>; // 备选曾经方案（deprecated 的 RD）
+  };
+  whyNotOthers?: {
+    topAlternative?: {
+      routeDirectionId: number;
+      routeDirectionName: string;
+      whyNot: string; // 为什么没有选择它
+      scoreDifference: number; // 分数差异
+    };
+    commonReasons?: string[]; // 其他路线被淘汰的常见原因
   };
 }
 

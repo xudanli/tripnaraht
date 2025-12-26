@@ -1,0 +1,221 @@
+{
+  "countryCode": "IS",
+  "countryName": "Iceland",
+  "countryNameCN": "冰岛",
+  "routeDirections": [
+    {
+      "name": "IS_CULTURAL_CITIES",
+      "nameCN": "冰岛城市文化之旅",
+      "nameEN": "Iceland Cultural Cities",
+      "description": "探索冰岛的主要城市和文化景点，适合初次到访的游客。",
+      "tags": [
+        "文化",
+        "城市",
+        "博物馆",
+        "历史"
+      ],
+      "regions": [
+        "IS_CAPITAL",
+        "IS_MAJOR_CITY_1"
+      ],
+      "entryHubs": [
+        "冰岛首都机场",
+        "冰岛主要城市"
+      ],
+      "seasonality": {
+        "bestMonths": [
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "avoidMonths": [
+          12,
+          1,
+          2
+        ]
+      },
+      "constraints": {
+        "soft": {
+          "maxDailyAscentM": 200,
+          "maxElevationM": 1000
+        }
+      },
+      "riskProfile": {
+        "altitudeSickness": false,
+        "roadClosure": false
+      },
+      "signaturePois": {
+        "types": [
+          "MUSEUM",
+          "HISTORIC_SITE",
+          "CITY_CENTER"
+        ]
+      },
+      "itinerarySkeleton": {
+        "dayThemes": [
+          "抵达适应",
+          "城市探索",
+          "文化体验",
+          "购物休闲",
+          "返程"
+        ],
+        "dailyPace": "MODERATE"
+      }
+    },
+    {
+      "name": "IS_NATURE_SCENIC",
+      "nameCN": "冰岛自然风光",
+      "nameEN": "Iceland Nature & Scenic",
+      "description": "探索冰岛的自然风光和户外景点，适合喜欢自然和摄影的游客。",
+      "tags": [
+        "自然",
+        "摄影",
+        "户外",
+        "风景"
+      ],
+      "regions": [
+        "IS_NATURE_REGION_1",
+        "IS_NATURE_REGION_2"
+      ],
+      "entryHubs": [
+        "冰岛主要城市",
+        "冰岛自然区域入口"
+      ],
+      "seasonality": {
+        "bestMonths": [
+          6,
+          7,
+          8,
+          9
+        ],
+        "avoidMonths": [
+          12,
+          1,
+          2,
+          3
+        ]
+      },
+      "constraints": {
+        "soft": {
+          "maxDailyAscentM": 500,
+          "maxElevationM": 2000
+        }
+      },
+      "riskProfile": {
+        "altitudeSickness": false,
+        "weatherWindow": true,
+        "weatherWindowMonths": [
+          6,
+          7,
+          8
+        ]
+      },
+      "signaturePois": {
+        "types": [
+          "VIEWPOINT",
+          "NATIONAL_PARK",
+          "SCENIC_ROUTE"
+        ]
+      },
+      "itinerarySkeleton": {
+        "dayThemes": [
+          "抵达",
+          "自然探索",
+          "摄影日",
+          "户外活动",
+          "返程"
+        ],
+        "dailyPace": "MODERATE"
+      }
+    },
+    {
+      "name": "IS_ADVENTURE_CHALLENGE",
+      "nameCN": "冰岛挑战之旅",
+      "nameEN": "Iceland Adventure Challenge",
+      "description": "冰岛的挑战性路线，适合喜欢冒险和挑战的游客。",
+      "tags": [
+        "挑战",
+        "徒步",
+        "冒险",
+        "户外"
+      ],
+      "regions": [
+        "IS_ADVENTURE_REGION_1",
+        "IS_ADVENTURE_REGION_2"
+      ],
+      "entryHubs": [
+        "冰岛挑战区域入口"
+      ],
+      "seasonality": {
+        "bestMonths": [
+          6,
+          7,
+          8
+        ],
+        "avoidMonths": [
+          12,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "constraints": {
+        "hard": {
+          "maxDailyRapidAscentM": 800,
+          "requiresPermit": false,
+          "requiresGuide": false
+        },
+        "soft": {
+          "maxDailyAscentM": 1000,
+          "maxElevationM": 3000
+        }
+      },
+      "riskProfile": {
+        "altitudeSickness": true,
+        "roadClosure": true,
+        "weatherWindow": true,
+        "weatherWindowMonths": [
+          6,
+          7,
+          8
+        ]
+      },
+      "signaturePois": {
+        "types": [
+          "MOUNTAIN_PASS",
+          "TRAIL",
+          "CHALLENGE_POINT"
+        ]
+      },
+      "itinerarySkeleton": {
+        "dayThemes": [
+          "抵达适应",
+          "挑战日1",
+          "挑战日2",
+          "恢复日",
+          "返程"
+        ],
+        "dailyPace": "INTENSE",
+        "restDaysRequired": [
+          3,
+          5
+        ]
+      }
+    }
+  ],
+  "regions": [
+    "IS_CAPITAL",
+    "IS_MAJOR_CITY_1",
+    "IS_NATURE_REGION_1",
+    "IS_NATURE_REGION_2",
+    "IS_ADVENTURE_REGION_1",
+    "IS_ADVENTURE_REGION_2"
+  ],
+  "policy": {
+    "defaultPace": "BALANCED",
+    "defaultRiskTolerance": "medium"
+  }
+}

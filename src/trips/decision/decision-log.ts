@@ -73,5 +73,39 @@ export interface DecisionRunLog {
 
   // quick explain to UI
   explanation?: string;
+
+  // RouteDirection selection info (for E2E testing and observability)
+  routeDirection?: {
+    selected: {
+      id: number;
+      uuid?: string;
+      name?: string;
+      nameCN?: string;
+    };
+    scoreBreakdown?: {
+      tagMatch?: {
+        score: number;
+        matchedTags?: string[];
+      };
+      seasonMatch?: {
+        score: number;
+        month?: number;
+        bestMonths?: number[];
+      };
+      paceMatch?: {
+        score: number;
+        userPace?: string;
+        routePace?: string;
+      };
+      riskMatch?: {
+        score: number;
+        userRiskTolerance?: string;
+        routeRiskLevel?: string;
+      };
+      totalScore?: number;
+    };
+    constraints?: Record<string, any>;
+    matchedSignals?: Record<string, any>;
+  };
 }
 

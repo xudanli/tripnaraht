@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsObject,
   IsBoolean,
+  IsNumber,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -75,5 +76,26 @@ export class CreateRouteDirectionDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // 灰度与开关字段
+  @IsOptional()
+  @IsString()
+  status?: 'draft' | 'active' | 'deprecated';
+
+  @IsOptional()
+  @IsString()
+  version?: string;
+
+  @IsOptional()
+  @IsNumber()
+  rolloutPercent?: number;
+
+  @IsOptional()
+  @IsObject()
+  audienceFilter?: {
+    persona?: string[];
+    locale?: string[];
+    [key: string]: any;
+  };
 }
 

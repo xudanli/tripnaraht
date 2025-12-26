@@ -28,6 +28,7 @@ import { ReadinessModule } from '../readiness/readiness.module';
 import { PlacesModule } from '../../places/places.module';
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
+import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 
 @Module({
   imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule],
@@ -49,6 +50,7 @@ import { PoiFeaturesAdapterService } from './services/poi-features-adapter.servi
     BatchProcessingService,
     MonitoringService,
     PoiFeaturesAdapterService,
+    DEMDailyEnergyService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -66,6 +68,7 @@ import { PoiFeaturesAdapterService } from './services/poi-features-adapter.servi
     BatchProcessingService,
     MonitoringService,
     PoiFeaturesAdapterService,
+    DEMDailyEnergyService,
   ],
 })
 export class DecisionModule {}

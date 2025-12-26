@@ -32,6 +32,19 @@ export interface PlanDay {
   day: number;
   date: ISODate;
   timeSlots: PlanSlot[];
+  // Terrain facts for the day (at least maxElevation/totalAscent for E2E testing)
+  terrainFacts?: {
+    maxElevation?: number; // 最高海拔（米）
+    totalAscent?: number;   // 累计爬升（米）
+    minElevation?: number; // 最低海拔（米）
+    totalDescent?: number; // 累计下降（米）
+    effortLevel?: 'RELAX' | 'MODERATE' | 'CHALLENGE' | 'EXTREME';
+    riskFlags?: Array<{
+      type: string;
+      severity: 'LOW' | 'MEDIUM' | 'HIGH';
+      message: string;
+    }>;
+  };
 }
 
 export interface TripPlan {

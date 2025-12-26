@@ -11,56 +11,36 @@ datasource db {
 
 model City {
   id          Int                       @id @default(autoincrement())
-  name        String // 本地名称（主名称）
-  nameCN      String? // 中文名称
-  nameEN      String? // 英文名称
-  countryCode String // ISO 3166-1 alpha-2
-  location    Unsupported("geography")? // PostGIS Point（经纬度）
-  timezone    String? // 时区（如 "Asia/Shanghai", "America/New_York"）
-  adcode      String? // 行政区划代码（主要用于中国城市）
-  metadata    Json? // 扩展信息（行政区划、外部ID、其他语言名称等）
-  places      Place[]
+  name        String
+  countryCode String
+  adcode      String?
+  nameCN      String?
+  nameEN      String?
+  location    Unsupported("geography")?
+  timezone    String?
+  metadata    Json?
+  Place       Place[]
 
   @@index([countryCode])
-  @@index([name])
   @@index([nameCN])
   @@index([nameEN])
+  @@index([name])
 }
 
-/// 国家档案表
-/// 
-/// 字段分类：
-/// 🌍 通用字段：适用于所有国家用户（isoCode, currencyCode, paymentType, powerInfo, emergency等）
-/// 🇨🇳 中国特定字段：仅对中国用户有意义（visaForCN, exchangeRateToCNY）
-/// 
-/// 国际化扩展建议：
-/// - 添加 nameEN 字段支持英文名称
-/// - exchangeRateToCNY 可扩展为 exchangeRateToUSD（国际标准基准）
-/// - visaForCN 可扩展为 VisaPolicy 表支持多国家组合
 model CountryProfile {
-  // ========== 🌍 通用字段 ==========
-  isoCode String  @id @unique // 国家代码（ISO 3166-1 alpha-2）
-  nameCN  String // 中文名称（主要显示）
-  nameEN  String? // 英文名称（用于国际化）
-
-  // 货币信息（通用）
-  currencyCode String? // 货币代码（ISO 4217）
-  currencyName String? // 货币名称
-  paymentType  PaymentType? // 支付画像（CASH_HEAVY, BALANCED, DIGITAL_ONLY）
-  paymentInfo  Json? // 支付实用建议（小费、ATM、钱包App等）
-
-  // 实用信息（通用）
-  powerInfo Json? // 插座信息（电压、频率、插座类型）
-  emergency Json? // 紧急电话（报警、火警、医疗）
-
-  // ========== 🇨🇳 中国特定字段 ==========
-  exchangeRateToCNY Float? // 🇨🇳 汇率（1 外币 = 多少 CNY）- 仅对中国用户
-  visaForCN         Json? // 🇨🇳 针对中国公民的签证政策（status, requirement, allowedStay, notes）
-
-  // ========== 🌍 国际化扩展字段 ==========
-  exchangeRateToUSD Float? // 🌍 汇率（1 外币 = 多少 USD）- 国际标准基准，适用于所有用户
-
-  updatedAt DateTime
+  isoCode           String       @id @unique
+  nameCN            String
+  powerInfo         Json?
+  emergency         Json?
+  paymentInfo       Json?
+  visaForCN         Json?
+  updatedAt         DateTime
+  currencyCode      String?
+  currencyName      String?
+  exchangeRateToCNY Float?
+  paymentType       PaymentType?
+  exchangeRateToUSD Float?
+  nameEN            String?
 }
 
 model DayOfWeekFactor {
@@ -129,184 +109,645 @@ model FlightPriceReference {
   @@index([countryCode, originCity])
 }
 
-model ItineraryItem {
-  id        String    @id
-  startTime DateTime?
-  endTime   DateTime?
-  type      ItemType
-  placeId   Int?
-  trailId   Int? // 新增：徒步路线ID
-  tripDayId String
-  note      String?
-  place     Place?    @relation(fields: [placeId], references: [id])
-  trail     Trail?    @relation(fields: [trailId], references: [id])
-  tripDay   TripDay   @relation(fields: [tripDayId], references: [id])
-  railSegment RailSegment? // Rail Segment（如果是 rail transport）
+model HotelPriceDetail {
+  city        String   @id
+  avgPrice    Float?
+  medianPrice Float?
+  cityFactor  Float?
+  sampleCount Int      @default(0)
+  minPrice    Float?
+  maxPrice    Float?
+  stdDev      Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([city])
 }
 
+model HotelWideData_Quarterly {
+  id         Int     @id @default(autoincrement())
+  city       String?
+  starRating Int?
+  Q1         Float?  @map("2018_Q1")
+  Q2         Float?  @map("2018_Q2")
+  Q3         Float?  @map("2018_Q3")
+  Q4         Float?  @map("2018_Q4")
+  Q1         Float?  @map("2019_Q1")
+  Q2         Float?  @map("2019_Q2")
+  Q3         Float?  @map("2019_Q3")
+  Q4         Float?  @map("2019_Q4")
+  Q1         Float?  @map("2020_Q1")
+  Q2         Float?  @map("2020_Q2")
+  Q3         Float?  @map("2020_Q3")
+  Q4         Float?  @map("2020_Q4")
+  Q1         Float?  @map("2021_Q1")
+  Q2         Float?  @map("2021_Q2")
+  Q3         Float?  @map("2021_Q3")
+  Q4         Float?  @map("2021_Q4")
+  Q1         Float?  @map("2022_Q1")
+  Q2         Float?  @map("2022_Q2")
+  Q3         Float?  @map("2022_Q3")
+  Q4         Float?  @map("2022_Q4")
+  Q1         Float?  @map("2023_Q1")
+  Q2         Float?  @map("2023_Q2")
+  Q3         Float?  @map("2023_Q3")
+  Q4         Float?  @map("2023_Q4")
+  Q1         Float?  @map("2024_Q1")
+
+  @@index([city])
+  @@index([city, starRating])
+  @@index([starRating])
+}
+
+model ItineraryItem {
+  id          String       @id
+  startTime   DateTime?
+  endTime     DateTime?
+  type        ItemType
+  placeId     Int?
+  tripDayId   String
+  note        String?
+  trailId     Int?
+  Place       Place?       @relation(fields: [placeId], references: [id])
+  Trail       Trail?       @relation(fields: [trailId], references: [id])
+  TripDay     TripDay      @relation(fields: [tripDayId], references: [id])
+  RailSegment RailSegment?
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model Place {
-  id               Int                       @id @default(autoincrement())
-  uuid             String                    @unique
-  nameCN           String // 中文名称（主要显示）
-  nameEN           String? // 英文名称（用于国际化）
-  category         PlaceCategory
-  location         Unsupported("geography")?
-  address          String?
-  cityId           Int?
-  metadata         Json?
-  physicalMetadata Json?
-  googlePlaceId    String?                   @unique
-  rating           Float?                    @default(0)
-  embedding        Unsupported("vector(1536)")? // 向量表示，用于语义搜索
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime
-  itineraryItems   ItineraryItem[]
-  city             City?                     @relation(fields: [cityId], references: [id])
-  // 新增：徒步路线关联
-  trailsAsStart    Trail[]                   @relation("TrailStartPlace")
-  trailsAsEnd      Trail[]                   @relation("TrailEndPlace")
-  trailWaypoints   TrailWaypoint[]
+  id                              Int                       @id @default(autoincrement())
+  uuid                            String                    @unique
+  nameEN                          String?
+  category                        PlaceCategory
+  location                        Unsupported("geography")?
+  address                         String?
+  cityId                          Int?
+  metadata                        Json?
+  physicalMetadata                Json?
+  googlePlaceId                   String?                   @unique
+  rating                          Float?                    @default(0)
+  createdAt                       DateTime                  @default(now())
+  updatedAt                       DateTime
+  nameCN                          String
+  embedding                       Unsupported("vector")?
+  ItineraryItem                   ItineraryItem[]
+  City                            City?                     @relation(fields: [cityId], references: [id])
+  Trail_Trail_endPlaceIdToPlace   Trail[]                   @relation("Trail_endPlaceIdToPlace")
+  Trail_Trail_startPlaceIdToPlace Trail[]                   @relation("Trail_startPlaceIdToPlace")
+  TrailWaypoint                   TrailWaypoint[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
 }
 
+model RailPassProfile {
+  id                      String            @id
+  tripId                  String            @unique
+  residencyCountry        String
+  passFamily              String
+  passType                String
+  validityType            String
+  travelDaysTotal         Int?
+  homeCountryOutboundUsed Int               @default(0)
+  homeCountryInboundUsed  Int               @default(0)
+  class                   String
+  mobileOrPaper           String
+  validityStartDate       DateTime
+  validityEndDate         DateTime
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime
+  Trip                    Trip              @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  RailSegment             RailSegment[]
+  ReservationTask         ReservationTask[]
+
+  @@index([tripId])
+}
+
+model RailSegment {
+  id                  String            @id
+  railPassProfileId   String
+  itineraryItemId     String?           @unique
+  fromPlaceId         Int
+  toPlaceId           Int
+  fromCountryCode     String
+  toCountryCode       String
+  departureDate       DateTime
+  departureTimeWindow Json?
+  arrivalDeadline     DateTime?
+  operatorHint        String?
+  isNightTrain        Boolean           @default(false)
+  isHighSpeed         Boolean           @default(false)
+  isInternational     Boolean           @default(false)
+  crossesMidnight     Boolean           @default(false)
+  t_api               Int?
+  t_robust            Int?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime
+  ItineraryItem       ItineraryItem?    @relation(fields: [itineraryItemId], references: [id])
+  RailPassProfile     RailPassProfile   @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
+  ReservationTask     ReservationTask[]
+
+  @@index([departureDate])
+  @@index([itineraryItemId])
+  @@index([railPassProfileId])
+}
+
+model RawAttractionData {
+  id             Int      @id @default(autoincrement())
+  name           String
+  level          String?
+  address        String?
+  province       String?
+  publishDate    String?
+  documentUrl    String?
+  encodedAddress String?
+  lng            Float?
+  lat            Float?
+  importedAt     DateTime @default(now())
+  processed      Boolean  @default(false)
+
+  @@index([level])
+  @@index([processed])
+  @@index([province])
+  @@index([province, level])
+}
+
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model RawFlightData {
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 出发城市 String? @map("出发城市") @db.VarChar(50)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 到达城市 String? @map("到达城市") @db.VarChar(50)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 里程公里 Decimal? @map("里程公里") @db.Decimal
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 航班班次 String? @map("航班班次") @db.VarChar(20)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 航空公司 String? @map("航空公司") @db.VarChar(50)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 起飞机场 String? @map("起飞机场") @db.VarChar(100)
-  originAirportY      Decimal? @map("起飞机场y") @db.Decimal
-  originAirportX      Decimal? @map("起飞机场x") @db.Decimal
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 降落机场 String? @map("降落机场") @db.VarChar(100)
-  destinationAirportY Decimal? @map("降落机场y") @db.Decimal
-  destinationAirportX Decimal? @map("降落机场x") @db.Decimal
+  y Decimal? @map("起飞机场y") @db.Decimal
+  x Decimal? @map("起飞机场x") @db.Decimal
+  y Decimal? @map("降落机场y") @db.Decimal
+  x Decimal? @map("降落机场x") @db.Decimal
 
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 起飞时间 DateTime? @map("起飞时间") @db.Time(6)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 降落时间 DateTime? @map("降落时间") @db.Time(6)
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 日期 DateTime? @map("日期") @db.Date
-  /// This field was commented out because of an invalid name. Please provide a valid one that matches [a-zA-Z][a-zA-Z0-9_]*
-  // 价格元 Int? @map("价格元")
   @@ignore
 }
 
-model Trip {
-  id            String             @id
-  destination   String
-  startDate     DateTime
-  endDate       DateTime
-  budgetConfig  Json?
-  pacingConfig  Json?
-  metadata      Json? // 扩展信息（分享链接、离线数据包等）
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime
-  days          TripDay[]
-  collaborators TripCollaborator[]
-  shares        TripShare[]
-  collections   TripCollection[]
-  likes         TripLike[]
-  railPassProfile RailPassProfile? // RailPass 配置（可选）
+model RawHotelData_Slim {
+  id       String  @id
+  name     String?
+  brand    String?
+  address  String?
+  city     String?
+  district String?
+  lat      Float?
+  lng      Float?
+  phone    String?
+  type     String?
+  adcode   String?
+
+  @@index([brand])
+  @@index([city, brand])
+  @@index([city, district])
+  @@index([city])
 }
 
-model TripDay {
-  id     String          @id
-  date   DateTime
-  tripId String
-  items  ItineraryItem[]
-  trip   Trip            @relation(fields: [tripId], references: [id])
+model RawTrainStationData {
+  id            Int      @id @default(autoincrement())
+  name          String
+  address       String?
+  railwayBureau String?
+  category      String?
+  nature        String?
+  province      String?
+  city          String?
+  wgs84Lng      Float?
+  wgs84Lat      Float?
+  importedAt    DateTime @default(now())
+  processed     Boolean  @default(false)
+
+  @@index([city])
+  @@index([nature])
+  @@index([processed])
+  @@index([province, city])
+  @@index([province])
+  @@index([railwayBureau])
 }
 
-/**
- * 徒步路线表
- * 存储徒步路线的完整信息，包括GPX轨迹、难度评估等
- */
+model ReadinessPack {
+  id             String   @id
+  packId         String   @unique
+  destinationId  String
+  displayName    String
+  version        String
+  lastReviewedAt DateTime
+  countryCode    String
+  region         String?
+  city           String?
+  latitude       Float?
+  longitude      Float?
+  packData       Json
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+
+  @@index([countryCode])
+  @@index([countryCode, isActive])
+  @@index([destinationId])
+  @@index([isActive])
+  @@index([packId])
+}
+
+model ReservationTask {
+  id                String          @id
+  segmentId         String
+  railPassProfileId String
+  status            String
+  bookingRef        String?
+  cost              Float?
+  failReason        String?
+  fallbackPlanId    String?
+  travelDay         DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime
+  RailPassProfile   RailPassProfile @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
+  RailSegment       RailSegment     @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([railPassProfileId])
+  @@index([segmentId])
+  @@index([status])
+  @@index([travelDay])
+}
+
+model RouteDirection {
+  id                Int                       @id @default(autoincrement())
+  uuid              String
+  countryCode       String
+  name              String
+  nameCN            String
+  nameEN            String?
+  description       String?
+  tags              String[]
+  corridorGeom      Unsupported("geography")?
+  regions           String[]
+  entryHubs         String[]
+  seasonality       Json?
+  constraints       Json?
+  riskProfile       Json?
+  signaturePois     Json?
+  itinerarySkeleton Json?
+  metadata          Json?
+  isActive          Boolean                   @default(true)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime
+  status            String?                   @default("active")
+  version           String?
+  rolloutPercent    Int?                      @default(100)
+  audienceFilter    Json?
+
+  @@index([status], map: "route_direction_status_idx")
+}
+
+model StarCityPriceDetail {
+  city           String
+  starRating     Int
+  avgPrice       Float?
+  cityStarFactor Float?
+  sampleCount    Int      @default(0)
+  minPrice       Float?
+  maxPrice       Float?
+  stdDev         Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@id([city, starRating])
+  @@index([city])
+  @@index([city, starRating])
+  @@index([starRating])
+}
+
 model Trail {
-  id          Int     @id @default(autoincrement())
-  uuid        String  @unique
-  nameCN      String // 中文名称（主要显示）
-  nameEN      String? // 英文名称
-  description String? // 路线描述
+  id                              Int             @id @default(autoincrement())
+  uuid                            String          @unique
+  nameCN                          String
+  nameEN                          String?
+  description                     String?
+  distanceKm                      Float?
+  elevationGainM                  Float?
+  elevationLossM                  Float?
+  maxElevationM                   Float?
+  minElevationM                   Float?
+  averageSlope                    Float?
+  difficultyLevel                 String?
+  equivalentDistanceKm            Float?
+  fatigueScore                    Float?
+  gpxData                         Json?
+  gpxFileUrl                      String?
+  bounds                          Json?
+  startPlaceId                    Int?
+  endPlaceId                      Int?
+  metadata                        Json?
+  source                          String?
+  sourceUrl                       String?
+  rating                          Float?
+  estimatedDurationHours          Float?
+  createdAt                       DateTime        @default(now())
+  updatedAt                       DateTime
+  ItineraryItem                   ItineraryItem[]
+  Place_Trail_endPlaceIdToPlace   Place?          @relation("Trail_endPlaceIdToPlace", fields: [endPlaceId], references: [id])
+  Place_Trail_startPlaceIdToPlace Place?          @relation("Trail_startPlaceIdToPlace", fields: [startPlaceId], references: [id])
+  TrailWaypoint                   TrailWaypoint[]
 
-  // 路线基本信息
-  distanceKm     Float? // 总距离（公里）
-  elevationGainM Float? // 累计爬升（米）
-  elevationLossM Float? // 累计下降（米）
-  maxElevationM  Float? // 最高海拔（米）
-  minElevationM  Float? // 最低海拔（米）
-  averageSlope   Float? // 平均坡度（%）
-
-  // 难度评估
-  difficultyLevel      String? // EXTREME, HARD, MODERATE, EASY
-  equivalentDistanceKm Float? // 等效距离（公里）
-  fatigueScore         Float? // 疲劳评分
-
-  // 轨迹数据
-  gpxData    Json? // GPX轨迹数据（JSON格式，包含坐标点数组）
-  gpxFileUrl String? // GPX文件URL（如果存储在外部）
-  bounds     Json? // 边界框 {minlat, minlon, maxlat, maxlon}
-
-  // 关联的Place
-  startPlaceId Int? // 起点Place ID
-  endPlaceId   Int? // 终点Place ID
-  startPlace   Place? @relation("TrailStartPlace", fields: [startPlaceId], references: [id])
-  endPlace     Place? @relation("TrailEndPlace", fields: [endPlaceId], references: [id])
-
-  // 途经点（多对多关系）
-  waypoints TrailWaypoint[]
-
-  // 元数据
-  metadata  Json? // 扩展信息（来源、评分、注意事项等）
-  source    String? // 数据来源（alltrails, gpx, manual等）
-  sourceUrl String? // 来源链接
-  rating    Float? // 评分
-
-  // 时间估算
-  estimatedDurationHours Float? // 预计耗时（小时）
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关联
-  itineraryItems ItineraryItem[]
-
-  @@index([startPlaceId])
-  @@index([endPlaceId])
   @@index([difficultyLevel])
+  @@index([endPlaceId])
   @@index([source])
+  @@index([startPlaceId])
 }
 
-/**
- * 徒步路线途经点表
- * 存储路线的途经点（中间点）
- */
 model TrailWaypoint {
   id      Int     @id @default(autoincrement())
   trailId Int
   placeId Int
-  order   Int // 途经点顺序（从起点到终点，从0开始）
-  note    String? // 途经点备注
-
-  trail Trail @relation(fields: [trailId], references: [id], onDelete: Cascade)
-  place Place @relation(fields: [placeId], references: [id])
+  order   Int
+  note    String?
+  Place   Place   @relation(fields: [placeId], references: [id])
+  Trail   Trail   @relation(fields: [trailId], references: [id], onDelete: Cascade)
 
   @@unique([trailId, placeId])
-  @@index([trailId])
   @@index([placeId])
+  @@index([trailId])
 }
 
-/// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.
+model Trip {
+  id               String             @id
+  destination      String
+  startDate        DateTime
+  endDate          DateTime
+  budgetConfig     Json?
+  pacingConfig     Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  metadata         Json?
+  RailPassProfile  RailPassProfile?
+  TripCollaborator TripCollaborator[]
+  TripCollection   TripCollection[]
+  TripDay          TripDay[]
+  TripLike         TripLike[]
+  TripShare        TripShare[]
+}
+
+model TripCollaborator {
+  id        String   @id
+  tripId    String
+  userId    String
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+model TripCollection {
+  id        String   @id
+  tripId    String
+  userId    String
+  createdAt DateTime @default(now())
+  Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+model TripDay {
+  id            String          @id
+  date          DateTime
+  tripId        String
+  ItineraryItem ItineraryItem[]
+  Trip          Trip            @relation(fields: [tripId], references: [id])
+}
+
+model TripLike {
+  id        String   @id
+  tripId    String
+  userId    String
+  createdAt DateTime @default(now())
+  Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+}
+
+model TripOfflinePack {
+  id        String   @id
+  tripId    String   @unique
+  data      Json
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([tripId])
+}
+
+model TripShare {
+  id         String    @id
+  tripId     String
+  shareToken String    @unique
+  permission String    @default("VIEW")
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime
+  Trip       Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([shareToken])
+  @@index([tripId])
+}
+
+model TripTemplate {
+  id          String   @id
+  name        String
+  nameCN      String?
+  description String?
+  theme       String
+  destination String?
+  config      Json
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([destination])
+  @@index([isPublic])
+  @@index([theme])
+}
+
+model UserProfile {
+  userId      String   @id
+  preferences Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([userId])
+}
+
+model geo_airlines {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_coastlines {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_country {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model geo_dem_cities_merged {
+  rid      Int?
+  rast     Unsupported("raster")?
+  filename String?
+
+  @@index([filename])
+  @@ignore
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model geo_dem_global {
+  rid      Int                    @id @default(autoincrement())
+  rast     Unsupported("raster")?
+  filename String?
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model geo_dem_global_tid {
+  rid      Int                    @id @default(autoincrement())
+  rast     Unsupported("raster")?
+  filename String?
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model geo_dem_xizang {
+  rid      Int                    @id @default(autoincrement())
+  rast     Unsupported("raster")?
+  filename String?
+}
+
+model geo_mountains_standard {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_mountains_standard_300 {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_ports {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_railways {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_rivers_line {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_roads {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+model geo_water_poly {
+  gid        Int                      @id @default(autoincrement())
+  geom       Unsupported("geometry")?
+  properties Json?
+
+  @@index([geom], type: Gist)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model poi_canonical {
+  poi_id        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source        String                   @default("OSM") @db.VarChar(50)
+  source_key    String                   @db.VarChar(100)
+  name_default  String?                  @db.VarChar(500)
+  name_i18n     Json?
+  category      String                   @db.VarChar(50)
+  lat           Float
+  lng           Float
+  geom          Unsupported("geometry")?
+  address       String?
+  opening_hours String?                  @db.VarChar(200)
+  phone         String?                  @db.VarChar(50)
+  website       String?                  @db.VarChar(500)
+  tags_slim     Json?
+  fetched_at    DateTime?                @default(now()) @db.Timestamp(6)
+  created_at    DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?                @default(now()) @db.Timestamp(6)
+  region_key    String?                  @db.VarChar(50)
+  region_name   String?                  @db.VarChar(100)
+  region_center Json?
+  altitude_hint Int?
+
+  @@unique([source, source_key])
+  @@index([category])
+  @@index([geom], type: Gist)
+  @@index([region_key])
+  @@index([tags_slim], type: Gin)
+}
+
+model poi_osm_raw {
+  id            Int                      @id @default(autoincrement())
+  osm_type      String                   @db.VarChar(10)
+  osm_id        BigInt
+  geom          Unsupported("geometry")?
+  tags          Json
+  version       Int?
+  timestamp     DateTime?                @db.Timestamp(6)
+  created_at    DateTime?                @default(now()) @db.Timestamp(6)
+  region_key    String?                  @db.VarChar(50)
+  region_name   String?                  @db.VarChar(100)
+  region_center Json?
+
+  @@unique([osm_type, osm_id])
+  @@index([geom], type: Gist)
+  @@index([region_key])
+  @@index([tags], type: Gin)
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model postgres_log {
@@ -369,603 +810,4 @@ enum PlaceCategory {
   SHOPPING
   HOTEL
   TRANSIT_HUB
-}
-
-/**
- * 原始酒店基本信息表
- * 包含酒店的基本信息：名称、品牌、地址、位置等
- * 数据来源：hotel_basic_info.csv
- * 字段：id, name, brand, address, city, district, lat, lng, phone, type, adcode
- */
-model RawHotelData_Slim {
-  id       String  @id // 酒店ID，如 "B0K1PZBE68"
-  name     String? // 酒店名称，如 "桔子酒店(洛阳龙门站店)"
-  brand    String? // 品牌，如 "桔子"
-  address  String? // 地址，如 "通衢路与厚载门街交叉口西南角新唐街3号楼"
-  city     String? // 城市，如 "洛阳市"
-  district String? // 区县，如 "洛龙区"
-  lat      Float? // 纬度，如 34.596104
-  lng      Float? // 经度，如 112.46321
-  phone    String? // 电话，如 "0379-63168888;18603798508"
-  type     String? // 类型，如 "住宿服务;宾馆酒店;宾馆酒店"
-  adcode   String? // 行政区划代码，如 "410300"
-
-  @@index([city])
-  @@index([brand])
-  @@index([city, brand])
-  @@index([city, district])
-}
-
-/**
- * 酒店季度价格数据表（宽表格式）
- * 按城市、星级、季度存储价格数据
- * 季度字段：2018_Q1 到 2024_Q1
- */
-model HotelWideData_Quarterly {
-  id         Int     @id @default(autoincrement())
-  city       String?
-  starRating Int?
-  /// 2018年第一季度价格
-  /// @map("2018_Q1")
-  q2018_Q1   Float?  @map("2018_Q1")
-  /// 2018年第二季度价格
-  /// @map("2018_Q2")
-  q2018_Q2   Float?  @map("2018_Q2")
-  /// 2018年第三季度价格
-  /// @map("2018_Q3")
-  q2018_Q3   Float?  @map("2018_Q3")
-  /// 2018年第四季度价格
-  /// @map("2018_Q4")
-  q2018_Q4   Float?  @map("2018_Q4")
-  /// 2019年第一季度价格
-  /// @map("2019_Q1")
-  q2019_Q1   Float?  @map("2019_Q1")
-  /// 2019年第二季度价格
-  /// @map("2019_Q2")
-  q2019_Q2   Float?  @map("2019_Q2")
-  /// 2019年第三季度价格
-  /// @map("2019_Q3")
-  q2019_Q3   Float?  @map("2019_Q3")
-  /// 2019年第四季度价格
-  /// @map("2019_Q4")
-  q2019_Q4   Float?  @map("2019_Q4")
-  /// 2020年第一季度价格
-  /// @map("2020_Q1")
-  q2020_Q1   Float?  @map("2020_Q1")
-  /// 2020年第二季度价格
-  /// @map("2020_Q2")
-  q2020_Q2   Float?  @map("2020_Q2")
-  /// 2020年第三季度价格
-  /// @map("2020_Q3")
-  q2020_Q3   Float?  @map("2020_Q3")
-  /// 2020年第四季度价格
-  /// @map("2020_Q4")
-  q2020_Q4   Float?  @map("2020_Q4")
-  /// 2021年第一季度价格
-  /// @map("2021_Q1")
-  q2021_Q1   Float?  @map("2021_Q1")
-  /// 2021年第二季度价格
-  /// @map("2021_Q2")
-  q2021_Q2   Float?  @map("2021_Q2")
-  /// 2021年第三季度价格
-  /// @map("2021_Q3")
-  q2021_Q3   Float?  @map("2021_Q3")
-  /// 2021年第四季度价格
-  /// @map("2021_Q4")
-  q2021_Q4   Float?  @map("2021_Q4")
-  /// 2022年第一季度价格
-  /// @map("2022_Q1")
-  q2022_Q1   Float?  @map("2022_Q1")
-  /// 2022年第二季度价格
-  /// @map("2022_Q2")
-  q2022_Q2   Float?  @map("2022_Q2")
-  /// 2022年第三季度价格
-  /// @map("2022_Q3")
-  q2022_Q3   Float?  @map("2022_Q3")
-  /// 2022年第四季度价格
-  /// @map("2022_Q4")
-  q2022_Q4   Float?  @map("2022_Q4")
-  /// 2023年第一季度价格
-  /// @map("2023_Q1")
-  q2023_Q1   Float?  @map("2023_Q1")
-  /// 2023年第二季度价格
-  /// @map("2023_Q2")
-  q2023_Q2   Float?  @map("2023_Q2")
-  /// 2023年第三季度价格
-  /// @map("2023_Q3")
-  q2023_Q3   Float?  @map("2023_Q3")
-  /// 2023年第四季度价格
-  /// @map("2023_Q4")
-  q2023_Q4   Float?  @map("2023_Q4")
-  /// 2024年第一季度价格
-  /// @map("2024_Q1")
-  q2024_Q1   Float?  @map("2024_Q1")
-
-  @@index([city])
-  @@index([starRating])
-  @@index([city, starRating])
-}
-
-/**
- * 原始景点数据表
- * 存储从外部数据源导入的景点基础信息
- * 数据来源：中国景点数据 CSV 文件
- * 字段说明：
- * - name: 景区名称
- * - level: 等级（如 5A, 4A 等）
- * - address: 详细地址
- * - province: 省级行政区
- * - publishDate: 相关文件发布时间
- * - documentUrl: 文件网址链接
- * - encodedAddress: 编码地址（完整地址字符串）
- * - lng: 经度（WGS84）
- * - lat: 纬度（WGS84）
- */
-model RawAttractionData {
-  id             Int      @id @default(autoincrement())
-  name           String // 景区名称
-  level          String? // 等级（5A, 4A, 3A 等）
-  address        String? // 地址
-  province       String? // 省级行政区
-  publishDate    String? // 相关文件发布时间（如 2025.04.15）
-  documentUrl    String? // 文件网址链接
-  encodedAddress String? // 编码地址
-  lng            Float? // 经度（WGS84）
-  lat            Float? // 纬度（WGS84）
-  importedAt     DateTime @default(now()) // 导入时间
-  processed      Boolean  @default(false) // 是否已处理（转换为 Place）
-
-  @@index([province])
-  @@index([level])
-  @@index([province, level])
-  @@index([processed])
-}
-
-/**
- * 原始火车站数据表
- * 存储从外部数据源导入的火车站基础信息
- * 数据来源：全国火车站数据 CSV 文件
- * 字段说明：
- * - name: 站名
- * - address: 车站地址
- * - railwayBureau: 铁路局
- * - category: 类别
- * - nature: 性质（客运站、货运站等）
- * - province: 省
- * - city: 市
- * - wgs84Lng: 经度（WGS84）
- * - wgs84Lat: 纬度（WGS84）
- */
-model RawTrainStationData {
-  id            Int      @id @default(autoincrement())
-  name          String // 站名
-  address       String? // 车站地址
-  railwayBureau String? // 铁路局
-  category      String? // 类别
-  nature        String? // 性质（客运站、货运站等）
-  province      String? // 省
-  city          String? // 市
-  wgs84Lng      Float? // 经度（WGS84）
-  wgs84Lat      Float? // 纬度（WGS84）
-  importedAt    DateTime @default(now()) // 导入时间
-  processed     Boolean  @default(false) // 是否已处理（转换为 Place）
-
-  @@index([province])
-  @@index([city])
-  @@index([province, city])
-  @@index([railwayBureau])
-  @@index([nature])
-  @@index([processed])
-}
-
-/**
- * 酒店价格查找表（城市维度）
- * 从 HotelWideData_Quarterly 聚合生成
- * 包含每个城市的基础价格统计信息
- */
-model HotelPriceDetail {
-  city        String   @id
-  avgPrice    Float? // 平均价格
-  medianPrice Float? // 中位数价格（主要使用）
-  cityFactor  Float? // 城市因子（相对于全国平均价的倍数）
-  sampleCount Int      @default(0) // 样本数量
-  minPrice    Float? // 最低价格
-  maxPrice    Float? // 最高价格
-  stdDev      Float? // 标准差
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
-
-  @@index([city])
-}
-
-/**
- * 旅行准备度 Pack 表
- * 存储目的地的准备度检查规则包（Readiness Pack）
- * 支持版本管理和动态更新
- */
-model ReadinessPack {
-  id              String   @id @default(uuid()) // UUID 主键
-  packId          String   @unique // 唯一标识符，格式：pack.{country}.{region}.{city}
-  destinationId   String   // 目的地标识，格式：{COUNTRY}-{REGION}-{CITY}
-  displayName     String   // 显示名称
-  version         String   // 语义化版本号，如 "1.0.0"
-  lastReviewedAt DateTime // 最后审核时间（ISO datetime）
-  
-  // 地理信息
-  countryCode String  // ISO 3166-1 alpha-2
-  region      String? // 地区/州/省
-  city        String? // 城市
-  latitude    Float?  // 纬度
-  longitude   Float?  // 经度
-  
-  // Pack 内容（JSON 存储完整 Pack 数据）
-  packData Json // 完整的 ReadinessPack JSON 数据
-  
-  // 元数据
-  isActive    Boolean  @default(true) // 是否激活
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([packId])
-  @@index([destinationId])
-  @@index([countryCode])
-  @@index([isActive])
-  @@index([countryCode, isActive])
-}
-
-/**
- * 城市-星级价格查找表（质量维度）
- * 从 HotelWideData_Quarterly 聚合生成
- * 包含每个城市-星级组合的价格统计和质量调整因子
- */
-model StarCityPriceDetail {
-  city           String
-  starRating     Int
-  avgPrice       Float? // 该城市-星级的平均价格
-  cityStarFactor Float? // 城市-星级因子（相对于该城市平均价的倍数）
-  sampleCount    Int      @default(0) // 样本数量
-  minPrice       Float? // 最低价格
-  maxPrice       Float? // 最高价格
-  stdDev         Float? // 标准差
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
-
-  @@id([city, starRating])
-  @@index([city])
-  @@index([starRating])
-  @@index([city, starRating])
-}
-
-/// 用户画像表
-/// 存储用户的长期偏好信息（景点偏好、饮食禁忌、出行偏好等）
-model UserProfile {
-  userId      String   @id // 用户ID（可以是外部系统的用户ID）
-  preferences Json? // 用户偏好（景点类型、饮食禁忌、是否偏好小众景点等）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([userId])
-}
-
-/// 行程模板表
-/// 存储不同主题的行程模板（如亲子游、特种兵旅游、休闲度假）
-model TripTemplate {
-  id          String   @id @default(uuid())
-  name        String // 模板名称
-  nameCN      String? // 中文名称
-  description String? // 模板描述
-  theme       String // 主题（FAMILY, BACKPACKER, LEISURE, BUSINESS 等）
-  destination String? // 推荐目的地（国家代码）
-  config      Json // 模板配置（budgetConfig, pacingConfig 等）
-  isPublic    Boolean  @default(false) // 是否公开
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([theme])
-  @@index([destination])
-  @@index([isPublic])
-}
-
-/// 行程协作者表
-/// 存储行程的协作者信息（多人协作编辑）
-model TripCollaborator {
-  id        String   @id @default(uuid())
-  tripId    String
-  userId    String // 协作者用户ID
-  role      String // 角色（VIEWER, EDITOR, OWNER）
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  @@unique([tripId, userId])
-  @@index([tripId])
-  @@index([userId])
-}
-
-/// 行程分享表
-/// 存储行程分享链接和权限设置
-model TripShare {
-  id         String    @id @default(uuid())
-  tripId     String
-  shareToken String    @unique // 分享令牌（用于生成分享链接）
-  permission String    @default("VIEW") // 权限（VIEW, EDIT）
-  expiresAt  DateTime? // 过期时间（可选）
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  trip       Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  @@index([tripId])
-  @@index([shareToken])
-}
-
-/// 行程收藏表
-/// 存储用户收藏的行程
-model TripCollection {
-  id        String   @id @default(uuid())
-  tripId    String
-  userId    String // 收藏者用户ID
-  createdAt DateTime @default(now())
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  @@unique([tripId, userId])
-  @@index([tripId])
-  @@index([userId])
-}
-
-/// 行程点赞表
-/// 存储用户对行程的点赞
-model TripLike {
-  id        String   @id @default(uuid())
-  tripId    String
-  userId    String // 点赞者用户ID
-  createdAt DateTime @default(now())
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  @@unique([tripId, userId])
-  @@index([tripId])
-  @@index([userId])
-}
-
-/// 离线数据包表
-/// 存储行程的离线数据包信息
-model TripOfflinePack {
-  id        String   @id @default(uuid())
-  tripId    String   @unique
-  data      Json // 离线数据包内容（包含地点详情、路线、Schedule）
-  version   Int      @default(1) // 数据包版本
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tripId])
-}
-
-/// RailPass Profile
-/// 存储用户的 RailPass 配置（挂到 Trip）
-model RailPassProfile {
-  id String @id @default(uuid())
-
-  // 关联到 Trip
-  tripId String @unique
-  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
-
-  // Pass 基本信息
-  residencyCountry      String // ISO 3166-1 alpha-2
-  passFamily            String // EURAIL | INTERRAIL
-  passType              String // GLOBAL | ONE_COUNTRY
-  validityType          String // FLEXI | CONTINUOUS
-  travelDaysTotal       Int? // Flexi 才有
-  homeCountryOutboundUsed Int @default(0) // Interrail 居住国出境使用次数
-  homeCountryInboundUsed  Int @default(0) // Interrail 居住国入境使用次数
-  class                 String // FIRST | SECOND
-  mobileOrPaper         String // MOBILE | PAPER
-  validityStartDate     DateTime
-  validityEndDate       DateTime
-
-  // 元数据
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关联
-  segments        RailSegment[]
-  reservationTasks ReservationTask[]
-
-  @@index([tripId])
-}
-
-/// Rail Segment
-/// 存储 rail 行程段信息（作为一种 Transport Plan）
-model RailSegment {
-  id String @id @default(uuid())
-
-  // 关联到 RailPassProfile
-  railPassProfileId String
-  railPassProfile   RailPassProfile @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
-
-  // 关联到 ItineraryItem（可选，如果是已规划的行程项）
-  itineraryItemId String? @unique
-  itineraryItem   ItineraryItem? @relation(fields: [itineraryItemId], references: [id], onDelete: SetNull)
-
-  // Segment 基本信息
-  fromPlaceId      Int
-  toPlaceId        Int
-  fromCountryCode  String // ISO 3166-1 alpha-2
-  toCountryCode    String // ISO 3166-1 alpha-2
-  departureDate    DateTime
-  departureTimeWindow Json? // { earliest: ISODatetime, latest: ISODatetime }
-  arrivalDeadline  DateTime?
-  operatorHint     String?
-  isNightTrain     Boolean @default(false)
-  isHighSpeed      Boolean @default(false)
-  isInternational  Boolean @default(false)
-  crossesMidnight  Boolean @default(false)
-  t_api            Int? // 预计 API 时间（分钟）
-  t_robust         Int? // 鲁棒时间（分钟）
-
-  // 元数据
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关联
-  reservationTasks ReservationTask[]
-
-  @@index([railPassProfileId])
-  @@index([itineraryItemId])
-  @@index([departureDate])
-}
-
-/// Reservation Task
-/// 存储订座任务状态
-model ReservationTask {
-  id String @id @default(uuid())
-
-  // 关联到 RailSegment
-  segmentId      String
-  railSegment    RailSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-
-  // 关联到 RailPassProfile
-  railPassProfileId String
-  railPassProfile   RailPassProfile @relation(fields: [railPassProfileId], references: [id], onDelete: Cascade)
-
-  // 任务状态
-  status String // NEEDED | PLANNED | BOOKED | FAILED | FALLBACK_APPLIED
-  bookingRef     String? // 订座引用号
-  cost           Float? // 实际费用（EUR）
-  failReason     String? // 失败原因
-  fallbackPlanId String? // 备用方案 ID
-  travelDay      DateTime? // 关联的 Travel Day
-
-  // 元数据
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([segmentId])
-  @@index([railPassProfileId])
-  @@index([status])
-  @@index([travelDay])
-}
-
-/// 国家级路线方向表
-/// 存储每个国家的特色路线方向，作为行程生成的先验知识
-/// 包含：线路叙事、地理走廊、强约束、关键节点、典型节奏、风险/准备
-model RouteDirection {
-  id        Int      @id @default(autoincrement())
-  uuid      String   @unique @default(uuid())
-  
-  // 基本信息
-  countryCode String // ISO 3166-1 alpha-2 (NZ, NP, CN_XZ 等)
-  name        String // 路线方向名称（中英）
-  nameCN      String // 中文名称
-  nameEN      String? // 英文名称
-  description String? // 路线描述/叙事
-  
-  // 标签分类
-  tags        String[] // 标签数组（摄影/徒步/出海/极光等）
-  
-  // 地理走廊（可计算）
-  corridorGeom Unsupported("geography")? // PostGIS LineString/MultiLineString 或 bbox
-  regions      String[] // region_key 列表（如 ["NZ_QT", "NZ_WN"]）
-  entryHubs    String[] // 入口枢纽（机场/车站/港口名称）
-  
-  // 季节性和时间约束
-  seasonality Json? // 最佳月份、禁忌月份 {bestMonths: [1,2,3], avoidMonths: [6,7,8]}
-  
-  // 结构化约束
-  constraints Json? // 海拔/爬升/坡度/许可等约束
-  // 示例结构：
-  // {
-  //   maxElevationM: 5500,
-  //   maxDailyAscentM: 500,
-  //   maxSlope: 30,
-  //   requiresPermit: true,
-  //   requiresGuide: false,
-  //   rapidAscentForbidden: true
-  // }
-  
-  // 风险画像
-  riskProfile Json? // 高反/封路/渡轮/天气窗口等风险
-  // 示例结构：
-  // {
-  //   altitudeSickness: true,
-  //   roadClosure: false,
-  //   ferryDependent: true,
-  //   weatherWindow: true,
-  //   weatherWindowMonths: [12, 1, 2]
-  // }
-  
-  // 代表性 POI
-  signaturePois Json? // 代表性 POI 类型/例子
-  // 示例结构：
-  // {
-  //   types: ["TEAHOUSE_LODGE", "VIEWPOINT", "MOUNTAIN_PASS"],
-  //   examples: ["place_uuid_1", "place_uuid_2"]
-  // }
-  
-  // 行程骨架（可选）
-  itinerarySkeleton Json? // 每天主题/节奏
-  // 示例结构：
-  // {
-  //   dayThemes: ["适应日", "徒步日", "观景日"],
-  //   dailyPace: "MODERATE",
-  //   restDaysRequired: [2, 5]
-  // }
-  
-  // 元数据
-  metadata Json? // 扩展信息
-  isActive Boolean @default(true) // 是否激活
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // 关联
-  templates RouteTemplate[]
-  
-  @@index([countryCode])
-  @@index([countryCode, isActive])
-  @@index([tags])
-}
-
-/// 路线模板表
-/// 存储基于 RouteDirection 的具体行程模板（3/5/7/10 天游）
-model RouteTemplate {
-  id                Int      @id @default(autoincrement())
-  uuid              String   @unique @default(uuid())
-  routeDirectionId  Int      // 关联的路线方向
-  
-  // 模板基本信息
-  durationDays      Int      // 天数（3/5/7/10）
-  name              String?  // 模板名称（如 "经典7日游"）
-  nameCN            String?  // 中文名称
-  nameEN            String?  // 英文名称
-  
-  // 每日计划
-  dayPlans          Json     // 每日主题、强度上限、必须节点
-  // 示例结构：
-  // [
-  //   {
-  //     day: 1,
-  //     theme: "适应日",
-  //     maxIntensity: "LIGHT",
-  //     maxElevationM: 3000,
-  //     requiredNodes: ["lodge_uuid_1"],
-  //     optionalActivities: ["viewpoint", "tea_house"]
-  //   },
-  //   ...
-  // ]
-  
-  // 默认节奏偏好
-  defaultPacePreference String? // RELAX/BALANCED/CHALLENGE
-  
-  // 元数据
-  metadata          Json?    // 扩展信息
-  isActive          Boolean  @default(true)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // 关联
-  routeDirection    RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
-  
-  @@index([routeDirectionId])
-  @@index([routeDirectionId, durationDays])
-  @@index([isActive])
 }

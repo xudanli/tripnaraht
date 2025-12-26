@@ -5,8 +5,10 @@
  * 根据用户意图、国家、月份选择 Top 3 路线方向，并提供推荐理由
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { RouteDirectionsService } from '../route-directions.service';
+import { RouteDirectionObservabilityService } from './route-direction-observability.service';
+import { RouteDirectionCacheService } from './route-direction-cache.service';
 import { RouteConstraints, RiskProfile, Seasonality } from '../interfaces/route-direction.interface';
 import {
   RouteDirectionExplanation,
@@ -39,7 +41,11 @@ export interface RouteDirectionRecommendation {
 export class RouteDirectionSelectorService {
   private readonly logger = new Logger(RouteDirectionSelectorService.name);
 
-  constructor(private readonly routeDirectionsService: RouteDirectionsService) {}
+  constructor(
+    private readonly routeDirectionsService: RouteDirectionsService,
+    @Optional() private readonly observabilityService?: RouteDirectionObservabilityService,
+    @Optional() private readonly cacheService?: RouteDirectionCacheService
+  ) {}
 
   /**
    * 选择路线方向
@@ -52,21 +58,44 @@ export class RouteDirectionSelectorService {
   async pickRouteDirections(
     userIntent: UserIntent,
     countryCode: string,
-    month?: number
+    month?: number,
+    requestId?: string
   ): Promise<RouteDirectionRecommendation[]> {
     this.logger.log(
       `选择路线方向: country=${countryCode}, month=${month}, preferences=${userIntent.preferences?.join(',')}`
     );
 
-    // 1. 获取该国家的所有激活路线方向
-    const routeDirections = await this.routeDirectionsService.findRouteDirectionsByCountry(
+    const startTime = Date.now();
+    
+    // 0. 尝试从缓存获取
+    if (this.cacheService) {
+      const cached = await this.cacheService.getCachedRdSelection(countryCode, month, userIntent);
+      if (cached) {
+        this.logger.log(`使用缓存的 RD selection 结果`);
+        if (this.observabilityService && requestId) {
+          this.observabilityService.recordRdSelectLatency(requestId, Date.now() - startTime);
+        }
+        return cached;
+      }
+    }
+    
+    // 1. 获取该国家的所有激活路线方向（包含灰度过滤）
+    const result = await this.routeDirectionsService.findRouteDirectionsByCountry(
       countryCode,
       {
         tags: userIntent.preferences,
         month,
         limit: 20, // 先获取更多，再筛选
+        includeDeprecated: true, // 包含 deprecated 用于 explanation
+        // 灰度过滤选项（可以从 userIntent 中提取）
+        userId: (userIntent as any).userId,
+        persona: (userIntent as any).persona,
+        locale: (userIntent as any).locale,
       }
     );
+
+    const routeDirections = result.active;
+    const deprecatedRds = result.deprecated || [];
 
     if (routeDirections.length === 0) {
       this.logger.warn(`未找到 ${countryCode} 的路线方向`);
@@ -132,6 +161,24 @@ export class RouteDirectionSelectorService {
     }));
 
     // 6. 构建完整解释（用于决策日志）
+    // 将 deprecated 的 RD 作为"备选曾经方案"
+    const deprecatedAlternatives = deprecatedRds.slice(0, 3).map(rd => ({
+      routeDirectionId: rd.id,
+      routeDirectionName: rd.name,
+      score: 0, // deprecated 不参与评分
+      reasons: ['此路线方向已废弃，仅作为历史参考'],
+      status: 'deprecated' as const,
+      version: (rd as any).version,
+    }));
+
+    // 生成 whyNotOthers（为什么没有选择其他路线）
+    const whyNotOthers = this.generateWhyNotOthers(
+      top3,
+      sorted.slice(3, 6), // Top 4-6
+      userIntent,
+      month
+    );
+
     const explanation: RouteDirectionExplanation = {
       selected: {
         routeDirectionId: top3[0]?.routeDirection.id || 0,
@@ -140,6 +187,7 @@ export class RouteDirectionSelectorService {
         scoreBreakdown: top3[0]?.scoreBreakdown || this.createEmptyBreakdown(),
         matchedSignals: top3[0]?.matchedSignals || this.createEmptyMatchedSignals(userIntent, month),
         reasons: top3[0]?.reasons || [],
+        version: (top3[0]?.routeDirection as any)?.version, // 记录版本号
       },
       alternatives: {
         top3: top3.map(item => ({
@@ -147,13 +195,45 @@ export class RouteDirectionSelectorService {
           routeDirectionName: item.routeDirection.name,
           score: item.score,
           reasons: item.reasons,
+          version: (item.routeDirection as any)?.version,
         })),
         rejected,
+        deprecated: deprecatedAlternatives.length > 0 ? deprecatedAlternatives : undefined, // 备选曾经方案
       },
+      whyNotOthers: whyNotOthers,
     };
 
     // 将解释存储到 logger（后续可以写入决策日志）
     this.logger.log(`RouteDirection 选择解释: ${JSON.stringify(explanation, null, 2)}`);
+
+    // 记录观测指标
+    const latencyMs = Date.now() - startTime;
+    if (this.observabilityService && requestId) {
+      this.observabilityService.recordRdSelectLatency(requestId, latencyMs);
+      if (top3.length > 0) {
+        this.observabilityService.recordSelectedRd(
+          requestId,
+          top3[0].routeDirection.id,
+          top3[0].routeDirection.name,
+          {
+            countryCode,
+            month,
+            userIntent: {
+              preferences: userIntent.preferences,
+              pace: userIntent.pace,
+              riskTolerance: userIntent.riskTolerance,
+            },
+            scoreBreakdown: top3[0].scoreBreakdown,
+            matchedSignals: top3[0].matchedSignals,
+          }
+        );
+      }
+    }
+
+    // 缓存结果
+    if (this.cacheService) {
+      await this.cacheService.cacheRdSelection(countryCode, month, userIntent, top3);
+    }
 
     this.logger.log(`选择了 ${top3.length} 条路线方向`);
     return top3;
@@ -494,6 +574,117 @@ export class RouteDirectionSelectorService {
     }
 
     return reasons;
+  }
+
+  /**
+   * 生成 whyNotOthers（为什么没有选择其他路线）
+   */
+  private generateWhyNotOthers(
+    top3: RouteDirectionRecommendation[],
+    next3: Array<{ routeDirection: any; score: number; breakdown: ScoreBreakdown; matchedSignals: MatchedSignals }>,
+    userIntent: UserIntent,
+    month?: number
+  ): RouteDirectionExplanation['whyNotOthers'] {
+    if (top3.length === 0 || next3.length === 0) {
+      return undefined;
+    }
+
+    const selected = top3[0];
+    const topAlternative = next3[0];
+
+    if (!selected || !topAlternative) {
+      return undefined;
+    }
+
+    const scoreDifference = selected.score - topAlternative.score;
+
+    // 分析为什么没有选择 topAlternative
+    const whyNotReasons: string[] = [];
+
+    // 1. 分数差异
+    if (scoreDifference > 20) {
+      whyNotReasons.push(`综合评分比"${topAlternative.routeDirection.name}"高 ${Math.round(scoreDifference)} 分`);
+    }
+
+    // 2. 标签匹配差异
+    const selectedTags = selected.matchedSignals?.tags?.matched || [];
+    const alternativeTags = topAlternative.matchedSignals?.tags?.matched || [];
+    const missingTags = alternativeTags.filter(tag => !selectedTags.includes(tag));
+    if (missingTags.length > 0) {
+      whyNotReasons.push(`更匹配您的偏好标签：${selectedTags.join('、')}`);
+    }
+
+    // 3. 季节性差异
+    if (month) {
+      const selectedSeasonality = selected.matchedSignals?.seasonality;
+      const alternativeSeasonality = topAlternative.matchedSignals?.seasonality;
+      if (selectedSeasonality?.bestMonths?.includes(month) && 
+          !alternativeSeasonality?.bestMonths?.includes(month)) {
+        whyNotReasons.push(`${month}月是这条路线的最佳季节`);
+      }
+    }
+
+    // 4. 节奏匹配差异
+    const selectedPace = selected.matchedSignals?.pace;
+    const alternativePace = topAlternative.matchedSignals?.pace;
+    if (selectedPace?.compatibility === 'high' && alternativePace?.compatibility !== 'high') {
+      whyNotReasons.push(`节奏更符合您的偏好（${userIntent.pace || 'moderate'}）`);
+    }
+
+    // 5. 风险匹配差异
+    const selectedRisk = selected.matchedSignals?.risk;
+    const alternativeRisk = topAlternative.matchedSignals?.risk;
+    if (selectedRisk && !selectedRisk.routeHasHighRisk && alternativeRisk?.routeHasHighRisk) {
+      whyNotReasons.push(`风险更低，更适合您的风险承受度`);
+    }
+
+    // 生成 whyNot 文本
+    const whyNot = whyNotReasons.length > 0
+      ? whyNotReasons.join('；')
+      : `综合评分更高（${Math.round(scoreDifference)} 分）`;
+
+    // 提取常见淘汰原因
+    const commonReasons: string[] = [];
+    if (next3.length > 1) {
+      // 分析被淘汰的路线，找出共同原因
+      const reasons = next3.slice(1).map(item => {
+        const breakdown = item.breakdown;
+        const lowScores: string[] = [];
+        if (breakdown.tagMatch?.score && breakdown.tagMatch.score < 50) {
+          lowScores.push('标签匹配度低');
+        }
+        if (breakdown.seasonality?.score && breakdown.seasonality.score < 50) {
+          lowScores.push('季节性不匹配');
+        }
+        if (breakdown.pace?.score && breakdown.pace.score < 50) {
+          lowScores.push('节奏不匹配');
+        }
+        return lowScores;
+      }).flat();
+
+      // 统计最常见的淘汰原因
+      const reasonCounts = new Map<string, number>();
+      reasons.forEach(reason => {
+        reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+      });
+
+      const sortedReasons = Array.from(reasonCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([reason]) => reason);
+
+      commonReasons.push(...sortedReasons);
+    }
+
+    return {
+      topAlternative: {
+        routeDirectionId: topAlternative.routeDirection.id,
+        routeDirectionName: topAlternative.routeDirection.name,
+        whyNot,
+        scoreDifference: Math.round(scoreDifference),
+      },
+      commonReasons: commonReasons.length > 0 ? commonReasons : undefined,
+    };
   }
 }
 

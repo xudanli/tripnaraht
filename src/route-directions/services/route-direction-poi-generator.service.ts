@@ -5,17 +5,21 @@
  * 根据选中的路线方向生成候选 POI pool
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ActivityCandidate } from '../../trips/decision/world-model';
 import { RouteDirectionRecommendation } from './route-direction-selector.service';
+import { RouteDirectionCacheService } from './route-direction-cache.service';
 
 @Injectable()
 export class RouteDirectionPoiGeneratorService {
   private readonly logger = new Logger(RouteDirectionPoiGeneratorService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly cacheService?: RouteDirectionCacheService
+  ) {}
 
   /**
    * 根据路线方向生成候选 POI（带走廊空间约束）
@@ -33,6 +37,19 @@ export class RouteDirectionPoiGeneratorService {
     this.logger.log(
       `为路线方向生成候选 POI: ${recommendation.routeDirection.name}, buffer=${bufferMeters}m`
     );
+
+    // 尝试从缓存获取
+    if (this.cacheService) {
+      const cached = await this.cacheService.getCachedPoiPool(
+        recommendation.routeDirection.id,
+        bufferMeters,
+        recommendation.signaturePois
+      );
+      if (cached) {
+        this.logger.log(`使用缓存的 POI pool，大小: ${cached.length}`);
+        return cached;
+      }
+    }
 
     const signaturePois = recommendation.signaturePois;
     if (!signaturePois) {
@@ -70,17 +87,38 @@ export class RouteDirectionPoiGeneratorService {
         : Prisma.sql``;
 
       // 走廊空间约束
+      // 优化：如果 corridorGeom 已经是 geography 类型（从数据库读取），直接使用
+      // 如果是字符串（WKT），才使用 ST_GeomFromText 转换
       let corridorFilter = Prisma.sql``;
       if (corridorGeom) {
-        // 使用 PostGIS ST_DWithin 进行空间过滤
-        // corridorGeom 可能是 LineString 或 Polygon
-        corridorFilter = Prisma.sql`
-          AND ST_DWithin(
-            location::geography,
-            ST_GeomFromText(${corridorGeom}, 4326)::geography,
-            ${bufferMeters}
-          )
-        `;
+        // 检查 corridorGeom 是否是字符串（WKT）还是已经是 geography 类型
+        // 如果是字符串，使用 ST_GeomFromText；否则直接使用
+        const isWktString = typeof corridorGeom === 'string' && 
+          (corridorGeom.startsWith('LINESTRING') || 
+           corridorGeom.startsWith('MULTILINESTRING') || 
+           corridorGeom.startsWith('POLYGON'));
+        
+        if (isWktString) {
+          // WKT 字符串，需要转换
+          corridorFilter = Prisma.sql`
+            AND ST_DWithin(
+              location::geography,
+              ST_GeomFromText(${corridorGeom}, 4326)::geography,
+              ${bufferMeters}
+            )
+          `;
+        } else {
+          // 已经是 geography 类型，直接使用（从数据库读取的情况）
+          // 注意：这里假设 corridorGeom 是 geography 类型的值
+          // 实际使用时，如果是从 RouteDirection 表读取，应该已经是 geography 类型
+          corridorFilter = Prisma.sql`
+            AND ST_DWithin(
+              location::geography,
+              ${corridorGeom}::geography,
+              ${bufferMeters}
+            )
+          `;
+        }
       }
 
       const places = await this.prisma.$queryRaw<any[]>`
@@ -107,13 +145,29 @@ export class RouteDirectionPoiGeneratorService {
       if (routeRegions.length > 0) {
         let corridorFilter = Prisma.sql``;
         if (corridorGeom) {
-          corridorFilter = Prisma.sql`
-            AND ST_DWithin(
-              location::geography,
-              ST_GeomFromText(${corridorGeom}, 4326)::geography,
-              ${bufferMeters}
-            )
-          `;
+          // 优化：避免不必要的 ST_GeomFromText 转换
+          const isWktString = typeof corridorGeom === 'string' && 
+            (corridorGeom.startsWith('LINESTRING') || 
+             corridorGeom.startsWith('MULTILINESTRING') || 
+             corridorGeom.startsWith('POLYGON'));
+          
+          if (isWktString) {
+            corridorFilter = Prisma.sql`
+              AND ST_DWithin(
+                location::geography,
+                ST_GeomFromText(${corridorGeom}, 4326)::geography,
+                ${bufferMeters}
+              )
+            `;
+          } else {
+            corridorFilter = Prisma.sql`
+              AND ST_DWithin(
+                location::geography,
+                ${corridorGeom}::geography,
+                ${bufferMeters}
+              )
+            `;
+          }
         }
 
         const places = await this.prisma.$queryRaw<any[]>`
@@ -141,6 +195,17 @@ export class RouteDirectionPoiGeneratorService {
     }
 
     this.logger.log(`生成了 ${candidates.length} 个候选 POI`);
+    
+    // 缓存结果
+    if (this.cacheService) {
+      await this.cacheService.cachePoiPool(
+        recommendation.routeDirection.id,
+        bufferMeters,
+        candidates,
+        recommendation.signaturePois
+      );
+    }
+    
     return candidates;
   }
 

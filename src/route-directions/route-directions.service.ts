@@ -35,6 +35,11 @@ export class RouteDirectionsService {
       itinerarySkeleton: dto.itinerarySkeleton as Prisma.InputJsonValue,
       metadata: dto.metadata as Prisma.InputJsonValue,
       isActive: dto.isActive ?? true,
+      // 灰度与开关字段
+      status: dto.status || 'active',
+      version: dto.version,
+      rolloutPercent: dto.rolloutPercent ?? 100,
+      audienceFilter: dto.audienceFilter as Prisma.InputJsonValue,
     };
 
     return this.prisma.routeDirection.create({
@@ -160,51 +165,91 @@ export class RouteDirectionsService {
       tags?: string[];
       month?: number;
       limit?: number;
+      // 灰度过滤选项
+      userId?: string; // 用于灰度计算（基于用户 ID 的哈希）
+      persona?: string[]; // 用户画像（用于 audienceFilter）
+      locale?: string; // 用户语言（用于 audienceFilter）
+      includeDeprecated?: boolean; // 是否包含 deprecated 的 RD（用于 explanation）
     },
-  ): Promise<Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[]> {
+  ): Promise<{
+    active: Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[];
+    deprecated?: Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[]; // 备选曾经方案
+  }> {
     try {
-      const where: Prisma.RouteDirectionWhereInput = {
+      // 1. 获取 active 的 RD（用于选择）
+      const activeWhere: Prisma.RouteDirectionWhereInput = {
         countryCode,
-        isActive: true,
+        OR: [
+          { status: 'active' },
+          { status: null, isActive: true }, // 兼容旧数据
+        ],
       };
 
       if (options?.tags && options.tags.length > 0) {
-        where.tags = { hasSome: options.tags };
+        activeWhere.tags = { hasSome: options.tags };
       }
 
-      const results = await this.prisma.routeDirection.findMany({
-        where,
+      const activeResults = await this.prisma.routeDirection.findMany({
+        where: activeWhere,
         include: { templates: true },
-        take: options?.limit ? options.limit * 2 : 20, // 获取更多，后续在内存中过滤
+        take: options?.limit ? options.limit * 3 : 30, // 获取更多，后续在内存中过滤
         orderBy: { createdAt: 'desc' },
       });
 
-      // 在内存中过滤月份（如果指定了月份）
+      // 2. 灰度过滤：只保留命中 rollout 的 RD
+      const filteredActive = this.applyGrayReleaseFilter(activeResults, options);
+
+      // 3. 在内存中过滤月份（如果指定了月份）
+      let finalActive = filteredActive;
       if (options?.month) {
-        const filtered = results.filter(rd => {
+        finalActive = filteredActive.filter(rd => {
           const seasonality = rd.seasonality as any;
           if (!seasonality) return true; // 无季节性信息，保留
 
-          const bestMonths = seasonality.bestMonths || [];
           const avoidMonths = seasonality.avoidMonths || [];
+          if (avoidMonths.includes(options.month)) {
+            return false; // 禁忌月份，排除
+          }
 
-          // 如果在最佳月份，保留
-          if (bestMonths.includes(options.month)) return true;
-          // 如果在禁忌月份，过滤掉
-          if (avoidMonths.includes(options.month)) return false;
-          // 其他情况保留
-          return true;
+          return true; // 其他情况保留
         });
-
-        return filtered.slice(0, options?.limit || 10);
       }
 
-      return results.slice(0, options?.limit || 10);
+      // 限制返回数量
+      finalActive = finalActive.slice(0, options?.limit || 20);
+
+      // 4. 获取 deprecated 的 RD（用于 explanation，如果请求）
+      let deprecated: Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[] = [];
+      if (options?.includeDeprecated) {
+        const deprecatedWhere: Prisma.RouteDirectionWhereInput = {
+          countryCode,
+          status: 'deprecated',
+        };
+
+        if (options?.tags && options.tags.length > 0) {
+          deprecatedWhere.tags = { hasSome: options.tags };
+        }
+
+        deprecated = await this.prisma.routeDirection.findMany({
+          where: deprecatedWhere,
+          include: { templates: true },
+          take: 5, // 只取前 5 个作为备选
+          orderBy: { updatedAt: 'desc' },
+        });
+      }
+
+      return {
+        active: finalActive,
+        deprecated: options?.includeDeprecated ? deprecated : undefined,
+      };
     } catch (error: any) {
       // 如果表不存在，返回空数组（测试环境可能没有运行迁移）
       if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
         this.logger.warn(`RouteDirection 表不存在，请先运行迁移`);
-        return [];
+        return {
+          active: [],
+          deprecated: undefined,
+        };
       }
       throw error;
     }
@@ -290,6 +335,86 @@ export class RouteDirectionsService {
       },
       include: { routeDirection: true },
     });
+  }
+
+  /**
+   * 应用灰度发布过滤
+   * 只保留命中 rollout 和 audienceFilter 的 RD
+   */
+  private applyGrayReleaseFilter(
+    routeDirections: Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[],
+    options?: {
+      userId?: string;
+      persona?: string[];
+      locale?: string;
+    }
+  ): Prisma.RouteDirectionGetPayload<{ include: { templates: true } }>[] {
+    return routeDirections.filter(rd => {
+      // 1. 检查 rolloutPercent（灰度百分比）
+      const rolloutPercent = (rd as any).rolloutPercent ?? 100;
+      if (rolloutPercent < 100) {
+        // 需要灰度过滤
+        if (!options?.userId) {
+          // 没有 userId，无法判断，默认不通过（安全策略）
+          return false;
+        }
+        
+        // 基于 userId 的哈希值决定是否命中灰度
+        const hash = this.hashString(options.userId);
+        const userHashPercent = (hash % 100) + 1; // 1-100
+        
+        if (userHashPercent > rolloutPercent) {
+          // 未命中灰度，过滤掉
+          return false;
+        }
+      }
+
+      // 2. 检查 audienceFilter（受众过滤）
+      const audienceFilter = (rd as any).audienceFilter as any;
+      if (audienceFilter) {
+        // 检查 persona 匹配
+        if (audienceFilter.persona && Array.isArray(audienceFilter.persona)) {
+          if (options?.persona && options.persona.length > 0) {
+            // 用户有 persona，检查是否有交集
+            const hasMatch = options.persona.some(p => audienceFilter.persona.includes(p));
+            if (!hasMatch) {
+              return false; // persona 不匹配，过滤掉
+            }
+          } else {
+            // 用户没有 persona，但 RD 要求 persona，过滤掉
+            return false;
+          }
+        }
+
+        // 检查 locale 匹配
+        if (audienceFilter.locale && Array.isArray(audienceFilter.locale)) {
+          if (options?.locale) {
+            const hasMatch = audienceFilter.locale.includes(options.locale);
+            if (!hasMatch) {
+              return false; // locale 不匹配，过滤掉
+            }
+          } else {
+            // 用户没有 locale，但 RD 要求 locale，过滤掉
+            return false;
+          }
+        }
+      }
+
+      return true; // 通过所有过滤
+    });
+  }
+
+  /**
+   * 简单的字符串哈希函数（用于灰度计算）
+   */
+  private hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
   }
 }
 
