@@ -228,7 +228,7 @@ export class RouteDirectionsService {
 
         if (options?.tags && options.tags.length > 0) {
           deprecatedWhere.tags = { hasSome: options.tags };
-        }
+      }
 
         deprecated = await this.prisma.routeDirection.findMany({
           where: deprecatedWhere,

@@ -100,13 +100,13 @@ export class RouteDirectionPoiGeneratorService {
         
         if (isWktString) {
           // WKT 字符串，需要转换
-          corridorFilter = Prisma.sql`
-            AND ST_DWithin(
-              location::geography,
-              ST_GeomFromText(${corridorGeom}, 4326)::geography,
-              ${bufferMeters}
-            )
-          `;
+        corridorFilter = Prisma.sql`
+          AND ST_DWithin(
+            location::geography,
+            ST_GeomFromText(${corridorGeom}, 4326)::geography,
+            ${bufferMeters}
+          )
+        `;
         } else {
           // 已经是 geography 类型，直接使用（从数据库读取的情况）
           // 注意：这里假设 corridorGeom 是 geography 类型的值
@@ -152,13 +152,13 @@ export class RouteDirectionPoiGeneratorService {
              corridorGeom.startsWith('POLYGON'));
           
           if (isWktString) {
-            corridorFilter = Prisma.sql`
-              AND ST_DWithin(
-                location::geography,
-                ST_GeomFromText(${corridorGeom}, 4326)::geography,
-                ${bufferMeters}
-              )
-            `;
+          corridorFilter = Prisma.sql`
+            AND ST_DWithin(
+              location::geography,
+              ST_GeomFromText(${corridorGeom}, 4326)::geography,
+              ${bufferMeters}
+            )
+          `;
           } else {
             corridorFilter = Prisma.sql`
               AND ST_DWithin(
