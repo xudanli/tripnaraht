@@ -843,3 +843,129 @@ model ReservationTask {
   @@index([status])
   @@index([travelDay])
 }
+
+/// 国家级路线方向表
+/// 存储每个国家的特色路线方向，作为行程生成的先验知识
+/// 包含：线路叙事、地理走廊、强约束、关键节点、典型节奏、风险/准备
+model RouteDirection {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  
+  // 基本信息
+  countryCode String // ISO 3166-1 alpha-2 (NZ, NP, CN_XZ 等)
+  name        String // 路线方向名称（中英）
+  nameCN      String // 中文名称
+  nameEN      String? // 英文名称
+  description String? // 路线描述/叙事
+  
+  // 标签分类
+  tags        String[] // 标签数组（摄影/徒步/出海/极光等）
+  
+  // 地理走廊（可计算）
+  corridorGeom Unsupported("geography")? // PostGIS LineString/MultiLineString 或 bbox
+  regions      String[] // region_key 列表（如 ["NZ_QT", "NZ_WN"]）
+  entryHubs    String[] // 入口枢纽（机场/车站/港口名称）
+  
+  // 季节性和时间约束
+  seasonality Json? // 最佳月份、禁忌月份 {bestMonths: [1,2,3], avoidMonths: [6,7,8]}
+  
+  // 结构化约束
+  constraints Json? // 海拔/爬升/坡度/许可等约束
+  // 示例结构：
+  // {
+  //   maxElevationM: 5500,
+  //   maxDailyAscentM: 500,
+  //   maxSlope: 30,
+  //   requiresPermit: true,
+  //   requiresGuide: false,
+  //   rapidAscentForbidden: true
+  // }
+  
+  // 风险画像
+  riskProfile Json? // 高反/封路/渡轮/天气窗口等风险
+  // 示例结构：
+  // {
+  //   altitudeSickness: true,
+  //   roadClosure: false,
+  //   ferryDependent: true,
+  //   weatherWindow: true,
+  //   weatherWindowMonths: [12, 1, 2]
+  // }
+  
+  // 代表性 POI
+  signaturePois Json? // 代表性 POI 类型/例子
+  // 示例结构：
+  // {
+  //   types: ["TEAHOUSE_LODGE", "VIEWPOINT", "MOUNTAIN_PASS"],
+  //   examples: ["place_uuid_1", "place_uuid_2"]
+  // }
+  
+  // 行程骨架（可选）
+  itinerarySkeleton Json? // 每天主题/节奏
+  // 示例结构：
+  // {
+  //   dayThemes: ["适应日", "徒步日", "观景日"],
+  //   dailyPace: "MODERATE",
+  //   restDaysRequired: [2, 5]
+  // }
+  
+  // 元数据
+  metadata Json? // 扩展信息
+  isActive Boolean @default(true) // 是否激活
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // 关联
+  templates RouteTemplate[]
+  
+  @@index([countryCode])
+  @@index([countryCode, isActive])
+  @@index([tags])
+}
+
+/// 路线模板表
+/// 存储基于 RouteDirection 的具体行程模板（3/5/7/10 天游）
+model RouteTemplate {
+  id                Int      @id @default(autoincrement())
+  uuid              String   @unique @default(uuid())
+  routeDirectionId  Int      // 关联的路线方向
+  
+  // 模板基本信息
+  durationDays      Int      // 天数（3/5/7/10）
+  name              String?  // 模板名称（如 "经典7日游"）
+  nameCN            String?  // 中文名称
+  nameEN            String?  // 英文名称
+  
+  // 每日计划
+  dayPlans          Json     // 每日主题、强度上限、必须节点
+  // 示例结构：
+  // [
+  //   {
+  //     day: 1,
+  //     theme: "适应日",
+  //     maxIntensity: "LIGHT",
+  //     maxElevationM: 3000,
+  //     requiredNodes: ["lodge_uuid_1"],
+  //     optionalActivities: ["viewpoint", "tea_house"]
+  //   },
+  //   ...
+  // ]
+  
+  // 默认节奏偏好
+  defaultPacePreference String? // RELAX/BALANCED/CHALLENGE
+  
+  // 元数据
+  metadata          Json?    // 扩展信息
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // 关联
+  routeDirection    RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+  
+  @@index([routeDirectionId])
+  @@index([routeDirectionId, durationDays])
+  @@index([isActive])
+}
