@@ -24,6 +24,7 @@ import { CompliancePluginService } from '../../route-directions/plugins/complian
 import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
 import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
+import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -47,7 +48,8 @@ export class TripDecisionEngineService {
     private readonly observabilityService?: RouteDirectionObservabilityService,
     private readonly compliancePlugin?: CompliancePluginService,
     private readonly transportPlugin?: TransportPluginService,
-    private readonly demDailyEnergyService?: DEMDailyEnergyService
+    private readonly demDailyEnergyService?: DEMDailyEnergyService,
+    private readonly demRouteSegmentationService?: DEMRouteSegmentationService
   ) {}
 
   /**
@@ -237,6 +239,41 @@ export class TripDecisionEngineService {
             }
           }
 
+          // P1.1.2: 对RouteDirection的corridor进行自动拆段分析
+          let routeSegmentation = null;
+          if (this.demRouteSegmentationService && selectedRouteDirection.routeDirection.corridorGeom) {
+            try {
+              const segmentationStartTime = Date.now();
+              routeSegmentation = await this.demRouteSegmentationService.segmentRoute(
+                selectedRouteDirection.routeDirection.corridorGeom,
+                {
+                  samplingInterval: 100, // 每100米采样一次
+                  steepSlopeThreshold: 15, // 坡度>15%为过陡段
+                  steepSectionMinLength: 500, // 过陡段最小长度500米
+                  energyBreakpointThreshold: 70, // 体力消耗>70为断点
+                  highAltitudeThreshold: 3000, // 高海拔阈值3000米
+                  consecutiveAscentThreshold: 1200, // 连续上升>1200米触发休息
+                  baseCostPerKm: 5,
+                  ascentFactor: 0.1,
+                }
+              );
+              
+              const segmentationLatency = Date.now() - segmentationStartTime;
+              this.logger.log(
+                `路线拆段分析完成: ${routeSegmentation.steepSections.length}个过陡段, ` +
+                `${routeSegmentation.energyBreakpoints.length}个体力断点, ` +
+                `${routeSegmentation.mandatoryRestPoints.length}个强制休息点 ` +
+                `(耗时: ${segmentationLatency}ms)`
+              );
+
+              // 将拆段结果存储到state中，供后续决策使用
+              (state as any).routeSegmentation = routeSegmentation;
+            } catch (error) {
+              this.logger.warn(`路线拆段分析失败: ${error}`);
+              // 不阻断计划生成，继续执行
+            }
+          }
+
           // 根据路线方向生成候选 POI
           if (this.routeDirectionPoiGenerator) {
             const poiPoolQueryStartTime = Date.now();
@@ -373,10 +410,12 @@ export class TripDecisionEngineService {
       );
 
       // 计算简化的 terrainFacts（从 RouteDirection 约束或候选 POI 中提取）
+      // P1.1.2: 利用拆段结果增强terrainFacts
       const terrainFacts = this.computeDayTerrainFacts(
         selectedRouteDirection,
         abu.kept,
-        slots
+        slots,
+        (state as any).routeSegmentation
       );
 
       // DEM驱动的每日体力预算计算（如果启用）
@@ -779,7 +818,8 @@ export class TripDecisionEngineService {
   private computeDayTerrainFacts(
     selectedRouteDirection: any,
     keptActivities: ActivityCandidate[],
-    slots: PlanSlot[]
+    slots: PlanSlot[],
+    routeSegmentation?: any
   ): PlanDay['terrainFacts'] {
     // 从 RouteDirection 约束中提取
     const constraints = selectedRouteDirection?.constraints || selectedRouteDirection?.routeDirection?.constraints;
@@ -803,13 +843,31 @@ export class TripDecisionEngineService {
       }
     }
 
-    // 使用 RouteDirection 的 maxElevation 或从 POI 中提取的
+    // P1.1.2: 如果存在拆段结果，优先使用拆段结果中的海拔信息
+    if (routeSegmentation && routeSegmentation.elevationProfile && routeSegmentation.elevationProfile.length > 0) {
+      const elevations = routeSegmentation.elevationProfile.map((p: any) => p.elevation);
+      const segMaxElevation = Math.max(...elevations);
+      const segMinElevation = Math.min(...elevations);
+      
+      // 使用拆段结果中的海拔信息（更准确）
+      if (!maxElevationFromPois || segMaxElevation > maxElevationFromPois) {
+        maxElevationFromPois = segMaxElevation;
+      }
+      if (!minElevation || segMinElevation < minElevation) {
+        minElevation = segMinElevation;
+      }
+    }
+
+    // 使用 RouteDirection 的 maxElevation 或从 POI/拆段结果中提取的
     const finalMaxElevation = maxElevation || maxElevationFromPois;
 
     // 计算简化的 totalAscent（基于 maxElevation 和 minElevation 的差值，或使用约束值）
     let totalAscent: number | undefined;
     if (maxDailyAscent) {
       totalAscent = maxDailyAscent;
+    } else if (routeSegmentation) {
+      // P1.1.2: 使用拆段结果中的总爬升（更准确）
+      totalAscent = routeSegmentation.totalAscent;
     } else if (finalMaxElevation && minElevation) {
       totalAscent = finalMaxElevation - minElevation;
     }
@@ -824,8 +882,10 @@ export class TripDecisionEngineService {
       effortLevel = 'RELAX';
     }
 
-    // 生成风险标志（基于约束）
+    // 生成风险标志（基于约束和拆段结果）
     const riskFlags: Array<{ type: string; severity: 'LOW' | 'MEDIUM' | 'HIGH'; message: string }> = [];
+    
+    // 基础风险标志（基于约束）
     if (finalMaxElevation && finalMaxElevation > 3500) {
       riskFlags.push({
         type: 'HIGH_ALTITUDE',
@@ -839,6 +899,57 @@ export class TripDecisionEngineService {
         severity: maxDailyAscent > 1000 ? 'HIGH' : 'MEDIUM',
         message: `每日爬升 ${maxDailyAscent}m，需注意适应`,
       });
+    }
+
+    // P1.1.2: 从拆段结果中添加风险标志
+    if (routeSegmentation) {
+      // 检查过陡段
+      if (routeSegmentation.steepSections && routeSegmentation.steepSections.length > 0) {
+        const highSeveritySteepSections = routeSegmentation.steepSections.filter(
+          (s: any) => s.severity === 'HIGH'
+        );
+        if (highSeveritySteepSections.length > 0) {
+          riskFlags.push({
+            type: 'STEEP_SECTIONS',
+            severity: 'HIGH',
+            message: `路线包含 ${highSeveritySteepSections.length} 个高难度过陡段（平均坡度>25%）`,
+          });
+        } else {
+          const mediumSeveritySteepSections = routeSegmentation.steepSections.filter(
+            (s: any) => s.severity === 'MEDIUM'
+          );
+          if (mediumSeveritySteepSections.length > 0) {
+            riskFlags.push({
+              type: 'STEEP_SECTIONS',
+              severity: 'MEDIUM',
+              message: `路线包含 ${mediumSeveritySteepSections.length} 个中等难度过陡段（平均坡度>20%）`,
+            });
+          }
+        }
+      }
+
+      // 检查强制休息点
+      if (routeSegmentation.mandatoryRestPoints && routeSegmentation.mandatoryRestPoints.length > 0) {
+        const highSeverityRestPoints = routeSegmentation.mandatoryRestPoints.filter(
+          (r: any) => r.severity === 'HIGH'
+        );
+        if (highSeverityRestPoints.length > 0) {
+          riskFlags.push({
+            type: 'MANDATORY_REST_POINTS',
+            severity: 'HIGH',
+            message: `路线包含 ${highSeverityRestPoints.length} 个强制休息点（高海拔或连续上升>2000m）`,
+          });
+        }
+      }
+
+      // 检查体力断点
+      if (routeSegmentation.energyBreakpoints && routeSegmentation.energyBreakpoints.length > 0) {
+        riskFlags.push({
+          type: 'ENERGY_BREAKPOINTS',
+          severity: 'MEDIUM',
+          message: `路线包含 ${routeSegmentation.energyBreakpoints.length} 个体力断点，建议合理安排休息`,
+        });
+      }
     }
 
     if (!finalMaxElevation && !totalAscent) {
