@@ -25,11 +25,12 @@ export class TripExtendedService {
     // 创建分享记录
     const share = await this.prisma.tripShare.create({
       data: {
-        tripId,
+        id: randomUUID(),
+        tripId: tripId as any,
         shareToken,
         permission: dto.permission || SharePermission.VIEW,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-      },
+      } as any,
     });
 
     // 生成分享链接（实际应该使用前端域名）
@@ -73,10 +74,11 @@ export class TripExtendedService {
     // 创建协作者记录
     const collaborator = await this.prisma.tripCollaborator.create({
       data: {
-        tripId,
+        id: randomUUID(),
+        tripId: tripId as any,
         userId: dto.userId,
         role: dto.role,
-      },
+      } as any,
     });
 
     return {
@@ -95,20 +97,20 @@ export class TripExtendedService {
     const share = await this.prisma.tripShare.findUnique({
       where: { shareToken },
       include: {
-        trip: {
+        Trip: {
           include: {
-            days: {
+            TripDay: {
               include: {
-                items: {
+                ItineraryItem: {
                   include: {
-                    place: true,
-                    trail: {
+                    Place: true,
+                    Trail: {
                       include: {
-                        startPlace: true,
-                        endPlace: true,
-                        waypoints: {
+                        Place_Trail_startPlaceIdToPlace: true,
+                        Place_Trail_endPlaceIdToPlace: true,
+                        TrailWaypoint: {
                           include: {
-                            place: true,
+                            Place: true,
                           },
                           orderBy: {
                             order: 'asc',
@@ -141,7 +143,7 @@ export class TripExtendedService {
     }
 
     return {
-      trip: share.trip,
+      trip: share.Trip,
       permission: share.permission,
       shareToken: share.shareToken,
     };
@@ -181,7 +183,7 @@ export class TripExtendedService {
     });
 
     // 复制行程日期和行程项（包括Trail数据）
-    for (const day of originalTrip.days) {
+    for (const day of originalTrip.TripDay) {
       const newDay = await this.prisma.tripDay.create({
         data: {
           id: randomUUID(),
@@ -191,7 +193,7 @@ export class TripExtendedService {
       });
 
       // 复制行程项
-      for (const item of day.items) {
+      for (const item of day.ItineraryItem) {
         await this.prisma.itineraryItem.create({
           data: {
             id: randomUUID(),
@@ -299,9 +301,10 @@ export class TripExtendedService {
 
     await this.prisma.tripCollection.create({
       data: {
-        tripId,
+        id: randomUUID(),
+        tripId: tripId as any,
         userId,
-      },
+      } as any,
     });
 
     return { success: true };
@@ -343,9 +346,9 @@ export class TripExtendedService {
     const collections = await this.prisma.tripCollection.findMany({
       where: { userId },
       include: {
-        trip: {
+        Trip: {
           include: {
-            days: true,
+            TripDay: true,
           },
         },
       },
@@ -354,7 +357,7 @@ export class TripExtendedService {
 
     return collections.map(c => ({
       id: c.id,
-      trip: c.trip,
+      trip: c.Trip,
       createdAt: c.createdAt,
     }));
   }
@@ -385,9 +388,10 @@ export class TripExtendedService {
 
     await this.prisma.tripLike.create({
       data: {
-        tripId,
+        id: randomUUID(),
+        tripId: tripId as any,
         userId,
-      },
+      } as any,
     });
 
     return { success: true };
@@ -429,12 +433,12 @@ export class TripExtendedService {
     // 按点赞数排序获取热门行程
     const trips = await this.prisma.trip.findMany({
       include: {
-        likes: true,
-        collections: true,
+        TripLike: true,
+        TripCollection: true,
         _count: {
           select: {
-            likes: true,
-            collections: true,
+            TripLike: true,
+            TripCollection: true,
           },
         },
       },
@@ -447,9 +451,9 @@ export class TripExtendedService {
     // 计算热度分数（点赞数 + 收藏数 * 2）
     const featured = trips.map(trip => ({
       ...trip,
-      likeCount: trip._count.likes,
-      collectionCount: trip._count.collections,
-      popularityScore: trip._count.likes + trip._count.collections * 2,
+      likeCount: trip._count.TripLike,
+      collectionCount: trip._count.TripCollection,
+      popularityScore: trip._count.TripLike + trip._count.TripCollection * 2,
     }));
 
     // 按热度分数排序
@@ -466,11 +470,11 @@ export class TripExtendedService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: {
+            ItineraryItem: {
               include: {
-                place: true,
+                Place: true,
               },
             },
           },
@@ -492,22 +496,22 @@ export class TripExtendedService {
         budgetConfig: trip.budgetConfig,
         pacingConfig: trip.pacingConfig,
       },
-      days: trip.days.map(day => ({
+      days: trip.TripDay.map(day => ({
         id: day.id,
         date: day.date,
-        items: day.items.map(item => ({
+        items: day.ItineraryItem.map(item => ({
           id: item.id,
           type: item.type,
           startTime: item.startTime,
           endTime: item.endTime,
-          place: item.place ? {
-            id: item.place.id,
-            nameCN: item.place.nameCN,
-            nameEN: item.place.nameEN,
-            category: item.place.category,
-            // location: item.place.location, // PostGIS geography 类型，需要特殊处理
-            address: item.place.address,
-            metadata: item.place.metadata,
+          place: item.Place ? {
+            id: item.Place.id,
+            nameCN: item.Place.nameCN,
+            nameEN: item.Place.nameEN,
+            category: item.Place.category,
+            // location: item.Place.location, // PostGIS geography 类型，需要特殊处理
+            address: item.Place.address,
+            metadata: item.Place.metadata,
           } : null,
           note: item.note,
         })),
@@ -521,12 +525,13 @@ export class TripExtendedService {
       update: {
         data: offlinePack as any,
         version: { increment: 1 },
-        updatedAt: new Date(),
       },
       create: {
-        tripId,
+        id: randomUUID(),
+        tripId: tripId as any,
         data: offlinePack as any,
         version: 1,
+        updatedAt: new Date(),
       },
     });
 

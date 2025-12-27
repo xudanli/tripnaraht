@@ -23,10 +23,23 @@ import { RouteDirectionObservabilityService } from '../../route-directions/servi
 import { CompliancePluginService } from '../../route-directions/plugins/compliance-plugin.service';
 import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
 import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
+import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
+import { MemoryService } from '../../agent/memory/services/memory.service';
 import { DEMDailyEnergyService, DailyEnergyBudget } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
 import { DEMRiskScoringService, PlanRiskScore } from './services/dem-risk-scoring.service';
 import { DEMEvidenceChainService } from './services/dem-evidence-chain.service';
+import { DryRunPlannerService } from './services/dry-run-planner.service';
+import { DemDecisionEvidencePipelineService } from './services/dem-decision-evidence-pipeline.service';
+import { DemEvidenceEnforcerService } from './services/dem-evidence-enforcer.service';
+import { DemDecisionEvidenceService } from './services/dem-decision-evidence.service';
+import { DemEvidencePipelineResult, DemDecisionEvidence } from './interfaces/dem-decision-evidence.interface';
+import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
+import { PlanConverterService } from './services/plan-converter.service';
+import { WorldModelContext, RoutePlanDraft } from './shared/world-model.types';
+import { DecisionLogEntry } from './shared/decision-result.types';
+import { mapUserPersonaToDecisionParams, extractPersonaKeywordsFromPreferences } from './config/user-persona-mapping.config';
+import { createHumanCapabilityModelFromProfile } from './models/human-capability.model';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -53,7 +66,15 @@ export class TripDecisionEngineService {
     private readonly demDailyEnergyService?: DEMDailyEnergyService,
     private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
     private readonly demRiskScoringService?: DEMRiskScoringService,
-    private readonly demEvidenceChainService?: DEMEvidenceChainService
+    private readonly demEvidenceChainService?: DEMEvidenceChainService,
+    private readonly decisionParamsInjector?: DecisionParamsInjectorService,
+    private readonly memoryService?: MemoryService,
+    private readonly dryRunPlanner?: DryRunPlannerService,
+    private readonly demEvidencePipeline?: DemDecisionEvidencePipelineService,
+    private readonly demEvidenceEnforcer?: DemEvidenceEnforcerService,
+    private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
+    private readonly strategyOrchestrator?: StrategyOrchestratorService,
+    private readonly planConverter?: PlanConverterService
   ) {}
 
   /**
@@ -150,6 +171,20 @@ export class TripDecisionEngineService {
       }
     }
 
+    // Step 0: 读取用户画像并注入决策参数（如果可用）
+    const userId = (state.context as any).userId;
+    let decisionParams = null;
+    if (userId && this.decisionParamsInjector) {
+      try {
+        decisionParams = await this.decisionParamsInjector.getDecisionParamsForUser(userId);
+        // 注入约束到 world model
+        this.decisionParamsInjector.injectConstraintsToWorldModel(state, decisionParams);
+        this.logger.log(`Injected decision params for user ${userId}`);
+      } catch (error) {
+        this.logger.warn(`Failed to load/inject decision params: ${error}`);
+      }
+    }
+
     // Step 1: 选择路线方向（如果支持）
     let selectedRouteDirection: any = null;
     if (this.routeDirectionSelector) {
@@ -161,6 +196,7 @@ export class TripDecisionEngineService {
           pace: state.context.preferences.pace,
           riskTolerance: state.context.preferences.riskTolerance,
           durationDays: state.context.durationDays,
+          userId: userId, // 传递 userId 以便 RouteDirectionSelectorService 使用
         };
 
         const recommendations = await this.routeDirectionSelector.pickRouteDirections(
@@ -169,6 +205,9 @@ export class TripDecisionEngineService {
           month,
           traceRequestId
         );
+
+        // 保存 recommendations 到 state 中，供后续保存决策记忆使用
+        (state as any).routeDirectionRecommendations = recommendations;
 
         if (recommendations.length > 0) {
           selectedRouteDirection = recommendations[0]; // 选择 Top 1
@@ -389,6 +428,34 @@ export class TripDecisionEngineService {
         this.logger.log(`合规降级：从 ${pool.length} 个候选 POI 过滤到 ${adjustedPool.length} 个`);
       }
 
+      // 应用决策参数的策略偏好（如果可用）
+      // 注意：当前 Abu/Dr.Dre/Neptune 是固定顺序执行的
+      // 策略权重主要用于未来扩展（如动态选择策略）
+      // 当前实现中，策略权重影响的是约束和修复策略的选择
+      
+      // PART 2: 在 Abu 选择前，检查是否有需要避免的 HARD violation
+      // 如果有前一天的 demEvidence，检查是否可以忽略 violation
+      let shouldBeMoreConservative = false;
+      if (this.demEvidenceEnforcer && i > 0 && (state as any).previousDayDemEvidence) {
+        const prevDayEvidence = (state as any).previousDayDemEvidence as DemDecisionEvidence[];
+        for (const evidence of prevDayEvidence) {
+          if (evidence.violation === 'HARD') {
+            const canIgnore = this.demEvidenceEnforcer.canAbuIgnoreViolation(
+              evidence.segmentId,
+              { segmentEvidences: prevDayEvidence } as DemEvidencePipelineResult
+            );
+            if (!canIgnore.allowed) {
+              this.logger.warn(
+                `Abu 不能忽略前一天的 HARD violation (${evidence.segmentId}): ${canIgnore.reason}，今天将更保守地选择活动`
+              );
+              shouldBeMoreConservative = true;
+              // 调整 limits，使 Abu 更保守
+              maxActiveMin = Math.round(maxActiveMin * 0.9); // 减少10%的时间预算
+            }
+          }
+        }
+      }
+
       const abu = abuSelectCoreActivities(state, date, adjustedPool, {
         maxActiveMin,
         maxCost: state.context.budget?.amount,
@@ -506,6 +573,31 @@ export class TripDecisionEngineService {
       days,
     };
 
+    // Dry-run: 在输出前模拟执行，找出可能失败的点
+    let dryRunResult: any = null;
+    if (this.dryRunPlanner) {
+      try {
+        dryRunResult = await this.dryRunPlanner.simulatePlan(state, plan, decisionParams || undefined);
+        
+        if (dryRunResult.willFail) {
+          this.logger.warn(
+            `Dry-run detected potential failure on day ${dryRunResult.failureDay}: ${dryRunResult.failureReason}`
+          );
+          
+          // 生成调整建议
+          const suggestions = this.dryRunPlanner.generateAdjustmentSuggestions(dryRunResult);
+          this.logger.warn(`Dry-run suggestions: ${suggestions.join('; ')}`);
+          
+          // 如果失败风险高，可以考虑自动调整或警告用户
+          // 这里暂时只记录，不自动调整（避免过度干预）
+        } else {
+          this.logger.debug(`Dry-run passed: no critical issues detected`);
+        }
+      } catch (error) {
+        this.logger.warn(`Dry-run simulation failed: ${error}`);
+      }
+    }
+
     // P1.1.4: 生成路线规划的证据链
     let planRiskScore: PlanRiskScore | undefined;
     if (this.demRiskScoringService) {
@@ -535,12 +627,312 @@ export class TripDecisionEngineService {
       }
     }
 
+    // PART 2: DEM Decision Evidence Pipeline（强制检查）
+    let demEvidenceResult: DemEvidencePipelineResult | undefined;
+    
+    // 优先使用新的 DemDecisionEvidenceService（如果可用）
+    if (this.demDecisionEvidenceService) {
+      try {
+        const routeSegmentation = (state as any).routeSegmentation;
+        const routeDirectionData = selectedRouteDirection?.routeDirection;
+        
+        demEvidenceResult = await this.demDecisionEvidenceService.generateEvidencePipeline(
+          plan,
+          routeDirectionData,
+          routeSegmentation
+        );
+
+        this.logger.log(
+          `DEM决策证据生成完成：${demEvidenceResult.segmentEvidences.length}个路段证据，` +
+          `HARD违规: ${demEvidenceResult.hasHardViolation}, ` +
+          `SOFT违规: ${demEvidenceResult.hasSoftViolation}, ` +
+          `可通过: ${demEvidenceResult.canProceed}`
+        );
+
+        // 强制检查：没有 DEM evidence 的 plan 不允许 finalize
+        const validation = this.demDecisionEvidenceService.validatePlanHasEvidence(
+          plan,
+          demEvidenceResult.segmentEvidences
+        );
+        
+        if (!validation.valid) {
+          this.logger.warn(`计划验证失败: ${validation.reason}`);
+          // 记录到 log，但不阻断返回（让调用方决定如何处理）
+        }
+
+        // 如果有硬约束违反，记录警告
+        if (demEvidenceResult.hasHardViolation) {
+          this.logger.error(
+            `计划存在硬约束违反，不能 finalize。失败原因: ${demEvidenceResult.explainableFailure?.reason || '未知'}`
+          );
+        }
+
+        // 如果有连续疲劳，记录建议并应用 Dr.Dre 修复
+        if (demEvidenceResult.rollingFatigue?.detected) {
+          this.logger.warn(
+            `检测到连续疲劳：${demEvidenceResult.rollingFatigue.explanation}，建议：${demEvidenceResult.rollingFatigue.suggestedAction}`
+          );
+
+          // PART 2: Dr.Dre 策略集成 - 根据连续疲劳检测结果插入休息日
+          if (demEvidenceResult.rollingFatigue.suggestedAction === 'INSERT_REST_DAY') {
+            const restDay = demEvidenceResult.rollingFatigue.startDay! + 1; // 在疲劳开始后插入
+            if (restDay <= plan.days.length) {
+              this.logger.log(`Dr.Dre 自动插入休息日：第 ${restDay} 天`);
+              
+              // 将指定天的活动替换为休息日
+              const dayToRest = plan.days[restDay - 1];
+              if (dayToRest && dayToRest.timeSlots.length > 0) {
+                // 保留第一个和最后一个 slot（通常是酒店），中间替换为休息
+                const firstSlot = dayToRest.timeSlots[0];
+                const lastSlot = dayToRest.timeSlots[dayToRest.timeSlots.length - 1];
+                
+                const restSlot: PlanSlot = {
+                  id: `rest_${dayToRest.date}_${restDay}`,
+                  time: firstSlot.time,
+                  endTime: lastSlot.endTime || lastSlot.time,
+                  title: '休息日 / 自由活动',
+                  type: 'rest',
+                  reasons: [
+                    `Dr.Dre 自动插入：检测到连续疲劳（第 ${demEvidenceResult.rollingFatigue.startDay}-${demEvidenceResult.rollingFatigue.endDay} 天累计爬升 ${demEvidenceResult.rollingFatigue.rollingAscent3Days.toFixed(0)}m）`,
+                  ],
+                };
+
+                dayToRest.timeSlots = [firstSlot, restSlot, lastSlot];
+                this.logger.log(`已将第 ${restDay} 天的活动替换为休息日`);
+              }
+            }
+          }
+        }
+
+        // 如果有走廊质量评分，记录
+        if (demEvidenceResult.corridorQuality) {
+          this.logger.log(
+            `走廊质量评分: ${demEvidenceResult.corridorQuality.totalScore.toFixed(1)}/100 ` +
+            `(${demEvidenceResult.corridorQuality.explanation})`
+          );
+        }
+      } catch (error) {
+        this.logger.error(`DEM决策证据生成失败: ${error}`);
+        // 不阻断计划生成，但记录错误
+      }
+    } else if (this.demEvidencePipeline) {
+      // 回退到旧的 pipeline service
+      try {
+        // 从 decisionParams 提取用户约束
+        const userConstraints = decisionParams ? {
+          maxDailyAscentM: decisionParams.constraints.maxDailyAscentM,
+          maxElevationM: decisionParams.constraints.maxElevationM,
+          maxSlopePct: decisionParams.constraints.maxSlopePct,
+          rollingAscent3DaysThreshold: 2000, // 默认 2000m，可以从 user profile 获取
+        } : undefined;
+
+        demEvidenceResult = await this.demEvidencePipeline.generateEvidenceForPlan(
+          plan,
+          userConstraints
+        );
+
+        this.logger.log(
+          `DEM证据管道完成：${demEvidenceResult.segmentEvidences.length}个路段证据，` +
+          `HARD违规: ${demEvidenceResult.hasHardViolation}, ` +
+          `SOFT违规: ${demEvidenceResult.hasSoftViolation}`
+        );
+
+        // 强制检查：不能 finalize 有 HARD violation 的计划
+        if (this.demEvidenceEnforcer) {
+          const canFinalize = this.demEvidenceEnforcer.canFinalizePlan(demEvidenceResult);
+          if (!canFinalize.allowed) {
+            this.logger.warn(`计划不能 finalize: ${canFinalize.reason}`);
+            // 记录到 log，但不阻断返回（让调用方决定如何处理）
+          }
+
+          // 如果有连续疲劳，记录建议
+          if (demEvidenceResult.rollingFatigue?.detected) {
+            this.logger.warn(
+              `检测到连续疲劳：${demEvidenceResult.rollingFatigue.explanation}`
+            );
+          }
+        }
+      } catch (error) {
+        this.logger.error(`DEM证据管道失败: ${error}`);
+        // 不阻断计划生成，但记录错误
+      }
+    }
+
+    // PART 3: 集成三人格策略（Abu → Dr.Dre → Neptune）
+    let strategyLogs: DecisionLogEntry[] = [];
+    let finalPlan = plan;
+    let routeDirectionExplanation: string | undefined;
+
+    if (this.strategyOrchestrator && this.planConverter && selectedRouteDirection) {
+      try {
+        // 1. 从用户偏好提取决策参数
+        // 将 intents (Record<string, number>) 转换为 preferences (string[])
+        const intentKeys = state.context.preferences.intents 
+          ? Object.keys(state.context.preferences.intents).filter(k => (state.context.preferences.intents[k] || 0) > 0.3)
+          : [];
+        const personaKeywords = extractPersonaKeywordsFromPreferences({
+          pace: state.context.preferences.pace,
+          preferences: intentKeys, // 转换为 string[]
+          riskTolerance: state.context.preferences.riskTolerance,
+        });
+        const mappedDecisionParams = mapUserPersonaToDecisionParams(personaKeywords);
+
+        // 2. 构建 WorldModelContext
+        const countryCode = this.extractCountryCode(state.context.destination);
+        const month = this.extractMonth(state.context.startDate);
+
+        // 转换 DEM 证据（使用正确的字段名）
+        const demEvidence: any[] = [];
+        if (demEvidenceResult?.segmentEvidences) {
+          for (const evidence of demEvidenceResult.segmentEvidences) {
+            demEvidence.push({
+              segmentId: evidence.segmentId,
+              elevationProfile: evidence.elevationProfile || [],
+              cumulativeAscent: evidence.cumulativeAscent || 0, // 使用 cumulativeAscent
+              maxSlopePct: evidence.maxSlopePct || 0,
+              rollingAscent3Days: evidence.rollingAscent3Days || 0, // 使用 rollingAscent3Days
+              fatigueIndex: evidence.fatigueIndex || 0, // 使用 fatigueIndex
+              violation: evidence.violation || 'NONE',
+              explanation: evidence.explanation || '', // 使用 explanation
+              metadata: evidence.metadata || {},
+            });
+          }
+        }
+
+        // 转换天气证据（如果有）
+        const weatherEvidence: any[] = [];
+        // TODO: 从 WeatherDecisionEvidenceService 获取天气证据
+
+        // 转换合规证据
+        const complianceEvidence: any[] = [];
+        if (selectedRouteDirection.constraints?.hard) {
+          complianceEvidence.push({
+            requiresPermit: selectedRouteDirection.constraints.hard.requiresPermit || false,
+            requiresGuide: selectedRouteDirection.constraints.hard.requiresGuide || false,
+            valid: true, // 假设已通过 RouteDirection 选择
+            violation: 'NONE',
+          });
+        }
+
+        // 构建三段式 WorldModelContext
+        // 1. PhysicalRealityModel
+        const physical = {
+          demEvidence,
+          roadStates: [], // TODO: 从实际数据获取
+          hazardZones: [], // TODO: 从实际数据获取
+          ferryStates: [], // TODO: 从实际数据获取
+          countryCode,
+          month,
+        };
+
+        // 2. HumanCapabilityModel
+        const human = createHumanCapabilityModelFromProfile(
+          `user_${(state.context as any).userId || 'anonymous'}`,
+          {
+            pace: state.context.preferences.pace === 'relaxed' ? 'slow' : 
+                  state.context.preferences.pace === 'intense' ? 'fast' : 'normal',
+            fitness: 'medium', // TODO: 从用户画像获取
+            riskTolerance: state.context.preferences.riskTolerance === 'low' ? 'low' :
+                          state.context.preferences.riskTolerance === 'high' ? 'high' : 'medium',
+          }
+        );
+
+        // 3. RouteDirectionWithPhilosophy
+        const routeDirection = {
+          ...selectedRouteDirection.routeDirection,
+        };
+
+        const worldContext: WorldModelContext = {
+          physical,
+          human,
+          routeDirection,
+          complianceEvidence: complianceEvidence.length > 0 ? complianceEvidence : undefined,
+        };
+
+        // 3. 转换为 RoutePlanDraft
+        const tripId = (state.context as any).tripId || `trip_${Date.now()}`;
+        const routeDirectionId = selectedRouteDirection.routeDirection.uuid || 
+          String(selectedRouteDirection.routeDirection.id);
+        const routePlanDraft = this.planConverter.convertTripPlanToRoutePlanDraft(
+          plan,
+          tripId,
+          routeDirectionId
+        );
+
+        // 4. 调用 StrategyOrchestrator
+        this.logger.log('开始执行三人格策略编排（Abu → Dr.Dre → Neptune）');
+        const strategyResult = await this.strategyOrchestrator.run(worldContext, routePlanDraft);
+
+        strategyLogs = strategyResult.logs;
+
+        // 5. 处理结果
+        if (!strategyResult.allowed || !strategyResult.plan) {
+          // 被拒绝
+          this.logger.warn(`计划被三人格策略拒绝: ${strategyResult.finalAction}`);
+          
+          const log: DecisionRunLog = {
+            runId: `run_${Date.now()}`,
+            at: now,
+            trigger: 'initial_generate',
+            plannerVersion: plan.version,
+            strategyMix: ['abu', 'drdre', 'neptune'],
+            inputDigest: {
+              destination: state.context.destination,
+              startDate: state.context.startDate,
+              durationDays: state.context.durationDays,
+              signalUpdatedAt: state.signals.lastUpdatedAt,
+            },
+            chosenActions: [],
+            explanation: strategyLogs[0]?.explanation || '计划被拒绝',
+            routeDirection: selectedRouteDirection
+              ? {
+                  selected: {
+                    id: selectedRouteDirection.routeDirection.id,
+                    uuid: selectedRouteDirection.routeDirection.uuid,
+                    name: selectedRouteDirection.routeDirection.name,
+                    nameCN: selectedRouteDirection.routeDirection.nameCN,
+                  },
+                }
+              : undefined,
+            strategyLogs: strategyLogs,
+          };
+
+          return {
+            plan: null as any, // 被拒绝，返回 null
+            log,
+          };
+        }
+
+        // 6. 应用策略调整后的计划
+        finalPlan = this.planConverter.applyRoutePlanDraftToTripPlan(
+          strategyResult.plan,
+          plan,
+          state
+        );
+
+        // 7. 生成 RouteDirection 解释
+        if (selectedRouteDirection.reasons && selectedRouteDirection.reasons.length > 0) {
+          routeDirectionExplanation = selectedRouteDirection.reasons.join('；');
+        } else {
+          routeDirectionExplanation = `选择了 ${selectedRouteDirection.routeDirection.nameCN || selectedRouteDirection.routeDirection.name} 路线方向`;
+        }
+
+        this.logger.log(
+          `三人格策略执行完成: ${strategyResult.finalAction}, ` +
+          `调整数: ${strategyLogs.filter(l => l.action !== 'ALLOW').length}`
+        );
+      } catch (error) {
+        this.logger.error(`三人格策略执行失败: ${error}`);
+        // 不阻断返回，但记录错误
+      }
+    }
+
     const log: DecisionRunLog = {
       runId: `run_${Date.now()}`,
       at: now,
       trigger: 'initial_generate',
-      plannerVersion: plan.version,
-      strategyMix: ['abu', 'drdre'],
+      plannerVersion: finalPlan.version,
+      strategyMix: ['abu', 'drdre', 'neptune'],
       inputDigest: {
         destination: state.context.destination,
         startDate: state.context.startDate,
@@ -555,7 +947,7 @@ export class TripDecisionEngineService {
         },
       ],
       explanation:
-        'Generated plan using Abu(core selection) + DrDre(day scheduling).',
+        'Generated plan using Abu(core selection) + DrDre(day scheduling) + Neptune(spatial repair).',
       // 记录 RouteDirection 选择信息
       routeDirection: selectedRouteDirection
         ? {
@@ -572,7 +964,59 @@ export class TripDecisionEngineService {
         : undefined,
       // P1.1.4: 记录证据链（用于前端展示和解释）
       evidenceChain: evidenceChain,
+      // Dry-run 结果
+      dryRunResult: dryRunResult,
+      // PART 2: DEM Decision Evidence（强制检查结果）
+      demEvidence: demEvidenceResult,
+      // PART 3: 三人格策略日志
+      strategyLogs: strategyLogs,
+      // RouteDirection 解释
+      routeDirectionExplanation: routeDirectionExplanation,
     };
+
+    // 保存路线决策记忆（L2）
+    if (selectedRouteDirection && userId && this.memoryService) {
+      try {
+        const countryCode = this.extractCountryCode(state.context.destination);
+        const month = this.extractMonth(state.context.startDate);
+        
+        // 获取被淘汰的路线（从之前的 recommendations 中提取）
+        const rejectedIds: number[] = [];
+        if (selectedRouteDirection && (state as any).routeDirectionRecommendations) {
+          const recommendations = (state as any).routeDirectionRecommendations as any[];
+          rejectedIds.push(...recommendations.slice(1, 4).map(r => r.routeDirection.id));
+        }
+
+        await this.memoryService.saveRouteDirectionDecision({
+          id: `decision_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId,
+          tripId: (state.context as any).tripId,
+          countryCode,
+          month,
+          selectedRouteDirectionId: selectedRouteDirection.routeDirection.id,
+          rejectedRouteDirectionIds: rejectedIds,
+          keyConstraints: selectedRouteDirection.constraints || {},
+          scoreBreakdown: selectedRouteDirection.scoreBreakdown || {},
+          explanation: {
+            whySelected: selectedRouteDirection.reasons?.join('; ') || '基于评分选择',
+            whyRejected: rejectedIds.map(id => ({
+              id,
+              reason: '评分较低',
+            })),
+            riskPoints: selectedRouteDirection.routeDirection.riskProfile
+              ? Object.keys(selectedRouteDirection.routeDirection.riskProfile)
+                  .filter(k => (selectedRouteDirection.routeDirection.riskProfile as any)[k])
+                  .map(k => k)
+              : [],
+            adjustmentSuggestions: dryRunResult?.recommendations || [],
+          },
+          createdAt: new Date(),
+        });
+        this.logger.debug(`Saved route direction decision memory for user ${userId}`);
+      } catch (error) {
+        this.logger.warn(`Failed to save decision memory: ${error}`);
+      }
+    }
 
     // 记录观测指标
     if (this.observabilityService) {
@@ -606,7 +1050,7 @@ export class TripDecisionEngineService {
       this.observabilityService.completeTrace(traceRequestId);
     }
 
-    return { plan, log };
+    return { plan: finalPlan, log };
   }
 
   /**
@@ -639,6 +1083,95 @@ export class TripDecisionEngineService {
           } catch (error) {
             this.logger.warn(`计算活动 ${activity.id} 风险权重失败: ${error}`);
           }
+        }
+      }
+    }
+
+    // PART 2: 生成 DEM evidence（用于强制规则检查）
+    let demEvidenceResult: DemEvidencePipelineResult | undefined;
+    
+    // 优先使用新的 DemDecisionEvidenceService（如果可用）
+    if (this.demDecisionEvidenceService) {
+      try {
+        const routeSegmentation = (state as any).routeSegmentation;
+        const routeDirectionData = (state as any).selectedRouteDirection?.routeDirection;
+        
+        demEvidenceResult = await this.demDecisionEvidenceService.generateEvidencePipeline(
+          plan,
+          routeDirectionData,
+          routeSegmentation
+        );
+
+        this.logger.log(
+          `修复前 DEM决策证据生成完成：${demEvidenceResult.segmentEvidences.length}个路段证据，` +
+          `HARD违规: ${demEvidenceResult.hasHardViolation}`
+        );
+
+        // 强制规则：Neptune 不允许修复没有 DEM evidence 的 segment
+        const validation = this.demDecisionEvidenceService.validatePlanHasEvidence(
+          plan,
+          demEvidenceResult.segmentEvidences
+        );
+        
+        if (!validation.valid) {
+          this.logger.warn(
+            `Neptune 修复前验证失败: ${validation.reason}。Neptune 不能修复没有 DEM 证据的路径。`
+          );
+          // 可以选择跳过修复，或抛出错误
+        }
+
+        // 检查需要修复的 segments 是否有 evidence
+        const segmentsWithHardViolation = demEvidenceResult.segmentEvidences.filter(
+          e => e.violation === 'HARD'
+        );
+        
+        for (const evidence of segmentsWithHardViolation) {
+          this.logger.warn(
+            `Neptune 不能修复 segment ${evidence.segmentId}: 存在硬约束违反 - ${evidence.explanation}`
+          );
+          // 可以选择跳过该 segment 的修复
+        }
+      } catch (error) {
+        this.logger.warn(`修复前 DEM决策证据生成失败: ${error}`);
+      }
+    } else if (this.demEvidencePipeline) {
+      // 回退到旧的 pipeline service
+      try {
+        const userId = (state.context as any).userId;
+        const decisionParams = userId && this.decisionParamsInjector
+          ? await this.decisionParamsInjector.getDecisionParamsForUser(userId)
+          : null;
+        
+        const userConstraints = decisionParams ? {
+          maxDailyAscentM: decisionParams.constraints.maxDailyAscentM,
+          maxElevationM: decisionParams.constraints.maxElevationM,
+          maxSlopePct: decisionParams.constraints.maxSlopePct,
+          rollingAscent3DaysThreshold: 2000,
+        } : undefined;
+
+        demEvidenceResult = await this.demEvidencePipeline.generateEvidenceForPlan(
+          plan,
+          userConstraints
+        );
+      } catch (error) {
+        this.logger.warn(`修复前 DEM evidence 生成失败: ${error}`);
+      }
+    }
+
+    // PART 2: 在 Neptune 修复前检查强制规则（使用旧的 enforcer，如果可用）
+    if (this.demEvidenceEnforcer && demEvidenceResult) {
+      // 检查需要修复的 segments 是否有 evidence
+      const segmentsRequiringRepair = this.demEvidenceEnforcer.getSegmentsRequiringRepair(demEvidenceResult);
+      for (const segment of segmentsRequiringRepair) {
+        const canRepair = this.demEvidenceEnforcer.canNeptuneRepairSegment(
+          segment.segmentId,
+          demEvidenceResult
+        );
+        if (!canRepair.allowed) {
+          this.logger.warn(
+            `Neptune 不能修复 segment ${segment.segmentId}: ${canRepair.reason}`
+          );
+          // 可以选择跳过该 segment 的修复，或抛出错误
         }
       }
     }
@@ -676,6 +1209,24 @@ export class TripDecisionEngineService {
         editDistanceScore: repaired.changedSlotIds.length, // MVP
       },
       explanation: repaired.explanation,
+      // PART 2: DEM Decision Evidence
+      demEvidence: demEvidenceResult ? {
+        segmentEvidences: demEvidenceResult.segmentEvidences.map(e => ({
+          segmentId: e.segmentId,
+          violation: e.violation,
+          explanation: e.explanation,
+        })),
+        hasHardViolation: demEvidenceResult.hasHardViolation,
+        hasSoftViolation: demEvidenceResult.hasSoftViolation,
+        rollingFatigue: demEvidenceResult.rollingFatigue ? {
+          detected: demEvidenceResult.rollingFatigue.detected,
+          startDay: demEvidenceResult.rollingFatigue.startDay,
+          endDay: demEvidenceResult.rollingFatigue.endDay,
+          suggestedAction: demEvidenceResult.rollingFatigue.suggestedAction,
+          explanation: demEvidenceResult.rollingFatigue.explanation,
+        } : undefined,
+        canProceed: demEvidenceResult.canProceed,
+      } : undefined,
     };
 
     return { plan: repaired.plan, log };

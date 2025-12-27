@@ -146,9 +146,9 @@ export class TripsService {
   async findAll() {
     return this.prisma.trip.findMany({
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: true,
+            ItineraryItem: true,
           },
         },
       },
@@ -174,15 +174,15 @@ export class TripsService {
       where: { id },
       include: {
         // 第一层：关联查询所有的 Days
-        days: {
+        TripDay: {
           orderBy: { date: 'asc' }, // 按日期排序
           include: {
             // 第二层：关联查询每天下面的 Items
-            items: {
+            ItineraryItem: {
               orderBy: { startTime: 'asc' }, // 按时间轴排序 (9点在10点前)
               include: {
                 // 第三层：关联查询 Item 对应的地点详情 (如果有)
-                place: {
+                Place: {
                   // 使用 include 返回所有字段，包括 nameEN
                   // 前端需要：name, nameEN, category, location, metadata, physicalMetadata, rating
                 }
@@ -223,10 +223,10 @@ export class TripsService {
     const now = new Date();
 
     // 遍历所有日期，统计信息
-    trip.days.forEach((day: any) => {
-      totalItems += day.items.length;
+    trip.TripDay.forEach((day: any) => {
+      totalItems += day.ItineraryItem.length;
       
-      day.items.forEach((item: any) => {
+      day.ItineraryItem.forEach((item: any) => {
         switch (item.type) {
           case 'ACTIVITY':
             totalActivities++;
@@ -261,7 +261,7 @@ export class TripsService {
     }
 
     // 计算已安排的天数（有活动的天数）
-    const daysWithActivities = trip.days.filter((day: any) => day.items.length > 0).length;
+    const daysWithActivities = trip.TripDay.filter((day: any) => day.ItineraryItem.length > 0).length;
 
     // 计算预算使用情况（如果有预算配置）
     const budgetConfig = trip.budgetConfig as any;
@@ -281,7 +281,7 @@ export class TripsService {
     return {
       ...trip,
       stats: {
-        totalDays: trip.days.length,
+        totalDays: trip.TripDay.length,
         daysWithActivities: daysWithActivities,
         totalItems: totalItems,
         totalActivities: totalActivities,
@@ -305,11 +305,11 @@ export class TripsService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: {
+            ItineraryItem: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: { startTime: 'asc' },
             },
@@ -331,13 +331,13 @@ export class TripsService {
     let currentItemId: string | null = null;
     let nextStop: any = null;
 
-    for (const day of trip.days) {
+    for (const day of trip.TripDay) {
       const dayDate = DateTime.fromJSDate(day.date);
       if (dayDate.hasSame(now, 'day')) {
         currentDayId = day.id;
 
         // 找到当前或下一个行程项
-        for (const item of day.items) {
+        for (const item of day.ItineraryItem) {
           if (!item.startTime || !item.endTime) continue;
 
           const startTime = DateTime.fromJSDate(item.startTime);
@@ -351,7 +351,7 @@ export class TripsService {
             nextStop = {
               itemId: item.id,
               placeId: item.placeId,
-              placeName: item.place?.nameEN || item.place?.nameCN || '未知地点',
+              placeName: item.Place?.nameEN || item.Place?.nameCN || '未知地点',
               startTime: startTime.toISO(),
               estimatedArrivalTime: startTime.toISO(),
             };
@@ -360,14 +360,14 @@ export class TripsService {
         }
 
         // 如果没找到当前项，找第一个未来的项
-        if (!currentItemId && !nextStop && day.items.length > 0) {
-          const firstItem = day.items.find(item => item.startTime && DateTime.fromJSDate(item.startTime) > now);
+        if (!currentItemId && !nextStop && day.ItineraryItem.length > 0) {
+          const firstItem = day.ItineraryItem.find(item => item.startTime && DateTime.fromJSDate(item.startTime) > now);
           if (firstItem && firstItem.startTime) {
             const startTime = DateTime.fromJSDate(firstItem.startTime);
             nextStop = {
               itemId: firstItem.id,
               placeId: firstItem.placeId,
-              placeName: firstItem.place?.nameEN || firstItem.place?.nameCN || '未知地点',
+              placeName: firstItem.Place?.nameEN || firstItem.Place?.nameCN || '未知地点',
               startTime: startTime.toISO(),
               estimatedArrivalTime: startTime.toISO(),
             };
@@ -398,7 +398,7 @@ export class TripsService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: true,
+        TripDay: true,
       },
     });
 
@@ -407,7 +407,7 @@ export class TripsService {
     }
 
     const date = DateTime.fromISO(dateISO);
-    const tripDay = trip.days.find(day => {
+    const tripDay = trip.TripDay.find(day => {
       const dayDate = DateTime.fromJSDate(day.date);
       return dayDate.hasSame(date, 'day');
     });
@@ -443,7 +443,7 @@ export class TripsService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: true,
+        TripDay: true,
       },
     });
 
@@ -452,7 +452,7 @@ export class TripsService {
     }
 
     const date = DateTime.fromISO(dateISO);
-    let tripDay = trip.days.find(day => {
+    let tripDay = trip.TripDay.find(day => {
       const dayDate = DateTime.fromJSDate(day.date);
       return dayDate.hasSame(date, 'day');
     });

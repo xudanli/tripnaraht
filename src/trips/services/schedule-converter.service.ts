@@ -76,7 +76,7 @@ export class ScheduleConverterService {
     const items = await this.prisma.itineraryItem.findMany({
       where: { tripDayId },
       include: {
-        place: true,
+        Place: true,
       },
       orderBy: { startTime: 'asc' },
     });
@@ -99,15 +99,15 @@ export class ScheduleConverterService {
       const startMin = startTime.diff(date.startOf('day'), 'minutes').minutes;
       const endMin = endTime.diff(date.startOf('day'), 'minutes').minutes;
 
-      if (item.place) {
+      if (item.Place) {
         stops.push({
           kind: 'POI',
-          id: `poi-${item.place.id}`,
-          name: item.place.nameEN || item.place.nameCN,
+          id: `poi-${item.Place.id}`,
+          name: item.Place.nameEN || item.Place.nameCN,
           startMin,
           endMin,
-          lat: this.extractLat(item.place),
-          lng: this.extractLng(item.place),
+          lat: this.extractLat(item.Place),
+          lng: this.extractLng(item.Place),
           notes: item.note ? [item.note] : [],
         });
 

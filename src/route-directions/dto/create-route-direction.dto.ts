@@ -15,6 +15,8 @@ import {
   Seasonality,
   SignaturePois,
   ItinerarySkeleton,
+  FailureProfile,
+  RouteNarrative,
 } from '../interfaces/route-direction.interface';
 
 export class CreateRouteDirectionDto {
@@ -97,5 +99,23 @@ export class CreateRouteDirectionDto {
     locale?: string[];
     [key: string]: any;
   };
+
+  // PART 1: 世界级 RouteDirection Pack 增强
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Object)
+  failureProfile?: FailureProfile;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Object)
+  narrative?: RouteNarrative;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  antiPersona?: string[];
 }
 

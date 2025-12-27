@@ -32,7 +32,7 @@ export class RouteOptimizationService {
         id: { in: dto.placeIds },
       },
       include: {
-        city: true,
+        City: true,
       },
     });
 

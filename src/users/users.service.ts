@@ -49,6 +49,7 @@ export class UsersService {
       create: {
         userId,
         preferences: dto.preferences as any,
+        updatedAt: new Date(),
       },
     });
 

@@ -20,7 +20,10 @@ import { RouteDirectionSelectorService } from './services/route-direction-select
 import { RouteDirectionExplainerService } from './services/route-direction-explainer.service';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
 import { RouteDirectionCardDto } from './dto/route-direction-card.dto';
+import { RouteDirectionInteractionDto, RouteDirectionInteractionListDto } from './dto/route-direction-interaction.dto';
 import { RouteDirectionExplainer } from './interfaces/route-direction-explainer.interface';
+import { RouteDirectionRecommendation } from './services/route-direction-selector.service';
+import { ScoreBreakdown } from './interfaces/route-direction-explanation.interface';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
@@ -435,6 +438,119 @@ export class RouteDirectionsController {
         error?.message || 'Failed to get route direction explainers',
       );
     }
+  }
+
+  /**
+   * PART 1.2: RouteDirection 前端交互
+   * 
+   * 用户流程：
+   * 1. 用户输入目的地 + 月份 + 偏好
+   * 2. 系统先不出行程，而是展示路线方向卡片
+   * 3. 用户切换卡片 → 行程实时重算
+   */
+  @Get('interactions')
+  @ApiOperation({
+    summary: '获取路线方向交互列表',
+    description: '返回路线方向卡片、匹配分数、解释和whyNotOthers，用于前端卡片切换',
+  })
+  @ApiQuery({ name: 'countryCode', required: true, description: '国家代码' })
+  @ApiQuery({ name: 'month', required: false, description: '月份（1-12）', type: Number })
+  @ApiQuery({ name: 'preferences', required: false, description: '偏好标签', type: [String] })
+  @ApiQuery({ name: 'pace', required: false, description: '节奏偏好', enum: ['relaxed', 'moderate', 'intense'] })
+  @ApiQuery({ name: 'riskTolerance', required: false, description: '风险承受度', enum: ['low', 'medium', 'high'] })
+  @ApiResponse({ status: 200, description: '成功返回路线方向交互列表', type: RouteDirectionInteractionListDto })
+  async getRouteDirectionInteractions(
+    @Query('countryCode') countryCode: string,
+    @Query('month') month?: number,
+    @Query('preferences') preferences?: string[],
+    @Query('pace') pace?: 'relaxed' | 'moderate' | 'intense',
+    @Query('riskTolerance') riskTolerance?: 'low' | 'medium' | 'high',
+  ) {
+    try {
+      // 获取路线方向推荐
+      const recommendations = await this.selectorService.pickRouteDirections(
+        {
+          preferences: preferences ? (Array.isArray(preferences) ? preferences : [preferences]) : undefined,
+          pace,
+          riskTolerance,
+        },
+        countryCode,
+        month ? parseInt(month.toString(), 10) : undefined
+      );
+
+      // 转换为交互DTO
+      const interactions: RouteDirectionInteractionDto[] = recommendations.map(rec => {
+        const card = this.cardService.toCard(
+          rec,
+          rec.scoreBreakdown,
+          rec.matchedSignals
+        );
+
+        // 生成解释
+        const explanation = this.generateExplanation(rec, rec.scoreBreakdown);
+
+        // 获取whyNotOthers（从recommendation中提取，如果存在）
+        // whyNotOthers在RouteDirectionExplanation中，需要通过selectorService获取完整解释
+        const whyNotOthers = (rec as any).whyNotOthers;
+
+        return {
+          direction: card,
+          score: rec.score,
+          scoreBreakdown: rec.scoreBreakdown || {
+            tagMatch: { score: 0, weight: 0, matchedTags: [], totalTags: 0 },
+            seasonality: { score: 0, weight: 0, isBestMonth: false, isAvoidMonth: false, month: 0 },
+            pace: { score: 0, weight: 0, userPace: 'moderate', routePace: 'MODERATE', compatible: false },
+            risk: { score: 0, weight: 0, userTolerance: 'medium', routeRisk: 'medium', compatible: false },
+          },
+          explanation,
+          whyNotOthers,
+        };
+      });
+
+      const result: RouteDirectionInteractionListDto = {
+        directions: interactions,
+        countryCode,
+        month: month ? parseInt(month.toString(), 10) : undefined,
+        preferences: preferences ? (Array.isArray(preferences) ? preferences : [preferences]) : [],
+      };
+
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error('Failed to get route direction interactions', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error?.message || 'Failed to get route direction interactions',
+      );
+    }
+  }
+
+  /**
+   * 生成推荐解释
+   */
+  private generateExplanation(
+    recommendation: RouteDirectionRecommendation,
+    scoreBreakdown?: ScoreBreakdown
+  ): string {
+    const reasons: string[] = [];
+
+    if (scoreBreakdown?.tagMatch?.matchedTags && scoreBreakdown.tagMatch.matchedTags.length > 0) {
+      const tags = scoreBreakdown.tagMatch.matchedTags.join('、');
+      reasons.push(`这条路线特别适合${tags}爱好者`);
+    }
+
+    if (scoreBreakdown?.seasonality?.isBestMonth) {
+      reasons.push(`${scoreBreakdown.seasonality.month}月是这条路线的最佳旅行时间`);
+    }
+
+    if (scoreBreakdown?.pace?.compatible) {
+      reasons.push(`路线节奏与您的偏好高度匹配`);
+    }
+
+    if (reasons.length === 0) {
+      reasons.push('这条路线符合您的基本偏好');
+    }
+
+    return reasons.join('。') + '。';
   }
 }
 

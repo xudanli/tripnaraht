@@ -118,15 +118,11 @@ export class HotelRecommendationService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: {
+            ItineraryItem: {
               include: {
-                place: {
-                  where: {
-                    category: PlaceCategory.ATTRACTION,
-                  },
-                },
+                Place: true,
               },
             },
           },
@@ -139,13 +135,13 @@ export class HotelRecommendationService {
     }
 
     // 计算总天数和总景点数
-    const totalDays = trip.days.length;
+    const totalDays = trip.TripDay.length;
     const seenAttractionIds = new Set<number>();
     
-    for (const day of trip.days) {
-      for (const item of day.items) {
-        if (item.place && item.place.category === PlaceCategory.ATTRACTION) {
-          seenAttractionIds.add(item.place.id);
+    for (const day of trip.TripDay) {
+      for (const item of day.ItineraryItem) {
+        if (item.Place && item.Place.category === PlaceCategory.ATTRACTION) {
+          seenAttractionIds.add(item.Place.id);
         }
       }
     }
@@ -237,11 +233,11 @@ export class HotelRecommendationService {
       const trip = await this.prisma.trip.findUnique({
         where: { id: request.tripId },
         include: {
-          days: {
+          TripDay: {
             include: {
-              items: {
+              ItineraryItem: {
                 include: {
-                  place: {
+                  Place: {
                     where: {
                       category: PlaceCategory.ATTRACTION,
                     },
@@ -261,15 +257,15 @@ export class HotelRecommendationService {
       const attractions: Array<{ id: number; location: any; name: string }> = [];
       const seenIds = new Set<number>();
 
-      for (const day of trip.days) {
-        for (const item of day.items) {
-          if (item.place && !seenIds.has(item.place.id)) {
+      for (const day of trip.TripDay) {
+        for (const item of day.ItineraryItem) {
+          if (item.Place && !seenIds.has(item.Place.id)) {
             attractions.push({
-              id: item.place.id,
-              location: (item.place as any).location, // PostGIS 字段
-              name: item.place.nameEN || item.place.nameCN, // 优先显示英文名称
+              id: item.Place.id,
+              location: (item.Place as any).location, // PostGIS 字段
+              name: item.Place.nameEN || item.Place.nameCN, // 优先显示英文名称
             });
-            seenIds.add(item.place.id);
+            seenIds.add(item.Place.id);
           }
         }
       }
@@ -295,7 +291,7 @@ export class HotelRecommendationService {
         category: PlaceCategory.HOTEL,
       },
       include: {
-        city: true, // 包含城市信息
+        City: true, // 包含城市信息
       },
       take: 50, // 取更多候选，后续会按成本排序
     });
@@ -312,7 +308,7 @@ export class HotelRecommendationService {
           nameCN: hotel.nameCN,
           nameEN: hotel.nameEN,
           metadata: hotel.metadata,
-          city: hotel.city, // 包含城市信息
+          city: hotel.City, // 包含城市信息
           distance_meters: avgDistance,
         };
       })
@@ -397,7 +393,7 @@ export class HotelRecommendationService {
         category: PlaceCategory.HOTEL,
       },
       include: {
-        city: true, // 包含城市信息
+        City: true, // 包含城市信息
       },
       take: 50, // 取更多候选
     });

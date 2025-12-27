@@ -74,6 +74,18 @@ export interface DecisionRunLog {
   // quick explain to UI
   explanation?: string;
 
+  // PART 3: 三人格策略日志（用于前端展示）
+  strategyLogs?: Array<{
+    persona: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+    action: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    explanation: string;
+    reasonCodes: string[];
+    timestamp: string;
+  }>;
+
+  // RouteDirection 解释（为什么选择这个路线方向）
+  routeDirectionExplanation?: string;
+
   // RouteDirection selection info (for E2E testing and observability)
   routeDirection?: {
     selected: {
@@ -165,6 +177,33 @@ export interface DecisionRunLog {
         riskFlags?: Array<{ type: string; severity: string; message: string }>;
       };
     }>;
+  };
+
+  // PART 2: DEM Decision Evidence（强制检查结果）
+  demEvidence?: {
+    segmentEvidences?: Array<{
+      segmentId: string;
+      violation: 'HARD' | 'SOFT' | 'NONE';
+      explanation: string;
+    }>;
+    hasHardViolation?: boolean;
+    hasSoftViolation?: boolean;
+    rollingFatigue?: {
+      detected: boolean;
+      startDay?: number;
+      endDay?: number;
+      suggestedAction?: string;
+      explanation?: string;
+    };
+    canProceed?: boolean;
+  };
+
+  // Dry-run 结果
+  dryRunResult?: {
+    willFail?: boolean;
+    failureDay?: number;
+    failureReason?: string;
+    recommendations?: string[];
   };
 }
 

@@ -50,8 +50,8 @@ export class RouteDirectionConstraintsService {
     }
 
     // 检查坡度限制（如果有 DEM 数据）
-    if (hardConstraints.maxSlopePct && candidate.metadata?.slope) {
-      const slope = candidate.metadata.slope;
+    if (hardConstraints.maxSlopePct && (candidate as any).metadata?.slope) {
+      const slope = (candidate as any).metadata.slope;
       if (slope > hardConstraints.maxSlopePct) {
         violations.push({
           type: 'hard',
@@ -65,7 +65,7 @@ export class RouteDirectionConstraintsService {
     }
 
     // 检查许可要求
-    if (hardConstraints.requiresPermit && !candidate.metadata?.hasPermit) {
+    if (hardConstraints.requiresPermit && !(candidate as any).metadata?.hasPermit) {
       violations.push({
         type: 'hard',
         code: 'PERMIT_REQUIRED',

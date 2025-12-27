@@ -8,6 +8,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
@@ -147,7 +148,11 @@ export class PackStorageService {
       } else {
         // 创建新记录
         await this.prisma.readinessPack.create({
-          data: packData,
+          data: {
+            ...packData,
+            id: packData.packId || randomUUID(),
+            updatedAt: new Date(),
+          } as any,
         });
         this.logger.log(`Created pack: ${pack.packId}`);
       }

@@ -16,6 +16,7 @@ import {
   MatchedSignals,
   RejectedReason,
 } from '../interfaces/route-direction-explanation.interface';
+import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
 
 export interface UserIntent {
   preferences?: string[]; // 偏好标签（如 ['徒步', '摄影', '出海']）
@@ -44,7 +45,8 @@ export class RouteDirectionSelectorService {
   constructor(
     private readonly routeDirectionsService: RouteDirectionsService,
     @Optional() private readonly observabilityService?: RouteDirectionObservabilityService,
-    @Optional() private readonly cacheService?: RouteDirectionCacheService
+    @Optional() private readonly cacheService?: RouteDirectionCacheService,
+    @Optional() private readonly decisionParamsInjector?: DecisionParamsInjectorService
   ) {}
 
   /**
@@ -102,16 +104,66 @@ export class RouteDirectionSelectorService {
       return [];
     }
 
-    // 2. 对每个路线方向进行评分（带详细分解）
-    const scored = routeDirections.map(rd => {
+    // 2. 获取用户决策参数（如果可用）
+    let decisionParams = null;
+    const userId = (userIntent as any).userId;
+    if (userId && this.decisionParamsInjector) {
+      try {
+        decisionParams = await this.decisionParamsInjector.getDecisionParamsForUser(userId);
+        this.logger.debug(`Loaded decision params for user ${userId}`);
+      } catch (error) {
+        this.logger.warn(`Failed to load decision params: ${error}`);
+      }
+    }
+
+    // 3. 对每个路线方向进行评分（带详细分解）
+    const scored = await Promise.all(routeDirections.map(async rd => {
       const breakdown = this.scoreRouteDirectionWithBreakdown(rd, userIntent, month);
+      let finalScore = breakdown.totalScore;
+
+      // 应用决策参数调整（如果可用）
+      if (decisionParams && userId && this.decisionParamsInjector) {
+        try {
+          // 先应用 preferredRouteTypes 过滤（降权但不禁止）
+          const userProfile = await this.decisionParamsInjector['memoryService']?.getUserTravelProfile(userId);
+          if (userProfile?.preferredRouteTypes && userProfile.preferredRouteTypes.length > 0) {
+            const filterResult = this.decisionParamsInjector.filterRouteDirectionByPreference(
+              rd,
+              userProfile.preferredRouteTypes
+            );
+            if (!filterResult.shouldKeep) {
+              // 如果不在偏好列表中，跳过（但这里我们选择降权而不是跳过）
+              finalScore *= filterResult.scoreMultiplier;
+              const routeType = (rd as any).metadata?.archetype || (rd as any).metadata?.routeType || 'unknown';
+              this.logger.debug(
+                `Route type ${routeType} not in preferred types, score reduced to ${finalScore}`
+              );
+            }
+          }
+
+          // 然后应用决策参数调整评分
+          finalScore = await this.decisionParamsInjector.adjustRouteDirectionScore(
+            rd.id,
+            countryCode,
+            finalScore,
+            decisionParams,
+            rd
+          );
+          this.logger.debug(
+            `Adjusted score for RD ${rd.id}: ${breakdown.totalScore} -> ${finalScore}`
+          );
+        } catch (error) {
+          this.logger.warn(`Failed to adjust score: ${error}`);
+        }
+      }
+
       return {
         routeDirection: rd,
-        score: breakdown.totalScore,
+        score: finalScore,
         breakdown,
         matchedSignals: this.extractMatchedSignals(rd, userIntent, month),
       };
-    });
+    }));
 
     // 3. 按分数排序
     const sorted = scored.sort((a, b) => b.score - a.score);
@@ -149,16 +201,20 @@ export class RouteDirectionSelectorService {
     }));
 
     // 5. 构建 Top 3 推荐（带详细解释）
-    const top3 = sorted.slice(0, 3).map(item => ({
-      routeDirection: item.routeDirection,
-      score: item.score,
-      reasons: this.generateReasons(item.routeDirection, userIntent, item.score, month),
-      constraints: item.routeDirection.constraints as RouteConstraints | undefined,
-      riskProfile: item.routeDirection.riskProfile as RiskProfile | undefined,
-      signaturePois: item.routeDirection.signaturePois,
-      scoreBreakdown: item.breakdown,
-      matchedSignals: item.matchedSignals,
-    }));
+    const top3 = sorted.slice(0, 3).map(item => {
+      // 提取 breakdown（去掉 totalScore，只保留 ScoreBreakdown）
+      const { totalScore, ...scoreBreakdown } = item.breakdown;
+      return {
+        routeDirection: item.routeDirection,
+        score: item.score,
+        reasons: this.generateReasons(item.routeDirection, userIntent, item.score, month),
+        constraints: item.routeDirection.constraints as RouteConstraints | undefined,
+        riskProfile: item.routeDirection.riskProfile as RiskProfile | undefined,
+        signaturePois: item.routeDirection.signaturePois,
+        scoreBreakdown: scoreBreakdown as ScoreBreakdown,
+        matchedSignals: item.matchedSignals,
+      };
+    });
 
     // 6. 构建完整解释（用于决策日志）
     // 将 deprecated 的 RD 作为"备选曾经方案"
@@ -223,7 +279,13 @@ export class RouteDirectionSelectorService {
               pace: userIntent.pace,
               riskTolerance: userIntent.riskTolerance,
             },
-            scoreBreakdown: top3[0].scoreBreakdown,
+            scoreBreakdown: top3[0].scoreBreakdown ? {
+              tagMatch: top3[0].scoreBreakdown.tagMatch.score,
+              seasonMatch: top3[0].scoreBreakdown.seasonality.score,
+              paceMatch: top3[0].scoreBreakdown.pace.score,
+              riskMatch: top3[0].scoreBreakdown.risk.score,
+              totalScore: top3[0].score,
+            } : undefined,
             matchedSignals: top3[0].matchedSignals,
           }
         );

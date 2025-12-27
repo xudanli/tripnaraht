@@ -50,6 +50,33 @@ export class GeneratePlanResponseDto {
 
   @ApiProperty({ description: '决策日志' })
   log!: any;
+
+  @ApiPropertyOptional({
+    description: '三人格策略决策日志',
+    type: [Object],
+    example: [
+      {
+        persona: 'ABU',
+        action: 'ALLOW',
+        explanation: '未发现硬性风险问题，允许继续',
+        reasonCodes: [],
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+  })
+  decisionLogs?: Array<{
+    persona: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+    action: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    explanation: string;
+    reasonCodes: string[];
+    timestamp: string;
+  }>;
+
+  @ApiPropertyOptional({
+    description: '路线方向选择解释',
+    example: '选择了冰岛高地 F 路穿越路线方向，因为匹配了您的冒险偏好和中等风险容忍度',
+  })
+  routeDirectionExplanation?: string;
 }
 
 /**

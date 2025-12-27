@@ -310,7 +310,7 @@ export class PlacesService {
     // 获取地点信息
     const place = await this.prisma.place.findUnique({
       where: { id: placeId },
-      include: { city: true },
+      include: { City: true },
     });
 
     if (!place) {
@@ -449,11 +449,11 @@ export class PlacesService {
             id: { in: placeIds },
             category: 'ATTRACTION',
           },
-          include: { city: true },
+          include: { City: true },
         })
       : await this.prisma.place.findMany({
           where: { category: 'ATTRACTION' },
-          include: { city: true },
+          include: { City: true },
         });
 
     const results: Array<{
@@ -774,7 +774,7 @@ export class PlacesService {
     const place = await this.prisma.place.findUnique({
       where: { id },
       include: {
-        city: true,
+        City: true,
       },
     });
 
@@ -789,7 +789,7 @@ export class PlacesService {
     // 解析元数据
     const metadata = (place.metadata as any) || {};
     const physicalMetadata = (place.physicalMetadata as any) || {};
-    const city = place.city as any;
+    const city = place.City as any;
     const timezone = metadata?.timezone || city?.timezone || 'Asia/Tokyo';
     const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
     const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);
@@ -840,7 +840,7 @@ export class PlacesService {
         id: { in: ids },
       },
       include: {
-        city: true,
+        City: true,
       },
     });
 
@@ -849,7 +849,7 @@ export class PlacesService {
       const coords = location ? this.extractCoordinates(location) : null;
       const metadata = (place.metadata as any) || {};
       const physicalMetadata = (place.physicalMetadata as any) || {};
-      const city = place.city as any;
+      const city = place.City as any;
       const timezone = metadata?.timezone || city?.timezone || 'Asia/Tokyo';
       const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
       const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);

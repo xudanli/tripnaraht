@@ -132,23 +132,23 @@ export class TrailsService {
     return this.prisma.trail.findMany({
       where,
       include: {
-        startPlace: {
+        Place_Trail_startPlaceIdToPlace: {
           select: {
             id: true,
             nameCN: true,
             nameEN: true,
           },
         },
-        endPlace: {
+        Place_Trail_endPlaceIdToPlace: {
           select: {
             id: true,
             nameCN: true,
             nameEN: true,
           },
         },
-        waypoints: {
+        TrailWaypoint: {
           include: {
-            place: {
+            Place: {
               select: {
                 id: true,
                 nameCN: true,
@@ -180,7 +180,7 @@ export class TrailsService {
     const trail = await this.prisma.trail.findUnique({
       where: { id },
       include: {
-        startPlace: {
+        Place_Trail_startPlaceIdToPlace: {
           select: {
             id: true,
             nameCN: true,
@@ -188,7 +188,7 @@ export class TrailsService {
             address: true,
           },
         },
-        endPlace: {
+        Place_Trail_endPlaceIdToPlace: {
           select: {
             id: true,
             nameCN: true,
@@ -196,9 +196,9 @@ export class TrailsService {
             address: true,
           },
         },
-        waypoints: {
+        TrailWaypoint: {
           include: {
-            place: {
+            Place: {
               select: {
                 id: true,
                 nameCN: true,
@@ -420,17 +420,17 @@ export class TrailsService {
         OR: [
           { startPlaceId: { in: placeIds } },
           { endPlaceId: { in: placeIds } },
-          { waypoints: { some: { placeId: { in: placeIds } } } },
+          { TrailWaypoint: { some: { placeId: { in: placeIds } } } },
         ],
         ...(options?.maxDistance && { distanceKm: { lte: options.maxDistance } }),
         ...(options?.maxDifficulty && { difficultyLevel: { lte: options.maxDifficulty } }),
       },
       include: {
-        startPlace: true,
-        endPlace: true,
-        waypoints: {
+        Place_Trail_startPlaceIdToPlace: true,
+        Place_Trail_endPlaceIdToPlace: true,
+        TrailWaypoint: {
           include: {
-            place: true,
+            Place: true,
           },
           orderBy: {
             order: 'asc',
@@ -455,7 +455,7 @@ export class TrailsService {
         }
 
         // 检查途经点
-        trail.waypoints.forEach(wp => {
+        trail.TrailWaypoint.forEach(wp => {
           if (wp.placeId && placeIds.includes(wp.placeId)) {
             matchedPlaces.add(wp.placeId);
           }

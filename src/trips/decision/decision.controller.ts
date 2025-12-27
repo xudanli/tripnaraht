@@ -105,7 +105,16 @@ export class DecisionController {
       );
       this.monitoringService.recordPlanGeneration(log, generationTime, metrics);
 
-      return successResponse({ plan, log });
+      // 提取决策日志和路线方向解释
+      const decisionLogs = log.strategyLogs || [];
+      const routeDirectionExplanation = log.routeDirectionExplanation;
+
+      return successResponse({
+        plan,
+        log,
+        decisionLogs,
+        routeDirectionExplanation,
+      });
     } catch (error: any) {
       this.logger.error('Failed to generate plan:', error);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -134,7 +143,7 @@ export class DecisionController {
       }
 
       const startTime = Date.now();
-      const { plan, log } = this.decisionEngine.repairPlan(
+      const { plan, log } = await this.decisionEngine.repairPlan(
         dto.state,
         dto.plan,
         dto.trigger as any

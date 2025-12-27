@@ -109,6 +109,50 @@ export interface ItinerarySkeleton {
 }
 
 /**
+ * 失败画像（Failure Profile）
+ * 
+ * PART 1.1: RouteDirection Pack 必须有「失败画像」
+ * 不是只有 best case，而是记录典型失败场景
+ */
+export interface FailureProfile {
+  /** 常见失败日期（从1开始，如 [3,4] 表示第3-4天） */
+  commonFailureDays: number[];
+  /** 典型失败原因 */
+  typicalFailureReason: ('fatigue' | 'weather' | 'altitude' | 'slope' | 'distance' | 'logistics')[];
+  /** 救援难度 */
+  rescueDifficulty: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** 失败场景描述（可选） */
+  failureScenarios?: Array<{
+    day: number;
+    reason: string;
+    typicalUserProfile?: string; // 如 "低海拔耐受度用户"
+    mitigation?: string; // 缓解措施
+  }>;
+}
+
+/**
+ * 路线叙事（Narrative）
+ * 
+ * PART 1.2: 每条 RD 必须绑定「国家叙事句」
+ * 不是 marketing，是系统叙事锚点
+ */
+export interface RouteNarrative {
+  /** 内部叙事（用于决策解释） */
+  internal: string; // 如 "这条路线假设用户愿意为风景牺牲城市便利"
+  /** 用户面向叙事（用于用户教育） */
+  userFacing: string; // 如 "这是一条以自然为主线的纵贯路线，而不是城市打卡"
+  /** 路线哲学（可选，用于深度解释） */
+  philosophy?: string;
+}
+
+/**
+ * 路线哲学（可选，用于深度约束）
+ * 
+ * 可以是字符串（向后兼容）或 RoutePhilosophy 对象
+ */
+export type RoutePhilosophyField = string | import('../../trips/decision/models/route-philosophy.model').RoutePhilosophy;
+
+/**
  * 路线方向完整接口
  */
 export interface RouteDirectionData {
@@ -132,6 +176,15 @@ export interface RouteDirectionData {
   status?: 'draft' | 'active' | 'deprecated'; // 状态
   // 扩展字段（在 metadata.extensions 中存储）
   extensions?: import('./route-direction-extensions.interface').RouteDirectionExtensions;
+  // PART 1: 世界级 RouteDirection Pack 增强
+  /** 失败画像（用于 Neptune 修复优先级） */
+  failureProfile?: FailureProfile;
+  /** 路线叙事（用于决策解释和用户教育） */
+  narrative?: RouteNarrative;
+  /** 不适合的用户画像（用于防止误用） */
+  antiPersona?: string[]; // 如 ["时间极度紧张", "不愿拆天", "低风险偏好"]
+  /** 路线哲学（第一性原理：不可背叛的规则 vs 可调整的自由度） */
+  philosophy?: RoutePhilosophyField;
 }
 
 /**

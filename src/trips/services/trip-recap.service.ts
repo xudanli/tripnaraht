@@ -72,11 +72,11 @@ export class TripRecapService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: {
+            ItineraryItem: {
               include: {
-                place: {
+                Place: {
                   select: {
                     id: true,
                     nameCN: true,
@@ -84,25 +84,25 @@ export class TripRecapService {
                     category: true,
                   },
                 },
-                trail: {
+                    Trail: {
                   include: {
-                    startPlace: {
+                    Place_Trail_startPlaceIdToPlace: {
                       select: {
                         id: true,
                         nameCN: true,
                         nameEN: true,
                       },
                     },
-                    endPlace: {
+                    Place_Trail_endPlaceIdToPlace: {
                       select: {
                         id: true,
                         nameCN: true,
                         nameEN: true,
                       },
                     },
-                    waypoints: {
+                    TrailWaypoint: {
                       include: {
-                        place: {
+                        Place: {
                           select: {
                             id: true,
                             nameCN: true,
@@ -146,29 +146,29 @@ export class TripRecapService {
     const timeline: TripRecapReport['timeline'] = [];
 
     // 按日期组织数据
-    for (const day of trip.days) {
+    for (const day of (trip as any).TripDay) {
       const dateStr = DateTime.fromJSDate(day.date).toISODate()!;
       const dayItems: TripRecapReport['timeline'][0]['items'] = [];
 
-      for (const item of day.items) {
+      for (const item of day.ItineraryItem) {
         const startTime = DateTime.fromJSDate(item.startTime);
         const endTime = DateTime.fromJSDate(item.endTime);
         const duration = endTime.diff(startTime, 'hours').hours;
 
         // 处理景点
-        if (item.place) {
+        if (item.Place) {
           places.push({
-            id: item.place.id,
-            nameCN: item.place.nameCN,
-            nameEN: item.place.nameEN || undefined,
-            category: item.place.category,
+            id: item.Place.id,
+            nameCN: item.Place.nameCN,
+            nameEN: item.Place.nameEN || undefined,
+            category: item.Place.category,
             visitDate: dateStr,
             visitTime: startTime.toFormat('HH:mm'),
           });
 
           dayItems.push({
             type: 'PLACE',
-            name: item.place.nameCN,
+            name: item.Place.nameCN,
             time: startTime.toFormat('HH:mm'),
             duration,
             note: item.note || undefined,
@@ -176,8 +176,8 @@ export class TripRecapService {
         }
 
         // 处理徒步路线
-        if (item.trail) {
-          const trail = item.trail;
+        if (item.Trail) {
+          const trail = item.Trail;
           trails.push({
             id: trail.id,
             nameCN: trail.nameCN,
@@ -234,7 +234,7 @@ export class TripRecapService {
         if (item.type === 'REST' || item.type === 'MEAL_ANCHOR' || item.type === 'MEAL_FLOATING') {
           dayItems.push({
             type: item.type === 'REST' ? 'REST' : 'MEAL',
-            name: item.place?.nameCN || item.note || '休息/用餐',
+            name: item.Place?.nameCN || item.note || '休息/用餐',
             time: startTime.toFormat('HH:mm'),
             duration,
             note: item.note || undefined,
@@ -270,7 +270,7 @@ export class TripRecapService {
       destination: trip.destination,
       startDate: DateTime.fromJSDate(trip.startDate).toISODate()!,
       endDate: DateTime.fromJSDate(trip.endDate).toISODate()!,
-      totalDays: trip.days.length,
+      totalDays: (trip as any).TripDay.length,
       places,
       trails,
       statistics,
@@ -326,13 +326,13 @@ export class TripRecapService {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
-        days: {
+        TripDay: {
           include: {
-            items: {
+            ItineraryItem: {
               include: {
-                trail: {
+                    Trail: {
                   include: {
-                    waypoints: {
+                    TrailWaypoint: {
                       orderBy: {
                         order: 'asc',
                       },
@@ -366,10 +366,10 @@ export class TripRecapService {
       }>;
     }> = [];
 
-    for (const day of trip.days) {
-      for (const item of day.items) {
-        if (item.trail) {
-          const trail = item.trail;
+    for (const day of (trip as any).TripDay) {
+      for (const item of day.ItineraryItem) {
+        if (item.Trail) {
+          const trail = item.Trail;
           const startTime = DateTime.fromJSDate(item.startTime);
 
           // 从GPX数据或waypoints提取关键点

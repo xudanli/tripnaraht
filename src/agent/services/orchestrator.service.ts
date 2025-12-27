@@ -9,6 +9,7 @@ import { EventTelemetryService } from './event-telemetry.service';
 import { ActionCacheService } from './action-cache.service';
 import { ActionDependencyAnalyzerService } from './action-dependency-analyzer.service';
 import { LlmPlanService } from './llm-plan-service';
+import { TripNaraSystemPromptService } from './tripnara-system-prompt.service';
 
 /**
  * Orchestrator Service
@@ -27,6 +28,7 @@ export class OrchestratorService {
     @Optional() private actionCache?: ActionCacheService,
     @Optional() private dependencyAnalyzer?: ActionDependencyAnalyzerService,
     @Optional() private llmPlan?: LlmPlanService,
+    @Optional() private systemPromptService?: TripNaraSystemPromptService,
   ) {}
 
   /**

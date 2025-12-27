@@ -30,11 +30,11 @@ export class TrailSupportServicesService {
     const trail = await this.prisma.trail.findUnique({
       where: { id: trailId },
       include: {
-        startPlace: true,
-        endPlace: true,
-        waypoints: {
+        Place_Trail_startPlaceIdToPlace: true,
+        Place_Trail_endPlaceIdToPlace: true,
+        TrailWaypoint: {
           include: {
-            place: true,
+            Place: true,
           },
           orderBy: {
             order: 'asc',
@@ -167,7 +167,7 @@ export class TrailSupportServicesService {
     const placeIds = [
       trail.startPlaceId,
       trail.endPlaceId,
-      ...trail.waypoints.map((wp: any) => wp.placeId).filter(Boolean),
+      ...trail.TrailWaypoint.map((wp: any) => wp.placeId).filter(Boolean),
     ].filter(Boolean) as number[];
 
     if (placeIds.length > 0) {

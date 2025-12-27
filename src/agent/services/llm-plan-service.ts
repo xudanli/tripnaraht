@@ -1,8 +1,9 @@
 // src/agent/services/llm-plan-service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { ActionRegistryService } from './action-registry.service';
+import { TripNaraSystemPromptService } from './tripnara-system-prompt.service';
 
 /**
  * Action Selection Result
@@ -27,6 +28,7 @@ export class LlmPlanService {
   constructor(
     private llmService: LlmService,
     private actionRegistry: ActionRegistryService,
+    @Optional() private systemPromptService?: TripNaraSystemPromptService,
   ) {
     // 检查是否启用 LLM Plan（默认启用，但可以通过环境变量禁用）
     this.enabled = process.env.ENABLE_LLM_PLAN !== 'false';
@@ -152,7 +154,13 @@ export class LlmPlanService {
       step: state.react.step,
     };
 
-    return `你是一个智能旅行规划助手，负责选择下一个要执行的 Action 来推进行程规划流程。
+    // 获取 TripNARA 系统提示（如果可用）
+    const systemPrompt = this.systemPromptService?.getSystemPrompt() || '';
+    const systemPromptSection = systemPrompt 
+      ? `\n\n---\n\n${systemPrompt}\n\n---\n\n`
+      : '';
+
+    return `${systemPromptSection}你是一个智能旅行规划助手（TripNARA），负责选择下一个要执行的 Action 来推进行程规划流程。
 
 ## 当前状态
 

@@ -45,7 +45,7 @@ export class ItineraryItemsService {
     // ============================================
     const tripDay = await this.prisma.tripDay.findUnique({
       where: { id: dto.tripDayId },
-      include: { trip: true }
+      include: { Trip: true }
     });
 
     if (!tripDay) {
@@ -60,7 +60,7 @@ export class ItineraryItemsService {
     if (dto.placeId && (dto.type === ItemType.ACTIVITY || dto.type === ItemType.MEAL_ANCHOR)) {
       const place = await this.prisma.place.findUnique({
         where: { id: dto.placeId },
-        include: { city: true } // 获取城市信息（可能需要时区）
+        include: { City: true } // 获取城市信息（可能需要时区）
       });
 
       if (!place) {
@@ -152,18 +152,18 @@ export class ItineraryItemsService {
         note: dto.note,
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
-        place: {
+        Place: {
           include: {
-            city: true,
+            City: true,
           },
         },
-        trail: {
+        Trail: {
           include: {
-            startPlace: true,
-            endPlace: true,
-            waypoints: {
+                    Place_Trail_startPlaceIdToPlace: true,
+                    Place_Trail_endPlaceIdToPlace: true,
+                TrailWaypoint: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: {
                 order: 'asc',
@@ -171,9 +171,9 @@ export class ItineraryItemsService {
             },
           },
         },
-        tripDay: {
+        TripDay: {
           include: {
-            trip: true,
+            Trip: true,
           },
         },
       },
@@ -186,14 +186,14 @@ export class ItineraryItemsService {
   async findAll() {
     return this.prisma.itineraryItem.findMany({
       include: {
-        place: true,
-        trail: {
+        Place: true,
+        Trail: {
           include: {
-            startPlace: true,
-            endPlace: true,
-            waypoints: {
+                    Place_Trail_startPlaceIdToPlace: true,
+                    Place_Trail_endPlaceIdToPlace: true,
+                TrailWaypoint: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: {
                 order: 'asc',
@@ -201,9 +201,9 @@ export class ItineraryItemsService {
             },
           },
         },
-        tripDay: {
+        TripDay: {
           include: {
-            trip: true,
+            Trip: true,
           },
         },
       },
@@ -220,18 +220,18 @@ export class ItineraryItemsService {
     return this.prisma.itineraryItem.findUnique({
       where: { id },
       include: {
-        place: {
+        Place: {
           include: {
-            city: true,
+            City: true,
           },
         },
-        trail: {
+        Trail: {
           include: {
-            startPlace: true,
-            endPlace: true,
-            waypoints: {
+                    Place_Trail_startPlaceIdToPlace: true,
+                    Place_Trail_endPlaceIdToPlace: true,
+                TrailWaypoint: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: {
                 order: 'asc',
@@ -239,10 +239,10 @@ export class ItineraryItemsService {
             },
           },
         },
-        tripDay: {
+        TripDay: {
           include: {
-            trip: true,
-            items: {
+            Trip: true,
+            ItineraryItem: {
               orderBy: {
                 startTime: 'asc',
               },
@@ -260,14 +260,14 @@ export class ItineraryItemsService {
     return this.prisma.itineraryItem.findMany({
       where: { tripDayId },
       include: {
-        place: true,
-        trail: {
+        Place: true,
+        Trail: {
           include: {
-            startPlace: true,
-            endPlace: true,
-            waypoints: {
+                    Place_Trail_startPlaceIdToPlace: true,
+                    Place_Trail_endPlaceIdToPlace: true,
+                TrailWaypoint: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: {
                 order: 'asc',
@@ -291,7 +291,7 @@ export class ItineraryItemsService {
       // 获取现有数据
       const existing = await this.prisma.itineraryItem.findUnique({
         where: { id },
-        include: { place: true },
+        include: { Place: true },
       });
 
       if (!existing) {
@@ -307,8 +307,8 @@ export class ItineraryItemsService {
       }
 
       // 如果关联了地点，重新校验营业时间
-      if (existing.placeId && existing.place) {
-        const meta = existing.place.metadata as any;
+      if (existing.placeId && existing.Place) {
+        const meta = existing.Place?.metadata as any;
         const timezone = meta?.timezone || 'Atlantic/Reykjavik';
         const hoursStr = OpeningHoursUtil.getHoursForDate(meta, start, timezone);
 
@@ -316,7 +316,7 @@ export class ItineraryItemsService {
           const isOpen = OpeningHoursUtil.isOpenAt(hoursStr, start, timezone);
           if (!isOpen) {
             throw new BadRequestException(
-              `时间冲突警告：${existing.place.nameEN || existing.place.nameCN} 在指定时间可能未营业 (营业时间: ${hoursStr})`
+              `时间冲突警告：${existing.Place?.nameEN || existing.Place?.nameCN} 在指定时间可能未营业 (营业时间: ${hoursStr})`
             );
           }
         }
@@ -334,14 +334,14 @@ export class ItineraryItemsService {
         ...(updateDto.note !== undefined && { note: updateDto.note }),
       },
       include: {
-        place: true,
-        trail: {
+        Place: true,
+        Trail: {
           include: {
-            startPlace: true,
-            endPlace: true,
-            waypoints: {
+                    Place_Trail_startPlaceIdToPlace: true,
+                    Place_Trail_endPlaceIdToPlace: true,
+                TrailWaypoint: {
               include: {
-                place: true,
+                Place: true,
               },
               orderBy: {
                 order: 'asc',
@@ -349,7 +349,7 @@ export class ItineraryItemsService {
             },
           },
         },
-        tripDay: true,
+        TripDay: true,
       },
     });
   }

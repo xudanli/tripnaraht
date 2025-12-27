@@ -11,6 +11,9 @@ import { Prisma } from '@prisma/client';
 import { ActivityCandidate } from '../../trips/decision/world-model';
 import { RouteDirectionRecommendation } from './route-direction-selector.service';
 import { RouteDirectionCacheService } from './route-direction-cache.service';
+import { POILayerService } from '../../poi/services/poi-layer.service';
+import { POIRouteAffinityService } from '../../poi/services/poi-route-affinity.service';
+import { POIInfo } from '../../poi/interfaces/poi-route-affinity.interface';
 
 @Injectable()
 export class RouteDirectionPoiGeneratorService {
@@ -18,7 +21,9 @@ export class RouteDirectionPoiGeneratorService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Optional() private readonly cacheService?: RouteDirectionCacheService
+    @Optional() private readonly cacheService?: RouteDirectionCacheService,
+    @Optional() private readonly poiLayerService?: POILayerService,
+    @Optional() private readonly poiAffinityService?: POIRouteAffinityService
   ) {}
 
   /**
@@ -64,10 +69,20 @@ export class RouteDirectionPoiGeneratorService {
     const candidates: ActivityCandidate[] = [];
 
     // 1. 如果有示例 UUID，直接查询这些 POI（不受走廊约束）
+    // P2.1: 只使用静态和半动态层的数据
     if (exampleUuids.length > 0) {
+      // 使用POI分层服务过滤出可用于路线生成的POI
+      let usableUuids = exampleUuids;
+      if (this.poiLayerService) {
+        usableUuids = await this.poiLayerService.filterUsablePOIs(exampleUuids);
+        this.logger.log(
+          `POI分层过滤: ${exampleUuids.length} -> ${usableUuids.length} (只使用静态+半动态层)`
+        );
+      }
+
       const places = await this.prisma.place.findMany({
         where: {
-          uuid: { in: exampleUuids },
+          uuid: { in: usableUuids },
         },
       });
 
@@ -131,7 +146,18 @@ export class RouteDirectionPoiGeneratorService {
         LIMIT 50
       `;
 
-      for (const place of places) {
+      // P2.1: 过滤出可用于路线生成的POI（只使用静态+半动态层）
+      let usablePlaces = places;
+      if (this.poiLayerService && places.length > 0) {
+        const placeUuids = places.map(p => p.uuid);
+        const usableUuids = await this.poiLayerService.filterUsablePOIs(placeUuids);
+        usablePlaces = places.filter(p => usableUuids.includes(p.uuid));
+        this.logger.log(
+          `POI分层过滤: ${places.length} -> ${usablePlaces.length} (只使用静态+半动态层)`
+        );
+      }
+
+      for (const place of usablePlaces) {
         // 避免重复
         if (!candidates.find(c => c.id === place.uuid)) {
           candidates.push(this.placeToActivityCandidate(place, 'recommended'));
@@ -195,6 +221,78 @@ export class RouteDirectionPoiGeneratorService {
     }
 
     this.logger.log(`生成了 ${candidates.length} 个候选 POI`);
+
+    // P2.2: 使用POI路线亲和度服务排序和优化候选POI
+    if (this.poiAffinityService && candidates.length > 0) {
+      try {
+        // 需要重新查询Place以获取完整信息用于亲和度计算
+        const candidateIds = candidates.map(c => c.id);
+        const places = await this.prisma.place.findMany({
+          where: { uuid: { in: candidateIds } },
+        });
+        const placeMap = new Map(places.map(p => [p.uuid, p]));
+
+        // 转换为POIInfo格式
+        const poiInfos: POIInfo[] = candidates.map(candidate => {
+          const place = placeMap.get(candidate.id);
+          const metadata = (place?.metadata as any) || {};
+          return {
+            id: candidate.id,
+            name: candidate.name?.zh || candidate.name?.en,
+            tags: candidate.intentTags || [],
+            type: metadata.canonicalType,
+            category: place?.category,
+            location: candidate.location?.point
+              ? {
+                  lat: candidate.location.point.lat,
+                  lng: candidate.location.point.lng,
+                  regionKey: candidate.location.region,
+                }
+              : undefined,
+            metadata,
+          };
+        });
+
+        // 计算亲和度
+        const affinities = await this.poiAffinityService.calculateAffinities(
+          poiInfos,
+          recommendation.routeDirection,
+          {
+            considerLocation: true,
+            considerSeasonality: true,
+          }
+        );
+
+        // 根据亲和度分数排序候选POI
+        const affinityMap = new Map(affinities.map(a => [a.poiId, a]));
+        candidates.sort((a, b) => {
+          const affinityA = affinityMap.get(a.id)?.affinityScore || 0;
+          const affinityB = affinityMap.get(b.id)?.affinityScore || 0;
+          return affinityB - affinityA; // 降序
+        });
+
+        // 更新qualityScore为亲和度分数（归一化到0-1）
+        candidates.forEach(candidate => {
+          const affinity = affinityMap.get(candidate.id);
+          if (affinity) {
+            candidate.qualityScore = affinity.affinityScore / 100;
+            // 将亲和度信息存储到metadata中（用于调试和解释）
+            (candidate as any).affinityInfo = {
+              score: affinity.affinityScore,
+              reasons: affinity.matchReasons,
+            };
+          }
+        });
+
+        this.logger.log(
+          `POI路线亲和度计算完成，平均分数: ${
+            affinities.reduce((sum, a) => sum + a.affinityScore, 0) / affinities.length
+          }`
+        );
+      } catch (error) {
+        this.logger.warn(`POI路线亲和度计算失败: ${error}，继续使用原始候选列表`);
+      }
+    }
     
     // 缓存结果
     if (this.cacheService) {
