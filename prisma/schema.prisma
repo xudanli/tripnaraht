@@ -128,31 +128,31 @@ model HotelWideData_Quarterly {
   id         Int     @id @default(autoincrement())
   city       String?
   starRating Int?
-  Q1         Float?  @map("2018_Q1")
-  Q2         Float?  @map("2018_Q2")
-  Q3         Float?  @map("2018_Q3")
-  Q4         Float?  @map("2018_Q4")
-  Q1         Float?  @map("2019_Q1")
-  Q2         Float?  @map("2019_Q2")
-  Q3         Float?  @map("2019_Q3")
-  Q4         Float?  @map("2019_Q4")
-  Q1         Float?  @map("2020_Q1")
-  Q2         Float?  @map("2020_Q2")
-  Q3         Float?  @map("2020_Q3")
-  Q4         Float?  @map("2020_Q4")
-  Q1         Float?  @map("2021_Q1")
-  Q2         Float?  @map("2021_Q2")
-  Q3         Float?  @map("2021_Q3")
-  Q4         Float?  @map("2021_Q4")
-  Q1         Float?  @map("2022_Q1")
-  Q2         Float?  @map("2022_Q2")
-  Q3         Float?  @map("2022_Q3")
-  Q4         Float?  @map("2022_Q4")
-  Q1         Float?  @map("2023_Q1")
-  Q2         Float?  @map("2023_Q2")
-  Q3         Float?  @map("2023_Q3")
-  Q4         Float?  @map("2023_Q4")
-  Q1         Float?  @map("2024_Q1")
+  Q1_2018    Float?  @map("2018_Q1")
+  Q2_2018    Float?  @map("2018_Q2")
+  Q3_2018    Float?  @map("2018_Q3")
+  Q4_2018    Float?  @map("2018_Q4")
+  Q1_2019    Float?  @map("2019_Q1")
+  Q2_2019    Float?  @map("2019_Q2")
+  Q3_2019    Float?  @map("2019_Q3")
+  Q4_2019    Float?  @map("2019_Q4")
+  Q1_2020    Float?  @map("2020_Q1")
+  Q2_2020    Float?  @map("2020_Q2")
+  Q3_2020    Float?  @map("2020_Q3")
+  Q4_2020    Float?  @map("2020_Q4")
+  Q1_2021    Float?  @map("2021_Q1")
+  Q2_2021    Float?  @map("2021_Q2")
+  Q3_2021    Float?  @map("2021_Q3")
+  Q4_2021    Float?  @map("2021_Q4")
+  Q1_2022    Float?  @map("2022_Q1")
+  Q2_2022    Float?  @map("2022_Q2")
+  Q3_2022    Float?  @map("2022_Q3")
+  Q4_2022    Float?  @map("2022_Q4")
+  Q1_2023    Float?  @map("2023_Q1")
+  Q2_2023    Float?  @map("2023_Q2")
+  Q3_2023    Float?  @map("2023_Q3")
+  Q4_2023    Float?  @map("2023_Q4")
+  Q1_2024    Float?  @map("2024_Q1")
 
   @@index([city])
   @@index([city, starRating])
@@ -274,10 +274,10 @@ model RawAttractionData {
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model RawFlightData {
-  y Decimal? @map("起飞机场y") @db.Decimal
-  x Decimal? @map("起飞机场x") @db.Decimal
-  y Decimal? @map("降落机场y") @db.Decimal
-  x Decimal? @map("降落机场x") @db.Decimal
+  departureY Decimal? @map("起飞机场y") @db.Decimal
+  departureX Decimal? @map("起飞机场x") @db.Decimal
+  arrivalY   Decimal? @map("降落机场y") @db.Decimal
+  arrivalX   Decimal? @map("降落机场x") @db.Decimal
 
   @@ignore
 }
@@ -810,4 +810,164 @@ enum PlaceCategory {
   SHOPPING
   HOTEL
   TRANSIT_HUB
+}
+
+// ========== TripNARA Decision Log System ==========
+
+// 决策日志表（用于决策体检面板）
+model DecisionLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String?  @map("trip_id") @db.Uuid
+  countryCode      String?  @map("country_code") @db.VarChar(2)
+  routeDirectionId String?  @map("route_direction_id") @db.VarChar(255)
+  persona          String   @db.VarChar(20) // 'ABU' | 'DR_DRE' | 'NEPTUNE'
+  action           String   @db.VarChar(20) // 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE'
+  decisionSource   String   @map("decision_source") @db.VarChar(20) // 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC'
+  explanation      String   @db.Text
+  reasonCodes      String[] @map("reason_codes")
+  evidenceRefs     String[] @map("evidence_refs")
+  timestamp        DateTime @default(now())
+  metadata         Json?
+
+  @@index([tripId])
+  @@index([countryCode])
+  @@index([routeDirectionId])
+  @@index([decisionSource])
+  @@index([persona])
+  @@index([timestamp])
+  @@index([countryCode, routeDirectionId, decisionSource])
+  @@map("decision_logs")
+}
+
+// ========== TripNARA Agent Memory System ==========
+
+// L1: 用户旅行人格
+model UserTravelProfile {
+  userId              String   @id @db.Uuid
+  pacePreference      String?  @map("pace_preference") @db.VarChar(20)
+  altitudeTolerance   String?  @map("altitude_tolerance") @db.VarChar(20)
+  riskTolerance       String?  @map("risk_tolerance") @db.VarChar(20)
+  travelPhilosophy    String?  @map("travel_philosophy") @db.VarChar(20)
+  preferredRouteTypes String[] @map("preferred_route_types")
+  confidence          Float    @default(0.5)
+  source              String   @default("inferred") @db.VarChar(20)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("user_travel_profile")
+}
+
+// L2: 路线决策记忆
+model RouteDirectionDecision {
+  id                        String   @id @default(uuid()) @db.Uuid
+  userId                    String   @map("user_id") @db.Uuid
+  tripId                    String?  @map("trip_id") @db.Uuid
+  countryCode               String   @map("country_code") @db.VarChar(10)
+  month                     Int
+  selectedRouteDirectionId  Int      @map("selected_route_direction_id")
+  rejectedRouteDirectionIds Int[]    @map("rejected_route_direction_ids")
+  keyConstraints            Json     @map("key_constraints")
+  scoreBreakdown            Json     @map("score_breakdown")
+  explanation               Json
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([userId, countryCode])
+  @@index([selectedRouteDirectionId, countryCode])
+  @@map("route_direction_decision")
+}
+
+// L3: 路线健康记忆
+model RouteDirectionHealth {
+  routeDirectionId     Int      @map("route_direction_id")
+  countryCode          String   @map("country_code") @db.VarChar(10)
+  totalRuns            Int      @default(0) @map("total_runs")
+  successRuns          Int      @default(0) @map("success_runs")
+  failureRuns          Int      @default(0) @map("failure_runs")
+  commonFailureReasons String[] @map("common_failure_reasons")
+  commonRepairs        String[] @map("common_repairs")
+  lastUpdated          DateTime @default(now()) @updatedAt @map("last_updated")
+
+  @@id([routeDirectionId, countryCode])
+  @@index([routeDirectionId, countryCode])
+  @@map("route_direction_health")
+}
+
+// L4: 行为反馈记忆
+model TripOutcomeFeedback {
+  tripId         String   @id @map("trip_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  overallSuccess Boolean  @map("overall_success")
+  fatigueLevel   Int?     @map("fatigue_level")
+  satisfaction   Int?     @map("satisfaction")
+  abandoned      Boolean  @default(false)
+  failurePoints  String[] @map("failure_points")
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([tripId])
+  @@map("trip_outcome_feedback")
+}
+
+// ========== TripNARA RAG System ==========
+
+// 文档索引表（用于存储 Rail Pass 条款、游记、攻略等）
+model DocumentIndex {
+  id            String   @id @default(uuid()) @db.Uuid
+  collection    String   @db.VarChar(50) // 'rail_pass_rules' | 'travel_guides' | 'local_insights'
+  title         String   @db.VarChar(255)
+  content       String   @db.Text
+  embedding     Unsupported("vector")? // pgvector embedding
+  source        String?  @db.VarChar(255) // 来源 URL 或文件名
+  countryCode   String?  @map("country_code") @db.VarChar(2)
+  tags          String[] // 标签，如 ['eurail', 'iceland', 'f-road']
+  metadata      Json?    // 额外元数据
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([collection])
+  @@index([countryCode])
+  @@index([tags])
+  @@map("document_index")
+}
+
+// 合规证据表（从 RAG 提取的结构化规则）
+model ComplianceEvidence {
+  id            String   @id @default(uuid()) @db.Uuid
+  countryCode   String   @map("country_code") @db.VarChar(2)
+  ruleType      String   @map("rule_type") @db.VarChar(50) // 'RAIL_PASS' | 'TRAIL_ACCESS' | 'PERMIT_REQUIREMENT'
+  ruleData      Json     @map("rule_data") // 结构化规则对象（RailPassRule / TrailAccessRule / PermitRequirement）
+  source        String   @default("RAG_EXTRACTED") @db.VarChar(50) // 'RAG_EXTRACTED' | 'MANUAL' | 'API'
+  sourceUrl     String?  @map("source_url") @db.VarChar(500)
+  confidence    String   @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
+  extractedAt   DateTime @default(now()) @map("extracted_at")
+  lastVerified  DateTime? @map("last_verified")
+  isValid       Boolean  @default(true) @map("is_valid")
+  metadata      Json?
+
+  @@index([countryCode])
+  @@index([ruleType])
+  @@index([countryCode, ruleType])
+  @@map("compliance_evidence")
+}
+
+// 当地洞察表（软知识，不参与硬决策）
+model LocalInsight {
+  id              String   @id @default(uuid()) @db.Uuid
+  countryCode     String   @map("country_code") @db.VarChar(2)
+  region          String?  @db.VarChar(100)
+  tags            String[] // ['alpine_hut', 'wild_camp', 'f_road', 'public_transport']
+  content         String   @db.Text // LLM 基于 RAG 生成的小段文字
+  evidenceSnippets String[] @map("evidence_snippets") // 原文引用片段
+  confidence      String   @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
+  source          String?  @db.VarChar(255) // 来源 URL
+  lastUpdated     DateTime @default(now()) @updatedAt @map("last_updated")
+  createdAt       DateTime @default(now()) @map("created_at")
+  metadata        Json?
+
+  @@index([countryCode])
+  @@index([tags])
+  @@index([countryCode, tags])
+  @@map("local_insight")
 }

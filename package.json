@@ -83,9 +83,16 @@
     "cleanup:dem:cities": "ts-node --project tsconfig.backend.json scripts/cleanup-dem-city-tables.ts",
     "update:poi:altitude:dem": "ts-node --project tsconfig.backend.json scripts/update-poi-altitude-from-dem.ts",
     "test": "jest",
+    "demo:iceland-highlands": "ts-node --project tsconfig.backend.json scripts/demo-iceland-highlands.ts",
+    "monitor:iceland-e2e": "ts-node --project tsconfig.backend.json scripts/monitor-iceland-e2e.ts",
+    "test:decision-log-storage": "ts-node --project tsconfig.backend.json scripts/test-decision-log-storage.ts",
+    "test:strategies": "jest src/trips/decision/strategies/__tests__",
+    "demo:iceland": "ts-node --project tsconfig.backend.json scripts/demo-full-pipeline-iceland.ts",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:agent": "jest --testPathPatterns=agent"
+    "test:agent": "jest --testPathPatterns=agent",
+    "rag:index": "ts-node --project tsconfig.backend.json scripts/index-rag-documents.ts",
+    "rag:test": "ts-node --project tsconfig.backend.json scripts/test-rag-api.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

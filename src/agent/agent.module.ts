@@ -24,6 +24,8 @@ import { PlanningPolicyModule } from '../planning-policy/planning-policy.module'
 import { RailPassModule } from '../railpass/railpass.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { DecisionModule } from '../trips/decision/decision.module';
+import { MemoryModule } from './memory/memory.module';
+import { RagModule } from '../rag/rag.module';
 import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
 import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
@@ -42,6 +44,7 @@ import { createWebBrowseActions } from './services/actions/webbrowse.actions';
 import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
 import { createReadinessActions } from './services/actions/readiness.actions';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
+import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.service';
 
 /**
  * Agent Module
@@ -60,6 +63,8 @@ import { ReadinessService } from '../trips/readiness/services/readiness.service'
     RailPassModule,
     ReadinessModule,
     DecisionModule,
+    MemoryModule,
+    RagModule, // RAG 模块（用于增强对话）
   ],
   controllers: [AgentController],
   providers: [
@@ -76,10 +81,12 @@ import { ReadinessService } from '../trips/readiness/services/readiness.service'
     ActionDependencyAnalyzerService,
     LlmPlanService,
     WebBrowseExecutorService,
+    TripNaraSystemPromptService,
   ],
   exports: [
     AgentService,
     ActionRegistryService,
+    TripNaraSystemPromptService,
   ],
 })
 export class AgentModule {

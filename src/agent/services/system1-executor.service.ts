@@ -1,5 +1,5 @@
 // src/agent/services/system1-executor.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RouteType } from '../interfaces/router.interface';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { PlacesService } from '../../places/places.service';
@@ -7,6 +7,7 @@ import { TripsService } from '../../trips/trips.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { ItemType } from '../../itinerary-items/dto/create-itinerary-item.dto';
 import { DateTime } from 'luxon';
+import { EnhancedChatService } from '../../rag/services/enhanced-chat.service';
 
 /**
  * System 1 Executor Service
@@ -21,6 +22,7 @@ export class System1ExecutorService {
     private placesService: PlacesService,
     private tripsService: TripsService,
     private itineraryItemsService: ItineraryItemsService,
+    @Optional() private enhancedChat?: EnhancedChatService,
   ) {}
 
   /**
@@ -302,6 +304,10 @@ export class System1ExecutorService {
 
   /**
    * 执行 RAG 路径（知识库检索）
+   * 
+   * 增强功能：
+   * - 检测路线相关问题，使用 EnhancedChatService
+   * - 其他问题继续使用地点搜索
    */
   private async executeRAG(state: AgentState): Promise<{
     success: boolean;
@@ -311,7 +317,26 @@ export class System1ExecutorService {
     const input = state.user_input;
 
     try {
-      // 使用 PlacesService 的搜索功能（关键词搜索）
+      // 1. 检测是否是路线相关问题
+      if (this.enhancedChat && this.isRouteQuestion(input)) {
+        const context = this.extractRouteContext(state);
+        const enhancedAnswer = await this.enhancedChat.answerRouteQuestion(input, context);
+        
+        return {
+          success: true,
+          result: {
+            type: 'rag',
+            query: input,
+            source: enhancedAnswer.source,
+            structuredData: enhancedAnswer.structuredData,
+            ragSnippets: enhancedAnswer.ragSnippets,
+            localInsights: enhancedAnswer.localInsights,
+          },
+          answerText: enhancedAnswer.answer,
+        };
+      }
+
+      // 2. 使用 PlacesService 的搜索功能（关键词搜索）
       const results = await this.placesService.search(input, undefined, undefined, undefined, undefined, 10);
       
       if (results.length === 0) {
@@ -360,6 +385,40 @@ export class System1ExecutorService {
         answerText: '查询知识库时出错',
       };
     }
+  }
+
+  /**
+   * 检测是否是路线相关问题
+   */
+  private isRouteQuestion(input: string): boolean {
+    const lowerInput = input.toLowerCase();
+    const routeKeywords = [
+      '路线', 'route', '路线方向', 'route direction',
+      '为什么选', '为什么推荐', 'why', 'why this',
+      '什么感觉', '怎么样', '体验', 'experience',
+      '建议', 'tips', '需要注意', '注意',
+      'f-road', 'f路', 'highlands', '高地',
+      'ebc', '徒步', 'hiking', 'trekking',
+    ];
+
+    return routeKeywords.some(keyword => lowerInput.includes(keyword));
+  }
+
+  /**
+   * 从 AgentState 提取路线上下文
+   */
+  private extractRouteContext(state: AgentState): {
+    routeDirectionId?: string;
+    countryCode?: string;
+    segmentId?: string;
+    dayIndex?: number;
+    tripId?: string;
+  } {
+    return {
+      tripId: (state as any).trip_id || undefined,
+      // 可以从 state 的其他字段提取更多上下文
+      // 例如：state.current_route_direction_id, state.country_code 等
+    };
   }
 }
 
