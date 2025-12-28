@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
+import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { RouteDirectionData, RouteTemplateData } from './interfaces/route-direction.interface';
 
 @Injectable()
@@ -417,6 +418,64 @@ export class RouteDirectionsService {
       hash = hash & hash; // Convert to 32bit integer
     }
     return Math.abs(hash);
+  }
+
+  /**
+   * 批量导入国家 Pack（CountryPackSkeleton）
+   * 
+   * 从 CountryPackSkeleton JSON 文件中批量导入 RouteDirection
+   * 
+   * @param dto Country Pack 导入数据
+   * @returns 导入结果
+   */
+  async importCountryPack(dto: ImportCountryPackDto): Promise<ImportCountryPackResultDto> {
+    const results: Array<{ name: string; success: boolean; id?: number; error?: string }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    this.logger.log(`开始导入 ${dto.countryCode} 的 Country Pack，包含 ${dto.routeDirections.length} 条 RouteDirection`);
+
+    for (const routeDirectionDto of dto.routeDirections) {
+      try {
+        // 确保 countryCode 匹配
+        if (routeDirectionDto.countryCode !== dto.countryCode) {
+          this.logger.warn(
+            `RouteDirection ${routeDirectionDto.name} 的 countryCode (${routeDirectionDto.countryCode}) 与 Pack 的 countryCode (${dto.countryCode}) 不匹配，使用 Pack 的 countryCode`
+          );
+          routeDirectionDto.countryCode = dto.countryCode;
+        }
+
+        // 使用现有的创建方法
+        const created = await this.createRouteDirection(routeDirectionDto);
+        results.push({
+          name: routeDirectionDto.name,
+          success: true,
+          id: created.id,
+        });
+        successCount++;
+        this.logger.log(`✅ 成功导入 RouteDirection: ${routeDirectionDto.name} (ID: ${created.id})`);
+      } catch (error: any) {
+        const errorMessage = error?.message || 'Unknown error';
+        results.push({
+          name: routeDirectionDto.name,
+          success: false,
+          error: errorMessage,
+        });
+        failedCount++;
+        this.logger.error(`❌ 导入 RouteDirection 失败: ${routeDirectionDto.name}`, errorMessage);
+      }
+    }
+
+    this.logger.log(
+      `Country Pack 导入完成: ${dto.countryCode} - 成功: ${successCount}, 失败: ${failedCount}`
+    );
+
+    return {
+      countryCode: dto.countryCode,
+      successCount,
+      failedCount,
+      results,
+    };
   }
 }
 

@@ -1,8 +1,9 @@
 // src/countries/countries.controller.ts
-import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Put, Param, Body, NotFoundException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { CountriesService } from './countries.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
+import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
@@ -63,6 +64,93 @@ export class CountriesController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;
+    }
+  }
+
+  @Get(':countryCode/pack')
+  @ApiOperation({
+    summary: '获取国家 Pack 配置',
+    description: '返回指定国家的地形策略配置，包括风险阈值、体力等级映射、地形约束等',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: '国家代码',
+    example: 'CN_XIZANG',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回国家 Pack 配置',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '未找到指定国家的 Pack 配置',
+    type: ApiErrorResponseDto,
+  })
+  async getCountryPack(@Param('countryCode') countryCode: string) {
+    try {
+      const pack = await this.countriesService.getCountryPack(countryCode);
+      return successResponse(pack);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('packs')
+  @ApiOperation({
+    summary: '获取所有国家 Pack 配置列表',
+    description: '返回所有已配置的国家 Pack 列表，包括风险阈值、体力等级映射、地形约束等',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回所有国家 Pack 配置列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getAllCountryPacks() {
+    try {
+      const packs = await this.countriesService.getAllCountryPacks();
+      return successResponse(packs);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Put(':countryCode/pack')
+  @ApiOperation({
+    summary: '创建或更新国家 Pack 配置',
+    description: '创建或更新指定国家的地形策略配置。注意：目前配置通过文件管理，此接口会提示需要手动修改配置文件',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: '国家代码',
+    example: 'CN_XIZANG',
+  })
+  @ApiBody({ type: CreateOrUpdateCountryPackDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新国家 Pack 配置',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '更新失败（需要通过配置文件手动修改）',
+    type: ApiErrorResponseDto,
+  })
+  async createOrUpdateCountryPack(
+    @Param('countryCode') countryCode: string,
+    @Body() dto: CreateOrUpdateCountryPackDto,
+  ) {
+    try {
+      const pack = await this.countriesService.createOrUpdateCountryPack(countryCode, dto);
+      return successResponse(pack);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 }

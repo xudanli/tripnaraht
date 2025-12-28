@@ -2,7 +2,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
+import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack.dto';
 import { CurrencyMathUtil } from '../common/utils/currency-math.util';
+import { getCountryPack, COUNTRY_PACKS, CountryPack } from '../trips/readiness/config/country-pack.config';
 
 @Injectable()
 export class CountriesService {
@@ -100,6 +102,63 @@ export class CountriesService {
         nameCN: 'asc',
       },
     });
+  }
+
+  /**
+   * 获取国家 Pack 配置
+   * 
+   * 返回指定国家的地形策略配置（风险阈值、体力等级映射、地形约束）
+   * 
+   * @param countryCode 国家代码
+   * @returns Country Pack 配置
+   */
+  async getCountryPack(countryCode: string): Promise<CountryPackDto> {
+    const pack = getCountryPack(countryCode);
+    return {
+      countryCode: pack.countryCode,
+      countryName: pack.countryName,
+      riskThresholds: pack.riskThresholds,
+      effortLevelMapping: pack.effortLevelMapping,
+      terrainConstraints: pack.terrainConstraints,
+    };
+  }
+
+  /**
+   * 获取所有国家 Pack 配置列表
+   * 
+   * @returns 所有国家 Pack 配置列表
+   */
+  async getAllCountryPacks(): Promise<CountryPackDto[]> {
+    return Object.values(COUNTRY_PACKS).map(pack => ({
+      countryCode: pack.countryCode,
+      countryName: pack.countryName,
+      riskThresholds: pack.riskThresholds,
+      effortLevelMapping: pack.effortLevelMapping,
+      terrainConstraints: pack.terrainConstraints,
+    }));
+  }
+
+  /**
+   * 创建或更新国家 Pack 配置
+   * 
+   * 注意：目前实现为只读查询，实际更新需要修改配置文件或添加持久化存储
+   * 此方法目前会抛出错误，提示需要手动修改配置文件
+   * 
+   * @param countryCode 国家代码
+   * @param dto 创建/更新数据
+   * @returns 更新后的配置
+   */
+  async createOrUpdateCountryPack(
+    countryCode: string,
+    dto: CreateOrUpdateCountryPackDto,
+  ): Promise<CountryPackDto> {
+    // TODO: 实现持久化存储（数据库或配置文件写入）
+    // 目前配置是硬编码在 country-pack.config.ts 中
+    // 临时实现：返回当前配置，提示需要手动修改
+    throw new NotFoundException(
+      `Country Pack 配置目前通过配置文件管理。请修改 src/trips/readiness/config/country-pack.config.ts 中的 COUNTRY_PACKS 配置。` +
+      `国家代码: ${countryCode}`
+    );
   }
 }
 

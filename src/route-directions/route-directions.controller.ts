@@ -26,6 +26,7 @@ import { RouteDirectionRecommendation } from './services/route-direction-selecto
 import { ScoreBreakdown } from './interfaces/route-direction-explanation.interface';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
+import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 
 @ApiTags('route-directions')
@@ -177,6 +178,31 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to create route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Post('import-pack')
+  @ApiOperation({
+    summary: '批量导入国家 Pack',
+    description: '从 CountryPackSkeleton JSON 格式批量导入 RouteDirection。用于导入通过 new-country-pack.ts 生成的国家 Pack 配置',
+  })
+  @ApiBody({ type: ImportCountryPackDto })
+  @ApiResponse({
+    status: 201,
+    description: '成功导入国家 Pack',
+    type: ImportCountryPackResultDto,
+  })
+  async importCountryPack(@Body() dto: ImportCountryPackDto) {
+    try {
+      const result = await this.routeDirectionsService.importCountryPack(dto);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error('Failed to import country pack', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error?.message || 'Failed to import country pack',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }
