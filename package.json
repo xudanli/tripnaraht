@@ -109,7 +109,8 @@
     "test:coverage": "jest --coverage",
     "test:agent": "jest --testPathPatterns=agent",
     "rag:index": "ts-node --project tsconfig.backend.json scripts/index-rag-documents.ts",
-    "rag:test": "ts-node --project tsconfig.backend.json scripts/test-rag-api.ts"
+    "rag:test": "ts-node --project tsconfig.backend.json scripts/test-rag-api.ts",
+    "test:country-pack": "ts-node --project tsconfig.backend.json scripts/test-country-pack-api.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
