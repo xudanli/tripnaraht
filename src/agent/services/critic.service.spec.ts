@@ -143,17 +143,17 @@ describe('CriticService', () => {
     });
 
     it('应该在违反规则时返回 pass=false', async () => {
-      jest.spyOn(feasibilityService, 'validate').mockResolvedValue({
-        pass: false,
-        violations: [
-          {
-            type: 'TIME_WINDOW_VIOLATION',
-            message: '时间窗违反',
-          },
-        ],
-      });
+      // 设置一个会导致 violation 的状态：状态为 READY 但 timeline 为空
+      const invalidState = {
+        ...mockState,
+        result: {
+          ...mockState.result,
+          status: 'READY' as const,
+          timeline: [], // 空 timeline 会导致 SCHEDULE_MISSING violation
+        },
+      } as AgentState;
 
-      const result = await service.validateFeasibility(mockState as AgentState);
+      const result = await service.validateFeasibility(invalidState);
 
       expect(result.pass).toBe(false);
       expect(result.violations.length).toBeGreaterThan(0);

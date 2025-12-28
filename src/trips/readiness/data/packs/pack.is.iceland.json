@@ -1,0 +1,440 @@
+{
+  "packId": "pack.is.iceland",
+  "destinationId": "IS-ICELAND",
+  "displayName": "Iceland Travel Readiness",
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "IS",
+    "region": "Iceland",
+    "city": "Reykjavik",
+    "lat": 64.1466,
+    "lng": -21.9426
+  },
+  "supportedSeasons": ["summer", "winter", "shoulder", "all"],
+  "sources": [
+    {
+      "sourceId": "src.safetravel.is",
+      "authority": "SafeTravel Iceland",
+      "type": "html",
+      "title": "Iceland Travel Safety Information",
+      "canonicalUrl": "https://www.safetravel.is/"
+    },
+    {
+      "sourceId": "src.vedur.is",
+      "authority": "Icelandic Meteorological Office",
+      "type": "html",
+      "title": "Weather Forecasts & Warnings",
+      "canonicalUrl": "https://www.vedur.is/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_extreme",
+      "severity": "high",
+      "summary": "Iceland weather changes rapidly; strong winds, rain, and sudden temperature drops are common, especially in winter.",
+      "mitigations": [
+        "Check weather forecasts (vedur.is) before heading out, especially for remote areas.",
+        "Carry layered clothing: waterproof/windproof shell, warm mid-layer, thermal base layer.",
+        "Be prepared for sudden weather changes even in summer.",
+        "Avoid driving in severe weather conditions."
+      ]
+    },
+    {
+      "type": "terrain",
+      "severity": "high",
+      "summary": "Geothermal areas (hot springs, geysers, volcanoes) present burn risks from hot ground and steam.",
+      "mitigations": [
+        "Stay on marked tracks and boardwalks in geothermal areas.",
+        "Keep safe distance from geysers, hot springs, and steam vents.",
+        "Supervise children and pets closely in thermal areas.",
+        "Be aware of unstable ground near thermal features."
+      ]
+    },
+    {
+      "type": "logistics_remote",
+      "severity": "high",
+      "summary": "Remote areas have limited fuel and supply access; long distances between services, especially in the Highlands.",
+      "mitigations": [
+        "Plan fuel stops before entering remote areas (F-roads, Highlands).",
+        "Carry extra food, water, and emergency supplies.",
+        "Check road conditions (road.is) before heading to remote areas.",
+        "Have offline maps and GPS backup."
+      ]
+    },
+    {
+      "type": "water_safety",
+      "severity": "medium",
+      "summary": "Strong ocean currents and unpredictable waves at black sand beaches; river crossings in Highlands can be dangerous.",
+      "mitigations": [
+        "Never turn your back to the ocean at black sand beaches.",
+        "Stay away from the water's edge, especially at Reynisfjara.",
+        "Do not attempt river crossings in Highlands without proper vehicle and experience.",
+        "Check tide times and weather conditions before visiting coastal areas."
+      ]
+    },
+    {
+      "type": "driving_conditions",
+      "severity": "high",
+      "summary": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter; gravel roads and strong winds can be challenging.",
+      "mitigations": [
+        "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads).",
+        "Check road conditions and F-road status before departure.",
+        "Drive slowly on gravel roads and be cautious of strong crosswinds.",
+        "Never drive off-road or on closed roads."
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.is.weather-gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Layered clothing system: waterproof/windproof shell, warm mid-layer, thermal base layer",
+        "Sturdy waterproof boots with good grip",
+        "Headlamp with spare batteries (important for winter short days)",
+        "Emergency shelter or bivvy bag for remote areas",
+        "Check weather forecast (vedur.is) before departure",
+        "Inform someone of your route and expected return time"
+      ]
+    },
+    {
+      "id": "chk.is.geothermal-safety",
+      "category": "safety_hazards",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Stay on marked tracks and boardwalks in geothermal areas",
+        "Keep safe distance from geysers, hot springs, and steam vents",
+        "Supervise children and pets at all times in thermal areas",
+        "Carry first aid kit for potential burns",
+        "Be aware of unstable ground and hydrogen sulfide gas in some areas",
+        "Do not test water temperature with bare hands"
+      ]
+    },
+    {
+      "id": "chk.is.fuel-supply-planning",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Plan fuel stops before entering remote areas (especially Highlands/F-roads)",
+        "Carry extra food and water for remote stretches",
+        "Check road conditions (road.is) and F-road status",
+        "Have offline maps and GPS backup",
+        "Carry emergency supplies: food, water, warm clothing, first aid",
+        "Check fuel station opening hours in remote areas"
+      ]
+    },
+    {
+      "id": "chk.is.driving-preparation",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads)",
+        "Check road conditions and weather before departure",
+        "Drive slowly on gravel roads and be cautious of strong crosswinds",
+        "Never drive off-road or on closed roads",
+        "Be aware of sheep on roads, especially in rural areas",
+        "Carry spare tire and know how to change it"
+      ]
+    },
+    {
+      "id": "chk.is.coastal-safety",
+      "category": "safety_hazards",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Never turn your back to the ocean at black sand beaches",
+        "Stay away from the water's edge, especially at Reynisfjara",
+        "Check tide times and weather conditions before visiting coastal areas",
+        "Be aware of sneaker waves that can come far up the beach",
+        "Do not climb on basalt columns or unstable rock formations"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.is.weather.layered-clothing",
+      "category": "gear_packing",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "outdoor", "nature", "glacier", "volcano"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["ATTRACTION_NATURE_GLACIER", "ATTRACTION_NATURE_VOLCANO", "TRAILHEAD"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.season",
+              "value": "winter"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Iceland weather changes rapidly. Pack layered clothing: waterproof/windproof shell, warm mid-layer (fleece/wool), thermal base layer. Also carry headlamp, spare batteries, and emergency shelter for remote areas.",
+        "tasks": [
+          {
+            "title": "Prepare layered clothing system for Iceland weather",
+            "dueOffsetDays": -10,
+            "tags": ["gear", "safety"]
+          },
+          {
+            "title": "Pack headlamp + spare batteries + emergency shelter",
+            "dueOffsetDays": -7,
+            "tags": ["gear"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.weather.forecast-check",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "outdoor", "driving", "remote"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["ATTRACTION_NATURE_GLACIER", "TRAILHEAD"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Check weather forecasts (vedur.is) before heading out, especially for remote areas. Weather can change quickly and roads may close due to severe conditions.",
+        "tasks": [
+          {
+            "title": "Check vedur.is forecast and road.is conditions before departure",
+            "dueOffsetDays": -1,
+            "tags": ["safety", "planning"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to visit remote areas or Highlands?",
+          "Are you familiar with checking Iceland weather forecasts?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.geothermal.safety",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["ATTRACTION_NATURE_HOT_SPRING", "ATTRACTION_NATURE_GEYSER", "ATTRACTION_NATURE_VOLCANO", "SPA_POOL"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["geothermal", "volcano", "hot_springs", "spa"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Geothermal areas pose burn risks from hot ground and steam. Stay on marked tracks and boardwalks. Keep safe distance from geysers and hot springs. Supervise children and pets closely. Be aware of unstable ground and hydrogen sulfide gas in some areas.",
+        "tasks": [
+          {
+            "title": "Review geothermal safety guidelines before visiting thermal areas",
+            "dueOffsetDays": -3,
+            "tags": ["safety"]
+          }
+        ],
+        "askUser": [
+          "Will you be visiting geothermal areas with children or pets?",
+          "Are you aware of the burn risks in Iceland's thermal areas?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.fuel.remote-planning",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["FUEL_STATION"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["driving", "highlands", "f-roads"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.hasRemoteAreas",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Remote areas have limited fuel access. Plan fuel stops before entering remote areas (especially Highlands/F-roads). Check fuel station opening hours in remote areas. Carry extra food, water, and emergency supplies.",
+        "tasks": [
+          {
+            "title": "Plan fuel stops before entering remote areas",
+            "dueOffsetDays": -7,
+            "tags": ["logistics", "driving"]
+          },
+          {
+            "title": "Check fuel station locations and opening hours for remote areas",
+            "dueOffsetDays": -3,
+            "tags": ["logistics"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to drive in remote areas or Highlands?",
+          "Are you aware of fuel station availability in remote areas?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.driving.f-roads",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["highlands", "f-roads", "off-road"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.requires4x4",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "blocker",
+        "message": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter. Check road conditions (road.is) and F-road status before departure. Never drive off-road or on closed roads.",
+        "tasks": [
+          {
+            "title": "Rent 4x4 vehicle for F-roads (if planning Highlands)",
+            "dueOffsetDays": -30,
+            "tags": ["booking", "transport"]
+          },
+          {
+            "title": "Check road.is for F-road status and conditions",
+            "dueOffsetDays": -1,
+            "tags": ["safety", "planning"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to drive on F-roads (Highland roads)?",
+          "Do you have experience driving on gravel roads and river crossings?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.coastal.safety",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["ATTRACTION_NATURE_BEACH"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["beach", "coastal", "photography"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Strong ocean currents and unpredictable waves at black sand beaches. Never turn your back to the ocean. Stay away from the water's edge, especially at Reynisfjara. Check tide times and weather conditions before visiting.",
+        "tasks": [
+          {
+            "title": "Review coastal safety guidelines for black sand beaches",
+            "dueOffsetDays": -3,
+            "tags": ["safety"]
+          },
+          {
+            "title": "Check tide times and weather before visiting coastal areas",
+            "dueOffsetDays": -1,
+            "tags": ["safety", "planning"]
+          }
+        ],
+        "askUser": [
+          "Are you aware of the dangers at Iceland's black sand beaches?",
+          "Do you know to never turn your back to the ocean?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.is.camping.season",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["CAMPING"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["camping"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": "Camping sites may have seasonal availability. Check opening seasons and booking requirements. Some sites require advance booking, especially in popular areas.",
+        "tasks": [
+          {
+            "title": "Check camping site opening seasons and booking requirements",
+            "dueOffsetDays": -14,
+            "tags": ["booking", "accommodation"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}
+

@@ -39,6 +39,13 @@ export interface PlaceMetadata {
       hasParking?: boolean;
       isFree?: boolean;
     };
+    // 徒步/户外相关设施（主要用于尼泊尔等徒步目的地）
+    internet?: {
+      available: boolean;
+      type?: 'wlan' | 'wired' | 'none'; // WiFi类型
+    };
+    drinkingWater?: boolean; // 饮用水
+    toilets?: boolean; // 厕所
   };
   
   // 💡 抓取源的原始标签 (作为备份)

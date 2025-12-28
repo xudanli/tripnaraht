@@ -1,0 +1,146 @@
+{
+  "regions": [
+    {
+      "region_key": "IS_REYKJAVIK",
+      "name": "雷克雅未克",
+      "name_en": "Reykjavik",
+      "description": "雷克雅未克：住宿、餐饮、医院、港口、信息点",
+      "seed": { "lat": 64.1466, "lng": -21.9426 },
+      "radius_km": 15,
+      "scenario": "城市出行",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_KEFLAVIK_AIRPORT",
+      "name": "凯夫拉维克机场",
+      "name_en": "Keflavik Airport",
+      "description": "KEF：机场+租车+补给",
+      "seed": { "lat": 63.9850, "lng": -22.6056 },
+      "radius_km": 10,
+      "scenario": "交通枢纽",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_GOLDEN_CIRCLE",
+      "name": "黄金圈",
+      "name_en": "Golden Circle",
+      "description": "核心景点+停车+厕所+信息点",
+      "seed": { "lat": 64.2556, "lng": -20.1200 },
+      "radius_km": 30,
+      "scenario": "经典路线",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_SOUTH_COAST",
+      "name": "南岸",
+      "name_en": "South Coast",
+      "description": "瀑布/黑沙滩/冰川/观景点",
+      "seed": { "lat": 63.8000, "lng": -19.5000 },
+      "radius_km": 50,
+      "scenario": "经典路线",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_VIK",
+      "name": "维克",
+      "name_en": "Vík",
+      "description": "补给+救援+观景",
+      "seed": { "lat": 63.4187, "lng": -19.0067 },
+      "radius_km": 20,
+      "scenario": "补给枢纽",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_HOFN",
+      "name": "赫本",
+      "name_en": "Höfn",
+      "description": "补给+医疗点+出海入口",
+      "seed": { "lat": 64.2539, "lng": -15.2083 },
+      "radius_km": 20,
+      "scenario": "补给枢纽",
+      "priority": 1
+    },
+    {
+      "region_key": "IS_EGILSSTADIR",
+      "name": "埃伊尔斯塔济",
+      "name_en": "Egilsstaðir",
+      "description": "东部枢纽",
+      "seed": { "lat": 65.2653, "lng": -14.3947 },
+      "radius_km": 25,
+      "scenario": "交通枢纽",
+      "priority": 2
+    },
+    {
+      "region_key": "IS_AKUREYRI",
+      "name": "阿克雷里",
+      "name_en": "Akureyri",
+      "description": "北部枢纽",
+      "seed": { "lat": 65.6836, "lng": -18.0878 },
+      "radius_km": 20,
+      "scenario": "交通枢纽",
+      "priority": 2
+    },
+    {
+      "region_key": "IS_HUSAVIK",
+      "name": "胡萨维克",
+      "name_en": "Húsavík",
+      "description": "观鲸出海强相关",
+      "seed": { "lat": 66.0447, "lng": -17.3389 },
+      "radius_km": 15,
+      "scenario": "出海活动",
+      "priority": 2
+    },
+    {
+      "region_key": "IS_SNAEFELLSNES",
+      "name": "斯奈山半岛",
+      "name_en": "Snæfellsnes",
+      "description": "经典一日/两日线",
+      "seed": { "lat": 64.8000, "lng": -23.5000 },
+      "radius_km": 40,
+      "scenario": "经典路线",
+      "priority": 2
+    },
+    {
+      "region_key": "IS_LANDMANNALAUGAR",
+      "name": "兰德曼纳劳卡",
+      "name_en": "Landmannalaugar",
+      "description": "高地徒步/温泉",
+      "seed": { "lat": 63.9833, "lng": -19.0667 },
+      "radius_km": 15,
+      "scenario": "高地徒步",
+      "priority": 3
+    },
+    {
+      "region_key": "IS_THORSMORK",
+      "name": "索斯莫克",
+      "name_en": "Þórsmörk",
+      "description": "高地徒步入口",
+      "seed": { "lat": 63.6833, "lng": -19.4833 },
+      "radius_km": 10,
+      "scenario": "高地徒步",
+      "priority": 3
+    },
+    {
+      "region_key": "IS_KERLINGARFJOLL",
+      "name": "高地地热山",
+      "name_en": "Kerlingarfjöll",
+      "description": "高地地热山",
+      "seed": { "lat": 64.6333, "lng": -19.3167 },
+      "radius_km": 15,
+      "scenario": "高地徒步",
+      "priority": 3
+    },
+    {
+      "region_key": "IS_ASKJA",
+      "name": "阿斯恰",
+      "name_en": "Askja",
+      "description": "偏远高地：路况与准备事项更重要",
+      "seed": { "lat": 65.0333, "lng": -16.7500 },
+      "radius_km": 20,
+      "scenario": "高地徒步",
+      "priority": 3
+    }
+  ]
+}
+
+

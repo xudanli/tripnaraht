@@ -1,0 +1,115 @@
+{
+  "countryCode": "NP",
+  "countryName": "Nepal",
+  "countryNameCN": "尼泊尔",
+  "rules": {
+    "trekking": {
+      "requiresTIMS": true,
+      "requiresGuide": {
+        "enabled": true,
+        "description": "特定受保护区域/路线需要持证向导或通过注册机构办理",
+        "source": "NTB 官方说明（2023-03-31 修订）",
+        "url": "https://ntb.gov.np",
+        "affectedRegions": [
+          "NP_LUKLA",
+          "NP_NAMCHE",
+          "NP_BESISAHAR",
+          "NP_PKR"
+        ],
+        "affectedCanonicalTypes": [
+          "TRAILHEAD",
+          "HUT",
+          "CAMPING"
+        ]
+      },
+      "restrictedAreas": [
+        {
+          "region_key": "NP_MUSTANG_JOMSOM",
+          "name": "Upper Mustang",
+          "nameCN": "上木斯塘",
+          "requiresRestrictedPermit": true,
+          "permitOffice": "Department of Immigration",
+          "description": "限制区域 trekking permit 需要到移民局办理",
+          "source": "NTB 官方",
+          "url": "https://ntb.gov.np"
+        },
+        {
+          "region_key": "NP_MANASLU_SOTI_KHOLA",
+          "name": "Manaslu",
+          "nameCN": "马纳斯鲁",
+          "requiresRestrictedPermit": true,
+          "permitOffice": "Department of Immigration",
+          "description": "限制区域 trekking permit 需要到移民局办理"
+        }
+      ]
+    },
+    "planningConstraints": {
+      "trekkingAreas": {
+        "description": "行程包含 TRAILHEAD/HUT/CAMPING 且 region 属于尼泊尔徒步区域时的约束",
+        "actions": {
+          "abu": {
+            "description": "若用户拒绝向导/不想办手续 → 降级为城市周边轻量徒步（如 KTM 谷地、Pokhara 周边）",
+            "fallbackRegions": [
+              "NP_KTM",
+              "NP_WELLNESS_RING",
+              "NP_PKR"
+            ]
+          },
+          "drDre": {
+            "description": "在行程第一天插入"办证/集合/Briefing"任务",
+            "insertTask": {
+              "type": "PERMIT_BRIEFING",
+              "duration_min": 120,
+              "required": true
+            }
+          },
+          "neptune": {
+            "description": "若计划里出现"单人深入偏远区" → 修复为"跟团/换线路/增加缓冲点"",
+            "repairActions": [
+              "ADD_GUIDE_REQUIREMENT",
+              "SWITCH_TO_GROUP_TOUR",
+              "ADD_BUFFER_POINTS"
+            ]
+          }
+        }
+      }
+    },
+    "demScenarios": {
+      "description": "DEM + 尼泊尔最应该测试的3个场景",
+      "scenarios": [
+        {
+          "name": "EBC / Annapurna 爬升差异",
+          "description": "同样 10km，爬升差异导致时长/休息点不同（effortScore）",
+          "regions": ["NP_LUKLA", "NP_NAMCHE", "NP_BESISAHAR", "NP_PKR"],
+          "metrics": ["maxElevation", "totalAscent", "maxSlope"]
+        },
+        {
+          "name": "高海拔适应节奏",
+          "description": "连续两天海拔上升过快 → Dr.Dre 自动插入适应日",
+          "regions": ["NP_LUKLA", "NP_NAMCHE"],
+          "constraint": {
+            "maxDailyElevationGain": 500,
+            "unit": "meters",
+            "action": "INSERT_ACCLIMATIZATION_DAY"
+          }
+        },
+        {
+          "name": "偏远段补给稀疏",
+          "description": "长距离无 SUPPLY/FUEL/医疗 → Abu 降级强度 + Neptune 插入补给停靠",
+          "regions": ["NP_LUKLA", "NP_NAMCHE"],
+          "constraint": {
+            "maxDistanceWithoutSupply": 15,
+            "unit": "km",
+            "actions": ["REDUCE_INTENSITY", "INSERT_SUPPLY_STOP"]
+          }
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "lastUpdated": "2025-12-24",
+    "source": "NTB (Nepal Tourism Board)",
+    "version": "1.0"
+  }
+}
+

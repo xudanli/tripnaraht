@@ -13,6 +13,8 @@ import { EmbeddingService } from './services/embedding.service';
 import { VectorSearchService } from './services/vector-search.service';
 import { AdminDivisionService } from './services/admin-division.service';
 import { EntityResolutionService } from './services/entity-resolution.service';
+import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.service';
+import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
@@ -32,6 +34,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     VectorSearchService,
     AdminDivisionService,
     EntityResolutionService,
+    SvalbardPoiFeaturesService,
+    IcelandPoiFeaturesService,
   ],
   exports: [
     PlacesService,
@@ -45,6 +49,8 @@ import { HotelsModule } from '../hotels/hotels.module';
     VectorSearchService,
     AdminDivisionService,
     EntityResolutionService,
+    SvalbardPoiFeaturesService,
+    IcelandPoiFeaturesService,
   ],
 })
 export class PlacesModule {}

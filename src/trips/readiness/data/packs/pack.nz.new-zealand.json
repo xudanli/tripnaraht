@@ -1,0 +1,518 @@
+{
+  "packId": "pack.nz.new-zealand",
+  "destinationId": "NZ-NEW-ZEALAND",
+  "displayName": "New Zealand Travel Readiness",
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NZ",
+    "region": "New Zealand",
+    "city": "Auckland",
+    "lat": -36.8485,
+    "lng": 174.7633
+  },
+  "supportedSeasons": ["summer", "winter", "shoulder", "all"],
+  "sources": [
+    {
+      "sourceId": "src.doc.new-zealand",
+      "authority": "Department of Conservation New Zealand",
+      "type": "html",
+      "title": "DOC Safety & Track Information",
+      "canonicalUrl": "https://www.doc.govt.nz/"
+    },
+    {
+      "sourceId": "src.metservice.new-zealand",
+      "authority": "MetService New Zealand",
+      "type": "html",
+      "title": "Weather Forecasts & Warnings",
+      "canonicalUrl": "https://www.metservice.com/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_extreme",
+      "severity": "high",
+      "summary": "Alpine weather changes rapidly; strong winds, rain, and temperature drops common.",
+      "mitigations": [
+        "Check weather forecasts before heading into alpine areas.",
+        "Carry layered clothing: waterproof shell, warm mid-layer, thermal base layer.",
+        "Carry headlamp, spare batteries, and emergency shelter."
+      ]
+    },
+    {
+      "type": "terrain",
+      "severity": "high",
+      "summary": "Volcanic and geothermal areas present burn risks from hot ground and steam.",
+      "mitigations": [
+        "Stay on marked tracks and boardwalks in geothermal areas.",
+        "Keep safe distance from geysers and hot springs.",
+        "Supervise children and pets closely in thermal areas."
+      ]
+    },
+    {
+      "type": "logistics_remote",
+      "severity": "medium",
+      "summary": "Remote areas have limited fuel and supply access; long distances between services.",
+      "mitigations": [
+        "Plan fuel stops before entering remote areas.",
+        "Carry extra food, water, and emergency supplies.",
+        "Check DOC hut bookings and track conditions in advance."
+      ]
+    },
+    {
+      "type": "water_safety",
+      "severity": "medium",
+      "summary": "Ferry services between North and South Islands can be disrupted by weather.",
+      "mitigations": [
+        "Allow buffer time for ferry crossings; weather can delay or cancel services.",
+        "Have backup plans: alternative ferry times or ports.",
+        "Book flexible accommodation for ferry day."
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.nz.alpine-weather",
+      "category": "gear_packing",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Layered clothing system: waterproof/windproof shell, warm mid-layer, thermal base layer",
+        "Headlamp with spare batteries",
+        "Emergency shelter or bivvy bag",
+        "Check weather forecast and track conditions before departure",
+        "Inform someone of your route and expected return time"
+      ]
+    },
+    {
+      "id": "chk.nz.volcanic-geothermal",
+      "category": "safety_hazards",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Stay on marked tracks and boardwalks in geothermal areas",
+        "Keep safe distance from geysers, hot springs, and steam vents",
+        "Supervise children and pets at all times",
+        "Carry first aid kit for potential burns",
+        "Be aware of hydrogen sulfide gas in some areas"
+      ]
+    },
+    {
+      "id": "chk.nz.ferry-crossing",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Book ferry tickets with flexible cancellation policy",
+        "Allow extra time buffer for ferry day",
+        "Have backup plan: alternative ferry times or ports",
+        "Check weather forecast before ferry day",
+        "Arrive early for check-in (recommended 1 hour before departure)"
+      ]
+    },
+    {
+      "id": "chk.nz.supply-planning",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        "Plan fuel stops before entering remote areas",
+        "Carry extra food and water for remote stretches",
+        "Check DOC hut availability and booking requirements",
+        "Have emergency contact numbers saved offline",
+        "Carry physical maps as backup to GPS"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.nz.alpine.weather-layered-clothing",
+      "category": "gear_packing",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "tramping", "alpine", "trailhead"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["TRAILHEAD", "HUT"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Alpine weather changes rapidly in New Zealand. Pack layered clothing: waterproof/windproof shell, warm mid-layer (fleece/wool), thermal base layer. Also carry headlamp, spare batteries, and emergency shelter.",
+        "tasks": [
+          {
+            "title": "Prepare layered clothing system for alpine conditions",
+            "dueOffsetDays": -10,
+            "tags": ["gear", "safety"]
+          },
+          {
+            "title": "Pack headlamp + spare batteries + emergency shelter",
+            "dueOffsetDays": -7,
+            "tags": ["gear"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.alpine.weather-forecast-check",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "tramping", "alpine"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["TRAILHEAD", "HUT"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Check weather forecast and track conditions before heading into alpine areas. Weather can change quickly and tracks may close due to flooding, high winds, or snow.",
+        "tasks": [
+          {
+            "title": "Check MetService forecast and DOC track conditions before departure",
+            "dueOffsetDays": -1,
+            "tags": ["safety", "planning"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to hike in alpine or mountainous areas?",
+          "Are you familiar with checking New Zealand weather forecasts?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.volcanic.geothermal-safety",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["VOLCANIC", "GEOTHERMAL"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["geothermal", "volcano", "hot_springs"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Geothermal areas pose burn risks from hot ground and steam. Stay on marked tracks and boardwalks. Keep safe distance from geysers and hot springs. Supervise children and pets closely. Be aware of hydrogen sulfide gas in some areas.",
+        "tasks": [
+          {
+            "title": "Review geothermal safety guidelines before visiting thermal areas",
+            "dueOffsetDays": -3,
+            "tags": ["safety"]
+          }
+        ],
+        "askUser": [
+          "Will you be visiting geothermal areas with children or pets?",
+          "Are you aware of the burn risks in New Zealand's thermal areas?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.volcanic.thermal-distance",
+      "category": "safety_hazards",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["GEOTHERMAL", "VOLCANIC"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["photography", "geothermal"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": "When photographing geysers or hot springs, maintain safe distance. Ground may be unstable near thermal features. Follow all warning signs and barriers.",
+        "tasks": [
+          {
+            "title": "Plan safe viewing distances for thermal feature photography",
+            "dueOffsetDays": -1,
+            "tags": ["safety"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.ferry.buffer-time",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["FERRY_TERMINAL"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.crossesCookStrait",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Cook Strait ferry services can be disrupted by weather. Allow buffer time for ferry crossings and have backup plans: alternative ferry times or ports. Book flexible accommodation for ferry day.",
+        "tasks": [
+          {
+            "title": "Book ferry tickets with flexible cancellation policy",
+            "dueOffsetDays": -30,
+            "tags": ["booking", "transport"]
+          },
+          {
+            "title": "Plan backup ferry times or alternative ports",
+            "dueOffsetDays": -14,
+            "tags": ["planning"]
+          },
+          {
+            "title": "Book flexible accommodation for ferry day",
+            "dueOffsetDays": -21,
+            "tags": ["booking"]
+          }
+        ],
+        "askUser": [
+          "Are you planning to take the ferry between North and South Islands?",
+          "Do you have flexibility in your schedule for ferry delays?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.ferry.weather-check",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["FERRY_TERMINAL"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.crossesCookStrait",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": "Check weather forecast before ferry day. High winds can cause delays or cancellations. Arrive early for check-in (recommended 1 hour before departure).",
+        "tasks": [
+          {
+            "title": "Check MetService forecast before ferry day",
+            "dueOffsetDays": -1,
+            "tags": ["planning"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.supply.remote-fuel-planning",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.hasLongStretches",
+              "value": true
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["TRAILHEAD", "HUT", "CAMPING"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Remote areas in New Zealand have limited fuel and supply access. Plan fuel stops before entering remote areas. Carry extra food, water, and emergency supplies. Check DOC hut availability and booking requirements in advance.",
+        "tasks": [
+          {
+            "title": "Plan fuel stops before entering remote areas",
+            "dueOffsetDays": -7,
+            "tags": ["planning", "supply"]
+          },
+          {
+            "title": "Check DOC hut bookings and track conditions",
+            "dueOffsetDays": -14,
+            "tags": ["booking"]
+          },
+          {
+            "title": "Prepare emergency food, water, and supplies",
+            "dueOffsetDays": -3,
+            "tags": ["gear", "supply"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to drive through remote areas?",
+          "Will you be staying in DOC huts or camping in remote locations?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.supply.force-supply-stops",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "all": [
+          {
+            "eq": {
+              "path": "itinerary.hasLongStretches",
+              "value": true
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.lowSupplyDensity",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": "Force supply stops: this route has long stretches with low fuel/supply density. Ensure you refuel and restock before entering remote sections. Dr.Dre will automatically schedule supply stops at optimal points.",
+        "tasks": [
+          {
+            "title": "Review route and identify mandatory fuel/supply stops",
+            "dueOffsetDays": -7,
+            "tags": ["planning", "supply"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.trailhead.parking-access",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "containsAny": {
+          "path": "itinerary.poiCanonicalTypes",
+          "values": ["TRAILHEAD"]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": "Many trailheads in New Zealand require parking at designated areas. Check parking availability and fees in advance. Some popular tracks have limited parking and may require early arrival.",
+        "tasks": [
+          {
+            "title": "Research parking availability and fees for planned trailheads",
+            "dueOffsetDays": -7,
+            "tags": ["planning"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.doc.hut-bookings",
+      "category": "activities_bookings",
+      "severity": "medium",
+      "when": {
+        "containsAny": {
+          "path": "itinerary.poiCanonicalTypes",
+          "values": ["HUT"]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": "DOC huts often require advance booking, especially during peak season. Some huts are first-come-first-served, others require online booking. Check DOC website for booking requirements.",
+        "tasks": [
+          {
+            "title": "Check DOC hut booking requirements and availability",
+            "dueOffsetDays": -30,
+            "tags": ["booking"]
+          }
+        ],
+        "askUser": [
+          "Do you plan to stay in DOC huts?",
+          "Are you familiar with DOC hut booking system?"
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.nz.ev.charging-planning",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.vehicleType",
+              "value": "electric"
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["EV_CHARGER"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": "If driving an electric vehicle, plan charging stops. New Zealand has a growing EV charging network, but coverage is still limited in remote areas. Check charging station availability along your route.",
+        "tasks": [
+          {
+            "title": "Plan EV charging stops along route",
+            "dueOffsetDays": -7,
+            "tags": ["planning", "transport"]
+          }
+        ],
+        "askUser": [
+          "Are you planning to drive an electric vehicle?",
+          "Do you have an EV charging app or route planner?"
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}
+

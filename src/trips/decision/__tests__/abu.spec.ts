@@ -149,7 +149,7 @@ describe('abuSelectCoreActivities', () => {
     );
 
     expect(result.reasonsById['poi1']).toBeDefined();
-    expect(result.reasonsById['poi1']).toContain('mustSee');
+    expect(result.reasonsById['poi1']).toContain('Kept: mustSee');
   });
 });
 
