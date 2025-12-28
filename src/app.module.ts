@@ -27,6 +27,7 @@ import { ReadinessModule } from './trips/readiness/readiness.module';
 import { DataContractsModule } from './data-contracts/data-contracts.module';
 import { RouteDirectionsModule } from './route-directions/route-directions.module';
 import { RagModule } from './rag/rag.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { RagModule } from './rag/rag.module';
       isGlobal: true,
     }),
     PrismaModule,
+    AuthModule,
     RedisModule, // Redis 缓存模块
     PlacesModule,
     TripsModule,

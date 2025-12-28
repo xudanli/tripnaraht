@@ -8,6 +8,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Cookie parser middleware (must be before other middleware)
+  const cookieParser = require('cookie-parser');
+  app.use(cookieParser());
+  
   // 启用全局验证管道
   app.useGlobalPipes(
     new ValidationPipe({
@@ -23,8 +27,14 @@ async function bootstrap() {
     })
   );
   
-  // 启用 CORS（如果需要前端调用）
-  app.enableCors();
+  // 启用 CORS（配置支持 credentials/cookies）
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true, // 允许发送 cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
   
   // ============================================
   // 📚 Swagger/OpenAPI 文档配置
@@ -46,7 +56,10 @@ async function bootstrap() {
     .addTag('schedule-action', '行程动作执行相关接口')
     .addTag('agent', '智能体统一入口（COALA + ReAct 双系统架构）')
     .addTag('decision', '决策层接口（Abu/Dr.Dre/Neptune 策略、约束校验、可解释性、学习机制）')
+    .addTag('auth', '认证相关接口（Google OAuth）')
     .addServer('http://localhost:3000', '开发环境')
+    .addCookieAuth('refresh_token')
+    .addBearerAuth()
     .build();
   
   const document = SwaggerModule.createDocument(app, config);

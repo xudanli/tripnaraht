@@ -573,11 +573,49 @@ model TripTemplate {
   @@index([theme])
 }
 
+// ========== User Authentication & Profile ==========
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  googleSub     String?  @unique @map("google_sub") // Google user unique ID (sub claim)
+  email         String?  @unique
+  emailVerified Boolean? @default(false) @map("email_verified")
+  displayName   String?  @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  refreshTokens RefreshToken[]
+  profile       UserProfile?
+
+  @@index([googleSub])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash") @db.Text
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
 model UserProfile {
-  userId      String   @id
+  userId      String   @id @db.Uuid
   preferences Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime
+  User        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -914,17 +952,17 @@ model TripOutcomeFeedback {
 
 // 文档索引表（用于存储 Rail Pass 条款、游记、攻略等）
 model DocumentIndex {
-  id            String   @id @default(uuid()) @db.Uuid
-  collection    String   @db.VarChar(50) // 'rail_pass_rules' | 'travel_guides' | 'local_insights'
-  title         String   @db.VarChar(255)
-  content       String   @db.Text
-  embedding     Unsupported("vector")? // pgvector embedding
-  source        String?  @db.VarChar(255) // 来源 URL 或文件名
-  countryCode   String?  @map("country_code") @db.VarChar(2)
-  tags          String[] // 标签，如 ['eurail', 'iceland', 'f-road']
-  metadata      Json?    // 额外元数据
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+  id          String                 @id @default(uuid()) @db.Uuid
+  collection  String                 @db.VarChar(50) // 'rail_pass_rules' | 'travel_guides' | 'local_insights'
+  title       String                 @db.VarChar(255)
+  content     String                 @db.Text
+  embedding   Unsupported("vector")? // pgvector embedding
+  source      String?                @db.VarChar(255) // 来源 URL 或文件名
+  countryCode String?                @map("country_code") @db.VarChar(2)
+  tags        String[] // 标签，如 ['eurail', 'iceland', 'f-road']
+  metadata    Json? // 额外元数据
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @default(now()) @updatedAt @map("updated_at")
 
   @@index([collection])
   @@index([countryCode])
@@ -934,17 +972,17 @@ model DocumentIndex {
 
 // 合规证据表（从 RAG 提取的结构化规则）
 model ComplianceEvidence {
-  id            String   @id @default(uuid()) @db.Uuid
-  countryCode   String   @map("country_code") @db.VarChar(2)
-  ruleType      String   @map("rule_type") @db.VarChar(50) // 'RAIL_PASS' | 'TRAIL_ACCESS' | 'PERMIT_REQUIREMENT'
-  ruleData      Json     @map("rule_data") // 结构化规则对象（RailPassRule / TrailAccessRule / PermitRequirement）
-  source        String   @default("RAG_EXTRACTED") @db.VarChar(50) // 'RAG_EXTRACTED' | 'MANUAL' | 'API'
-  sourceUrl     String?  @map("source_url") @db.VarChar(500)
-  confidence    String   @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
-  extractedAt   DateTime @default(now()) @map("extracted_at")
-  lastVerified  DateTime? @map("last_verified")
-  isValid       Boolean  @default(true) @map("is_valid")
-  metadata      Json?
+  id           String    @id @default(uuid()) @db.Uuid
+  countryCode  String    @map("country_code") @db.VarChar(2)
+  ruleType     String    @map("rule_type") @db.VarChar(50) // 'RAIL_PASS' | 'TRAIL_ACCESS' | 'PERMIT_REQUIREMENT'
+  ruleData     Json      @map("rule_data") // 结构化规则对象（RailPassRule / TrailAccessRule / PermitRequirement）
+  source       String    @default("RAG_EXTRACTED") @db.VarChar(50) // 'RAG_EXTRACTED' | 'MANUAL' | 'API'
+  sourceUrl    String?   @map("source_url") @db.VarChar(500)
+  confidence   String    @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
+  extractedAt  DateTime  @default(now()) @map("extracted_at")
+  lastVerified DateTime? @map("last_verified")
+  isValid      Boolean   @default(true) @map("is_valid")
+  metadata     Json?
 
   @@index([countryCode])
   @@index([ruleType])
@@ -954,17 +992,17 @@ model ComplianceEvidence {
 
 // 当地洞察表（软知识，不参与硬决策）
 model LocalInsight {
-  id              String   @id @default(uuid()) @db.Uuid
-  countryCode     String   @map("country_code") @db.VarChar(2)
-  region          String?  @db.VarChar(100)
-  tags            String[] // ['alpine_hut', 'wild_camp', 'f_road', 'public_transport']
-  content         String   @db.Text // LLM 基于 RAG 生成的小段文字
+  id               String   @id @default(uuid()) @db.Uuid
+  countryCode      String   @map("country_code") @db.VarChar(2)
+  region           String?  @db.VarChar(100)
+  tags             String[] // ['alpine_hut', 'wild_camp', 'f_road', 'public_transport']
+  content          String   @db.Text // LLM 基于 RAG 生成的小段文字
   evidenceSnippets String[] @map("evidence_snippets") // 原文引用片段
-  confidence      String   @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
-  source          String?  @db.VarChar(255) // 来源 URL
-  lastUpdated     DateTime @default(now()) @updatedAt @map("last_updated")
-  createdAt       DateTime @default(now()) @map("created_at")
-  metadata        Json?
+  confidence       String   @default("MEDIUM") @db.VarChar(20) // 'HIGH' | 'MEDIUM' | 'LOW'
+  source           String?  @db.VarChar(255) // 来源 URL
+  lastUpdated      DateTime @default(now()) @updatedAt @map("last_updated")
+  createdAt        DateTime @default(now()) @map("created_at")
+  metadata         Json?
 
   @@index([countryCode])
   @@index([tags])

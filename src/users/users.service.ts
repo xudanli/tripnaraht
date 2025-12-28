@@ -11,6 +11,15 @@ export class UsersService {
    * 获取用户画像
    */
   async getProfile(userId: string): Promise<GetUserProfileResponseDto> {
+    // Verify user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User not found: ${userId}`);
+    }
+
     const profile = await this.prisma.userProfile.findUnique({
       where: { userId },
     });
@@ -40,6 +49,15 @@ export class UsersService {
     userId: string,
     dto: UpdateUserProfileDto
   ): Promise<GetUserProfileResponseDto> {
+    // Verify user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User not found: ${userId}`);
+    }
+
     const profile = await this.prisma.userProfile.upsert({
       where: { userId },
       update: {

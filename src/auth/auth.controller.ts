@@ -1,0 +1,269 @@
+// src/auth/auth.controller.ts
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  HttpCode,
+  HttpStatus,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiCookieAuth } from '@nestjs/swagger';
+import { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { GoogleOAuthService } from './services/google-oauth.service';
+import { TokenService } from './services/token.service';
+import { AuthUserService } from './services/user.service';
+import { GoogleCodeDto, GoogleIdTokenDto, AuthResponseDto } from './dto/google-auth.dto';
+import { Public } from './decorators/public.decorator';
+
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private googleOAuthService: GoogleOAuthService,
+    private tokenService: TokenService,
+    private authUserService: AuthUserService,
+    private configService: ConfigService,
+  ) {}
+
+  /**
+   * POST /auth/google/code
+   * Primary approach: Exchange authorization code for tokens
+   */
+  @Public()
+  @Post('google/code')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Google OAuth - Exchange authorization code',
+    description: 'Exchange Google OAuth authorization code for TripNARA session tokens. This is the primary authentication method using the Code Model.',
+  })
+  @ApiBody({ type: GoogleCodeDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully authenticated',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid authorization code',
+  })
+  async googleCode(
+    @Body() dto: GoogleCodeDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    try {
+      // 1. Exchange code for tokens
+      const tokenResponse = await this.googleOAuthService.exchangeCodeForTokens(dto.code);
+
+      // 2. Verify and decode ID token
+      const idTokenPayload = await this.googleOAuthService.verifyIdToken(tokenResponse.id_token);
+
+      // 3. Upsert user
+      const { user, isNewUser } = await this.authUserService.upsertUserFromGoogle(idTokenPayload);
+
+      // 4. Issue TripNARA tokens
+      const accessToken = await this.tokenService.issueAccessToken(user.id, user.email || undefined);
+      const { token: refreshToken, expiresAt } = await this.tokenService.issueRefreshToken(user.id);
+
+      // 5. Set refresh token as httpOnly cookie
+      const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+      res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: isProduction, // Only send over HTTPS in production
+        sameSite: 'lax',
+        maxAge: (expiresAt.getTime() - Date.now()) / 1000,
+        path: '/',
+      });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+          emailVerified: user.emailVerified,
+        },
+        accessToken,
+      };
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new BadRequestException(`Authentication failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * POST /auth/google/id-token
+   * Secondary approach: Direct ID token validation (One Tap / Button)
+   */
+  @Public()
+  @Post('google/id-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Google OAuth - Validate ID token',
+    description: 'Validate Google ID token (from One Tap or Sign-In Button) and create TripNARA session. This is the accelerated login method.',
+  })
+  @ApiBody({ type: GoogleIdTokenDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully authenticated',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid ID token',
+  })
+  async googleIdToken(
+    @Body() dto: GoogleIdTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    try {
+      // 1. Verify and decode ID token
+      const idTokenPayload = await this.googleOAuthService.verifyIdToken(dto.idToken);
+
+      // 2. Upsert user
+      const { user } = await this.authUserService.upsertUserFromGoogle(idTokenPayload);
+
+      // 3. Issue TripNARA tokens
+      const accessToken = await this.tokenService.issueAccessToken(user.id, user.email || undefined);
+      const { token: refreshToken, expiresAt } = await this.tokenService.issueRefreshToken(user.id);
+
+      // 4. Set refresh token as httpOnly cookie
+      const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+      res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: (expiresAt.getTime() - Date.now()) / 1000,
+        path: '/',
+      });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+          emailVerified: user.emailVerified,
+        },
+        accessToken,
+      };
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new BadRequestException(`Authentication failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * POST /auth/refresh
+   * Refresh access token using refresh token
+   */
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh access token',
+    description: 'Refresh access token using refresh token from cookie. Implements token rotation for security.',
+  })
+  @ApiCookieAuth('refresh_token')
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully refreshed access token',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token',
+  })
+  async refresh(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string }> {
+    const refreshToken = res.req.cookies?.refresh_token;
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token not found');
+    }
+
+    try {
+      // Verify and rotate refresh token
+      const { userId, newRefreshToken, expiresAt } = await this.tokenService.verifyAndRotateRefreshToken(refreshToken);
+
+      // Get user to get email for access token
+      const user = await this.authUserService.findUserById(userId);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Issue new access token
+      const accessToken = await this.tokenService.issueAccessToken(userId, user.email || undefined);
+
+      // Set new refresh token cookie
+      const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+      res.cookie('refresh_token', newRefreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: (expiresAt.getTime() - Date.now()) / 1000,
+        path: '/',
+      });
+
+      return { accessToken };
+    } catch (error: any) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException(`Token refresh failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * POST /auth/logout
+   * Logout and revoke refresh token
+   */
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Logout',
+    description: 'Logout user and revoke refresh token.',
+  })
+  @ApiCookieAuth('refresh_token')
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully logged out',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  async logout(@Res({ passthrough: true }) res: Response): Promise<{ message: string }> {
+    const refreshToken = res.req.cookies?.refresh_token;
+
+    if (refreshToken) {
+      await this.tokenService.revokeRefreshToken(refreshToken);
+    }
+
+    // Clear refresh token cookie
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: this.configService.get<string>('NODE_ENV') === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    return { message: 'Logged out successfully' };
+  }
+}
+
