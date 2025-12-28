@@ -92,7 +92,8 @@ FRONTEND_URLS=https://www.yourdomain.com,https://yourdomain.com
 
 1. **请求包含 credentials**:
 ```javascript
-fetch('http://47.253.148.159/auth/google/code', {
+const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+fetch(`${apiUrl}/auth/google/code`, {
   credentials: 'include', // 重要！
   // ...
 });
@@ -101,7 +102,7 @@ fetch('http://47.253.148.159/auth/google/code', {
 2. **Axios 配置**:
 ```javascript
 const api = axios.create({
-  baseURL: 'http://47.253.148.159',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3000',
   withCredentials: true, // 重要！
 });
 ```

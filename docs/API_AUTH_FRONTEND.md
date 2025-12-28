@@ -15,7 +15,9 @@
 
 ### 基础信息
 
-- **Base URL**: `http://localhost:3000` (开发环境)
+- **Base URL**: 
+  - 开发环境：`http://localhost:3000`
+  - 生产环境：`http://47.253.148.159` 或你的生产服务器地址
 - **认证方式**: JWT Bearer Token + Refresh Token Cookie
 - **Content-Type**: `application/json`
 - **Cookie**: 需要支持 `credentials: 'include'`
@@ -108,7 +110,8 @@ Content-Type: application/json
 ```javascript
 async function loginWithGoogleCode(code) {
   try {
-    const response = await fetch('http://47.253.148.159/auth/google/code', {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    const response = await fetch(`${apiUrl}/auth/google/code`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -191,7 +194,8 @@ Content-Type: application/json
 ```javascript
 async function loginWithGoogleIdToken(idToken) {
   try {
-    const response = await fetch('http://47.253.148.159/auth/google/id-token', {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    const response = await fetch(`${apiUrl}/auth/google/id-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -259,7 +263,8 @@ Cookie: refresh_token=...
 ```javascript
 async function refreshAccessToken() {
   try {
-    const response = await fetch('http://47.253.148.159/auth/refresh', {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    const response = await fetch(`${apiUrl}/auth/refresh`, {
       method: 'POST',
       credentials: 'include', // 重要：包含 refresh_token cookie
     });
@@ -309,7 +314,8 @@ Cookie: refresh_token=...
 ```javascript
 async function logout() {
   try {
-    await fetch('http://47.253.148.159/auth/logout', {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    await fetch(`${apiUrl}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -338,7 +344,7 @@ async function logout() {
 ```javascript
 // auth.js - 认证工具类
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://47.253.148.159';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 class AuthService {
   // 获取 access token
@@ -629,7 +635,7 @@ import axios from 'axios';
 import authService from './auth';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://47.253.148.159',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3000',
   withCredentials: true, // 重要：包含 cookies
 });
 
@@ -727,6 +733,20 @@ async function handleApiError(error) {
 ---
 
 ## 常见问题
+
+### Q0: 遇到 `invalid_client` 错误怎么办？
+
+**错误信息**: "The OAuth client was not found" (错误 401: invalid_client)
+
+**快速检查**:
+1. 前端环境变量 `REACT_APP_GOOGLE_CLIENT_ID` 是否正确配置？
+2. Client ID 是否完整（包含 `.apps.googleusercontent.com` 后缀）？
+3. 前端和后端使用的是否是同一个 Client ID？
+4. 前端访问的域名是否在 Google Cloud Console 的 "已获授权的 JavaScript 来源" 中？
+
+**详细排查**: 请查看 [Google OAuth 错误排查指南](./GOOGLE_OAUTH_TROUBLESHOOTING.md)
+
+---
 
 ### Q1: refresh_token cookie 没有设置？
 
@@ -838,7 +858,9 @@ window.google.accounts.id.initialize({
 - CORS 配置错误
 
 **解决**:
-1. 检查 API 地址是否正确：`http://47.253.148.159`
+1. 检查 API 地址是否正确
+   - 开发环境：`http://localhost:3000`
+   - 生产环境：生产服务器地址
 2. 确认后端服务正在运行
 3. 检查 CORS 配置，确保前端域名被允许
 4. 使用浏览器开发者工具 Network 面板检查请求详情
@@ -850,7 +872,8 @@ async function loginWithGoogleCode(code) {
   try {
     console.log('开始登录，code:', code.substring(0, 20) + '...');
     
-    const response = await fetch('http://47.253.148.159/auth/google/code', {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    const response = await fetch(`${apiUrl}/auth/google/code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -881,10 +904,22 @@ async function loginWithGoogleCode(code) {
 
 前端需要配置以下环境变量：
 
+**开发环境** (`.env.development` 或 `.env.local`):
+```env
+REACT_APP_API_URL=http://localhost:3000
+REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+**生产环境** (`.env.production`):
 ```env
 REACT_APP_API_URL=http://47.253.148.159
-REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
+REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```
+
+**注意**:
+- 开发环境使用 `http://localhost:3000`
+- 生产环境使用实际的生产服务器地址
+- Client ID 必须包含完整格式（`.apps.googleusercontent.com` 后缀）
 
 ---
 
@@ -910,12 +945,16 @@ REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
    - [ ] OAuth consent screen 已配置
 
 2. **后端配置**
-   - [ ] 后端服务正在运行（检查 `http://47.253.148.159` 是否可访问）
+   - [ ] 后端服务正在运行
+     - 开发环境：检查 `http://localhost:3000` 是否可访问
+     - 生产环境：检查生产服务器地址是否可访问
    - [ ] CORS 配置正确（允许前端域名和 credentials）
    - [ ] 环境变量已正确配置（GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET）
 
 3. **前端配置**
-   - [ ] API 地址正确（`http://47.253.148.159`）
+   - [ ] API 地址正确
+     - 开发环境：`http://localhost:3000`
+     - 生产环境：生产服务器地址（如 `http://47.253.148.159`）
    - [ ] 请求包含 `credentials: 'include'`
    - [ ] 浏览器允许第三方 Cookie（如需要）
 
