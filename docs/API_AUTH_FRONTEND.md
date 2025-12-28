@@ -17,7 +17,7 @@
 
 - **Base URL**: 
   - 开发环境：`http://localhost:3000`
-  - 生产环境：`http://47.253.148.159` 或你的生产服务器地址
+  - 生产环境：`http://47.253.148.159`
 - **认证方式**: JWT Bearer Token + Refresh Token Cookie
 - **Content-Type**: `application/json`
 - **Cookie**: 需要支持 `credentials: 'include'`
@@ -839,8 +839,10 @@ async function handleGoogleLogin() {
 4. 添加错误处理：
 
 ```javascript
+const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
 window.google.accounts.id.initialize({
-  client_id: 'YOUR_CLIENT_ID',
+  client_id: clientId, // ✅ 使用环境变量，不要硬编码
   callback: handleCredentialResponse,
   error_callback: (error) => {
     console.error('Google Sign-In Error:', error);

@@ -136,14 +136,16 @@ UserProfile {
 ### 2. 初始化 GIS（方案 1：Code Model）
 
 ```javascript
+const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID; // 使用环境变量
+
 window.google.accounts.id.initialize({
-  client_id: 'YOUR_GOOGLE_CLIENT_ID',
+  client_id: clientId, // ✅ 使用环境变量，不要硬编码
   callback: handleCredentialResponse,
 });
 
 // 获取 authorization code
 window.google.accounts.oauth2.initCodeClient({
-  client_id: 'YOUR_GOOGLE_CLIENT_ID',
+  client_id: clientId, // ✅ 使用环境变量，不要硬编码
   scope: 'openid email profile',
   ux_mode: 'popup', // 或 'redirect'
   callback: async (response) => {
@@ -172,8 +174,10 @@ document.getElementById('sign-in-button').onclick = () => {
 ### 3. One Tap / Button 登录（方案 2）
 
 ```javascript
+const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID; // 使用环境变量
+
 window.google.accounts.id.initialize({
-  client_id: 'YOUR_GOOGLE_CLIENT_ID',
+  client_id: clientId, // ✅ 使用环境变量，不要硬编码
   callback: async (response) => {
     const { credential } = response; // 这是 ID token
     
