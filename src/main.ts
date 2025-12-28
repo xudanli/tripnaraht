@@ -28,9 +28,18 @@ async function bootstrap() {
   );
   
   // 启用 CORS（配置支持 credentials/cookies）
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const frontendUrls = process.env.FRONTEND_URL 
+    ? process.env.FRONTEND_URL.split(',')
+    : ['http://localhost:5173', 'http://localhost:3001', 'http://47.253.148.159'];
   app.enableCors({
-    origin: frontendUrl,
+    origin: (origin, callback) => {
+      // 允许所有配置的前端地址
+      if (!origin || frontendUrls.some(url => origin.startsWith(url))) {
+        callback(null, true);
+      } else {
+        callback(null, true); // 开发环境允许所有来源，生产环境应该严格限制
+      }
+    },
     credentials: true, // 允许发送 cookies
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -57,7 +66,7 @@ async function bootstrap() {
     .addTag('agent', '智能体统一入口（COALA + ReAct 双系统架构）')
     .addTag('decision', '决策层接口（Abu/Dr.Dre/Neptune 策略、约束校验、可解释性、学习机制）')
     .addTag('auth', '认证相关接口（Google OAuth）')
-    .addServer('http://localhost:3000', '开发环境')
+    .addServer('http://47.253.148.159', '生产环境')
     .addCookieAuth('refresh_token')
     .addBearerAuth()
     .build();

@@ -15,7 +15,7 @@
 
 ### 基础信息
 
-- **Base URL**: `http://localhost:3000` (开发环境)
+- **Base URL**: `http://47.253.148.159` (生产环境)
 - **认证方式**: JWT Bearer Token + Refresh Token Cookie
 - **Content-Type**: `application/json`
 - **Cookie**: 需要支持 `credentials: 'include'`
@@ -108,7 +108,7 @@ Content-Type: application/json
 ```javascript
 async function loginWithGoogleCode(code) {
   try {
-    const response = await fetch('http://localhost:3000/auth/google/code', {
+    const response = await fetch('http://47.253.148.159/auth/google/code', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -191,7 +191,7 @@ Content-Type: application/json
 ```javascript
 async function loginWithGoogleIdToken(idToken) {
   try {
-    const response = await fetch('http://localhost:3000/auth/google/id-token', {
+    const response = await fetch('http://47.253.148.159/auth/google/id-token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -259,7 +259,7 @@ Cookie: refresh_token=...
 ```javascript
 async function refreshAccessToken() {
   try {
-    const response = await fetch('http://localhost:3000/auth/refresh', {
+    const response = await fetch('http://47.253.148.159/auth/refresh', {
       method: 'POST',
       credentials: 'include', // 重要：包含 refresh_token cookie
     });
@@ -309,7 +309,7 @@ Cookie: refresh_token=...
 ```javascript
 async function logout() {
   try {
-    await fetch('http://localhost:3000/auth/logout', {
+    await fetch('http://47.253.148.159/auth/logout', {
       method: 'POST',
       credentials: 'include',
     });
@@ -338,7 +338,7 @@ async function logout() {
 ```javascript
 // auth.js - 认证工具类
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://47.253.148.159';
 
 class AuthService {
   // 获取 access token
@@ -629,7 +629,7 @@ import axios from 'axios';
 import authService from './auth';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3000',
+  baseURL: process.env.REACT_APP_API_URL || 'http://47.253.148.159',
   withCredentials: true, // 重要：包含 cookies
 });
 
@@ -772,7 +772,7 @@ const isLoggedIn = authService.isAuthenticated();
 前端需要配置以下环境变量：
 
 ```env
-REACT_APP_API_URL=http://localhost:3000
+REACT_APP_API_URL=http://47.253.148.159
 REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
@@ -794,5 +794,5 @@ REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
 
 如有问题，请查看：
 - 完整文档：`src/auth/README.md`
-- Swagger 文档：`http://localhost:3000/api`（启动服务后）
+- Swagger 文档：`http://47.253.148.159/api`（启动服务后）
 
