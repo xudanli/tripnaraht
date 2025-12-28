@@ -85,24 +85,24 @@ async function testMemorySystem() {
     console.log('Test 2: User Profile → Decision Params Mapping');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    const decisionParams = profileMapper.mapUserProfileToDecisionParams(updatedProfile!);
+    const decisionParams1 = profileMapper.mapUserProfileToDecisionParams(updatedProfile!);
     console.log('✅ Mapped to decision params:', {
-      maxElevationM: decisionParams.constraints.maxElevationM,
-      bufferTimeMin: decisionParams.constraints.bufferTimeMin,
-      stabilityWeight: decisionParams.routeDirectionBias.stabilityWeight.toFixed(2),
-      sceneryWeight: decisionParams.routeDirectionBias.sceneryWeight.toFixed(2),
-      abuWeight: decisionParams.strategyPreference.abuWeight.toFixed(2),
-      preferRestDay: decisionParams.repairPolicy.preferRestDay,
+      maxElevationM: decisionParams1.constraints.maxElevationM,
+      bufferTimeMin: decisionParams1.constraints.bufferTimeMin,
+      stabilityWeight: decisionParams1.routeDirectionBias.stabilityWeight.toFixed(2),
+      sceneryWeight: decisionParams1.routeDirectionBias.sceneryWeight.toFixed(2),
+      abuWeight: decisionParams1.strategyPreference.abuWeight.toFixed(2),
+      preferRestDay: decisionParams1.repairPolicy.preferRestDay,
     });
 
     // 验证映射结果
-    if (decisionParams.constraints.maxElevationM === 3500) {
+    if (decisionParams1.constraints.maxElevationM === 3500) {
       console.log('✅ Altitude constraint correctly set to 3500m');
     } else {
       throw new Error('Altitude constraint mapping failed');
     }
 
-    if (decisionParams.repairPolicy.preferRestDay === true) {
+    if (decisionParams1.repairPolicy.preferRestDay === true) {
       console.log('✅ Repair policy correctly set to prefer rest day');
     } else {
       throw new Error('Repair policy mapping failed');
@@ -287,10 +287,24 @@ async function testMemorySystem() {
       },
     ];
 
-    const adjustedRDs = await decisionInjector.injectDecisionParams(
-      testUserId,
-      mockRouteDirections as any,
-      {} as any
+    // TODO: injectDecisionParams 方法不存在，需要实现或使用替代方法
+    // 暂时使用 adjustRouteDirectionScore 方法替代
+    const decisionParams2 = await decisionInjector.getDecisionParamsForUser(testUserId);
+    const adjustedRDs = await Promise.all(
+      mockRouteDirections.map(async (rd: any) => {
+        const baseScore = rd.score || 50;
+        const adjustedScore = await decisionInjector.adjustRouteDirectionScore(
+          rd.routeDirection.id,
+          rd.routeDirection.countryCode || 'IS',
+          baseScore,
+          decisionParams2,
+          rd.routeDirection
+        );
+        return {
+          ...rd,
+          score: adjustedScore,
+        };
+      })
     );
 
     console.log('✅ Adjusted route directions:', {

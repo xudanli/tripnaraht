@@ -188,7 +188,7 @@ export class TripRecapService {
             visitDate: dateStr,
             gpxData: trail.gpxData || undefined,
             waypoints: await Promise.all(
-              trail.waypoints.map(async (wp) => {
+              (trail.TrailWaypoint || []).map(async (wp: any) => {
                 let lat: number | undefined;
                 let lng: number | undefined;
                 
@@ -389,10 +389,10 @@ export class TripRecapService {
           }
 
           // 如果没有GPX，使用waypoints（通过关联的place获取位置）
-          if (points.length === 0 && trail.waypoints.length > 0) {
+          if (points.length === 0 && trail.TrailWaypoint && trail.TrailWaypoint.length > 0) {
             // 从waypoints的place获取位置（需要raw query）
             const waypointPoints = await Promise.all(
-              trail.waypoints.map(async (wp) => {
+              trail.TrailWaypoint.map(async (wp: any) => {
                 if (wp.placeId) {
                   const locationResult = await this.prisma.$queryRaw<Array<{
                     lat: number;

@@ -296,7 +296,7 @@ async function runScenario(
           amount: 10000,
           currency: 'CNY',
         },
-        travelModeDefault: 'driving',
+        travelModeDefault: 'drive',
       },
       candidatesByDate: {},
       signals: {

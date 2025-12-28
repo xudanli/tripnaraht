@@ -5,6 +5,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -16,6 +17,8 @@ async function main() {
   // 1. 南岛湖区+山口+徒步方向
   const nzSouthIslandLakes = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NZ',
       name: 'NZ_SOUTH_ISLAND_LAKES_AND_PASSES',
       nameCN: '南岛湖区+山口+徒步',
@@ -59,6 +62,8 @@ async function main() {
   // 2. 峡湾出海方向
   const nzFiordlandMilford = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NZ',
       name: 'NZ_FIORDLAND_MILFORD',
       nameCN: '峡湾出海（米尔福德）',
@@ -101,6 +106,8 @@ async function main() {
   // 3. 北岛火山地热方向
   const nzNorthIslandVolcanic = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NZ',
       name: 'NZ_NORTH_ISLAND_VOLCANIC',
       nameCN: '北岛火山地热',
@@ -144,6 +151,8 @@ async function main() {
   // 4. EBC 经典徒步线
   const npEbcClassic = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NP',
       name: 'NP_EBC_CLASSIC',
       nameCN: 'EBC 经典徒步线',
@@ -187,6 +196,8 @@ async function main() {
   // 5. 安娜普尔纳大本营
   const npAnnapurnaBaseCamp = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NP',
       name: 'NP_ANNAPURNA_BASE_CAMP',
       nameCN: '安娜普尔纳大本营',
@@ -230,6 +241,8 @@ async function main() {
   // 6. 奇特旺野生动物
   const npChitwanWildlife = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'NP',
       name: 'NP_CHITWAN_WILDLIFE',
       nameCN: '奇特旺野生动物',
@@ -275,6 +288,8 @@ async function main() {
   // 7. 拉萨周边轻量适应
   const cnXzLhasaRing = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'CN_XZ',
       name: 'CN_XZ_LHASA_RING',
       nameCN: '拉萨周边轻量适应',
@@ -317,6 +332,8 @@ async function main() {
   // 8. 拉萨-羊湖-日喀则走廊
   const cnXzShigatseCorridor = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'CN_XZ',
       name: 'CN_XZ_SHIGATSE_CORRIDOR',
       nameCN: '拉萨-羊湖-日喀则走廊',
@@ -360,6 +377,8 @@ async function main() {
   // 9. 定日-珠峰入口
   const cnXzEbcGate = await prisma.routeDirection.create({
     data: {
+      uuid: randomUUID(),
+      updatedAt: new Date(),
       countryCode: 'CN_XZ',
       name: 'CN_XZ_EBC_GATE',
       nameCN: '定日-珠峰入口',
@@ -404,9 +423,11 @@ async function main() {
   console.log(`创建了 ${9} 条路线方向`);
 
   // 创建一些示例模板
-  console.log('开始创建路线模板...');
+  // TODO: RouteTemplate 模型不存在于 Prisma schema，需要先添加模型
+  // console.log('开始创建路线模板...');
 
   // EBC 经典 10 日模板
+  /*
   await prisma.routeTemplate.create({
     data: {
       routeDirectionId: npEbcClassic.id,
@@ -500,8 +521,9 @@ async function main() {
       isActive: true,
     },
   });
+  */
 
-  console.log('路线模板创建完成！');
+  // console.log('路线模板创建完成！');
 }
 
 main()

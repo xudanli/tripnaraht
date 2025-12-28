@@ -23,7 +23,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         return {
           secret: configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production',
           signOptions: {
-            expiresIn: expiresIn as string,
+            expiresIn: expiresIn as any, // JWT accepts string like '15m', '1h', etc.
           },
         };
       },

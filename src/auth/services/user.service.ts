@@ -98,9 +98,10 @@ export class AuthUserService {
       where: { userId: newUser.id },
       update: {},
       create: {
-        userId: newUser.id as any,
+        userId: newUser.id,
         preferences: null,
-      },
+        updatedAt: new Date(),
+      } as any,
     });
 
     this.logger.debug(`Created new user ${newUser.id} (googleSub: ${googleSub}, email: ${email})`);

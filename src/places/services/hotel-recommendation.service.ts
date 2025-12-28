@@ -308,7 +308,7 @@ export class HotelRecommendationService {
           nameCN: hotel.nameCN,
           nameEN: hotel.nameEN,
           metadata: hotel.metadata,
-          city: hotel.City, // 包含城市信息
+          city: hotel.City ? { name: hotel.City.name } : null, // 包含城市信息
           distance_meters: avgDistance,
         };
       })
@@ -331,14 +331,17 @@ export class HotelRecommendationService {
     attractions: Array<{ id: number; location: any; name: string }>,
     request: HotelRecommendationRequest
   ): Promise<HotelRecommendation[]> {
-    // 查找交通枢纽附近的酒店
-    const hotels = await this.prisma.place.findMany({
-      where: {
-        category: PlaceCategory.HOTEL,
-        // 这里应该添加 location_score 过滤条件
-      },
-      take: 20,
-    });
+      // 查找交通枢纽附近的酒店
+      const hotels = await this.prisma.place.findMany({
+        where: {
+          category: PlaceCategory.HOTEL,
+          // 这里应该添加 location_score 过滤条件
+        },
+        include: {
+          City: true, // 包含城市信息
+        },
+        take: 20,
+      });
 
     // 按 nearest_station_walk_min 排序
     const sortedHotels = hotels
@@ -365,7 +368,7 @@ export class HotelRecommendationService {
           nameCN: item.hotel.nameCN,
           nameEN: item.hotel.nameEN,
           metadata: item.hotel.metadata,
-          city: item.hotel.city, // 包含城市信息
+          city: item.hotel.City ? { name: item.hotel.City.name } : null, // 包含城市信息
           distance_meters: avgDistance,
         };
       })
@@ -438,7 +441,7 @@ export class HotelRecommendationService {
           nameCN: item.hotel.nameCN,
           nameEN: item.hotel.nameEN,
           metadata: item.hotel.metadata,
-          city: item.hotel.city, // 包含城市信息
+          city: item.hotel.City ? { name: item.hotel.City.name } : null, // 包含城市信息
           distance_meters: avgDistance,
         };
       })

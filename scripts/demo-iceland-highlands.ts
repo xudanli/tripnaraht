@@ -22,6 +22,7 @@ import {
   RoutePlanDraft,
   RouteSegment,
 } from '../src/trips/decision/shared/world-model.types';
+import { UserIntent } from '../src/route-directions/services/route-direction-selector.service';
 import { createHumanCapabilityModelFromProfile } from '../src/trips/decision/models/human-capability.model';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
@@ -40,9 +41,9 @@ async function demoIcelandHighlands() {
     console.log('\n👤 Step 1: 构造 WorldModelContext');
     console.log('-'.repeat(80));
 
-    const userIntent = {
+    const userIntent: UserIntent = {
       preferences: ['摄影', '自然', '冒险'],
-      riskTolerance: 'MEDIUM',
+      riskTolerance: 'medium',
       travelStyle: 'ADVENTURE',
     };
 
@@ -80,7 +81,7 @@ async function demoIcelandHighlands() {
           maxSlopePct: 18,
           rollingAscent3Days: 350,
           fatigueIndex: 0.8,
-          violation: 'NONE',
+          violation: 'NONE' as 'HARD' | 'SOFT' | 'NONE',
           explanation: '第一天爬升正常',
         },
         {
@@ -90,14 +91,14 @@ async function demoIcelandHighlands() {
           maxSlopePct: 22,
           rollingAscent3Days: 750,
           fatigueIndex: 1.0,
-          violation: 'NONE',
+          violation: 'NONE' as 'HARD' | 'SOFT' | 'NONE',
           explanation: '第二天爬升正常',
         },
       ],
       roadStates: [
         {
           roadId: 'F26',
-          status: 'OPEN',
+          status: 'OPEN' as 'OPEN' | 'CLOSED' | 'SEASONAL' | 'RESTRICTED',
           requires4x4: true,
           seasonOpenFrom: 6,
           seasonOpenTo: 9,
@@ -106,8 +107,8 @@ async function demoIcelandHighlands() {
       hazardZones: [
         {
           zoneId: 'hazard_1',
-          type: 'AVALANCHE',
-          level: 'LOW',
+          type: 'AVALANCHE' as 'AVALANCHE' | 'MUDSLIDE' | 'FLOOD' | 'ICE' | 'VOLCANIC' | 'OTHER',
+          level: 'LOW' as 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE',
           seasonality: {
             highRiskMonths: [11, 12, 1, 2, 3],
             lowRiskMonths: [6, 7, 8, 9],
@@ -260,7 +261,7 @@ function generateReport(
 ### 路线方向
 - **名称**: ${world.routeDirection.nameCN}
 - **国家**: ${world.routeDirection.countryCode}
-- **最佳月份**: ${world.routeDirection.bestMonths?.join(', ') || 'N/A'}
+- **最佳月份**: ${(world.routeDirection.seasonality as any)?.bestMonths?.join(', ') || 'N/A'}
 
 ## 计划对比
 

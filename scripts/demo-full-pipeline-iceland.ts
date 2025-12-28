@@ -13,7 +13,7 @@ import { TripDecisionEngineService } from '../src/trips/decision/trip-decision-e
 import { StrategyOrchestratorService } from '../src/trips/decision/services/strategy-orchestrator.service';
 import { RouteDirectionSelectorService } from '../src/route-directions/services/route-direction-selector.service';
 import {
-  WorldModelContext,
+  LegacyWorldModelContext,
   RoutePlanDraft,
   DecisionParams,
 } from '../src/trips/decision/shared/world-model.types';
@@ -74,18 +74,22 @@ async function demoFullPipeline() {
       {
         segmentId: 'seg_1',
         elevationProfile: [100, 200, 300],
-        cumulativeAscentM: 200,
+        cumulativeAscent: 200,
         maxSlopePct: 8,
-        rollingFatigueIndex: 10,
+        rollingAscent3Days: 200,
+        fatigueIndex: 10,
         violation: 'NONE' as const,
+        explanation: 'Segment 1: Normal ascent',
       },
       {
         segmentId: 'seg_2',
         elevationProfile: [300, 400, 500],
-        cumulativeAscentM: 200,
+        cumulativeAscent: 200,
         maxSlopePct: 10,
-        rollingFatigueIndex: 12,
+        rollingAscent3Days: 400,
+        fatigueIndex: 12,
         violation: 'NONE' as const,
+        explanation: 'Segment 2: Normal ascent',
       },
     ];
 
@@ -107,7 +111,8 @@ async function demoFullPipeline() {
       },
     ];
 
-    const world: WorldModelContext = {
+    // 使用 LegacyWorldModelContext 类型（向后兼容）
+    const world: LegacyWorldModelContext = {
       countryCode: 'IS',
       month: 7,
       decisionParams,
@@ -166,7 +171,9 @@ async function demoFullPipeline() {
     console.log('-'.repeat(80));
     console.log('Executing: Abu → Dr.Dre → Neptune → Finalize\n');
 
-    const result = await orchestrator.run(world, plan);
+    // 注意：orchestrator.run 需要 WorldModelContext，但这里使用的是 LegacyWorldModelContext
+    // 需要转换为新的格式或使用兼容层
+    const result = await orchestrator.run(world as any, plan);
 
     // 6. 输出结果
     console.log('\n✅ Step 6: Final Result');
