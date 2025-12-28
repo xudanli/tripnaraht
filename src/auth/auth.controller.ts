@@ -4,11 +4,13 @@ import {
   Post,
   Body,
   Res,
+  Req,
   HttpCode,
   HttpStatus,
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiCookieAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -51,11 +53,36 @@ export class AuthController {
   })
   async googleCode(
     @Body() dto: GoogleCodeDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponseDto> {
     try {
-      // 1. Exchange code for tokens
-      const tokenResponse = await this.googleOAuthService.exchangeCodeForTokens(dto.code);
+      // 1. Get origin from request header (for Popup mode, this is the redirect_uri)
+      const origin = Array.isArray(req.headers.origin) 
+        ? req.headers.origin[0] 
+        : req.headers.origin || undefined;
+      
+      // 2. Validate origin against whitelist
+      const allowedOrigins = new Set([
+        'http://localhost:5173',
+        'http://localhost:3001',
+        'https://tripnara.com',
+        'https://www.tripnara.com',
+        // 开发环境额外支持
+        ...(process.env.NODE_ENV !== 'production' 
+          ? ['http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:3001']
+          : []
+        ),
+      ]);
+
+      if (!origin || !allowedOrigins.has(origin)) {
+        throw new BadRequestException(
+          `Invalid origin for redirect_uri: ${origin}. Allowed origins: ${Array.from(allowedOrigins).join(', ')}`
+        );
+      }
+
+      // 3. Exchange code for tokens (using origin as redirect_uri for Popup mode)
+      const tokenResponse = await this.googleOAuthService.exchangeCodeForTokens(dto.code, origin);
 
       // 2. Verify and decode ID token
       const idTokenPayload = await this.googleOAuthService.verifyIdToken(tokenResponse.id_token);

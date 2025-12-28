@@ -15,7 +15,7 @@
 
 ### 基础信息
 
-- **Base URL**: `http://47.253.148.159` (生产环境)
+- **Base URL**: `http://localhost:3000` (开发环境)
 - **认证方式**: JWT Bearer Token + Refresh Token Cookie
 - **Content-Type**: `application/json`
 - **Cookie**: 需要支持 `credentials: 'include'`
@@ -765,6 +765,116 @@ const isLoggedIn = authService.isAuthenticated();
 - refresh_token 存储在 httpOnly cookie（30天有效期）
 - 用户关闭浏览器后，refresh_token 仍然有效，下次访问时自动刷新 accessToken
 
+### Q6: 遇到 Google Identity Services 错误怎么办？
+
+**常见错误及解决方案：**
+
+#### 错误 1: "Only one navigator.credentials.get request may be outstanding at one time"
+
+**原因**: 同时发起了多个 Google 登录请求
+
+**解决**:
+```javascript
+let isLoginInProgress = false;
+
+async function handleGoogleLogin() {
+  if (isLoginInProgress) {
+    console.warn('登录正在进行中，请勿重复点击');
+    return;
+  }
+  
+  isLoginInProgress = true;
+  try {
+    window.google.accounts.oauth2.requestCode();
+  } finally {
+    // 延迟重置，避免快速重复点击
+    setTimeout(() => {
+      isLoginInProgress = false;
+    }, 1000);
+  }
+}
+```
+
+#### 错误 2: "Error retrieving a token" / "The request has been aborted"
+
+**原因**: 
+- Google OAuth 配置问题（Client ID 错误）
+- 网络连接问题
+- CORS 配置问题
+
+**解决**:
+1. 检查 Google Client ID 是否正确配置
+2. 确认前端域名已添加到 Google Cloud Console 的 Authorized JavaScript origins
+3. 检查网络连接和 CORS 配置
+4. 确保后端 API 地址正确且可访问
+
+#### 错误 3: "FedCM get() rejects" 相关错误
+
+**原因**: 浏览器兼容性或配置问题
+
+**解决**:
+1. 确保使用支持的浏览器（Chrome、Edge、Safari 等）
+2. 检查浏览器是否阻止了第三方 Cookie
+3. 使用 Code Model 而不是 One Tap（更稳定）
+4. 添加错误处理：
+
+```javascript
+window.google.accounts.id.initialize({
+  client_id: 'YOUR_CLIENT_ID',
+  callback: handleCredentialResponse,
+  error_callback: (error) => {
+    console.error('Google Sign-In Error:', error);
+    // 降级到 Code Model
+    handleGoogleCodeLogin();
+  },
+});
+```
+
+#### 错误 4: "Failed to fetch" / "ERR_EMPTY_RESPONSE"
+
+**原因**: 
+- 后端 API 地址不可访问
+- 网络连接问题
+- CORS 配置错误
+
+**解决**:
+1. 检查 API 地址是否正确：`http://47.253.148.159`
+2. 确认后端服务正在运行
+3. 检查 CORS 配置，确保前端域名被允许
+4. 使用浏览器开发者工具 Network 面板检查请求详情
+
+**通用调试建议**:
+```javascript
+// 添加详细的错误日志
+async function loginWithGoogleCode(code) {
+  try {
+    console.log('开始登录，code:', code.substring(0, 20) + '...');
+    
+    const response = await fetch('http://47.253.148.159/auth/google/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ code }),
+    });
+
+    console.log('响应状态:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('登录失败:', error);
+      throw new Error(error.message || '登录失败');
+    }
+
+    const data = await response.json();
+    console.log('登录成功:', data.user.email);
+    return data;
+  } catch (error) {
+    console.error('登录异常:', error);
+    throw error;
+  }
+}
+```
+
 ---
 
 ## 环境变量配置
@@ -787,6 +897,32 @@ REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
 - [ ] 401 错误自动处理
 - [ ] Cookie 正确传递
 - [ ] 跨域请求配置
+- [ ] 错误处理（网络错误、token 过期等）
+- [ ] 防止重复登录请求
+
+## 故障排查
+
+### 检查清单
+
+1. **Google OAuth 配置**
+   - [ ] Google Client ID 正确配置
+   - [ ] 前端域名已添加到 Authorized JavaScript origins
+   - [ ] OAuth consent screen 已配置
+
+2. **后端配置**
+   - [ ] 后端服务正在运行（检查 `http://47.253.148.159` 是否可访问）
+   - [ ] CORS 配置正确（允许前端域名和 credentials）
+   - [ ] 环境变量已正确配置（GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET）
+
+3. **前端配置**
+   - [ ] API 地址正确（`http://47.253.148.159`）
+   - [ ] 请求包含 `credentials: 'include'`
+   - [ ] 浏览器允许第三方 Cookie（如需要）
+
+4. **网络问题**
+   - [ ] 检查浏览器 Network 面板，查看请求状态
+   - [ ] 检查是否有 CORS 错误
+   - [ ] 检查后端日志是否有错误信息
 
 ---
 
@@ -794,5 +930,5 @@ REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
 
 如有问题，请查看：
 - 完整文档：`src/auth/README.md`
-- Swagger 文档：`http://47.253.148.159/api`（启动服务后）
+- Swagger 文档：`http://localhost:3000/api`（启动服务后）
 

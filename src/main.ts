@@ -28,22 +28,69 @@ async function bootstrap() {
   );
   
   // 启用 CORS（配置支持 credentials/cookies）
-  const frontendUrls = process.env.FRONTEND_URL 
-    ? process.env.FRONTEND_URL.split(',')
-    : ['http://localhost:5173', 'http://localhost:3001', 'http://47.253.148.159'];
+  // 支持多个前端域名（开发和生产环境）
+  // 方式1: 使用 FRONTEND_URLS 环境变量（逗号分隔多个域名）
+  // 方式2: 使用 FRONTEND_URL 环境变量（单个域名）
+  const frontendUrls = process.env.FRONTEND_URLS 
+    ? process.env.FRONTEND_URLS.split(',').map(url => url.trim()).filter(url => url)
+    : process.env.FRONTEND_URL 
+      ? [process.env.FRONTEND_URL]
+      : [];
+  
   app.enableCors({
-    origin: (origin, callback) => {
-      // 允许所有配置的前端地址
-      if (!origin || frontendUrls.some(url => origin.startsWith(url))) {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // 允许无 origin 的请求（如 Postman、移动应用、服务端请求等）
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // 如果没有配置 FRONTEND_URL，开发环境允许所有来源
+      if (frontendUrls.length === 0) {
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('⚠️  CORS: 生产环境未配置 FRONTEND_URL，拒绝所有请求');
+          return callback(new Error('CORS not configured for production'));
+        }
+        // 开发环境：允许所有来源
+        return callback(null, true);
+      }
+      
+      // 检查 origin 是否在允许列表中
+      const isAllowed = frontendUrls.some(url => {
+        // 精确匹配
+        if (origin === url) return true;
+        // 前缀匹配（支持子域名和端口，如 http://example.com:5173）
+        const urlBase = url.replace(/\/$/, ''); // 移除尾部斜杠
+        if (origin.startsWith(urlBase)) return true;
+        return false;
+      });
+      
+      if (isAllowed) {
         callback(null, true);
       } else {
-        callback(null, true); // 开发环境允许所有来源，生产环境应该严格限制
+        // 开发环境：额外允许 localhost 和 127.0.0.1（方便本地调试）
+        if (process.env.NODE_ENV !== 'production' && 
+            (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+          callback(null, true);
+        } else {
+          console.warn(`⚠️  CORS: 拒绝来自 ${origin} 的请求`);
+          console.warn(`   允许的域名: ${frontendUrls.join(', ')}`);
+          callback(new Error('Not allowed by CORS'));
+        }
       }
     },
-    credentials: true, // 允许发送 cookies
+    credentials: true, // 允许发送 cookies（必需，用于 refresh_token cookie）
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Authorization'],
+    maxAge: 86400, // 24小时预检缓存
   });
+  
+  // 输出 CORS 配置信息
+  if (frontendUrls.length > 0) {
+    console.log(`✅ CORS 配置: 允许的前端域名: ${frontendUrls.join(', ')}`);
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.log('⚠️  CORS 配置: 未配置 FRONTEND_URL，开发模式允许所有来源');
+  }
   
   // ============================================
   // 📚 Swagger/OpenAPI 文档配置

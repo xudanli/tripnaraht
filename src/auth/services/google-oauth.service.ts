@@ -31,10 +31,25 @@ export class GoogleOAuthService {
   /**
    * Exchange authorization code for tokens (Code Model - Primary approach)
    * This is the recommended approach for web server applications
+   * 
+   * @param code Authorization code from Google
+   * @param redirectUri The redirect URI (should match the origin of the calling page for Popup mode)
    */
-  async exchangeCodeForTokens(code: string): Promise<GoogleTokenResponse> {
+  async exchangeCodeForTokens(code: string, redirectUri?: string): Promise<GoogleTokenResponse> {
+    // For Popup mode, redirectUri should be the origin of the calling page
+    // If not provided, use the configured redirectUri
+    const finalRedirectUri: string = redirectUri ?? this.redirectUri;
+    
+    // Create a temporary OAuth2Client with the redirectUri for this request
+    // This is necessary because redirectUri must match exactly what was used in the authorization request
+    const oauth2Client = redirectUri && redirectUri !== this.redirectUri
+      ? new OAuth2Client(this.clientId, this.clientSecret, redirectUri)
+      : this.oauth2Client;
+
+    this.logger.debug(`Exchanging code for tokens with redirect_uri: ${finalRedirectUri}`);
+
     try {
-      const { tokens } = await this.oauth2Client.getToken(code);
+      const { tokens } = await oauth2Client.getToken(code);
       
       if (!tokens.id_token) {
         throw new BadRequestException('Google did not return an ID token');
@@ -44,13 +59,36 @@ export class GoogleOAuthService {
         access_token: tokens.access_token || '',
         expires_in: tokens.expiry_date ? Math.floor((tokens.expiry_date - Date.now()) / 1000) : 3600,
         id_token: tokens.id_token,
-        refresh_token: tokens.refresh_token,
+        refresh_token: tokens.refresh_token || undefined,
         scope: tokens.scope || '',
         token_type: 'Bearer',
       };
     } catch (error: any) {
-      this.logger.error(`Failed to exchange code for tokens: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to exchange authorization code: ${error.message}`);
+      // Log detailed error for debugging (includes error_description from Google)
+      const errorResponse = error?.response?.data;
+      const errorMessage = error?.message || String(error);
+      
+      // Extract detailed error information
+      let errorDetail = errorMessage;
+      if (errorResponse) {
+        if (typeof errorResponse === 'string') {
+          errorDetail = errorResponse;
+        } else if (errorResponse.error_description) {
+          errorDetail = `${errorResponse.error}: ${errorResponse.error_description}`;
+        } else if (errorResponse.error) {
+          errorDetail = errorResponse.error;
+        } else {
+          errorDetail = JSON.stringify(errorResponse);
+        }
+      }
+      
+      this.logger.error(`Failed to exchange code for tokens: ${errorDetail}`);
+      this.logger.error(`Request details: redirect_uri=${finalRedirectUri}, client_id=${this.clientId}`);
+      if (error?.stack) {
+        this.logger.debug(error.stack);
+      }
+      
+      throw new BadRequestException(`Failed to exchange authorization code: ${errorDetail}`);
     }
   }
 
