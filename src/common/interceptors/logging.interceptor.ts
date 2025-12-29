@@ -15,30 +15,46 @@ export class LoggingInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
     const { method, originalUrl } = request;
     const start = Date.now();
 
     // 立即打印请求到达日志
-    console.log(`[HTTP] 请求到达: ${method} ${originalUrl}`);
-    this.logger.log(`请求到达: ${method} ${originalUrl}`);
+    console.log(`[HTTP-Interceptor] 请求到达: ${method} ${originalUrl}`);
+    this.logger.log(`[Interceptor] 请求到达: ${method} ${originalUrl}`);
+
+    // 监听响应事件（确保捕获使用 @Res() 的情况）
+    const logResponse = () => {
+      const statusCode = response.statusCode || 200;
+      const duration = Date.now() - start;
+      const logMessage = `${method} ${originalUrl} ${statusCode} ${duration}ms`;
+      console.log(`[HTTP-Interceptor] ${logMessage}`);
+      this.logger.log(`[Interceptor] ${logMessage}`);
+    };
+
+    // 监听响应完成事件（处理 @Res({ passthrough: true }) 的情况）
+    response.once('finish', logResponse);
+    response.once('close', () => {
+      if (!response.writableFinished) {
+        logResponse();
+      }
+    });
 
     return next.handle().pipe(
       tap({
         next: () => {
-          const response = context.switchToHttp().getResponse();
-          const { statusCode } = response;
-          const duration = Date.now() - start;
-          const logMessage = `${method} ${originalUrl} ${statusCode} ${duration}ms`;
-          console.log(`[HTTP] ${logMessage}`);
-          this.logger.log(logMessage);
+          // 如果响应还没有完成，等待 finish 事件
+          // 如果已经完成，立即记录
+          if (response.writableFinished || response.headersSent) {
+            logResponse();
+          }
         },
         error: (error) => {
-          const response = context.switchToHttp().getResponse();
           const statusCode = response.statusCode || 500;
           const duration = Date.now() - start;
           const logMessage = `${method} ${originalUrl} ${statusCode} ${duration}ms [ERROR]`;
-          console.error(`[HTTP] ${logMessage}`, error?.message);
-          this.logger.error(logMessage, error?.stack);
+          console.error(`[HTTP-Interceptor] ${logMessage}`, error?.message);
+          this.logger.error(`[Interceptor] ${logMessage}`, error?.stack);
         },
       }),
     );

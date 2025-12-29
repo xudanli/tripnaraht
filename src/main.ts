@@ -17,11 +17,15 @@ async function bootstrap() {
   console.log('✅ HTTP 访问日志拦截器已注册');
   app.useGlobalInterceptors(new LoggingInterceptor());
   
-  // HTTP 访问日志 - 同时使用中间件作为备选（确保捕获所有请求，包括 401）
+  // HTTP 访问日志 - 同时使用中间件作为备选（确保捕获所有请求，包括 401 和使用 @Res() 的情况）
   const logger = new Logger('HTTP');
   console.log('✅ HTTP 访问日志中间件已注册');
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.use((req: any, res: any, next: any) => {
+    // 立即打印请求到达日志
+    console.log(`[HTTP-Middleware] 请求到达: ${req.method} ${req.originalUrl}`);
+    logger.log(`[Middleware] 请求到达: ${req.method} ${req.originalUrl}`);
+    
     const start = Date.now();
     // 监听响应完成事件
     res.on('finish', () => {
@@ -29,6 +33,15 @@ async function bootstrap() {
       const logMessage = `${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`;
       console.log(`[HTTP-Middleware] ${logMessage}`);
       logger.log(`[Middleware] ${logMessage}`);
+    });
+    // 监听响应关闭事件（处理客户端提前断开连接的情况）
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        const duration = Date.now() - start;
+        const logMessage = `${req.method} ${req.originalUrl} ${res.statusCode || 0} ${duration}ms [CLOSED]`;
+        console.warn(`[HTTP-Middleware] ${logMessage}`);
+        logger.warn(`[Middleware] ${logMessage}`);
+      }
     });
     next();
   });
