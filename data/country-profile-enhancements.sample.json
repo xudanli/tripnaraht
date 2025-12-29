@@ -1,0 +1,190 @@
+[
+  {
+    "isoCode": "IS",
+    "complianceInfo": {
+      "drivingRules": {
+        "drivingSide": "right",
+        "minAge": 17,
+        "requiresInternationalLicense": true,
+        "speedLimits": {
+          "urban": 50,
+          "highway": 90,
+          "note": "碎石路限速 80 km/h"
+        },
+        "specialRules": [
+          "F-road 需要 4x4 车辆",
+          "冬季某些路段可能封闭",
+          "注意道路上的羊"
+        ]
+      },
+      "droneRules": {
+        "allowed": true,
+        "requiresRegistration": true,
+        "maxAltitude": 120,
+        "restrictions": [
+          "禁止在人群密集区域飞行",
+          "需要保持至少 150 米距离",
+          "禁止在国家公园内飞行（需特殊许可）"
+        ],
+        "prohibitedAreas": ["雷克雅未克市中心", "蓝湖"]
+      },
+      "alcoholPolicy": {
+        "legalAge": 20,
+        "bacLimit": 0.05,
+        "publicDrinking": false,
+        "specialRules": ["只能在持牌场所购买酒精"]
+      }
+    },
+    "travelCulture": {
+      "tippingHabits": {
+        "level": "LOW",
+        "description": "冰岛没有强制小费文化",
+        "scenarios": [
+          {
+            "scenario": "餐厅",
+            "amount": "可选，10%",
+            "note": "账单通常已包含服务费"
+          }
+        ]
+      },
+      "dressCodeHints": [
+        {
+          "context": "温泉/蓝湖",
+          "requirements": ["必须洗澡后进入", "禁止穿鞋"],
+          "suggestions": ["带好毛巾和拖鞋"]
+        }
+      ]
+    }
+  },
+  {
+    "isoCode": "JP",
+    "complianceInfo": {
+      "visaPolicies": {
+        "visaForCN": {
+          "status": "需要提前申请",
+          "allowedStay": "15-90天（根据签证类型）",
+          "requirement": "需要提供行程单、酒店预订等材料"
+        },
+        "internationalDrivingLicense": {
+          "required": true,
+          "note": "需要 IDP（国际驾照）或日本驾照翻译件"
+        }
+      },
+      "drivingRules": {
+        "drivingSide": "left",
+        "minAge": 18,
+        "requiresInternationalLicense": true,
+        "speedLimits": {
+          "urban": 40,
+          "highway": 100
+        }
+      },
+      "alcoholPolicy": {
+        "legalAge": 20,
+        "bacLimit": 0.03,
+        "publicDrinking": true,
+        "specialRules": ["自动售货机也销售含酒精饮料"]
+      }
+    },
+    "travelCulture": {
+      "tippingHabits": {
+        "level": "NONE",
+        "description": "日本不接受小费，给钱可能被认为是不礼貌的"
+      },
+      "tabooList": [
+        {
+          "category": "社会",
+          "items": [
+            "不要在公共场合大声说话",
+            "不要在地铁上打电话",
+            "不要边走边吃"
+          ]
+        },
+        {
+          "category": "饮食",
+          "items": [
+            "不要将筷子插在饭里",
+            "不要用筷子传递食物"
+          ]
+        }
+      ],
+      "dressCodeHints": [
+        {
+          "context": "寺庙/神社",
+          "requirements": ["脱帽", "脱鞋"],
+          "suggestions": ["穿着得体，避免过于暴露"]
+        },
+        {
+          "context": "温泉",
+          "requirements": ["必须全裸", "禁止有纹身进入"]
+        }
+      ],
+      "festivalCalendar": [
+        {
+          "month": 3,
+          "name": "Sakura Season",
+          "nameCN": "樱花季",
+          "impact": "POSITIVE",
+          "description": "日本最受欢迎的旅游季节",
+          "travelTips": [
+            "提前预订酒店",
+            "热门景点会非常拥挤",
+            "关注樱花前线预报"
+          ]
+        },
+        {
+          "month": 8,
+          "name": "Obon Festival",
+          "nameCN": "盂兰盆节",
+          "impact": "NEGATIVE",
+          "description": "全国性假期，交通和住宿会非常紧张",
+          "travelTips": [
+            "避免在此期间旅行",
+            "如需出行务必提前预订"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "isoCode": "NO",
+    "complianceInfo": {
+      "drivingRules": {
+        "drivingSide": "right",
+        "minAge": 18,
+        "requiresInternationalLicense": true,
+        "speedLimits": {
+          "urban": 50,
+          "highway": 80
+        },
+        "specialRules": [
+          "冬季需要冬季轮胎",
+          "注意野生动物（特别是驼鹿）"
+        ]
+      },
+      "droneRules": {
+        "allowed": true,
+        "requiresRegistration": true,
+        "maxAltitude": 120,
+        "restrictions": [
+          "禁止在人群密集区域飞行",
+          "需要保持安全距离"
+        ]
+      }
+    },
+    "travelCulture": {
+      "tippingHabits": {
+        "level": "LOW",
+        "description": "小费不是必须的，但可以给服务费"
+      },
+      "dressCodeHints": [
+        {
+          "context": "户外活动",
+          "requirements": ["适合的防水装备"],
+          "suggestions": ["注意天气变化，准备分层着装"]
+        }
+      ]
+    }
+  }
+]
+

@@ -153,5 +153,111 @@ export class CountriesController {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
+
+  @Get(':countryCode/payment-info')
+  @ApiOperation({
+    summary: '获取目的地支付实用信息（故事5.1）',
+    description: '获取目的地的支付规则和技巧，包括主流支付方式、小费规则、ATM取款贴士、实时汇率换算等',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: '国家代码（ISO 3166-1 alpha-2）',
+    example: 'JP',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回支付实用信息',
+    type: ApiSuccessResponseDto,
+  })
+  async getPaymentInfo(@Param('countryCode') countryCode: string) {
+    try {
+      const strategy = await this.countriesService.getCurrencyStrategy(countryCode);
+      
+      // 增强支付信息
+      return successResponse({
+        countryCode: strategy.countryCode,
+        countryName: strategy.countryName,
+        currency: {
+          code: strategy.currencyCode,
+          name: strategy.currencyName,
+          exchangeRateToCNY: strategy.exchangeRateToCNY,
+          exchangeRateToUSD: strategy.exchangeRateToUSD,
+          quickRule: strategy.quickRule,
+          quickTip: strategy.quickTip,
+          quickTable: strategy.quickTable,
+        },
+        paymentMethods: {
+          type: strategy.paymentType,
+          advice: strategy.paymentAdvice,
+        },
+        practicalTips: {
+          tipping: strategy.paymentAdvice?.tipping || '请查看当地小费习惯',
+          atmNetworks: strategy.paymentAdvice?.atm_network || '请查询支持银联的ATM网络',
+          walletApps: strategy.paymentAdvice?.wallet_apps || [],
+          cashPreparation: strategy.paymentAdvice?.cash_preparation || '建议准备少量现金',
+        },
+        merchantInfo: {
+          unionPaySupported: '请查询当地商户',
+          popularMerchantTypes: ['请查询当地热门商户'],
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':countryCode/terrain-advice')
+  @ApiOperation({
+    summary: '获取目的地地形适配建议（故事5.2）',
+    description: '获取目的地地形对应的行程规划要点，包括高海拔适应策略、徒步路线风险阈值、装备清单、体力训练建议等',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: '国家代码',
+    example: 'NP',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地形适配建议',
+    type: ApiSuccessResponseDto,
+  })
+  async getTerrainAdvice(@Param('countryCode') countryCode: string) {
+    try {
+      const pack = await this.countriesService.getCountryPack(countryCode);
+      
+      return successResponse({
+        countryCode: pack.countryCode,
+        terrainConfig: {
+          riskThresholds: pack.riskThresholds,
+          effortLevelMapping: pack.effortLevelMapping,
+          terrainConstraints: pack.terrainConstraints,
+        },
+        adaptationStrategies: {
+          highAltitude: pack.riskThresholds?.highAltitudeM
+            ? `海拔超过 ${pack.riskThresholds.highAltitudeM}m 时，建议进行高反风险评估和适应计划`
+            : '请根据实际海拔调整',
+          routeRisk: pack.riskThresholds?.steepSlopePct
+            ? `陡坡阈值：${pack.riskThresholds.steepSlopePct}%`
+            : '请根据路线难度评估',
+        },
+        equipmentRecommendations: {
+          basedOnTerrain: '请根据地形配置选择合适的装备',
+          trainingAdvice: '建议提前进行体力训练，特别是高海拔地区',
+        },
+        seasonalConstraints: {
+          roadAccess: '请查询季节性道路通行时间限制',
+          weatherImpact: '请关注季节性天气对路线的影响',
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
 }
 

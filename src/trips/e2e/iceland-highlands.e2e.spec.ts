@@ -24,10 +24,14 @@ import {
   WorldModelContext,
   RoutePlanDraft,
   DecisionParams,
+  DemDecisionEvidence,
 } from '../decision/shared/world-model.types';
 import { IS_HIGHLANDS_F_ROAD_EXPEDITION } from '../../route-directions/fixtures/is_highlands_froad.fixture';
 import { SpatialIssue } from '../decision/interfaces/spatial-issue.interface';
 import { ReplacementOperation } from '../decision/interfaces/replacement-candidate.interface';
+import { DecisionLogStorageService } from '../decision/services/decision-log-storage.service';
+import { PhysicalRealityModel } from '../decision/models/physical-reality.model';
+import { HumanCapabilityModel, createHumanCapabilityModelFromProfile } from '../decision/models/human-capability.model';
 
 describe('Iceland Highlands F-Road Expedition - E2E', () => {
   let orchestrator: StrategyOrchestratorService;
@@ -75,6 +79,12 @@ describe('Iceland Highlands F-Road Expedition - E2E', () => {
             $queryRaw: jest.fn().mockResolvedValue([]),
           },
         },
+        {
+          provide: DecisionLogStorageService,
+          useValue: {
+            saveLogEntries: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         NeptuneStrategy,
       ],
     }).compile();
@@ -84,45 +94,66 @@ describe('Iceland Highlands F-Road Expedition - E2E', () => {
 
   describe('场景 1: 理想夏季高地穿越（正常通过）', () => {
     it('should successfully generate a stable plan for Iceland Highlands in August', async () => {
-      // 1. 构造 worldModel
-      const world: WorldModelContext = {
+      // 1. 构造 worldModel（使用新的三段式结构）
+      const demEvidence: DemDecisionEvidence[] = [
+        {
+          segmentId: 'DAY1_SEG1',
+          elevationProfile: [500, 650, 700],
+          cumulativeAscent: 350,
+          maxSlopePct: 18,
+          rollingAscent3Days: 350,
+          fatigueIndex: 0.8,
+          violation: 'NONE',
+          explanation: '第一天爬升正常',
+        },
+        {
+          segmentId: 'DAY2_SEG1',
+          elevationProfile: [700, 900, 950],
+          cumulativeAscent: 400,
+          maxSlopePct: 22,
+          rollingAscent3Days: 750,
+          fatigueIndex: 1.0,
+          violation: 'NONE',
+          explanation: '第二天爬升正常',
+        },
+        {
+          segmentId: 'DAY3_SEG1',
+          elevationProfile: [650, 700, 680],
+          cumulativeAscent: 200,
+          maxSlopePct: 15,
+          rollingAscent3Days: 950,
+          fatigueIndex: 0.7,
+          violation: 'NONE',
+          explanation: '第三天爬升正常',
+        },
+      ];
+
+      const physical: PhysicalRealityModel = {
+        demEvidence,
+        roadStates: [],
+        hazardZones: [],
+        ferryStates: [],
         countryCode: 'IS',
         month: 8,
-        decisionParams: {
-          maxDailyAscentM: 900,
-          rollingAscent3DaysM: 2400,
-          maxSlopePct: 25,
-          weatherRiskWeight: 0.5,
-          bufferDayBias: 'MEDIUM',
-          riskTolerance: 'MEDIUM',
-        },
-        demEvidence: [
-          {
-            segmentId: 'DAY1_SEG1',
-            elevationProfile: [500, 650, 700],
-            cumulativeAscentM: 350,
-            maxSlopePct: 18,
-            rollingFatigueIndex: 0.8,
-            violation: 'NONE',
-          },
-          {
-            segmentId: 'DAY2_SEG1',
-            elevationProfile: [700, 900, 950],
-            cumulativeAscentM: 400,
-            maxSlopePct: 22,
-            rollingFatigueIndex: 1.0,
-            violation: 'NONE',
-          },
-          {
-            segmentId: 'DAY3_SEG1',
-            elevationProfile: [650, 700, 680],
-            cumulativeAscentM: 200,
-            maxSlopePct: 15,
-            rollingFatigueIndex: 0.7,
-            violation: 'NONE',
-          },
-        ],
-        weatherEvidence: [],
+      };
+
+      const human: HumanCapabilityModel = createHumanCapabilityModelFromProfile(
+        'test-profile',
+        {
+          pace: 'normal',
+          fitness: 'medium',
+          riskTolerance: 'medium',
+        }
+      );
+      // 覆盖参数
+      human.maxDailyAscentM = 900;
+      human.rollingAscent3DaysM = 2400;
+      human.maxSlopePct = 25;
+
+      const world: WorldModelContext = {
+        physical,
+        human,
+        routeDirection: IS_HIGHLANDS_F_ROAD_EXPEDITION as any,
         complianceEvidence: [
           {
             requiresPermit: false,
@@ -214,29 +245,52 @@ describe('Iceland Highlands F-Road Expedition - E2E', () => {
 
   describe('场景 2: 5 月高地入口封闭 → 直接被否决', () => {
     it('should reject Iceland Highlands F-road in May due to seasonal closure', async () => {
-      const world: WorldModelContext = {
-        countryCode: 'IS',
-        month: 5,
-        decisionParams: {
-          maxDailyAscentM: 900,
-          rollingAscent3DaysM: 2400,
-          maxSlopePct: 25,
-          weatherRiskWeight: 0.5,
-          bufferDayBias: 'LOW',
-          riskTolerance: 'MEDIUM',
+      const demEvidence: DemDecisionEvidence[] = [
+        {
+          segmentId: 'ENTRY_SEG',
+          elevationProfile: [600, 700],
+          cumulativeAscent: 150,
+          maxSlopePct: 12,
+          rollingAscent3Days: 150,
+          fatigueIndex: 0.5,
+          violation: 'NONE',
+          explanation: '入口路段 DEM 正常',
         },
-        // 即使 DEM 美好，也不允许走
-        demEvidence: [
+      ];
+
+      const physical: PhysicalRealityModel = {
+        demEvidence,
+        roadStates: [
           {
-            segmentId: 'ENTRY_SEG',
-            elevationProfile: [600, 700],
-            cumulativeAscentM: 150,
-            maxSlopePct: 12,
-            rollingFatigueIndex: 0.5,
-            violation: 'NONE',
+            roadId: 'F26',
+            status: 'SEASONAL',
+            seasonOpenFrom: 6,
+            seasonOpenTo: 9,
+            requires4x4: true,
           },
         ],
-        weatherEvidence: [],
+        hazardZones: [],
+        ferryStates: [],
+        countryCode: 'IS',
+        month: 5,
+      };
+
+      const human: HumanCapabilityModel = createHumanCapabilityModelFromProfile(
+        'test-profile',
+        {
+          pace: 'normal',
+          fitness: 'medium',
+          riskTolerance: 'medium',
+        }
+      );
+      human.maxDailyAscentM = 900;
+      human.rollingAscent3DaysM = 2400;
+      human.maxSlopePct = 25;
+
+      const world: WorldModelContext = {
+        physical,
+        human,
+        routeDirection: IS_HIGHLANDS_F_ROAD_EXPEDITION as any,
         complianceEvidence: [
           {
             requiresPermit: false,
@@ -298,44 +352,71 @@ describe('Iceland Highlands F-Road Expedition - E2E', () => {
 
   describe('场景 3: 局部 F 路封闭，有绕行 → Neptune 出手', () => {
     it('should reroute around a blocked F-road segment while keeping route direction', async () => {
-      const world: WorldModelContext = {
-        countryCode: 'IS',
-        month: 8,
-        decisionParams: {
-          maxDailyAscentM: 900,
-          rollingAscent3DaysM: 2400,
-          maxSlopePct: 28,
-          weatherRiskWeight: 0.6,
-          bufferDayBias: 'MEDIUM',
-          riskTolerance: 'MEDIUM',
+      const demEvidence: DemDecisionEvidence[] = [
+        {
+          segmentId: 'DAY2_F_SEG_BLOCKED',
+          elevationProfile: [700, 900, 950],
+          cumulativeAscent: 400,
+          maxSlopePct: 24,
+          rollingAscent3Days: 750,
+          fatigueIndex: 1.0,
+          violation: 'NONE', // 这里风险来自路况，不是 DEM
+          explanation: '原路段 DEM 正常，但路况封闭',
         },
-        demEvidence: [
+        {
+          segmentId: 'DAY2_ALT_SEG1',
+          elevationProfile: [700, 800],
+          cumulativeAscent: 200,
+          maxSlopePct: 18,
+          rollingAscent3Days: 550,
+          fatigueIndex: 0.8,
+          violation: 'NONE',
+          explanation: '替代路段 1',
+        },
+        {
+          segmentId: 'DAY2_ALT_SEG2',
+          elevationProfile: [800, 900],
+          cumulativeAscent: 200,
+          maxSlopePct: 20,
+          rollingAscent3Days: 750,
+          fatigueIndex: 0.9,
+          violation: 'NONE',
+          explanation: '替代路段 2',
+        },
+      ];
+
+      const physical: PhysicalRealityModel = {
+        demEvidence,
+        roadStates: [
           {
+            roadId: 'F26_BLOCKED',
+            status: 'CLOSED',
+            requires4x4: true,
             segmentId: 'DAY2_F_SEG_BLOCKED',
-            elevationProfile: [700, 900, 950],
-            cumulativeAscentM: 400,
-            maxSlopePct: 24,
-            rollingFatigueIndex: 1.0,
-            violation: 'NONE', // 这里风险来自路况，不是 DEM
-          },
-          {
-            segmentId: 'DAY2_ALT_SEG1',
-            elevationProfile: [700, 800],
-            cumulativeAscentM: 200,
-            maxSlopePct: 18,
-            rollingFatigueIndex: 0.8,
-            violation: 'NONE',
-          },
-          {
-            segmentId: 'DAY2_ALT_SEG2',
-            elevationProfile: [800, 900],
-            cumulativeAscentM: 200,
-            maxSlopePct: 20,
-            rollingFatigueIndex: 0.9,
-            violation: 'NONE',
           },
         ],
-        weatherEvidence: [],
+        hazardZones: [],
+        ferryStates: [],
+        countryCode: 'IS',
+        month: 8,
+      };
+
+      const human: HumanCapabilityModel = createHumanCapabilityModelFromProfile(
+        'test-profile',
+        {
+          pace: 'normal',
+          fitness: 'medium',
+          riskTolerance: 'medium',
+        }
+      );
+      human.maxDailyAscentM = 900;
+      human.rollingAscent3DaysM = 2400;
+      human.maxSlopePct = 28;
+
+      const world: WorldModelContext = {
+        physical,
+        human,
+        routeDirection: IS_HIGHLANDS_F_ROAD_EXPEDITION as any,
         complianceEvidence: [
           {
             requiresPermit: false,

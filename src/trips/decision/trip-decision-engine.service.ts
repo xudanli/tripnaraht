@@ -40,6 +40,8 @@ import { WorldModelContext, RoutePlanDraft } from './shared/world-model.types';
 import { DecisionLogEntry } from './shared/decision-result.types';
 import { mapUserPersonaToDecisionParams, extractPersonaKeywordsFromPreferences } from './config/user-persona-mapping.config';
 import { createHumanCapabilityModelFromProfile } from './models/human-capability.model';
+import { ReadinessAgentService } from './readiness/readiness-agent.service';
+import { TravelReadinessResult } from './readiness/types/readiness-checklist.types';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -74,7 +76,8 @@ export class TripDecisionEngineService {
     private readonly demEvidenceEnforcer?: DemEvidenceEnforcerService,
     private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
     private readonly strategyOrchestrator?: StrategyOrchestratorService,
-    private readonly planConverter?: PlanConverterService
+    private readonly planConverter?: PlanConverterService,
+    private readonly readinessAgent?: ReadinessAgentService
   ) {}
 
   /**
@@ -83,7 +86,7 @@ export class TripDecisionEngineService {
   async generatePlan(
     state: TripWorldState,
     requestId?: string
-  ): Promise<{ plan: TripPlan; log: DecisionRunLog }> {
+  ): Promise<{ plan: TripPlan; log: DecisionRunLog; readiness?: TravelReadinessResult }> {
     if (!state || !state.context) {
       throw new Error('Invalid state: state and state.context are required');
     }
@@ -1050,7 +1053,73 @@ export class TripDecisionEngineService {
       this.observabilityService.completeTrace(traceRequestId);
     }
 
-    return { plan: finalPlan, log };
+    // 生成准备度检查清单（如果 ReadinessAgent 可用且有 worldContext）
+    let readiness: TravelReadinessResult | undefined;
+    if (this.readinessAgent && selectedRouteDirection) {
+      try {
+        // 重新构建 worldContext（如果之前已经构建过）
+        // 注意：这里简化处理，实际上应该将 worldContext 提升到外部作用域
+        const countryCode = this.extractCountryCode(state.context.destination);
+        const month = this.extractMonth(state.context.startDate);
+        
+        // 构建简化的 worldContext（只包含必要字段）
+        // TODO: 优化：将 worldContext 提升到方法级别，避免重复构建
+        const demEvidence: any[] = [];
+        if (demEvidenceResult?.segmentEvidences) {
+          for (const evidence of demEvidenceResult.segmentEvidences) {
+            demEvidence.push({
+              segmentId: evidence.segmentId,
+              elevationProfile: evidence.elevationProfile || [],
+              cumulativeAscent: evidence.cumulativeAscent || 0,
+              maxSlopePct: evidence.maxSlopePct || 0,
+              rollingAscent3Days: evidence.rollingAscent3Days || 0,
+              fatigueIndex: evidence.fatigueIndex || 0,
+              violation: evidence.violation || 'NONE',
+              explanation: evidence.explanation || '',
+              metadata: evidence.metadata || {},
+            });
+          }
+        }
+
+        const physical = {
+          demEvidence,
+          roadStates: [], // TODO: 从实际数据获取
+          hazardZones: [], // TODO: 从实际数据获取
+          ferryStates: [], // TODO: 从实际数据获取
+          countryCode,
+          month,
+        };
+
+        const human = createHumanCapabilityModelFromProfile(
+          `user_${(state.context as any).userId || 'anonymous'}`,
+          {
+            pace: state.context.preferences.pace === 'relaxed' ? 'slow' : 
+                  state.context.preferences.pace === 'intense' ? 'fast' : 'normal',
+            fitness: 'medium',
+            riskTolerance: state.context.preferences.riskTolerance === 'low' ? 'low' :
+                          state.context.preferences.riskTolerance === 'high' ? 'high' : 'medium',
+          }
+        );
+
+        const routeDirection = {
+          ...selectedRouteDirection.routeDirection,
+        };
+
+        const worldContextForReadiness: WorldModelContext = {
+          physical,
+          human,
+          routeDirection,
+        };
+
+        readiness = this.readinessAgent.run(worldContextForReadiness, finalPlan);
+        this.logger.log(`生成准备度检查清单: ${readiness.items.length} 项`);
+      } catch (error) {
+        this.logger.warn(`准备度检查清单生成失败: ${error}`);
+        // 不阻断返回，只记录警告
+      }
+    }
+
+    return { plan: finalPlan, log, readiness };
   }
 
   /**

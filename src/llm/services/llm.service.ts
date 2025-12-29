@@ -209,7 +209,23 @@ export class LlmService {
   }
 
   /**
-   * 调用 LLM API
+   * 通用 LLM 调用（公共方法，供其他模块使用）
+   * 
+   * @param provider LLM 提供商
+   * @param prompt 提示词
+   * @param schema JSON Schema（可选，用于结构化输出）
+   * @returns LLM 响应文本
+   */
+  async callLlmWithSchema(
+    provider: LlmProvider,
+    prompt: string,
+    schema?: any
+  ): Promise<string> {
+    return this.callLlm(provider, prompt, schema);
+  }
+
+  /**
+   * 调用 LLM API（内部方法）
    */
   private async callLlm(
     provider: LlmProvider,

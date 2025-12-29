@@ -29,6 +29,7 @@ import { ReadinessModule } from '../readiness/readiness.module';
 import { PlacesModule } from '../../places/places.module';
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { MemoryModule } from '../../agent/memory/memory.module';
+import { LlmModule } from '../../llm/llm.module';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
@@ -52,9 +53,15 @@ import { DecisionStatsService } from './services/decision-stats.service';
 import { HeuristicDietService } from './services/heuristic-diet.service';
 import { TripFeedbackService } from './services/trip-feedback.service';
 import { DecisionLogStorageService } from './services/decision-log-storage.service';
+import { TripNaraCoreToolService } from './tools/tripnara-core-tool.service';
+import { GraphDataConverterService } from './graph-db/graph-data-converter.service';
+import { PlannerAgentService } from './orchestration/planner-agent.service';
+import { NarratorAgentService } from './orchestration/narrator-agent.service';
+import { LangGraphOrchestratorService } from './orchestration/langgraph-orchestrator.service';
+import { ReadinessAgentService } from './readiness/readiness-agent.service';
 
 @Module({
-  imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule, MemoryModule],
+  imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule, MemoryModule, LlmModule],
   controllers: [DecisionController, DecisionStatsController],
   providers: [
     TripDecisionEngineService,
@@ -95,6 +102,12 @@ import { DecisionLogStorageService } from './services/decision-log-storage.servi
     HeuristicDietService,
     TripFeedbackService,
     DecisionLogStorageService,
+    TripNaraCoreToolService,
+    GraphDataConverterService,
+    PlannerAgentService,
+    NarratorAgentService,
+    LangGraphOrchestratorService,
+    ReadinessAgentService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -134,6 +147,11 @@ import { DecisionLogStorageService } from './services/decision-log-storage.servi
     HeuristicDietService,
     TripFeedbackService,
     DecisionLogStorageService,
+    TripNaraCoreToolService,
+    GraphDataConverterService,
+    PlannerAgentService,
+    NarratorAgentService,
+    LangGraphOrchestratorService,
   ],
 })
 export class DecisionModule {}

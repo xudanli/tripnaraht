@@ -41,6 +41,10 @@ model CountryProfile {
   paymentType       PaymentType?
   exchangeRateToUSD Float?
   nameEN            String?
+  /// 合规信息（签证政策、驾驶规则、无人机规则、酒精政策、旅行警告等）
+  complianceInfo    Json?
+  /// 旅行文化（小费习惯、禁忌列表、着装提示、节庆日历等）
+  travelCulture     Json?
 }
 
 model DayOfWeekFactor {

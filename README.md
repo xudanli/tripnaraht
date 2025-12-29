@@ -24,6 +24,8 @@ TripNARA 是：
 - **缓存**: Redis
 - **API 文档**: Swagger/OpenAPI
 - **语言**: TypeScript 5
+- **LangGraph**: @langchain/langgraph（多 Agent 编排）
+- **图数据库**: Neo4j 接口设计（未来迁移）
 
 ## 环境搭建
 
@@ -43,8 +45,19 @@ REDIS_URL="redis://localhost:6379"
 GOOGLE_PLACES_API_KEY="your_key"
 GOOGLE_VISION_API_KEY="your_key"
 MAPBOX_API_KEY="your_key"
+
+# LLM 配置（用于 LangGraph Agent）
+OPENAI_API_KEY="sk-..."  # OpenAI API Key（可选，未配置时使用规则匹配回退）
+OPENAI_MODEL="gpt-4o"    # OpenAI Model（可选，默认 gpt-3.5-turbo）
+OPENAI_BASE_URL="https://api.openai.com/v1"  # OpenAI Base URL（可选）
+
 # ... 其他环境变量
 ```
+
+**注意**：
+- ✅ 项目使用 NestJS 的 `ConfigModule`（全局配置），会自动从 `.env` 文件加载
+- ✅ 不需要手动 `export`，直接在 `.env` 文件中配置即可
+- ✅ 如果未配置 `OPENAI_API_KEY`，LangGraph Agent 会自动回退到规则匹配/模板模式
 
 ### 3. 数据库迁移
 
@@ -89,6 +102,19 @@ npm run start
 │   │   │   │   ├── weather-decision-evidence.service.ts
 │   │   │   │   ├── spatial-replacement.service.ts
 │   │   │   │   └── spatial-issue-detector.service.ts
+│   │   │   ├── tools/             # TripNARA Core Tool（LangGraph 集成）
+│   │   │   │   ├── tripnara-core-tool.interface.ts
+│   │   │   │   └── tripnara-core-tool.service.ts
+│   │   │   ├── orchestration/     # LangGraph 编排层
+│   │   │   │   ├── langgraph-orchestrator.service.ts
+│   │   │   │   ├── planner-agent.service.ts
+│   │   │   │   └── narrator-agent.service.ts
+│   │   │   ├── graph-db/          # 图数据库接口
+│   │   │   │   ├── graph-db.interface.ts
+│   │   │   │   └── graph-data-converter.service.ts
+│   │   │   ├── prediction/       # MoBagel 预测模型接口
+│   │   │   │   ├── mobagel-forecast.interface.ts
+│   │   │   │   └── mobagel-forecast.service.ts
 │   │   │   ├── shared/            # 共享类型
 │   │   │   │   ├── world-model.types.ts
 │   │   │   │   └── decision-result.types.ts
@@ -205,9 +231,17 @@ Abu → Dr.Dre → Neptune → Finalize
 **冰岛高地 F-Road Expedition E2E 测试：**
 - ✅ 场景 1：理想夏季高地穿越（正常通过）
 - ✅ 场景 2：5 月高地入口封闭 → 直接被否决
-- ✅ 场景 3：局部 F 路封闭，有绕行 → Neptune 替换成功
+- ⚠️ 场景 3：局部 F 路封闭，有绕行 → Neptune 替换（Neptune 策略测试设置问题）
 
 **测试文件：** `src/trips/e2e/iceland-highlands.e2e.spec.ts`
+
+**LangGraph 编排器 E2E 测试：**
+- ✅ 8/8 测试通过
+- ✅ Planner Agent 参数提取正常
+- ✅ Narrator Agent 解释生成正常
+- ✅ 完整编排流程正常
+
+**测试文件：** `src/trips/decision/orchestration/__tests__/langgraph-orchestrator.e2e.spec.ts`
 
 ### 🌳 思维树框架（Tree of Thoughts）
 
@@ -219,6 +253,59 @@ Abu → Dr.Dre → Neptune → Finalize
 - `src/trips/decision/tot/dimension-scorers.ts`
 
 **文档：** `docs/ARCHITECTURE_ANALYSIS_TREE_OF_THOUGHTS.md`
+
+### 🤖 LangGraph 多 Agent 编排（Phase 2）
+
+**架构设计：坚硬内核 + 柔软外壳**
+
+- **LangGraph Orchestrator**: 多 Agent 协作编排，负责状态管理、分支控制
+- **Planner Agent**: 意图识别、任务拆解、参数提取
+- **Narrator Agent**: 结果润色、故事层文案生成
+- **TripNARA Core Tool**: 将核心决策引擎封装为工具，保护 Hard Core 的确定性逻辑
+
+**使用方式**:
+```bash
+POST /decision/langgraph-query
+{
+  "query": "我想在7月去冰岛，但我膝盖不好，不想太累"
+}
+```
+
+**设计原则**:
+- ✅ LangGraph 作为"调度员"而非"驾驶员"
+- ✅ 保护 Hard Core（Abu / Dr.Dre / Neptune）的确定性逻辑
+- ✅ 向后兼容（保留原有 `generatePlan` 端点）
+
+**文档**: [架构融合指南](./docs/ARCHITECTURE_FUSION_LANGGRAPH_MOBAGEL.md)
+
+### 📊 图数据库支持（Phase 1）
+
+**数据结构设计**:
+- ✅ RouteSegment 支持图关系字段
+- ✅ Place 模型支持图节点属性
+- ✅ GraphDataConverter 服务（数据转换）
+
+**未来迁移**:
+- 支持迁移到 Neo4j
+- 支持图算法查询（Dijkstra、A* 等）
+- 支持高效的关系查询
+
+**文档**: [Phase 1 完成总结](./docs/PHASE1_COMPLETED.md)
+
+### 📈 预测模型接口（Phase 3 预留）
+
+**MoBagel 预测模型接口**:
+- PriceForecast: 价格预测
+- CrowdForecast: 拥挤度预测
+- RouteRiskForecast: 路线风险预测
+- RouteAbandonmentForecast: 路线放弃率预测
+- FatigueFailureForecast: 疲劳失败率预测
+
+**设计原则**:
+- MoBagel 作为"动态权重源"，不直接输出路线
+- 预测结果注入到 PhysicalRealityModel / ObjectiveWeights
+
+**文档**: [架构融合指南](./docs/ARCHITECTURE_FUSION_LANGGRAPH_MOBAGEL.md)
 
 ### 传统功能
 
@@ -260,6 +347,10 @@ Abu → Dr.Dre → Neptune → Finalize
 - [策略契约系统](./docs/STRATEGY_CONTRACT_SYSTEM.md) - 三人格策略架构
 - [策略生产就绪](./docs/STRATEGY_PRODUCTION_READY_COMPLETE.md) - 策略系统完成状态
 - [架构分析：思维树框架](./docs/ARCHITECTURE_ANALYSIS_TREE_OF_THOUGHTS.md) - ToT 集成情况
+- [架构融合指南](./docs/ARCHITECTURE_FUSION_LANGGRAPH_MOBAGEL.md) - LangGraph + MoBagel 融合架构
+- [实施路线图](./docs/IMPLEMENTATION_ROADMAP.md) - Phase 1/2/3 详细实施计划
+- [Phase 1 完成总结](./docs/PHASE1_COMPLETED.md) - 图数据库思想 + TripNARA Core Tool
+- [Phase 2 完成总结](./docs/PHASE2_COMPLETED.md) - LangGraph 外层编排
 
 ### RouteDirection 系统
 - [RouteDirection 原型](./docs/ROUTE_DIRECTION_ARCHETYPES.md) - 6 个世界级原型

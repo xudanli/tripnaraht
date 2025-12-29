@@ -8,6 +8,7 @@ import {
 } from '../world-model';
 import { TripPlan } from '../plan-model';
 import { DecisionTrigger } from '../decision-log';
+import { TravelReadinessResult } from '../readiness/types/readiness-checklist.types';
 
 /**
  * 生成计划请求
@@ -77,6 +78,12 @@ export class GeneratePlanResponseDto {
     example: '选择了冰岛高地 F 路穿越路线方向，因为匹配了您的冒险偏好和中等风险容忍度',
   })
   routeDirectionExplanation?: string;
+
+  @ApiPropertyOptional({
+    description: '旅行准备度检查清单',
+    type: Object,
+  })
+  readiness?: TravelReadinessResult;
 }
 
 /**

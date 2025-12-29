@@ -54,7 +54,6 @@
     "import:alltrails": "ts-node --project tsconfig.backend.json scripts/import-alltrails-to-db.ts",
     "update:alltrails:elevation": "ts-node --project tsconfig.backend.json scripts/update-alltrails-elevation.ts",
     "update:potala": "ts-node --project tsconfig.backend.json scripts/update-potala-palace.ts",
-    "update:place-address": "ts-node --project tsconfig.backend.json scripts/update-place-address-bilingual.ts",
     "update:physical-metadata": "ts-node --project tsconfig.backend.json scripts/update-physical-metadata-from-template.ts",
     "batch:calculate:difficulty": "ts-node --project tsconfig.backend.json scripts/batch-calculate-route-difficulty.ts",
     "import:gpx": "ts-node --project tsconfig.backend.json scripts/import-gpx-to-place.ts",
@@ -69,6 +68,7 @@
     "import:nz-poi": "ts-node --project tsconfig.backend.json scripts/import-new-zealand-poi.ts",
     "import:svalbard-poi": "ts-node --project tsconfig.backend.json scripts/import-svalbard-poi.ts",
     "import:iceland-poi": "ts-node --project tsconfig.backend.json scripts/import-iceland-poi.ts",
+    "import:country-profile-enhancements": "ts-node --project tsconfig.backend.json scripts/import-country-profile-enhancements.ts",
     "test:nepal-poi": "ts-node --project tsconfig.backend.json scripts/test-nepal-poi.ts",
     "test:nepal-poi-queries": "ts-node --project tsconfig.backend.json scripts/test-nepal-poi-queries.ts",
     "demo:nepal-trip": "ts-node --project tsconfig.backend.json scripts/demo-nepal-trip.ts",
@@ -113,6 +113,9 @@
     "test:country-pack": "ts-node --project tsconfig.backend.json scripts/test-country-pack-api.ts"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.8",
+    "@langchain/langgraph": "^1.0.7",
+    "@langchain/openai": "^1.2.0",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",

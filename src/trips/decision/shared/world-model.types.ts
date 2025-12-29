@@ -122,6 +122,10 @@ export interface LegacyWorldModelContext {
 
 /**
  * 路线段
+ * 
+ * 支持图数据库结构：
+ * - fromPlaceId / toPlaceId: 图关系（CONNECTS_TO）
+ * - graphNodeId: 图节点 ID（用于图数据库查询）
  */
 export interface RouteSegment {
   segmentId: string;
@@ -130,6 +134,18 @@ export interface RouteSegment {
   ascentM: number;
   slopePct: number;
   metadata?: Record<string, any>;
+  
+  /** 图数据库支持字段（可选，用于未来迁移到 Neo4j） */
+  graphRelations?: {
+    /** 起点 Place 节点 ID */
+    fromPlaceId?: string;
+    /** 终点 Place 节点 ID */
+    toPlaceId?: string;
+    /** 图节点 ID（如果该 segment 本身是节点） */
+    graphNodeId?: string;
+    /** 关系类型 */
+    relationType?: 'CONNECTS_TO' | 'BELONGS_TO' | 'HAS_SEGMENT';
+  };
 }
 
 /**

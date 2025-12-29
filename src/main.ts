@@ -112,6 +112,8 @@ async function bootstrap() {
     .addTag('schedule-action', '行程动作执行相关接口')
     .addTag('agent', '智能体统一入口（COALA + ReAct 双系统架构）')
     .addTag('decision', '决策层接口（Abu/Dr.Dre/Neptune 策略、约束校验、可解释性、学习机制）')
+    .addTag('rag', 'RAG 检索增强生成接口（文档检索、合规规则提取、目的地深度信息）')
+    .addTag('readiness', '旅行准备度检查接口（个性化准备清单、风险预警）')
     .addTag('auth', '认证相关接口（Google OAuth）')
     .addServer('http://47.253.148.159', '生产环境')
     .addCookieAuth('refresh_token')

@@ -4,6 +4,9 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from 
 import { TripsService } from './trips.service';
 import { TripExtendedService } from './services/trip-extended.service';
 import { TripRecapService } from './services/trip-recap.service';
+import { TripEmergencyService, EmergencySOSRequest } from './services/trip-emergency.service';
+import { TripBudgetService } from './services/trip-budget.service';
+import { TripAdjustmentService, TripModificationRequest } from './services/trip-adjustment.service';
 import { LlmService } from '../llm/services/llm.service';
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
@@ -23,6 +26,9 @@ export class TripsController {
     private readonly tripsService: TripsService,
     private readonly tripExtendedService: TripExtendedService,
     private readonly tripRecapService: TripRecapService,
+    private readonly tripEmergencyService: TripEmergencyService,
+    private readonly tripBudgetService: TripBudgetService,
+    private readonly tripAdjustmentService: TripAdjustmentService,
     private readonly llmService: LlmService
   ) {}
 
@@ -826,6 +832,230 @@ export class TripsController {
   ) {
     try {
       const result = await this.tripExtendedService.importTripFromShare(shareToken, body);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/emergency/sos')
+  @ApiOperation({
+    summary: '发送紧急求救信号',
+    description: '在行程中遇到危险时一键发送求救信号，包含精准经纬度和行程相关背景',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['latitude', 'longitude'],
+      properties: {
+        latitude: { type: 'number', description: '纬度', example: 64.1283 },
+        longitude: { type: 'number', description: '经度', example: -21.8278 },
+        message: { type: 'string', description: '求救消息（可选）', example: '迷路，需要救援' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '求救信号发送成功',
+    type: ApiSuccessResponseDto,
+  })
+  async sendEmergencySOS(
+    @Param('id') id: string,
+    @Body() body: { latitude: number; longitude: number; message?: string }
+  ) {
+    try {
+      const request: EmergencySOSRequest = {
+        tripId: id,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        message: body.message,
+      };
+      const response = await this.tripEmergencyService.sendSOS(request);
+      return successResponse(response);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/emergency/history')
+  @ApiOperation({
+    summary: '获取求救记录',
+    description: '获取行程的所有求救记录',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回求救记录列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getSOSHistory(@Param('id') id: string) {
+    try {
+      const history = await this.tripEmergencyService.getSOSHistory(id);
+      return successResponse(history);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/summary')
+  @ApiOperation({
+    summary: '获取行程预算摘要',
+    description: '实时查看行程消费和预算情况，包含各类消费明细分类',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回预算摘要',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetSummary(@Param('id') id: string) {
+    try {
+      const summary = await this.tripBudgetService.getBudgetSummary(id);
+      return successResponse(summary);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/alert')
+  @ApiOperation({
+    summary: '检查预算预警',
+    description: '添加新活动前检查是否会触发预算预警',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'cost', description: '新增项的成本', type: Number, required: true })
+  @ApiResponse({
+    status: 200,
+    description: '返回预算预警（如果有）',
+    type: ApiSuccessResponseDto,
+  })
+  async checkBudgetAlert(
+    @Param('id') id: string,
+    @Query('cost') cost: string
+  ) {
+    try {
+      const alert = await this.tripBudgetService.checkBudgetAlert(id, parseFloat(cost));
+      return successResponse(alert);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/optimization')
+  @ApiOperation({
+    summary: '获取预算优化建议',
+    description: '提供合理的预算优化建议，包括替换、移除、调整等方案',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'category', description: '消费类别（可选）', required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回优化建议',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetOptimization(
+    @Param('id') id: string,
+    @Query('category') category?: string
+  ) {
+    try {
+      const suggestions = await this.tripBudgetService.getBudgetOptimizationSuggestions(id, category);
+      return successResponse(suggestions);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/report')
+  @ApiOperation({
+    summary: '生成预算执行分析报告',
+    description: '行程结束后生成预算执行分析报告，包含消费趋势和优化建议',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功生成预算报告',
+    type: ApiSuccessResponseDto,
+  })
+  async generateBudgetReport(@Param('id') id: string) {
+    try {
+      const report = await this.tripBudgetService.generateBudgetReport(id);
+      return successResponse(report);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/adjust')
+  @ApiOperation({
+    summary: '修改行程并自动适配调整',
+    description: '修改行程中的日期或活动安排，系统自动触发节奏修复机制，调整关联服务并更新预算',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['modifications'],
+      properties: {
+        modifications: {
+          type: 'array',
+          description: '修改列表',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['CHANGE_DATE', 'MOVE_ACTIVITY', 'ADD_ACTIVITY', 'REMOVE_ACTIVITY'],
+              },
+              itemId: { type: 'string', description: '行程项 ID（修改/删除时必填）' },
+              newDate: { type: 'string', description: '新日期（YYYY-MM-DD）' },
+              newStartTime: { type: 'string', description: '新开始时间（HH:mm）' },
+              activityData: { type: 'object', description: '活动数据（添加时必填）' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '行程调整成功',
+    type: ApiSuccessResponseDto,
+  })
+  async adjustTrip(
+    @Param('id') id: string,
+    @Body() body: { modifications: TripModificationRequest['modifications'] }
+  ) {
+    try {
+      const request: TripModificationRequest = {
+        tripId: id,
+        modifications: body.modifications,
+      };
+      const result = await this.tripAdjustmentService.adjustTrip(request);
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
