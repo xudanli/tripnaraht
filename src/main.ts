@@ -1,9 +1,10 @@
 // src/main.ts
 import 'reflect-metadata'; // 必须在最顶部导入，用于装饰器支持
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,6 +12,26 @@ async function bootstrap() {
   // Cookie parser middleware (must be before other middleware)
   const cookieParser = require('cookie-parser');
   app.use(cookieParser());
+  
+  // HTTP 访问日志 - 使用拦截器（推荐方式，更可靠）
+  console.log('✅ HTTP 访问日志拦截器已注册');
+  app.useGlobalInterceptors(new LoggingInterceptor());
+  
+  // HTTP 访问日志 - 同时使用中间件作为备选（确保捕获所有请求，包括 401）
+  const logger = new Logger('HTTP');
+  console.log('✅ HTTP 访问日志中间件已注册');
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.use((req: any, res: any, next: any) => {
+    const start = Date.now();
+    // 监听响应完成事件
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      const logMessage = `${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`;
+      console.log(`[HTTP-Middleware] ${logMessage}`);
+      logger.log(`[Middleware] ${logMessage}`);
+    });
+    next();
+  });
   
   // 启用全局验证管道
   app.useGlobalPipes(

@@ -4,12 +4,14 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SystemService } from './system.service';
 import { successResponse } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('system')
 @Controller('system')
 export class SystemController {
   constructor(private readonly systemService: SystemService) {}
 
+  @Public()
   @Get('status')
   @ApiOperation({
     summary: '获取系统能力/状态',
