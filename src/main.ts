@@ -9,6 +9,9 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // 设置全局 API 前缀
+  app.setGlobalPrefix('api');
+  
   // Cookie parser middleware (must be before other middleware)
   const cookieParser = require('cookie-parser');
   app.use(cookieParser());
@@ -155,7 +158,8 @@ async function bootstrap() {
     .build();
   
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document, {
+  // Swagger UI 路径设置为 /api-docs，避免与 API 路径冲突
+  SwaggerModule.setup('api-docs', app, document, {
     customSiteTitle: 'TripNara API 文档',
     customfavIcon: '/favicon.ico',
     customCss: '.swagger-ui .topbar { display: none }',

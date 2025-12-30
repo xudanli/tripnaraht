@@ -110,7 +110,8 @@
     "test:agent": "jest --testPathPatterns=agent",
     "rag:index": "ts-node --project tsconfig.backend.json scripts/index-rag-documents.ts",
     "rag:test": "ts-node --project tsconfig.backend.json scripts/test-rag-api.ts",
-    "test:country-pack": "ts-node --project tsconfig.backend.json scripts/test-country-pack-api.ts"
+    "test:country-pack": "ts-node --project tsconfig.backend.json scripts/test-country-pack-api.ts",
+    "test:email-auth": "ts-node --project tsconfig.backend.json scripts/test-email-auth.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",
@@ -147,6 +148,7 @@
     "i18n-iso-countries": "^7.14.0",
     "luxon": "^3.7.2",
     "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.8",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.16.3",
@@ -167,6 +169,7 @@
     "@types/luxon": "^3.7.1",
     "@types/node": "^20",
     "@types/node-fetch": "^2.6.13",
+    "@types/nodemailer": "^6.4.14",
     "@types/shapefile": "^0.6.4",
     "eslint": "^8",
     "jest": "^30.2.0",

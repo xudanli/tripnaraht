@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { GoogleOAuthService } from './services/google-oauth.service';
 import { TokenService } from './services/token.service';
 import { AuthUserService } from './services/user.service';
+import { EmailVerificationService } from './services/email-verification.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -35,13 +36,14 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     GoogleOAuthService,
     TokenService,
     AuthUserService,
+    EmailVerificationService,
     JwtStrategy,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
   ],
-  exports: [GoogleOAuthService, TokenService, AuthUserService, JwtModule],
+  exports: [GoogleOAuthService, TokenService, AuthUserService, EmailVerificationService, JwtModule],
 })
 export class AuthModule {}
 

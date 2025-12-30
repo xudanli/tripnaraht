@@ -63,6 +63,49 @@ UserProfile {
 
 ## API 端点
 
+### POST /auth/email/send-code
+发送邮箱验证码用于注册。
+
+**请求：**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**响应：**
+```json
+{
+  "message": "验证码已发送，请查收邮件"
+}
+```
+
+### POST /auth/email/register
+使用邮箱和验证码注册新用户。
+
+**请求：**
+```json
+{
+  "email": "user@example.com",
+  "code": "123456",
+  "displayName": "John Doe"  // 可选
+}
+```
+
+**响应：**
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "displayName": "John Doe",
+    "avatarUrl": null,
+    "emailVerified": true
+  },
+  "accessToken": "eyJhbGciOiJSUzI1NiIs..."
+}
+```
+
 ### POST /auth/google/code
 交换 Google OAuth authorization code 获取会话。
 
@@ -316,7 +359,7 @@ http://localhost:3000/api
 
 ## 后续扩展
 
-- [ ] Email OTP / Magic Link（作为 Google 不可用时的兜底）
+- [x] Email OTP / Magic Link（作为 Google 不可用时的兜底）
 - [ ] 增量授权（Google Calendar / Gmail / Drive 导入）
 - [ ] 首次登录后的 onboarding 流程（旅行偏好、风险偏好等）
 - [ ] CSRF 保护（如果使用 cookie 会话，POST /auth/refresh 需要 CSRF token）

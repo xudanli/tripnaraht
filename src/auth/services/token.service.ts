@@ -28,14 +28,14 @@ export class TokenService {
    * Issue access token (short-lived JWT)
    */
   async issueAccessToken(userId: string, email?: string): Promise<string> {
-    const payload: TripNaraAccessTokenPayload = {
+    const payload: any = {
       sub: userId,
       email,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + this.getExpirationInSeconds(this.accessTokenExpiresIn),
     };
 
-    return this.jwtService.signAsync(payload);
+    return this.jwtService.signAsync(payload, {
+      expiresIn: this.accessTokenExpiresIn,
+    } as any);
   }
 
   /**

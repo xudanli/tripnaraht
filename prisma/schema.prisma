@@ -624,6 +624,20 @@ model UserProfile {
   @@index([userId])
 }
 
+model EmailVerificationCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @db.Text
+  code      String   @db.Text
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([code])
+  @@index([expiresAt])
+  @@map("email_verification_codes")
+}
+
 model geo_airlines {
   gid        Int                      @id @default(autoincrement())
   geom       Unsupported("geometry")?

@@ -1,5 +1,5 @@
 // src/auth/dto/google-auth.dto.ts
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GoogleCodeDto {
@@ -34,5 +34,42 @@ export class AuthResponseDto {
 
   @ApiProperty({ description: 'Access token (JWT)' })
   accessToken!: string;
+}
+
+export class SendVerificationCodeDto {
+  @ApiProperty({
+    description: 'Email address to send verification code',
+    example: 'user@example.com',
+  })
+  @IsString()
+  @IsNotEmpty()
+  email!: string;
+}
+
+export class RegisterWithEmailDto {
+  @ApiProperty({
+    description: 'Email address',
+    example: 'user@example.com',
+  })
+  @IsString()
+  @IsNotEmpty()
+  email!: string;
+
+  @ApiProperty({
+    description: 'Verification code sent to email',
+    example: '123456',
+  })
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @ApiProperty({
+    description: 'Display name (optional)',
+    example: 'John Doe',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  displayName?: string;
 }
 

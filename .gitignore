@@ -68,3 +68,6 @@ data/geographic/dem/**/*
 .temp/
 data/backups/*.dump
 data/backups/*.sql
+
+# Documentation (not pushed to git)
+docs/

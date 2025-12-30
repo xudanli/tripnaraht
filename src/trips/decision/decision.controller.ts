@@ -223,5 +223,5 @@ export class DecisionController {
     // TODO: 实现备选路线生成逻辑
     // 这里简化处理，实际应该调用 Neptune 策略生成绕开危险区域的路线
     return [];
+    }
   }
-}

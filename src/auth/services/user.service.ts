@@ -1,5 +1,5 @@
 // src/auth/services/user.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GoogleIdTokenPayload } from '../interfaces/google-token-payload.interface';
 
@@ -128,6 +128,64 @@ export class AuthUserService {
     return this.prisma.user.findUnique({
       where: { id: userId },
     });
+  }
+
+  /**
+   * Find user by email
+   */
+  async findUserByEmail(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  /**
+   * Create user with email verification
+   */
+  async createUserWithEmail(email: string, displayName?: string): Promise<UpsertUserResult> {
+    // Check if user already exists
+    const existingUser = await this.findUserByEmail(email);
+    if (existingUser) {
+      throw new ConflictException('该邮箱已被注册');
+    }
+
+    // Create new user
+    const newUser = await this.prisma.user.create({
+      data: {
+        email,
+        emailVerified: true, // Email is verified through verification code
+        displayName: displayName || null,
+        googleSub: null,
+        avatarUrl: null,
+      },
+    });
+
+    // Create default UserProfile for new user
+    await this.prisma.userProfile.upsert({
+      where: { userId: newUser.id },
+      update: {},
+      create: {
+        userId: newUser.id,
+        preferences: null,
+        updatedAt: new Date(),
+      } as any,
+    });
+
+    this.logger.debug(`Created new user ${newUser.id} (email: ${email})`);
+
+    return {
+      user: {
+        id: newUser.id,
+        googleSub: newUser.googleSub,
+        email: newUser.email,
+        emailVerified: newUser.emailVerified,
+        displayName: newUser.displayName,
+        avatarUrl: newUser.avatarUrl,
+        createdAt: newUser.createdAt,
+        updatedAt: newUser.updatedAt,
+      },
+      isNewUser: true,
+    };
   }
 }
 
