@@ -1027,3 +1027,34 @@ model LocalInsight {
   @@index([countryCode, tags])
   @@map("local_insight")
 }
+
+// 联系消息表
+model ContactMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.VarChar(255) // 可为空，支持匿名提交
+  message   String?  @db.Text
+  status    String   @default("pending") @db.VarChar(50) // pending, read, replied, resolved
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  images    ContactMessageImage[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+  @@map("contact_messages")
+}
+
+// 联系消息图片表
+model ContactMessageImage {
+  id               String   @id @default(uuid()) @db.Uuid
+  contactMessageId String   @map("contact_message_id") @db.Uuid
+  filePath         String   @map("file_path") @db.VarChar(500) // 存储路径
+  fileName         String   @map("file_name") @db.VarChar(255) // 原始文件名
+  fileSize         BigInt   @map("file_size") // 文件大小（字节）
+  mimeType         String   @map("mime_type") @db.VarChar(100) // MIME类型
+  createdAt        DateTime @default(now()) @map("created_at")
+  contactMessage   ContactMessage @relation(fields: [contactMessageId], references: [id], onDelete: Cascade)
+
+  @@index([contactMessageId])
+  @@map("contact_message_images")
+}

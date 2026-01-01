@@ -18,7 +18,7 @@ import { GoogleOAuthService } from './services/google-oauth.service';
 import { TokenService } from './services/token.service';
 import { AuthUserService } from './services/user.service';
 import { EmailVerificationService } from './services/email-verification.service';
-import { GoogleCodeDto, GoogleIdTokenDto, AuthResponseDto, SendVerificationCodeDto, RegisterWithEmailDto } from './dto/google-auth.dto';
+import { GoogleCodeDto, GoogleIdTokenDto, AuthResponseDto, SendVerificationCodeDto, RegisterWithEmailDto, LoginWithEmailDto } from './dto/google-auth.dto';
 import { Public } from './decorators/public.decorator';
 
 @ApiTags('auth')
@@ -403,6 +403,76 @@ export class AuthController {
         throw error;
       }
       throw new BadRequestException(`注册失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * POST /auth/email/login
+   * Login with email and verification code
+   */
+  @Public()
+  @Post('email/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login with email verification code',
+    description: 'Login an existing user with email and verification code. Returns session tokens upon successful login.',
+  })
+  @ApiBody({ type: LoginWithEmailDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully logged in',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid verification code or email not registered',
+  })
+  async loginWithEmail(
+    @Body() dto: LoginWithEmailDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    try {
+      // 1. Verify code
+      const isValid = await this.emailVerificationService.verifyCode(dto.email, dto.code);
+      if (!isValid) {
+        throw new BadRequestException('验证码无效或已过期');
+      }
+
+      // 2. Check if user exists
+      const existingUser = await this.authUserService.findUserByEmail(dto.email);
+      if (!existingUser) {
+        throw new BadRequestException('该邮箱未注册，请先注册');
+      }
+
+      // 3. Issue TripNARA tokens
+      const accessToken = await this.tokenService.issueAccessToken(existingUser.id, existingUser.email || undefined);
+      const { token: refreshToken, expiresAt } = await this.tokenService.issueRefreshToken(existingUser.id);
+
+      // 4. Set refresh token as httpOnly cookie
+      const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+      res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: (expiresAt.getTime() - Date.now()) / 1000,
+        path: '/',
+      });
+
+      return {
+        user: {
+          id: existingUser.id,
+          email: existingUser.email,
+          displayName: existingUser.displayName,
+          avatarUrl: existingUser.avatarUrl,
+          emailVerified: existingUser.emailVerified,
+        },
+        accessToken,
+      };
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`登录失败: ${error.message}`);
     }
   }
 }

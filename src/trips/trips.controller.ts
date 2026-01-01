@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { TripExtendedService } from './services/trip-extended.service';
@@ -14,6 +14,15 @@ import { TripStateDto } from './dto/trip-state.dto';
 import { ScheduleResponseDto, SaveScheduleDto } from './dto/schedule.dto';
 import { CreateTripShareDto } from './dto/trip-share.dto';
 import { AddCollaboratorDto } from './dto/trip-collaborator.dto';
+import { DeleteTripDto } from './dto/delete-trip.dto';
+import { PersonaAlertDto } from './dto/persona-alerts.dto';
+import { DecisionLogResponseDto } from './dto/decision-log.dto';
+import { TaskDto, UpdateTaskStatusDto } from './dto/tasks.dto';
+import { PipelineStatusResponseDto } from './dto/pipeline-status.dto';
+import { CreateTripDraftDto, TripDraftResponseDto, SaveTripDraftDto, ReplaceItineraryItemDto, ReplaceItineraryItemResponseDto, RegenerateTripDto, RegenerateTripResponseDto } from './dto/trip-draft.dto';
+import { TripDraftService } from './services/trip-draft.service';
+import { GetEvidenceQueryDto, EvidenceListResponseDto } from './dto/evidence.dto';
+import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/attention-queue.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 
@@ -29,13 +38,14 @@ export class TripsController {
     private readonly tripEmergencyService: TripEmergencyService,
     private readonly tripBudgetService: TripBudgetService,
     private readonly tripAdjustmentService: TripAdjustmentService,
+    private readonly tripDraftService: TripDraftService,
     private readonly llmService: LlmService
   ) {}
 
   @Post()
   @ApiOperation({ 
     summary: '创建新行程',
-    description: '创建新行程并自动计算节奏策略（木桶效应）和预算切分。系统会根据旅行者信息自动计算体力限制和地形限制，并根据预算推荐酒店档次。'
+    description: '创建新行程并自动计算节奏策略（木桶效应）和预算切分。系统会根据旅行者信息自动计算体力限制和地形限制，并根据预算推荐酒店档次。也可以从草案创建行程（传入 SaveTripDraftDto）。'
   })
   @ApiResponse({ 
     status: 200, 
@@ -47,10 +57,16 @@ export class TripsController {
     description: '输入数据验证失败（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async create(@Body() createTripDto: CreateTripDto) {
+  async create(@Body() body: CreateTripDto | SaveTripDraftDto) {
     try {
-      const trip = await this.tripsService.create(createTripDto);
-      return successResponse(trip);
+      // 检查是否是草案保存请求（包含 draft 字段）
+      if ('draft' in body) {
+        const trip = await this.tripsService.createFromDraft(body as SaveTripDraftDto);
+        return successResponse(trip);
+      } else {
+        const trip = await this.tripsService.create(body as CreateTripDto);
+        return successResponse(trip);
+      }
     } catch (error: any) {
       if (error instanceof BadRequestException) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
@@ -79,7 +95,9 @@ export class TripsController {
       });
 
       // 如果需要澄清，返回澄清问题
+      this.logger.debug(`Parse result needsClarification: ${parseResult.needsClarification}`);
       if (parseResult.needsClarification) {
+        this.logger.debug(`Returning clarification questions: ${JSON.stringify(parseResult.clarificationQuestions)}`);
         return successResponse({
           needsClarification: true,
           clarificationQuestions: parseResult.clarificationQuestions,
@@ -203,6 +221,46 @@ export class TripsController {
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: '删除行程',
+    description: '删除指定的行程及其所有关联数据，包括：\n' +
+                 '- 所有行程日期（TripDay）\n' +
+                 '- 所有行程项（ItineraryItem）\n' +
+                 '- 所有协作者（TripCollaborator）\n' +
+                 '- 所有收藏（TripCollection）\n' +
+                 '- 所有点赞（TripLike）\n' +
+                 '- 所有分享（TripShare）\n\n' +
+                 '**安全确认**：为防止误删，需要输入目的地国家代码（如：JP、IS）来确认删除。\n\n' +
+                 '**警告**：此操作不可恢复，请谨慎使用。'
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiBody({ type: DeleteTripDto })
+  @ApiResponse({
+    status: 200,
+    description: '删除成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '行程不存在或确认文字不匹配（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async remove(@Param('id') id: string, @Body() dto: DeleteTripDto) {
+    try {
+      const result = await this.tripsService.remove(id, dto.confirmText);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       throw error;
     }
@@ -437,7 +495,7 @@ export class TripsController {
   @Post(':id/collaborators')
   @ApiOperation({
     summary: '添加行程协作者',
-    description: '添加行程协作者，设置查看/编辑权限。',
+    description: '通过邮箱添加行程协作者，设置查看/编辑权限。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
   @ApiBody({ type: AddCollaboratorDto })
@@ -1065,6 +1123,294 @@ export class TripsController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/persona-alerts')
+  @ApiOperation({
+    summary: '获取三人格提醒（Persona Alerts）',
+    description: '获取当前行程的三人格（Abu、Dr.Dre、Neptune）提醒列表',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回提醒列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getPersonaAlerts(@Param('id') id: string) {
+    try {
+      const alerts = await this.tripsService.getPersonaAlerts(id);
+      return successResponse(alerts);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/decision-log')
+  @ApiOperation({
+    summary: '获取决策记录/透明日志（Decision Log）',
+    description: '获取行程的决策记录，用于透明日志展示',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '返回记录数量，默认 10' })
+  @ApiQuery({ name: 'offset', required: false, type: Number, description: '偏移量，默认 0' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回决策记录（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getDecisionLog(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 10;
+      const offsetNum = offset ? parseInt(offset, 10) : 0;
+      const log = await this.tripsService.getDecisionLog(id, limitNum, offsetNum);
+      return successResponse(log);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('attention-queue')
+  @ApiOperation({
+    summary: '获取关注队列',
+    description: '获取需要用户关注的队列列表，用于 Dashboard 页面的 Attention Queue 显示。支持全局查询或按 tripId 过滤。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取关注队列',
+    type: ApiSuccessResponseDto,
+  })
+  async getAttentionQueue(@Query() query: GetAttentionQueueQueryDto) {
+    try {
+      const result = await this.tripsService.getAttentionQueue(query);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`获取关注队列失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '获取关注队列失败', { originalError: error.message });
+    }
+  }
+
+  @Get(':id/evidence')
+  @ApiOperation({
+    summary: '获取行程证据列表',
+    description: '获取指定行程的所有证据项列表，用于 EvidenceDrawer 组件的证据标签页显示',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取证据列表',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getEvidence(
+    @Param('id') id: string,
+    @Query() query: GetEvidenceQueryDto
+  ) {
+    try {
+      const result = await this.tripsService.getEvidence(id, query);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取证据列表失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '获取证据列表失败', { originalError: error.message });
+    }
+  }
+
+  @Get(':id/tasks')
+  @ApiOperation({
+    summary: '获取今日重点任务（Today\'s Tasks）',
+    description: '获取系统推荐的今日重点任务列表',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回任务列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getTasks(@Param('id') id: string) {
+    try {
+      const tasks = await this.tripsService.getTasks(id);
+      return successResponse(tasks);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Patch(':id/tasks/:taskId')
+  @ApiOperation({
+    summary: '更新任务状态',
+    description: '更新指定任务的完成状态',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'taskId', description: '任务 ID' })
+  @ApiBody({ type: UpdateTaskStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新任务状态（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或任务不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async updateTaskStatus(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body() updateTaskStatusDto: UpdateTaskStatusDto,
+  ) {
+    try {
+      const task = await this.tripsService.updateTaskStatus(id, taskId, updateTaskStatusDto.completed);
+      return successResponse(task);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/pipeline-status')
+  @ApiOperation({
+    summary: '获取工作流 Pipeline 状态',
+    description: '获取行程的工作流 Pipeline 各阶段状态',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回Pipeline状态（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getPipelineStatus(@Param('id') id: string) {
+    try {
+      const status = await this.tripsService.getPipelineStatus(id);
+      return successResponse(status);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post('draft')
+  @ApiOperation({
+    summary: '生成行程草案',
+    description: '生成一个可预览的行程草案（不落库）。LLM 只负责选择与编排，所有行程项必须来自 place 表。',
+  })
+  @ApiBody({ type: CreateTripDraftDto })
+  @ApiResponse({
+    status: 200,
+    description: '行程草案生成成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async createDraft(@Body() dto: CreateTripDraftDto) {
+    try {
+      const draft = await this.tripDraftService.generateDraft(dto);
+      return successResponse(draft);
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`生成行程草案失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error.message || '生成行程草案失败');
+    }
+  }
+
+  @Post(':tripId/items/:itemId/replace')
+  @ApiOperation({
+    summary: '替换单个行程项',
+    description: 'Neptune 修复机制：替换单个行程项',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiParam({ name: 'itemId', description: '行程项 ID' })
+  @ApiBody({ type: ReplaceItineraryItemDto })
+  @ApiResponse({
+    status: 200,
+    description: '替换成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async replaceItem(
+    @Param('tripId') tripId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: ReplaceItineraryItemDto
+  ) {
+    try {
+      const result = await this.tripDraftService.replaceItem(tripId, itemId, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`替换行程项失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error.message || '替换行程项失败');
+    }
+  }
+
+  @Post(':tripId/regenerate')
+  @ApiOperation({
+    summary: '全局重生成行程',
+    description: '重生成整个行程，但保持用户已锁定的项',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiBody({ type: RegenerateTripDto })
+  @ApiResponse({
+    status: 200,
+    description: '重生成成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async regenerateTrip(
+    @Param('tripId') tripId: string,
+    @Body() dto: RegenerateTripDto
+  ) {
+    try {
+      const result = await this.tripDraftService.regenerateTrip(tripId, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`重生成行程失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error.message || '重生成行程失败');
     }
   }
 }

@@ -111,6 +111,14 @@ export function validatePhysicalRealityModel(model: PhysicalRealityModel): {
 } {
   const missingFields: string[] = [];
 
+  // 参数验证
+  if (!model) {
+    return {
+      valid: false,
+      missingFields: ['model'],
+    };
+  }
+
   if (!model.demEvidence || model.demEvidence.length === 0) {
     missingFields.push('demEvidence');
   }

@@ -25,6 +25,8 @@ import { RouteDirectionExplainer } from './interfaces/route-direction-explainer.
 import { RouteDirectionRecommendation } from './services/route-direction-selector.service';
 import { ScoreBreakdown } from './interfaces/route-direction-explanation.interface';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
+import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
+import { CreateTripFromTemplateDto } from './dto/create-trip-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
@@ -208,6 +210,53 @@ export class RouteDirectionsController {
     }
   }
 
+  @Get('templates')
+  @ApiOperation({ 
+    summary: '查询路线模板列表', 
+    description: '根据条件查询路线模板列表，支持按路线方向ID、天数、激活状态筛选' 
+  })
+  @ApiQuery({ name: 'routeDirectionId', required: false, description: '路线方向ID', type: Number })
+  @ApiQuery({ name: 'durationDays', required: false, description: '行程天数', type: Number })
+  @ApiQuery({ name: 'isActive', required: false, description: '是否激活', type: Boolean })
+  @ApiQuery({ name: 'limit', required: false, description: '返回数量限制', type: Number })
+  @ApiQuery({ name: 'offset', required: false, description: '偏移量', type: Number })
+  @ApiResponse({ status: 200, description: '成功返回路线模板列表' })
+  async getRouteTemplates(
+    @Query('routeDirectionId') routeDirectionId?: number,
+    @Query('durationDays') durationDays?: number,
+    @Query('isActive') isActive?: string | boolean,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    try {
+      // 处理 isActive 参数（可能是字符串 'true'/'false' 或 boolean）
+      let isActiveValue: boolean | undefined;
+      if (isActive !== undefined) {
+        if (typeof isActive === 'string') {
+          isActiveValue = isActive === 'true';
+        } else {
+          isActiveValue = isActive;
+        }
+      }
+
+      const result = await this.routeDirectionsService.findRouteTemplates({
+        routeDirectionId: routeDirectionId ? parseInt(routeDirectionId.toString(), 10) : undefined,
+        durationDays: durationDays ? parseInt(durationDays.toString(), 10) : undefined,
+        isActive: isActiveValue,
+        limit: limit ? parseInt(limit.toString(), 10) : undefined,
+        offset: offset ? parseInt(offset.toString(), 10) : undefined,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error('Failed to get route templates', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to get route templates',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
   @Get('templates/:id')
   @ApiOperation({ summary: '获取路线模板详情', description: '根据 ID 获取路线模板详情' })
   @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
@@ -229,6 +278,96 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to get route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Put('templates/:id')
+  @ApiOperation({ summary: '更新路线模板', description: '更新路线模板信息' })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ type: UpdateRouteTemplateDto })
+  @ApiResponse({ status: 200, description: '成功更新路线模板' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async updateRouteTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRouteTemplateDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.updateRouteTemplate(id, dto);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to update route template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to update route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Delete('templates/:id')
+  @ApiOperation({ summary: '删除路线模板', description: '软删除路线模板（设置 isActive = false）' })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiResponse({ status: 200, description: '成功删除路线模板' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async deleteRouteTemplate(@Param('id', ParseIntPipe) id: number) {
+    try {
+      await this.routeDirectionsService.deleteRouteTemplate(id);
+      return successResponse({ message: 'Route template deleted successfully' });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to delete route template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to delete route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Post('templates/:id/create-trip')
+  @ApiOperation({
+    summary: '使用模板创建行程',
+    description: '从路线模板生成可执行行程（对应工作台的"使用模板"按钮）',
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ type: CreateTripFromTemplateDto })
+  @ApiResponse({ status: 201, description: '成功创建行程' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  @ApiResponse({ status: 400, description: '请求参数错误' })
+  async createTripFromTemplate(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: CreateTripFromTemplateDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.createTripFromTemplate(templateId, dto);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to create trip from template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to create trip from template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }

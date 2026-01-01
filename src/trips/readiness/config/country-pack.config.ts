@@ -86,6 +86,22 @@ export const COUNTRY_PACKS: Record<string, CountryPack> = {
       extremeMin: 85,
     },
   },
+  IS: {
+    countryCode: 'IS',
+    countryName: '冰岛',
+    riskThresholds: {
+      highAltitudeM: 1800,
+      rapidAscentM: 500,
+      steepSlopePct: 18,
+      bigAscentDayM: 1200,
+    },
+    effortLevelMapping: {
+      relaxMax: 30,
+      moderateMax: 60,
+      challengeMax: 85,
+      extremeMin: 85,
+    },
+  },
   GLOBAL: {
     countryCode: 'GLOBAL',
     countryName: '全球默认',

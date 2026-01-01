@@ -68,16 +68,17 @@ export class LlmService {
     this.useMock = this.configService.get<string>('LLM_USE_MOCK') === 'true';
     
     // 根据环境变量确定默认提供商
-    if (this.configService.get<string>('OPENAI_API_KEY')) {
+    // 优先使用 DeepSeek（如果配置了）
+    if (this.configService.get<string>('DEEPSEEK_API_KEY')) {
+      this.defaultProvider = LlmProvider.DEEPSEEK;
+    } else if (this.configService.get<string>('OPENAI_API_KEY')) {
       this.defaultProvider = LlmProvider.OPENAI;
     } else if (this.configService.get<string>('GEMINI_API_KEY')) {
       this.defaultProvider = LlmProvider.GEMINI;
-    } else if (this.configService.get<string>('DEEPSEEK_API_KEY')) {
-      this.defaultProvider = LlmProvider.DEEPSEEK;
     } else if (this.configService.get<string>('ANTHROPIC_API_KEY')) {
       this.defaultProvider = LlmProvider.ANTHROPIC;
     } else {
-      this.defaultProvider = LlmProvider.OPENAI; // 默认
+      this.defaultProvider = LlmProvider.DEEPSEEK; // 默认使用 DeepSeek
       // 如果没有配置 API Key 且未启用 Mock，自动启用 Mock
       if (!this.useMock) {
         this.logger.warn('No LLM API key configured and LLM_USE_MOCK not set, will use mock mode');
@@ -91,6 +92,27 @@ export class LlmService {
    * 自然语言转接口参数
    * 将用户的口语化需求转换为创建行程的接口参数
    */
+  /**
+   * 从 LLM 响应中提取 JSON
+   * 处理可能包含 markdown 代码块标记的情况（如 ```json ... ```）
+   */
+  private extractJSON(response: string): any {
+    let cleaned = response.trim();
+    
+    // 移除 markdown 代码块标记
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, ''); // 移除开头的 ```json 或 ```
+    cleaned = cleaned.replace(/\s*```$/i, ''); // 移除结尾的 ```
+    cleaned = cleaned.trim();
+    
+    // 尝试提取 JSON 对象（如果响应中包含其他文本）
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    return JSON.parse(cleaned);
+  }
+
   async naturalLanguageToTripParams(dto: NaturalLanguageToParamsDto): Promise<{
     params: TripCreationParams;
     needsClarification: boolean;
@@ -101,10 +123,18 @@ export class LlmService {
 
     try {
       const response = await this.callLlm(provider, prompt, this.getTripCreationSchema());
-      const parsed = JSON.parse(response);
+      const parsed = this.extractJSON(response);
+
+      // 添加调试日志
+      this.logger.debug(`LLM parsed result: ${JSON.stringify(parsed, null, 2)}`);
+      this.logger.debug(`LLM needsClarification: ${parsed.needsClarification}, inferredFields: ${JSON.stringify(parsed.inferredFields)}`);
 
       // 验证必需字段
-      if (!parsed.destination || !parsed.startDate || !parsed.endDate || !parsed.totalBudget) {
+      const hasAllRequiredFields = parsed.destination && parsed.startDate && parsed.endDate && parsed.totalBudget;
+
+      if (!hasAllRequiredFields) {
+        // 字段缺失，需要澄清
+        this.logger.debug('Missing required fields, returning needsClarification: true');
         return {
           params: parsed as TripCreationParams,
           needsClarification: true,
@@ -112,6 +142,52 @@ export class LlmService {
         };
       }
 
+      // 优先检查用户输入是否明确提到了日期和预算（最可靠的检查）
+      const userText = dto.text.toLowerCase();
+      const hasExplicitDate = this.hasExplicitDate(userText);
+      const hasExplicitBudget = this.hasExplicitBudget(userText);
+      
+      this.logger.debug(`User input analysis: hasExplicitDate=${hasExplicitDate}, hasExplicitBudget=${hasExplicitBudget}`);
+
+      // 如果用户没有明确提到日期或预算，认为需要澄清
+      if (!hasExplicitDate || !hasExplicitBudget) {
+        const inferredFields: string[] = [];
+        if (!hasExplicitDate) {
+          inferredFields.push('startDate', 'endDate');
+        }
+        if (!hasExplicitBudget) {
+          inferredFields.push('totalBudget');
+        }
+        
+        this.logger.debug(`User input lacks explicit date or budget, returning needsClarification: true, inferredFields: ${JSON.stringify(inferredFields)}`);
+        return {
+          params: parsed as TripCreationParams,
+          needsClarification: true,
+          clarificationQuestions: this.generateClarificationQuestions(parsed, inferredFields),
+        };
+      }
+
+      // 检查 LLM 标记的 needsClarification
+      if (parsed.needsClarification === true) {
+        this.logger.debug('LLM marked needsClarification: true, returning clarification questions');
+        return {
+          params: parsed as TripCreationParams,
+          needsClarification: true,
+          clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
+        };
+      }
+
+      // 保守检查：如果 inferredFields 有值，即使 needsClarification 不是 true，也认为需要澄清
+      if (parsed.inferredFields && Array.isArray(parsed.inferredFields) && parsed.inferredFields.length > 0) {
+        this.logger.debug(`Found inferredFields: ${JSON.stringify(parsed.inferredFields)}, treating as needsClarification`);
+        return {
+          params: parsed as TripCreationParams,
+          needsClarification: true,
+          clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
+        };
+      }
+
+      this.logger.debug('All fields present and needsClarification is false, proceeding with trip creation');
       return {
         params: parsed as TripCreationParams,
         needsClarification: false,
@@ -157,7 +233,7 @@ export class LlmService {
 
     try {
       const response = await this.callLlm(provider, prompt, this.getDecisionSupportSchema());
-      const parsed = JSON.parse(response);
+      const parsed = this.extractJSON(response);
       return parsed;
     } catch (error: any) {
       this.logger.error(`Failed to provide decision support: ${error.message}`);
@@ -192,7 +268,7 @@ export class LlmService {
 
     try {
       const response = await this.callLlm(provider, prompt, this.getErrorHandlingSchema());
-      const parsed = JSON.parse(response);
+      const parsed = this.extractJSON(response);
       return parsed;
     } catch (err: any) {
       this.logger.error(`Failed to handle error with LLM: ${err.message}`);
@@ -669,17 +745,24 @@ export class LlmService {
 
 请从用户的自然语言中提取以下信息，并返回 JSON 格式：
 - destination: 目的地国家代码（ISO 3166-1 alpha-2，如 JP、CN、US）
-- startDate: 开始日期（ISO 8601 格式，如果未指定则使用当前日期）
-- endDate: 结束日期（ISO 8601 格式，根据天数推算）
+- startDate: 开始日期（ISO 8601 格式）
+- endDate: 结束日期（ISO 8601 格式）
 - totalBudget: 总预算（人民币，元）
 - hasChildren: 是否有小孩（布尔值）
 - hasElderly: 是否有老人（布尔值）
 - preferences: 其他偏好（对象，可选）
+- needsClarification: 如果任何关键信息（日期、预算）是推断的，设置为 true
+- inferredFields: 推断的字段列表，如 ["startDate", "totalBudget"]
 
 注意：
+- 如果用户明确提到日期，使用用户提供的日期
+- 如果用户明确提到预算，使用用户提供的预算
 - 如果用户提到"带娃"、"带孩子"、"有小孩"等，设置 hasChildren 为 true
 - 如果用户提到"带老人"、"带父母"、"有老人"等，设置 hasElderly 为 true
-- 如果信息不足，请尽量推断合理默认值，但标记 needsClarification 为 true
+- 如果用户未明确提到日期或预算，可以推断合理默认值，但必须：
+  1. 设置 needsClarification 为 true
+  2. 在 inferredFields 中列出推断的字段（如 ["startDate", "endDate", "totalBudget"]）
+- 如果信息严重不足，某些字段可以留空，但必须确保 destination 不为空
 
 返回的 JSON 格式示例：
 {
@@ -689,7 +772,9 @@ export class LlmService {
   "totalBudget": 20000,
   "hasChildren": true,
   "hasElderly": false,
-  "preferences": {}
+  "preferences": {},
+  "needsClarification": false,
+  "inferredFields": []
 }`;
   }
 
@@ -763,6 +848,15 @@ ${JSON.stringify(error, null, 2)}
         hasChildren: { type: 'boolean' },
         hasElderly: { type: 'boolean' },
         preferences: { type: 'object' },
+        needsClarification: {
+          type: 'boolean',
+          description: '如果任何关键信息（日期、预算）是推断的，设置为 true',
+        },
+        inferredFields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '推断的字段列表，如 ["startDate", "totalBudget"]',
+        },
       },
       required: ['destination', 'startDate', 'endDate', 'totalBudget'],
     };
@@ -800,19 +894,64 @@ ${JSON.stringify(error, null, 2)}
     };
   }
 
-  private generateClarificationQuestions(parsed: any): string[] {
+  private generateClarificationQuestions(parsed: any, inferredFields?: string[]): string[] {
     const questions: string[] = [];
     
     if (!parsed.destination) {
       questions.push('请告诉我您想去哪个国家或地区？');
     }
-    if (!parsed.startDate || !parsed.endDate) {
+    
+    // 如果字段缺失或者是推断的，需要询问
+    const needsDateClarification = 
+      !parsed.startDate || 
+      !parsed.endDate || 
+      inferredFields?.includes('startDate') || 
+      inferredFields?.includes('endDate');
+    
+    if (needsDateClarification) {
       questions.push('请告诉我您的出行日期？');
     }
-    if (!parsed.totalBudget) {
+    
+    const needsBudgetClarification = 
+      !parsed.totalBudget || 
+      inferredFields?.includes('totalBudget');
+    
+    if (needsBudgetClarification) {
       questions.push('请告诉我您的预算范围？');
     }
     
     return questions;
+  }
+
+  /**
+   * 检查用户输入是否明确提到了日期
+   */
+  private hasExplicitDate(text: string): boolean {
+    const datePatterns = [
+      /\d{1,2}[月\-/]\d{1,2}[日号]?/,  // 1月1日, 12-25, 12/25
+      /\d{4}[年\-/]\d{1,2}[月\-/]\d{1,2}[日号]?/,  // 2024-12-25, 2024年12月25日
+      /(今天|明天|后天|下周|下个月|下下周)/,
+      /(january|february|march|april|may|june|july|august|september|october|november|december)/i,
+      /\d+\s*天/,  // 5天, 7天
+      /\d+\s*days?/i,
+      /(星期|周)[一二三四五六日天]/,
+      /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+    ];
+    
+    return datePatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * 检查用户输入是否明确提到了预算
+   */
+  private hasExplicitBudget(text: string): boolean {
+    const budgetPatterns = [
+      /(预算|花费|费用|支出).*?(\d+)/,  // 预算2万, 花费5000
+      /(\d+).*?(万|千|元|块)/,  // 2万, 5000元, 1千块
+      /(\d+).*?(yuan|rmb|usd|\$)/i,
+      /(budget|cost|spend).*?(\d+)/i,
+    ];
+    
+    return budgetPatterns.some(pattern => pattern.test(text));
   }
 }

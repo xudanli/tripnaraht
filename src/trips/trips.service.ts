@@ -9,6 +9,15 @@ import { ScheduleConverterService } from './services/schedule-converter.service'
 import { ActionHistoryService } from './services/action-history.service';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { randomUUID } from 'crypto';
+import { PersonaAlertDto, PersonaType, AlertSeverity } from './dto/persona-alerts.dto';
+import { DecisionLogEntryDto, DecisionLogResponseDto, DecisionSource } from './dto/decision-log.dto';
+import { TaskDto, TaskPriority, TaskCategory } from './dto/tasks.dto';
+import { PipelineStatusResponseDto, PipelineStageDto, PipelineStageStatus } from './dto/pipeline-status.dto';
+import { DecisionLogStorageService } from './decision/services/decision-log-storage.service';
+import { TripDraftService } from './services/trip-draft.service';
+import { SaveTripDraftDto, TripDraftResponseDto } from './dto/trip-draft.dto';
+import { EvidenceItemDto, EvidenceListResponseDto, GetEvidenceQueryDto, EvidenceType, EvidenceSeverity } from './dto/evidence.dto';
+import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
 
 @Injectable()
 export class TripsService {
@@ -16,7 +25,9 @@ export class TripsService {
     private prisma: PrismaService,
     private flightPriceService: FlightPriceService,
     private scheduleConverter: ScheduleConverterService,
-    private actionHistory: ActionHistoryService
+    private actionHistory: ActionHistoryService,
+    private decisionLogStorage: DecisionLogStorageService,
+    private tripDraftService: TripDraftService
   ) {}
 
   /**
@@ -32,6 +43,31 @@ export class TripsService {
    * @returns 创建成功的 Trip 对象
    */
   async create(dto: CreateTripDto) {
+    // ============================================
+    // 步骤 0: 验证目的地国家代码和 Place 数据
+    // ============================================
+    // 规范化国家代码（转换为大写）
+    const normalizedCountryCode = dto.destination.toUpperCase().trim();
+
+    // 验证国家代码格式（ISO 3166-1 alpha-2：2个大写字母）
+    if (!/^[A-Z]{2}$/.test(normalizedCountryCode)) {
+      throw new BadRequestException(
+        `无效的目的地国家代码: ${dto.destination}。必须是 ISO 3166-1 alpha-2 格式（2个大写字母，如 JP、IS、US）`
+      );
+    }
+
+    // 验证该国家是否有 City 数据（至少一个城市）
+    // 这样后续添加行程项时才能关联到 Place
+    const cityCount = await this.prisma.city.count({
+      where: { countryCode: normalizedCountryCode },
+    });
+
+    if (cityCount === 0) {
+      throw new NotFoundException(
+        `目的地国家 ${normalizedCountryCode} 没有城市数据。系统暂不支持该目的地，或该国家尚未导入城市数据。`
+      );
+    }
+
     // ============================================
     // 步骤 1: 计算行程天数
     // ============================================
@@ -67,8 +103,9 @@ export class TripsService {
     // 步骤 3: 🧠 策略二：预算切分 (Budget Strategy)
     // ============================================
     // 从估算数据库查询机票+签证费用（保守估算：使用旺季价格）
+    // 使用规范化后的国家代码
     const estimatedFlightVisa = await this.flightPriceService.getEstimatedCost(
-      dto.destination,
+      normalizedCountryCode,
       undefined, // 暂时不指定出发城市，后续可以从 DTO 中获取
       true // 使用保守估算（旺季价格）
     );
@@ -104,10 +141,11 @@ export class TripsService {
     // 使用事务确保 Trip 和 TripDay 要么全部创建成功，要么全部失败
     return this.prisma.$transaction(async (tx) => {
       // A. 创建 Trip 主记录
+      // 使用规范化后的国家代码
       const trip = await tx.trip.create({
         data: {
           id: randomUUID(),
-          destination: dto.destination,
+          destination: normalizedCountryCode,
           startDate: start.toJSDate(),
           endDate: end.toJSDate(),
           budgetConfig: budgetConfig as any,
@@ -139,6 +177,43 @@ export class TripsService {
     });
   }
 
+  /**
+   * 从草案创建行程
+   */
+  async createFromDraft(dto: SaveTripDraftDto) {
+    const draft = dto.draft;
+
+    // 验证草案数据
+    if (!draft.draftDays || draft.draftDays.length === 0) {
+      throw new BadRequestException('草案数据为空');
+    }
+
+    // 构建 CreateTripDto（需要从草案中提取或使用默认值）
+    // 这里简化处理，实际应该让用户提供这些信息
+    const createTripDto: CreateTripDto = {
+      destination: draft.destination,
+      startDate: draft.startDate || draft.draftDays[0].date,
+      endDate: draft.endDate || draft.draftDays[draft.draftDays.length - 1].date,
+      totalBudget: 20000, // 默认预算
+      travelers: [{ type: 'ADULT', mobilityTag: MobilityTag.CITY_POTATO }], // 默认旅行者
+    };
+
+    // 创建 Trip（使用现有方法）
+    const trip = await this.create(createTripDto);
+
+    // 批量创建 ItineraryItem
+    const itemsCount = await this.tripDraftService.createItineraryItemsFromDraft(
+      trip.id,
+      draft,
+      dto.userEdits
+    );
+
+    // 返回完整的 Trip（包含行程项）
+    return {
+      ...trip,
+      itemsCount,
+    };
+  }
 
   /**
    * 查找所有行程
@@ -199,7 +274,7 @@ export class TripsService {
 
     // 数据增强 (Data Enrichment)
     // 计算统计信息、进度状态等
-    return this.enrichTripData(trip);
+    return await this.enrichTripData(trip);
   }
 
   /**
@@ -209,12 +284,13 @@ export class TripsService {
    * - 计算总天数、总活动数
    * - 判断行程状态（规划中/进行中/已完成）
    * - 计算预算使用情况
+   * - Pipeline状态、活跃提醒数量、待完成任务数量
    * - 其他可扩展的统计信息
    * 
    * @param trip 原始行程数据
    * @returns 增强后的行程数据
    */
-  private enrichTripData(trip: any) {
+  private async enrichTripData(trip: any) {
     let totalItems = 0;
     let totalActivities = 0;
     let totalMeals = 0;
@@ -278,6 +354,78 @@ export class TripsService {
       };
     }
 
+    // 获取额外的统计信息（异步）
+    let activeAlertsCount = 0;
+    let pendingTasksCount = 0;
+    let pipelineStatus = null;
+
+    try {
+      // 直接查询决策日志，避免递归调用
+      const decisionLogs = await this.decisionLogStorage.queryLogs({
+        tripId: trip.id,
+        limit: 50,
+      });
+      activeAlertsCount = decisionLogs.length;
+
+      // 基于行程状态计算待完成任务数量（简化版，不调用getTasks避免递归）
+      // 检查是否有需要设置的最大驾驶时长偏好
+      if (!trip.pacingConfig || !(trip.pacingConfig as any).maxDrivingHours) {
+        pendingTasksCount++;
+      }
+
+      // 检查是否有密集的行程
+      const denseDays = trip.TripDay.filter((day: any) => day.ItineraryItem.length > 8);
+      pendingTasksCount += denseDays.length;
+
+      // 检查是否有安全相关的提醒
+      const safetyAlerts = decisionLogs.filter(
+        log => log.persona === 'ABU' && log.action === 'REJECT'
+      );
+      pendingTasksCount += safetyAlerts.length;
+
+      // Pipeline状态（简化版）
+      const hasRoute = trip.metadata && (trip.metadata as any).routeDirectionId;
+      const totalItems = trip.TripDay.reduce((sum: number, day: any) => sum + day.ItineraryItem.length, 0);
+      
+      pipelineStatus = {
+        stages: [
+          {
+            id: '1',
+            name: '明确旅行目标',
+            status: trip.destination && trip.startDate && trip.endDate ? 'completed' : 'pending',
+          },
+          {
+            id: '2',
+            name: '判断路线是否成立',
+            status: hasRoute ? 'completed' : 'in-progress',
+          },
+          {
+            id: '3',
+            name: '生成可执行日程',
+            status: totalItems > 0 ? 'in-progress' : 'pending',
+          },
+          {
+            id: '4',
+            name: '风险评估与缓冲',
+            status: safetyAlerts.length > 0 ? 'risk' : (totalItems > 0 ? 'in-progress' : 'pending'),
+          },
+          {
+            id: '5',
+            name: 'Plan B 备选系统',
+            status: 'pending',
+          },
+          {
+            id: '6',
+            name: '行前准备清单',
+            status: 'pending',
+          },
+        ],
+      };
+    } catch (error) {
+      // 如果获取失败，不影响主流程，使用默认值
+      console.error('Failed to enrich trip data:', error);
+    }
+
     return {
       ...trip,
       stats: {
@@ -290,7 +438,10 @@ export class TripsService {
         totalTransit: totalTransit,
         progress: progress,
         budgetStats: budgetStats,
-      }
+      },
+      pipelineStatus,
+      activeAlertsCount,
+      pendingTasksCount,
     };
   }
 
@@ -514,5 +665,737 @@ export class TripsService {
    */
   async redoAction(tripId: string, dateISO: string) {
     return this.actionHistory.redoAction(tripId, dateISO);
+  }
+
+  /**
+   * 删除行程
+   * 
+   * 删除整个行程及其所有关联数据：
+   * - TripDay（行程日期）
+   * - ItineraryItem（行程项，通过 TripDay 级联删除）
+   * - TripCollaborator（协作者）
+   * - TripCollection（收藏）
+   * - TripLike（点赞）
+   * - TripShare（分享）
+   * 
+   * @param id 行程 ID
+   * @param confirmText 确认文字（必须匹配目的地国家代码）
+   * @returns 删除结果
+   */
+  async remove(id: string, confirmText: string) {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${id} 不存在`);
+    }
+
+    // 验证确认文字（必须匹配目的地国家代码，不区分大小写）
+    if (confirmText.trim().toUpperCase() !== trip.destination.toUpperCase()) {
+      throw new BadRequestException(
+        `确认文字不匹配。请输入目的地国家代码"${trip.destination}"来确认删除。`
+      );
+    }
+
+    // 使用事务删除，确保数据一致性
+    // 注意：Prisma 中部分关联已设置了 onDelete: Cascade（如 TripCollaborator、TripCollection、TripLike、TripShare）
+    // 但 TripDay、ItineraryItem 和 TripOfflinePack 没有设置级联删除，需要手动删除
+    await this.prisma.$transaction(async (tx) => {
+      // 1. 先获取所有 TripDay ID
+      const tripDays = await tx.tripDay.findMany({
+        where: { tripId: id },
+        select: { id: true },
+      });
+      const tripDayIds = tripDays.map(day => day.id);
+
+      // 2. 删除所有 ItineraryItem（如果存在 TripDay）
+      if (tripDayIds.length > 0) {
+        await tx.itineraryItem.deleteMany({
+          where: { tripDayId: { in: tripDayIds } },
+        });
+      }
+
+      // 3. 删除所有 TripDay
+      await tx.tripDay.deleteMany({
+        where: { tripId: id },
+      });
+
+      // 4. 删除 TripOfflinePack（如果存在）
+      await tx.tripOfflinePack.deleteMany({
+        where: { tripId: id },
+      });
+
+      // 5. 删除 Trip（其他已设置级联删除的关联会自动删除）
+      await tx.trip.delete({
+        where: { id },
+      });
+    });
+
+    return { message: '行程删除成功' };
+  }
+
+  /**
+   * 获取三人格提醒（Persona Alerts）
+   * 
+   * @param tripId 行程 ID
+   * @returns 提醒列表
+   */
+  async getPersonaAlerts(tripId: string): Promise<PersonaAlertDto[]> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 从决策日志中获取最近的提醒
+    const decisionLogs = await this.decisionLogStorage.queryLogs({
+      tripId,
+      limit: 50,
+    });
+
+    // 将决策日志转换为提醒
+    const alerts: PersonaAlertDto[] = [];
+    const personaNames: Record<string, string> = {
+      ABU: 'Abu',
+      DR_DRE: 'Dr.Dre',
+      NEPTUNE: 'Neptune',
+    };
+
+    const personaTitles: Record<string, string> = {
+      ABU: '安全官（PHYSICAL）',
+      DR_DRE: '节奏官（HUMAN）',
+      NEPTUNE: '修复官（PHILOSOPHY + SPATIAL）',
+    };
+
+    // 根据决策日志生成提醒
+    for (const log of decisionLogs) {
+      const severity = log.action === 'REJECT' ? AlertSeverity.WARNING :
+                       log.action === 'ADJUST' ? AlertSeverity.INFO :
+                       AlertSeverity.SUCCESS;
+
+      // 生成提醒消息（基于explanation和reasonCodes）
+      let message = log.explanation;
+      if (log.reasonCodes && log.reasonCodes.length > 0) {
+        message += `\n相关原因：${log.reasonCodes.join('、')}`;
+      }
+
+      alerts.push({
+        id: `alert-${log.timestamp}`,
+        persona: log.persona as PersonaType,
+        name: personaNames[log.persona] || log.persona,
+        title: personaTitles[log.persona] || log.persona,
+        message,
+        severity,
+        createdAt: log.timestamp,
+        metadata: {
+          decisionSource: log.decisionSource,
+          action: log.action,
+          reasonCodes: log.reasonCodes,
+        },
+      });
+    }
+
+    // 如果没有决策日志，生成基于行程状态的默认提醒
+    if (alerts.length === 0) {
+      // 基于行程数据生成一些基础提醒
+      const tripDays = await this.prisma.tripDay.findMany({
+        where: { tripId },
+        include: {
+          ItineraryItem: {
+            orderBy: { startTime: 'asc' },
+          },
+        },
+        orderBy: { date: 'asc' },
+      });
+
+      // 检查是否有过于密集的行程
+      for (let i = 0; i < tripDays.length; i++) {
+        const day = tripDays[i];
+        const itemCount = day.ItineraryItem.length;
+        
+        if (itemCount > 8) {
+          alerts.push({
+            id: `alert-day-${i + 1}`,
+            persona: PersonaType.DR_DRE,
+            name: personaNames[PersonaType.DR_DRE],
+            title: personaTitles[PersonaType.DR_DRE],
+            message: `第 ${i + 1} 天行程稍密集\n如果你想更轻松，我建议拆成两天\n这样会舒服一点`,
+            severity: AlertSeverity.INFO,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              day: i + 1,
+              suggestion: 'SPLIT_DAY',
+              itemCount,
+            },
+          });
+        }
+      }
+    }
+
+    return alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  /**
+   * 获取行程证据列表
+   */
+  async getEvidence(tripId: string, query: GetEvidenceQueryDto): Promise<EvidenceListResponseDto> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: {
+                Place: true,
+              },
+              orderBy: { startTime: 'asc' },
+            },
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const limit = query.limit || 50;
+    const offset = query.offset || 0;
+
+    // 从决策日志中提取证据引用
+    const decisionLogs = await this.decisionLogStorage.queryLogs({
+      tripId,
+      limit: 100,
+    });
+
+    const evidenceItems: EvidenceItemDto[] = [];
+
+    // 处理决策日志中的证据引用
+    for (const log of decisionLogs) {
+      if (log.evidenceRefs && log.evidenceRefs.length > 0) {
+        for (const evidenceRef of log.evidenceRefs) {
+          evidenceItems.push({
+            id: `ev-${evidenceRef}-${log.timestamp}`,
+            type: EvidenceType.OTHER,
+            title: '决策证据',
+            description: log.explanation,
+            source: `决策日志 (${log.persona})`,
+            timestamp: log.timestamp,
+            metadata: {
+              decisionSource: log.decisionSource,
+              action: log.action,
+              reasonCodes: log.reasonCodes,
+              evidenceRef,
+            },
+          });
+        }
+      }
+    }
+
+    // 从行程项中提取 Place 的营业时间等证据
+    let dayIndex = 0;
+    for (const tripDay of trip.TripDay) {
+      dayIndex++;
+      
+      // 如果指定了 day 过滤，跳过不匹配的天数
+      if (query.day && dayIndex !== query.day) {
+        continue;
+      }
+
+      for (const item of tripDay.ItineraryItem) {
+        if (item.Place) {
+          const place = item.Place;
+          const metadata = place.metadata as any;
+
+          // 提取营业时间证据
+          if (metadata?.openingHours) {
+            const openingHours = metadata.openingHours;
+            const hoursStr = typeof openingHours === 'string' 
+              ? openingHours 
+              : JSON.stringify(openingHours);
+
+            evidenceItems.push({
+              id: `ev-place-${place.id}-opening-hours`,
+              type: EvidenceType.OPENING_HOURS,
+              title: '营业时间',
+              description: `${place.nameCN || place.nameEN} 营业时间：${hoursStr}`,
+              source: 'Google Places API',
+              timestamp: place.updatedAt?.toISOString() || new Date().toISOString(),
+              poiId: place.id.toString(),
+              day: dayIndex,
+              severity: EvidenceSeverity.LOW,
+              metadata: {
+                placeId: place.id,
+                openingHours: metadata.openingHours,
+              },
+            });
+          }
+
+          // 提取评分证据
+          if (place.rating) {
+            evidenceItems.push({
+              id: `ev-place-${place.id}-rating`,
+              type: EvidenceType.OTHER,
+              title: '地点评分',
+              description: `${place.nameCN || place.nameEN} 评分：${place.rating}`,
+              source: 'Google Places API',
+              timestamp: place.updatedAt?.toISOString() || new Date().toISOString(),
+              poiId: place.id.toString(),
+              day: dayIndex,
+              severity: EvidenceSeverity.LOW,
+              metadata: {
+                placeId: place.id,
+                rating: place.rating,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // 应用类型过滤
+    let filteredItems = evidenceItems;
+    if (query.type) {
+      filteredItems = filteredItems.filter(item => item.type === query.type);
+    }
+
+    // 排序（按时间倒序）
+    filteredItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // 分页
+    const total = filteredItems.length;
+    const paginatedItems = filteredItems.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * 获取关注队列
+   */
+  async getAttentionQueue(query: GetAttentionQueueQueryDto): Promise<AttentionQueueResponseDto> {
+    const limit = query.limit || 20;
+    const offset = query.offset || 0;
+
+    const attentionItems: AttentionItemDto[] = [];
+
+    // 如果指定了 tripId，只获取该行程的关注项
+    if (query.tripId) {
+      const alerts = await this.getPersonaAlerts(query.tripId);
+      
+      // 将 Persona Alerts 转换为 Attention Items
+      for (const alert of alerts) {
+        // 映射严重程度
+        let severity: AttentionSeverity;
+        if (alert.severity === AlertSeverity.WARNING) {
+          severity = AttentionSeverity.HIGH;
+        } else if (alert.severity === AlertSeverity.INFO) {
+          severity = AttentionSeverity.MEDIUM;
+        } else {
+          severity = AttentionSeverity.LOW;
+        }
+
+        // 映射类型
+        let type: AttentionItemType;
+        if (alert.persona === PersonaType.ABU) {
+          type = AttentionItemType.SAFETY_RISK;
+        } else if (alert.persona === PersonaType.DR_DRE) {
+          type = AttentionItemType.SCHEDULE_CONFLICT;
+        } else {
+          type = AttentionItemType.OTHER;
+        }
+
+        attentionItems.push({
+          id: alert.id,
+          type,
+          title: alert.title,
+          description: alert.message,
+          tripId: query.tripId,
+          severity,
+          createdAt: alert.createdAt,
+          status: AttentionStatus.NEW,
+          metadata: {
+            ...alert.metadata,
+            persona: alert.persona,
+          },
+        });
+      }
+    } else {
+      // 全局关注队列：获取所有行程的 Persona Alerts
+      // 这里简化处理，实际应该查询所有相关行程
+      // 为了性能考虑，可以限制查询的行程数量
+      const trips = await this.prisma.trip.findMany({
+        take: 10, // 限制查询数量
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true },
+      });
+
+      for (const trip of trips) {
+        try {
+          const alerts = await this.getPersonaAlerts(trip.id);
+          
+          for (const alert of alerts) {
+            let severity: AttentionSeverity;
+            if (alert.severity === AlertSeverity.WARNING) {
+              severity = AttentionSeverity.HIGH;
+            } else if (alert.severity === AlertSeverity.INFO) {
+              severity = AttentionSeverity.MEDIUM;
+            } else {
+              severity = AttentionSeverity.LOW;
+            }
+
+            let type: AttentionItemType;
+            if (alert.persona === PersonaType.ABU) {
+              type = AttentionItemType.SAFETY_RISK;
+            } else if (alert.persona === PersonaType.DR_DRE) {
+              type = AttentionItemType.SCHEDULE_CONFLICT;
+            } else {
+              type = AttentionItemType.OTHER;
+            }
+
+            attentionItems.push({
+              id: `${trip.id}-${alert.id}`,
+              type,
+              title: alert.title,
+              description: alert.message,
+              tripId: trip.id,
+              severity,
+              createdAt: alert.createdAt,
+              status: AttentionStatus.NEW,
+              metadata: {
+                ...alert.metadata,
+                persona: alert.persona,
+                actionUrl: `/dashboard/trips/${trip.id}`,
+              },
+            });
+          }
+        } catch (error) {
+          // 跳过错误的行程
+          continue;
+        }
+      }
+    }
+
+    // 应用过滤
+    let filteredItems = attentionItems;
+    if (query.severity) {
+      filteredItems = filteredItems.filter(item => item.severity === query.severity);
+    }
+    if (query.type) {
+      filteredItems = filteredItems.filter(item => item.type === query.type);
+    }
+
+    // 排序（按严重程度和时间）
+    const severityOrder: Record<AttentionSeverity, number> = {
+      [AttentionSeverity.CRITICAL]: 4,
+      [AttentionSeverity.HIGH]: 3,
+      [AttentionSeverity.MEDIUM]: 2,
+      [AttentionSeverity.LOW]: 1,
+    };
+
+    filteredItems.sort((a, b) => {
+      const severityDiff = severityOrder[b.severity] - severityOrder[a.severity];
+      if (severityDiff !== 0) return severityDiff;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // 分页
+    const total = filteredItems.length;
+    const paginatedItems = filteredItems.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * 获取决策记录/透明日志（Decision Log）
+   * 
+   * @param tripId 行程 ID
+   * @param limit 返回记录数量，默认 10
+   * @param offset 偏移量，默认 0
+   * @returns 决策记录响应
+   */
+  async getDecisionLog(tripId: string, limit: number = 10, offset: number = 0): Promise<DecisionLogResponseDto> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 查询总数
+    const total = await this.prisma.decisionLog.count({
+      where: { tripId },
+    });
+
+    // 查询决策日志
+    const logs = await this.prisma.decisionLog.findMany({
+      where: { tripId },
+      orderBy: { timestamp: 'desc' },
+      skip: offset,
+      take: limit,
+    });
+
+    // 转换为DTO格式
+    const items: DecisionLogEntryDto[] = logs.map(log => ({
+      id: log.id,
+      date: log.timestamp.toISOString(),
+      description: log.explanation,
+      source: log.decisionSource as DecisionSource,
+      persona: log.persona as any,
+      action: log.action,
+      metadata: {
+        reasonCodes: log.reasonCodes,
+        evidenceRefs: log.evidenceRefs,
+        ...(log.metadata as Record<string, any> || {}),
+      },
+    }));
+
+    return {
+      items,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * 获取今日重点任务（Today's Tasks）
+   * 
+   * @param tripId 行程 ID
+   * @returns 任务列表
+   */
+  async getTasks(tripId: string): Promise<TaskDto[]> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: true,
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const tasks: TaskDto[] = [];
+
+    // 基于行程状态生成任务
+    // 1. 检查是否设置了最大驾驶时长偏好
+    if (!trip.pacingConfig || !(trip.pacingConfig as any).maxDrivingHours) {
+      tasks.push({
+        id: `task-preference-1`,
+        text: '确认你能接受的最长驾驶时长',
+        completed: false,
+        priority: TaskPriority.HIGH,
+        category: TaskCategory.PREFERENCE,
+        route: `/dashboard/trips/${tripId}`,
+        metadata: {
+          relatedField: 'maxDrivingHours',
+        },
+      });
+    }
+
+    // 2. 检查是否有密集的行程需要调整
+    for (let i = 0; i < trip.TripDay.length; i++) {
+      const day = trip.TripDay[i];
+      if (day.ItineraryItem.length > 8) {
+        tasks.push({
+          id: `task-schedule-${i + 1}`,
+          text: `选择第 ${i + 1} 天住宿位置偏好`,
+          completed: false,
+          priority: TaskPriority.MEDIUM,
+          category: TaskCategory.SCHEDULE,
+          route: `/dashboard/trips/${tripId}/schedule`,
+          metadata: {
+            day: i + 1,
+          },
+        });
+      }
+    }
+
+    // 3. 检查是否有安全相关的提醒
+    const alerts = await this.getPersonaAlerts(tripId);
+    const safetyAlerts = alerts.filter(a => a.persona === PersonaType.ABU && a.severity === AlertSeverity.WARNING);
+    
+    for (const alert of safetyAlerts) {
+      if (alert.metadata?.roadId) {
+        tasks.push({
+          id: `task-safety-${alert.id}`,
+          text: `查看 ${alert.metadata.roadId} 道路通行建议`,
+          completed: false,
+          priority: TaskPriority.HIGH,
+          category: TaskCategory.SAFETY,
+          route: `/dashboard/trips/${tripId}/decision`,
+          metadata: {
+            roadId: alert.metadata.roadId,
+            alertId: alert.id,
+          },
+        });
+      }
+    }
+
+    return tasks;
+  }
+
+  /**
+   * 更新任务状态
+   * 
+   * @param tripId 行程 ID
+   * @param taskId 任务 ID
+   * @param completed 是否已完成
+   * @returns 更新后的任务
+   */
+  async updateTaskStatus(tripId: string, taskId: string, completed: boolean): Promise<TaskDto> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 获取所有任务
+    const tasks = await this.getTasks(tripId);
+    const task = tasks.find(t => t.id === taskId);
+
+    if (!task) {
+      throw new NotFoundException(`任务 ID ${taskId} 不存在`);
+    }
+
+    // 更新任务状态
+    task.completed = completed;
+
+    // TODO: 如果需要持久化任务状态，可以在这里保存到数据库
+    // 当前实现是基于实时计算，所以直接返回更新后的任务
+
+    return task;
+  }
+
+  /**
+   * 获取工作流 Pipeline 状态
+   * 
+   * @param tripId 行程 ID
+   * @returns Pipeline 状态
+   */
+  async getPipelineStatus(tripId: string): Promise<PipelineStatusResponseDto> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: true,
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const stages: PipelineStageDto[] = [];
+
+    // 阶段1: 明确旅行目标
+    stages.push({
+      id: '1',
+      name: '明确旅行目标',
+      status: trip.destination && trip.startDate && trip.endDate ? PipelineStageStatus.COMPLETED : PipelineStageStatus.PENDING,
+      completedAt: trip.createdAt?.toISOString(),
+    });
+
+    // 阶段2: 判断路线是否成立
+    const hasRoute = trip.metadata && (trip.metadata as any).routeDirectionId;
+    stages.push({
+      id: '2',
+      name: '判断路线是否成立',
+      status: hasRoute ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS,
+    });
+
+    // 阶段3: 生成可执行日程
+    const totalItems = trip.TripDay.reduce((sum, day) => sum + day.ItineraryItem.length, 0);
+    const daysWithItems = trip.TripDay.filter(day => day.ItineraryItem.length > 0).length;
+    
+    let stage3Status = PipelineStageStatus.PENDING;
+    let stage3Summary = '';
+    
+    if (totalItems > 0) {
+      stage3Status = PipelineStageStatus.IN_PROGRESS;
+      
+      // 计算平均每日活动数
+      const avgItemsPerDay = totalItems / trip.TripDay.length;
+      
+      // 检查是否有密集的行程
+      const denseDays = trip.TripDay.filter(day => day.ItineraryItem.length > 8);
+      
+      stage3Summary = `建议驾驶时长：每天 3–5 小时\n`;
+      stage3Summary += `已安排活动：${totalItems} 个（${daysWithItems}/${trip.TripDay.length} 天）\n`;
+      
+      if (denseDays.length > 0) {
+        stage3Summary += `🚨 第 ${denseDays.map((_, idx) => trip.TripDay.indexOf(denseDays[idx]) + 1).join('、')} 天稍紧张`;
+      } else {
+        stage3Summary += `疲劳指数：中`;
+      }
+    }
+    
+    stages.push({
+      id: '3',
+      name: '生成可执行日程',
+      status: stage3Status,
+      summary: stage3Summary || undefined,
+    });
+
+    // 阶段4: 风险评估与缓冲
+    const alerts = await this.getPersonaAlerts(tripId);
+    const riskAlerts = alerts.filter(a => a.severity === AlertSeverity.WARNING);
+    
+    stages.push({
+      id: '4',
+      name: '风险评估与缓冲',
+      status: riskAlerts.length > 0 ? PipelineStageStatus.RISK : (totalItems > 0 ? PipelineStageStatus.IN_PROGRESS : PipelineStageStatus.PENDING),
+    });
+
+    // 阶段5: Plan B 备选系统
+    stages.push({
+      id: '5',
+      name: 'Plan B 备选系统',
+      status: PipelineStageStatus.PENDING,
+    });
+
+    // 阶段6: 行前准备清单
+    const now = new Date();
+    const startDate = new Date(trip.startDate);
+    const daysUntilTrip = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    stages.push({
+      id: '6',
+      name: '行前准备清单',
+      status: daysUntilTrip <= 7 && daysUntilTrip > 0 ? PipelineStageStatus.IN_PROGRESS : PipelineStageStatus.PENDING,
+    });
+
+    return { stages };
   }
 }

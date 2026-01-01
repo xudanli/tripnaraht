@@ -6,9 +6,11 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
+import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
-import { RouteDirectionData, RouteTemplateData } from './interfaces/route-direction.interface';
+import { RouteDirectionData, RouteTemplateData, DayPlan } from './interfaces/route-direction.interface';
+import { CreateTripFromTemplateDto } from './dto/create-trip-from-template.dto';
 
 @Injectable()
 export class RouteDirectionsService {
@@ -341,6 +343,129 @@ export class RouteDirectionsService {
   }
 
   /**
+   * 查询路线模板列表
+   */
+  async findRouteTemplates(options?: {
+    routeDirectionId?: number;
+    durationDays?: number;
+    isActive?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    const where: any = {};
+
+    if (options?.routeDirectionId !== undefined) {
+      where.routeDirectionId = options.routeDirectionId;
+    }
+
+    if (options?.durationDays !== undefined) {
+      where.durationDays = options.durationDays;
+    }
+
+    if (options?.isActive !== undefined) {
+      where.isActive = options.isActive;
+    }
+
+    const query: any = {
+      where,
+      include: { routeDirection: true },
+      orderBy: { createdAt: 'desc' },
+    };
+
+    if (options?.limit !== undefined) {
+      query.take = options.limit;
+    }
+
+    if (options?.offset !== undefined) {
+      query.skip = options.offset;
+    }
+
+    return (this.prisma as any).routeTemplate.findMany(query);
+  }
+
+  /**
+   * 更新路线模板
+   */
+  async updateRouteTemplate(
+    id: number,
+    dto: UpdateRouteTemplateDto,
+  ): Promise<any> {
+    // 检查模板是否存在
+    const existing = await (this.prisma as any).routeTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Route template with ID ${id} not found`);
+    }
+
+    // 如果更新 routeDirectionId，验证路线方向是否存在
+    if (dto.routeDirectionId !== undefined) {
+      const routeDirection = await this.prisma.routeDirection.findUnique({
+        where: { id: dto.routeDirectionId },
+      });
+
+      if (!routeDirection) {
+        throw new NotFoundException(
+          `Route direction with ID ${dto.routeDirectionId} not found`,
+        );
+      }
+    }
+
+    const updateData: any = {};
+
+    if (dto.routeDirectionId !== undefined) {
+      updateData.routeDirection = {
+        connect: { id: dto.routeDirectionId },
+      };
+    }
+
+    if (dto.durationDays !== undefined) updateData.durationDays = dto.durationDays;
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.nameCN !== undefined) updateData.nameCN = dto.nameCN;
+    if (dto.nameEN !== undefined) updateData.nameEN = dto.nameEN;
+    if (dto.dayPlans !== undefined) {
+      updateData.dayPlans = dto.dayPlans as Prisma.InputJsonValue;
+    }
+    if (dto.defaultPacePreference !== undefined) {
+      updateData.defaultPacePreference = dto.defaultPacePreference;
+    }
+    if (dto.metadata !== undefined) {
+      updateData.metadata = dto.metadata as Prisma.InputJsonValue;
+    }
+    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
+
+    updateData.updatedAt = new Date();
+
+    return (this.prisma as any).routeTemplate.update({
+      where: { id },
+      data: updateData,
+      include: { routeDirection: true },
+    });
+  }
+
+  /**
+   * 删除路线模板（软删除：设置 isActive = false）
+   */
+  async deleteRouteTemplate(id: number): Promise<void> {
+    const existing = await (this.prisma as any).routeTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Route template with ID ${id} not found`);
+    }
+
+    await (this.prisma as any).routeTemplate.update({
+      where: { id },
+      data: {
+        isActive: false,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
    * 应用灰度发布过滤
    * 只保留命中 rollout 和 audienceFilter 的 RD
    */
@@ -476,6 +601,459 @@ export class RouteDirectionsService {
       failedCount,
       results,
     };
+  }
+
+  /**
+   * 从路线模板创建行程
+   */
+  async createTripFromTemplate(
+    templateId: number,
+    dto: CreateTripFromTemplateDto,
+  ): Promise<any> {
+    // 1. 读取模板
+    const template = await this.findRouteTemplateById(templateId);
+    if (!template) {
+      throw new NotFoundException(`Route template with ID ${templateId} not found`);
+    }
+
+    const routeDirection = template.routeDirection;
+    if (!routeDirection) {
+      throw new NotFoundException(`Route direction not found for template ${templateId}`);
+    }
+
+    // 2. 解析模板结构
+    const dayPlans = template.dayPlans as DayPlan[];
+    const durationDays = template.durationDays;
+
+    // 验证日期范围
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    const actualDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (actualDays !== durationDays) {
+      this.logger.warn(
+        `Template duration (${durationDays}) does not match actual days (${actualDays}). Using actual days.`
+      );
+    }
+
+    // 3. 匹配地点（从 place 表检索候选地点）
+    const countryCode = dto.destination.toUpperCase().trim();
+    const candidates = await this.retrievePlaceCandidates(
+      countryCode,
+      dayPlans,
+      routeDirection
+    );
+
+    if (candidates.length === 0) {
+      throw new NotFoundException(
+        `No places found for destination ${countryCode}. Please ensure place data exists.`
+      );
+    }
+
+    // 4. LLM 编排（选择 placeId）
+    const llmResult = await this.orchestrateWithLLM(
+      template,
+      dto,
+      candidates,
+      startDate,
+      durationDays
+    );
+
+    // 5. 创建行程（使用事务）
+    return await this.prisma.$transaction(async (tx) => {
+      // 5.1 创建 Trip
+      const trip = await tx.trip.create({
+        data: {
+          id: randomUUID(),
+          destination: countryCode,
+          startDate: startDate,
+          endDate: endDate,
+          totalBudget: dto.totalBudget,
+          budgetConfig: {
+            totalBudget: dto.totalBudget || 0,
+            currency: 'CNY',
+          } as any,
+          pacingConfig: {
+            pacePreference: dto.pacePreference || template.defaultPacePreference || 'BALANCED',
+            intensity: dto.intensity || 'balanced',
+            transport: dto.transport || 'car',
+          } as any,
+          metadata: {
+            createdFromTemplate: templateId,
+            templateName: template.nameCN || template.name,
+          } as any,
+          updatedAt: new Date(),
+        } as any,
+      });
+
+      // 5.2 创建 TripDay
+      const tripDays = [];
+      for (let i = 0; i < durationDays; i++) {
+        const dayDate = new Date(startDate);
+        dayDate.setDate(dayDate.getDate() + i);
+        const tripDay = await tx.tripDay.create({
+          data: {
+            id: randomUUID(),
+            tripId: trip.id,
+            date: dayDate,
+          } as any,
+        });
+        tripDays.push(tripDay);
+      }
+
+      // 5.3 批量创建 ItineraryItem
+      const itemsToCreate = [];
+      let placesMatched = 0;
+      let placesMissing = 0;
+
+      for (const dayResult of llmResult.days || []) {
+        const tripDay = tripDays[dayResult.day - 1];
+        if (!tripDay) continue;
+
+        const dayDate = new Date(tripDay.date);
+        
+        for (const [slot, slotData] of Object.entries(dayResult.slots || {})) {
+          if (!slotData || !slotData.placeId) {
+            if (slotData?.required) {
+              placesMissing++;
+            }
+            continue;
+          }
+
+          // 验证 placeId 存在于 candidates
+          const candidate = candidates.find(c => c.id === slotData.placeId);
+          if (!candidate) {
+            this.logger.warn(`Place ID ${slotData.placeId} not found in candidates, skipping`);
+            placesMissing++;
+            continue;
+          }
+
+          placesMatched++;
+
+          // 计算时间
+          const { startTime, endTime } = this.calculateSlotTime(dayDate, slot);
+
+          itemsToCreate.push({
+            id: randomUUID(),
+            tripDayId: tripDay.id,
+            placeId: slotData.placeId,
+            type: this.mapSlotToItemType(slot, candidate.category),
+            startTime: startTime,
+            endTime: endTime,
+            note: slotData.reason || null,
+          });
+        }
+      }
+
+      // 批量创建
+      if (itemsToCreate.length > 0) {
+        await tx.itineraryItem.createMany({
+          data: itemsToCreate as any,
+        });
+      }
+
+      // 6. 返回结果
+      return {
+        trip: {
+          id: trip.id,
+          destination: trip.destination,
+          startDate: trip.startDate,
+          endDate: trip.endDate,
+          totalBudget: dto.totalBudget || 0,
+          status: 'PLANNING',
+          pacingConfig: trip.pacingConfig,
+          budgetConfig: trip.budgetConfig,
+        },
+        generatedItems: tripDays.map((tripDay, index) => ({
+          day: index + 1,
+          date: tripDay.date.toISOString().split('T')[0],
+          items: itemsToCreate
+            .filter(item => item.tripDayId === tripDay.id)
+            .map(item => ({
+              placeId: item.placeId,
+              type: item.type,
+              startTime: item.startTime.toISOString(),
+              endTime: item.endTime.toISOString(),
+              note: item.note,
+              reason: item.note,
+            })),
+        })),
+        stats: {
+          totalDays: durationDays,
+          totalItems: itemsToCreate.length,
+          placesMatched,
+          placesMissing,
+        },
+        warnings: placesMissing > 0
+          ? [`${placesMissing} required places could not be matched`]
+          : undefined,
+      };
+    });
+  }
+
+  /**
+   * 检索候选地点
+   */
+  private async retrievePlaceCandidates(
+    countryCode: string,
+    dayPlans: DayPlan[],
+    routeDirection: any
+  ): Promise<Array<{ id: number; nameCN: string; nameEN?: string; category: string; lat: number; lng: number }>> {
+    // 构建类别过滤（从 dayPlans 的主题推断）
+    const categories = this.extractCategoriesFromDayPlans(dayPlans);
+
+    const categorySql = categories.length > 0
+      ? Prisma.sql`AND p.category = ANY(${categories}::"PlaceCategory"[])`
+      : Prisma.sql``;
+
+    // 查询地点
+    const rawPlaces = await this.prisma.$queryRaw<Array<{
+      id: number;
+      nameCN: string;
+      nameEN: string | null;
+      category: string;
+      lat: number;
+      lng: number;
+    }>>`
+      SELECT 
+        p.id,
+        p."nameCN",
+        p."nameEN",
+        p.category,
+        ST_Y(p.location::geometry) as lat,
+        ST_X(p.location::geometry) as lng
+      FROM "Place" p
+      INNER JOIN "City" c ON p."cityId" = c.id
+      WHERE c."countryCode" = ${countryCode}
+        AND p.location IS NOT NULL
+        ${categorySql}
+      ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
+      LIMIT 200
+    `;
+
+    return rawPlaces.map(place => ({
+      id: place.id,
+      nameCN: place.nameCN,
+      nameEN: place.nameEN || undefined,
+      category: place.category,
+      lat: place.lat,
+      lng: place.lng,
+    }));
+  }
+
+  /**
+   * 从 dayPlans 提取类别
+   */
+  private extractCategoriesFromDayPlans(dayPlans: DayPlan[]): string[] {
+    const categories = new Set<string>();
+    
+    for (const plan of dayPlans) {
+      // 根据主题推断类别（简化实现）
+      const theme = (plan.theme || '').toLowerCase();
+      if (theme.includes('餐厅') || theme.includes('美食')) {
+        categories.add('RESTAURANT');
+      }
+      if (theme.includes('景点') || theme.includes('观光')) {
+        categories.add('ATTRACTION');
+      }
+      if (theme.includes('购物')) {
+        categories.add('SHOPPING');
+      }
+      if (theme.includes('住宿') || theme.includes('酒店')) {
+        categories.add('HOTEL');
+      }
+    }
+
+    // 如果没有匹配到，返回默认类别
+    return categories.size > 0
+      ? Array.from(categories)
+      : ['ATTRACTION', 'RESTAURANT'];
+  }
+
+  /**
+   * 使用 LLM 编排行程
+   */
+  private async orchestrateWithLLM(
+    template: any,
+    dto: CreateTripFromTemplateDto,
+    candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string }>,
+    startDate: Date,
+    durationDays: number
+  ): Promise<any> {
+    // 构建 prompt
+    const prompt = this.buildOrchestrationPrompt(template, dto, candidates, startDate, durationDays);
+
+    // 定义输出 schema
+    const slotItemSchema = {
+      type: 'object',
+      properties: {
+        placeId: { type: 'number' },
+        reason: { type: 'string' },
+        required: { type: 'boolean' },
+      },
+      required: ['placeId', 'reason'],
+    };
+
+    const schema = {
+      type: 'object',
+      properties: {
+        days: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              day: { type: 'number' },
+              slots: {
+                type: 'object',
+                properties: {
+                  morning: slotItemSchema,
+                  lunch: slotItemSchema,
+                  afternoon: slotItemSchema,
+                  dinner: slotItemSchema,
+                  evening: slotItemSchema,
+                },
+              },
+            },
+            required: ['day', 'slots'],
+          },
+        },
+      },
+      required: ['days'],
+    };
+
+    try {
+      // 注意：这里需要注入 LlmService，暂时返回 mock 数据
+      // 实际实现时需要调用 LlmService
+      this.logger.warn('LLM orchestration not fully implemented, using mock data');
+      
+      // Mock 实现：简单分配
+      return this.mockLLMOrchestration(template, candidates, durationDays);
+    } catch (error: any) {
+      this.logger.error('LLM orchestration failed', error);
+      throw new Error(`LLM orchestration failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Mock LLM 编排（临时实现）
+   */
+  private mockLLMOrchestration(
+    template: any,
+    candidates: Array<{ id: number; nameCN: string; category: string }>,
+    durationDays: number
+  ): any {
+    const days = [];
+    const dayPlans = template.dayPlans as DayPlan[];
+
+    for (let day = 1; day <= durationDays; day++) {
+      const dayPlan = dayPlans.find(p => p.day === day) || dayPlans[day - 1];
+      
+      // 简单分配：根据类别选择地点
+      const restaurants = candidates.filter(c => c.category === 'RESTAURANT');
+      const attractions = candidates.filter(c => c.category === 'ATTRACTION');
+
+      days.push({
+        day,
+        slots: {
+          morning: attractions.length > 0 ? {
+            placeId: attractions[0].id,
+            reason: `根据模板主题"${dayPlan?.theme || '探索'}"选择`,
+            required: false,
+          } : null,
+          lunch: restaurants.length > 0 ? {
+            placeId: restaurants[0].id,
+            reason: '午餐推荐',
+            required: false,
+          } : null,
+          afternoon: attractions.length > 1 ? {
+            placeId: attractions[1].id,
+            reason: `继续探索"${dayPlan?.theme || '景点'}"`,
+            required: false,
+          } : null,
+          dinner: restaurants.length > 1 ? {
+            placeId: restaurants[1]?.id || restaurants[0].id,
+            reason: '晚餐推荐',
+            required: false,
+          } : null,
+          evening: null,
+        },
+      });
+    }
+
+    return { days };
+  }
+
+  /**
+   * 构建编排 prompt
+   */
+  private buildOrchestrationPrompt(
+    template: any,
+    dto: CreateTripFromTemplateDto,
+    candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string }>,
+    startDate: Date,
+    durationDays: number
+  ): string {
+    return `你是一个旅行规划助手。请根据提供的路线模板和候选地点，为每一天的每个时段选择合适的 placeId。
+
+模板信息：
+- 名称：${template.nameCN || template.name}
+- 天数：${template.durationDays}
+- 默认节奏：${template.defaultPacePreference || 'BALANCED'}
+- 每日计划：${JSON.stringify(template.dayPlans, null, 2)}
+
+用户偏好：
+- 节奏偏好：${dto.pacePreference || template.defaultPacePreference || 'BALANCED'}
+- 强度：${dto.intensity || 'balanced'}
+- 交通方式：${dto.transport || 'car'}
+
+候选地点（共 ${candidates.length} 个）：
+${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nameEN})` : ''}, 类别: ${c.category}`).join('\n')}
+
+请为每一天的每个时段（morning, lunch, afternoon, dinner, evening）选择一个合适的 placeId。
+必须从候选地点列表中选择，不能使用列表外的 placeId。
+`;
+  }
+
+  /**
+   * 计算时段时间
+   */
+  private calculateSlotTime(dayDate: Date, slot: string): { startTime: Date; endTime: Date } {
+    const date = new Date(dayDate);
+    date.setHours(0, 0, 0, 0);
+
+    const slotTimes: Record<string, { start: number; end: number }> = {
+      morning: { start: 9 * 60, end: 12 * 60 },      // 9:00 - 12:00
+      lunch: { start: 12 * 60, end: 14 * 60 },        // 12:00 - 14:00
+      afternoon: { start: 14 * 60, end: 18 * 60 },   // 14:00 - 18:00
+      dinner: { start: 18 * 60, end: 20 * 60 },      // 18:00 - 20:00
+      evening: { start: 20 * 60, end: 22 * 60 },    // 20:00 - 22:00
+    };
+
+    const times = slotTimes[slot] || { start: 9 * 60, end: 12 * 60 };
+
+    const startTime = new Date(date);
+    startTime.setMinutes(times.start);
+
+    const endTime = new Date(date);
+    endTime.setMinutes(times.end);
+
+    return { startTime, endTime };
+  }
+
+  /**
+   * 映射时段和类别到 ItemType
+   */
+  private mapSlotToItemType(slot: string, category: string): string {
+    if (slot === 'lunch' || slot === 'dinner') {
+      return 'MEAL_ANCHOR';
+    }
+    if (category === 'RESTAURANT') {
+      return 'MEAL_FLOATING';
+    }
+    if (category === 'HOTEL') {
+      return 'REST';
+    }
+    return 'ACTIVITY';
   }
 }
 

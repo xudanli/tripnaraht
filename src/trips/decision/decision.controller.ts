@@ -46,14 +46,31 @@ export class DecisionController {
     }
   ) {
     try {
+      // 参数验证
+      if (!body.worldContext) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'worldContext 是必需的参数');
+      }
+      if (!body.plan) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'plan 是必需的参数');
+      }
+      if (!body.plan.tripId && !body.tripId) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId 是必需的参数');
+      }
+
+      // 确保 plan 有 tripId
+      const planWithTripId: RoutePlanDraft = {
+        ...body.plan,
+        tripId: body.plan.tripId || body.tripId,
+      };
+
       // 使用 StrategyOrchestrator 执行 Abu 校验
-      const result = await this.strategyOrchestrator.run(body.worldContext, body.plan);
+      const result = await this.strategyOrchestrator.run(body.worldContext, planWithTripId);
 
       if (!result.allowed) {
         // 生成备选路线建议
         const alternativeRoutes = await this.generateAlternativeRoutes(
           body.worldContext,
-          body.plan,
+          planWithTripId,
           result.logs
         );
 
@@ -105,8 +122,25 @@ export class DecisionController {
     }
   ) {
     try {
+      // 参数验证
+      if (!body.worldContext) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'worldContext 是必需的参数');
+      }
+      if (!body.plan) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'plan 是必需的参数');
+      }
+      if (!body.plan.tripId && !body.tripId) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId 是必需的参数');
+      }
+
+      // 确保 plan 有 tripId
+      const planWithTripId: RoutePlanDraft = {
+        ...body.plan,
+        tripId: body.plan.tripId || body.tripId,
+      };
+
       // 使用 StrategyOrchestrator 执行 Dr.Dre 调整
-      const result = await this.strategyOrchestrator.run(body.worldContext, body.plan);
+      const result = await this.strategyOrchestrator.run(body.worldContext, planWithTripId);
 
       if (result.plan && result.finalAction === 'ADJUST') {
         return successResponse({
@@ -168,10 +202,30 @@ export class DecisionController {
     }
   ) {
     try {
+      // 参数验证
+      if (!body.worldContext) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'worldContext 是必需的参数');
+      }
+      if (!body.plan) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'plan 是必需的参数');
+      }
+      if (!body.plan.tripId && !body.tripId) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId 是必需的参数');
+      }
+      if (!body.unavailableNodes || body.unavailableNodes.length === 0) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'unavailableNodes 是必需的参数');
+      }
+
+      // 确保 plan 有 tripId
+      const planWithTripId: RoutePlanDraft = {
+        ...body.plan,
+        tripId: body.plan.tripId || body.tripId,
+      };
+
       // 标记不可用节点（通过 metadata）
       const updatedPlan: RoutePlanDraft = {
-        ...body.plan,
-        segments: body.plan.segments.map(segment => {
+        ...planWithTripId,
+        segments: (planWithTripId.segments || []).map(segment => {
           const unavailable = body.unavailableNodes.find(u => u.nodeId === segment.segmentId);
           return unavailable
             ? {

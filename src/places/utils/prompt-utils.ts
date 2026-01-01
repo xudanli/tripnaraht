@@ -1,5 +1,6 @@
 // src/places/utils/prompt-utils.ts
 import type { NaraHint, TimeSlotActivity } from '../interfaces/nature-poi.interface';
+import type { UserPreferencesDto } from '../../users/dto/user-profile.dto';
 
 export type LanguageCode = 'zh-CN' | 'en' | string;
 
@@ -115,6 +116,7 @@ export interface JourneyPromptArgs {
   destination?: string;
   budgetConfig?: any;
   pacingConfig?: any;
+  userPreferences?: UserPreferencesDto; // 用户偏好数据
   // 其他需要的参数...
 }
 
@@ -210,12 +212,100 @@ export function buildJourneyPrompt(args: JourneyPromptArgs): string {
 }
 
 /**
+ * 格式化用户偏好信息为可读文本
+ */
+function formatUserPreferences(preferences: UserPreferencesDto, language: LanguageCode): string[] {
+  const lines: string[] = [];
+  const isZh = String(language).startsWith('zh');
+
+  if (!preferences) {
+    return lines;
+  }
+
+  // 喜欢的景点类型
+  if (preferences.preferredAttractionTypes && preferences.preferredAttractionTypes.length > 0) {
+    if (isZh) {
+      lines.push(`- 喜欢的景点类型：${preferences.preferredAttractionTypes.join('、')}`);
+    } else {
+      lines.push(`- Preferred Attraction Types: ${preferences.preferredAttractionTypes.join(', ')}`);
+    }
+  }
+
+  // 饮食禁忌
+  if (preferences.dietaryRestrictions && preferences.dietaryRestrictions.length > 0) {
+    if (isZh) {
+      lines.push(`- 饮食禁忌：${preferences.dietaryRestrictions.join('、')}`);
+    } else {
+      lines.push(`- Dietary Restrictions: ${preferences.dietaryRestrictions.join(', ')}`);
+    }
+  }
+
+  // 是否偏好小众景点
+  if (preferences.preferOffbeatAttractions !== undefined) {
+    if (isZh) {
+      lines.push(`- 偏好小众景点：${preferences.preferOffbeatAttractions ? '是' : '否'}`);
+    } else {
+      lines.push(`- Prefer Offbeat Attractions: ${preferences.preferOffbeatAttractions ? 'Yes' : 'No'}`);
+    }
+  }
+
+  // 出行偏好
+  if (preferences.travelPreferences) {
+    const tp = preferences.travelPreferences;
+    const tpLines: string[] = [];
+    
+    if (tp.pace) {
+      if (isZh) {
+        tpLines.push(`节奏：${tp.pace === 'LEISURE' ? '休闲' : tp.pace === 'MODERATE' ? '适中' : tp.pace === 'FAST' ? '快速' : tp.pace}`);
+      } else {
+        tpLines.push(`Pace: ${tp.pace}`);
+      }
+    }
+    
+    if (tp.budget) {
+      if (isZh) {
+        tpLines.push(`预算：${tp.budget === 'LOW' ? '低' : tp.budget === 'MEDIUM' ? '中' : tp.budget === 'HIGH' ? '高' : tp.budget}`);
+      } else {
+        tpLines.push(`Budget: ${tp.budget}`);
+      }
+    }
+    
+    if (tp.accommodation) {
+      if (isZh) {
+        tpLines.push(`住宿：${tp.accommodation === 'BUDGET' ? '经济型' : tp.accommodation === 'COMFORTABLE' ? '舒适型' : tp.accommodation === 'LUXURY' ? '豪华型' : tp.accommodation}`);
+      } else {
+        tpLines.push(`Accommodation: ${tp.accommodation}`);
+      }
+    }
+    
+    if (tpLines.length > 0) {
+      if (isZh) {
+        lines.push(`- 出行偏好：${tpLines.join('，')}`);
+      } else {
+        lines.push(`- Travel Preferences: ${tpLines.join(', ')}`);
+      }
+    }
+  }
+
+  // 其他偏好
+  if (preferences.other && Object.keys(preferences.other).length > 0) {
+    if (isZh) {
+      lines.push(`- 其他偏好：${JSON.stringify(preferences.other)}`);
+    } else {
+      lines.push(`- Other Preferences: ${JSON.stringify(preferences.other)}`);
+    }
+  }
+
+  return lines;
+}
+
+/**
  * 构建元信息块（用户画像、行程约束等）
  * 
  * 这是一个示例实现，你可以根据实际需求扩展
  */
 function buildMetaBlock(args: JourneyPromptArgs): string {
-  const { language, startDate, targetDays, destination, userCountry, budgetConfig, pacingConfig } = args;
+  const { language, startDate, targetDays, destination, userCountry, budgetConfig, pacingConfig, userPreferences } = args;
   const isZh = String(language).startsWith('zh');
 
   const lines: string[] = [];
@@ -236,6 +326,18 @@ function buildMetaBlock(args: JourneyPromptArgs): string {
     if (pacingConfig) {
       lines.push(`- 节奏配置：${JSON.stringify(pacingConfig)}`);
     }
+    
+    // 添加用户偏好信息
+    if (userPreferences) {
+      lines.push('');
+      lines.push(`## 用户偏好`);
+      const preferenceLines = formatUserPreferences(userPreferences, language);
+      if (preferenceLines.length > 0) {
+        lines.push(...preferenceLines);
+      } else {
+        lines.push(`- 用户尚未设置偏好信息`);
+      }
+    }
   } else {
     lines.push('# Journey Generation Context');
     lines.push('');
@@ -251,6 +353,18 @@ function buildMetaBlock(args: JourneyPromptArgs): string {
     }
     if (pacingConfig) {
       lines.push(`- Pacing Config: ${JSON.stringify(pacingConfig)}`);
+    }
+    
+    // 添加用户偏好信息
+    if (userPreferences) {
+      lines.push('');
+      lines.push(`## User Preferences`);
+      const preferenceLines = formatUserPreferences(userPreferences, language);
+      if (preferenceLines.length > 0) {
+        lines.push(...preferenceLines);
+      } else {
+        lines.push(`- User has not set preferences yet`);
+      }
     }
   }
 

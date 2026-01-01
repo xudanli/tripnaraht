@@ -1,5 +1,5 @@
 // src/auth/dto/google-auth.dto.ts
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GoogleCodeDto {
@@ -71,5 +71,24 @@ export class RegisterWithEmailDto {
   @IsString()
   @IsOptional()
   displayName?: string;
+}
+
+export class LoginWithEmailDto {
+  @ApiProperty({
+    description: 'Email address',
+    example: 'user@example.com',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsEmail({}, { message: '无效的邮箱地址' })
+  email!: string;
+
+  @ApiProperty({
+    description: 'Verification code sent to email',
+    example: '123456',
+  })
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
 }
 

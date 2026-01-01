@@ -47,7 +47,65 @@ export class AbuStrategy implements DecisionPersonaStrategy {
     world: WorldModelContext,
     plan: RoutePlanDraft
   ): Promise<DecisionResult> {
-    this.logger.debug(`Abu 评估计划: ${plan.tripId}`);
+    // 参数验证
+    if (!world) {
+      this.logger.error('WorldModelContext 不能为空');
+      return {
+        allowed: false,
+        action: 'REJECT',
+        logs: [
+          {
+            persona: 'ABU',
+            action: 'REJECT',
+            explanation: 'WorldModelContext 不能为空',
+            reasonCodes: ['MISSING_WORLD_CONTEXT'],
+            evidenceRefs: [],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'PHYSICAL',
+          },
+        ],
+      };
+    }
+
+    if (!plan) {
+      this.logger.error('RoutePlanDraft 不能为空');
+      return {
+        allowed: false,
+        action: 'REJECT',
+        logs: [
+          {
+            persona: 'ABU',
+            action: 'REJECT',
+            explanation: 'RoutePlanDraft 不能为空',
+            reasonCodes: ['MISSING_PLAN'],
+            evidenceRefs: [],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'PHYSICAL',
+          },
+        ],
+      };
+    }
+
+    this.logger.debug(`Abu 评估计划: ${plan.tripId || 'unknown'}`);
+
+    if (!world.physical) {
+      this.logger.error('WorldModelContext.physical 不能为空');
+      return {
+        allowed: false,
+        action: 'REJECT',
+        logs: [
+          {
+            persona: 'ABU',
+            action: 'REJECT',
+            explanation: 'WorldModelContext.physical 不能为空',
+            reasonCodes: ['MISSING_PHYSICAL_MODEL'],
+            evidenceRefs: [],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'PHYSICAL',
+          },
+        ],
+      };
+    }
 
     const physical = world.physical;
     const complianceEvidence = world.complianceEvidence || [];

@@ -57,12 +57,21 @@ export class TripExtendedService {
       throw new NotFoundException(`行程不存在: ${tripId}`);
     }
 
+    // 通过邮箱查找用户
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`用户不存在: ${dto.email}`);
+    }
+
     // 检查是否已存在
     const existing = await this.prisma.tripCollaborator.findUnique({
       where: {
         tripId_userId: {
           tripId,
-          userId: dto.userId,
+          userId: user.id,
         },
       },
     });
@@ -76,7 +85,7 @@ export class TripExtendedService {
       data: {
         id: randomUUID(),
         tripId: tripId as any,
-        userId: dto.userId,
+        userId: user.id,
         role: dto.role,
       } as any,
     });

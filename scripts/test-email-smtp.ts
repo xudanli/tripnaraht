@@ -1,7 +1,7 @@
 // scripts/test-email-smtp.ts
 import axios from 'axios';
 
-const BASE_URL = process.env.API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 const TEST_EMAIL = process.env.TEST_EMAIL || `test${Date.now()}@example.com`;
 
 async function testSendCode() {
@@ -12,7 +12,7 @@ async function testSendCode() {
 
   try {
     const response = await axios.post(
-      `${BASE_URL}/auth/email/send-code`,
+      `${BASE_URL}/api/auth/email/send-code`,
       { email: TEST_EMAIL },
       {
         headers: {

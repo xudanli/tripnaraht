@@ -28,6 +28,7 @@ import { DataContractsModule } from './data-contracts/data-contracts.module';
 import { RouteDirectionsModule } from './route-directions/route-directions.module';
 import { RagModule } from './rag/rag.module';
 import { AuthModule } from './auth/auth.module';
+import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { AuthModule } from './auth/auth.module';
     DataContractsModule, // 数据契约模块（适配器模式）
     RouteDirectionsModule, // 国家级路线方向资产模块
     RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
+    ContactModule, // 联系我们模块
   ],
 })
 export class AppModule {}

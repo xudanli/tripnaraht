@@ -60,7 +60,17 @@ export class StrategyOrchestratorService {
     world: WorldModelContext,
     plan: RoutePlanDraft
   ): Promise<StrategyOrchestrationResult> {
-    this.logger.debug(`开始策略编排: ${plan.tripId}`);
+    // 参数验证
+    if (!world) {
+      this.logger.error('WorldModelContext 不能为空');
+      throw new Error('WorldModelContext 不能为空');
+    }
+    if (!plan) {
+      this.logger.error('RoutePlanDraft 不能为空');
+      throw new Error('RoutePlanDraft 不能为空');
+    }
+
+    this.logger.debug(`开始策略编排: ${plan.tripId || 'unknown'}`);
 
     const allLogs: DecisionLogEntry[] = [];
     let currentPlan: RoutePlanDraft = plan;

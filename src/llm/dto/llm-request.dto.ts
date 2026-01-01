@@ -20,7 +20,7 @@ export class NaturalLanguageToParamsDto {
   @ApiPropertyOptional({
     description: 'LLM 提供商',
     enum: LlmProvider,
-    default: LlmProvider.OPENAI,
+    default: LlmProvider.DEEPSEEK,
   })
   @IsEnum(LlmProvider)
   @IsOptional()

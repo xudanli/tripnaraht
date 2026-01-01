@@ -1,7 +1,7 @@
 // scripts/test-email-auth.ts
 import axios from 'axios';
 
-const BASE_URL = process.env.API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
 interface TestResult {
   name: string;
@@ -68,7 +68,7 @@ async function testAPI(
 
 async function runTests() {
   console.log('='.repeat(60));
-  console.log('📧 邮箱验证码注册接口测试');
+  console.log('📧 邮箱验证码注册与登录接口测试');
   console.log('='.repeat(60));
   console.log(`测试服务器: ${BASE_URL}\n`);
 
@@ -82,7 +82,7 @@ async function runTests() {
     await testAPI(
       '发送验证码 - 无效邮箱格式',
       'POST',
-      '/auth/email/send-code',
+      '/api/auth/email/send-code',
       { email: 'invalid-email' }
     )
   );
@@ -91,7 +91,7 @@ async function runTests() {
   const sendCodeResult = await testAPI(
     '发送验证码 - 有效邮箱',
     'POST',
-    '/auth/email/send-code',
+    '/api/auth/email/send-code',
     { email: testEmail }
   );
   results.push(sendCodeResult);
@@ -108,7 +108,7 @@ async function runTests() {
       await testAPI(
         '发送验证码 - 频繁请求测试',
         'POST',
-        '/auth/email/send-code',
+        '/api/auth/email/send-code',
         { email: testEmail }
       )
     );
@@ -119,7 +119,7 @@ async function runTests() {
     await testAPI(
       '注册 - 无效验证码',
       'POST',
-      '/auth/email/register',
+      '/api/auth/email/register',
       {
         email: testEmail,
         code: '000000',
@@ -136,7 +136,7 @@ async function runTests() {
       await testAPI(
         '注册 - 有效验证码',
         'POST',
-        '/auth/email/register',
+        '/api/auth/email/register',
         {
           email: testEmail,
           code: verificationCode,
@@ -158,7 +158,7 @@ async function runTests() {
     await testAPI(
       '注册 - 缺少必填字段',
       'POST',
-      '/auth/email/register',
+      '/api/auth/email/register',
       {
         email: testEmail,
         // 缺少 code
@@ -171,13 +171,105 @@ async function runTests() {
     await testAPI(
       '注册 - 无效邮箱格式',
       'POST',
-      '/auth/email/register',
+      '/api/auth/email/register',
       {
         email: 'invalid-email',
         code: '123456',
       }
     )
   );
+
+  // ==================== 登录接口测试 ====================
+  
+  // 用于登录测试的邮箱（假设已注册）
+  const loginTestEmail = process.env.LOGIN_TEST_EMAIL || testEmail;
+  
+  // 测试 9: 登录 - 邮箱未注册
+  results.push(
+    await testAPI(
+      '登录 - 邮箱未注册',
+      'POST',
+      '/api/auth/email/login',
+      {
+        email: 'notregistered@example.com',
+        code: '123456',
+      }
+    )
+  );
+
+  // 测试 10: 登录 - 无效验证码
+  results.push(
+    await testAPI(
+      '登录 - 无效验证码',
+      'POST',
+      '/api/auth/email/login',
+      {
+        email: loginTestEmail,
+        code: '000000',
+      }
+    )
+  );
+
+  // 测试 11: 登录 - 缺少必填字段
+  results.push(
+    await testAPI(
+      '登录 - 缺少必填字段',
+      'POST',
+      '/api/auth/email/login',
+      {
+        email: loginTestEmail,
+        // 缺少 code
+      }
+    )
+  );
+
+  // 测试 12: 登录 - 无效邮箱格式
+  results.push(
+    await testAPI(
+      '登录 - 无效邮箱格式',
+      'POST',
+      '/api/auth/email/login',
+      {
+        email: 'invalid-email',
+        code: '123456',
+      }
+    )
+  );
+
+  // 测试 13: 登录 - 有效验证码（需要从邮件中获取）
+  // 注意：这个测试需要手动输入验证码，并且用户必须已注册
+  const loginVerificationCode = process.env.LOGIN_VERIFICATION_CODE;
+  if (loginVerificationCode) {
+    // 先发送验证码用于登录
+    console.log('\n📧 为登录测试发送验证码...');
+    const loginSendCodeResult = await testAPI(
+      '登录 - 发送验证码',
+      'POST',
+      '/api/auth/email/send-code',
+      { email: loginTestEmail }
+    );
+    
+    if (loginSendCodeResult.success) {
+      console.log('\n⏳ 等待 2 秒让邮件发送...');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    
+    results.push(
+      await testAPI(
+        '登录 - 有效验证码',
+        'POST',
+        '/api/auth/email/login',
+        {
+          email: loginTestEmail,
+          code: loginVerificationCode,
+        }
+      )
+    );
+  } else {
+    console.log('\n⚠️  跳过登录成功测试（需要设置 LOGIN_VERIFICATION_CODE 环境变量）');
+    console.log('   提示: 从邮件中获取验证码，然后运行:');
+    console.log(`   LOGIN_VERIFICATION_CODE=123456 LOGIN_TEST_EMAIL=${loginTestEmail} npm run test:email-auth`);
+  }
 
   // 汇总结果
   console.log('\n' + '='.repeat(60));

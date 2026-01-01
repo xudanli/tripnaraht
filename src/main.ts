@@ -7,7 +7,16 @@ import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // 根据环境变量设置日志级别（生产环境默认不显示 debug）
+  const logLevels = process.env.LOG_LEVEL 
+    ? process.env.LOG_LEVEL.split(',').map(level => level.trim() as any)
+    : process.env.NODE_ENV === 'production'
+      ? ['error', 'warn', 'log'] // 生产环境不显示 debug
+      : ['error', 'warn', 'log', 'debug']; // 开发环境显示所有日志
+  
+  const app = await NestFactory.create(AppModule, {
+    logger: logLevels,
+  });
   
   // 设置全局 API 前缀
   app.setGlobalPrefix('api');
@@ -152,6 +161,7 @@ async function bootstrap() {
     .addTag('rag', 'RAG 检索增强生成接口（文档检索、合规规则提取、目的地深度信息）')
     .addTag('readiness', '旅行准备度检查接口（个性化准备清单、风险预警）')
     .addTag('auth', '认证相关接口（Google OAuth）')
+    .addTag('contact', '联系我们接口（反馈消息和图片上传）')
     .addServer('http://47.253.148.159', '生产环境')
     .addCookieAuth('refresh_token')
     .addBearerAuth()
@@ -165,7 +175,7 @@ async function bootstrap() {
     customCss: '.swagger-ui .topbar { display: none }',
   });
   
-  const port = Number(process.env.PORT ?? 4000);
+  const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0'); // ✅ 关键：不要只绑 127.0.0.1
   console.log(`API listening on http://0.0.0.0:${port}`);
   console.log(`📚 Swagger 文档: http://0.0.0.0:${port}/api`);

@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
     "build": "nest build",
     "start": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
-    "backend:dev": "nest start --watch",
+    "backend:dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
     "backend:build": "nest build",
     "backend:start": "node dist/src/main",
     "prisma:generate": "prisma generate",
@@ -111,12 +111,18 @@
     "rag:index": "ts-node --project tsconfig.backend.json scripts/index-rag-documents.ts",
     "rag:test": "ts-node --project tsconfig.backend.json scripts/test-rag-api.ts",
     "test:country-pack": "ts-node --project tsconfig.backend.json scripts/test-country-pack-api.ts",
-    "test:email-auth": "ts-node --project tsconfig.backend.json scripts/test-email-auth.ts"
+    "test:email-auth": "ts-node --project tsconfig.backend.json scripts/test-email-auth.ts",
+    "test:trip-nl": "ts-node --project tsconfig.backend.json scripts/test-trip-natural-language.ts",
+    "test:evidence-attention": "ts-node --project tsconfig.backend.json scripts/test-evidence-attention-api.ts",
+    "test:evidence-attention:service": "ts-node --project tsconfig.backend.json scripts/test-evidence-attention-service.ts",
+    "mcp:server": "npx tsx src/mcp/mcp-server.ts",
+    "mcp:check": "tsc --noEmit --project tsconfig.backend.json"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.7",
     "@langchain/openai": "^1.2.0",
+    "@modelcontextprotocol/sdk": "^1.25.1",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",

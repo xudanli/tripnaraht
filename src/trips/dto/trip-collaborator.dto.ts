@@ -1,5 +1,5 @@
 // src/trips/dto/trip-collaborator.dto.ts
-import { IsString, IsEnum } from 'class-validator';
+import { IsString, IsEnum, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum CollaboratorRole {
@@ -9,9 +9,9 @@ export enum CollaboratorRole {
 }
 
 export class AddCollaboratorDto {
-  @ApiProperty({ description: '用户ID', example: 'user-123' })
-  @IsString()
-  userId!: string;
+  @ApiProperty({ description: '用户邮箱', example: 'user@example.com' })
+  @IsEmail({}, { message: '无效的邮箱地址' })
+  email!: string;
 
   @ApiProperty({
     description: '角色',
