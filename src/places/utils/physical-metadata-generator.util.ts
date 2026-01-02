@@ -176,8 +176,13 @@ export class PhysicalMetadataGenerator {
       patches.push(this.patchFromElevation(metadata.elevationMeters));
     }
 
-    // 规则4：visitDuration（覆盖时长，优先级高于 typicalStay）
-    if (this.isValidString(metadata.visitDuration)) {
+    // 规则4（快招2）：estimated_duration_min 数据源优先
+    // 优先级：officialDurationMin > googlePopularTimesDurationMin > medianDurationBySimilarPoi > visitDuration > typicalStay
+    const durationPatch = this.getDurationFromDataSources(metadata);
+    if (durationPatch) {
+      patches.push(durationPatch);
+    } else if (this.isValidString(metadata.visitDuration)) {
+      // 回退到原有的 visitDuration 解析
       const duration = this.parseDuration(metadata.visitDuration);
       if (duration) {
         patches.push({
@@ -337,6 +342,38 @@ export class PhysicalMetadataGenerator {
     }
     
     return {};
+  }
+
+  /**
+   * 快招2：从数据源获取游玩时长（优先级：官方建议 > Google Popular Times > 统计中位数）
+   */
+  private static getDurationFromDataSources(metadata: any): PhysicalMetadataPatch | null {
+    // 优先级1：官方建议停留时长（最高优先级）
+    if (this.isValidNumber(metadata.officialDurationMin)) {
+      return {
+        estimated_duration_min: metadata.officialDurationMin,
+        source: 'officialDurationMin',
+      };
+    }
+
+    // 优先级2：Google Popular Times 推断的典型停留时长
+    if (this.isValidNumber(metadata.googlePopularTimesDurationMin)) {
+      return {
+        estimated_duration_min: metadata.googlePopularTimesDurationMin,
+        source: 'googlePopularTimesDurationMin',
+      };
+    }
+
+    // 优先级3：同类 POI 统计中位数
+    if (this.isValidNumber(metadata.medianDurationBySimilarPoi)) {
+      return {
+        estimated_duration_min: metadata.medianDurationBySimilarPoi,
+        source: 'medianDurationBySimilarPoi',
+      };
+    }
+
+    // 如果都没有，返回 null，让调用者回退到其他方式
+    return null;
   }
 
   /**

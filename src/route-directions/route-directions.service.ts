@@ -84,7 +84,7 @@ export class RouteDirectionsService {
       isActive: dto.isActive ?? true,
     };
 
-    return (this.prisma as any).routeTemplate.create({
+    return this.prisma.routeTemplate.create({
       data,
       include: { routeDirection: true },
     });
@@ -313,7 +313,7 @@ export class RouteDirectionsService {
   async findRouteTemplateById(
     id: number,
   ): Promise<any> {
-    const template = await (this.prisma as any).routeTemplate.findUnique({
+    const template = await this.prisma.routeTemplate.findUnique({
       where: { id },
       include: { routeDirection: true },
     });
@@ -332,7 +332,7 @@ export class RouteDirectionsService {
     routeDirectionId: number,
     durationDays: number,
   ): Promise<any> {
-    return (this.prisma as any).routeTemplate.findFirst({
+    return this.prisma.routeTemplate.findFirst({
       where: {
         routeDirectionId,
         durationDays,
@@ -380,7 +380,7 @@ export class RouteDirectionsService {
       query.skip = options.offset;
     }
 
-    return (this.prisma as any).routeTemplate.findMany(query);
+    return this.prisma.routeTemplate.findMany(query);
   }
 
   /**
@@ -391,7 +391,7 @@ export class RouteDirectionsService {
     dto: UpdateRouteTemplateDto,
   ): Promise<any> {
     // 检查模板是否存在
-    const existing = await (this.prisma as any).routeTemplate.findUnique({
+    const existing = await this.prisma.routeTemplate.findUnique({
       where: { id },
     });
 
@@ -437,7 +437,7 @@ export class RouteDirectionsService {
 
     updateData.updatedAt = new Date();
 
-    return (this.prisma as any).routeTemplate.update({
+    return this.prisma.routeTemplate.update({
       where: { id },
       data: updateData,
       include: { routeDirection: true },
@@ -448,7 +448,7 @@ export class RouteDirectionsService {
    * 删除路线模板（软删除：设置 isActive = false）
    */
   async deleteRouteTemplate(id: number): Promise<void> {
-    const existing = await (this.prisma as any).routeTemplate.findUnique({
+    const existing = await this.prisma.routeTemplate.findUnique({
       where: { id },
     });
 
@@ -456,7 +456,7 @@ export class RouteDirectionsService {
       throw new NotFoundException(`Route template with ID ${id} not found`);
     }
 
-    await (this.prisma as any).routeTemplate.update({
+    await this.prisma.routeTemplate.update({
       where: { id },
       data: {
         isActive: false,
@@ -668,7 +668,6 @@ export class RouteDirectionsService {
           destination: countryCode,
           startDate: startDate,
           endDate: endDate,
-          totalBudget: dto.totalBudget,
           budgetConfig: {
             totalBudget: dto.totalBudget || 0,
             currency: 'CNY',
@@ -798,17 +797,143 @@ export class RouteDirectionsService {
     countryCode: string,
     dayPlans: DayPlan[],
     routeDirection: any
-  ): Promise<Array<{ id: number; nameCN: string; nameEN?: string; category: string; lat: number; lng: number }>> {
-    // 构建类别过滤（从 dayPlans 的主题推断）
+  ): Promise<Array<{ id: number; nameCN: string; nameEN?: string; category: string; lat: number; lng: number; uuid?: string; isRequired?: boolean }>> {
+    // 1. 收集所有 requiredNodes（Place UUID 或名称），并建立映射
+    const requiredNodeIds: string[] = [];
+    const requiredNodeNames: string[] = [];
+    const requiredNodesSet = new Set<string>(); // 用于快速判断是否为required
+    
+    for (const plan of dayPlans) {
+      if (plan.requiredNodes && plan.requiredNodes.length > 0) {
+        for (const node of plan.requiredNodes) {
+          requiredNodesSet.add(node);
+          // 判断是 UUID 还是名称
+          if (node.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            requiredNodeIds.push(node);
+          } else {
+            requiredNodeNames.push(node);
+          }
+        }
+      }
+    }
+
+    // 2. 构建类别过滤（从 dayPlans 的主题推断）
     const categories = this.extractCategoriesFromDayPlans(dayPlans);
 
     const categorySql = categories.length > 0
       ? Prisma.sql`AND p.category = ANY(${categories}::"PlaceCategory"[])`
       : Prisma.sql``;
 
-    // 查询地点
+    // 3. 构建 requiredNodes 过滤（优先匹配 requiredNodes）
+    let requiredNodesSql = Prisma.sql``;
+    if (requiredNodeIds.length > 0 || requiredNodeNames.length > 0) {
+      const conditions: string[] = [];
+      if (requiredNodeIds.length > 0) {
+        conditions.push(`p.uuid = ANY(${requiredNodeIds}::text[])`);
+      }
+      if (requiredNodeNames.length > 0) {
+        conditions.push(`(p."nameCN" = ANY(${requiredNodeNames}::text[]) OR p."nameEN" = ANY(${requiredNodeNames}::text[]))`);
+      }
+      requiredNodesSql = Prisma.sql`OR (${Prisma.raw(conditions.join(' OR '))})`;
+    }
+
+    // 4. 查询地点（优先返回 requiredNodes，然后返回其他候选）
+    // 如果 requiredNodes 存在，优先查询这些节点
+    if (requiredNodeIds.length > 0 || requiredNodeNames.length > 0) {
+      const requiredPlaces = await this.prisma.$queryRaw<Array<{
+        id: number;
+        uuid: string;
+        nameCN: string;
+        nameEN: string | null;
+        category: string;
+        lat: number;
+        lng: number;
+      }>>`
+        SELECT 
+          p.id,
+          p.uuid,
+          p."nameCN",
+          p."nameEN",
+          p.category,
+          ST_Y(p.location::geometry) as lat,
+          ST_X(p.location::geometry) as lng
+        FROM "Place" p
+        INNER JOIN "City" c ON p."cityId" = c.id
+        WHERE c."countryCode" = ${countryCode}
+          AND p.location IS NOT NULL
+          ${requiredNodeIds.length > 0 
+            ? Prisma.sql`AND (p.uuid = ANY(${requiredNodeIds}::text[])`
+            : Prisma.sql`AND (FALSE`
+          }
+          ${requiredNodeNames.length > 0
+            ? Prisma.sql`OR p."nameCN" = ANY(${requiredNodeNames}::text[]) OR p."nameEN" = ANY(${requiredNodeNames}::text[]))`
+            : Prisma.sql`)`
+          }
+        ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
+      `;
+
+      // 如果找到了 requiredNodes，添加到结果中
+      if (requiredPlaces.length > 0) {
+        const requiredPlaceIds = requiredPlaces.map(p => p.id);
+        
+        // 继续查询其他候选地点（排除已找到的 requiredNodes）
+        const otherPlaces = await this.prisma.$queryRaw<Array<{
+          id: number;
+          uuid: string;
+          nameCN: string;
+          nameEN: string | null;
+          category: string;
+          lat: number;
+          lng: number;
+        }>>`
+          SELECT 
+            p.id,
+            p.uuid,
+            p."nameCN",
+            p."nameEN",
+            p.category,
+            ST_Y(p.location::geometry) as lat,
+            ST_X(p.location::geometry) as lng
+          FROM "Place" p
+          INNER JOIN "City" c ON p."cityId" = c.id
+          WHERE c."countryCode" = ${countryCode}
+            AND p.location IS NOT NULL
+            AND p.id != ALL(${requiredPlaceIds}::int[])
+            ${categorySql}
+          ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
+          LIMIT ${200 - requiredPlaces.length}
+        `;
+
+        // 合并结果：requiredNodes 在前，并标记 isRequired
+        return [
+          ...requiredPlaces.map(place => ({
+            id: place.id,
+            uuid: place.uuid,
+            nameCN: place.nameCN,
+            nameEN: place.nameEN || undefined,
+            category: place.category,
+            lat: place.lat,
+            lng: place.lng,
+            isRequired: true,
+          })),
+          ...otherPlaces.map(place => ({
+            id: place.id,
+            uuid: place.uuid,
+            nameCN: place.nameCN,
+            nameEN: place.nameEN || undefined,
+            category: place.category,
+            lat: place.lat,
+            lng: place.lng,
+            isRequired: false,
+          })),
+        ];
+      }
+    }
+
+    // 5. 如果没有 requiredNodes 或未找到，使用原来的逻辑
     const rawPlaces = await this.prisma.$queryRaw<Array<{
       id: number;
+      uuid: string;
       nameCN: string;
       nameEN: string | null;
       category: string;
@@ -817,6 +942,7 @@ export class RouteDirectionsService {
     }>>`
       SELECT 
         p.id,
+        p.uuid,
         p."nameCN",
         p."nameEN",
         p.category,
@@ -833,11 +959,13 @@ export class RouteDirectionsService {
 
     return rawPlaces.map(place => ({
       id: place.id,
+      uuid: place.uuid,
       nameCN: place.nameCN,
       nameEN: place.nameEN || undefined,
       category: place.category,
       lat: place.lat,
       lng: place.lng,
+      isRequired: false,
     }));
   }
 
@@ -936,44 +1064,168 @@ export class RouteDirectionsService {
 
   /**
    * Mock LLM 编排（临时实现）
+   * 改进：每天选择不同的POI，考虑主题和requiredNodes
    */
   private mockLLMOrchestration(
     template: any,
-    candidates: Array<{ id: number; nameCN: string; category: string }>,
+    candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string; uuid?: string; isRequired?: boolean }>,
     durationDays: number
   ): any {
     const days = [];
     const dayPlans = template.dayPlans as DayPlan[];
+    
+    // 跟踪已使用的POI，避免重复
+    const usedPlaceIds = new Set<number>();
+    
+    // 按类别分组候选POI
+    const restaurants = candidates.filter(c => c.category === 'RESTAURANT');
+    const attractions = candidates.filter(c => c.category === 'ATTRACTION');
+    const hotels = candidates.filter(c => c.category === 'HOTEL');
+    
+    // 获取requiredNodes对应的POI
+    const getRequiredPOIs = (dayPlan: DayPlan | undefined): number[] => {
+      if (!dayPlan?.requiredNodes || dayPlan.requiredNodes.length === 0) {
+        return [];
+      }
+      
+      const requiredIds: number[] = [];
+      for (const node of dayPlan.requiredNodes) {
+        // 尝试通过UUID匹配
+        const byUuid = candidates.find(c => c.uuid === node);
+        if (byUuid) {
+          requiredIds.push(byUuid.id);
+          continue;
+        }
+        
+        // 尝试通过名称匹配
+        const byName = candidates.find(
+          c => c.nameCN === node || c.nameEN === node
+        );
+        if (byName) {
+          requiredIds.push(byName.id);
+        }
+      }
+      return requiredIds;
+    };
+    
+    // 根据主题匹配POI（简单关键词匹配）
+    const matchPOIsByTheme = (theme: string | undefined, pool: typeof candidates): typeof candidates => {
+      if (!theme) return pool;
+      
+      const themeLower = theme.toLowerCase();
+      return pool.filter(c => {
+        const nameCN = (c.nameCN || '').toLowerCase();
+        const nameEN = (c.nameEN || '').toLowerCase();
+        return nameCN.includes(themeLower) || nameEN.includes(themeLower);
+      });
+    };
+    
+    // 获取未使用的POI
+    const getUnusedPOI = (pool: typeof candidates, preferred?: typeof candidates): number | null => {
+      // 优先使用preferred中的POI
+      if (preferred && preferred.length > 0) {
+        for (const poi of preferred) {
+          if (!usedPlaceIds.has(poi.id)) {
+            usedPlaceIds.add(poi.id);
+            return poi.id;
+          }
+        }
+      }
+      
+      // 从pool中选择未使用的
+      for (const poi of pool) {
+        if (!usedPlaceIds.has(poi.id)) {
+          usedPlaceIds.add(poi.id);
+          return poi.id;
+        }
+      }
+      
+      // 如果都用完了，允许重复使用（但尽量选择不同的）
+      if (pool.length > 0) {
+        // 选择使用次数最少的（简单实现：随机选择）
+        const available = pool.filter(p => !usedPlaceIds.has(p.id));
+        if (available.length > 0) {
+          const selected = available[Math.floor(Math.random() * available.length)];
+          usedPlaceIds.add(selected.id);
+          return selected.id;
+        }
+        // 如果都用了，返回第一个（避免null）
+        return pool[0].id;
+      }
+      
+      return null;
+    };
 
     for (let day = 1; day <= durationDays; day++) {
       const dayPlan = dayPlans.find(p => p.day === day) || dayPlans[day - 1];
+      const theme = dayPlan?.theme || '';
       
-      // 简单分配：根据类别选择地点
-      const restaurants = candidates.filter(c => c.category === 'RESTAURANT');
-      const attractions = candidates.filter(c => c.category === 'ATTRACTION');
+      // 获取requiredNodes对应的POI
+      const requiredPOIs = getRequiredPOIs(dayPlan);
+      
+      // 根据主题匹配的POI
+      const themeAttractions = matchPOIsByTheme(theme, attractions);
+      const themeRestaurants = matchPOIsByTheme(theme, restaurants);
+      
+      // 优先使用requiredNodes中的POI
+      const requiredAttractions = attractions.filter(a => requiredPOIs.includes(a.id));
+      const requiredRestaurants = restaurants.filter(r => requiredPOIs.includes(r.id));
+      
+      // 选择POI（优先required，其次theme匹配，最后从全部中选择）
+      const morningPOI = getUnusedPOI(
+        attractions,
+        requiredAttractions.length > 0 ? requiredAttractions : themeAttractions
+      );
+      
+      const lunchPOI = getUnusedPOI(
+        restaurants,
+        requiredRestaurants.length > 0 ? requiredRestaurants : themeRestaurants
+      );
+      
+      const afternoonPOI = getUnusedPOI(
+        attractions,
+        requiredAttractions.length > 0 ? requiredAttractions : themeAttractions
+      );
+      
+      const dinnerPOI = getUnusedPOI(
+        restaurants,
+        requiredRestaurants.length > 0 ? requiredRestaurants : themeRestaurants
+      );
 
       days.push({
         day,
         slots: {
-          morning: attractions.length > 0 ? {
-            placeId: attractions[0].id,
-            reason: `根据模板主题"${dayPlan?.theme || '探索'}"选择`,
-            required: false,
+          morning: morningPOI ? {
+            placeId: morningPOI,
+            reason: requiredPOIs.includes(morningPOI) 
+              ? `模板要求的必游景点：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`
+              : theme 
+                ? `根据主题"${theme}"选择：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`
+                : `探索景点：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`,
+            required: requiredPOIs.includes(morningPOI),
           } : null,
-          lunch: restaurants.length > 0 ? {
-            placeId: restaurants[0].id,
-            reason: '午餐推荐',
-            required: false,
+          lunch: lunchPOI ? {
+            placeId: lunchPOI,
+            reason: requiredPOIs.includes(lunchPOI)
+              ? `模板推荐的餐厅：${candidates.find(c => c.id === lunchPOI)?.nameCN || ''}`
+              : '午餐推荐',
+            required: requiredPOIs.includes(lunchPOI),
           } : null,
-          afternoon: attractions.length > 1 ? {
-            placeId: attractions[1].id,
-            reason: `继续探索"${dayPlan?.theme || '景点'}"`,
-            required: false,
+          afternoon: afternoonPOI ? {
+            placeId: afternoonPOI,
+            reason: requiredPOIs.includes(afternoonPOI)
+              ? `模板要求的必游景点：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`
+              : theme
+                ? `继续探索"${theme}"：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`
+                : `继续探索：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`,
+            required: requiredPOIs.includes(afternoonPOI),
           } : null,
-          dinner: restaurants.length > 1 ? {
-            placeId: restaurants[1]?.id || restaurants[0].id,
-            reason: '晚餐推荐',
-            required: false,
+          dinner: dinnerPOI ? {
+            placeId: dinnerPOI,
+            reason: requiredPOIs.includes(dinnerPOI)
+              ? `模板推荐的餐厅：${candidates.find(c => c.id === dinnerPOI)?.nameCN || ''}`
+              : '晚餐推荐',
+            required: requiredPOIs.includes(dinnerPOI),
           } : null,
           evening: null,
         },

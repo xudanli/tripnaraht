@@ -14,7 +14,12 @@ export interface PlaceMetadata {
     fri?: string;
     sat?: string;
     sun?: string;
+    // OSM opening_hours 格式（原始字符串，如 "Mo-Fr 09:00-18:00"）
+    osmFormat?: string;
   };
+
+  // 🟢 营业状态（用于前端显示红黄绿）
+  business_status?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
 
   // 📞 联系方式
   contact?: {
@@ -68,5 +73,21 @@ export interface PlaceMetadata {
   
   /** 酒店星级（仅当 category = HOTEL 时） */
   hotel_tier?: number;
+
+  // 🥾 徒步路线关联（快招3：强绑定 Trail 数据）
+  /** 关联的 Trail ID（用于徒步类 POI） */
+  trailId?: number;
+  /** 关联的路由 ID（外部系统，如 AllTrails/Komoot） */
+  routeId?: string;
+  /** 路由数据源（alltrails, komoot, internal） */
+  routeSource?: 'alltrails' | 'komoot' | 'internal';
+
+  // ⏱️ 游玩时长数据源（快招2：数据源优先）
+  /** 官方建议停留时长（分钟）- 最高优先级 */
+  officialDurationMin?: number;
+  /** Google Popular Times 推断的典型停留时长（分钟） */
+  googlePopularTimesDurationMin?: number;
+  /** 同类 POI 统计中位数（分钟）- 按 category + subCategory + country 计算 */
+  medianDurationBySimilarPoi?: number;
 }
 

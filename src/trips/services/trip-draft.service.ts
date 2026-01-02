@@ -73,8 +73,18 @@ export class TripDraftService {
 
   /**
    * 生成行程草案
+   * @param dto 行程草案创建参数
+   * @param onProgress 进度回调函数（可选）
    */
-  async generateDraft(dto: CreateTripDraftDto): Promise<TripDraftResponseDto> {
+  async generateDraft(
+    dto: CreateTripDraftDto,
+    onProgress?: (progress: {
+      status: 'generating' | 'completed' | 'failed';
+      stage: string;
+      message: string;
+      itemsCount?: number;
+    }) => Promise<void>
+  ): Promise<TripDraftResponseDto> {
     const startTime = Date.now();
 
     // 规范化国家代码
@@ -105,7 +115,7 @@ export class TripDraftService {
 
     // Step 3: LLM 编排选择
     this.logger.log(`使用 LLM 从 ${candidates.length} 个候选中编排 ${dto.days} 天行程`);
-    const llmResult = await this.llmOrchestrate(dto, candidates, days);
+    const llmResult = await this.llmOrchestrate(dto, candidates, days, onProgress);
 
     // Step 4: 规则校验和修复
     const validationWarnings: string[] = [];
@@ -124,7 +134,7 @@ export class TripDraftService {
       validationWarnings: validationWarnings.length > 0 ? validationWarnings : undefined,
       metadata: {
         generationTime,
-        llmProvider: 'openai',
+        llmProvider: 'deepseek',
       },
     };
   }
@@ -198,6 +208,84 @@ export class TripDraftService {
   }
 
   /**
+   * 按城市检索候选地点（用于替换行程项）
+   */
+  private async retrieveCandidatesByCity(
+    cityId: number,
+    countryCode: string,
+    style?: TravelStyle,
+    constraints?: { mustBeOpen?: boolean; avoidCategories?: string[] }
+  ): Promise<CandidatePlace[]> {
+    // 构建类别过滤
+    const categoryFilter = style 
+      ? this.getCategoryFilterByStyle(style)
+      : [];
+
+    const categorySql = categoryFilter.length > 0
+      ? Prisma.sql`AND p.category = ANY(${categoryFilter}::"PlaceCategory"[])`
+      : Prisma.sql``;
+
+    // 避免类别过滤
+    const avoidCategorySql = constraints?.avoidCategories && constraints.avoidCategories.length > 0
+      ? Prisma.sql`AND p.category != ALL(${constraints.avoidCategories}::"PlaceCategory"[])`
+      : Prisma.sql``;
+
+    // 使用 Raw Query 提取坐标（限制在同一城市）
+    const rawPlaces = await this.prisma.$queryRaw<Array<{
+      id: number;
+      nameCN: string;
+      nameEN: string | null;
+      category: string;
+      metadata: any;
+      physicalMetadata: any;
+      rating: number | null;
+      lat: number;
+      lng: number;
+    }>>`
+      SELECT 
+        p.id,
+        p."nameCN",
+        p."nameEN",
+        p.category,
+        p.metadata,
+        p."physicalMetadata",
+        p.rating,
+        ST_Y(p.location::geometry) as lat,
+        ST_X(p.location::geometry) as lng
+      FROM "Place" p
+      INNER JOIN "City" c ON p."cityId" = c.id
+      WHERE c.id = ${cityId}
+        AND c."countryCode" = ${countryCode}
+        AND p.location IS NOT NULL
+        ${categorySql}
+        ${avoidCategorySql}
+      ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
+      LIMIT 50
+    `;
+
+    // 转换为候选格式
+    return rawPlaces.map(place => {
+      const metadata = place.metadata as PlaceMetadata | null;
+      const physicalMetadata = place.physicalMetadata as PhysicalMetadata | null;
+
+      return {
+        id: place.id,
+        nameCN: place.nameCN,
+        nameEN: place.nameEN,
+        type: place.category,
+        category: place.category,
+        lat: place.lat,
+        lng: place.lng,
+        openingHours: metadata?.openingHours,
+        avgVisitDuration: physicalMetadata?.estimated_duration_min || 60,
+        tags: metadata?.rawTags || [],
+        popularity: place.rating ? place.rating * 2 : 5,
+        rating: place.rating || undefined,
+      };
+    });
+  }
+
+  /**
    * 根据风格获取类别过滤
    */
   private getCategoryFilterByStyle(style: TravelStyle): string[] {
@@ -238,11 +326,18 @@ export class TripDraftService {
 
   /**
    * LLM 编排选择
+   * @param onProgress 进度回调函数（可选）
    */
   private async llmOrchestrate(
     dto: CreateTripDraftDto,
     candidates: CandidatePlace[],
-    days: Array<{ day: number; date: string }>
+    days: Array<{ day: number; date: string }>,
+    onProgress?: (progress: {
+      status: 'generating' | 'completed' | 'failed';
+      stage: string;
+      message: string;
+      itemsCount?: number;
+    }) => Promise<void>
   ): Promise<any> {
     // 构建 LLM Prompt
     const prompt = this.buildOrchestrationPrompt(dto, candidates, days);
@@ -285,17 +380,71 @@ export class TripDraftService {
       required: ['days'],
     };
 
+    let response: string | undefined;
     try {
-      const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+      this.logger.log(`开始调用 LLM 编排行程（${candidates.length} 个候选地点，${days.length} 天）`);
+      const startTime = Date.now();
+      
+      // 使用 DeepSeek（内网环境可用）
+      response = await this.llmService.callLlmWithSchema(
+        LlmProvider.DEEPSEEK,
         prompt,
         schema
       );
 
-      const parsed = JSON.parse(response);
+      const elapsed = Date.now() - startTime;
+      this.logger.log(`LLM 编排完成，耗时 ${elapsed}ms`);
+
+      // 处理可能包含 markdown 代码块标记的响应
+      const parsed = this.extractJSON(response);
+      
+      // 记录原始响应（用于调试）
+      if (response.includes('```')) {
+        this.logger.debug(`LLM 响应包含 markdown 代码块，已清理`);
+      }
+      
+      // 验证返回结果
+      if (!parsed.days || !Array.isArray(parsed.days)) {
+        this.logger.warn(`LLM 返回结果格式异常: ${JSON.stringify(parsed).substring(0, 200)}`);
+        throw new BadRequestException('LLM 返回结果格式不正确');
+      }
+      
+      this.logger.log(`LLM 返回了 ${parsed.days.length} 天的编排结果`);
+      
+      // LLM 编排完成，通知进度回调
+      if (onProgress) {
+        try {
+          await onProgress({
+            status: 'generating',
+            stage: 'llm_completed',
+            message: `LLM 编排完成，已生成 ${parsed.days.length} 天的行程规划`,
+          });
+        } catch (progressError: any) {
+          this.logger.warn(`进度回调失败: ${progressError.message}`);
+          // 不抛出错误，避免影响主流程
+        }
+      }
+      
       return parsed;
     } catch (error: any) {
       this.logger.error(`LLM 编排失败: ${error.message}`, error.stack);
+      if (response) {
+        this.logger.error(`LLM 原始响应（前500字符）: ${response.substring(0, 500)}`);
+      }
+      
+      // 通知进度回调：失败
+      if (onProgress) {
+        try {
+          await onProgress({
+            status: 'failed',
+            stage: 'llm_error',
+            message: `LLM 编排失败: ${error.message}`,
+          });
+        } catch (progressError: any) {
+          this.logger.warn(`进度回调失败: ${progressError.message}`);
+        }
+      }
+      
       throw new BadRequestException(`行程生成失败: ${error.message}`);
     }
   }
@@ -637,7 +786,11 @@ ${candidatesJson}
     const currentItem = await this.prisma.itineraryItem.findUnique({
       where: { id: itemId },
       include: {
-        Place: true,
+        Place: {
+          include: {
+            City: true,
+          },
+        },
         TripDay: {
           include: {
             Trip: true,
@@ -648,6 +801,10 @@ ${candidatesJson}
 
     if (!currentItem || currentItem.TripDay.tripId !== tripId) {
       throw new NotFoundException(`找不到指定的行程项 (ID: ${itemId})`);
+    }
+
+    if (!currentItem.Place) {
+      throw new NotFoundException('当前行程项关联的地点不存在');
     }
 
     if (!currentItem.startTime) {
@@ -664,11 +821,15 @@ ${candidatesJson}
     else if (hour >= 18 && hour < 20) slot = TimeSlot.DINNER;
     else slot = TimeSlot.EVENING;
 
-    // 获取当前地点位置（如果需要距离计算，可以从 Place 的 location 字段提取）
-    // 这里简化处理，不提取坐标
+    // 获取当前地点所在的城市信息
+    const currentCity = currentItem.Place.City;
+    const currentCityId = currentCity?.id;
+    const currentCityName = currentCity?.nameCN || currentCity?.nameEN || '未知城市';
+    const countryCode = currentItem.TripDay.Trip.destination;
+
+    this.logger.log(`替换行程项：当前地点位于 ${currentCityName} (城市ID: ${currentCityId})`);
 
     // 根据 reason 构建检索条件
-    const countryCode = currentItem.TripDay.Trip.destination;
     const constraints: any = {};
     
     if (dto.reason === 'too_tired') {
@@ -680,8 +841,31 @@ ${candidatesJson}
       // 根据新风格检索
     }
 
-    // 检索候选
-    const candidates = await this.retrieveCandidates({
+    // 检索候选：优先同城市，如果不够再扩展到同国家
+    let candidates: CandidatePlace[] = [];
+    let sameCityCount = 0;
+    let sameCityIds = new Set<number>();
+    
+    if (currentCityId) {
+      // 首先尝试在同城市内查找
+      const sameCityCandidates = await this.retrieveCandidatesByCity(
+        currentCityId,
+        countryCode,
+        dto.preferredStyle,
+        dto.constraints
+      );
+      
+      sameCityCount = sameCityCandidates.length;
+      candidates = sameCityCandidates;
+      sameCityIds = new Set(sameCityCandidates.map(c => c.id));
+      
+      this.logger.log(`同城市候选数量: ${sameCityCount}`);
+    }
+    
+    // 如果同城市候选不足（少于5个），扩展到同国家
+    if (candidates.length < 5) {
+      this.logger.log(`同城市候选不足，扩展到同国家检索`);
+      const countryCandidates = await this.retrieveCandidates({
       destination: countryCode,
       days: 1,
       style: dto.preferredStyle,
@@ -690,6 +874,17 @@ ${candidatesJson}
         avoidCategories: dto.constraints.avoidCategories,
       } : undefined,
     } as CreateTripDraftDto);
+      
+      // 过滤出其他城市的候选（排除同城市的）
+      const otherCityCandidates = countryCandidates.filter(c => 
+        !sameCityIds.has(c.id)
+      );
+      
+      // 合并：同城市在前，其他城市在后
+      candidates = [...candidates, ...otherCityCandidates];
+      
+      this.logger.log(`合并后候选数量: ${candidates.length} (同城市: ${sameCityCount}, 其他城市: ${otherCityCandidates.length})`);
+    }
 
     // 过滤候选（排除当前地点）
     const filteredCandidates = candidates.filter(c => c.id !== currentItem.placeId);
@@ -698,10 +893,22 @@ ${candidatesJson}
       throw new NotFoundException('找不到合适的替代地点');
     }
 
+    // 排序：优先同城市，然后按评分排序
+    const sortedCandidates = filteredCandidates.sort((a, b) => {
+      const aIsSameCity = sameCityIds.has(a.id);
+      const bIsSameCity = sameCityIds.has(b.id);
+      
+      // 同城市的优先
+      if (aIsSameCity && !bIsSameCity) return -1;
+      if (!aIsSameCity && bIsSameCity) return 1;
+      
+      // 同城市或都不同城市时，按评分排序
+      return (b.rating || 0) - (a.rating || 0);
+    });
+
     // 使用 LLM 选择最佳替换
-    // 简化处理：选择评分最高的
-    const bestCandidate = filteredCandidates
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
+    // 简化处理：选择排序后的第一个（优先同城市且评分最高）
+    const bestCandidate = sortedCandidates[0];
 
     // 构建新 item
     if (!currentItem.startTime || !currentItem.endTime) {
@@ -795,5 +1002,43 @@ ${candidatesJson}
       updatedDraft: newDraft,
       changes,
     };
+  }
+
+  /**
+   * 提取 JSON（处理可能包含 markdown 代码块标记的情况）
+   * 与 llm.service.ts 中的 extractJSON 方法保持一致
+   */
+  private extractJSON(response: string): any {
+    if (!response || typeof response !== 'string') {
+      throw new BadRequestException('LLM 返回的响应为空或格式不正确');
+    }
+
+    let cleaned = response.trim();
+    
+    // 移除 markdown 代码块标记（更严格的匹配，支持多行）
+    // 匹配开头的 ```json 或 ```（可能后面有换行）
+    cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/i, '');
+    // 匹配结尾的 ```（可能前面有换行）
+    cleaned = cleaned.replace(/\n?\s*```$/i, '');
+    cleaned = cleaned.trim();
+    
+    // 尝试提取 JSON 对象（如果响应中包含其他文本）
+    // 使用更宽松的匹配，包括可能的多行 JSON
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    // 再次清理可能的空白字符
+    cleaned = cleaned.trim();
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (parseError: any) {
+      this.logger.error(`JSON 解析失败，原始响应（前500字符）: ${response.substring(0, 500)}`);
+      this.logger.error(`清理后的内容（前500字符）: ${cleaned.substring(0, 500)}`);
+      this.logger.error(`解析错误详情: ${parseError.message}`);
+      throw new BadRequestException(`LLM 返回的 JSON 格式无效: ${parseError.message}`);
+    }
   }
 }

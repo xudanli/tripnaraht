@@ -1,5 +1,5 @@
 // src/trips/trips.service.ts
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { DateTime } from 'luxon';
@@ -21,6 +21,8 @@ import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto,
 
 @Injectable()
 export class TripsService {
+  private readonly logger = new Logger(TripsService.name);
+
   constructor(
     private prisma: PrismaService,
     private flightPriceService: FlightPriceService,
@@ -217,19 +219,44 @@ export class TripsService {
 
   /**
    * 查找所有行程
+   * 
+   * @param userId 当前用户 ID（可选，用于判断是否已收藏）
    */
-  async findAll() {
-    return this.prisma.trip.findMany({
+  async findAll(userId?: string) {
+    const trips = await this.prisma.trip.findMany({
       include: {
         TripDay: {
           include: {
             ItineraryItem: true,
           },
         },
+        // 查询收藏统计
+        _count: {
+          select: {
+            TripCollection: true,
+          },
+        },
+        // 如果提供了 userId，查询当前用户是否已收藏
+        ...(userId ? {
+          TripCollection: {
+            where: { userId },
+            select: { id: true },
+          },
+        } : {}),
       },
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    // 为每个行程添加 isCollected 字段，并清理内部字段
+    return trips.map((trip: any) => {
+      const { _count, TripCollection, ...tripData } = trip;
+      return {
+        ...tripData,
+        isCollected: userId ? (TripCollection?.length > 0) : false,
+        collectionCount: _count?.TripCollection || 0,
+      };
     });
   }
 
@@ -242,9 +269,12 @@ export class TripsService {
    *     - Items (按时间排序)
    *       - Place (地点详情)
    * 
-   * 同时包含数据增强（统计信息）
+   * 同时包含数据增强（统计信息、点赞收藏状态）
+   * 
+   * @param id 行程 ID
+   * @param userId 当前用户 ID（可选，用于判断是否已点赞/收藏）
    */
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
       include: {
@@ -264,7 +294,25 @@ export class TripsService {
               }
             }
           }
-        }
+        },
+        // 查询点赞和收藏统计
+        _count: {
+          select: {
+            TripLike: true,
+            TripCollection: true,
+          },
+        },
+        // 如果提供了 userId，查询当前用户是否已点赞/收藏
+        ...(userId ? {
+          TripLike: {
+            where: { userId },
+            select: { id: true },
+          },
+          TripCollection: {
+            where: { userId },
+            select: { id: true },
+          },
+        } : {}),
       }
     });
 
@@ -274,7 +322,91 @@ export class TripsService {
 
     // 数据增强 (Data Enrichment)
     // 计算统计信息、进度状态等
-    return await this.enrichTripData(trip);
+    return await this.enrichTripData(trip, userId);
+  }
+
+  /**
+   * 更新行程基本信息
+   * 
+   * @param id 行程 ID
+   * @param dto 更新数据（部分字段）
+   * @returns 更新后的行程
+   */
+  async update(id: string, dto: Partial<CreateTripDto>) {
+    // 验证行程存在
+    const existingTrip = await this.prisma.trip.findUnique({
+      where: { id },
+    });
+
+    if (!existingTrip) {
+      throw new NotFoundException(`行程 ID ${id} 不存在`);
+    }
+
+    // 构建更新数据
+    const updateData: any = {};
+
+    if (dto.destination !== undefined) {
+      updateData.destination = dto.destination.toUpperCase().trim();
+    }
+
+    if (dto.startDate !== undefined) {
+      updateData.startDate = new Date(dto.startDate);
+    }
+
+    if (dto.endDate !== undefined) {
+      updateData.endDate = new Date(dto.endDate);
+    }
+
+    if (dto.totalBudget !== undefined) {
+      // 更新预算配置（存储在 budgetConfig 中）
+      const existingBudgetConfig = (existingTrip.budgetConfig as any) || {};
+      updateData.budgetConfig = {
+        ...existingBudgetConfig,
+        totalBudget: dto.totalBudget,
+      };
+    }
+
+    if (dto.travelers !== undefined) {
+      // 更新旅行者信息（存储在 metadata 中）
+      const existingMetadata = (existingTrip.metadata as any) || {};
+      updateData.metadata = {
+        ...existingMetadata,
+        travelers: dto.travelers,
+      };
+    }
+
+    // 如果更新了日期，需要重新计算天数
+    if (dto.startDate || dto.endDate) {
+      const startDate = dto.startDate ? new Date(dto.startDate) : existingTrip.startDate;
+      const endDate = dto.endDate ? new Date(dto.endDate) : existingTrip.endDate;
+      
+      if (startDate > endDate) {
+        throw new BadRequestException('开始日期不能晚于结束日期');
+      }
+
+      // 计算天数（包含开始和结束日期）
+      const start = DateTime.fromJSDate(startDate).startOf('day');
+      const end = DateTime.fromJSDate(endDate).startOf('day');
+      const durationDays = end.diff(start, 'days').days + 1;
+
+      updateData.durationDays = Math.round(durationDays);
+    }
+
+    // 执行更新
+    const updatedTrip = await this.prisma.trip.update({
+      where: { id },
+      data: updateData,
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: true,
+          },
+        },
+      },
+    });
+
+    // 返回增强后的数据
+    return await this.enrichTripData(updatedTrip);
   }
 
   /**
@@ -290,7 +422,7 @@ export class TripsService {
    * @param trip 原始行程数据
    * @returns 增强后的行程数据
    */
-  private async enrichTripData(trip: any) {
+  private async enrichTripData(trip: any, userId?: string) {
     let totalItems = 0;
     let totalActivities = 0;
     let totalMeals = 0;
@@ -426,8 +558,20 @@ export class TripsService {
       console.error('Failed to enrich trip data:', error);
     }
 
+    // 计算点赞和收藏状态
+    const likeCount = trip._count?.TripLike || 0;
+    const isLiked = userId ? (trip.TripLike?.length > 0) : false;
+    const isCollected = userId ? (trip.TripCollection?.length > 0) : false;
+
+    // 移除内部使用的字段，避免暴露给前端
+    const { _count, TripLike, TripCollection, ...tripData } = trip;
+
     return {
-      ...trip,
+      ...tripData,
+      // 添加点赞和收藏字段
+      isLiked,
+      isCollected,
+      likeCount,
       stats: {
         totalDays: trip.TripDay.length,
         daysWithActivities: daysWithActivities,
@@ -992,44 +1136,74 @@ export class TripsService {
 
     // 如果指定了 tripId，只获取该行程的关注项
     if (query.tripId) {
-      const alerts = await this.getPersonaAlerts(query.tripId);
+      // 验证 tripId 格式（UUID 格式）
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(query.tripId)) {
+        // tripId 格式不正确，返回空结果而不是抛出错误
+        // 这可能是前端错误传递了路由路径（如 "attention-queue"）作为 tripId
+        this.logger.warn(`无效的 tripId 格式: ${query.tripId}，返回空结果`);
+        return {
+          items: [],
+          total: 0,
+          limit,
+          offset,
+        };
+      }
       
-      // 将 Persona Alerts 转换为 Attention Items
-      for (const alert of alerts) {
-        // 映射严重程度
-        let severity: AttentionSeverity;
-        if (alert.severity === AlertSeverity.WARNING) {
-          severity = AttentionSeverity.HIGH;
-        } else if (alert.severity === AlertSeverity.INFO) {
-          severity = AttentionSeverity.MEDIUM;
-        } else {
-          severity = AttentionSeverity.LOW;
-        }
+      try {
+        const alerts = await this.getPersonaAlerts(query.tripId);
+      
+        // 将 Persona Alerts 转换为 Attention Items
+        for (const alert of alerts) {
+          // 映射严重程度
+          let severity: AttentionSeverity;
+          if (alert.severity === AlertSeverity.WARNING) {
+            severity = AttentionSeverity.HIGH;
+          } else if (alert.severity === AlertSeverity.INFO) {
+            severity = AttentionSeverity.MEDIUM;
+          } else {
+            severity = AttentionSeverity.LOW;
+          }
 
-        // 映射类型
-        let type: AttentionItemType;
-        if (alert.persona === PersonaType.ABU) {
-          type = AttentionItemType.SAFETY_RISK;
-        } else if (alert.persona === PersonaType.DR_DRE) {
-          type = AttentionItemType.SCHEDULE_CONFLICT;
-        } else {
-          type = AttentionItemType.OTHER;
-        }
+          // 映射类型
+          let type: AttentionItemType;
+          if (alert.persona === PersonaType.ABU) {
+            type = AttentionItemType.SAFETY_RISK;
+          } else if (alert.persona === PersonaType.DR_DRE) {
+            type = AttentionItemType.SCHEDULE_CONFLICT;
+          } else {
+            type = AttentionItemType.OTHER;
+          }
 
-        attentionItems.push({
-          id: alert.id,
-          type,
-          title: alert.title,
-          description: alert.message,
-          tripId: query.tripId,
-          severity,
-          createdAt: alert.createdAt,
-          status: AttentionStatus.NEW,
-          metadata: {
-            ...alert.metadata,
-            persona: alert.persona,
-          },
-        });
+          attentionItems.push({
+            id: alert.id,
+            type,
+            title: alert.title,
+            description: alert.message,
+            tripId: query.tripId,
+            severity,
+            createdAt: alert.createdAt,
+            status: AttentionStatus.NEW,
+            metadata: {
+              ...alert.metadata,
+              persona: alert.persona,
+            },
+          });
+        }
+      } catch (error: any) {
+        // 如果行程不存在，返回空结果而不是抛出错误
+        // 这允许前端在 tripId 无效时仍然能正常显示（空列表）
+        if (error instanceof NotFoundException) {
+          this.logger.warn(`行程 ID ${query.tripId} 不存在，返回空关注队列`);
+          return {
+            items: [],
+            total: 0,
+            limit,
+            offset,
+          };
+        }
+        // 其他错误继续抛出
+        throw error;
       }
     } else {
       // 全局关注队列：获取所有行程的 Persona Alerts

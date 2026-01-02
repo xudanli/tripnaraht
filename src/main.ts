@@ -34,6 +34,24 @@ async function bootstrap() {
   console.log('✅ HTTP 访问日志中间件已注册');
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.use((req: any, res: any, next: any) => {
+    // 设置浏览器缓存为72小时（259200秒）
+    // 排除 API 路径和动态内容，只对静态资源设置缓存
+    const isStaticResource = /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i.test(req.originalUrl);
+    const isApiPath = req.originalUrl.startsWith('/api');
+    
+    if (isStaticResource && !isApiPath) {
+      // 静态资源：72小时缓存
+      res.setHeader('Cache-Control', 'public, max-age=259200, immutable');
+    } else if (!isApiPath) {
+      // 非API路径的HTML等：72小时缓存
+      res.setHeader('Cache-Control', 'public, max-age=259200');
+    } else {
+      // API路径：不缓存（确保数据实时性）
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    
     // 立即打印请求到达日志
     console.log(`[HTTP-Middleware] 请求到达: ${req.method} ${req.originalUrl}`);
     logger.log(`[Middleware] 请求到达: ${req.method} ${req.originalUrl}`);

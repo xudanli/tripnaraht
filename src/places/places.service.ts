@@ -14,6 +14,8 @@ import { GooglePlacesService, GooglePlacesPOI } from './services/google-places.s
 type OverpassPOI = GooglePlacesPOI;
 import { PhysicalMetadataGenerator } from './utils/physical-metadata-generator.util';
 import { EmbeddingService } from './services/embedding.service';
+import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
+import { MetadataEnricher } from './utils/metadata-enricher.util';
 
 @Injectable()
 export class PlacesService {
@@ -24,7 +26,8 @@ export class PlacesService {
     private amapPOIService: AmapPOIService,
     private googlePlacesService: GooglePlacesService,
     @Optional() @Inject(VectorSearchService) private vectorSearchService?: VectorSearchService,
-    @Optional() @Inject(EmbeddingService) private embeddingService?: EmbeddingService
+    @Optional() @Inject(EmbeddingService) private embeddingService?: EmbeddingService,
+    @Optional() private trailEnrichmentService?: PlaceTrailEnrichmentService
   ) {}
 
   /**
@@ -125,10 +128,15 @@ export class PlacesService {
   async createPlace(dto: CreatePlaceDto) {
     const { lat, lng, ...rest } = dto;
     
-    // 自动生成 physicalMetadata
+    // 快招1：增强 metadata（自动解析 OSM opening_hours 等）
+    const enrichedMetadata = dto.metadata 
+      ? MetadataEnricher.enrich(dto.metadata)
+      : undefined;
+    
+    // 自动生成 physicalMetadata（使用增强后的 metadata）
     const physicalMetadata = PhysicalMetadataGenerator.generateByCategory(
       dto.category,
-      dto.metadata as any
+      enrichedMetadata as any
     );
     
     // ⚠️ 注意：Prisma 不支持直接写入 Unsupported 字段
@@ -139,7 +147,7 @@ export class PlacesService {
       data: {
         ...rest,
         uuid: randomUUID(),
-        metadata: dto.metadata as any, // 存入 JSON
+        metadata: enrichedMetadata as any, // 存入增强后的 JSON
         physicalMetadata: physicalMetadata as any, // 自动生成的体力消耗元数据
         updatedAt: new Date(),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
@@ -788,11 +796,26 @@ export class PlacesService {
 
     // 解析元数据
     const metadata = (place.metadata as any) || {};
-    const physicalMetadata = (place.physicalMetadata as any) || {};
+    let physicalMetadata = (place.physicalMetadata as any) || {};
     const city = place.City as any;
     const timezone = metadata?.timezone || city?.timezone || 'Asia/Tokyo';
     const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
     const isOpen = OpeningHoursUtil.isOpenNow(todayHours, timezone);
+
+    // 快招3：如果有关联的 Trail，从 Trail 表获取数据增强 physicalMetadata
+    if (this.trailEnrichmentService && (metadata.trailId || metadata.routeId)) {
+      try {
+        const trailPatch = await this.trailEnrichmentService.enrichFromTrail(metadata as PlaceMetadata);
+        if (trailPatch) {
+          physicalMetadata = {
+            ...physicalMetadata,
+            ...trailPatch,
+          };
+        }
+      } catch (error: any) {
+        this.logger.warn(`获取 Trail 数据失败 (placeId: ${place.id}): ${error.message}`);
+      }
+    }
 
     return {
       id: place.id,
@@ -1075,6 +1098,70 @@ export class PlacesService {
       finalScore: r.finalScore,
       distance: r.distance,
     }));
+  }
+
+  /**
+   * 批量语义地点搜索
+   * 
+   * 支持多个自然语言查询，并行处理，每个查询都会调用 embedding API
+   * 
+   * @param queries 自然语言查询数组
+   * @param lat 纬度（可选，用于距离排序）
+   * @param lng 经度（可选，用于距离排序）
+   * @param radius 搜索半径（米，可选）
+   * @param category 类别过滤（可选）
+   * @param limit 每个查询返回数量限制（默认 20）
+   * @returns 每个查询对应的搜索结果列表
+   */
+  async batchSemanticSearch(
+    queries: string[],
+    lat?: number,
+    lng?: number,
+    radius?: number,
+    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    limit: number = 20
+  ): Promise<Array<{
+    query: string;
+    results: Array<{
+      id: number;
+      nameCN: string;
+      nameEN?: string | null;
+      address?: string | null;
+      category: string;
+      matchReasons: string[];
+      vectorScore: number;
+      keywordScore: number;
+      finalScore: number;
+      distance?: number;
+    }>;
+    total: number;
+    error?: string;
+  }>> {
+    if (!queries || queries.length === 0) {
+      return [];
+    }
+
+    // 并行处理所有查询
+    const searchPromises = queries.map(async (query) => {
+      try {
+        const results = await this.semanticSearch(query, lat, lng, radius, category, limit);
+        return {
+          query,
+          results,
+          total: results.length,
+        };
+      } catch (error: any) {
+        this.logger.error(`批量搜索中查询 "${query}" 失败: ${error.message}`);
+        return {
+          query,
+          results: [],
+          total: 0,
+          error: error.message,
+        };
+      }
+    });
+
+    return Promise.all(searchPromises);
   }
 }
 

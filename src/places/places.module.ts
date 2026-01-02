@@ -15,6 +15,7 @@ import { AdminDivisionService } from './services/admin-division.service';
 import { EntityResolutionService } from './services/entity-resolution.service';
 import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.service';
 import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
+import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
@@ -36,6 +37,7 @@ import { HotelsModule } from '../hotels/hotels.module';
     EntityResolutionService,
     SvalbardPoiFeaturesService,
     IcelandPoiFeaturesService,
+    PlaceTrailEnrichmentService,
   ],
   exports: [
     PlacesService,

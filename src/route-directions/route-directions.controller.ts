@@ -28,8 +28,10 @@ import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { CreateTripFromTemplateDto } from './dto/create-trip-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
+import { QueryRouteTemplateDto } from './dto/query-route-template.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('route-directions')
 @Controller('route-directions')
@@ -78,6 +80,63 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         error?.message || 'Failed to find route directions',
+      );
+    }
+  }
+
+  // 路线模板相关接口 - 必须在 @Get(':id') 之前定义，避免路由冲突
+  @Public()
+  @Get('templates')
+  @ApiOperation({ 
+    summary: '查询路线模板列表', 
+    description: '根据条件查询路线模板列表，支持按路线方向ID、天数、激活状态筛选' 
+  })
+  @ApiResponse({ status: 200, description: '成功返回路线模板列表' })
+  async getRouteTemplates(
+    @Query() query: QueryRouteTemplateDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.findRouteTemplates({
+        routeDirectionId: query.routeDirectionId,
+        durationDays: query.durationDays,
+        isActive: query.isActive,
+        limit: query.limit,
+        offset: query.offset,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error('Failed to get route templates', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to get route templates',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Get('templates/:id')
+  @ApiOperation({ summary: '获取路线模板详情', description: '根据 ID 获取路线模板详情' })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiResponse({ status: 200, description: '成功返回路线模板详情' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async getRouteTemplateById(@Param('id', ParseIntPipe) id: number) {
+    try {
+      const result = await this.routeDirectionsService.findRouteTemplateById(id);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to get route template by id', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to get route template by id',
+        { originalError: error instanceof Error ? error.message : String(error) }
       );
     }
   }
@@ -205,79 +264,6 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         error?.message || 'Failed to import country pack',
-        { originalError: error instanceof Error ? error.message : String(error) }
-      );
-    }
-  }
-
-  @Get('templates')
-  @ApiOperation({ 
-    summary: '查询路线模板列表', 
-    description: '根据条件查询路线模板列表，支持按路线方向ID、天数、激活状态筛选' 
-  })
-  @ApiQuery({ name: 'routeDirectionId', required: false, description: '路线方向ID', type: Number })
-  @ApiQuery({ name: 'durationDays', required: false, description: '行程天数', type: Number })
-  @ApiQuery({ name: 'isActive', required: false, description: '是否激活', type: Boolean })
-  @ApiQuery({ name: 'limit', required: false, description: '返回数量限制', type: Number })
-  @ApiQuery({ name: 'offset', required: false, description: '偏移量', type: Number })
-  @ApiResponse({ status: 200, description: '成功返回路线模板列表' })
-  async getRouteTemplates(
-    @Query('routeDirectionId') routeDirectionId?: number,
-    @Query('durationDays') durationDays?: number,
-    @Query('isActive') isActive?: string | boolean,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
-  ) {
-    try {
-      // 处理 isActive 参数（可能是字符串 'true'/'false' 或 boolean）
-      let isActiveValue: boolean | undefined;
-      if (isActive !== undefined) {
-        if (typeof isActive === 'string') {
-          isActiveValue = isActive === 'true';
-        } else {
-          isActiveValue = isActive;
-        }
-      }
-
-      const result = await this.routeDirectionsService.findRouteTemplates({
-        routeDirectionId: routeDirectionId ? parseInt(routeDirectionId.toString(), 10) : undefined,
-        durationDays: durationDays ? parseInt(durationDays.toString(), 10) : undefined,
-        isActive: isActiveValue,
-        limit: limit ? parseInt(limit.toString(), 10) : undefined,
-        offset: offset ? parseInt(offset.toString(), 10) : undefined,
-      });
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error('Failed to get route templates', error);
-      return errorResponse(
-        ErrorCode.INTERNAL_ERROR,
-        'Failed to get route templates',
-        { originalError: error instanceof Error ? error.message : String(error) }
-      );
-    }
-  }
-
-  @Get('templates/:id')
-  @ApiOperation({ summary: '获取路线模板详情', description: '根据 ID 获取路线模板详情' })
-  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
-  @ApiResponse({ status: 200, description: '成功返回路线模板详情' })
-  @ApiResponse({ status: 404, description: '路线模板不存在' })
-  async getRouteTemplateById(@Param('id', ParseIntPipe) id: number) {
-    try {
-      const result = await this.routeDirectionsService.findRouteTemplateById(id);
-      return successResponse(result);
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return errorResponse(
-          ErrorCode.NOT_FOUND,
-          error.message,
-          { statusCode: 404 }
-        );
-      }
-      this.logger.error('Failed to get route template', error);
-      return errorResponse(
-        ErrorCode.INTERNAL_ERROR,
-        'Failed to get route template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }

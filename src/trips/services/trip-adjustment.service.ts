@@ -8,11 +8,17 @@ import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.ser
 export interface TripModificationRequest {
   tripId: string;
   modifications: Array<{
-    type: 'CHANGE_DATE' | 'MOVE_ACTIVITY' | 'ADD_ACTIVITY' | 'REMOVE_ACTIVITY';
+    type: 'CHANGE_DATE' | 'MOVE_ACTIVITY' | 'ADD_ACTIVITY' | 'REMOVE_ACTIVITY' | 'ADD_BUFFERS';
     itemId?: string;
     newDate?: string;
     newStartTime?: string;
     activityData?: any;
+    // 新增字段（用于 ADD_BUFFERS）
+    options?: {
+      bufferDuration?: number; // 缓冲时长（分钟），默认 30
+      applyToAllDays?: boolean; // 是否应用到所有日期，默认 false
+      dayId?: string; // 如果 applyToAllDays 为 false，指定日期 ID
+    };
   }>;
 }
 
@@ -131,6 +137,15 @@ export class TripAdjustmentService {
               notifications
             );
           }
+          break;
+
+        case 'ADD_BUFFERS':
+          await this.handleAddBuffers(
+            request.tripId,
+            modification.options || {},
+            changes,
+            notifications
+          );
           break;
       }
     }
@@ -345,6 +360,105 @@ export class TripAdjustmentService {
         actionRequired: true,
       });
     }
+  }
+
+  /**
+   * 处理添加缓冲时间
+   */
+  private async handleAddBuffers(
+    tripId: string,
+    options: {
+      bufferDuration?: number;
+      applyToAllDays?: boolean;
+      dayId?: string;
+    },
+    changes: TripAdjustmentResult['changes'],
+    notifications: TripAdjustmentResult['notifications']
+  ): Promise<void> {
+    const bufferDuration = options.bufferDuration || 30; // 默认 30 分钟
+    const applyToAllDays = options.applyToAllDays || false;
+
+    // 获取行程
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: {
+                Place: true,
+              },
+              orderBy: {
+                startTime: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            date: 'asc',
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    // 确定要处理的日期
+    let daysToProcess = trip.TripDay;
+    if (!applyToAllDays && options.dayId) {
+      daysToProcess = trip.TripDay.filter(day => day.id === options.dayId);
+    }
+
+    let totalBuffersAdded = 0;
+    const affectedItemIds: string[] = [];
+
+    // 为每个日期添加缓冲时间
+    for (const day of daysToProcess) {
+      const items = day.ItineraryItem;
+      
+      // 在每两个活动之间添加缓冲时间
+      for (let i = 0; i < items.length - 1; i++) {
+        const currentItem = items[i];
+        const nextItem = items[i + 1];
+
+        if (!currentItem.endTime || !nextItem.startTime) {
+          continue;
+        }
+
+        const currentEnd = DateTime.fromJSDate(currentItem.endTime);
+        const nextStart = DateTime.fromJSDate(nextItem.startTime);
+        const gapMinutes = nextStart.diff(currentEnd, 'minutes').minutes;
+
+        // 如果间隙小于缓冲时间，需要调整下一个活动的开始时间
+        if (gapMinutes < bufferDuration) {
+          const newNextStart = currentEnd.plus({ minutes: bufferDuration });
+          
+          // 更新下一个活动的开始时间
+          await this.itineraryItemsService.update(nextItem.id, {
+            startTime: newNextStart.toISO(),
+            // 如果结束时间也需要调整，保持活动时长不变
+            endTime: nextItem.endTime 
+              ? DateTime.fromJSDate(nextItem.endTime)
+                  .plus({ minutes: bufferDuration - gapMinutes })
+                  .toISO()
+              : newNextStart.plus({ hours: 2 }).toISO(),
+          });
+
+          affectedItemIds.push(nextItem.id);
+          totalBuffersAdded++;
+        } else if (gapMinutes >= bufferDuration * 2) {
+          // 如果间隙足够大，可以插入一个显式的缓冲项
+          // 这里简化处理，只调整时间，不创建新的缓冲项
+        }
+      }
+    }
+
+    changes.push({
+      type: 'ADD_BUFFERS',
+      description: `已添加 ${totalBuffersAdded} 个缓冲时间（每个 ${bufferDuration} 分钟）`,
+      affectedItems: affectedItemIds,
+    });
   }
 
   /**

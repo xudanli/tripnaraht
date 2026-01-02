@@ -24,7 +24,10 @@ export class PlannerAgentService implements IPlannerAgent {
     @Optional() private readonly llmService?: LlmService,
   ) {
     // 检查是否启用 LLM（如果 LlmService 可用且配置了 API Key）
-    this.useLlm = !!llmService && !!process.env.OPENAI_API_KEY;
+    // 检查是否有 LLM 配置（优先 DeepSeek，内网环境可用）
+    const hasDeepSeekKey = !!process.env.DEEPSEEK_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+    this.useLlm = !!llmService && (hasDeepSeekKey || hasOpenAIKey);
     if (this.useLlm) {
       this.logger.log('Planner Agent: LLM 已启用');
     } else {
@@ -93,8 +96,13 @@ export class PlannerAgentService implements IPlannerAgent {
 只返回 JSON，不要其他文字。`;
 
     try {
+      // 使用 DeepSeek（内网环境可用）
+      const provider = process.env.DEEPSEEK_API_KEY 
+        ? LlmProvider.DEEPSEEK 
+        : (process.env.OPENAI_API_KEY ? LlmProvider.OPENAI : LlmProvider.DEEPSEEK);
+      
       const response = await this.llmService!.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        provider,
         prompt,
         {
           type: 'object',

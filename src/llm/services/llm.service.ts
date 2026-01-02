@@ -142,32 +142,55 @@ export class LlmService {
         };
       }
 
-      // 优先检查用户输入是否明确提到了日期和预算（最可靠的检查）
+      // 检查用户输入是否明确提到了日期和预算（优先信任用户的明确输入）
       const userText = dto.text.toLowerCase();
       const hasExplicitDate = this.hasExplicitDate(userText);
       const hasExplicitBudget = this.hasExplicitBudget(userText);
       
       this.logger.debug(`User input analysis: hasExplicitDate=${hasExplicitDate}, hasExplicitBudget=${hasExplicitBudget}`);
 
-      // 如果用户没有明确提到日期或预算，认为需要澄清
-      if (!hasExplicitDate || !hasExplicitBudget) {
-        const inferredFields: string[] = [];
-        if (!hasExplicitDate) {
-          inferredFields.push('startDate', 'endDate');
-        }
-        if (!hasExplicitBudget) {
-          inferredFields.push('totalBudget');
-        }
-        
-        this.logger.debug(`User input lacks explicit date or budget, returning needsClarification: true, inferredFields: ${JSON.stringify(inferredFields)}`);
+      // 如果用户明确提到了日期和预算，即使 LLM 标记为推断，也信任用户的输入
+      if (hasExplicitDate && hasExplicitBudget) {
+        this.logger.debug('User explicitly mentioned both date and budget, trusting user input and proceeding without clarification');
         return {
           params: parsed as TripCreationParams,
-          needsClarification: true,
-          clarificationQuestions: this.generateClarificationQuestions(parsed, inferredFields),
+          needsClarification: false,
         };
       }
 
-      // 检查 LLM 标记的 needsClarification
+      // 如果用户明确提到了日期，即使 LLM 标记为推断，也信任用户的输入（预算可以推断）
+      if (hasExplicitDate && parsed.startDate && parsed.endDate) {
+        // 检查日期是否合理
+        const hasReasonableDates = this.hasReasonableInferredValues(parsed, ['startDate', 'endDate']);
+        if (hasReasonableDates) {
+          this.logger.debug('User explicitly mentioned date, trusting user input and proceeding without clarification');
+          return {
+            params: parsed as TripCreationParams,
+            needsClarification: false,
+          };
+        }
+      }
+
+      // 如果用户明确提到了预算，即使 LLM 标记为推断，也信任用户的输入（日期可以推断）
+      if (hasExplicitBudget && parsed.totalBudget) {
+        // 检查预算是否合理
+        const hasReasonableBudget = this.hasReasonableInferredValues(parsed, ['totalBudget']);
+        if (hasReasonableBudget) {
+          // 如果日期也合理，直接使用
+          if (parsed.startDate && parsed.endDate) {
+            const hasReasonableDates = this.hasReasonableInferredValues(parsed, ['startDate', 'endDate']);
+            if (hasReasonableDates) {
+              this.logger.debug('User explicitly mentioned budget, and dates are reasonable, proceeding without clarification');
+              return {
+                params: parsed as TripCreationParams,
+                needsClarification: false,
+              };
+            }
+          }
+        }
+      }
+
+      // 优先检查 LLM 标记的 needsClarification（如果用户没有明确提到，信任 LLM 的判断）
       if (parsed.needsClarification === true) {
         this.logger.debug('LLM marked needsClarification: true, returning clarification questions');
         return {
@@ -177,15 +200,30 @@ export class LlmService {
         };
       }
 
-      // 保守检查：如果 inferredFields 有值，即使 needsClarification 不是 true，也认为需要澄清
+      // 如果 LLM 没有明确标记 needsClarification，但有 inferredFields，检查推断值是否合理
+      // 如果推断值合理且完整，可以选择直接使用（不要求澄清）
       if (parsed.inferredFields && Array.isArray(parsed.inferredFields) && parsed.inferredFields.length > 0) {
-        this.logger.debug(`Found inferredFields: ${JSON.stringify(parsed.inferredFields)}, treating as needsClarification`);
-        return {
-          params: parsed as TripCreationParams,
-          needsClarification: true,
-          clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
-        };
+        // 检查推断值是否合理
+        const hasReasonableInferredValues = this.hasReasonableInferredValues(parsed, parsed.inferredFields);
+        
+        if (hasReasonableInferredValues) {
+          // 推断值合理，可以选择直接使用（不要求澄清）
+          this.logger.debug(`Found reasonable inferredFields: ${JSON.stringify(parsed.inferredFields)}, proceeding without clarification`);
+          return {
+            params: parsed as TripCreationParams,
+            needsClarification: false,
+          };
+        } else {
+          // 推断值不合理或缺失，需要澄清
+          this.logger.debug(`Found inferredFields with unreasonable values: ${JSON.stringify(parsed.inferredFields)}, treating as needsClarification`);
+          return {
+            params: parsed as TripCreationParams,
+            needsClarification: true,
+            clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
+          };
+        }
       }
+
 
       this.logger.debug('All fields present and needsClarification is false, proceeding with trip creation');
       return {
@@ -745,8 +783,8 @@ export class LlmService {
 
 请从用户的自然语言中提取以下信息，并返回 JSON 格式：
 - destination: 目的地国家代码（ISO 3166-1 alpha-2，如 JP、CN、US）
-- startDate: 开始日期（ISO 8601 格式）
-- endDate: 结束日期（ISO 8601 格式）
+- startDate: 开始日期（ISO 8601 格式，如 2026-02-08T00:00:00.000Z）
+- endDate: 结束日期（ISO 8601 格式，如 2026-02-15T00:00:00.000Z）
 - totalBudget: 总预算（人民币，元）
 - hasChildren: 是否有小孩（布尔值）
 - hasElderly: 是否有老人（布尔值）
@@ -754,15 +792,26 @@ export class LlmService {
 - needsClarification: 如果任何关键信息（日期、预算）是推断的，设置为 true
 - inferredFields: 推断的字段列表，如 ["startDate", "totalBudget"]
 
-注意：
-- 如果用户明确提到日期，使用用户提供的日期
-- 如果用户明确提到预算，使用用户提供的预算
-- 如果用户提到"带娃"、"带孩子"、"有小孩"等，设置 hasChildren 为 true
-- 如果用户提到"带老人"、"带父母"、"有老人"等，设置 hasElderly 为 true
-- 如果用户未明确提到日期或预算，可以推断合理默认值，但必须：
-  1. 设置 needsClarification 为 true
-  2. 在 inferredFields 中列出推断的字段（如 ["startDate", "endDate", "totalBudget"]）
-- 如果信息严重不足，某些字段可以留空，但必须确保 destination 不为空
+重要规则：
+1. **日期处理**：
+   - 如果用户明确提到日期（包括"2026年春节"、"2024年国庆"、"明年3月"等），必须转换为具体日期
+   - "2026年春节"应转换为 2026 年春节的具体日期（通常为 1 月底或 2 月初）
+   - "X年X月"应转换为该年该月的第一天作为开始日期
+   - 如果用户提到"X天"，根据开始日期计算结束日期
+   - **如果用户明确提到了日期（即使是节假日名称），needsClarification 应设置为 false，inferredFields 不应包含日期字段**
+
+2. **预算处理**：
+   - 如果用户明确提到预算（如"预算50000"、"5万"），needsClarification 应设置为 false
+   - 如果用户未提到预算，可以推断合理默认值，但必须设置 needsClarification 为 true
+
+3. **旅行者信息**：
+   - 如果用户提到"带娃"、"带孩子"、"有小孩"等，设置 hasChildren 为 true
+   - 如果用户提到"带老人"、"带父母"、"有老人"等，设置 hasElderly 为 true
+
+4. **推断规则**：
+   - 只有在用户完全没有提到日期或预算时，才应该推断
+   - 如果用户提到了日期（即使是节假日），应该转换为具体日期，不要标记为推断
+   - 如果信息严重不足，某些字段可以留空，但必须确保 destination 不为空
 
 返回的 JSON 格式示例：
 {
@@ -930,12 +979,19 @@ ${JSON.stringify(error, null, 2)}
     const datePatterns = [
       /\d{1,2}[月\-/]\d{1,2}[日号]?/,  // 1月1日, 12-25, 12/25
       /\d{4}[年\-/]\d{1,2}[月\-/]\d{1,2}[日号]?/,  // 2024-12-25, 2024年12月25日
+      /\d{4}年\d{1,2}月/,  // 2026年1月, 2024年12月
+      /\d{4}年/,  // 2026年（配合节假日使用）
       /(今天|明天|后天|下周|下个月|下下周)/,
       /(january|february|march|april|may|june|july|august|september|october|november|december)/i,
       /\d+\s*天/,  // 5天, 7天
       /\d+\s*days?/i,
       /(星期|周)[一二三四五六日天]/,
       /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+      // 中文节假日
+      /(春节|元旦|清明|劳动节|端午|中秋|国庆|圣诞节|新年)/,
+      /\d{4}年(春节|元旦|清明|劳动节|端午|中秋|国庆|圣诞节|新年)/,  // 2026年春节
+      /(spring|summer|autumn|fall|winter)\s*festival/i,
+      /(chinese|lunar)\s*new\s*year/i,
     ];
     
     return datePatterns.some(pattern => pattern.test(text));
@@ -953,5 +1009,67 @@ ${JSON.stringify(error, null, 2)}
     ];
     
     return budgetPatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * 检查推断值是否合理
+   * 如果推断值存在且合理，可以直接使用，不需要澄清
+   */
+  private hasReasonableInferredValues(parsed: any, inferredFields: string[]): boolean {
+    // 如果推断的字段都有合理的值，认为可以直接使用
+    for (const field of inferredFields) {
+      if (field === 'startDate' || field === 'endDate') {
+        // 日期字段：检查是否有值且是有效的日期
+        const dateValue = field === 'startDate' ? parsed.startDate : parsed.endDate;
+        if (!dateValue) {
+          return false; // 缺少日期值
+        }
+        try {
+          const date = new Date(dateValue);
+          if (isNaN(date.getTime())) {
+            return false; // 无效日期
+          }
+          // 检查日期是否在未来（至少是今天）
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (date < today) {
+            return false; // 日期在过去
+          }
+        } catch {
+          return false; // 日期解析失败
+        }
+      } else if (field === 'totalBudget') {
+        // 预算字段：检查是否有值且大于0
+        if (!parsed.totalBudget || parsed.totalBudget <= 0) {
+          return false; // 缺少预算或预算无效
+        }
+        // 检查预算是否在合理范围内（1000 - 1000000）
+        if (parsed.totalBudget < 1000 || parsed.totalBudget > 1000000) {
+          return false; // 预算超出合理范围
+        }
+      }
+    }
+
+    // 如果推断了日期，还需要检查日期范围是否合理
+    if (inferredFields.includes('startDate') || inferredFields.includes('endDate')) {
+      if (parsed.startDate && parsed.endDate) {
+        try {
+          const startDate = new Date(parsed.startDate);
+          const endDate = new Date(parsed.endDate);
+          if (endDate <= startDate) {
+            return false; // 结束日期不晚于开始日期
+          }
+          // 检查行程天数是否合理（1-365天）
+          const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (days < 1 || days > 365) {
+            return false; // 行程天数不合理
+          }
+        } catch {
+          return false; // 日期解析失败
+        }
+      }
+    }
+
+    return true; // 所有推断值都合理
   }
 }

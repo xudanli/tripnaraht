@@ -1,6 +1,8 @@
 // src/trips/trips.controller.ts
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
+import { DateTime } from 'luxon';
 import { TripsService } from './trips.service';
 import { TripExtendedService } from './services/trip-extended.service';
 import { TripRecapService } from './services/trip-recap.service';
@@ -25,6 +27,17 @@ import { GetEvidenceQueryDto, EvidenceListResponseDto } from './dto/evidence.dto
 import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/attention-queue.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { DayMetricsResponseDto, TripMetricsResponseDto } from './dto/trip-metrics.dto';
+import { ConflictsResponseDto, ConflictSeverity } from './dto/trip-conflicts.dto';
+import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from './dto/trip-intent.dto';
+import { ApplyOptimizationRequestDto, ApplyOptimizationResponseDto } from './dto/trip-optimization.dto';
+import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
+import { UpdateTripDto } from './dto/update-trip.dto';
+import { TripMetricsService } from './services/trip-metrics.service';
+import { TripConflictsService } from './services/trip-conflicts.service';
+import { TripIntentService } from './services/trip-intent.service';
+import { TripOptimizationService } from './services/trip-optimization.service';
+import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('trips')
 @Controller('trips')
@@ -39,7 +52,12 @@ export class TripsController {
     private readonly tripBudgetService: TripBudgetService,
     private readonly tripAdjustmentService: TripAdjustmentService,
     private readonly tripDraftService: TripDraftService,
-    private readonly llmService: LlmService
+    private readonly llmService: LlmService,
+    private readonly tripMetricsService: TripMetricsService,
+    private readonly tripConflictsService: TripConflictsService,
+    private readonly tripIntentService: TripIntentService,
+    private readonly tripOptimizationService: TripOptimizationService,
+    private readonly prisma: PrismaService
   ) {}
 
   @Post()
@@ -144,9 +162,30 @@ export class TripsController {
       // 创建行程
       const trip = await this.tripsService.create(createTripDto);
       
+      // 异步生成行程规划点（不阻塞响应）
+      // 计算行程天数
+      const start = DateTime.fromISO(startDate);
+      const end = DateTime.fromISO(endDate);
+      const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
+      
+      // 在后台异步生成规划点，不等待完成
+      this.generateDraftAsync(trip.id, {
+        destination: parseResult.params.destination,
+        days: durationDays,
+        startDate: startDate,
+        endDate: endDate,
+        style: parseResult.params.preferences?.style || 'balanced',
+        intensity: parseResult.params.preferences?.intensity || 'balanced',
+      }).catch((error: any) => {
+        this.logger.error(`后台生成行程规划点失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
+      });
+      
+      // 立即返回行程（不包含规划点，规划点会在后台生成）
       return successResponse({
         trip,
         parsedParams: parseResult.params,
+        generatingItems: true, // 标记正在生成规划点
+        message: '行程已创建，正在后台生成行程规划点，请稍后刷新查看',
       });
     } catch (error: any) {
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
@@ -189,8 +228,9 @@ export class TripsController {
     description: '成功返回行程列表（统一响应格式）',
     type: ApiSuccessResponseDto,
   })
-  async findAll() {
-    const trips = await this.tripsService.findAll();
+  async findAll(@CurrentUser() user?: CurrentUserPayload) {
+    const userId = user?.userId;
+    const trips = await this.tripsService.findAll(userId);
     return successResponse(trips);
   }
 
@@ -214,15 +254,57 @@ export class TripsController {
     description: '行程不存在（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async findOne(@Param('id') id: string) {
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
     try {
-      const trip = await this.tripsService.findOne(id);
+      const userId = user?.userId;
+      const trip = await this.tripsService.findOne(id, userId);
       return successResponse(trip);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;
+    }
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary: '更新行程基本信息',
+    description: '更新行程的基本信息，包括目的地、日期、预算、旅行者等。支持部分更新（只更新提供的字段）。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiBody({ type: UpdateTripDto })
+  @ApiResponse({
+    status: 200,
+    description: '更新成功（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '请求参数错误（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async update(@Param('id') id: string, @Body() dto: UpdateTripDto) {
+    try {
+      const trip = await this.tripsService.update(id, dto);
+      return successResponse(trip);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`更新行程失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 
@@ -1087,7 +1169,16 @@ export class TripsController {
             properties: {
               type: {
                 type: 'string',
-                enum: ['CHANGE_DATE', 'MOVE_ACTIVITY', 'ADD_ACTIVITY', 'REMOVE_ACTIVITY'],
+                enum: ['CHANGE_DATE', 'MOVE_ACTIVITY', 'ADD_ACTIVITY', 'REMOVE_ACTIVITY', 'ADD_BUFFERS'],
+              },
+              options: {
+                type: 'object',
+                description: '选项（用于 ADD_BUFFERS）',
+                properties: {
+                  bufferDuration: { type: 'number', description: '缓冲时长（分钟），默认 30' },
+                  applyToAllDays: { type: 'boolean', description: '是否应用到所有日期，默认 false' },
+                  dayId: { type: 'string', description: '如果 applyToAllDays 为 false，指定日期 ID' },
+                },
               },
               itemId: { type: 'string', description: '行程项 ID（修改/删除时必填）' },
               newDate: { type: 'string', description: '新日期（YYYY-MM-DD）' },
@@ -1187,26 +1278,6 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Get('attention-queue')
-  @ApiOperation({
-    summary: '获取关注队列',
-    description: '获取需要用户关注的队列列表，用于 Dashboard 页面的 Attention Queue 显示。支持全局查询或按 tripId 过滤。',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功获取关注队列',
-    type: ApiSuccessResponseDto,
-  })
-  async getAttentionQueue(@Query() query: GetAttentionQueueQueryDto) {
-    try {
-      const result = await this.tripsService.getAttentionQueue(query);
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error(`获取关注队列失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, '获取关注队列失败', { originalError: error.message });
     }
   }
 
@@ -1411,6 +1482,430 @@ export class TripsController {
       }
       this.logger.error(`重生成行程失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.BUSINESS_ERROR, error.message || '重生成行程失败');
+    }
+  }
+
+  @Get(':id/days/:dayId/metrics')
+  @ApiOperation({
+    summary: '获取每日行程指标',
+    description: '获取指定日期的行程指标，包括步行距离、车程、缓冲时间、疲劳指数等',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'dayId', description: '日期 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回每日指标（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或日期不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getDayMetrics(
+    @Param('id') id: string,
+    @Param('dayId') dayId: string
+  ) {
+    try {
+      const metrics = await this.tripMetricsService.getDayMetrics(id, dayId);
+      return successResponse(metrics);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/metrics')
+  @ApiOperation({
+    summary: '批量获取多日指标',
+    description: '获取行程的多日指标，支持按日期过滤',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'dates', description: '日期数组（可选）', type: [String], required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回指标（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getTripMetrics(
+    @Param('id') id: string,
+    @Query('dates') dates?: string | string[]
+  ) {
+    try {
+      const dateArray = Array.isArray(dates) ? dates : dates ? [dates] : undefined;
+      const metrics = await this.tripMetricsService.getTripMetrics(id, dateArray);
+      return successResponse(metrics);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/conflicts')
+  @ApiOperation({
+    summary: '获取行程冲突列表',
+    description: '获取行程的冲突列表，包括时间冲突、午餐时间窗、疲劳超标等',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'date', description: '指定日期（可选）', required: false })
+  @ApiQuery({ name: 'severity', description: '过滤严重程度（可选）', enum: ConflictSeverity, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回冲突列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getConflicts(
+    @Param('id') id: string,
+    @Query('date') date?: string,
+    @Query('severity') severity?: ConflictSeverity
+  ) {
+    try {
+      const conflicts = await this.tripConflictsService.getConflicts(id, date, severity);
+      return successResponse(conflicts);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Put(':id/intent')
+  @ApiOperation({
+    summary: '更新行程意图与约束',
+    description: '更新行程的意图与约束，包括节奏配置、偏好设置、约束条件、规划策略等',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: UpdateIntentRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新意图（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async updateIntent(
+    @Param('id') id: string,
+    @Body() dto: UpdateIntentRequestDto
+  ) {
+    try {
+      const result = await this.tripIntentService.updateIntent(id, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/intent')
+  @ApiOperation({
+    summary: '获取行程意图与约束',
+    description: '获取行程的意图与约束配置',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回意图（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getIntent(@Param('id') id: string) {
+    try {
+      const intent = await this.tripIntentService.getIntent(id);
+      return successResponse(intent);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/apply-optimization')
+  @ApiOperation({
+    summary: '应用优化结果到行程',
+    description: '将优化结果应用到实际行程，支持预览模式',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: ApplyOptimizationRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功应用优化结果（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async applyOptimization(
+    @Param('id') id: string,
+    @Body() dto: ApplyOptimizationRequestDto
+  ) {
+    try {
+      const result = await this.tripOptimizationService.applyOptimization(id, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/items/:itemId/detail')
+  @ApiOperation({
+    summary: '获取行程项详细信息',
+    description: '获取行程项的详细信息，包括完整的 Place metadata 和 physicalMetadata',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'itemId', description: '行程项 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回详细信息（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或行程项不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getItemDetail(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string
+  ) {
+    try {
+      const item = await this.prisma.itineraryItem.findUnique({
+        where: { id: itemId },
+        include: {
+          Place: true,
+          TripDay: {
+            include: {
+              Trip: true,
+            },
+          },
+        },
+      });
+
+      if (!item) {
+        throw new NotFoundException(`行程项 ID ${itemId} 不存在`);
+      }
+
+      // 验证行程项属于指定行程
+      if (item.TripDay?.tripId !== id) {
+        throw new NotFoundException(`行程项不属于指定行程`);
+      }
+
+      return successResponse(item);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/items/batch-update')
+  @ApiOperation({
+    summary: '批量更新行程项',
+    description: '批量更新多个行程项的时间、地点等信息',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: BatchUpdateItemsRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功批量更新（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async batchUpdateItems(
+    @Param('id') id: string,
+    @Body() dto: BatchUpdateItemsRequestDto
+  ) {
+    try {
+      const errors: Array<{ itemId: string; error: string }> = [];
+      let updatedCount = 0;
+
+      for (const update of dto.updates) {
+        try {
+          // 验证行程项属于指定行程
+          const item = await this.prisma.itineraryItem.findUnique({
+            where: { id: update.itemId },
+            include: {
+              TripDay: true,
+            },
+          });
+
+          if (!item) {
+            errors.push({ itemId: update.itemId, error: '行程项不存在' });
+            continue;
+          }
+
+          if (item.TripDay?.tripId !== id) {
+            errors.push({ itemId: update.itemId, error: '行程项不属于指定行程' });
+            continue;
+          }
+
+          // 更新行程项
+          const updateData: any = {};
+          if (update.startTime) {
+            updateData.startTime = DateTime.fromISO(update.startTime).toJSDate();
+          }
+          if (update.endTime) {
+            updateData.endTime = DateTime.fromISO(update.endTime).toJSDate();
+          }
+          if (update.placeId) {
+            updateData.placeId = update.placeId;
+          }
+          if (update.note !== undefined) {
+            updateData.note = update.note;
+          }
+
+          await this.prisma.itineraryItem.update({
+            where: { id: update.itemId },
+            data: updateData,
+          });
+
+          updatedCount++;
+        } catch (error: any) {
+          errors.push({ itemId: update.itemId, error: error.message || '更新失败' });
+        }
+      }
+
+      const result: BatchUpdateItemsResponseDto = {
+        success: errors.length === 0,
+        updatedCount,
+        failedCount: errors.length,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 异步生成行程规划点（后台任务）
+   * 不阻塞主请求，在后台执行
+   */
+  private async generateDraftAsync(tripId: string, draftDto: CreateTripDraftDto): Promise<void> {
+    try {
+      this.logger.log(`开始为行程 ${tripId} 生成行程规划点（后台任务）`);
+      
+      // 更新进度：开始生成
+      await this.updateGenerationProgress(tripId, {
+        status: 'generating',
+        stage: 'retrieving_candidates',
+        message: '正在检索候选地点...',
+      });
+      
+      // 生成草案（包含 LLM 编排）
+      const draft = await this.tripDraftService.generateDraft(draftDto, (progress) => {
+        // LLM 编排完成回调
+        return this.updateGenerationProgress(tripId, progress);
+      });
+      
+      // 更新进度：LLM 编排完成，开始保存
+      await this.updateGenerationProgress(tripId, {
+        status: 'generating',
+        stage: 'saving_items',
+        message: 'LLM 编排完成，正在保存行程项...',
+      });
+      
+      // 将草案保存为行程项
+      const itemsCount = await this.tripDraftService.createItineraryItemsFromDraft(
+        tripId,
+        draft
+      );
+      
+      // 更新进度：全部完成
+      await this.updateGenerationProgress(tripId, {
+        status: 'completed',
+        stage: 'completed',
+        message: `成功生成 ${itemsCount} 个行程项`,
+        itemsCount,
+      });
+      
+      this.logger.log(`成功为行程 ${tripId} 生成 ${itemsCount} 个行程项（后台任务完成）`);
+    } catch (error: any) {
+      this.logger.error(`后台生成行程规划点失败 (tripId: ${tripId}): ${error.message}`, error.stack);
+      
+      // 更新进度：失败
+      await this.updateGenerationProgress(tripId, {
+        status: 'failed',
+        stage: 'error',
+        message: `生成失败: ${error.message}`,
+      }).catch((updateError: any) => {
+        this.logger.error(`更新进度失败: ${updateError.message}`);
+      });
+    }
+  }
+
+  /**
+   * 更新行程生成进度
+   */
+  private async updateGenerationProgress(
+    tripId: string,
+    progress: {
+      status: 'generating' | 'completed' | 'failed';
+      stage: string;
+      message: string;
+      itemsCount?: number;
+    }
+  ): Promise<void> {
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+      });
+
+      if (!trip) {
+        this.logger.warn(`行程 ${tripId} 不存在，无法更新进度`);
+        return;
+      }
+
+      const metadata = (trip.metadata as any) || {};
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: {
+          metadata: {
+            ...metadata,
+            generationProgress: {
+              ...progress,
+              updatedAt: new Date().toISOString(),
+            },
+          } as any,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`更新行程生成进度失败: ${error.message}`);
+      // 不抛出错误，避免影响主流程
     }
   }
 }

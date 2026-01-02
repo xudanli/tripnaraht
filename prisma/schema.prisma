@@ -398,7 +398,31 @@ model RouteDirection {
   rolloutPercent    Int?                      @default(100)
   audienceFilter    Json?
 
+  RouteTemplate     RouteTemplate[]
+
   @@index([status], map: "route_direction_status_idx")
+}
+
+model RouteTemplate {
+  id                    Int            @id @default(autoincrement())
+  uuid                  String         @unique
+  routeDirectionId      Int
+  durationDays          Int
+  name                  String?
+  nameCN                String?
+  nameEN                String?
+  dayPlans              Json
+  defaultPacePreference String?
+  metadata              Json?
+  isActive              Boolean        @default(true)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  routeDirection        RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+
+  @@index([routeDirectionId])
+  @@index([routeDirectionId, durationDays])
+  @@index([isActive])
 }
 
 model StarCityPriceDetail {

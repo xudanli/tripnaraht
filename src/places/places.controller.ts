@@ -951,6 +951,142 @@ export class PlacesController {
     }
   }
 
+  @Post('search/batch')
+  @ApiOperation({
+    summary: '批量自然语言搜索POI',
+    description:
+      '支持多个自然语言查询的批量搜索，并行处理所有查询。\n\n' +
+      '**功能特点：**\n' +
+      '- 支持多个自然语言查询（如["像京都那样的地方", "适合拍照的景点", "安静的咖啡厅"]）\n' +
+      '- 并行处理，提高效率\n' +
+      '- 每个查询都会调用 embedding API（OpenAI 或 HuggingFace）进行语义理解\n' +
+      '- 混合搜索：向量搜索（语义） + 关键词搜索（精确匹配）\n' +
+      '- 返回每个查询对应的结果列表\n\n' +
+      '**注意：**批量搜索会为每个查询调用一次 embedding API，请注意 API 配额限制。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        queries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '自然语言查询数组',
+          example: ['像京都那样的地方', '适合拍照的景点', '安静的咖啡厅'],
+          minItems: 1,
+          maxItems: 20,
+        },
+        lat: {
+          type: 'number',
+          description: '纬度（可选，用于距离排序）',
+          example: 35.6762,
+        },
+        lng: {
+          type: 'number',
+          description: '经度（可选，用于距离排序）',
+          example: 139.6503,
+        },
+        radius: {
+          type: 'number',
+          description: '搜索半径（米，可选）',
+          example: 5000,
+        },
+        type: {
+          type: 'string',
+          enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+          description: '地点类型（可选）',
+        },
+        limit: {
+          type: 'number',
+          description: '每个查询返回数量限制（默认 20）',
+          example: 20,
+          default: 20,
+          minimum: 1,
+          maximum: 100,
+        },
+      },
+      required: ['queries'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回批量搜索结果',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', example: '像京都那样的地方' },
+              results: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'number', example: 123 },
+                    nameCN: { type: 'string', example: '清水寺' },
+                    nameEN: { type: 'string', example: 'Kiyomizu-dera' },
+                    address: { type: 'string', example: '京都府京都市' },
+                    category: { type: 'string', example: 'ATTRACTION' },
+                    matchReasons: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      example: ['根据评论提到的\'静谧\'和\'日式庭院\'推荐'],
+                    },
+                    vectorScore: { type: 'number', example: 0.85 },
+                    keywordScore: { type: 'number', example: 0.3 },
+                    finalScore: { type: 'number', example: 0.75 },
+                    distance: { type: 'number', example: 1200 },
+                  },
+                },
+              },
+              total: { type: 'number', example: 15 },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async batchSemanticSearch(
+    @Body()
+    body: {
+      queries: string[];
+      lat?: number;
+      lng?: number;
+      radius?: number;
+      type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL';
+      limit?: number;
+    },
+  ) {
+    if (!body.queries || !Array.isArray(body.queries) || body.queries.length === 0) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'queries 必须是非空数组');
+    }
+
+    if (body.queries.length > 20) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'queries 数组最多支持 20 个查询');
+    }
+
+    try {
+      const results = await this.placesService.batchSemanticSearch(
+        body.queries,
+        body.lat,
+        body.lng,
+        body.radius,
+        body.type,
+        body.limit || 20
+      );
+
+      return successResponse(results);
+    } catch (error: any) {
+      this.logger.error(`批量语义搜索失败: ${error.message}`);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `批量语义搜索失败: ${error.message}`);
+    }
+  }
+
   @Get('search')
   @ApiOperation({
     summary: '关键词搜索地点',
