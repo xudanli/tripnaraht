@@ -855,26 +855,6 @@ export class PlacesController {
     );
   }
 
-  @Get(':id')
-  @ApiOperation({
-    summary: '获取地点详情',
-    description: '根据地点 ID 获取完整的地点信息，包括元数据、物理元数据、营业状态等。用于时间轴、地点详情页、加入行程前的确认弹窗。',
-  })
-  @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回地点详情',
-    type: ApiSuccessResponseDto,
-  })
-  @ApiResponse({ status: 404, description: '地点不存在' })
-  async getPlaceById(@Param('id', ParseIntPipe) id: number) {
-    const place = await this.placesService.findOne(id);
-    if (!place) {
-      return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
-    }
-    return successResponse(place);
-  }
-
   @Post('batch')
   @ApiOperation({
     summary: '批量获取地点详情',
@@ -1039,6 +1019,26 @@ export class PlacesController {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     const suggestions = await this.placesService.autocomplete(query, latNum, lngNum, limitNum);
     return successResponse(suggestions);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: '获取地点详情',
+    description: '根据地点 ID 获取完整的地点信息，包括元数据、物理元数据、营业状态等。用于时间轴、地点详情页、加入行程前的确认弹窗。',
+  })
+  @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  async getPlaceById(@Param('id', ParseIntPipe) id: number) {
+    const place = await this.placesService.findOne(id);
+    if (!place) {
+      return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
+    }
+    return successResponse(place);
   }
 
   @Post('metrics/difficulty')
