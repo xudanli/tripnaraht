@@ -1021,6 +1021,28 @@ export class PlacesController {
     return successResponse(suggestions);
   }
 
+  @Get('recommendations')
+  @ApiOperation({
+    summary: '获取地点推荐（功能待实现）',
+    description: '根据行程 ID 获取推荐的地点列表。此功能正在开发中。',
+  })
+  @ApiQuery({ name: 'tripId', description: '行程 ID', example: '928b30d5-432b-4dbf-8967-2248222438be', required: true })
+  @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '功能未实现（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getRecommendations(
+    @Query('tripId') tripId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return errorResponse(
+      ErrorCode.UNSUPPORTED_ACTION,
+      '地点推荐功能正在开发中，敬请期待。目前可以使用 /api/places/search 或 /api/places/search/semantic 进行地点搜索。',
+    );
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: '获取地点详情',
