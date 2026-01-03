@@ -16,6 +16,7 @@ import { TripMetricsService } from './services/trip-metrics.service';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
+import { TripSuggestionsService } from './services/trip-suggestions.service';
 import { LlmModule } from '../llm/llm.module';
 import { DecisionModule } from './decision/decision.module';
 import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
@@ -23,7 +24,7 @@ import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module'
 @Module({
   imports: [PrismaModule, LlmModule, DecisionModule, ItineraryItemsModule], // 导入 PrismaModule、LlmModule、DecisionModule 和 ItineraryItemsModule
   controllers: [TripsController],
-  providers: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService],
-  exports: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService], // 导出 Service，供其他模块使用
+  providers: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService, TripSuggestionsService],
+  exports: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService, TripSuggestionsService], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}

@@ -12,9 +12,11 @@ import {
   Get,
   Body,
   Query,
+  Param,
   HttpCode,
   HttpStatus,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -22,6 +24,7 @@ import {
   ApiResponse,
   ApiBody,
   ApiQuery,
+  ApiParam,
 } from '@nestjs/swagger';
 import { ReadinessService } from './services/readiness.service';
 import { CapabilityPackEvaluatorService } from './services/capability-pack-evaluator.service';
@@ -36,6 +39,9 @@ import { TripContext } from './types/trip-context.types';
 import { ReadinessCheckResult } from './types/readiness-findings.types';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../common/dto/api-response.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { DateTime } from 'luxon';
+import { Public } from '../../auth/decorators/public.decorator';
 
 export class CheckReadinessDto {
   destinationId!: string;
@@ -74,9 +80,11 @@ export class ReadinessController {
 
   constructor(
     private readonly readinessService: ReadinessService,
-    private readonly capabilityEvaluator: CapabilityPackEvaluatorService
+    private readonly capabilityEvaluator: CapabilityPackEvaluatorService,
+    private readonly prisma: PrismaService
   ) {}
 
+  @Public()
   @Post('check')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -127,6 +135,147 @@ export class ReadinessController {
     }
   }
 
+  @Public()
+  @Get('trip/:id')
+  @ApiOperation({
+    summary: '根据行程ID检查准备度',
+    description: '基于行程ID获取行程信息并检查准备度，返回 must/should/optional 清单',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'd125c30f-44ab-4a9e-9970-b899fccdc3d8' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回准备度检查结果',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getTripReadiness(@Param('id') tripId: string): Promise<any> {
+    try {
+      // 查询行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: {
+                include: {
+                  Place: true,
+                },
+              },
+            },
+            orderBy: { date: 'asc' },
+          },
+        },
+      });
+
+      if (!trip) {
+        throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+      }
+
+      // 从行程提取上下文信息
+      const startDate = DateTime.fromJSDate(trip.startDate).toISODate();
+      const endDate = DateTime.fromJSDate(trip.endDate).toISODate();
+
+      // 提取活动类型
+      const activitySet = new Set<string>();
+      for (const day of trip.TripDay) {
+        for (const item of day.ItineraryItem) {
+          if (item.Place) {
+            const category = item.Place.category?.toLowerCase() || '';
+            if (category.includes('hiking') || category.includes('trail')) {
+              activitySet.add('hiking');
+            }
+            if (category.includes('tour') || category.includes('activity')) {
+              activitySet.add('tour');
+            }
+            if (category.includes('sightseeing') || category.includes('attraction')) {
+              activitySet.add('sightseeing');
+            }
+            // 从名称推断特殊活动
+            const name = (item.Place.nameEN || item.Place.nameCN || '').toLowerCase();
+            if (name.includes('snowmobile') || name.includes('雪地摩托')) {
+              activitySet.add('snowmobile');
+            }
+            if (name.includes('dog') && (name.includes('sled') || name.includes('拉'))) {
+              activitySet.add('dog_sled');
+            }
+            if (name.includes('boat') || name.includes('船')) {
+              activitySet.add('boat_tour');
+            }
+            if (name.includes('wildlife') || name.includes('野生动物')) {
+              activitySet.add('wildlife');
+            }
+          }
+        }
+      }
+
+      // 推断季节
+      let season: string | undefined;
+      if (startDate) {
+        const month = new Date(startDate + 'T00:00:00Z').getUTCMonth() + 1;
+        if (month >= 12 || month <= 2) {
+          season = 'winter';
+        } else if (month >= 6 && month <= 8) {
+          season = 'summer';
+        } else {
+          season = 'shoulder';
+        }
+      }
+
+      // 构建上下文
+      const metadata = trip.metadata as any || {};
+      const preferences = metadata.preferences || {};
+      const context: TripContext = {
+        traveler: {
+          nationality: 'CN', // 默认值，实际应该从用户信息获取
+          budgetLevel: preferences.budgetLevel || 'medium',
+          riskTolerance: preferences.riskTolerance || 'medium',
+        },
+        trip: {
+          startDate,
+          endDate,
+        },
+        itinerary: {
+          countries: [trip.destination],
+          activities: Array.from(activitySet).length > 0 ? Array.from(activitySet) : undefined,
+          season,
+        },
+      };
+
+      // 获取第一个行程项的位置用于地理特征增强
+      // Place.location 是 PostGIS geography 类型，需要从 metadata 或其他方式获取坐标
+      // 暂时不获取坐标，如果后续需要可以从 metadata 中解析
+      const firstItem = trip.TripDay[0]?.ItineraryItem[0];
+      const geoLat = undefined; // TODO: 从 Place.metadata 或通过 PostGIS 查询获取
+      const geoLng = undefined; // TODO: 从 Place.metadata 或通过 PostGIS 查询获取
+
+      // 调用准备度检查
+      const result = await this.readinessService.checkFromDestination(
+        trip.destination,
+        context,
+        {
+          enhanceWithGeo: !!(geoLat && geoLng),
+          geoLat,
+          geoLng,
+        }
+      );
+
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        this.logger.error(`Trip not found: ${tripId}`);
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to check trip readiness: ${err.message}`, err.stack);
+      return errorResponse('READINESS_CHECK_FAILED', err.message);
+    }
+  }
+
+  @Public()
   @Get('capability-packs')
   @ApiOperation({
     summary: '获取能力包列表',
@@ -175,6 +324,7 @@ export class ReadinessController {
     }
   }
 
+  @Public()
   @Post('capability-packs/evaluate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -228,6 +378,7 @@ export class ReadinessController {
     }
   }
 
+  @Public()
   @Get('personalized-checklist')
   @ApiOperation({
     summary: '获取个性化准备清单（故事6.1）',
@@ -295,6 +446,7 @@ export class ReadinessController {
     }
   }
 
+  @Public()
   @Get('risk-warnings')
   @ApiOperation({
     summary: '行程潜在风险预警（故事6.2）',

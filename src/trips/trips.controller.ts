@@ -37,6 +37,17 @@ import { TripMetricsService } from './services/trip-metrics.service';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
+import { TripSuggestionsService } from './services/trip-suggestions.service';
+import { 
+  SuggestionListResponseDto, 
+  SuggestionStatsDto,
+  SuggestionPersona,
+  SuggestionScope,
+  SuggestionSeverity,
+  SuggestionStatus,
+  ApplySuggestionRequestDto,
+  ApplySuggestionResponseDto
+} from './dto/suggestions.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('trips')
@@ -57,6 +68,7 @@ export class TripsController {
     private readonly tripConflictsService: TripConflictsService,
     private readonly tripIntentService: TripIntentService,
     private readonly tripOptimizationService: TripOptimizationService,
+    private readonly tripSuggestionsService: TripSuggestionsService,
     private readonly prisma: PrismaService
   ) {}
 
@@ -1906,6 +1918,155 @@ export class TripsController {
     } catch (error: any) {
       this.logger.error(`更新行程生成进度失败: ${error.message}`);
       // 不抛出错误，避免影响主流程
+    }
+  }
+
+  @Get(':id/suggestions')
+  @ApiOperation({
+    summary: '获取建议列表',
+    description: '获取指定行程的建议列表，支持多种过滤条件。整合了三人格（Abu/Dr.Dre/Neptune）的输出和冲突检测结果。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'persona', description: '过滤人格类型', enum: SuggestionPersona, required: false })
+  @ApiQuery({ name: 'scope', description: '过滤作用范围', enum: SuggestionScope, required: false })
+  @ApiQuery({ name: 'scopeId', description: '过滤作用范围ID', required: false })
+  @ApiQuery({ name: 'severity', description: '过滤严重级别', enum: SuggestionSeverity, required: false })
+  @ApiQuery({ name: 'status', description: '过滤状态', enum: SuggestionStatus, required: false })
+  @ApiQuery({ name: 'limit', description: '返回数量限制', type: Number, required: false })
+  @ApiQuery({ name: 'offset', description: '偏移量', type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回建议列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getSuggestions(
+    @Param('id') id: string,
+    @Query('persona') persona?: SuggestionPersona,
+    @Query('scope') scope?: SuggestionScope,
+    @Query('scopeId') scopeId?: string,
+    @Query('severity') severity?: SuggestionSeverity,
+    @Query('status') status?: SuggestionStatus,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    try {
+      const result = await this.tripSuggestionsService.getSuggestions(id, {
+        persona,
+        scope,
+        scopeId,
+        severity,
+        status,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/suggestions/stats')
+  @ApiOperation({
+    summary: '获取建议统计',
+    description: '获取建议的统计数据，用于角标显示和汇总。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回建议统计（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getSuggestionStats(@Param('id') id: string) {
+    try {
+      const stats = await this.tripSuggestionsService.getSuggestionStats(id);
+      return successResponse(stats);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/suggestions/:suggestionId/apply')
+  @ApiOperation({
+    summary: '应用建议',
+    description: '应用一个建议，执行对应的操作（如应用替代路线、调整节奏等）。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'suggestionId', description: '建议 ID' })
+  @ApiBody({ type: ApplySuggestionRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功应用建议（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或建议不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async applySuggestion(
+    @Param('id') id: string,
+    @Param('suggestionId') suggestionId: string,
+    @Body() dto: ApplySuggestionRequestDto
+  ) {
+    try {
+      const result = await this.tripSuggestionsService.applySuggestion(id, suggestionId, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/suggestions/:suggestionId/dismiss')
+  @ApiOperation({
+    summary: '忽略建议',
+    description: '忽略一个建议，标记为已忽略状态。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'suggestionId', description: '建议 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功忽略建议（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或建议不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async dismissSuggestion(
+    @Param('id') id: string,
+    @Param('suggestionId') suggestionId: string
+  ) {
+    try {
+      await this.tripSuggestionsService.dismissSuggestion(id, suggestionId);
+      return successResponse(null);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 }

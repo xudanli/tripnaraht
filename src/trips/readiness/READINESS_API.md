@@ -245,7 +245,104 @@ interface ReadinessFindingItem {
 
 ---
 
-### 2. 获取能力包列表
+### 2. 根据行程ID检查准备度
+
+基于行程ID自动获取行程信息并检查准备度，返回 must/should/optional 清单。这是前端最常用的接口，会自动从行程中提取目的地、日期、活动类型等信息。
+
+**接口**: `GET /readiness/trip/:id`
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 行程 ID (UUID) |
+
+**请求示例**:
+
+```http
+GET /readiness/trip/d125c30f-44ab-4a9e-9970-b899fccdc3d8
+```
+
+**响应格式**:
+
+与 `POST /readiness/check` 返回相同的 `ReadinessCheckResult` 格式。
+
+**响应示例**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "findings": [
+      {
+        "category": "entry",
+        "blockers": [
+          {
+            "message": "需要办理冰岛签证",
+            "tasks": [
+              "访问冰岛大使馆官网申请签证",
+              "准备护照和行程单"
+            ],
+            "evidence": "https://www.iceland.is/visas"
+          }
+        ],
+        "must": [
+          {
+            "message": "购买旅行保险，需覆盖高风险活动",
+            "tasks": [
+              "选择覆盖高风险活动的保险"
+            ]
+          }
+        ],
+        "should": [
+          {
+            "message": "准备适合寒冷天气的装备",
+            "tasks": [
+              "准备保暖衣物",
+              "准备防水装备"
+            ]
+          }
+        ],
+        "optional": [],
+        "risks": []
+      }
+    ],
+    "summary": {
+      "totalBlockers": 1,
+      "totalMust": 2,
+      "totalShould": 3,
+      "totalOptional": 0
+    },
+    "risks": [],
+    "constraints": []
+  },
+  "error": null
+}
+```
+
+**字段说明**:
+
+- 系统会自动从行程中提取以下信息：
+  - **目的地**: 从 `trip.destination` 获取
+  - **日期**: 从 `trip.startDate` 和 `trip.endDate` 获取
+  - **活动类型**: 从行程项（ItineraryItem）的 Place 分类和名称中推断
+  - **季节**: 根据开始日期自动计算
+  - **旅行者偏好**: 从 `trip.metadata.preferences` 获取（如预算水平、风险承受度）
+
+**错误响应**:
+
+- `404`: 行程不存在
+- `500`: 服务器内部错误
+
+**使用场景**:
+
+- 前端在行程详情页显示准备度检查结果
+- 自动获取行程相关信息，无需手动输入参数
+- 适用于已创建的行程，快速查看准备度状态
+
+---
+
+### 3. 获取能力包列表
 
 返回所有可用的能力包信息。
 
@@ -297,7 +394,7 @@ GET /readiness/capability-packs
 
 ---
 
-### 3. 评估能力包
+### 4. 评估能力包
 
 评估哪些能力包应该被触发。
 
@@ -361,7 +458,7 @@ GET /readiness/capability-packs
 
 ---
 
-### 4. 获取个性化准备清单
+### 5. 获取个性化准备清单
 
 获取适配行程的准备事项清单，按 blocker/must/should/optional 分类。
 
@@ -440,7 +537,7 @@ GET /readiness/personalized-checklist?tripId=trip-123
 
 ---
 
-### 5. 行程潜在风险预警
+### 6. 行程潜在风险预警
 
 提前知晓行程中的潜在风险，提供应对措施和救援信息。
 
@@ -543,7 +640,13 @@ curl -X POST http://localhost:3000/readiness/check \
   }'
 ```
 
-### 示例 3: 评估能力包
+### 示例 3: 根据行程ID检查准备度（推荐）
+
+```bash
+curl "http://localhost:3000/readiness/trip/d125c30f-44ab-4a9e-9970-b899fccdc3d8"
+```
+
+### 示例 4: 评估能力包
 
 ```bash
 curl -X POST http://localhost:3000/readiness/capability-packs/evaluate \
@@ -557,13 +660,13 @@ curl -X POST http://localhost:3000/readiness/capability-packs/evaluate \
   }'
 ```
 
-### 示例 4: 获取个性化清单
+### 示例 5: 获取个性化清单
 
 ```bash
 curl "http://localhost:3000/readiness/personalized-checklist?tripId=trip-123"
 ```
 
-### 示例 5: 获取风险预警
+### 示例 6: 获取风险预警
 
 ```bash
 curl "http://localhost:3000/readiness/risk-warnings?tripId=trip-123"
@@ -665,7 +768,26 @@ curl "http://localhost:3000/readiness/risk-warnings?tripId=trip-123"
 
 ---
 
+## 接口对比
+
+| 接口 | 方法 | 用途 | 适用场景 |
+|------|------|------|----------|
+| `POST /readiness/check` | POST | 手动传入参数检查准备度 | 行程创建前，用户输入目的地和计划 |
+| `GET /readiness/trip/:id` | GET | 根据行程ID自动检查准备度 | **行程创建后，快速查看准备度（推荐）** |
+| `GET /readiness/personalized-checklist` | GET | 获取个性化清单（格式化） | 显示格式化的准备清单 |
+| `GET /readiness/risk-warnings` | GET | 获取风险预警 | 显示风险信息 |
+| `GET /readiness/capability-packs` | GET | 获取能力包列表 | 了解可用的能力包 |
+| `POST /readiness/capability-packs/evaluate` | POST | 评估能力包 | 判断哪些能力包适用 |
+
+**推荐使用 `GET /readiness/trip/:id`**，因为：
+- 无需手动传入参数，自动从行程中提取信息
+- 前端调用简单，只需传入行程ID
+- 信息更准确，基于实际行程数据
+
+---
+
 ## 更新日志
 
+- **2025-01-03**: 新增 `GET /readiness/trip/:id` 接口，支持根据行程ID自动检查准备度
 - **2024-01-01**: 初始版本，包含5个核心接口
 
