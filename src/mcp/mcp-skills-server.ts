@@ -52,8 +52,20 @@ async function createMcpServer() {
     console.error('NestJS application context created');
     
     console.error('Getting SkillsRegistryService...');
-    skillsRegistry = app.get(SkillsRegistryService);
-    console.error('Got SkillsRegistryService');
+    try {
+      skillsRegistry = app.get(SkillsRegistryService, { strict: false });
+      console.error('Got SkillsRegistryService');
+      if (!skillsRegistry) {
+        throw new Error('SkillsRegistryService is null or undefined');
+      }
+    } catch (error: any) {
+      console.error('Error getting SkillsRegistryService:', error);
+      console.error('Error message:', error.message);
+      if (error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      throw error;
+    }
   } catch (error: any) {
     console.error('Error creating application context:', error);
     if (error.message) {
@@ -66,6 +78,7 @@ async function createMcpServer() {
   }
 
   // 创建 MCP Server
+  console.error('Creating MCP Server instance...');
   const server = new McpServer(
     {
       name: 'tripnara-route-intel',
@@ -79,9 +92,12 @@ async function createMcpServer() {
       },
     }
   );
+  console.error('MCP Server instance created');
 
   // 注册所有 Skills 为 MCP 工具
+  console.error('Calling getAllSkills()...');
   const allSkills = skillsRegistry.getAllSkills();
+  console.error(`Found ${allSkills.length} skills`);
   console.error(`Registering ${allSkills.length} skills as MCP tools...`);
   
   try {
@@ -122,25 +138,35 @@ async function createMcpServer() {
   }
 
   // 注册工具列表查询工具
-  server.registerTool(
-    'tripnara.listSkills',
-    {
-      description: '列出所有可用的 TripNARA Skills',
-    },
-    async () => {
-      const metadata = skillsRegistry.getAllSkillMetadata();
-      return formatResponse({
-        skills: metadata.map(m => ({
-          name: `tripnara.${m.name}`,
-          description: m.description,
-          category: m.category,
-          version: m.version,
-        })),
-      });
+  console.error('Registering tripnara.listSkills tool...');
+  try {
+    server.registerTool(
+      'tripnara.listSkills',
+      {
+        description: '列出所有可用的 TripNARA Skills',
+      },
+      async () => {
+        const metadata = skillsRegistry.getAllSkillMetadata();
+        return formatResponse({
+          skills: metadata.map(m => ({
+            name: `tripnara.${m.name}`,
+            description: m.description,
+            category: m.category,
+            version: m.version,
+          })),
+        });
+      }
+    );
+    console.error('Registered tripnara.listSkills tool');
+  } catch (error: any) {
+    console.error('Error registering tripnara.listSkills:', error);
+    if (error.stack) {
+      console.error('Stack trace:', error.stack);
     }
-  );
+    throw error;
+  }
   
-  console.error(`Registered ${allSkills.length} tools successfully`);
+  console.error(`Registered ${allSkills.length + 1} tools successfully (${allSkills.length} skills + 1 list tool)`);
 
   return { server, app, allSkills };
 }
@@ -150,8 +176,23 @@ async function main() {
   try {
     console.error('Initializing MCP Skills Server...');
     console.error('Calling createMcpServer...');
-    const { server, app, allSkills } = await createMcpServer();
-    console.error(`Created server with ${allSkills.length} skills`);
+    let server, app, allSkills;
+    try {
+      const result = await createMcpServer();
+      server = result.server;
+      app = result.app;
+      allSkills = result.allSkills;
+      console.error(`Created server with ${allSkills.length} skills`);
+    } catch (error: any) {
+      console.error('Error in createMcpServer:', error);
+      if (error.message) {
+        console.error('Error message:', error.message);
+      }
+      if (error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      throw error;
+    }
     
     // Start MCP server
     console.error('Connecting to stdio transport...');
@@ -192,9 +233,29 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// 捕获未处理的异常
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  if (error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
 // Run the server
 main().catch(async (error) => {
   console.error('Failed to start MCP server:', error);
+  if (error.message) {
+    console.error('Error message:', error.message);
+  }
+  if (error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
   process.exit(1);
 });
 
