@@ -60,7 +60,7 @@ export class ConstraintsFromTemplateDto {
   avoidCategories?: string[];
 }
 
-export class CreateTripFromTemplateDto {
+export class CreateTripFromRouteTemplateDto {
   @ApiProperty({ description: '目的地国家代码', example: 'IS' })
   @IsString()
   destination!: string;

@@ -1,7 +1,10 @@
 {
   "packId": "pack.is.iceland",
   "destinationId": "IS-ICELAND",
-  "displayName": "Iceland Travel Readiness",
+  "displayName": {
+    "en": "Iceland Travel Readiness",
+    "zh": "冰岛旅行准备度"
+  },
   "version": "1.0.0",
   "lastReviewedAt": "2025-01-20T00:00:00Z",
   "geo": {
@@ -17,14 +20,20 @@
       "sourceId": "src.safetravel.is",
       "authority": "SafeTravel Iceland",
       "type": "html",
-      "title": "Iceland Travel Safety Information",
+      "title": {
+        "en": "Iceland Travel Safety Information",
+        "zh": "冰岛旅行安全信息"
+      },
       "canonicalUrl": "https://www.safetravel.is/"
     },
     {
       "sourceId": "src.vedur.is",
       "authority": "Icelandic Meteorological Office",
       "type": "html",
-      "title": "Weather Forecasts & Warnings",
+      "title": {
+        "en": "Weather Forecasts & Warnings",
+        "zh": "天气预报和预警"
+      },
       "canonicalUrl": "https://www.vedur.is/"
     }
   ],
@@ -32,56 +41,131 @@
     {
       "type": "weather_extreme",
       "severity": "high",
-      "summary": "Iceland weather changes rapidly; strong winds, rain, and sudden temperature drops are common, especially in winter.",
+      "summary": {
+        "en": "Iceland weather changes rapidly; strong winds, rain, and sudden temperature drops are common, especially in winter.",
+        "zh": "冰岛天气变化迅速；强风、降雨和突然降温很常见，尤其是在冬季。"
+      },
       "mitigations": [
-        "Check weather forecasts (vedur.is) before heading out, especially for remote areas.",
-        "Carry layered clothing: waterproof/windproof shell, warm mid-layer, thermal base layer.",
-        "Be prepared for sudden weather changes even in summer.",
-        "Avoid driving in severe weather conditions."
+        {
+          "en": "Check weather forecasts (vedur.is) before heading out, especially for remote areas.",
+          "zh": "出发前查看天气预报（vedur.is），特别是前往偏远地区时。"
+        },
+        {
+          "en": "Carry layered clothing: waterproof/windproof shell, warm mid-layer, thermal base layer.",
+          "zh": "携带分层衣物：防水/防风外层、保暖中层、保暖内衣。"
+        },
+        {
+          "en": "Be prepared for sudden weather changes even in summer.",
+          "zh": "即使在夏季也要为突然的天气变化做好准备。"
+        },
+        {
+          "en": "Avoid driving in severe weather conditions.",
+          "zh": "避免在恶劣天气条件下驾驶。"
+        }
       ]
     },
     {
       "type": "terrain",
       "severity": "high",
-      "summary": "Geothermal areas (hot springs, geysers, volcanoes) present burn risks from hot ground and steam.",
+      "summary": {
+        "en": "Geothermal areas (hot springs, geysers, volcanoes) present burn risks from hot ground and steam.",
+        "zh": "地热区域（温泉、间歇泉、火山）存在高温地面和蒸汽造成的烫伤风险。"
+      },
       "mitigations": [
-        "Stay on marked tracks and boardwalks in geothermal areas.",
-        "Keep safe distance from geysers, hot springs, and steam vents.",
-        "Supervise children and pets closely in thermal areas.",
-        "Be aware of unstable ground near thermal features."
+        {
+          "en": "Stay on marked tracks and boardwalks in geothermal areas.",
+          "zh": "在地热区域请走在标记的路径和栈道上。"
+        },
+        {
+          "en": "Keep safe distance from geysers, hot springs, and steam vents.",
+          "zh": "与间歇泉、温泉和蒸汽喷口保持安全距离。"
+        },
+        {
+          "en": "Supervise children and pets closely in thermal areas.",
+          "zh": "在地热区域密切看管儿童和宠物。"
+        },
+        {
+          "en": "Be aware of unstable ground near thermal features.",
+          "zh": "注意地热特征附近的不稳定地面。"
+        }
       ]
     },
     {
       "type": "logistics_remote",
       "severity": "high",
-      "summary": "Remote areas have limited fuel and supply access; long distances between services, especially in the Highlands.",
+      "summary": {
+        "en": "Remote areas have limited fuel and supply access; long distances between services, especially in the Highlands.",
+        "zh": "偏远地区燃料和补给有限；服务点之间距离很长，特别是在高地地区。"
+      },
       "mitigations": [
-        "Plan fuel stops before entering remote areas (F-roads, Highlands).",
-        "Carry extra food, water, and emergency supplies.",
-        "Check road conditions (road.is) before heading to remote areas.",
-        "Have offline maps and GPS backup."
+        {
+          "en": "Plan fuel stops before entering remote areas (F-roads, Highlands).",
+          "zh": "进入偏远地区（F 路、高地）前规划好加油站。"
+        },
+        {
+          "en": "Carry extra food, water, and emergency supplies.",
+          "zh": "携带额外的食物、水和应急用品。"
+        },
+        {
+          "en": "Check road conditions (road.is) before heading to remote areas.",
+          "zh": "前往偏远地区前查看路况（road.is）。"
+        },
+        {
+          "en": "Have offline maps and GPS backup.",
+          "zh": "准备离线地图和 GPS 备用设备。"
+        }
       ]
     },
     {
       "type": "water_safety",
       "severity": "medium",
-      "summary": "Strong ocean currents and unpredictable waves at black sand beaches; river crossings in Highlands can be dangerous.",
+      "summary": {
+        "en": "Strong ocean currents and unpredictable waves at black sand beaches; river crossings in Highlands can be dangerous.",
+        "zh": "黑沙滩的强洋流和不可预测的海浪；高地地区的河流穿越可能很危险。"
+      },
       "mitigations": [
-        "Never turn your back to the ocean at black sand beaches.",
-        "Stay away from the water's edge, especially at Reynisfjara.",
-        "Do not attempt river crossings in Highlands without proper vehicle and experience.",
-        "Check tide times and weather conditions before visiting coastal areas."
+        {
+          "en": "Never turn your back to the ocean at black sand beaches.",
+          "zh": "在黑沙滩上永远不要背对大海。"
+        },
+        {
+          "en": "Stay away from the water's edge, especially at Reynisfjara.",
+          "zh": "远离水边，特别是在雷尼斯黑沙滩。"
+        },
+        {
+          "en": "Do not attempt river crossings in Highlands without proper vehicle and experience.",
+          "zh": "没有合适的车辆和经验，不要尝试在高地地区穿越河流。"
+        },
+        {
+          "en": "Check tide times and weather conditions before visiting coastal areas.",
+          "zh": "访问沿海地区前查看潮汐时间和天气状况。"
+        }
       ]
     },
     {
       "type": "driving_conditions",
       "severity": "high",
-      "summary": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter; gravel roads and strong winds can be challenging.",
+      "summary": {
+        "en": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter; gravel roads and strong winds can be challenging.",
+        "zh": "F 路（高地道路）需要四驱车辆，冬季关闭；碎石路和强风可能具有挑战性。"
+      },
       "mitigations": [
-        "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads).",
-        "Check road conditions and F-road status before departure.",
-        "Drive slowly on gravel roads and be cautious of strong crosswinds.",
-        "Never drive off-road or on closed roads."
+        {
+          "en": "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads).",
+          "zh": "租用合适的车辆（F 路需要四驱车，碎石路需要坚固的车辆）。"
+        },
+        {
+          "en": "Check road conditions and F-road status before departure.",
+          "zh": "出发前查看路况和 F 路状态。"
+        },
+        {
+          "en": "Drive slowly on gravel roads and be cautious of strong crosswinds.",
+          "zh": "在碎石路上慢速行驶，注意强侧风。"
+        },
+        {
+          "en": "Never drive off-road or on closed roads.",
+          "zh": "永远不要越野行驶或在封闭道路上行驶。"
+        }
       ]
     }
   ],
@@ -91,12 +175,30 @@
       "category": "gear_packing",
       "appliesToSeasons": ["all"],
       "items": [
-        "Layered clothing system: waterproof/windproof shell, warm mid-layer, thermal base layer",
-        "Sturdy waterproof boots with good grip",
-        "Headlamp with spare batteries (important for winter short days)",
-        "Emergency shelter or bivvy bag for remote areas",
-        "Check weather forecast (vedur.is) before departure",
-        "Inform someone of your route and expected return time"
+        {
+          "en": "Layered clothing system: waterproof/windproof shell, warm mid-layer, thermal base layer",
+          "zh": "分层衣物系统：防水/防风外层、保暖中层、保暖内衣"
+        },
+        {
+          "en": "Sturdy waterproof boots with good grip",
+          "zh": "坚固的防水靴，具有良好的抓地力"
+        },
+        {
+          "en": "Headlamp with spare batteries (important for winter short days)",
+          "zh": "头灯和备用电池（冬季白天短，很重要）"
+        },
+        {
+          "en": "Emergency shelter or bivvy bag for remote areas",
+          "zh": "偏远地区的应急庇护所或露营袋"
+        },
+        {
+          "en": "Check weather forecast (vedur.is) before departure",
+          "zh": "出发前查看天气预报（vedur.is）"
+        },
+        {
+          "en": "Inform someone of your route and expected return time",
+          "zh": "告知他人您的路线和预计返回时间"
+        }
       ]
     },
     {
@@ -104,12 +206,30 @@
       "category": "safety_hazards",
       "appliesToSeasons": ["all"],
       "items": [
-        "Stay on marked tracks and boardwalks in geothermal areas",
-        "Keep safe distance from geysers, hot springs, and steam vents",
-        "Supervise children and pets at all times in thermal areas",
-        "Carry first aid kit for potential burns",
-        "Be aware of unstable ground and hydrogen sulfide gas in some areas",
-        "Do not test water temperature with bare hands"
+        {
+          "en": "Stay on marked tracks and boardwalks in geothermal areas",
+          "zh": "在地热区域请走在标记的路径和栈道上"
+        },
+        {
+          "en": "Keep safe distance from geysers, hot springs, and steam vents",
+          "zh": "与间歇泉、温泉和蒸汽喷口保持安全距离"
+        },
+        {
+          "en": "Supervise children and pets at all times in thermal areas",
+          "zh": "在地热区域始终看管儿童和宠物"
+        },
+        {
+          "en": "Carry first aid kit for potential burns",
+          "zh": "携带急救包以应对可能的烫伤"
+        },
+        {
+          "en": "Be aware of unstable ground and hydrogen sulfide gas in some areas",
+          "zh": "注意某些地区的不稳定地面和硫化氢气体"
+        },
+        {
+          "en": "Do not test water temperature with bare hands",
+          "zh": "不要用裸手测试水温"
+        }
       ]
     },
     {
@@ -117,12 +237,30 @@
       "category": "logistics",
       "appliesToSeasons": ["all"],
       "items": [
-        "Plan fuel stops before entering remote areas (especially Highlands/F-roads)",
-        "Carry extra food and water for remote stretches",
-        "Check road conditions (road.is) and F-road status",
-        "Have offline maps and GPS backup",
-        "Carry emergency supplies: food, water, warm clothing, first aid",
-        "Check fuel station opening hours in remote areas"
+        {
+          "en": "Plan fuel stops before entering remote areas (especially Highlands/F-roads)",
+          "zh": "进入偏远地区（特别是高地/F 路）前规划好加油站"
+        },
+        {
+          "en": "Carry extra food and water for remote stretches",
+          "zh": "为偏远路段携带额外的食物和水"
+        },
+        {
+          "en": "Check road conditions (road.is) and F-road status",
+          "zh": "查看路况（road.is）和 F 路状态"
+        },
+        {
+          "en": "Have offline maps and GPS backup",
+          "zh": "准备离线地图和 GPS 备用设备"
+        },
+        {
+          "en": "Carry emergency supplies: food, water, warm clothing, first aid",
+          "zh": "携带应急用品：食物、水、保暖衣物、急救包"
+        },
+        {
+          "en": "Check fuel station opening hours in remote areas",
+          "zh": "查看偏远地区加油站的营业时间"
+        }
       ]
     },
     {
@@ -130,12 +268,30 @@
       "category": "logistics",
       "appliesToSeasons": ["all"],
       "items": [
-        "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads)",
-        "Check road conditions and weather before departure",
-        "Drive slowly on gravel roads and be cautious of strong crosswinds",
-        "Never drive off-road or on closed roads",
-        "Be aware of sheep on roads, especially in rural areas",
-        "Carry spare tire and know how to change it"
+        {
+          "en": "Rent appropriate vehicle (4x4 for F-roads, sturdy car for gravel roads)",
+          "zh": "租用合适的车辆（F 路需要四驱车，碎石路需要坚固的车辆）"
+        },
+        {
+          "en": "Check road conditions and weather before departure",
+          "zh": "出发前查看路况和天气"
+        },
+        {
+          "en": "Drive slowly on gravel roads and be cautious of strong crosswinds",
+          "zh": "在碎石路上慢速行驶，注意强侧风"
+        },
+        {
+          "en": "Never drive off-road or on closed roads",
+          "zh": "永远不要越野行驶或在封闭道路上行驶"
+        },
+        {
+          "en": "Be aware of sheep on roads, especially in rural areas",
+          "zh": "注意路上的羊，特别是在农村地区"
+        },
+        {
+          "en": "Carry spare tire and know how to change it",
+          "zh": "携带备胎并知道如何更换"
+        }
       ]
     },
     {
@@ -143,11 +299,26 @@
       "category": "safety_hazards",
       "appliesToSeasons": ["all"],
       "items": [
-        "Never turn your back to the ocean at black sand beaches",
-        "Stay away from the water's edge, especially at Reynisfjara",
-        "Check tide times and weather conditions before visiting coastal areas",
-        "Be aware of sneaker waves that can come far up the beach",
-        "Do not climb on basalt columns or unstable rock formations"
+        {
+          "en": "Never turn your back to the ocean at black sand beaches",
+          "zh": "在黑沙滩上永远不要背对大海"
+        },
+        {
+          "en": "Stay away from the water's edge, especially at Reynisfjara",
+          "zh": "远离水边，特别是在雷尼斯黑沙滩"
+        },
+        {
+          "en": "Check tide times and weather conditions before visiting coastal areas",
+          "zh": "访问沿海地区前查看潮汐时间和天气状况"
+        },
+        {
+          "en": "Be aware of sneaker waves that can come far up the beach",
+          "zh": "注意可能冲到海滩深处的暗涌"
+        },
+        {
+          "en": "Do not climb on basalt columns or unstable rock formations",
+          "zh": "不要攀爬玄武岩柱或不稳定的岩石构造"
+        }
       ]
     }
   ],
@@ -180,15 +351,24 @@
       },
       "then": {
         "level": "must",
-        "message": "Iceland weather changes rapidly. Pack layered clothing: waterproof/windproof shell, warm mid-layer (fleece/wool), thermal base layer. Also carry headlamp, spare batteries, and emergency shelter for remote areas.",
+        "message": {
+          "en": "Iceland weather changes rapidly. Pack layered clothing: waterproof/windproof shell, warm mid-layer (fleece/wool), thermal base layer. Also carry headlamp, spare batteries, and emergency shelter for remote areas.",
+          "zh": "冰岛天气变化迅速。准备分层衣物：防水/防风外层、保暖中层（抓绒/羊毛）、保暖内衣。同时携带头灯、备用电池和偏远地区的应急庇护所。"
+        },
         "tasks": [
           {
-            "title": "Prepare layered clothing system for Iceland weather",
+            "title": {
+              "en": "Prepare layered clothing system for Iceland weather",
+              "zh": "为冰岛天气准备分层衣物系统"
+            },
             "dueOffsetDays": -10,
             "tags": ["gear", "safety"]
           },
           {
-            "title": "Pack headlamp + spare batteries + emergency shelter",
+            "title": {
+              "en": "Pack headlamp + spare batteries + emergency shelter",
+              "zh": "打包头灯 + 备用电池 + 应急庇护所"
+            },
             "dueOffsetDays": -7,
             "tags": ["gear"]
           }
@@ -218,17 +398,29 @@
       },
       "then": {
         "level": "must",
-        "message": "Check weather forecasts (vedur.is) before heading out, especially for remote areas. Weather can change quickly and roads may close due to severe conditions.",
+        "message": {
+          "en": "Check weather forecasts (vedur.is) before heading out, especially for remote areas. Weather can change quickly and roads may close due to severe conditions.",
+          "zh": "出发前查看天气预报（vedur.is），特别是前往偏远地区时。天气可能快速变化，道路可能因恶劣条件而关闭。"
+        },
         "tasks": [
           {
-            "title": "Check vedur.is forecast and road.is conditions before departure",
+            "title": {
+              "en": "Check vedur.is forecast and road.is conditions before departure",
+              "zh": "出发前查看 vedur.is 天气预报和 road.is 路况"
+            },
             "dueOffsetDays": -1,
             "tags": ["safety", "planning"]
           }
         ],
         "askUser": [
-          "Do you plan to visit remote areas or Highlands?",
-          "Are you familiar with checking Iceland weather forecasts?"
+          {
+            "en": "Do you plan to visit remote areas or Highlands?",
+            "zh": "您计划访问偏远地区或高地吗？"
+          },
+          {
+            "en": "Are you familiar with checking Iceland weather forecasts?",
+            "zh": "您熟悉如何查看冰岛天气预报吗？"
+          }
         ]
       },
       "evidence": []
@@ -255,17 +447,29 @@
       },
       "then": {
         "level": "must",
-        "message": "Geothermal areas pose burn risks from hot ground and steam. Stay on marked tracks and boardwalks. Keep safe distance from geysers and hot springs. Supervise children and pets closely. Be aware of unstable ground and hydrogen sulfide gas in some areas.",
+        "message": {
+          "en": "Geothermal areas pose burn risks from hot ground and steam. Stay on marked tracks and boardwalks. Keep safe distance from geysers and hot springs. Supervise children and pets closely. Be aware of unstable ground and hydrogen sulfide gas in some areas.",
+          "zh": "地热区域存在高温地面和蒸汽造成的烫伤风险。请走在标记的路径和栈道上。与间歇泉和温泉保持安全距离。密切看管儿童和宠物。注意某些地区的不稳定地面和硫化氢气体。"
+        },
         "tasks": [
           {
-            "title": "Review geothermal safety guidelines before visiting thermal areas",
+            "title": {
+              "en": "Review geothermal safety guidelines before visiting thermal areas",
+              "zh": "访问地热区域前查看地热安全指南"
+            },
             "dueOffsetDays": -3,
             "tags": ["safety"]
           }
         ],
         "askUser": [
-          "Will you be visiting geothermal areas with children or pets?",
-          "Are you aware of the burn risks in Iceland's thermal areas?"
+          {
+            "en": "Will you be visiting geothermal areas with children or pets?",
+            "zh": "您会带着儿童或宠物访问地热区域吗？"
+          },
+          {
+            "en": "Are you aware of the burn risks in Iceland's thermal areas?",
+            "zh": "您了解冰岛地热区域的烫伤风险吗？"
+          }
         ]
       },
       "evidence": []
@@ -298,22 +502,37 @@
       },
       "then": {
         "level": "must",
-        "message": "Remote areas have limited fuel access. Plan fuel stops before entering remote areas (especially Highlands/F-roads). Check fuel station opening hours in remote areas. Carry extra food, water, and emergency supplies.",
+        "message": {
+          "en": "Remote areas have limited fuel access. Plan fuel stops before entering remote areas (especially Highlands/F-roads). Check fuel station opening hours in remote areas. Carry extra food, water, and emergency supplies.",
+          "zh": "偏远地区燃料供应有限。进入偏远地区（特别是高地/F 路）前规划好加油站。查看偏远地区加油站的营业时间。携带额外的食物、水和应急用品。"
+        },
         "tasks": [
           {
-            "title": "Plan fuel stops before entering remote areas",
+            "title": {
+              "en": "Plan fuel stops before entering remote areas",
+              "zh": "进入偏远地区前规划好加油站"
+            },
             "dueOffsetDays": -7,
             "tags": ["logistics", "driving"]
           },
           {
-            "title": "Check fuel station locations and opening hours for remote areas",
+            "title": {
+              "en": "Check fuel station locations and opening hours for remote areas",
+              "zh": "查看偏远地区加油站的位置和营业时间"
+            },
             "dueOffsetDays": -3,
             "tags": ["logistics"]
           }
         ],
         "askUser": [
-          "Do you plan to drive in remote areas or Highlands?",
-          "Are you aware of fuel station availability in remote areas?"
+          {
+            "en": "Do you plan to drive in remote areas or Highlands?",
+            "zh": "您计划在偏远地区或高地驾驶吗？"
+          },
+          {
+            "en": "Are you aware of fuel station availability in remote areas?",
+            "zh": "您了解偏远地区加油站的可用性吗？"
+          }
         ]
       },
       "evidence": []
@@ -340,22 +559,37 @@
       },
       "then": {
         "level": "blocker",
-        "message": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter. Check road conditions (road.is) and F-road status before departure. Never drive off-road or on closed roads.",
+        "message": {
+          "en": "F-roads (Highland roads) require 4x4 vehicles and are closed in winter. Check road conditions (road.is) and F-road status before departure. Never drive off-road or on closed roads.",
+          "zh": "F 路（高地道路）需要四驱车辆，冬季关闭。出发前查看路况（road.is）和 F 路状态。永远不要越野行驶或在封闭道路上行驶。"
+        },
         "tasks": [
           {
-            "title": "Rent 4x4 vehicle for F-roads (if planning Highlands)",
+            "title": {
+              "en": "Rent 4x4 vehicle for F-roads (if planning Highlands)",
+              "zh": "为 F 路租用四驱车辆（如果计划前往高地）"
+            },
             "dueOffsetDays": -30,
             "tags": ["booking", "transport"]
           },
           {
-            "title": "Check road.is for F-road status and conditions",
+            "title": {
+              "en": "Check road.is for F-road status and conditions",
+              "zh": "查看 road.is 的 F 路状态和路况"
+            },
             "dueOffsetDays": -1,
             "tags": ["safety", "planning"]
           }
         ],
         "askUser": [
-          "Do you plan to drive on F-roads (Highland roads)?",
-          "Do you have experience driving on gravel roads and river crossings?"
+          {
+            "en": "Do you plan to drive on F-roads (Highland roads)?",
+            "zh": "您计划在 F 路（高地道路）上驾驶吗？"
+          },
+          {
+            "en": "Do you have experience driving on gravel roads and river crossings?",
+            "zh": "您有在碎石路和河流穿越方面的驾驶经验吗？"
+          }
         ]
       },
       "evidence": []
@@ -382,22 +616,37 @@
       },
       "then": {
         "level": "must",
-        "message": "Strong ocean currents and unpredictable waves at black sand beaches. Never turn your back to the ocean. Stay away from the water's edge, especially at Reynisfjara. Check tide times and weather conditions before visiting.",
+        "message": {
+          "en": "Strong ocean currents and unpredictable waves at black sand beaches. Never turn your back to the ocean. Stay away from the water's edge, especially at Reynisfjara. Check tide times and weather conditions before visiting.",
+          "zh": "黑沙滩的强洋流和不可预测的海浪。永远不要背对大海。远离水边，特别是在雷尼斯黑沙滩。访问前查看潮汐时间和天气状况。"
+        },
         "tasks": [
           {
-            "title": "Review coastal safety guidelines for black sand beaches",
+            "title": {
+              "en": "Review coastal safety guidelines for black sand beaches",
+              "zh": "查看黑沙滩的沿海安全指南"
+            },
             "dueOffsetDays": -3,
             "tags": ["safety"]
           },
           {
-            "title": "Check tide times and weather before visiting coastal areas",
+            "title": {
+              "en": "Check tide times and weather before visiting coastal areas",
+              "zh": "访问沿海地区前查看潮汐时间和天气"
+            },
             "dueOffsetDays": -1,
             "tags": ["safety", "planning"]
           }
         ],
         "askUser": [
-          "Are you aware of the dangers at Iceland's black sand beaches?",
-          "Do you know to never turn your back to the ocean?"
+          {
+            "en": "Are you aware of the dangers at Iceland's black sand beaches?",
+            "zh": "您了解冰岛黑沙滩的危险吗？"
+          },
+          {
+            "en": "Do you know to never turn your back to the ocean?",
+            "zh": "您知道永远不要背对大海吗？"
+          }
         ]
       },
       "evidence": []
@@ -424,10 +673,16 @@
       },
       "then": {
         "level": "should",
-        "message": "Camping sites may have seasonal availability. Check opening seasons and booking requirements. Some sites require advance booking, especially in popular areas.",
+        "message": {
+          "en": "Camping sites may have seasonal availability. Check opening seasons and booking requirements. Some sites require advance booking, especially in popular areas.",
+          "zh": "露营地可能有季节性开放。查看开放季节和预订要求。某些营地需要提前预订，特别是在热门地区。"
+        },
         "tasks": [
           {
-            "title": "Check camping site opening seasons and booking requirements",
+            "title": {
+              "en": "Check camping site opening seasons and booking requirements",
+              "zh": "查看露营地的开放季节和预订要求"
+            },
             "dueOffsetDays": -14,
             "tags": ["booking", "accommodation"]
           }

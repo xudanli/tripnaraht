@@ -32,7 +32,7 @@ export class PersonaAlertDto {
   @ApiProperty({ description: 'Persona名称', example: 'Abu' })
   name!: string;
 
-  @ApiProperty({ description: '提醒标题', example: '安全官（PHYSICAL）' })
+  @ApiProperty({ description: '提醒标题', example: '安全守护者 Abu（北极熊 🐻‍❄️）' })
   title!: string;
 
   @ApiProperty({ description: '提醒消息', example: '我注意到北部山区 10 月份道路封闭概率较高\n建议准备备选路线\n你觉得呢？' })

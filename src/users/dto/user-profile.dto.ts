@@ -55,6 +55,31 @@ export class UserPreferencesDto {
   @IsObject()
   @IsOptional()
   other?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: '国籍（ISO 3166-1 alpha-2）',
+    example: 'CN',
+  })
+  @IsString()
+  @IsOptional()
+  nationality?: string;
+
+  @ApiPropertyOptional({
+    description: '居住国（ISO 3166-1 alpha-2）',
+    example: 'CN',
+  })
+  @IsString()
+  @IsOptional()
+  residencyCountry?: string;
+
+  @ApiPropertyOptional({
+    description: '旅行者标签',
+    example: ['senior', 'family_with_children', 'solo'],
+    type: [String],
+  })
+  @IsArray()
+  @IsOptional()
+  tags?: string[];
 }
 
 /**

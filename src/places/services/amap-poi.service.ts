@@ -1,5 +1,5 @@
 // src/places/services/amap-poi.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
@@ -22,8 +22,8 @@ export class AmapPOIService {
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl = 'https://restapi.amap.com/v3';
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('AMAP_API_KEY');
+  constructor(@Optional() private configService?: ConfigService) {
+    this.apiKey = this.configService?.get<string>('AMAP_API_KEY');
     
     this.axiosInstance = axios.create({
       timeout: 10000, // 10 秒超时

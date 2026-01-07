@@ -1,5 +1,5 @@
 // src/places/services/vector-search.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { EmbeddingService } from './embedding.service';
@@ -64,9 +64,10 @@ export class VectorSearchService {
 
   constructor(
     private prisma: PrismaService,
-    private embeddingService: EmbeddingService
+    @Optional() private embeddingService?: EmbeddingService
   ) {
-    this.embeddingDimension = this.embeddingService.getEmbeddingDimension();
+    // 如果 EmbeddingService 不可用，使用默认维度
+    this.embeddingDimension = this.embeddingService?.getEmbeddingDimension() || 1536;
   }
 
   /**
@@ -142,6 +143,26 @@ export class VectorSearchService {
     }
 
     // 1. 生成查询向量
+    if (!this.embeddingService) {
+      this.logger.warn('EmbeddingService 不可用，降级到纯关键词搜索');
+      // 降级到关键词搜索
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
+      return keywordResults.map(r => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（EmbeddingService 不可用）'],
+        distance: r.distance,
+      }));
+    }
+    
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
     
     // 检查是否为降级后的零向量（embedding 失败时的降级策略）
@@ -966,7 +987,31 @@ export class VectorSearchService {
     }
 
     // 生成查询向量
+    if (!this.embeddingService) {
+      this.logger.warn('EmbeddingService 不可用，降级到纯关键词搜索');
+      // 降级到关键词搜索
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      return keywordResults.map(r => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（EmbeddingService 不可用）'],
+        distance: r.distance,
+      }));
+    }
+    
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    if (!queryEmbedding) {
+      this.logger.warn('EmbeddingService 不可用，跳过向量搜索');
+      return [];
+    }
     const isZeroVector = queryEmbedding.every(v => v === 0);
     
     if (isZeroVector) {

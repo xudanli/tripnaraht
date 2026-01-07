@@ -83,7 +83,7 @@ export class PersonaExplanationService {
   }
 
   /**
-   * 生成拒绝解释（Abu 风格）
+   * 生成拒绝解释（Abu 风格 - 北极熊：严肃但温柔，永远把你带去安全地带）
    */
   private generateRejectionExplanation(
     persona: DecisionPersona,
@@ -95,17 +95,17 @@ export class PersonaExplanationService {
       const affectedDays = context?.affectedDays || [];
 
       if (affectedDays.length > 0) {
-        return `我们没有选择这条路线，因为在第 ${affectedDays.join('、')} 天会出现${reason}，这在当前季节和你的节奏偏好下存在明显风险。我们不会赌这件事。`;
+        return `我们没有选择这条路线，因为在第 ${affectedDays.join('、')} 天会出现${reason}，这在当前季节和你的节奏偏好下存在明显风险。我负责把你带去安全地带，我们不会赌这件事。`;
       }
 
-      return `我们没有选择这条路线，因为${reason}，这在当前条件下存在明显风险。我们不会赌这件事。`;
+      return `我们没有选择这条路线，因为${reason}，这在当前条件下存在明显风险。我负责把你带去安全地带，我们不会赌这件事。`;
     }
 
     return decision.explanation;
   }
 
   /**
-   * 生成调整解释（Dr.Dre 风格）
+   * 生成调整解释（Dr.Dre 风格 - 牧羊犬：体谅、节奏、稳定、贴心）
    */
   private generateAdjustmentExplanation(
     persona: DecisionPersona,
@@ -116,14 +116,14 @@ export class PersonaExplanationService {
       const adjustment = context?.adjustment || '关键一天拆开，并插入了一个缓冲日';
       const affectedPeriod = context?.affectedPeriod || '中段';
 
-      return `这条路线是可行的，但原本的节奏会让你在${affectedPeriod}明显疲劳。我们已经帮你把${adjustment}，让体验更稳定。`;
+      return `这条路线是可行的，但原本的节奏会让你在${affectedPeriod}明显疲劳。我已经帮你把${adjustment}，让每一天刚刚好，体验更稳定。`;
     }
 
     return decision.explanation;
   }
 
   /**
-   * 生成替换解释（Neptune 风格）
+   * 生成替换解释（Neptune 风格 - 海獭：聪明、灵活、创造性、共情）
    */
   private generateReplacementExplanation(
     persona: DecisionPersona,
@@ -134,7 +134,7 @@ export class PersonaExplanationService {
       const originalPlan = context?.originalPlan || '原计划的入口';
       const replacement = context?.replacement || '一个入口';
 
-      return `路线本身没有问题，只是${originalPlan}在你到达时不可用。我们为你换了一个${replacement}，你走的仍然是同一条路线。`;
+      return `路线本身没有问题，只是${originalPlan}在你到达时不可用。我为你换了一个刚刚好的替代${replacement}，你走的仍然是同一条路线，体验不会打折扣。`;
     }
 
     return decision.explanation;

@@ -123,10 +123,15 @@ export class PackStorageService {
         where: { packId: pack.packId },
       });
 
+      // 将 LocalizedString 转换为字符串（用于数据库存储）
+      const displayNameStr = typeof pack.displayName === 'string' 
+        ? pack.displayName 
+        : pack.displayName.en;
+
       const packData = {
         packId: pack.packId,
         destinationId: pack.destinationId,
-        displayName: pack.displayName,
+        displayName: displayNameStr,
         version: pack.version,
         lastReviewedAt: new Date(pack.lastReviewedAt),
         countryCode: pack.geo.countryCode,

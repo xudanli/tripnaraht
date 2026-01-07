@@ -26,7 +26,7 @@ import { RouteDirectionRecommendation } from './services/route-direction-selecto
 import { ScoreBreakdown } from './interfaces/route-direction-explanation.interface';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
-import { CreateTripFromTemplateDto } from './dto/create-trip-from-template.dto';
+import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { QueryRouteTemplateDto } from './dto/query-route-template.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
@@ -331,13 +331,13 @@ export class RouteDirectionsController {
     description: '从路线模板生成可执行行程（对应工作台的"使用模板"按钮）',
   })
   @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
-  @ApiBody({ type: CreateTripFromTemplateDto })
+  @ApiBody({ type: CreateTripFromRouteTemplateDto })
   @ApiResponse({ status: 201, description: '成功创建行程' })
   @ApiResponse({ status: 404, description: '路线模板不存在' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
   async createTripFromTemplate(
     @Param('id', ParseIntPipe) templateId: number,
-    @Body() dto: CreateTripFromTemplateDto,
+    @Body() dto: CreateTripFromRouteTemplateDto,
   ) {
     try {
       const result = await this.routeDirectionsService.createTripFromTemplate(templateId, dto);

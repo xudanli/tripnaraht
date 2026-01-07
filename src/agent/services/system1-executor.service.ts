@@ -73,7 +73,7 @@ export class System1ExecutorService {
     if (/删除|移除/.test(input)) {
       // 提取 POI 名称
       const match = input.match(/删除|移除\s*(.+)/);
-      if (match) {
+      if (match && match[1]) {
         const targetName = match[1].trim();
         
         // 尝试解析实体：搜索匹配的 POI
@@ -177,7 +177,7 @@ export class System1ExecutorService {
     // 添加操作
     if (/添加|加入/.test(input)) {
       const match = input.match(/添加|加入\s*(.+)/);
-      if (match) {
+      if (match && match[1]) {
         const targetName = match[1].trim();
         
         // 尝试解析实体：搜索匹配的 POI

@@ -1,5 +1,5 @@
 // src/places/services/mapbox.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
@@ -22,11 +22,11 @@ export class MapboxService {
   private readonly accessToken: string;
   private readonly baseUrl = 'https://api.mapbox.com';
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 支持多种环境变量名（VITE_ 前缀用于前端，后端直接使用）
     this.accessToken = 
-      this.configService.get<string>('MAPBOX_ACCESS_TOKEN') || 
-      this.configService.get<string>('VITE_MAPBOX_ACCESS_TOKEN') || 
+      this.configService?.get<string>('MAPBOX_ACCESS_TOKEN') || 
+      this.configService?.get<string>('VITE_MAPBOX_ACCESS_TOKEN') || 
       '';
     
     if (!this.accessToken) {

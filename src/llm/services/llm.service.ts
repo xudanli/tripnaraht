@@ -1,5 +1,5 @@
 // src/llm/services/llm.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
@@ -32,7 +32,7 @@ export class LlmService {
   // 熔断器（用于在连续失败后禁用 API 调用）
   private readonly circuitBreaker: CircuitBreaker;
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
@@ -51,8 +51,8 @@ export class LlmService {
           family: 4, // 强制 IPv4
         });
     
-    // 处理 baseURL
-    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+    // 处理 baseURL - 使用可选链和 process.env 作为保底
+    const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
     
     // 使用统一的工厂函数创建 OpenAI HTTP 客户端
     this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
@@ -65,23 +65,28 @@ export class LlmService {
     });
     
     // 检查是否启用 Mock 模式（用于测试或网络不可用时）
-    this.useMock = this.configService.get<string>('LLM_USE_MOCK') === 'true';
+    this.useMock = (this.configService?.get<string>('LLM_USE_MOCK') || process.env.LLM_USE_MOCK) === 'true';
     
     // 根据环境变量确定默认提供商
     // 优先使用 DeepSeek（如果配置了）
-    if (this.configService.get<string>('DEEPSEEK_API_KEY')) {
+    const deepseekKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
+    const openaiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
+    const geminiKey = this.configService?.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
+    const anthropicKey = this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
+    
+    if (deepseekKey) {
       this.defaultProvider = LlmProvider.DEEPSEEK;
-    } else if (this.configService.get<string>('OPENAI_API_KEY')) {
+    } else if (openaiKey) {
       this.defaultProvider = LlmProvider.OPENAI;
-    } else if (this.configService.get<string>('GEMINI_API_KEY')) {
+    } else if (geminiKey) {
       this.defaultProvider = LlmProvider.GEMINI;
-    } else if (this.configService.get<string>('ANTHROPIC_API_KEY')) {
+    } else if (anthropicKey) {
       this.defaultProvider = LlmProvider.ANTHROPIC;
     } else {
       this.defaultProvider = LlmProvider.DEEPSEEK; // 默认使用 DeepSeek
       // 如果没有配置 API Key 且未启用 Mock，自动启用 Mock
       if (!this.useMock) {
-        this.logger.warn('No LLM API key configured and LLM_USE_MOCK not set, will use mock mode');
+        this.logger.warn('⚠️ LlmService Warning: No LLM API key configured (checked ConfigService and process.env), will use mock mode');
         // 注意：这里不能直接修改 useMock，因为它是 readonly
         // 实际会在 callLlm 中检查网络连接失败时自动回退
       }
@@ -529,12 +534,12 @@ export class LlmService {
    * 调用 OpenAI API
    */
   private async callOpenAI(prompt: string, schema?: any): Promise<string> {
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    const apiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY not configured');
+      throw new Error('OPENAI_API_KEY not configured (checked ConfigService and process.env)');
     }
 
-    const model = this.configService.get<string>('OPENAI_MODEL') || 'gpt-3.5-turbo';
+    const model = this.configService?.get<string>('OPENAI_MODEL') || process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
     
     const body: any = {
       model,
@@ -641,12 +646,12 @@ export class LlmService {
    * 调用 Gemini API
    */
   private async callGemini(prompt: string, schema?: any): Promise<string> {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    const apiKey = this.configService?.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
+      throw new Error('GEMINI_API_KEY not configured (checked ConfigService and process.env)');
     }
 
-    const model = this.configService.get<string>('GEMINI_MODEL') || 'gemini-pro';
+    const model = this.configService?.get<string>('GEMINI_MODEL') || process.env.GEMINI_MODEL || 'gemini-pro';
     
     const body: any = {
       contents: [{
@@ -691,12 +696,12 @@ export class LlmService {
    * 调用 DeepSeek API
    */
   private async callDeepSeek(prompt: string, schema?: any): Promise<string> {
-    const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
+    const apiKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      throw new Error('DEEPSEEK_API_KEY not configured');
+      throw new Error('DEEPSEEK_API_KEY not configured (checked ConfigService and process.env)');
     }
 
-    const model = this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat';
+    const model = this.configService?.get<string>('DEEPSEEK_MODEL') || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
     
     const body: any = {
       model,
@@ -735,12 +740,12 @@ export class LlmService {
    * 调用 Anthropic API
    */
   private async callAnthropic(prompt: string, schema?: any): Promise<string> {
-    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    const apiKey = this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured');
+      throw new Error('ANTHROPIC_API_KEY not configured (checked ConfigService and process.env)');
     }
 
-    const model = this.configService.get<string>('ANTHROPIC_MODEL') || 'claude-3-haiku-20240307';
+    const model = this.configService?.get<string>('ANTHROPIC_MODEL') || process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307';
     
     const body: any = {
       model,

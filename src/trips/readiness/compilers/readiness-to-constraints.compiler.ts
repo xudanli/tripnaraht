@@ -12,6 +12,7 @@ import { ReadinessFinding, ReadinessCheckResult } from '../types/readiness-findi
 import { CheckerViolation } from '../../decision/constraints/constraint-checker';
 import { ConstraintViolation } from '../../decision/decision-log';
 import { ISODate } from '../../decision/world-model';
+import { getLocalizedText } from '../utils/i18n.utils';
 
 export interface ReadinessConstraint {
   id: string;
@@ -42,7 +43,11 @@ export class ReadinessToConstraintsCompiler {
           severity: 'error',
           message: item.message,
           evidence: item.evidence,
-          tasks: item.tasks,
+          tasks: item.tasks?.map(task => ({
+            title: typeof task.title === 'string' ? task.title : getLocalizedText(task.title),
+            dueOffsetDays: task.dueOffsetDays,
+            tags: task.tags,
+          })),
           askUser: item.askUser,
         });
       }
@@ -55,7 +60,11 @@ export class ReadinessToConstraintsCompiler {
           severity: 'error',
           message: item.message,
           evidence: item.evidence,
-          tasks: item.tasks,
+          tasks: item.tasks?.map(task => ({
+            title: typeof task.title === 'string' ? task.title : getLocalizedText(task.title),
+            dueOffsetDays: task.dueOffsetDays,
+            tags: task.tags,
+          })),
           askUser: item.askUser,
         });
       }
@@ -68,7 +77,11 @@ export class ReadinessToConstraintsCompiler {
           severity: 'warning',
           message: item.message,
           evidence: item.evidence,
-          tasks: item.tasks,
+          tasks: item.tasks?.map(task => ({
+            title: typeof task.title === 'string' ? task.title : getLocalizedText(task.title),
+            dueOffsetDays: task.dueOffsetDays,
+            tags: task.tags,
+          })),
           askUser: item.askUser,
           // 软约束的惩罚函数（可以根据 severity 调整权重）
           penalty: () => item.severity === 'high' ? 0.3 : 0.1,
@@ -83,7 +96,11 @@ export class ReadinessToConstraintsCompiler {
           severity: 'info',
           message: item.message,
           evidence: item.evidence,
-          tasks: item.tasks,
+          tasks: item.tasks?.map(task => ({
+            title: typeof task.title === 'string' ? task.title : getLocalizedText(task.title),
+            dueOffsetDays: task.dueOffsetDays,
+            tags: task.tags,
+          })),
         });
       }
     }
@@ -139,7 +156,7 @@ export class ReadinessToConstraintsCompiler {
             ruleId: item.id,
             evidence: item.evidence,
           },
-          suggestions: item.tasks?.map(t => t.title) || [],
+          suggestions: item.tasks?.map(t => typeof t.title === 'string' ? t.title : getLocalizedText(t.title)) || [],
         });
       }
 
@@ -155,7 +172,7 @@ export class ReadinessToConstraintsCompiler {
             category: item.category,
             ruleId: item.id,
           },
-          suggestions: item.tasks?.map(t => t.title) || [],
+          suggestions: item.tasks?.map(t => typeof t.title === 'string' ? t.title : getLocalizedText(t.title)) || [],
         });
       }
 
@@ -201,7 +218,7 @@ export class ReadinessToConstraintsCompiler {
         if (item.tasks) {
           for (const task of item.tasks) {
             tasks.push({
-              title: task.title,
+              title: typeof task.title === 'string' ? task.title : getLocalizedText(task.title),
               dueOffsetDays: task.dueOffsetDays || 0,
               tags: task.tags || [],
               destinationId: finding.destinationId,

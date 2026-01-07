@@ -1,5 +1,5 @@
 // src/places/services/google-places.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
@@ -22,11 +22,11 @@ export class GooglePlacesService {
   private readonly apiKey: string;
   private readonly baseUrl = 'https://maps.googleapis.com/maps/api/place';
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 支持多种环境变量名
     let rawKey = 
-      this.configService.get<string>('GOOGLE_PLACES_API_KEY') || 
-      this.configService.get<string>('GOOGLE_MAPS_API_KEY') || 
+      this.configService?.get<string>('GOOGLE_PLACES_API_KEY') || 
+      this.configService?.get<string>('GOOGLE_MAPS_API_KEY') || 
       '';
     
     // 清理 API Key（移除可能的 "your_api_key" 前缀）

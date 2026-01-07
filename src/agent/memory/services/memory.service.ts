@@ -25,7 +25,12 @@ export class MemoryService {
     if (this.useDatabase) {
       this.logger.log('MemoryService: Using database storage');
     } else {
-      this.logger.warn('MemoryService: Database not available, using in-memory storage');
+      this.logger.warn(
+        'MemoryService: Database not available, using in-memory storage. ' +
+        'Data will be lost on service restart. ' +
+        'To enable database storage, ensure DATABASE_URL is configured and the database is accessible. ' +
+        'For development/testing without database, set ALLOW_NO_DATABASE=true.'
+      );
     }
   }
 

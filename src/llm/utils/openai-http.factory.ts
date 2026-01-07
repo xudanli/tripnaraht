@@ -24,7 +24,9 @@ export function createOpenAIHttp(
   if (proxyUrl && logger) {
     logger.debug(`Using proxy: ${proxyUrl}`);
   } else if (!proxyUrl && logger) {
-    logger.warn('No proxy env found, but curl shows CONNECT; check your shell env / network proxy.');
+    // 仅在需要时输出警告（例如在需要访问外网但可能被墙的环境）
+    // 如果应用能正常访问 OpenAI API，可以忽略此警告
+    logger.debug('No proxy environment variable found. If you need to access external APIs through a proxy, set HTTPS_PROXY or ALL_PROXY.');
   }
 
   // 处理 baseURL

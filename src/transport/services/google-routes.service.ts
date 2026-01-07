@@ -1,5 +1,5 @@
 // src/transport/services/google-routes.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import * as https from 'https';
@@ -30,12 +30,12 @@ export class GoogleRoutesService {
   private circuitOpenUntil: number | null = null;
   private readonly circuitResetMs = 5 * 60 * 1000; // 5分钟后重试
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('GOOGLE_ROUTES_API_KEY');
+  constructor(@Optional() private configService?: ConfigService) {
+    this.apiKey = this.configService?.get<string>('GOOGLE_ROUTES_API_KEY');
     
     // 强制使用 HTTPS（Google Routes API 要求，避免 "SSL required" 403 错误）
     // 从环境变量读取（如果存在），否则使用默认值
-    let baseURL = this.configService.get<string>('GOOGLE_ROUTES_BASE_URL') || 'https://routes.googleapis.com';
+    let baseURL = this.configService?.get<string>('GOOGLE_ROUTES_BASE_URL') || 'https://routes.googleapis.com';
     
     // 强制转换为 HTTPS（防止配置错误）
     if (baseURL.startsWith('http://')) {

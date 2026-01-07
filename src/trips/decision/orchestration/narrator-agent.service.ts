@@ -90,7 +90,7 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
 
 请生成一段友好、易懂的中文解释，要求：
 1. 如果路线被拒绝，要说明原因并给出建议
-2. 如果路线通过，要总结决策过程（Abu 的安全检查、Dr.Dre 的节奏调整、Neptune 的空间修复）
+2. 如果路线通过，要总结决策过程（Abu（北极熊 🐻‍❄️）的安全检查、Dr.Dre（牧羊犬 🐕）的节奏调整、Neptune（海獭 🦦）的空间修复）
 3. 语言要友好、专业，但不过于技术化
 4. 如果有合规要求，要明确提示
 5. 长度控制在 200 字以内
@@ -154,9 +154,9 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
 
     // 添加决策动作说明
     if (output.action === 'ADJUST') {
-      parts.push('\n💡 Dr.Dre 已为您调整了行程节奏，确保整体可持续。');
+      parts.push('\n💡 Dr.Dre（牧羊犬 🐕）已为您调整了行程节奏，让每一天刚刚好，确保整体可持续。');
     } else if (output.action === 'REPLACE') {
-      parts.push('\n💡 Neptune 已为您替换了不可用路段，保持了路线精神。');
+      parts.push('\n💡 Neptune（海獭 🦦）已为您替换了不可用路段，提供了刚刚好的替代方案，保持了路线精神。');
     }
 
     return parts.join('\n\n');
@@ -167,9 +167,9 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
    */
   private getPersonaName(persona: string): string {
     const nameMap: Record<string, string> = {
-      'ABU': '安全官 Abu',
-      'DR_DRE': '节奏大师 Dr.Dre',
-      'NEPTUNE': '空间修复者 Neptune',
+      'ABU': '安全守护者 Abu（北极熊 🐻‍❄️）',
+      'DR_DRE': '节奏设计师 Dr.Dre（牧羊犬 🐕）',
+      'NEPTUNE': '空间魔法师 Neptune（海獭 🦦）',
     };
     return nameMap[persona] || persona;
   }

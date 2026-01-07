@@ -14,6 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "mcp:server": "npx tsx src/mcp/mcp-server.ts",
+    "mcp:skills": "npx tsx src/mcp/mcp-skills-server.ts",
+    "mcp:test": "npx tsx src/mcp/test-mcp-skills.ts",
     "mcp:check": "tsc --noEmit --project tsconfig.backend.json"
   },
   "dependencies": {

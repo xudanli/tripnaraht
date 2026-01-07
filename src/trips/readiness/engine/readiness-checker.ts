@@ -7,11 +7,12 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { ReadinessPack, Rule } from '../types/readiness-pack.types';
+import { ReadinessPack, Rule, SupportedLanguage } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
 import { ReadinessFinding, ReadinessFindingItem, ReadinessCheckResult } from '../types/readiness-findings.types';
 import { RuleEngine } from './rule-engine';
 import { requiresSchengenVisa } from '../types/trip-context.types';
+import { getLocalizedText, getLocalizedTexts } from '../utils/i18n.utils';
 
 @Injectable()
 export class ReadinessChecker {
@@ -19,10 +20,15 @@ export class ReadinessChecker {
 
   /**
    * 检查单个目的地的准备度
+   * 
+   * @param pack - 准备度包
+   * @param context - 行程上下文
+   * @param lang - 目标语言（默认 'en'）
    */
   checkDestination(
     pack: ReadinessPack,
-    context: TripContext
+    context: TripContext,
+    lang: SupportedLanguage = 'en'
   ): ReadinessFinding {
     // 增强上下文：添加计算字段
     const enhancedContext = this.enhanceContext(context);
@@ -41,7 +47,7 @@ export class ReadinessChecker {
 
       // 评估条件
       if (this.ruleEngine.evaluate(rule.when, enhancedContext)) {
-        const item = this.ruleToFindingItem(rule);
+        const item = this.ruleToFindingItem(rule, lang);
         
         // 按 level 分类
         if (rule.then.level === 'blocker') {
@@ -60,8 +66,8 @@ export class ReadinessChecker {
     const risks = (pack.hazards || []).map(h => ({
       type: h.type,
       severity: h.severity,
-      summary: h.summary,
-      mitigations: h.mitigations,
+      summary: getLocalizedText(h.summary, lang),
+      mitigations: getLocalizedTexts(h.mitigations, lang),
     }));
 
     // 收集缺失信息
@@ -87,12 +93,17 @@ export class ReadinessChecker {
 
   /**
    * 检查多个目的地
+   * 
+   * @param packs - 准备度包列表
+   * @param context - 行程上下文
+   * @param lang - 目标语言（默认 'en'）
    */
   checkMultipleDestinations(
     packs: ReadinessPack[],
-    context: TripContext
+    context: TripContext,
+    lang: SupportedLanguage = 'en'
   ): ReadinessCheckResult {
-    const findings = packs.map(pack => this.checkDestination(pack, context));
+    const findings = packs.map(pack => this.checkDestination(pack, context, lang));
 
     // 汇总统计
     const summary = {
@@ -126,16 +137,22 @@ export class ReadinessChecker {
 
   /**
    * 将规则转换为 Finding Item
+   * 
+   * @param rule - 规则
+   * @param lang - 目标语言（默认 'en'）
    */
-  private ruleToFindingItem(rule: Rule): ReadinessFindingItem {
+  private ruleToFindingItem(rule: Rule, lang: SupportedLanguage = 'en'): ReadinessFindingItem {
     return {
       id: rule.id,
       category: rule.category,
       severity: rule.severity,
       level: rule.then.level,
-      message: rule.then.message,
-      tasks: rule.then.tasks,
-      askUser: rule.then.askUser,
+      message: getLocalizedText(rule.then.message, lang),
+      tasks: rule.then.tasks?.map(task => ({
+        ...task,
+        title: getLocalizedText(task.title, lang),
+      })),
+      askUser: rule.then.askUser ? getLocalizedTexts(rule.then.askUser, lang) : undefined,
       evidence: rule.evidence?.map(e => ({
         sourceId: e.sourceId,
         sectionId: e.sectionId,

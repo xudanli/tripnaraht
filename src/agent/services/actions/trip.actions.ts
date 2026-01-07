@@ -5,6 +5,28 @@ import { ItineraryItemsService } from '../../../itinerary-items/itinerary-items.
 import { ItemType } from '../../../itinerary-items/dto/create-itinerary-item.dto';
 import { DayScheduleResult } from '../../../planning-policy/interfaces/scheduler.interface';
 import { DateTime } from 'luxon';
+import { BadRequestException } from '@nestjs/common';
+
+type UnknownRecord = Record<string, unknown>;
+
+/**
+ * Pick the first non-empty string from candidates
+ * Handles null, undefined, empty strings, and non-string values
+ */
+function pickTripId(...candidates: Array<unknown>): string | undefined {
+  for (const c of candidates) {
+    // Skip null, undefined, and non-string values
+    if (c === null || c === undefined) {
+      continue;
+    }
+    // Convert to string and check if non-empty after trim
+    const str = String(c).trim();
+    if (str.length > 0) {
+      return str;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Trip Actions
@@ -41,9 +63,42 @@ export function createTripActions(
           items: { type: 'array' },
         },
       },
-      execute: async (input: { trip_id: string }, state: any) => {
+      execute: async (input: { trip_id?: string; tripId?: string }, state: any) => {
+        // Extract tripId from multiple sources (in priority order)
+        const inputRecord = (input ?? {}) as UnknownRecord;
+        const stateRecord = (state ?? {}) as UnknownRecord;
+        const tripRecord = (stateRecord.trip ?? {}) as UnknownRecord;
+        
+        // Try to get tripId from:
+        // 1. input.trip_id or input.tripId (direct argument)
+        // 2. state.trip.trip_id (from agent state)
+        // 3. state.tripId (alternative state location)
+        const tripId = pickTripId(
+          inputRecord.trip_id,
+          inputRecord.tripId,
+          tripRecord.trip_id,
+          stateRecord.tripId,
+        );
+        
+        // Validate tripId before calling service
+        if (!tripId) {
+          const errorMsg = `tripId is required for trip.load_draft. 
+Available sources:
+- input.trip_id: ${inputRecord.trip_id}
+- input.tripId: ${inputRecord.tripId}
+- state.trip.trip_id: ${tripRecord.trip_id}
+- state.tripId: ${stateRecord.tripId}
+Please provide args.trip_id or ensure it is stored in agent state.`;
+          throw new BadRequestException(errorMsg);
+        }
+        
+        // Double-check: ensure tripId is a valid non-empty string
+        if (typeof tripId !== 'string' || !tripId.trim()) {
+          throw new BadRequestException(`Invalid tripId: expected non-empty string, got ${typeof tripId}: ${tripId}`);
+        }
+        
         // 调用实际的 TripsService
-        const trip = await tripsService.findOne(input.trip_id);
+        const trip = await tripsService.findOne(tripId.trim());
         
         // 从 trip.days 中提取所有的 items，展平为一个数组
         const items: any[] = [];
@@ -59,12 +114,13 @@ export function createTripActions(
         return {
           trip,
           items, // 已加载 itinerary items
+          tripId, // 返回 tripId 以便后续使用
         };
       },
     },
     {
       name: 'trip.apply_user_edit',
-      description: '应用用户编辑',
+      description: '应用用户编辑（仅当已有完整的编辑信息时使用，包括 placeId、tripDayId、startTime、endTime 等。如果用户只是说"添加地点X"但没有提供完整信息，应该先使用 places.resolve_entities）',
       metadata: {
         kind: ActionKind.INTERNAL,
         cost: ActionCost.LOW,
@@ -76,8 +132,62 @@ export function createTripActions(
       input_schema: {
         type: 'object',
         properties: {
-          trip_id: { type: 'string' },
-          edits: { type: 'array' },
+          trip_id: { 
+            type: 'string',
+            description: '行程ID（字符串）',
+          },
+          edits: { 
+            type: 'array',
+            description: '编辑操作数组，不能为空',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['add', 'update', 'delete', 'move'],
+                  description: '编辑类型',
+                },
+                itemId: {
+                  type: 'string',
+                  description: '行程项ID（update/delete/move时需要）',
+                },
+                placeId: {
+                  type: 'number',
+                  description: '地点ID（add时需要）',
+                },
+                tripDayId: {
+                  type: 'string',
+                  description: '日期ID（add时需要）',
+                },
+                startTime: {
+                  type: 'string',
+                  description: '开始时间（ISO字符串，add/update/move时需要）',
+                },
+                endTime: {
+                  type: 'string',
+                  description: '结束时间（ISO字符串，add/update/move时需要）',
+                },
+                updates: {
+                  type: 'object',
+                  description: '更新数据（update时需要）',
+                },
+                newTripDayId: {
+                  type: 'string',
+                  description: '新日期ID（move时需要）',
+                },
+                newStartTime: {
+                  type: 'string',
+                  description: '新开始时间（move时需要）',
+                },
+                newEndTime: {
+                  type: 'string',
+                  description: '新结束时间（move时需要）',
+                },
+              },
+              required: ['type'],
+            },
+            minItems: 1,
+          },
         },
         required: ['trip_id', 'edits'],
       },
@@ -94,9 +204,62 @@ export function createTripActions(
         }
 
         const { trip_id, edits } = input;
+        
+        // 验证 trip_id
+        if (!trip_id) {
+          return {
+            success: false,
+            error: 'trip_id is required',
+            results: [],
+            appliedCount: 0,
+            totalCount: 0,
+          };
+        }
+        
+        // 确保 edits 是数组
+        if (!edits) {
+          return {
+            success: false,
+            error: 'edits is required and must be an array',
+            results: [],
+            appliedCount: 0,
+            totalCount: 0,
+          };
+        }
+        
+        // 如果 edits 不是数组，尝试转换或返回错误
+        let editsArray: any[];
+        if (Array.isArray(edits)) {
+          editsArray = edits;
+        } else if (typeof edits === 'object' && edits !== null) {
+          // 如果 edits 是单个对象，转换为数组
+          editsArray = [edits];
+          // Note: Using console for logging in action functions
+          console.warn(`[trip.apply_user_edit] edits is not an array, converted single object to array`);
+        } else {
+          return {
+            success: false,
+            error: `edits must be an array or object, got ${typeof edits}`,
+            results: [],
+            appliedCount: 0,
+            totalCount: 0,
+          };
+        }
+        
+        // 验证 edits 数组不为空
+        if (editsArray.length === 0) {
+          return {
+            success: false,
+            error: 'edits array cannot be empty',
+            results: [],
+            appliedCount: 0,
+            totalCount: 0,
+          };
+        }
+        
         const results: Array<{ type: string; success: boolean; error?: string }> = [];
 
-        for (const edit of edits) {
+        for (const edit of editsArray) {
           try {
             if (edit.type === 'delete' && edit.itemId) {
               // 删除项

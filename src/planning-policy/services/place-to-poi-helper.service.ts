@@ -25,7 +25,20 @@ export class PlaceToPoiHelperService {
       Array<{ id: number; lat: number; lng: number; [key: string]: any }>
     >`
       SELECT 
-        p.*,
+        p.id,
+        p.uuid,
+        p."nameEN",
+        p.category,
+        p.location::text AS location,
+        p.address,
+        p."cityId",
+        p.metadata,
+        p."physicalMetadata",
+        p."googlePlaceId",
+        p.rating,
+        p."createdAt",
+        p."updatedAt",
+        p."nameCN",
         ST_Y(p.location::geometry) AS lat,
         ST_X(p.location::geometry) AS lng
       FROM "Place" p
@@ -52,7 +65,20 @@ export class PlaceToPoiHelperService {
       Array<{ id: number; lat: number; lng: number; [key: string]: any }>
     >`
       SELECT 
-        p.*,
+        p.id,
+        p.uuid,
+        p."nameEN",
+        p.category,
+        p.location::text AS location,
+        p.address,
+        p."cityId",
+        p.metadata,
+        p."physicalMetadata",
+        p."googlePlaceId",
+        p.rating,
+        p."createdAt",
+        p."updatedAt",
+        p."nameCN",
         ST_Y(p.location::geometry) AS lat,
         ST_X(p.location::geometry) AS lng
       FROM "Place" p

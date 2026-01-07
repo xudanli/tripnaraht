@@ -170,6 +170,7 @@ export class ReadinessService {
       enhanceWithGeo?: boolean; // 是否使用地理特征增强上下文
       geoLat?: number; // 地理坐标（用于查询地理特征）
       geoLng?: number;
+      lang?: 'en' | 'zh'; // 目标语言（默认 'en'）
     }
   ): Promise<ReadinessCheckResult> {
     // 如果启用了地理特征增强且有坐标，则获取地理特征
@@ -234,10 +235,12 @@ export class ReadinessService {
       }
     }
     
+    const lang = options?.lang || 'en';
+    
     const pack = await this.packStorage.findPackByDestination(destinationId);
     
     if (pack) {
-      return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext);
+      return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
     }
 
     // 如果没有找到 Pack，尝试从国家代码加载
@@ -245,7 +248,7 @@ export class ReadinessService {
     const packs = await this.packStorage.findPacksByCountry(countryCode);
     
     if (packs.length > 0) {
-      return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext);
+      return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
     }
 
     // 如果都没有，返回空结果

@@ -1,5 +1,5 @@
 // src/places/services/route-difficulty.service.ts
-import { Injectable, Logger, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, BadRequestException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { execFile } from 'child_process';
@@ -26,7 +26,7 @@ export class RouteDifficultyService {
   private readonly pythonScriptPath: string;
 
   constructor(
-    private configService: ConfigService,
+    @Optional() private configService?: ConfigService,
     private prisma: PrismaService,
   ) {
     // Python脚本路径
@@ -345,8 +345,8 @@ print(json.dumps(result, ensure_ascii=False))
       } else {
         // 支持多种环境变量名
         const accessToken = 
-          this.configService.get<string>('MAPBOX_ACCESS_TOKEN') ||
-          this.configService.get<string>('VITE_MAPBOX_ACCESS_TOKEN');
+          this.configService?.get<string>('MAPBOX_ACCESS_TOKEN') ||
+          this.configService?.get<string>('VITE_MAPBOX_ACCESS_TOKEN');
         if (accessToken) {
           env.MAPBOX_ACCESS_TOKEN = accessToken;
         }

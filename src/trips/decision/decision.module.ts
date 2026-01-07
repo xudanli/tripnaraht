@@ -152,6 +152,7 @@ import { ReadinessAgentService } from './readiness/readiness-agent.service';
     PlannerAgentService,
     NarratorAgentService,
     LangGraphOrchestratorService,
+    ReadinessAgentService,
   ],
 })
 export class DecisionModule {}

@@ -29,9 +29,14 @@ import { CapabilityPackEvaluatorService } from './services/capability-pack-evalu
 import { DEMElevationService } from './services/dem-elevation.service';
 import { DEMEffortMetadataService } from './services/dem-effort-metadata.service';
 import { ReadinessController } from './readiness.controller';
+import { UsersModule } from '../../users/users.module';
+import { ChecklistStatusService } from './services/checklist-status.service';
+import { FindingMarksService } from './services/finding-marks.service';
+import { PackingListService } from './services/packing-list.service';
+import { SolutionService } from './services/solution.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, UsersModule],
   controllers: [ReadinessController],
   providers: [
     ReadinessService,
@@ -54,6 +59,10 @@ import { ReadinessController } from './readiness.controller';
     CapabilityPackEvaluatorService,
     DEMElevationService,
     DEMEffortMetadataService,
+    ChecklistStatusService,
+    FindingMarksService,
+    PackingListService,
+    SolutionService,
   ],
   exports: [
     ReadinessService,

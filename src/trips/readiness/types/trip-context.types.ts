@@ -23,6 +23,9 @@ export interface ItineraryInfo {
   transitsMainlandNorway?: boolean; // 特殊：是否过境挪威本土
   activities?: string[]; // e.g., ['snowmobile', 'hiking', 'boat_tour']
   season?: string; // SeasonType
+  poiCanonicalTypes?: string[]; // POI 标准类型，如 ['ATTRACTION_NATURE_GLACIER', 'TRAILHEAD']
+  hasRemoteAreas?: boolean; // 是否有偏远地区
+  requires4x4?: boolean; // 是否需要4x4车辆
   isTightSchedule?: boolean;
   hasTightConnections?: boolean;
 }

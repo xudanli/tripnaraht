@@ -85,6 +85,12 @@ export class OrchestratorService {
           currentState = actResult.state;
           const cacheHit = actResult.cacheHit;
           
+          // 检查 Action 执行是否失败
+          if (currentState.result.status === 'FAILED') {
+            this.logger.warn(`Action ${action.name} failed, stopping ReAct loop`);
+            break;
+          }
+          
           // 存储 cache_hit 信息到临时字段（用于 decision_log）
           currentState = this.stateService.updateNested(
             currentState.request_id,
@@ -187,7 +193,14 @@ export class OrchestratorService {
         );
 
         // 如果 Critic 通过，可以提前结束
+        // 但需要检查是否有 Action 执行失败
         if (criticResult.pass) {
+          // 检查状态是否为失败，如果是则不应该标记为 READY
+          if (currentState.result.status === 'FAILED') {
+            this.logger.warn('Critic passed but action execution failed, not marking as READY');
+            break;
+          }
+          
           this.logger.debug('Critic passed, marking as READY');
           currentState = this.stateService.update(currentState.request_id, {
             result: {
@@ -792,6 +805,38 @@ export class OrchestratorService {
         );
       }
 
+      // 检查 Action 执行结果是否成功
+      // 某些 Action 返回 { success: boolean, ... } 格式
+      if (result && typeof result === 'object' && 'success' in result && result.success === false) {
+        const errorMessage = result.error || result.message || 'Action execution failed';
+        this.logger.error(`Action execution failed: ${action.name}, error: ${errorMessage}`);
+        
+        // 记录失败事件
+        if (this.eventTelemetry) {
+          this.eventTelemetry.recordSystem2Step(
+            state.request_id,
+            state.react.step,
+            action.name,
+            { error: errorMessage, result },
+            Date.now() - actStartTime,
+            { phase: 'act', error: true }
+          );
+        }
+        
+        // 标记状态为失败，阻止进入 READY 状态
+        const errorState = this.stateService.update(state.request_id, {
+          result: {
+            ...state.result,
+            status: 'FAILED',
+            explanations: [
+              ...(state.result.explanations || []),
+              `操作失败: ${errorMessage}`,
+            ],
+          },
+        });
+        return { state: errorState, cacheHit: false };
+      }
+      
       // 更新状态（根据 Action 类型）
       const updatedState = this.updateStateFromAction(state, action.name, result);
       return { state: updatedState, cacheHit };
@@ -810,8 +855,18 @@ export class OrchestratorService {
         );
       }
       
-      // 返回未修改的状态
-      return { state, cacheHit: false };
+      // 标记状态为失败，阻止进入 READY 状态
+      const errorState = this.stateService.update(state.request_id, {
+        result: {
+          ...state.result,
+          status: 'FAILED',
+          explanations: [
+            ...(state.result.explanations || []),
+            `操作失败: ${error?.message || String(error)}`,
+          ],
+        },
+      });
+      return { state: errorState, cacheHit: false };
     }
   }
 

@@ -14,12 +14,108 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { ReadinessPack } from '../src/trips/readiness/types/readiness-pack.types';
+import { ReadinessPack, LocalizedString } from '../src/trips/readiness/types/readiness-pack.types';
+import { getLocalizedText } from '../src/trips/readiness/utils/i18n.utils';
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
+
+/**
+ * 验证 Pack 的多语言支持
+ */
+function validatePackMultilingual(pack: ReadinessPack): {
+  valid: boolean;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+
+  // 检查 displayName
+  if (typeof pack.displayName === 'string') {
+    warnings.push('displayName 是字符串，建议使用多语言对象 { en: "...", zh: "..." }');
+  } else if (!pack.displayName.en) {
+    warnings.push('displayName 缺少英文（en）字段');
+  }
+
+  // 检查 rules
+  for (const rule of pack.rules) {
+    // 检查 message
+    if (typeof rule.then.message === 'string') {
+      warnings.push(`规则 ${rule.id} 的 message 是字符串，建议使用多语言对象`);
+    } else if (!rule.then.message.en) {
+      warnings.push(`规则 ${rule.id} 的 message 缺少英文（en）字段`);
+    }
+
+    // 检查 tasks
+    if (rule.then.tasks) {
+      for (const task of rule.then.tasks) {
+        if (typeof task.title === 'string') {
+          warnings.push(`规则 ${rule.id} 的任务标题是字符串，建议使用多语言对象`);
+        } else if (!task.title.en) {
+          warnings.push(`规则 ${rule.id} 的任务标题缺少英文（en）字段`);
+        }
+      }
+    }
+
+    // 检查 askUser
+    if (rule.then.askUser) {
+      for (const ask of rule.then.askUser) {
+        if (typeof ask === 'string') {
+          warnings.push(`规则 ${rule.id} 的 askUser 项是字符串，建议使用多语言对象`);
+        } else if (!ask.en) {
+          warnings.push(`规则 ${rule.id} 的 askUser 项缺少英文（en）字段`);
+        }
+      }
+    }
+  }
+
+  // 检查 checklists
+  for (const checklist of pack.checklists) {
+    for (const item of checklist.items) {
+      if (typeof item === 'string') {
+        warnings.push(`检查清单 ${checklist.id} 的项是字符串，建议使用多语言对象`);
+      } else if (!item.en) {
+        warnings.push(`检查清单 ${checklist.id} 的项缺少英文（en）字段`);
+      }
+    }
+  }
+
+  // 检查 hazards
+  if (pack.hazards) {
+    for (const hazard of pack.hazards) {
+      if (typeof hazard.summary === 'string') {
+        warnings.push(`风险 ${hazard.type} 的 summary 是字符串，建议使用多语言对象`);
+      } else if (!hazard.summary.en) {
+        warnings.push(`风险 ${hazard.type} 的 summary 缺少英文（en）字段`);
+      }
+
+      for (const mitigation of hazard.mitigations) {
+        if (typeof mitigation === 'string') {
+          warnings.push(`风险 ${hazard.type} 的缓解措施是字符串，建议使用多语言对象`);
+        } else if (!mitigation.en) {
+          warnings.push(`风险 ${hazard.type} 的缓解措施缺少英文（en）字段`);
+        }
+      }
+    }
+  }
+
+  // 检查 sources
+  if (pack.sources) {
+    for (const source of pack.sources) {
+      if (source.title && typeof source.title === 'string') {
+        warnings.push(`来源 ${source.sourceId} 的 title 是字符串，建议使用多语言对象`);
+      } else if (source.title && typeof source.title === 'object' && !source.title.en) {
+        warnings.push(`来源 ${source.sourceId} 的 title 缺少英文（en）字段`);
+      }
+    }
+  }
+
+  return {
+    valid: warnings.length === 0,
+    warnings,
+  };
+}
 
 async function checkPack(packId: string) {
   console.log(`\n🔍 检查 Pack: ${packId}\n`);
@@ -96,11 +192,16 @@ async function savePack(pack: ReadinessPack): Promise<boolean> {
       where: { packId: pack.packId },
     });
 
+    // 将 LocalizedString 转换为字符串（用于数据库存储）
+    const displayNameStr = typeof pack.displayName === 'string' 
+      ? pack.displayName 
+      : pack.displayName.en;
+
     const packData = {
       id: existing?.id || randomUUID(),
       packId: pack.packId,
       destinationId: pack.destinationId,
-      displayName: pack.displayName,
+      displayName: displayNameStr,
       version: pack.version,
       lastReviewedAt: new Date(pack.lastReviewedAt),
       countryCode: pack.geo.countryCode,
@@ -151,6 +252,15 @@ async function importPack(filePath: string) {
     // 基本验证
     if (!pack.packId || !pack.destinationId || !pack.rules) {
       throw new Error('Invalid pack format: missing required fields');
+    }
+
+    // 多语言验证
+    const validationResult = validatePackMultilingual(pack);
+    if (!validationResult.valid) {
+      console.warn('⚠️  多语言验证警告:');
+      validationResult.warnings.forEach(w => console.warn(`  - ${w}`));
+    } else {
+      console.log('✅ 多语言验证通过');
     }
 
     const result = await savePack(pack);

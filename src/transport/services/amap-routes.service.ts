@@ -1,5 +1,5 @@
 // src/transport/services/amap-routes.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { TransportOption, TransportMode } from '../interfaces/transport.interface';
@@ -21,8 +21,8 @@ export class AmapRoutesService {
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl = 'https://restapi.amap.com/v3/direction';
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('AMAP_API_KEY');
+  constructor(@Optional() private configService?: ConfigService) {
+    this.apiKey = this.configService?.get<string>('AMAP_API_KEY');
     
     this.axiosInstance = axios.create({
       timeout: 10000, // 10 秒超时

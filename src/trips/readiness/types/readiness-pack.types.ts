@@ -5,7 +5,22 @@
  * 
  * 定义目的地准备度检查的数据模型
  * 支持全球扩展，每个目的地一个 Pack
+ * 支持多语言：en（英文）和 zh（中文）
  */
+
+/**
+ * 支持的语言代码
+ */
+export type SupportedLanguage = 'en' | 'zh';
+
+/**
+ * 多语言字符串类型
+ * 可以是字符串（向后兼容，默认为英文）或多语言对象
+ */
+export type LocalizedString = string | {
+  en: string;
+  zh?: string;
+};
 
 export type SeasonType =
   | 'polar_night'
@@ -53,7 +68,7 @@ export interface Source {
   sourceId: string;
   authority: string;
   type: 'pdf' | 'html' | 'api' | 'regulation' | 'manual';
-  title?: string;
+  title?: LocalizedString;
   canonicalUrl?: string;
 }
 
@@ -80,16 +95,16 @@ export interface Condition {
 }
 
 export interface Task {
-  title: string;
+  title: LocalizedString;
   dueOffsetDays?: number; // 相对出发日期的偏移天数（负数表示提前）
   tags?: string[];
 }
 
 export interface Action {
   level: ActionLevel;
-  message: string;
+  message: LocalizedString;
   tasks?: Task[];
-  askUser?: string[]; // 需要用户提供的信息
+  askUser?: LocalizedString[]; // 需要用户提供的信息
 }
 
 export interface Rule {
@@ -104,27 +119,27 @@ export interface Rule {
   when: Condition;
   then: Action;
   evidence?: Evidence[];
-  notes?: string;
+  notes?: LocalizedString;
 }
 
 export interface Checklist {
   id: string;
   category: ReadinessCategory;
   appliesToSeasons?: SeasonType[];
-  items: string[];
+  items: LocalizedString[];
 }
 
 export interface Hazard {
   type: HazardType;
   severity: RuleSeverity;
-  summary: string;
-  mitigations: string[];
+  summary: LocalizedString;
+  mitigations: LocalizedString[];
 }
 
 export interface ReadinessPack {
   packId: string;
   destinationId: string;
-  displayName: string;
+  displayName: LocalizedString;
   version: string; // semantic version: "1.0.0"
   lastReviewedAt: string; // ISO datetime
   geo: GeoInfo;

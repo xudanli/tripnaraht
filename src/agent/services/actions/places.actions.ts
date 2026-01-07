@@ -134,15 +134,101 @@ export function createPlacesActions(
 
           logger.debug(`[resolve_entities] 开始解析实体，query: "${query}"`);
 
+          // 优化：如果查询中包含明确的地点ID，直接通过ID查询，跳过实体解析
+          const placeIdMatch = query.match(/地点ID[：:]\s*(\d+)/i);
+          if (placeIdMatch && placeIdMatch[1]) {
+            const placeId = parseInt(placeIdMatch[1], 10);
+            logger.debug(`[resolve_entities] 检测到地点ID: ${placeId}，直接通过ID查询`);
+            
+            try {
+              const place = await placesService.findOne(placeId);
+              if (place) {
+                // 尝试从多个来源获取坐标
+                let lat: number | undefined;
+                let lng: number | undefined;
+                
+                // 1. 优先从 location 字段获取
+                if (place.location && place.location.lat && place.location.lng) {
+                  lat = place.location.lat;
+                  lng = place.location.lng;
+                } else {
+                  // 2. 尝试从 metadata 中获取坐标
+                  const metadata = (place.metadata as any) || {};
+                  if (metadata.lat && metadata.lng) {
+                    lat = metadata.lat;
+                    lng = metadata.lng;
+                  } else if (metadata.coordinates && Array.isArray(metadata.coordinates)) {
+                    lng = metadata.coordinates[0];
+                    lat = metadata.coordinates[1];
+                  }
+                }
+                
+                if (lat && lng) {
+                  logger.debug(`[resolve_entities] 通过ID查询成功: ${place.nameCN || place.nameEN}`);
+                  return {
+                    nodes: [{
+                      id: place.id,
+                      name: place.nameCN || place.nameEN || 'Unknown',
+                      type: 'poi',
+                      geo: {
+                        lat,
+                        lng,
+                      },
+                      category: place.category,
+                      metadata: {
+                        address: place.address,
+                        score: 1.0,
+                        source: 'direct_id_lookup',
+                        matchReasons: ['通过地点ID直接查询'],
+                        ...place.metadata,
+                      },
+                    }],
+                    count: 1,
+                    diagnostics: {
+                      searchMethod: 'direct_id_lookup',
+                      rawHitCount: 1,
+                      filteredCount: 0,
+                      mappingErrors: 0,
+                      finalCount: 1,
+                    },
+                  };
+                } else {
+                  // 地点存在但缺少坐标，记录警告但继续使用实体解析
+                  logger.warn(`[resolve_entities] 地点ID ${placeId} (${place.nameCN || place.nameEN}) 存在但缺少坐标信息（location 和 metadata 中都没有），降级到实体解析`);
+                  // 继续执行后续的实体解析逻辑，尝试通过名称找到有坐标的匹配地点
+                }
+              } else {
+                logger.warn(`[resolve_entities] 地点ID ${placeId} 不存在，降级到实体解析`);
+                // 继续执行后续的实体解析逻辑
+              }
+            } catch (error: any) {
+              logger.warn(`[resolve_entities] 通过ID查询失败: ${error?.message || String(error)}，降级到实体解析`);
+              // 继续执行后续的实体解析逻辑
+            }
+          }
+
+          // 提取地点名称（如果查询中包含"地点名称: xxx"的模式）
+          let extractedPlaceName: string | null = null;
+          const placeNameMatch = query.match(/地点名称[：:]\s*([^，,。.\n，,]+?)(?=，|,|。|\.|$)/i);
+          if (placeNameMatch && placeNameMatch[1]) {
+            extractedPlaceName = placeNameMatch[1].trim();
+            // 清理可能包含的其他字段标识（如"地点ID"等）
+            extractedPlaceName = extractedPlaceName.replace(/\s*[，,]\s*地点ID.*$/i, '').trim();
+            logger.debug(`[resolve_entities] 提取的地点名称: "${extractedPlaceName}"`);
+          }
+
+          // 如果提取到了地点名称，优先使用地点名称作为查询，而不是整个描述文本
+          const effectiveQuery = extractedPlaceName || query;
+
           // 提取must-have POI列表
-          const mustHavePois = extractMustHavePois(query);
+          const mustHavePois = extractMustHavePois(effectiveQuery);
           logger.debug(`[resolve_entities] 提取的must-have POI: [${mustHavePois.join(', ')}]`);
 
           // 优先使用新的策略链服务（如果可用）
           if (entityResolutionService) {
             try {
               const resolutionResult = await entityResolutionService.resolveEntities(
-                query,
+                effectiveQuery, // 使用提取的地点名称或原始查询
                 mustHavePois,
                 input.lat,
                 input.lng,
@@ -215,7 +301,7 @@ export function createPlacesActions(
               // 使用混合搜索（向量 + 关键词）
               searchMethod = 'hybridSearch';
               const hybridResults = await vectorSearchService.hybridSearch(
-                query,
+                effectiveQuery, // 使用提取的地点名称或原始查询
                 input.lat,
                 input.lng,
                 undefined, // radius
@@ -244,7 +330,7 @@ export function createPlacesActions(
               logger.warn(`[resolve_entities] 向量搜索失败，降级到关键词搜索: ${vectorError?.message || String(vectorError)}`);
               searchMethod = 'placesService.search';
               results = await placesService.search(
-                query,
+                effectiveQuery, // 使用提取的地点名称或原始查询
                 input.lat,
                 input.lng,
                 undefined, // radius
@@ -258,7 +344,7 @@ export function createPlacesActions(
             // 降级到关键词搜索
             searchMethod = 'placesService.search';
             results = await placesService.search(
-              query,
+              effectiveQuery, // 使用提取的地点名称或原始查询
               input.lat,
               input.lng,
               undefined, // radius

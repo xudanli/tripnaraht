@@ -87,8 +87,11 @@ export class LlmPlanService {
       // 为了简化，我们创建一个通用的调用方法
       const response = await this.callLlmWithSchema(prompt, schema);
 
+      // 清理响应：移除 markdown 代码块标记
+      const cleanedResponse = this.cleanJsonResponse(response);
+
       // 解析响应
-      const result = JSON.parse(response) as ActionSelectionResult & { should_continue: boolean };
+      const result = JSON.parse(cleanedResponse) as ActionSelectionResult & { should_continue: boolean };
 
       if (!result.should_continue) {
         this.logger.debug('LLM determined that no more actions are needed');
@@ -138,7 +141,35 @@ export class LlmPlanService {
     const actionDescriptions = availableActions
       .map(action => {
         const preconditions = action.metadata.preconditions?.join(', ') || 'none';
-        return `- ${action.name}: ${action.description} (preconditions: ${preconditions}, cost: ${action.metadata.cost})`;
+        // 为 trip.apply_user_edit 添加详细的参数说明
+        let paramDetails = '';
+        if (action.name === 'trip.apply_user_edit') {
+          paramDetails = `
+  参数格式：
+  {
+    "trip_id": "行程ID（字符串）",
+    "edits": [
+      {
+        "type": "add" | "update" | "delete" | "move",
+        "itemId": "行程项ID（update/delete/move时需要）",
+        "placeId": "地点ID（add时需要）",
+        "tripDayId": "日期ID（add时需要）",
+        "startTime": "开始时间（ISO字符串，add/update/move时需要）",
+        "endTime": "结束时间（ISO字符串，add/update/move时需要）",
+        "updates": { ... }（update时需要）,
+        "newTripDayId": "新日期ID（move时需要）",
+        "newStartTime": "新开始时间（move时需要）",
+        "newEndTime": "新结束时间（move时需要）"
+      }
+    ]
+  }
+  重要：
+  - edits 必须是数组，即使只有一个编辑操作也要放在数组中
+  - edits 数组不能为空
+  - 只有当用户提供了完整的编辑信息（包括 placeId、tripDayId、startTime、endTime 等）时，才应该使用此 action
+  - 如果用户只是说"添加地点X"但没有提供完整信息，应该先使用 places.resolve_entities 来解析地点，而不是使用此 action`;
+        }
+        return `- ${action.name}: ${action.description} (preconditions: ${preconditions}, cost: ${action.metadata.cost})${paramDetails}`;
       })
       .join('\n');
 
@@ -183,6 +214,12 @@ ${actionDescriptions}
    - 如果优化已完成，应该验证可行性（policy.validate_feasibility）
 3. **成本**：优先选择成本较低的 Actions
 4. **效率**：选择能够最大程度推进流程的 Action
+5. **参数完整性**：
+   - 如果选择 trip.apply_user_edit，必须确保能够提供完整的 edits 数组（包括 type、placeId、tripDayId、startTime、endTime 等）
+   - 如果用户输入只是"添加地点X"但没有提供完整信息，应该先使用 places.resolve_entities 来解析地点，而不是使用 trip.apply_user_edit
+   - 只有当用户输入或状态中已经包含完整的编辑信息时，才应该使用 trip.apply_user_edit
+   - **重要**：如果当前状态显示 nodes: 0（没有节点），通常应该先使用 places.resolve_entities 来解析地点，而不是直接使用 trip.apply_user_edit
+   - **重要**：如果无法构造完整的 edits 数组（缺少 placeId、tripDayId、startTime、endTime 等），应该选择其他 action，而不是使用 trip.apply_user_edit
 
 ## 输出格式
 
@@ -193,7 +230,39 @@ ${actionDescriptions}
 - confidence: 置信度（0-1）
 - should_continue: 如果所有步骤已完成，返回 false
 
-请确保返回的 JSON 格式正确，并且 action_name 必须是上述可用 Actions 之一。`;
+请确保返回的 JSON 格式正确，并且 action_name 必须是上述可用 Actions 之一。
+
+## 重要提醒
+
+**关于 trip.apply_user_edit**：
+- 此 action 需要完整的 edits 数组，包含所有必需的字段（type、placeId、tripDayId、startTime、endTime 等）
+- 如果用户输入只是"添加地点X"但没有提供完整信息（如 placeId、tripDayId、startTime、endTime），不应该选择此 action
+- 在这种情况下，应该先选择 places.resolve_entities 来解析地点，或者选择其他合适的 action
+- 只有在能够构造完整的 edits 数组时，才应该选择 trip.apply_user_edit
+
+**关于 trip.load_draft**：
+- 此 action 需要 trip_id 参数
+- 如果 trip_id 不可用（不在 input 中，也不在 agent state 中），不应该选择此 action
+- 应该先确保 trip_id 可用，或者选择其他不需要 trip_id 的 action`;
+  }
+
+  /**
+   * 清理 JSON 响应：移除 markdown 代码块标记
+   * 
+   * @param response LLM 原始响应
+   * @returns 清理后的 JSON 字符串
+   */
+  private cleanJsonResponse(response: string): string {
+    let cleaned = response.trim();
+
+    // 移除 markdown 代码块标记（```json 或 ```）
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/\s*```$/i, '');
+
+    // 移除可能的其他标记
+    cleaned = cleaned.trim();
+
+    return cleaned;
   }
 
   /**

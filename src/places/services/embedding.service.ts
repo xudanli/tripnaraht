@@ -1,5 +1,5 @@
 // src/places/services/embedding.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import dns from 'node:dns';
@@ -22,16 +22,16 @@ export class EmbeddingService {
   // OpenAI HTTP 客户端（使用统一的工厂函数，确保代理配置一致）
   private readonly openaiHttp: AxiosInstance;
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
-    this.provider = this.configService.get<string>('EMBEDDING_PROVIDER') || 'openai';
-    this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-    this.huggingfaceApiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
+    this.provider = this.configService?.get<string>('EMBEDDING_PROVIDER') || 'openai';
+    this.openaiApiKey = this.configService?.get<string>('OPENAI_API_KEY');
+    this.huggingfaceApiKey = this.configService?.get<string>('HUGGINGFACE_API_KEY');
     
     // 使用统一的工厂函数创建 OpenAI HTTP 客户端（与 LlmService 使用相同配置）
-    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+    const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
     this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
   }
 

@@ -1,0 +1,113 @@
+{
+  "countryCode": "IS",
+  "month": 7,
+  "demEvidence": [
+    {
+      "segmentId": "segment-001",
+      "elevationProfile": [
+        100,
+        150,
+        200,
+        180,
+        160
+      ],
+      "cumulativeAscent": 100,
+      "maxSlopePct": 15,
+      "rollingAscent3Days": 500,
+      "fatigueIndex": 45,
+      "violation": "NONE",
+      "explanation": "路段海拔变化适中，无违规",
+      "metadata": {
+        "distanceM": 5000,
+        "avgSlopePct": 8,
+        "elevationRange": {
+          "min": 100,
+          "max": 200
+        }
+      }
+    }
+  ],
+  "roadStates": [
+    {
+      "roadId": "F208",
+      "status": "SEASONAL",
+      "seasonOpenFrom": 6,
+      "seasonOpenTo": 9,
+      "requires4x4": true,
+      "requiresPermit": false,
+      "metadata": {
+        "description": "F208 高地公路，仅夏季开放",
+        "source": "Icelandic Road Administration"
+      }
+    },
+    {
+      "roadId": "F35",
+      "status": "SEASONAL",
+      "seasonOpenFrom": 6,
+      "seasonOpenTo": 9,
+      "requires4x4": true,
+      "requiresPermit": false
+    }
+  ],
+  "hazardZones": [
+    {
+      "zoneId": "hazard-avalanche-001",
+      "type": "AVALANCHE",
+      "level": "MEDIUM",
+      "seasonality": {
+        "highRiskMonths": [
+          12,
+          1,
+          2,
+          3
+        ],
+        "lowRiskMonths": [
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "metadata": {
+        "description": "北部山区雪崩风险区",
+        "source": "Icelandic Meteorological Office"
+      }
+    },
+    {
+      "zoneId": "hazard-volcanic-001",
+      "type": "VOLCANIC",
+      "level": "LOW",
+      "metadata": {
+        "description": "活跃火山区域"
+      }
+    }
+  ],
+  "ferryStates": [
+    {
+      "ferryId": "ferry-vestmannaeyjar",
+      "routeId": "route-landeyjahofn-vestmannaeyjar",
+      "status": "RUNNING",
+      "metadata": {
+        "description": "Landeyjahöfn 到 Vestmannaeyjar 渡轮",
+        "schedule": "全年运行"
+      }
+    }
+  ],
+  "climateSeasonality": {
+    "countryCode": "IS",
+    "month": 7,
+    "accessibilityScore": 0.8,
+    "typicalWeather": {
+      "windSpeedMps": 8,
+      "precipitationMmPerHour": 2,
+      "visibilityMeters": 10000,
+      "temperatureCelsius": 12
+    },
+    "riskFactors": [
+      "wind"
+    ],
+    "metadata": {
+      "description": "7月是冰岛旅游旺季，天气相对稳定"
+    }
+  }
+}

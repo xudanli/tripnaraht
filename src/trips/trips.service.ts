@@ -275,6 +275,11 @@ export class TripsService {
    * @param userId 当前用户 ID（可选，用于判断是否已点赞/收藏）
    */
   async findOne(id: string, userId?: string) {
+    // Hard guard: prevent Prisma from seeing null/undefined id
+    if (!id || typeof id !== 'string' || !id.trim()) {
+      throw new BadRequestException('tripId is required');
+    }
+
     const trip = await this.prisma.trip.findUnique({
       where: { id },
       include: {
@@ -911,9 +916,9 @@ export class TripsService {
     };
 
     const personaTitles: Record<string, string> = {
-      ABU: '安全官（PHYSICAL）',
-      DR_DRE: '节奏官（HUMAN）',
-      NEPTUNE: '修复官（PHILOSOPHY + SPATIAL）',
+      ABU: '安全守护者 Abu（北极熊 🐻‍❄️）',
+      DR_DRE: '节奏设计师 Dr.Dre（牧羊犬 🐕）',
+      NEPTUNE: '空间魔法师 Neptune（海獭 🦦）',
     };
 
     // 根据决策日志生成提醒

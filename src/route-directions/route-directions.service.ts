@@ -10,7 +10,7 @@ import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { RouteDirectionData, RouteTemplateData, DayPlan } from './interfaces/route-direction.interface';
-import { CreateTripFromTemplateDto } from './dto/create-trip-from-template.dto';
+import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
 
 @Injectable()
 export class RouteDirectionsService {
@@ -608,7 +608,7 @@ export class RouteDirectionsService {
    */
   async createTripFromTemplate(
     templateId: number,
-    dto: CreateTripFromTemplateDto,
+    dto: CreateTripFromRouteTemplateDto,
   ): Promise<any> {
     // 1. 读取模板
     const template = await this.findRouteTemplateById(templateId);
@@ -1003,7 +1003,7 @@ export class RouteDirectionsService {
    */
   private async orchestrateWithLLM(
     template: any,
-    dto: CreateTripFromTemplateDto,
+    dto: CreateTripFromRouteTemplateDto,
     candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string }>,
     startDate: Date,
     durationDays: number
@@ -1240,7 +1240,7 @@ export class RouteDirectionsService {
    */
   private buildOrchestrationPrompt(
     template: any,
-    dto: CreateTripFromTemplateDto,
+    dto: CreateTripFromRouteTemplateDto,
     candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string }>,
     startDate: Date,
     durationDays: number

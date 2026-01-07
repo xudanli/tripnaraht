@@ -16,6 +16,7 @@ import {
 } from '../types/capability-pack.types';
 import { RuleEngine } from '../engine/rule-engine';
 import { ReadinessPack, Rule, Condition } from '../types/readiness-pack.types';
+import { getLocalizedText } from '../utils/i18n.utils';
 
 @Injectable()
 export class CapabilityPackEvaluatorService {
@@ -68,14 +69,14 @@ export class CapabilityPackEvaluatorService {
         id: rule.id,
         triggered: true,
         level: rule.then.level,
-        message: rule.then.message,
+        message: typeof rule.then.message === 'string' ? rule.then.message : getLocalizedText(rule.then.message),
       }));
 
     // 收集风险
     const hazards = (pack.hazards || []).map(h => ({
       type: h.type,
       severity: h.severity,
-      summary: h.summary,
+      summary: typeof h.summary === 'string' ? h.summary : getLocalizedText(h.summary),
     }));
 
     return {

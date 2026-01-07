@@ -29,6 +29,7 @@ import { RouteDirectionsModule } from './route-directions/route-directions.modul
 import { RagModule } from './rag/rag.module';
 import { AuthModule } from './auth/auth.module';
 import { ContactModule } from './contact/contact.module';
+import { SkillsModule } from './skills/skills.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { ContactModule } from './contact/contact.module';
     RouteDirectionsModule, // 国家级路线方向资产模块
     RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
     ContactModule, // 联系我们模块
+    SkillsModule, // Skills 模块（能力颗粒层）
   ],
 })
 export class AppModule {}
