@@ -49,22 +49,22 @@ async function createMcpServer() {
     app = await NestFactory.createApplicationContext(McpAppModule, {
       logger: ['error', 'warn', 'log'], // 只记录重要日志
     });
-    console.error('NestJS application context created');
+    console.error('NestJS application context created successfully');
     
     console.error('Getting SkillsRegistryService...');
     try {
       skillsRegistry = app.get(SkillsRegistryService, { strict: false });
-      console.error('Got SkillsRegistryService');
       if (!skillsRegistry) {
         throw new Error('SkillsRegistryService is null or undefined');
       }
-    } catch (error: any) {
-      console.error('Error getting SkillsRegistryService:', error);
-      console.error('Error message:', error.message);
-      if (error.stack) {
-        console.error('Stack trace:', error.stack);
+      console.error('Got SkillsRegistryService successfully');
+    } catch (getError: any) {
+      console.error('Error getting SkillsRegistryService:', getError);
+      console.error('Error message:', getError.message);
+      if (getError.stack) {
+        console.error('Stack trace:', getError.stack);
       }
-      throw error;
+      throw getError;
     }
   } catch (error: any) {
     console.error('Error creating application context:', error);
@@ -138,35 +138,25 @@ async function createMcpServer() {
   }
 
   // 注册工具列表查询工具
-  console.error('Registering tripnara.listSkills tool...');
-  try {
-    server.registerTool(
-      'tripnara.listSkills',
-      {
-        description: '列出所有可用的 TripNARA Skills',
-      },
-      async () => {
-        const metadata = skillsRegistry.getAllSkillMetadata();
-        return formatResponse({
-          skills: metadata.map(m => ({
-            name: `tripnara.${m.name}`,
-            description: m.description,
-            category: m.category,
-            version: m.version,
-          })),
-        });
-      }
-    );
-    console.error('Registered tripnara.listSkills tool');
-  } catch (error: any) {
-    console.error('Error registering tripnara.listSkills:', error);
-    if (error.stack) {
-      console.error('Stack trace:', error.stack);
+  server.registerTool(
+    'tripnara.listSkills',
+    {
+      description: '列出所有可用的 TripNARA Skills',
+    },
+    async () => {
+      const metadata = skillsRegistry.getAllSkillMetadata();
+      return formatResponse({
+        skills: metadata.map(m => ({
+          name: `tripnara.${m.name}`,
+          description: m.description,
+          category: m.category,
+          version: m.version,
+        })),
+      });
     }
-    throw error;
-  }
+  );
   
-  console.error(`Registered ${allSkills.length + 1} tools successfully (${allSkills.length} skills + 1 list tool)`);
+  console.error(`Registered ${allSkills.length} tools successfully`);
 
   return { server, app, allSkills };
 }
@@ -176,23 +166,8 @@ async function main() {
   try {
     console.error('Initializing MCP Skills Server...');
     console.error('Calling createMcpServer...');
-    let server, app, allSkills;
-    try {
-      const result = await createMcpServer();
-      server = result.server;
-      app = result.app;
-      allSkills = result.allSkills;
-      console.error(`Created server with ${allSkills.length} skills`);
-    } catch (error: any) {
-      console.error('Error in createMcpServer:', error);
-      if (error.message) {
-        console.error('Error message:', error.message);
-      }
-      if (error.stack) {
-        console.error('Stack trace:', error.stack);
-      }
-      throw error;
-    }
+    const { server, app, allSkills } = await createMcpServer();
+    console.error(`Created server with ${allSkills.length} skills`);
     
     // Start MCP server
     console.error('Connecting to stdio transport...');
@@ -236,6 +211,9 @@ process.on('SIGTERM', async () => {
 // 捕获未处理的异常
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
+  if (error.message) {
+    console.error('Error message:', error.message);
+  }
   if (error.stack) {
     console.error('Stack trace:', error.stack);
   }
@@ -243,7 +221,14 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  if (reason instanceof Error) {
+    console.error('Error message:', reason.message);
+    if (reason.stack) {
+      console.error('Stack trace:', reason.stack);
+    }
+  }
   process.exit(1);
 });
 
