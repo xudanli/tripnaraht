@@ -9,7 +9,7 @@
  * 验收：重复请求同 RD 的 p95 延迟下降明显；数据库不出现慢查询尖峰
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '../../redis/redis.service';
 import { RouteDirectionRecommendation, UserIntent } from './route-direction-selector.service';
 import { ActivityCandidate } from '../../trips/decision/world-model';
@@ -29,7 +29,14 @@ export class RouteDirectionCacheService {
   private readonly POI_POOL_TTL_MIN = 21600; // 6 小时
   private readonly POI_POOL_TTL_MAX = 86400; // 24 小时
 
-  constructor(private readonly redisService: RedisService) {}
+  // 内存缓存（当 Redis 不可用时使用）
+  private readonly memoryCache = new Map<string, { value: any; expires: number }>();
+
+  constructor(@Optional() private readonly redisService?: RedisService) {
+    if (!redisService) {
+      this.logger.warn('RedisService not available, using in-memory cache');
+    }
+  }
 
   /**
    * 生成 RD selection 缓存键
@@ -57,12 +64,13 @@ export class RouteDirectionCacheService {
       .digest('hex')
       .substring(0, 16);
     
-    return this.redisService.generateKey(
+    const key = `${this.RD_SELECTION_CACHE_PREFIX}:${countryCode}:${month || 'any'}:${intentHash}`;
+    return this.redisService?.generateKey(
       this.RD_SELECTION_CACHE_PREFIX,
       countryCode,
       month || 'any',
       intentHash
-    );
+    ) || key;
   }
 
   /**
@@ -75,11 +83,22 @@ export class RouteDirectionCacheService {
   ): Promise<RouteDirectionRecommendation[] | null> {
     try {
       const cacheKey = this.generateRdSelectionCacheKey(countryCode, month, userIntent);
-      const cached = await this.redisService.get<RouteDirectionRecommendation[]>(cacheKey);
       
-      if (cached) {
-        this.logger.debug(`RD selection cache hit: ${cacheKey}`);
-        return cached;
+      if (this.redisService) {
+        const cached = await this.redisService.get<RouteDirectionRecommendation[]>(cacheKey);
+        if (cached) {
+          this.logger.debug(`RD selection cache hit: ${cacheKey}`);
+          return cached;
+        }
+      } else {
+        // 使用内存缓存
+        const cached = this.memoryCache.get(cacheKey);
+        if (cached && cached.expires > Date.now()) {
+          this.logger.debug(`RD selection cache hit (memory): ${cacheKey}`);
+          return cached.value;
+        } else if (cached) {
+          this.memoryCache.delete(cacheKey);
+        }
       }
       
       return null;
@@ -107,8 +126,17 @@ export class RouteDirectionCacheService {
         ? this.RD_SELECTION_TTL_MAX // 6 小时（月份明确，更稳定）
         : this.RD_SELECTION_TTL_MIN; // 1 小时（月份不明确，可能变化）
       
-      await this.redisService.set(cacheKey, recommendations, ttl);
-      this.logger.debug(`RD selection cached: ${cacheKey}, TTL: ${ttl}s`);
+      if (this.redisService) {
+        await this.redisService.set(cacheKey, recommendations, ttl);
+        this.logger.debug(`RD selection cached: ${cacheKey}, TTL: ${ttl}s`);
+      } else {
+        // 使用内存缓存
+        this.memoryCache.set(cacheKey, {
+          value: recommendations,
+          expires: Date.now() + ttl * 1000,
+        });
+        this.logger.debug(`RD selection cached (memory): ${cacheKey}, TTL: ${ttl}s`);
+      }
     } catch (error) {
       this.logger.error('Failed to cache RD selection', error);
       // 不抛出错误，允许系统继续运行
@@ -135,12 +163,13 @@ export class RouteDirectionCacheService {
         .substring(0, 16);
     }
     
-    return this.redisService.generateKey(
+    const key = `${this.POI_POOL_CACHE_PREFIX}:${routeDirectionId}:${bufferMeters}:${signaturePoisHash}`;
+    return this.redisService?.generateKey(
       this.POI_POOL_CACHE_PREFIX,
       routeDirectionId,
       bufferMeters,
       signaturePoisHash
-    );
+    ) || key;
   }
 
   /**
@@ -153,11 +182,22 @@ export class RouteDirectionCacheService {
   ): Promise<ActivityCandidate[] | null> {
     try {
       const cacheKey = this.generatePoiPoolCacheKey(routeDirectionId, bufferMeters, signaturePois);
-      const cached = await this.redisService.get<ActivityCandidate[]>(cacheKey);
       
-      if (cached) {
-        this.logger.debug(`POI pool cache hit: ${cacheKey}`);
-        return cached;
+      if (this.redisService) {
+        const cached = await this.redisService.get<ActivityCandidate[]>(cacheKey);
+        if (cached) {
+          this.logger.debug(`POI pool cache hit: ${cacheKey}`);
+          return cached;
+        }
+      } else {
+        // 使用内存缓存
+        const cached = this.memoryCache.get(cacheKey);
+        if (cached && cached.expires > Date.now()) {
+          this.logger.debug(`POI pool cache hit (memory): ${cacheKey}`);
+          return cached.value;
+        } else if (cached) {
+          this.memoryCache.delete(cacheKey);
+        }
       }
       
       return null;
@@ -185,8 +225,17 @@ export class RouteDirectionCacheService {
         ? this.POI_POOL_TTL_MAX // 24 小时（有 signaturePois，更稳定）
         : this.POI_POOL_TTL_MIN; // 6 小时（无 signaturePois，可能变化）
       
-      await this.redisService.set(cacheKey, pois, ttl);
-      this.logger.debug(`POI pool cached: ${cacheKey}, TTL: ${ttl}s, size: ${pois.length}`);
+      if (this.redisService) {
+        await this.redisService.set(cacheKey, pois, ttl);
+        this.logger.debug(`POI pool cached: ${cacheKey}, TTL: ${ttl}s, size: ${pois.length}`);
+      } else {
+        // 使用内存缓存
+        this.memoryCache.set(cacheKey, {
+          value: pois,
+          expires: Date.now() + ttl * 1000,
+        });
+        this.logger.debug(`POI pool cached (memory): ${cacheKey}, TTL: ${ttl}s, size: ${pois.length}`);
+      }
     } catch (error) {
       this.logger.error('Failed to cache POI pool', error);
       // 不抛出错误，允许系统继续运行

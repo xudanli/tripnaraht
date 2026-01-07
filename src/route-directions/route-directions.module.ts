@@ -15,9 +15,23 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { POIModule } from '../poi/poi.module';
 import { MemoryModule } from '../agent/memory/memory.module';
+import { CacheModule } from '@nestjs/cache-manager';
+
+// 检查是否在 MCP 模式下
+const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
+                  process.env.MCP_MODE === 'true';
+const disableRedis = process.env.DISABLE_REDIS === 'true' || isMcpMode;
 
 @Module({
-  imports: [PrismaModule, RedisModule, POIModule, MemoryModule],
+  imports: [
+    PrismaModule,
+    // 在 MCP 模式下，使用内存缓存而不是 Redis
+    disableRedis 
+      ? CacheModule.register({ ttl: 3600, max: 1000 })
+      : RedisModule,
+    POIModule,
+    MemoryModule,
+  ],
   controllers: [RouteDirectionsController],
   providers: [
     RouteDirectionsService,

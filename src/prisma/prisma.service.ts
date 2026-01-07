@@ -27,37 +27,29 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    this.logger.log('PrismaService onModuleInit called');
+    this.logger.log('🔌 [Prisma] PrismaService onModuleInit called');
     
     if (this.skipConnection) {
-      this.logger.warn('Skipping database connection (already determined in constructor)');
+      this.logger.warn('⚠️ [Prisma] Skipping database connection (MCP/test mode)');
       return;
     }
     
+    this.logger.log('🔌 [Prisma] 正在尝试连接...');
+    
+    // 创建一个 2秒 的超时计时器
+    const timeout = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Connection Timeout')), 2000)
+    );
+
     try {
-      this.logger.log('Attempting database connection...');
-      // 设置连接超时（3秒，更短）
-      const connectPromise = this.$connect();
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Database connection timeout (3s)')), 3000);
-      });
-      
-      await Promise.race([connectPromise, timeoutPromise]);
+      // 让连接操作和计时器赛跑
+      await Promise.race([this.$connect(), timeout]);
       this.isConnected = true;
-      this.logger.log('Database connection established');
-    } catch (error: any) {
-      const errorMessage = error?.message || String(error);
-      this.logger.warn(`Failed to connect to database: ${errorMessage}`);
-      
-      // 在 MCP 模式下，不抛出错误
-      const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
-                        process.env.MCP_MODE === 'true';
-      if (isMcpMode) {
-        this.logger.warn('Continuing without database connection (MCP mode)');
-      } else {
-        this.logger.error('Database connection is required. Set ALLOW_NO_DATABASE=true to allow running without database.');
-        throw error;
-      }
+      this.logger.log('✅ [Prisma] 连接成功');
+    } catch (e: any) {
+      const errorMessage = e?.message || String(e);
+      this.logger.warn(`⚠️ [Prisma] 连接超时或失败，跳过数据库连接，继续启动 App。错误: ${errorMessage}`);
+      // 重点：这里捕获了错误，但没有 throw，所以 App 能够继续启动！
     }
   }
 
