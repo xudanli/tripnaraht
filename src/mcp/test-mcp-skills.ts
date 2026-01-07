@@ -16,6 +16,7 @@ async function testMcpSkillsServer() {
   const transport = new StdioClientTransport({
     command: 'npx',
     args: ['tsx', 'src/mcp/mcp-skills-server.ts'],
+    env: process.env as Record<string, string>,
   });
   
   // 监听服务器进程的错误输出（stderr）
@@ -34,7 +35,15 @@ async function testMcpSkillsServer() {
   try {
     // 连接到服务器（这会自动启动服务器进程）
     console.log('正在连接到 MCP Skills Server...');
-    await client.connect(transport);
+    console.log('等待服务器初始化（最多 10 秒）...');
+    
+    // 添加超时来诊断问题
+    const connectPromise = client.connect(transport);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('连接超时：服务器可能在启动过程中崩溃')), 10000);
+    });
+    
+    await Promise.race([connectPromise, timeoutPromise]);
     console.log('✅ 已连接到 MCP Skills Server\n');
     
     // 等待一下，确保服务器完全初始化
@@ -126,9 +135,15 @@ async function testMcpSkillsServer() {
     console.log('✅ 测试完成！');
   } catch (error: any) {
     console.error('❌ 测试失败:', error);
+    if (error.message) {
+      console.error('错误消息:', error.message);
+    }
     if (error.stack) {
       console.error('错误堆栈:', error.stack);
     }
+    console.error('\n💡 提示: 服务器可能在启动过程中遇到错误。');
+    console.error('   请检查服务器的 stderr 输出，或直接运行服务器查看错误：');
+    console.error('   npx tsx src/mcp/mcp-skills-server.ts');
   } finally {
     // 断开连接（会自动关闭服务器进程）
     try {

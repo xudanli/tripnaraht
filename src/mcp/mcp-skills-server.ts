@@ -84,27 +84,41 @@ async function createMcpServer() {
   const allSkills = skillsRegistry.getAllSkills();
   console.error(`Registering ${allSkills.length} skills as MCP tools...`);
   
-  for (const skill of allSkills) {
-    const toolName = `tripnara.${skill.metadata.name}`;
-    
-    server.registerTool(
-      toolName,
-      {
-        description: skill.metadata.description,
-        inputSchema: getSchemaForSkill(skill.metadata.name),
-      },
-      async (args: any) => {
-        try {
-          const result = await skill.execute(args);
-          return formatResponse(result);
-        } catch (error: any) {
-          return formatResponse({
-            error: error.message || 'Unknown error',
-            stack: error.stack,
-          });
-        }
+  try {
+    for (const skill of allSkills) {
+      const toolName = `tripnara.${skill.metadata.name}`;
+      
+      try {
+        server.registerTool(
+          toolName,
+          {
+            description: skill.metadata.description,
+            inputSchema: getSchemaForSkill(skill.metadata.name),
+          },
+          async (args: any) => {
+            try {
+              const result = await skill.execute(args);
+              return formatResponse(result);
+            } catch (error: any) {
+              return formatResponse({
+                error: error.message || 'Unknown error',
+                stack: error.stack,
+              });
+            }
+          }
+        );
+        console.error(`  ✓ Registered tool: ${toolName}`);
+      } catch (error: any) {
+        console.error(`  ✗ Failed to register tool ${toolName}:`, error.message);
+        throw error;
       }
-    );
+    }
+  } catch (error: any) {
+    console.error('Error registering tools:', error);
+    if (error.stack) {
+      console.error('Stack trace:', error.stack);
+    }
+    throw error;
   }
 
   // 注册工具列表查询工具
@@ -141,12 +155,20 @@ async function main() {
     
     // Start MCP server
     console.error('Connecting to stdio transport...');
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    
-    // Log to stderr (stdout is used for JSON-RPC communication)
-    console.error('TripNARA MCP Skills Server started and ready');
-    console.error(`Registered ${allSkills.length} tools`);
+    try {
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      
+      // Log to stderr (stdout is used for JSON-RPC communication)
+      console.error('TripNARA MCP Skills Server started and ready');
+      console.error(`Registered ${allSkills.length} tools`);
+    } catch (error: any) {
+      console.error('Error connecting to stdio transport:', error);
+      if (error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      throw error;
+    }
     
     // Keep the process alive - server.connect() should handle this, but just in case
     // The server will keep running and listening for JSON-RPC messages on stdin
