@@ -2,9 +2,23 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import * as redisStore from 'cache-manager-redis-store';
 import { RedisService } from './redis.service';
 import { Logger } from '@nestjs/common';
+
+// 检查是否在 MCP 模式下（在模块加载时检查，避免导入 redisStore）
+const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
+                  process.env.MCP_MODE === 'true';
+const disableRedis = process.env.DISABLE_REDIS === 'true' || isMcpMode;
+
+// 仅在非 MCP 模式下动态导入 redisStore
+let redisStore: any = null;
+if (!disableRedis) {
+  try {
+    redisStore = require('cache-manager-redis-store');
+  } catch (error) {
+    // redisStore 不可用时，使用内存缓存
+  }
+}
 
 @Module({
   imports: [
@@ -14,14 +28,13 @@ import { Logger } from '@nestjs/common';
       useFactory: (configService: ConfigService) => {
         const logger = new Logger('RedisModule');
         
-        // 检查是否在 MCP 模式下（通过环境变量或进程名判断）
-        const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
-                          process.env.MCP_MODE === 'true';
-        const disableRedis = configService.get<string>('DISABLE_REDIS') === 'true' ||
-                             process.env.DISABLE_REDIS === 'true' ||
-                             isMcpMode;
+        // 再次检查（运行时检查）
+        const runtimeDisableRedis = configService.get<string>('DISABLE_REDIS') === 'true' ||
+                                     process.env.DISABLE_REDIS === 'true' ||
+                                     isMcpMode ||
+                                     !redisStore;
         
-        if (disableRedis) {
+        if (runtimeDisableRedis) {
           logger.warn('Redis disabled, using in-memory cache (MCP/test mode)');
           // 使用内存缓存
           return {

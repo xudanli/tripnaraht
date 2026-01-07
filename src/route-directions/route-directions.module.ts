@@ -12,15 +12,27 @@ import { PackKPIAcceptanceService } from './services/pack-kpi-acceptance.service
 import { CompliancePluginService } from './plugins/compliance-plugin.service';
 import { TransportPluginService } from './plugins/transport-plugin.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { RedisModule } from '../redis/redis.module';
 import { POIModule } from '../poi/poi.module';
 import { MemoryModule } from '../agent/memory/memory.module';
 import { CacheModule } from '@nestjs/cache-manager';
+import { RedisService } from '../redis/redis.service';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                   process.env.MCP_MODE === 'true';
 const disableRedis = process.env.DISABLE_REDIS === 'true' || isMcpMode;
+
+// 在 MCP 模式下，提供一个假的 RedisService
+class MockRedisService {
+  async get() { return null; }
+  async set() { return Promise.resolve(); }
+  async del() { return Promise.resolve(); }
+  async exists() { return false; }
+  async reset() { return Promise.resolve(); }
+  generateKey(prefix: string, ...parts: (string | number)[]): string {
+    return `${prefix}:${parts.join(':')}`;
+  }
+}
 
 @Module({
   imports: [
@@ -28,12 +40,18 @@ const disableRedis = process.env.DISABLE_REDIS === 'true' || isMcpMode;
     // 在 MCP 模式下，使用内存缓存而不是 Redis
     disableRedis 
       ? CacheModule.register({ ttl: 3600, max: 1000 })
-      : RedisModule,
+      : (() => {
+          // 动态导入 RedisModule（仅在非 MCP 模式下）
+          const { RedisModule } = require('../redis/redis.module');
+          return RedisModule;
+        })(),
     POIModule,
     MemoryModule,
   ],
   controllers: [RouteDirectionsController],
   providers: [
+    // 在 MCP 模式下，提供假的 RedisService
+    ...(disableRedis ? [{ provide: RedisService, useClass: MockRedisService }] : []),
     RouteDirectionsService,
     RouteDirectionSelectorService,
     RouteDirectionPoiGeneratorService,
