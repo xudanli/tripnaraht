@@ -13,11 +13,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
+    this.logger.log('PrismaService onModuleInit called');
+    
+    // 检查是否在 MCP 模式下（通过环境变量或进程名判断）
+    const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
+                      process.env.MCP_MODE === 'true';
+    const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
+                      process.env.ALLOW_NO_DATABASE === 'true' ||
+                      isMcpMode;
+    
+    if (allowNoDb) {
+      this.logger.warn('Skipping database connection (MCP/test mode)');
+      return;
+    }
+    
     try {
-      // 设置连接超时（5秒）
+      this.logger.log('Attempting database connection...');
+      // 设置连接超时（3秒，更短）
       const connectPromise = this.$connect();
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Database connection timeout (5s)')), 5000);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Database connection timeout (3s)')), 3000);
       });
       
       await Promise.race([connectPromise, timeoutPromise]);
@@ -27,15 +42,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const errorMessage = error?.message || String(error);
       this.logger.warn(`Failed to connect to database: ${errorMessage}`);
       
-      // 在测试模式或允许无数据库模式下，不抛出错误
-      const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
-                        process.env.ALLOW_NO_DATABASE === 'true';
-      if (!allowNoDb) {
-        this.logger.error('Database connection is required. Set ALLOW_NO_DATABASE=true to allow running without database.');
-        // 不抛出错误，而是继续运行（MCP Server 可能不需要数据库）
+      // 在 MCP 模式下，不抛出错误
+      if (isMcpMode) {
         this.logger.warn('Continuing without database connection (MCP mode)');
-      } else {
+      } else if (allowNoDb) {
         this.logger.warn('Continuing without database connection (test mode)');
+      } else {
+        this.logger.error('Database connection is required. Set ALLOW_NO_DATABASE=true to allow running without database.');
+        throw error;
       }
     }
   }
