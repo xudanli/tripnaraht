@@ -26,8 +26,8 @@ export class RouteDifficultyService {
   private readonly pythonScriptPath: string;
 
   constructor(
-    @Optional() private configService?: ConfigService,
     private prisma: PrismaService,
+    @Optional() private configService?: ConfigService,
   ) {
     // Python脚本路径
     this.pythonScriptPath = path.join(process.cwd(), 'tools', 'end2end_difficulty_with_geojson.py');

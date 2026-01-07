@@ -79,15 +79,27 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
       }
     );
 
-    // 提取海拔剖面
-    const elevationProfile = effortMetadata.elevationProfile?.map((point, index) => ({
-      distance: point.distance,
-      lat: routePoints[Math.min(index, routePoints.length - 1)].lat,
-      lng: routePoints[Math.min(index, routePoints.length - 1)].lng,
-      elevation: point.elevation,
-      slope: point.slope,
-      cumulativeAscent: point.cumulativeAscent || 0,
-    })) || [];
+    // 提取海拔剖面并计算累计爬升
+    let cumulativeAscent = 0;
+    const elevationProfile = effortMetadata.elevationProfile?.map((point, index) => {
+      // 计算累计爬升（只计算上升部分）
+      if (index > 0 && effortMetadata.elevationProfile) {
+        const prevElevation = effortMetadata.elevationProfile[index - 1].elevation;
+        const elevationDiff = point.elevation - prevElevation;
+        if (elevationDiff > 0) {
+          cumulativeAscent += elevationDiff;
+        }
+      }
+      
+      return {
+        distance: point.distance,
+        lat: routePoints[Math.min(index, routePoints.length - 1)].lat,
+        lng: routePoints[Math.min(index, routePoints.length - 1)].lng,
+        elevation: point.elevation,
+        slope: point.slope,
+        cumulativeAscent,
+      };
+    }) || [];
 
     // 计算最大坡度
     const maxSlope = Math.max(...elevationProfile.map(p => Math.abs(p.slope)), 0);

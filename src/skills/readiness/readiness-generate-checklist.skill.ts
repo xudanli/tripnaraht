@@ -78,9 +78,9 @@ export class ReadinessGenerateChecklistSkill implements Skill<ReadinessGenerateC
 
     // 如果没有提供 plan，创建一个空的 TripPlan
     const plan: TripPlan = input.plan || {
-      tripId: 'unknown',
+      version: '1.0.0',
+      createdAt: new Date().toISOString(),
       days: [],
-      metadata: {},
     };
 
     // 调用 ReadinessAgent
@@ -93,7 +93,7 @@ export class ReadinessGenerateChecklistSkill implements Skill<ReadinessGenerateC
         severity: item.severity,
         title: item.title,
         description: item.description || '',
-        reason: item.reason || '',
+        reason: item.reasonSignals?.join(', ') || '',
       })),
       itemsByType: {
         GEAR: result.itemsByType.GEAR || [],

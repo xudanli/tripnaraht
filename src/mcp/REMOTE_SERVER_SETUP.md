@@ -102,10 +102,14 @@ EOF
 
 如果可能，在本地 macOS 上克隆项目会更简单可靠。
 
+> **📍 重要**: 以下所有步骤都在**本地 macOS 的终端**执行，不是在远程服务器上！
+
 #### 步骤 1: 在 macOS 上克隆项目
 
+**操作位置**: 本地 macOS 终端
+
 ```bash
-# 在 macOS 上
+# 在 macOS 终端执行
 cd ~/Projects  # 或您喜欢的目录
 git clone <your-repo-url> tripnara
 # 或者如果使用 SSH
@@ -117,8 +121,11 @@ npm install
 
 #### 步骤 2: 配置本地路径
 
+**操作位置**: 本地 macOS 终端（在项目目录下）
+
 ```bash
-# 创建配置文件
+# 确保在项目目录下（~/Projects/tripnara）
+# 在 macOS 终端执行
 mkdir -p ~/Library/Application\ Support/Claude
 cat > ~/Library/Application\ Support/Claude/claude_desktop_config.json << EOF
 {
@@ -136,14 +143,26 @@ cat > ~/Library/Application\ Support/Claude/claude_desktop_config.json << EOF
 EOF
 ```
 
+> **注意**: `$(pwd)` 会使用当前终端的工作目录，所以确保在项目根目录（`~/Projects/tripnara`）执行此命令。
+
 #### 步骤 3: 同步环境变量
+
+**操作位置**: 本地 macOS 终端（在项目目录下）
 
 如果项目需要 `.env` 文件，从远程服务器复制：
 
 ```bash
-# 从远程服务器复制 .env
+# 在 macOS 终端执行（确保在项目目录下）
+# 从远程服务器复制 .env 到本地项目目录
 scp devbox@your-server:/home/devbox/project/.env ~/Projects/tripnara/.env
+# 或者如果当前在项目目录：
+scp devbox@your-server:/home/devbox/project/.env .env
 ```
+
+> **注意**: 
+> - 将 `devbox@your-server` 替换为实际的 SSH 连接信息
+> - 如果 SSH 使用非标准端口，使用 `scp -P 2222 ...`
+> - 如果 `.env` 文件包含敏感信息，确保安全传输
 
 ---
 
@@ -324,9 +343,11 @@ echo "请修改 SERVER_IP 和 SERVER_USER，然后重启 Claude Desktop"
 
 ## 📝 快速配置脚本（方案 2 - 本地克隆）
 
+**操作位置**: 本地 macOS 终端
+
 ```bash
 #!/bin/bash
-# 在 macOS 上运行
+# 在 macOS 终端执行此脚本
 
 PROJECT_DIR="$HOME/Projects/tripnara"
 
@@ -359,6 +380,10 @@ EOF
 
 echo "✅ 配置完成！"
 echo "配置文件: ~/Library/Application Support/Claude/claude_desktop_config.json"
+echo ""
+echo "⚠️  如果项目需要 .env 文件，请手动复制："
+echo "   scp devbox@your-server:/home/devbox/project/.env $PROJECT_DIR/.env"
+echo ""
 echo "请重启 Claude Desktop"
 ```
 
@@ -370,4 +395,10 @@ echo "请重启 Claude Desktop"
 2. 按照步骤配置
 3. 完全重启 Claude Desktop
 4. 验证连接
+
+---
+
+## 📚 相关文档
+
+- [更新本地项目指南](./UPDATE_LOCAL_PROJECT.md) - 如果项目已在本地，需要更新时的操作步骤
 
