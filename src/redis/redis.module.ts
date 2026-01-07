@@ -20,9 +20,10 @@ if (!disableRedis) {
   }
 }
 
-@Module({
-  imports: [
-    CacheModule.registerAsync({
+// 在 MCP 模式下，直接使用同步的内存缓存，避免任何异步操作
+const cacheModuleConfig = disableRedis
+  ? CacheModule.register({ ttl: 3600, max: 1000 })
+  : CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
@@ -59,8 +60,10 @@ if (!disableRedis) {
           max: 1000, // 最大缓存条目数
         };
       },
-    }),
-  ],
+    });
+
+@Module({
+  imports: [cacheModuleConfig],
   providers: [RedisService],
   exports: [CacheModule, RedisService],
 })
