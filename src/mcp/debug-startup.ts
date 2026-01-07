@@ -23,9 +23,17 @@ async function debugStartup() {
     console.error('✅ McpAppModule 导入成功');
 
     console.error('步骤 3: 创建应用上下文...');
-    const app = await NestFactory.createApplicationContext(McpAppModule, {
+    console.error('   设置超时 30 秒...');
+    
+    const createContextPromise = NestFactory.createApplicationContext(McpAppModule, {
       logger: ['error', 'warn', 'log'],
     });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('创建应用上下文超时（30秒）')), 30000);
+    });
+    
+    const app = await Promise.race([createContextPromise, timeoutPromise]);
     console.error('✅ 应用上下文创建成功');
 
     console.error('步骤 4: 获取 SkillsRegistryService...');
@@ -68,8 +76,14 @@ async function debugStartup() {
 
     console.error('\n✅ 所有步骤都成功！服务器应该可以正常启动。');
     
+    // 等待一下，看看是否有异步操作
+    console.error('\n等待 2 秒，检查是否有异步操作...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     // 清理
+    console.error('关闭应用上下文...');
     await app.close();
+    console.error('✅ 应用上下文已关闭');
     process.exit(0);
   } catch (error: any) {
     console.error('\n❌ 调试失败:', error);

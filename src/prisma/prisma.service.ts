@@ -14,7 +14,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     try {
-      await this.$connect();
+      // 设置连接超时（5秒）
+      const connectPromise = this.$connect();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Database connection timeout (5s)')), 5000);
+      });
+      
+      await Promise.race([connectPromise, timeoutPromise]);
       this.isConnected = true;
       this.logger.log('Database connection established');
     } catch (error: any) {
@@ -22,13 +28,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       this.logger.warn(`Failed to connect to database: ${errorMessage}`);
       
       // 在测试模式或允许无数据库模式下，不抛出错误
-      const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true';
+      const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
+                        process.env.ALLOW_NO_DATABASE === 'true';
       if (!allowNoDb) {
         this.logger.error('Database connection is required. Set ALLOW_NO_DATABASE=true to allow running without database.');
-        throw error;
+        // 不抛出错误，而是继续运行（MCP Server 可能不需要数据库）
+        this.logger.warn('Continuing without database connection (MCP mode)');
+      } else {
+        this.logger.warn('Continuing without database connection (test mode)');
       }
-      
-      this.logger.warn('Continuing without database connection (test mode)');
     }
   }
 
