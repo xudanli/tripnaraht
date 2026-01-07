@@ -1,5 +1,5 @@
 // src/transport/services/route-cache.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 
@@ -16,11 +16,17 @@ export class RouteCacheService {
   private readonly logger = new Logger(RouteCacheService.name);
   private readonly cacheExpiryHours = 24;
   private readonly cachePrefix = 'route';
+  // 内存缓存（当 Redis 不可用时使用）
+  private readonly memoryCache = new Map<string, { value: any; expires: number }>();
 
   constructor(
     private prisma: PrismaService,
-    private redisService: RedisService
-  ) {}
+    @Optional() private redisService?: RedisService
+  ) {
+    if (!redisService) {
+      this.logger.warn('RedisService not available, using in-memory cache');
+    }
+  }
 
   /**
    * 检查是否为短距离（使用 PostGIS 计算，不调 API）
@@ -130,9 +136,20 @@ export class RouteCacheService {
   ): Promise<any | null> {
     try {
       const cacheKey = this.generateCacheKey(fromLat, fromLng, toLat, toLng, travelMode);
-      const redisKey = this.redisService.generateKey(this.cachePrefix, cacheKey);
+      const redisKey = this.redisService?.generateKey(this.cachePrefix, cacheKey) || `${this.cachePrefix}:${cacheKey}`;
       
-      const cached = await this.redisService.get<any>(redisKey);
+      let cached: any = null;
+      if (this.redisService) {
+        cached = await this.redisService.get<any>(redisKey);
+      } else {
+        // 使用内存缓存
+        const memoryCached = this.memoryCache.get(redisKey);
+        if (memoryCached && memoryCached.expires > Date.now()) {
+          cached = memoryCached.value;
+        } else if (memoryCached) {
+          this.memoryCache.delete(redisKey);
+        }
+      }
       
       if (cached) {
         this.logger.debug(`缓存命中: ${redisKey}`);
@@ -159,12 +176,20 @@ export class RouteCacheService {
   ): Promise<void> {
     try {
       const cacheKey = this.generateCacheKey(fromLat, fromLng, toLat, toLng, travelMode);
-      const redisKey = this.redisService.generateKey(this.cachePrefix, cacheKey);
+      const redisKey = this.redisService?.generateKey(this.cachePrefix, cacheKey) || `${this.cachePrefix}:${cacheKey}`;
       
       // TTL: 24 小时（秒）
       const ttl = this.cacheExpiryHours * 60 * 60;
       
-      await this.redisService.set(redisKey, routeData, ttl);
+      if (this.redisService) {
+        await this.redisService.set(redisKey, routeData, ttl);
+      } else {
+        // 使用内存缓存
+        this.memoryCache.set(redisKey, {
+          value: routeData,
+          expires: Date.now() + ttl * 1000,
+        });
+      }
       this.logger.debug(`缓存已保存: ${redisKey}, TTL: ${ttl}秒`);
     } catch (error) {
       this.logger.error('保存到 Redis 缓存失败', error);
