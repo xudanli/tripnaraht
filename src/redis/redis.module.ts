@@ -16,13 +16,18 @@ if (disableRedis) {
 }
 
 // 仅在非 MCP 模式下动态导入 redisStore
+// 注意：在 MCP 模式下，完全不加载 cache-manager-redis-store，避免任何连接尝试
 let redisStore: any = null;
 if (!disableRedis) {
   try {
     redisStore = require('cache-manager-redis-store');
+    logger.log('✅ cache-manager-redis-store loaded');
   } catch (error) {
+    logger.warn('⚠️ cache-manager-redis-store not available, using in-memory cache');
     // redisStore 不可用时，使用内存缓存
   }
+} else {
+  logger.warn('🚫 Skipping cache-manager-redis-store load (MCP mode)');
 }
 
 // 在 MCP 模式下，直接使用同步的内存缓存，避免任何异步操作
