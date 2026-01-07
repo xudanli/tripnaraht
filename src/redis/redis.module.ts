@@ -10,6 +10,11 @@ const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                   process.env.MCP_MODE === 'true';
 const disableRedis = process.env.DISABLE_REDIS === 'true' || isMcpMode;
 
+const logger = new Logger('RedisModule');
+if (disableRedis) {
+  logger.warn('🚫 RedisModule loaded in MCP mode - will use in-memory cache only');
+}
+
 // 仅在非 MCP 模式下动态导入 redisStore
 let redisStore: any = null;
 if (!disableRedis) {
@@ -21,8 +26,12 @@ if (!disableRedis) {
 }
 
 // 在 MCP 模式下，直接使用同步的内存缓存，避免任何异步操作
+// 注意：即使 RedisModule 被加载，在 MCP 模式下也不会尝试连接 Redis
 const cacheModuleConfig = disableRedis
-  ? CacheModule.register({ ttl: 3600, max: 1000 })
+  ? (() => {
+      logger.warn('Using in-memory cache (MCP mode)');
+      return CacheModule.register({ ttl: 3600, max: 1000 });
+    })()
   : CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
