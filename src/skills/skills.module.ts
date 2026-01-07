@@ -44,10 +44,9 @@ import {
   SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT,
 } from './skills.tokens';
 
-// MCP 模式下：DecisionModule 会导致 applicationContext 卡住（createApplicationContext 不返回）
-// 默认禁用 decision skills；如需开启，设置 ENABLE_DECISION_SKILLS=true
-const isMcpMode = process.env.MCP_MODE === 'true';
-const enableDecisionSkills = !isMcpMode || process.env.ENABLE_DECISION_SKILLS === 'true';
+// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认启用
+// 如需禁用，设置 ENABLE_DECISION_SKILLS=false
+const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS !== 'false';
 // readiness.generateChecklist 目前依赖 DecisionModule（ReadinessAgentService 在 decision 模块内）
 const enableReadinessChecklistSkill = enableDecisionSkills;
 

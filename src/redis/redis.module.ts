@@ -40,7 +40,7 @@ const cacheModuleConfig = disableRedis
   : CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
+      useFactory: (configService: ConfigService): any => {
         const logger = new Logger('RedisModule');
         
         // 再次检查（运行时检查）

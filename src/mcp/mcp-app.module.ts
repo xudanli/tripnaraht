@@ -14,10 +14,9 @@ import { RouteDirectionsModule } from '../route-directions/route-directions.modu
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { SkillsModule } from '../skills/skills.module';
 
-// MCP 模式下：DecisionModule 会导致 createApplicationContext 卡住
-// 如需开启，设置 ENABLE_DECISION_SKILLS=true
-const isMcpMode = process.env.MCP_MODE === 'true';
-const enableDecisionSkills = !isMcpMode || process.env.ENABLE_DECISION_SKILLS === 'true';
+// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认启用
+// 如需禁用，设置 ENABLE_DECISION_SKILLS=false
+const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS !== 'false';
 
 @Module({
   imports: [

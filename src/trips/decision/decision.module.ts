@@ -26,7 +26,18 @@ import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
 import { TransportModule } from '../../transport/transport.module';
 import { ReadinessModule } from '../readiness/readiness.module';
-import { PlacesModule } from '../../places/places.module';
+// 在 MCP 模式下使用轻量级 PlacesLiteModule，避免启动卡死
+const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
+                  process.env.MCP_MODE === 'true';
+
+// 动态导入，避免在 MCP 模式下加载完整的 PlacesModule
+let PlacesModuleOrLite: any;
+if (isMcpMode && process.env.ENABLE_FULL_PLACES_MODULE !== 'true') {
+  PlacesModuleOrLite = require('../../places/places-lite.module').PlacesLiteModule;
+} else {
+  PlacesModuleOrLite = require('../../places/places.module').PlacesModule;
+}
+
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { MemoryModule } from '../../agent/memory/memory.module';
 import { LlmModule } from '../../llm/llm.module';
@@ -61,7 +72,7 @@ import { LangGraphOrchestratorService } from './orchestration/langgraph-orchestr
 import { ReadinessAgentService } from './readiness/readiness-agent.service';
 
 @Module({
-  imports: [TransportModule, ReadinessModule, PlacesModule, RouteDirectionsModule, MemoryModule, LlmModule],
+  imports: [TransportModule, ReadinessModule, PlacesModuleOrLite, RouteDirectionsModule, MemoryModule, LlmModule],
   controllers: [DecisionController, DecisionStatsController],
   providers: [
     TripDecisionEngineService,

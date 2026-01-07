@@ -6,9 +6,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PrismaService } from '../../prisma/prisma.service';
 
 export interface IcelandPickupPoint {
   placeId: number;
@@ -83,6 +81,8 @@ export interface IcelandGeoFeatures {
 @Injectable()
 export class IcelandPoiFeaturesService {
   private readonly logger = new Logger(IcelandPoiFeaturesService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 获取冰岛 Geo/POI Features
@@ -167,7 +167,7 @@ export class IcelandPoiFeaturesService {
     parking: IcelandAttraction[];
     total: number;
   }> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -233,7 +233,7 @@ export class IcelandPoiFeaturesService {
     viewpoints: IcelandAttraction[];
     total: number;
   }> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -329,7 +329,7 @@ export class IcelandPoiFeaturesService {
     fireStations: IcelandAttraction[];
     total: number;
   }> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -406,7 +406,7 @@ export class IcelandPoiFeaturesService {
     toilets: IcelandAttraction[];
     total: number;
   }> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -479,7 +479,7 @@ export class IcelandPoiFeaturesService {
     spaPools: IcelandAttraction[];
     total: number;
   }> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;

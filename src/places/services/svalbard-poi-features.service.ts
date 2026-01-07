@@ -6,9 +6,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PrismaService } from '../../prisma/prisma.service';
 
 export interface PickupPoint {
   placeId: number;
@@ -70,6 +68,8 @@ export interface SvalbardGeoFeatures {
 export class SvalbardPoiFeaturesService {
   private readonly logger = new Logger(SvalbardPoiFeaturesService.name);
 
+  constructor(private readonly prisma: PrismaService) {}
+
   /**
    * 获取斯瓦尔巴 Geo/POI Features
    * 
@@ -130,7 +130,7 @@ export class SvalbardPoiFeaturesService {
    * 获取码头/出海集合点（按评分排序）
    */
   private async getPickupPoints(region: string): Promise<PickupPoint[]> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -175,7 +175,7 @@ export class SvalbardPoiFeaturesService {
    * 获取徒步入口点
    */
   private async getTrailAccessPoints(region: string): Promise<TrailAccessPoint[]> {
-    const places = await prisma.$queryRaw<Array<{
+    const places = await this.prisma.$queryRaw<Array<{
       id: number;
       nameCN: string;
       nameEN: string | null;
@@ -223,7 +223,7 @@ export class SvalbardPoiFeaturesService {
     fireStation: number;
     total: number;
   }> {
-    const counts = await prisma.$queryRaw<Array<{
+    const counts = await this.prisma.$queryRaw<Array<{
       canonicalType: string;
       count: bigint;
     }>>`
@@ -280,7 +280,7 @@ export class SvalbardPoiFeaturesService {
     convenience: number;
     total: number;
   }> {
-    const counts = await prisma.$queryRaw<Array<{
+    const counts = await this.prisma.$queryRaw<Array<{
       canonicalType: string;
       count: bigint;
     }>>`
@@ -328,7 +328,7 @@ export class SvalbardPoiFeaturesService {
     parking: number;
     total: number;
   }> {
-    const counts = await prisma.$queryRaw<Array<{
+    const counts = await this.prisma.$queryRaw<Array<{
       canonicalType: string;
       count: bigint;
     }>>`
