@@ -7,23 +7,30 @@ import { ConfigService } from '@nestjs/config';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private isConnected = false;
+  private readonly skipConnection: boolean;
 
   constructor(private configService?: ConfigService) {
     super();
-  }
-
-  async onModuleInit() {
-    this.logger.log('PrismaService onModuleInit called');
     
-    // 检查是否在 MCP 模式下（通过环境变量或进程名判断）
+    // 在构造函数中检查是否在 MCP 模式下（通过环境变量或进程名判断）
     const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                       process.env.MCP_MODE === 'true';
     const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
                       process.env.ALLOW_NO_DATABASE === 'true' ||
                       isMcpMode;
     
-    if (allowNoDb) {
-      this.logger.warn('Skipping database connection (MCP/test mode)');
+    this.skipConnection = allowNoDb;
+    
+    if (this.skipConnection) {
+      this.logger.warn('PrismaService: Skipping database connection (MCP/test mode)');
+    }
+  }
+
+  async onModuleInit() {
+    this.logger.log('PrismaService onModuleInit called');
+    
+    if (this.skipConnection) {
+      this.logger.warn('Skipping database connection (already determined in constructor)');
       return;
     }
     
@@ -43,10 +50,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       this.logger.warn(`Failed to connect to database: ${errorMessage}`);
       
       // 在 MCP 模式下，不抛出错误
+      const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
+                        process.env.MCP_MODE === 'true';
       if (isMcpMode) {
         this.logger.warn('Continuing without database connection (MCP mode)');
-      } else if (allowNoDb) {
-        this.logger.warn('Continuing without database connection (test mode)');
       } else {
         this.logger.error('Database connection is required. Set ALLOW_NO_DATABASE=true to allow running without database.');
         throw error;
