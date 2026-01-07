@@ -12,18 +12,18 @@
  */
 
 // ✅ 必须放在文件最最最顶端，在任何 import NestFactory 之前
+import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // 显式指向根目录的 .env 文件
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-import { NestFactory } from '@nestjs/core';
-import { McpAppModule } from './mcp-app.module';
-import { SkillsRegistryService } from '../skills/services/skills-registry.service';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { getSchemaForSkill } from './mcp-schema-builders';
+// 强制开启 MCP 模式相关开关（必须在 createApplicationContext 之前设置）
+// 说明：仅靠 argv 识别在 `npx tsx ...` 场景下不稳定
+process.env.MCP_MODE ??= 'true';
+process.env.DISABLE_REDIS ??= 'true';
+process.env.ALLOW_NO_DATABASE ??= 'true';
 
 // Helper function to format tool response
 function formatResponse(data: any): { content: Array<{ type: 'text'; text: string }> } {
@@ -38,6 +38,16 @@ function formatResponse(data: any): { content: Array<{ type: 'text'; text: strin
 }
 
 async function createMcpServer() {
+  // Dynamic imports: ensure MCP env flags above are applied before Nest loads modules
+  const [{ NestFactory }, { McpAppModule }, { SKILLS_REGISTRY_TOKEN }, { McpServer }, { getSchemaForSkill }] =
+    await Promise.all([
+      import('@nestjs/core'),
+      import('./mcp-app.module'),
+      import('../skills/services/skills-registry.token'),
+      import('@modelcontextprotocol/sdk/server/mcp.js'),
+      import('./mcp-schema-builders'),
+    ]);
+
   // 创建 NestJS 应用上下文（用于获取 Skills）
   // 使用专门的 McpAppModule，只包含必要的模块
   console.error('Creating NestJS application context...');
@@ -53,7 +63,7 @@ async function createMcpServer() {
     
     console.error('Getting SkillsRegistryService...');
     try {
-      skillsRegistry = app.get(SkillsRegistryService, { strict: false });
+      skillsRegistry = app.get(SKILLS_REGISTRY_TOKEN, { strict: false });
       if (!skillsRegistry) {
         throw new Error('SkillsRegistryService is null or undefined');
       }
@@ -164,6 +174,7 @@ async function createMcpServer() {
 // Main function to start the server
 async function main() {
   try {
+    const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
     console.error('Initializing MCP Skills Server...');
     console.error('Calling createMcpServer...');
     const { server, app, allSkills } = await createMcpServer();

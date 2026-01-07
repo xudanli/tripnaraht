@@ -10,6 +10,11 @@ import * as path from 'path';
 // 加载环境变量
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+// 强制开启 MCP 模式相关开关，确保不依赖 argv 判定
+process.env.MCP_MODE ??= 'true';
+process.env.DISABLE_REDIS ??= 'true';
+process.env.ALLOW_NO_DATABASE ??= 'true';
+
 async function debugStartup() {
   console.error('🔍 开始调试 MCP Server 启动过程...\n');
 
@@ -37,8 +42,8 @@ async function debugStartup() {
     console.error('✅ 应用上下文创建成功');
 
     console.error('步骤 4: 获取 SkillsRegistryService...');
-    const { SkillsRegistryService } = await import('../skills/services/skills-registry.service');
-    const skillsRegistry = app.get(SkillsRegistryService, { strict: false });
+    const { SKILLS_REGISTRY_TOKEN } = await import('../skills/services/skills-registry.token');
+    const skillsRegistry = app.get(SKILLS_REGISTRY_TOKEN, { strict: false });
     
     if (!skillsRegistry) {
       throw new Error('SkillsRegistryService is null or undefined');

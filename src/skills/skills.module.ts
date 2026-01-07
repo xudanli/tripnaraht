@@ -31,44 +31,83 @@ import { CountryPackGenerateRegressionTestsSkill } from './country-pack/country-
 
 // Skills Registry Service
 import { SkillsRegistryService } from './services/skills-registry.service';
+import { SKILLS_REGISTRY_TOKEN } from './services/skills-registry.token';
+import {
+  SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
+  SKILL_COUNTRY_PACK_NEW_SKELETON,
+  SKILL_COUNTRY_PACK_VALIDATE,
+  SKILL_DECISION_ABU_CHECK,
+  SKILL_DECISION_DRDRE_PACE,
+  SKILL_DECISION_NEPTUNE_REPAIR,
+  SKILL_DEM_GET_PROFILE,
+  SKILL_READINESS_GENERATE_CHECKLIST,
+  SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT,
+} from './skills.tokens';
+
+// MCP 模式下：DecisionModule 会导致 applicationContext 卡住（createApplicationContext 不返回）
+// 默认禁用 decision skills；如需开启，设置 ENABLE_DECISION_SKILLS=true
+const isMcpMode = process.env.MCP_MODE === 'true';
+const enableDecisionSkills = !isMcpMode || process.env.ENABLE_DECISION_SKILLS === 'true';
+// readiness.generateChecklist 目前依赖 DecisionModule（ReadinessAgentService 在 decision 模块内）
+const enableReadinessChecklistSkill = enableDecisionSkills;
 
 @Module({
   imports: [
-    DecisionModule,
+    ...(enableDecisionSkills ? [DecisionModule] : []),
     RouteDirectionsModule,
     ReadinessModule,
   ],
   providers: [
     // DEM Skills
     DemGetProfileSkill,
+    { provide: SKILL_DEM_GET_PROFILE, useExisting: DemGetProfileSkill },
     
     // Decision Skills
-    DecisionAbuCheckSkill,
-    DecisionDrdrePaceSkill,
-    DecisionNeptuneRepairSkill,
+    ...(enableDecisionSkills
+      ? [DecisionAbuCheckSkill, DecisionDrdrePaceSkill, DecisionNeptuneRepairSkill]
+      : []),
+    ...(enableDecisionSkills
+      ? [
+          { provide: SKILL_DECISION_ABU_CHECK, useExisting: DecisionAbuCheckSkill },
+          { provide: SKILL_DECISION_DRDRE_PACE, useExisting: DecisionDrdrePaceSkill },
+          { provide: SKILL_DECISION_NEPTUNE_REPAIR, useExisting: DecisionNeptuneRepairSkill },
+        ]
+      : []),
     
     // RouteDirection Skills
     RouteDirectionPickForIntentSkill,
+    { provide: SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT, useExisting: RouteDirectionPickForIntentSkill },
     
     // Readiness Skills
-    ReadinessGenerateChecklistSkill,
+    ...(enableReadinessChecklistSkill ? [ReadinessGenerateChecklistSkill] : []),
+    ...(enableReadinessChecklistSkill
+      ? [{ provide: SKILL_READINESS_GENERATE_CHECKLIST, useExisting: ReadinessGenerateChecklistSkill }]
+      : []),
     
     // CountryPack Skills
     CountryPackNewSkeletonSkill,
     CountryPackValidateSkill,
     CountryPackGenerateRegressionTestsSkill,
+    { provide: SKILL_COUNTRY_PACK_NEW_SKELETON, useExisting: CountryPackNewSkeletonSkill },
+    { provide: SKILL_COUNTRY_PACK_VALIDATE, useExisting: CountryPackValidateSkill },
+    {
+      provide: SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
+      useExisting: CountryPackGenerateRegressionTestsSkill,
+    },
     
     // Registry
     SkillsRegistryService,
+    { provide: SKILLS_REGISTRY_TOKEN, useExisting: SkillsRegistryService },
   ],
   exports: [
     SkillsRegistryService,
+    SKILLS_REGISTRY_TOKEN,
     DemGetProfileSkill,
-    DecisionAbuCheckSkill,
-    DecisionDrdrePaceSkill,
-    DecisionNeptuneRepairSkill,
+    ...(enableDecisionSkills
+      ? [DecisionAbuCheckSkill, DecisionDrdrePaceSkill, DecisionNeptuneRepairSkill]
+      : []),
     RouteDirectionPickForIntentSkill,
-    ReadinessGenerateChecklistSkill,
+    ...(enableReadinessChecklistSkill ? [ReadinessGenerateChecklistSkill] : []),
     CountryPackNewSkeletonSkill,
     CountryPackValidateSkill,
     CountryPackGenerateRegressionTestsSkill,

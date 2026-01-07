@@ -5,242 +5,132 @@
  * 为每个 Skill 生成准确的 JSON Schema
  */
 
+// MCP SDK 的高阶 API 期望 `inputSchema` 是 Zod raw shape / schema，而不是 JSON Schema。
+// 如果传 JSON Schema，会触发 `v3Schema.safeParseAsync is not a function`。
 import { z } from 'zod';
 
 export function buildDemGetProfileSchema() {
   return {
-    type: 'object',
-    properties: {
-      polyline: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            lat: { type: 'number' },
-            lng: { type: 'number' },
-          },
-          required: ['lat', 'lng'],
-        },
-        description: '路线点数组（polyline）',
-      },
-      samples: {
-        type: 'number',
-        description: '采样间隔（米），默认 100',
-        default: 100,
-      },
-    },
-    required: ['polyline'],
+    polyline: z
+      .array(
+        z.object({
+          lat: z.number(),
+          lng: z.number(),
+        })
+      )
+      .describe('路线点数组（polyline）'),
+    samples: z.number().optional().describe('采样间隔（米），默认 100'),
   };
 }
 
 export function buildDecisionAbuCheckSchema() {
   return {
-    type: 'object',
-    properties: {
-      world: {
-        type: 'object',
-        description: '世界模型上下文（包含 physical, human, routeDirection）',
-      },
-      candidatePlan: {
-        type: 'object',
-        description: '候选计划',
-      },
-    },
-    required: ['world', 'candidatePlan'],
+    world: z.record(z.any()).describe('世界模型上下文（包含 physical, human, routeDirection）'),
+    candidatePlan: z.record(z.any()).describe('候选计划'),
   };
 }
 
 export function buildDecisionDrdrePaceSchema() {
   return {
-    type: 'object',
-    properties: {
-      world: {
-        type: 'object',
-        description: '世界模型上下文',
-      },
-      draftPlan: {
-        type: 'object',
-        description: '草案计划',
-      },
-    },
-    required: ['world', 'draftPlan'],
+    world: z.record(z.any()).describe('世界模型上下文'),
+    draftPlan: z.record(z.any()).describe('草案计划'),
   };
 }
 
 export function buildDecisionNeptuneRepairSchema() {
   return {
-    type: 'object',
-    properties: {
-      world: {
-        type: 'object',
-        description: '世界模型上下文',
-      },
-      brokenPlan: {
-        type: 'object',
-        description: '损坏的计划',
-      },
-      issue: {
-        type: 'string',
-        description: '问题描述（可选）',
-      },
-    },
-    required: ['world', 'brokenPlan'],
+    world: z.record(z.any()).describe('世界模型上下文'),
+    brokenPlan: z.record(z.any()).describe('损坏的计划'),
+    issue: z.string().optional().describe('问题描述（可选）'),
   };
 }
 
 export function buildRouteDirectionPickForIntentSchema() {
   return {
-    type: 'object',
-    properties: {
-      countryCode: {
-        type: 'string',
-        description: '国家代码（ISO 3166-1 alpha-2）',
-        pattern: '^[A-Z]{2}$',
-      },
-      season: {
-        type: 'number',
-        description: '季节（月份 1-12）',
-        minimum: 1,
-        maximum: 12,
-      },
-      userIntentTags: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '用户意图标签',
-      },
-      userIntent: {
-        type: 'object',
-        description: '其他用户意图参数（可选）',
-        properties: {
-          preferences: { type: 'array', items: { type: 'string' } },
-          pace: { type: 'string', enum: ['relaxed', 'moderate', 'intense'] },
-          riskTolerance: { type: 'string', enum: ['low', 'medium', 'high'] },
-          durationDays: { type: 'number' },
-        },
-      },
-    },
-    required: ['countryCode', 'season', 'userIntentTags'],
+    countryCode: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .describe('国家代码（ISO 3166-1 alpha-2）'),
+    season: z.number().min(1).max(12).describe('季节（月份 1-12）'),
+    userIntentTags: z.array(z.string()).describe('用户意图标签'),
+    userIntent: z
+      .object({
+        preferences: z.array(z.string()).optional(),
+        pace: z.enum(['relaxed', 'moderate', 'intense']).optional(),
+        riskTolerance: z.enum(['low', 'medium', 'high']).optional(),
+        durationDays: z.number().optional(),
+      })
+      .partial()
+      .optional()
+      .describe('其他用户意图参数（可选）'),
   };
 }
 
 export function buildReadinessGenerateChecklistSchema() {
   return {
-    type: 'object',
-    properties: {
-      world: {
-        type: 'object',
-        description: '世界模型上下文',
-      },
-      routeDirection: {
-        type: 'object',
-        description: '路线方向（可选）',
-      },
-      userProfile: {
-        type: 'object',
-        description: '用户画像（可选）',
-        properties: {
-          nationality: { type: 'string' },
-          residencyCountry: { type: 'string' },
-          tags: { type: 'array', items: { type: 'string' } },
-        },
-      },
-      plan: {
-        type: 'object',
-        description: '行程计划（可选）',
-      },
-    },
-    required: ['world'],
+    world: z.record(z.any()).describe('世界模型上下文'),
+    routeDirection: z.record(z.any()).optional().describe('路线方向（可选）'),
+    userProfile: z
+      .object({
+        nationality: z.string().optional(),
+        residencyCountry: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      })
+      .partial()
+      .optional()
+      .describe('用户画像（可选）'),
+    plan: z.record(z.any()).optional().describe('行程计划（可选）'),
   };
 }
 
 export function buildCountryPackNewSkeletonSchema() {
   return {
-    type: 'object',
-    properties: {
-      countryCode: {
-        type: 'string',
-        description: '国家代码（ISO 3166-1 alpha-2）',
-        pattern: '^[A-Z]{2}$',
-      },
-      countryName: {
-        type: 'string',
-        description: '国家名称',
-      },
-      countryNameCN: {
-        type: 'string',
-        description: '国家中文名称（可选）',
-      },
-      packType: {
-        type: 'string',
-        enum: ['readiness', 'routeDirection'],
-        description: 'Pack 类型',
-      },
-      regions: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '区域列表（可选，用于 RouteDirection）',
-      },
-      supportedSeasons: {
-        type: 'array',
-        items: {
-          type: 'string',
-          enum: ['polar_night', 'polar_day', 'shoulder', 'winter', 'summer', 'rainy', 'dry', 'hurricane', 'monsoon', 'all'],
-        },
-        description: '支持的季节（可选，用于 ReadinessPack）',
-      },
-    },
-    required: ['countryCode', 'countryName', 'packType'],
+    countryCode: z.string().regex(/^[A-Z]{2}$/).describe('国家代码（ISO 3166-1 alpha-2）'),
+    countryName: z.string().describe('国家名称'),
+    countryNameCN: z.string().optional().describe('国家中文名称（可选）'),
+    packType: z.enum(['readiness', 'routeDirection']).describe('Pack 类型'),
+    regions: z.array(z.string()).optional().describe('区域列表（可选，用于 RouteDirection）'),
+    supportedSeasons: z
+      .array(
+        z.enum([
+          'polar_night',
+          'polar_day',
+          'shoulder',
+          'winter',
+          'summer',
+          'rainy',
+          'dry',
+          'hurricane',
+          'monsoon',
+          'all',
+        ])
+      )
+      .optional()
+      .describe('支持的季节（可选，用于 ReadinessPack）'),
   };
 }
 
 export function buildCountryPackValidateSchema() {
   return {
-    type: 'object',
-    properties: {
-      pack: {
-        type: 'object',
-        description: 'Pack 数据（ReadinessPack 或 ImportCountryPackDto）',
-      },
-      packType: {
-        type: 'string',
-        enum: ['readiness', 'routeDirection'],
-        description: 'Pack 类型',
-      },
-    },
-    required: ['pack', 'packType'],
+    pack: z.record(z.any()).describe('Pack 数据（ReadinessPack 或 ImportCountryPackDto）'),
+    packType: z.enum(['readiness', 'routeDirection']).describe('Pack 类型'),
   };
 }
 
 export function buildCountryPackGenerateRegressionTestsSchema() {
   return {
-    type: 'object',
-    properties: {
-      pack: {
-        type: 'object',
-        description: 'Pack 数据',
-      },
-      packType: {
-        type: 'string',
-        enum: ['readiness', 'routeDirection'],
-        description: 'Pack 类型',
-      },
-      testScenarios: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            context: { type: 'object' },
-            expectedOutcomes: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-          },
-        },
-        description: '测试场景（可选，默认生成标准场景）',
-      },
-    },
-    required: ['pack', 'packType'],
+    pack: z.record(z.any()).describe('Pack 数据'),
+    packType: z.enum(['readiness', 'routeDirection']).describe('Pack 类型'),
+    testScenarios: z
+      .array(
+        z.object({
+          name: z.string(),
+          context: z.record(z.any()),
+          expectedOutcomes: z.array(z.string()),
+        })
+      )
+      .optional()
+      .describe('测试场景（可选，默认生成标准场景）'),
   };
 }
 
@@ -259,12 +149,8 @@ export function getSchemaForSkill(skillName: string): any {
 
   const builder = schemaMap[skillName];
   if (!builder) {
-    // 默认 schema
-    return {
-      type: 'object',
-      properties: {},
-      required: [],
-    };
+    // 默认 schema（接受任意 object）
+    return {};
   }
 
   return builder();

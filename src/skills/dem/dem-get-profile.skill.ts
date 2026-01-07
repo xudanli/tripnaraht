@@ -70,14 +70,22 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
     }));
 
     // 计算体力消耗元数据（包含海拔剖面）
-    const effortMetadata = await this.demEffortMetadataService.calculateEffortMetadata(
-      routePoints,
-      {
-        activityType: 'walking',
-        samplingInterval,
-        includeElevationProfile: true,
-      }
-    );
+    // MCP/无DB/依赖缺失场景下，DEMEffortMetadataService 可能不可用；此时降级为简化计算
+    const canUseEffort =
+      this.demEffortMetadataService &&
+      typeof (this.demEffortMetadataService as any).calculateEffortMetadata === 'function';
+
+    const effortMetadata = canUseEffort
+      ? await this.demEffortMetadataService.calculateEffortMetadata(routePoints, {
+          activityType: 'walking',
+          samplingInterval,
+          includeElevationProfile: true,
+        })
+      : {
+          elevationProfile: [],
+          totalDistance: 0,
+          totalAscent: 0,
+        };
 
     // 提取海拔剖面并计算累计爬升
     let cumulativeAscent = 0;

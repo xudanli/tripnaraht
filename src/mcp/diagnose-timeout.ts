@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // 设置 MCP 模式
 process.env.MCP_MODE = 'true';
+process.env.DISABLE_REDIS = 'true';
+process.env.ALLOW_NO_DATABASE = 'true';
 process.argv.push('mcp-skills-server');
 
 console.log('🔍 开始诊断 MCP Server 启动超时问题...\n');
