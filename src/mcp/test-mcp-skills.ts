@@ -123,6 +123,92 @@ async function testMcpSkillsServer() {
     }
     console.log('');
 
+    // 测试 5: 测试新增的 Skills
+    console.log('🧪 测试 5: 测试新增的 world.buildContext Skill...');
+    try {
+      const worldResult = await client.callTool({
+        name: 'tripnara.world.buildContext',
+        arguments: {
+          countryCode: 'IS',
+          season: 7,
+        },
+      });
+      console.log('✅ World BuildContext Skill 调用成功');
+      const worldData = JSON.parse((worldResult.content as Array<{ type: string; text: string }>)[0].text);
+      console.log(`   构建结果: ${worldData.world ? '成功' : '失败'}`);
+    } catch (error: any) {
+      console.log('⚠️  World BuildContext Skill 调用失败:', error.message);
+    }
+    console.log('');
+
+    console.log('🧪 测试 6: 测试新增的 routeDirection.listForCountry Skill...');
+    try {
+      const listResult = await client.callTool({
+        name: 'tripnara.routeDirection.listForCountry',
+        arguments: {
+          countryCode: 'IS',
+        },
+      });
+      console.log('✅ RouteDirection ListForCountry Skill 调用成功');
+      const listData = JSON.parse((listResult.content as Array<{ type: string; text: string }>)[0].text);
+      console.log(`   找到 ${listData.routeDirections?.length || 0} 个路线方向`);
+    } catch (error: any) {
+      console.log('⚠️  RouteDirection ListForCountry Skill 调用失败:', error.message);
+    }
+    console.log('');
+
+    console.log('🧪 测试 7: 测试新增的 countryPack.suggestImprovements Skill...');
+    try {
+      // 先创建一个 skeleton
+      const skeletonResult = await client.callTool({
+        name: 'tripnara.countryPack.newSkeleton',
+        arguments: {
+          countryCode: 'IS',
+          countryName: 'Iceland',
+          countryNameCN: '冰岛',
+          packType: 'readiness',
+        },
+      });
+      const skeletonData = JSON.parse((skeletonResult.content as Array<{ type: string; text: string }>)[0].text);
+      
+      // 然后测试 suggestImprovements
+      const suggestResult = await client.callTool({
+        name: 'tripnara.countryPack.suggestImprovements',
+        arguments: {
+          countryCode: 'IS',
+          packType: 'readiness',
+          currentPackSnapshot: skeletonData.skeleton,
+        },
+      });
+      console.log('✅ CountryPack SuggestImprovements Skill 调用成功');
+      const suggestData = JSON.parse((suggestResult.content as Array<{ type: string; text: string }>)[0].text);
+      console.log(`   缺失字段: ${suggestData.missingFields?.length || 0}`);
+      if (suggestData.missingFields && suggestData.missingFields.length > 0) {
+        suggestData.missingFields.forEach((field: any, idx: number) => {
+          console.log(`     ${idx + 1}. ${field.path} (${field.impact}) - ${field.description}`);
+        });
+      }
+      
+      console.log(`   质量缺口: ${suggestData.qualityGaps?.length || 0}`);
+      if (suggestData.qualityGaps && suggestData.qualityGaps.length > 0) {
+        suggestData.qualityGaps.forEach((gap: any, idx: number) => {
+          console.log(`     ${idx + 1}. [${gap.category}] ${gap.issue}`);
+          console.log(`        当前: ${gap.current}, 建议: ${gap.recommended} (影响: ${gap.impact})`);
+        });
+      }
+      
+      console.log(`   待办事项: ${suggestData.priorityTodo?.length || 0}`);
+      if (suggestData.priorityTodo && suggestData.priorityTodo.length > 0) {
+        suggestData.priorityTodo.forEach((todo: any, idx: number) => {
+          console.log(`     ${idx + 1}. [${todo.priority}] ${todo.task}`);
+          console.log(`        工作量: ${todo.estimatedEffort}, 影响: ${todo.impact}`);
+        });
+      }
+    } catch (error: any) {
+      console.log('⚠️  CountryPack SuggestImprovements Skill 调用失败:', error.message);
+    }
+    console.log('');
+
     // 列出所有可用工具
     console.log('🔧 获取所有可用工具...');
     const toolsResult = await client.listTools();
@@ -132,7 +218,7 @@ async function testMcpSkillsServer() {
     });
     console.log('');
 
-    console.log('✅ 测试完成！');
+    console.log('✅ 测试完成！所有新增 Skills 都已测试。');
   } catch (error: any) {
     console.error('❌ 测试失败:', error);
     if (error.message) {

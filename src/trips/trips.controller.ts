@@ -713,27 +713,6 @@ export class TripsController {
     }
   }
 
-  @Get('collected')
-  @ApiOperation({
-    summary: '获取用户收藏的行程列表',
-    description: '获取当前用户收藏的所有行程列表。',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回收藏列表（统一响应格式）',
-    type: ApiSuccessResponseDto,
-  })
-  async getCollectedTrips() {
-    try {
-      // TODO: 从认证中间件获取当前用户ID
-      const userId = 'default-user';
-      const trips = await this.tripExtendedService.getCollectedTrips(userId);
-      return successResponse(trips);
-    } catch (error: any) {
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
   @Post(':id/like')
   @ApiOperation({
     summary: '点赞行程',

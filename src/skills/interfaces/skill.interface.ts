@@ -18,7 +18,7 @@ export interface SkillMetadata {
   name: string;
   description: string;
   version: string;
-  category: 'decision' | 'dem' | 'routeDirection' | 'countryPack' | 'readiness' | 'whatIf' | 'analytics' | 'rag';
+    category: 'decision' | 'dem' | 'routeDirection' | 'countryPack' | 'readiness' | 'whatIf' | 'analytics' | 'rag' | 'world' | 'trip';
 }
 
 export interface Skill<TInput extends SkillInput = SkillInput, TOutput extends SkillOutput = SkillOutput> {

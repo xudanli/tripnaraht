@@ -89,30 +89,155 @@ export class CountryPackNewSkeletonSkill implements Skill<CountryPackNewSkeleton
       },
       supportedSeasons: input.supportedSeasons || ['summer', 'winter', 'shoulder'],
       rules: [
+        // 1. Entry & Transit（入境与过境）
         {
-          id: `rule.${input.countryCode.toLowerCase()}.example`,
-          category: 'entry_transit',
-          severity: 'medium',
+          id: `rule.${input.countryCode.toLowerCase()}.entry_transit`,
+          category: 'entry_transit' as ReadinessCategory,
+          severity: 'medium' as const,
           when: {
             eq: { path: 'itinerary.countries', value: [input.countryCode] },
           },
           then: {
-            level: 'should',
+            level: 'should' as const,
             message: {
               en: `Check entry requirements for ${input.countryName}`,
               zh: `检查 ${input.countryNameCN || input.countryName} 的入境要求`,
             },
           },
         },
+        // 2. Gear & Packing（装备与穿搭）
+        {
+          id: `rule.${input.countryCode.toLowerCase()}.gear_packing`,
+          category: 'gear_packing' as ReadinessCategory,
+          severity: 'medium' as const,
+          when: {
+            eq: { path: 'itinerary.countries', value: [input.countryCode] },
+          },
+          then: {
+            level: 'should' as const,
+            message: {
+              en: `Prepare appropriate gear for ${input.countryName} based on season and activities`,
+              zh: `根据季节和活动准备适合 ${input.countryNameCN || input.countryName} 的装备`,
+            },
+          },
+        },
+        // 3. Health & Insurance（医疗与保险）
+        {
+          id: `rule.${input.countryCode.toLowerCase()}.health_insurance`,
+          category: 'health_insurance' as ReadinessCategory,
+          severity: 'high' as const,
+          when: {
+            eq: { path: 'itinerary.countries', value: [input.countryCode] },
+          },
+          then: {
+            level: 'must' as const,
+            message: {
+              en: `Ensure travel health insurance covers ${input.countryName}`,
+              zh: `确保旅行健康保险覆盖 ${input.countryNameCN || input.countryName}`,
+            },
+          },
+        },
+        // 4. Logistics（物流与后勤）
+        {
+          id: `rule.${input.countryCode.toLowerCase()}.logistics`,
+          category: 'logistics' as ReadinessCategory,
+          severity: 'medium' as const,
+          when: {
+            eq: { path: 'itinerary.countries', value: [input.countryCode] },
+          },
+          then: {
+            level: 'should' as const,
+            message: {
+              en: `Plan logistics for ${input.countryName} (transportation, currency, connectivity)`,
+              zh: `规划 ${input.countryNameCN || input.countryName} 的物流（交通、货币、通讯）`,
+            },
+          },
+        },
+        // 5. Safety & Hazards（安全与风险）
+        {
+          id: `rule.${input.countryCode.toLowerCase()}.safety_hazards`,
+          category: 'safety_hazards' as ReadinessCategory,
+          severity: 'high' as const,
+          when: {
+            eq: { path: 'itinerary.countries', value: [input.countryCode] },
+          },
+          then: {
+            level: 'should' as const,
+            message: {
+              en: `Review safety hazards and risks in ${input.countryName}`,
+              zh: `了解 ${input.countryNameCN || input.countryName} 的安全风险和危险`,
+            },
+          },
+        },
       ],
       checklists: [
         {
-          id: `checklist.${input.countryCode.toLowerCase()}.basic`,
-          category: 'gear_packing',
+          id: `checklist.${input.countryCode.toLowerCase()}.documents`,
+          category: 'entry_transit',
           items: [
             {
               en: 'Passport and travel documents',
               zh: '护照和旅行证件',
+            },
+            {
+              en: 'Visa or entry permit (if required)',
+              zh: '签证或入境许可（如需要）',
+            },
+          ],
+        },
+        {
+          id: `checklist.${input.countryCode.toLowerCase()}.gear`,
+          category: 'gear_packing',
+          items: [
+            {
+              en: 'Weather-appropriate clothing',
+              zh: '适合天气的衣物',
+            },
+            {
+              en: 'Essential travel gear',
+              zh: '基本旅行装备',
+            },
+          ],
+        },
+        {
+          id: `checklist.${input.countryCode.toLowerCase()}.health`,
+          category: 'health_insurance',
+          items: [
+            {
+              en: 'Travel health insurance',
+              zh: '旅行健康保险',
+            },
+            {
+              en: 'Prescription medications',
+              zh: '处方药',
+            },
+          ],
+        },
+        {
+          id: `checklist.${input.countryCode.toLowerCase()}.logistics`,
+          category: 'logistics',
+          items: [
+            {
+              en: 'Local currency or payment method',
+              zh: '当地货币或支付方式',
+            },
+            {
+              en: 'Transportation arrangements',
+              zh: '交通安排',
+            },
+          ],
+        },
+        {
+          id: `checklist.${input.countryCode.toLowerCase()}.safety`,
+          category: 'safety_hazards',
+          items: [
+            {
+              en: 'Emergency contacts',
+              zh: '紧急联系人',
+            },
+            {
+              en: 'Safety guidelines and local regulations',
+              zh: '安全指南和当地法规',
             },
           ],
         },

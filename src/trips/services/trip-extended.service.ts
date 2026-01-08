@@ -349,29 +349,6 @@ export class TripExtendedService {
   }
 
   /**
-   * 获取用户收藏的行程列表
-   */
-  async getCollectedTrips(userId: string) {
-    const collections = await this.prisma.tripCollection.findMany({
-      where: { userId },
-      include: {
-        Trip: {
-          include: {
-            TripDay: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return collections.map(c => ({
-      id: c.id,
-      trip: c.Trip,
-      createdAt: c.createdAt,
-    }));
-  }
-
-  /**
    * 点赞行程
    */
   async likeTrip(tripId: string, userId: string) {

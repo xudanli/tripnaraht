@@ -1,0 +1,196 @@
+{
+  "packId": "pack.is.is",
+  "destinationId": "IS-ICELAND",
+  "displayName": {
+    "en": "Iceland",
+    "zh": "冰岛"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T06:25:24.067Z",
+  "geo": {
+    "countryCode": "IS",
+    "region": "IS",
+    "city": "Iceland"
+  },
+  "supportedSeasons": [
+    "summer",
+    "winter",
+    "shoulder"
+  ],
+  "rules": [
+    {
+      "id": "rule.is.entry_transit",
+      "category": "entry_transit",
+      "severity": "medium",
+      "when": {
+        "eq": {
+          "path": "itinerary.countries",
+          "value": [
+            "IS"
+          ]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Check entry requirements for Iceland",
+          "zh": "检查 冰岛 的入境要求"
+        }
+      }
+    },
+    {
+      "id": "rule.is.gear_packing",
+      "category": "gear_packing",
+      "severity": "medium",
+      "when": {
+        "eq": {
+          "path": "itinerary.countries",
+          "value": [
+            "IS"
+          ]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Prepare appropriate gear for Iceland based on season and activities",
+          "zh": "根据季节和活动准备适合 冰岛 的装备"
+        }
+      }
+    },
+    {
+      "id": "rule.is.health_insurance",
+      "category": "health_insurance",
+      "severity": "high",
+      "when": {
+        "eq": {
+          "path": "itinerary.countries",
+          "value": [
+            "IS"
+          ]
+        }
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Ensure travel health insurance covers Iceland",
+          "zh": "确保旅行健康保险覆盖 冰岛"
+        }
+      }
+    },
+    {
+      "id": "rule.is.logistics",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "eq": {
+          "path": "itinerary.countries",
+          "value": [
+            "IS"
+          ]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Plan logistics for Iceland (transportation, currency, connectivity)",
+          "zh": "规划 冰岛 的物流（交通、货币、通讯）"
+        }
+      }
+    },
+    {
+      "id": "rule.is.safety_hazards",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "eq": {
+          "path": "itinerary.countries",
+          "value": [
+            "IS"
+          ]
+        }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Review safety hazards and risks in Iceland",
+          "zh": "了解 冰岛 的安全风险和危险"
+        }
+      }
+    }
+  ],
+  "checklists": [
+    {
+      "id": "checklist.is.documents",
+      "category": "entry_transit",
+      "items": [
+        {
+          "en": "Passport and travel documents",
+          "zh": "护照和旅行证件"
+        },
+        {
+          "en": "Visa or entry permit (if required)",
+          "zh": "签证或入境许可（如需要）"
+        }
+      ]
+    },
+    {
+      "id": "checklist.is.gear",
+      "category": "gear_packing",
+      "items": [
+        {
+          "en": "Weather-appropriate clothing",
+          "zh": "适合天气的衣物"
+        },
+        {
+          "en": "Essential travel gear",
+          "zh": "基本旅行装备"
+        }
+      ]
+    },
+    {
+      "id": "checklist.is.health",
+      "category": "health_insurance",
+      "items": [
+        {
+          "en": "Travel health insurance",
+          "zh": "旅行健康保险"
+        },
+        {
+          "en": "Prescription medications",
+          "zh": "处方药"
+        }
+      ]
+    },
+    {
+      "id": "checklist.is.logistics",
+      "category": "logistics",
+      "items": [
+        {
+          "en": "Local currency or payment method",
+          "zh": "当地货币或支付方式"
+        },
+        {
+          "en": "Transportation arrangements",
+          "zh": "交通安排"
+        }
+      ]
+    },
+    {
+      "id": "checklist.is.safety",
+      "category": "safety_hazards",
+      "items": [
+        {
+          "en": "Emergency contacts",
+          "zh": "紧急联系人"
+        },
+        {
+          "en": "Safety guidelines and local regulations",
+          "zh": "安全指南和当地法规"
+        }
+      ]
+    }
+  ],
+  "hazards": [],
+  "sources": []
+}
