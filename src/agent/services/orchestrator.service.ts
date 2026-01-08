@@ -10,6 +10,7 @@ import { ActionCacheService } from './action-cache.service';
 import { ActionDependencyAnalyzerService } from './action-dependency-analyzer.service';
 import { LlmPlanService } from './llm-plan-service';
 import { TripNaraSystemPromptService } from './tripnara-system-prompt.service';
+import { AgentResumeService } from '../../trips/decision/services/agent-resume.service';
 
 /**
  * Orchestrator Service
@@ -29,6 +30,7 @@ export class OrchestratorService {
     @Optional() private dependencyAnalyzer?: ActionDependencyAnalyzerService,
     @Optional() private llmPlan?: LlmPlanService,
     @Optional() private systemPromptService?: TripNaraSystemPromptService,
+    @Optional() private agentResumeService?: AgentResumeService,
   ) {}
 
   /**
@@ -85,9 +87,15 @@ export class OrchestratorService {
           currentState = actResult.state;
           const cacheHit = actResult.cacheHit;
           
-          // 检查 Action 执行是否失败
+          // 检查 Action 执行是否失败或挂起
           if (currentState.result.status === 'FAILED') {
             this.logger.warn(`Action ${action.name} failed, stopping ReAct loop`);
+            break;
+          }
+          
+          // 🕵️ HITL: 检查是否被挂起（需要用户审批）
+          if (currentState.result.status === 'SUSPENDED') {
+            this.logger.warn(`Action ${action.name} requires approval, suspending ReAct loop`);
             break;
           }
           
@@ -193,11 +201,17 @@ export class OrchestratorService {
         );
 
         // 如果 Critic 通过，可以提前结束
-        // 但需要检查是否有 Action 执行失败
+        // 但需要检查是否有 Action 执行失败或被挂起
         if (criticResult.pass) {
           // 检查状态是否为失败，如果是则不应该标记为 READY
           if (currentState.result.status === 'FAILED') {
             this.logger.warn('Critic passed but action execution failed, not marking as READY');
+            break;
+          }
+          
+          // 🕵️ HITL: 检查状态是否为挂起，如果是则不应该标记为 READY
+          if (currentState.result.status === 'SUSPENDED') {
+            this.logger.warn('Critic passed but action requires approval, keeping SUSPENDED status');
             break;
           }
           
@@ -803,6 +817,87 @@ export class OrchestratorService {
           actLatency,
           { phase: 'act', cache_hit: cacheHit }
         );
+      }
+
+      // 🕵️ HITL: 检测 SUSPENDED 信号（必须在其他检查之前）
+      if (this.agentResumeService?.detectSuspensionSignal(result)) {
+        this.logger.warn(`检测到 SUSPENDED 信号: action=${action.name}, request_id=${state.request_id}`);
+        
+        const suspensionInfo = this.agentResumeService.extractSuspensionInfo(result);
+        if (!suspensionInfo) {
+          this.logger.error(`无法提取挂起信息，使用默认处理`);
+          // 降级处理：标记为失败
+          const errorState = this.stateService.update(state.request_id, {
+            result: {
+              ...state.result,
+              status: 'FAILED',
+              explanations: [
+                ...(state.result.explanations || []),
+                `操作需要审批，但无法正确挂起执行`,
+              ],
+            },
+          });
+          return { state: errorState, cacheHit: false };
+        }
+
+        // 保存 Agent 状态快照
+        try {
+          // 生成 toolCallId（格式：request_id-action_name-step）
+          // 这个 ID 应该与 ApprovalRequest 中存储的 toolCallId 匹配
+          const toolCallId = `${state.request_id}-${action.name}-${state.react.step}`;
+          
+          // 从 result 中提取 toolCallId（如果 Skill 已经传递了）
+          const actualToolCallId = result.toolCallId || toolCallId;
+          
+          await this.agentResumeService.saveAgentState(state.request_id, {
+            threadId: state.request_id,
+            lastToolCallId: actualToolCallId,
+            messages: [], // AgentState 不直接存储 LLM 消息，但我们可以保存状态
+            metadata: {
+              actionName: action.name,
+              actionInput: action.input,
+              currentStep: state.react.step,
+              toolCallId: actualToolCallId,
+              agentState: state, // 保存完整的 AgentState 快照
+            },
+          });
+          this.logger.log(`Agent 状态已保存: request_id=${state.request_id}, approvalId=${suspensionInfo.approvalId}, toolCallId=${actualToolCallId}`);
+        } catch (error: any) {
+          this.logger.error(`保存 Agent 状态失败: ${error?.message || String(error)}`, error?.stack);
+        }
+
+        // 更新状态为 SUSPENDED
+        const suspendedState = this.stateService.update(state.request_id, {
+          result: {
+            ...state.result,
+            status: 'SUSPENDED',
+            explanations: [
+              ...(state.result.explanations || []),
+              suspensionInfo.message || `操作需要用户审批（ID: ${suspensionInfo.approvalId}）`,
+            ],
+            suspensionInfo: {
+              approvalId: suspensionInfo.approvalId,
+              skillName: action.name,
+              summary: result.userUI?.data?.summary || action.name,
+              payload: result.userUI?.data?.payload || action.input,
+            },
+          },
+        });
+
+        // 记录挂起事件
+        if (this.eventTelemetry) {
+          this.eventTelemetry.recordSystem2Step(
+            state.request_id,
+            state.react.step,
+            action.name,
+            { suspended: true, approvalId: suspensionInfo.approvalId },
+            actLatency,
+            { phase: 'act', suspended: true }
+          );
+        }
+
+        this.logger.log(`Agent 执行已挂起: request_id=${state.request_id}, approvalId=${suspensionInfo.approvalId}`);
+        return { state: suspendedState, cacheHit: false };
       }
 
       // 检查 Action 执行结果是否成功

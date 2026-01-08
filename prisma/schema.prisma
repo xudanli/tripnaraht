@@ -1139,3 +1139,50 @@ model TripPackingListItem {
   @@index([category])
   @@map("trip_packing_list_items")
 }
+
+// ========== TripNARA HITL (Human-in-the-loop) Approval System ==========
+
+enum ApprovalStatus {
+  PENDING   // 等待用户操作
+  APPROVED  // 用户已同意
+  REJECTED  // 用户已拒绝
+  EXPIRED   // 超时未处理
+  CANCELLED // Agent 或用户取消
+}
+
+model ApprovalRequest {
+  id            String         @id @default(uuid()) @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  
+  // 上下文关联
+  threadId      String         @map("thread_id") @db.VarChar(255) // 关联的会话/线程 ID
+  agentRunId    String?        @map("agent_run_id") @db.VarChar(255) // 关联的 Agent 运行 ID (便于追踪是一次思考过程)
+  toolCallId    String?        @map("tool_call_id") @db.VarChar(255) // LLM 调用该工具时的 ID (用于回填结果)
+  
+  // 业务信息
+  skillName     String         @map("skill_name") @db.VarChar(100) // 触发审批的 Skill 名称 (如 'tripnara.decision.requestApproval')
+  summary       String         @db.VarChar(500) // 给用户看的一句话描述 (如 '预订雷克雅未克酒店')
+  description   String?        @db.Text // 详细描述
+  riskLevel     String         @default("medium") @map("risk_level") @db.VarChar(20) // high, medium, low, critical
+  
+  // 核心数据：Agent 想要执行的原始参数
+  payload       Json           // 存具体的 tool arguments (如 { hotelId: "123", price: 5000 })
+  
+  // 状态与结果
+  status        ApprovalStatus @default(PENDING)
+  decisionNote  String?        @map("decision_note") @db.Text // 用户拒绝或同意时的备注 (如 '太贵了')
+  handledAt     DateTime?      @map("handled_at") // 处理时间
+  expiresAt     DateTime?      @map("expires_at") // 过期时间 (可选)
+  
+  // 元数据（用于扩展）
+  metadata      Json?          // 额外的元数据，如 userPrompt 等
+
+  @@index([threadId])
+  @@index([status])
+  @@index([threadId, status])
+  @@index([agentRunId])
+  @@index([toolCallId])
+  @@index([expiresAt])
+  @@map("approval_requests")
+}

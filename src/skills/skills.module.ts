@@ -5,7 +5,7 @@
  * 统一管理所有 Skills
  */
 
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
@@ -46,7 +46,13 @@ import { CountryPackSuggestImprovementsSkill } from './country-pack/country-pack
 
 // Skills Registry Service
 import { SkillsRegistryService } from './services/skills-registry.service';
+import { SkillScannerService } from './services/skill-scanner.service';
 import { SKILLS_REGISTRY_TOKEN } from './services/skills-registry.token';
+
+// HITL Skills
+import { DecisionRequestApprovalSkill } from './hitl/decision-request-approval.skill';
+import { DecisionCheckApprovalSkill } from './hitl/decision-check-approval.skill';
+import { ApprovalStorageService } from './hitl/services/approval-storage.service';
 import {
   SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
   SKILL_COUNTRY_PACK_NEW_SKELETON,
@@ -149,7 +155,13 @@ const enableReadinessChecklistSkill = enableDecisionSkills;
     
     // Registry
     SkillsRegistryService,
+    SkillScannerService,
     { provide: SKILLS_REGISTRY_TOKEN, useExisting: SkillsRegistryService },
+    
+    // HITL Skills (使用 @Skill() 装饰器自动注册)
+    ApprovalStorageService,
+    DecisionRequestApprovalSkill,
+    DecisionCheckApprovalSkill,
   ],
   exports: [
     SkillsRegistryService,
@@ -175,7 +187,34 @@ const enableReadinessChecklistSkill = enableDecisionSkills;
     CountryPackValidateSkill,
     CountryPackGenerateRegressionTestsSkill,
     CountryPackSuggestImprovementsSkill,
+    DecisionRequestApprovalSkill,
+    DecisionCheckApprovalSkill,
   ],
 })
-export class SkillsModule {}
+export class SkillsModule implements OnModuleInit {
+  /**
+   * 在模块初始化时自动扫描并注册所有带有 @Skill() 装饰器的类
+   */
+  constructor(
+    private readonly skillScanner: SkillScannerService,
+  ) {}
+
+  /**
+   * 在模块初始化后执行自动扫描
+   * 
+   * 注意：由于 NestJS 的初始化顺序，我们通过 OnModuleInit 生命周期钩子来执行扫描
+   */
+  async onModuleInit() {
+    // 收集所有 Skill 类（包括使用 @Skill() 装饰器的）
+    const skillClasses = [
+      // 使用 @Skill() 装饰器的类会自动注册
+      DecisionRequestApprovalSkill,
+      DecisionCheckApprovalSkill,
+      // 其他手动注册的 Skill 类可以保留（向后兼容）
+    ];
+    
+    // 扫描并注册
+    await this.skillScanner.scanAndRegisterSkills(skillClasses);
+  }
+}
 

@@ -1,5 +1,5 @@
 // src/places/places.controller.ts
-import { Controller, Get, Post, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
@@ -8,6 +8,7 @@ import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
 import { NaraHintService } from './services/nara-hint.service';
 import { RouteDifficultyService } from './services/route-difficulty.service';
 import { CreatePlaceDto } from './dto/create-place.dto';
+import { UpdatePlaceDto } from './dto/update-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { PlaceCategory } from '@prisma/client';
@@ -1197,6 +1198,66 @@ export class PlacesController {
       return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
     }
     return successResponse(place);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary: '更新地点（管理接口）',
+    description: '更新地点信息，包括名称、地址、坐标、元数据等。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
+  @ApiBody({ type: UpdatePlaceDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新地点',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  @ApiResponse({ status: 400, description: '输入数据验证失败' })
+  async updatePlace(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updatePlaceDto: UpdatePlaceDto,
+  ) {
+    try {
+      const place = await this.placesService.updatePlace(id, updatePlaceDto);
+      return successResponse(place);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: '删除地点（管理接口）',
+    description: '删除地点记录。注意：如果地点已被行程使用，删除可能会影响相关行程。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除地点',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  @ApiResponse({ status: 400, description: '地点正在使用中，无法删除' })
+  async deletePlace(@Param('id', ParseIntPipe) id: number) {
+    try {
+      await this.placesService.deletePlace(id);
+      return successResponse({ message: 'Place deleted successfully' });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      throw error;
+    }
   }
 
   @Post('metrics/difficulty')

@@ -1,10 +1,11 @@
 // src/places/places.service.ts
-import { Injectable, Optional, Inject, Logger } from '@nestjs/common';
+import { Injectable, Optional, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { VectorSearchService } from './services/vector-search.service';
 import { PlaceWithDistance, RawPlaceResult } from './dto/geo-result.dto';
 import { CreatePlaceDto } from './dto/create-place.dto';
+import { UpdatePlaceDto } from './dto/update-place.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { PlaceMetadata } from './interfaces/place-metadata.interface';
 import { randomUUID } from 'crypto';
@@ -1162,6 +1163,82 @@ export class PlacesService {
     });
 
     return Promise.all(searchPromises);
+  }
+
+  /**
+   * 更新地点（管理接口）
+   */
+  async updatePlace(id: number, dto: UpdatePlaceDto) {
+    const place = await this.prisma.place.findUnique({
+      where: { id },
+    });
+
+    if (!place) {
+      throw new NotFoundException(`Place not found: ${id}`);
+    }
+
+    const updateData: any = {};
+
+    if (dto.nameCN !== undefined) updateData.nameCN = dto.nameCN;
+    if (dto.nameEN !== undefined) updateData.nameEN = dto.nameEN;
+    if (dto.category !== undefined) updateData.category = dto.category;
+    if (dto.address !== undefined) updateData.address = dto.address;
+    if (dto.cityId !== undefined) updateData.cityId = dto.cityId;
+    if (dto.googlePlaceId !== undefined) updateData.googlePlaceId = dto.googlePlaceId;
+    if (dto.rating !== undefined) updateData.rating = dto.rating;
+    if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
+    if (dto.physicalMetadata !== undefined) updateData.physicalMetadata = dto.physicalMetadata;
+
+    // 处理地理位置更新
+    if (dto.lat !== undefined && dto.lng !== undefined) {
+      updateData.location = Prisma.sql`ST_SetSRID(ST_MakePoint(${dto.lng}, ${dto.lat}), 4326)::geography`;
+    }
+
+    // 如果更新了名称或元数据，可能需要更新embedding
+    const needsEmbeddingUpdate = dto.nameCN !== undefined || dto.nameEN !== undefined || dto.metadata !== undefined;
+
+    const updatedPlace = await this.prisma.place.update({
+      where: { id },
+      data: updateData,
+    });
+
+    // 异步更新embedding（如果需要）
+    if (needsEmbeddingUpdate && this.embeddingService) {
+      this.updatePlaceEmbedding(id, updatedPlace).catch(error => {
+        this.logger.warn(`Failed to update embedding for place ${id}: ${error.message}`);
+      });
+    }
+
+    return updatedPlace;
+  }
+
+  /**
+   * 删除地点（管理接口）
+   */
+  async deletePlace(id: number) {
+    const place = await this.prisma.place.findUnique({
+      where: { id },
+      include: {
+        ItineraryItem: true,
+      },
+    });
+
+    if (!place) {
+      throw new NotFoundException(`Place not found: ${id}`);
+    }
+
+    // 检查是否被行程使用
+    if (place.ItineraryItem && place.ItineraryItem.length > 0) {
+      throw new BadRequestException(
+        `Cannot delete place: it is being used by ${place.ItineraryItem.length} itinerary item(s)`
+      );
+    }
+
+    await this.prisma.place.delete({
+      where: { id },
+    });
+
+    return { success: true };
   }
 }
 

@@ -1,0 +1,284 @@
+{
+  "packId": "pack.fi.lapland",
+  "destinationId": "FI-LAPLAND",
+  "displayName": {
+    "en": "Lapland Region Travel Readiness",
+    "zh": "拉普兰地区旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "FI",
+    "region": "Lapland",
+    "city": "Kittilä",
+    "lat": 67.6647,
+    "lng": 24.8936
+  },
+  "supportedSeasons": ["kaamos_polar_night", "spring_skiing", "midnight_sun", "ruska_autumn"],
+  "sources": [
+    {
+      "sourceId": "src.nationalparks.fi",
+      "authority": "Metsähallitus (National Parks)",
+      "type": "html",
+      "title": {
+        "en": "National Parks & Hiking in Finland",
+        "zh": "芬兰国家公园与徒步指南"
+      },
+      "canonicalUrl": "https://www.nationalparks.fi/"
+    },
+    {
+      "sourceId": "src.samediggi.fi",
+      "authority": "The Sámi Parliament",
+      "type": "html",
+      "title": {
+        "en": "Responsible Visitor Guidelines",
+        "zh": "负责任的游客指南"
+      },
+      "canonicalUrl": "https://www.samediggi.fi/responsible-visitor-guidelines/?lang=en"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_kaamos",
+      "severity": "medium",
+      "summary": {
+        "en": "During 'Kaamos' (Polar Night, Dec-Jan), the sun does not rise. Continuous darkness can cause fatigue and disorientation.",
+        "zh": "在\"极夜\"（Kaamos，12月-1月）期间，太阳不会升起。持续的黑暗可能导致疲劳和方向感迷失。"
+      },
+      "mitigations": [
+        {
+          "en": "Stick to a regular sleep schedule despite the darkness.",
+          "zh": "尽管天黑，也要保持规律的睡眠时间表。"
+        },
+        {
+          "en": "Take Vitamin D supplements and make use of the few hours of 'blue twilight' around noon.",
+          "zh": "补充维生素 D，并利用中午前后几小时的\"蓝色暮光\"时间活动。"
+        }
+      ]
+    },
+    {
+      "type": "logistics_remote_driving",
+      "severity": "high",
+      "summary": {
+        "en": "Distances between towns (e.g., Levi to Inari) are long. Gas stations are sparse. EV range drops significantly in cold (-30% to -50%).",
+        "zh": "城镇之间（例如从列维到伊纳里）距离很远。加油站稀少。电动汽车（EV）的续航里程在寒冷中显著下降（减少 30% 到 50%）。"
+      },
+      "mitigations": [
+        {
+          "en": "Fill up the tank whenever it drops below half.",
+          "zh": "油箱少于一半时请立即加满。"
+        },
+        {
+          "en": "Carry an emergency kit in the car: warm blanket, shovel, chocolate/snacks, flashlights.",
+          "zh": "在车内携带应急包：保暖毯、铲子、巧克力/零食、手电筒。"
+        },
+        {
+          "en": "If driving an EV, verify fast charger availability (ABC, K-Lataus) beforehand.",
+          "zh": "如果驾驶电动汽车，请提前核实快速充电桩（ABC, K-Lataus）的可用性。"
+        }
+      ]
+    },
+    {
+      "type": "wildlife_moose",
+      "severity": "high",
+      "summary": {
+        "en": "Moose (Elk) collisions are less common than reindeer but often fatal due to the animal's massive size.",
+        "zh": "驼鹿（Elk）碰撞事故比驯鹿少见，但由于体型巨大，往往是致命的。"
+      },
+      "mitigations": [
+        {
+          "en": "Scan roadsides constantly. Moose fences exist but don't cover all roads.",
+          "zh": "不断观察路边。虽然有防驼鹿围栏，但并未覆盖所有道路。"
+        },
+        {
+          "en": "High beams are essential at night; dim them only when meeting traffic.",
+          "zh": "夜间必须使用远光灯；仅在会车时调暗。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.fi.lapland.roadtrip",
+      "category": "logistics",
+      "appliesToSeasons": ["winter_christmas", "spring_skiing"],
+      "items": [
+        {
+          "en": "Physical driving license (digital versions often not accepted by police)",
+          "zh": "实体驾驶执照（警方通常不接受电子版）"
+        },
+        {
+          "en": "Engine block heater cable (if parking overnight outdoors)",
+          "zh": "发动机缸体加热线（如果在户外过夜停车）"
+        },
+        {
+          "en": "Offline maps (Google Maps Area Download) - deep wilderness has zero signal",
+          "zh": "离线地图（Google Maps 区域下载）- 荒野深处完全没有信号"
+        },
+        {
+          "en": "Snow brush and ice scraper (mandatory to clear ALL windows before driving)",
+          "zh": "雪刷和除冰铲（法律规定驾驶前必须清理所有车窗）"
+        }
+      ]
+    },
+    {
+      "id": "chk.fi.lapland.culture",
+      "category": "culture",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Respect for Sámi culture: Do not buy cheap 'Four Winds Hat' copies.",
+          "zh": "尊重萨米文化：不要购买廉价的仿制\"四风帽\"。"
+        },
+        {
+          "en": "Swimsuit (for public saunas/ice swimming, though nudity is okay in gender-segregated ones)",
+          "zh": "泳衣（用于公共桑拿/冰泳，尽管在性别分开的桑拿中裸体也是可以的）"
+        },
+        {
+          "en": "Cash (rarely needed, cards work 99% of places, even remote)",
+          "zh": "现金（很少需要，99% 的地方甚至偏远地区都可以刷卡）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.fi.sami.respect",
+      "category": "culture",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["cultural_tour", "sami_museum", "inari"]
+            }
+          },
+          {
+            "eq": {
+              "path": "geo.region",
+              "value": "Lapland"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Sámi culture is living, not just a tourist attraction. Do not photograph Sámi people without permission. Avoid wearing fake Sámi costumes (sold in some souvenir shops) as it is considered offensive.",
+          "zh": "萨米文化是鲜活的，不仅仅是旅游景点。未经许可请勿拍摄萨米人。避免穿着假的萨米服饰（部分纪念品商店有售），这被认为是冒犯行为。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Look for the 'Sámi Duodji' label when buying handicrafts",
+              "zh": "购买手工艺品时请认准 'Sámi Duodji' 标签"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["shopping", "culture"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.nature.everymansright",
+      "category": "legal",
+      "severity": "low",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "berry_picking", "nature"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Everyman's Right (Jokamiehenoikeus) allows you to hike and pick berries/mushrooms anywhere, provided you do not disturb residents or damage nature. Do not walk close to private houses.",
+          "zh": "\"每个人的权利\"（Jokamiehenoikeus）允许你在任何地方徒步和采摘浆果/蘑菇，前提是不打扰居民或破坏自然。请勿靠近私人住宅行走。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Read summary of Everyman's Right",
+              "zh": "阅读\"每个人的权利\"摘要"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["nature"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.driving.headlights",
+      "category": "legal",
+      "severity": "must",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.transportType",
+              "value": "rental_car"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Headlights must be switched ON at all times when driving, day and night, summer and winter. This is mandatory by law.",
+          "zh": "驾驶时必须始终打开前大灯，无论白天黑夜、夏天冬天。这是法律强制要求的。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check headlight settings on rental car",
+              "zh": "检查租赁车辆的大灯设置"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["driving"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.alcohol.sales",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.travelerType",
+              "value": "adult"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "Strong alcohol (>5.5%) is ONLY sold in state-monopoly 'Alko' stores. They close early (usually 18:00 or 21:00) and are CLOSED on Sundays. Supermarkets only sell beer/cider.",
+          "zh": "烈性酒（>5.5%）仅在国家垄断的 'Alko' 商店出售。它们关门较早（通常是 18:00 或 21:00），且周日休息。超市只卖啤酒/苹果酒。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check Alko opening hours if planning drinks",
+              "zh": "如果计划喝酒，请查看 Alko 的营业时间"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["shopping"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

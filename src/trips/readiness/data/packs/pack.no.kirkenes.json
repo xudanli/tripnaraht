@@ -1,0 +1,182 @@
+{
+  "packId": "pack.no.kirkenes",
+  "destinationId": "NO-KIRKENES",
+  "displayName": {
+    "en": "Kirkenes Travel Readiness",
+    "zh": "希尔克内斯旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Finnmark",
+    "city": "Kirkenes",
+    "lat": 69.7269,
+    "lng": 30.0450
+  },
+  "supportedSeasons": ["winter_king_crab", "midnight_sun", "ruska_autumn"],
+  "sources": [
+    {
+      "sourceId": "src.visitkirkenes.no",
+      "authority": "Visit Kirkenes",
+      "type": "html",
+      "title": {
+        "en": "Official Tourism Information",
+        "zh": "希尔克内斯官方旅游信息"
+      },
+      "canonicalUrl": "https://www.visitkirkenes.no/"
+    },
+    {
+      "sourceId": "src.politiet.no",
+      "authority": "Norwegian Police (Border Commissioner)",
+      "type": "html",
+      "title": {
+        "en": "Rules for the Norway-Russia Border",
+        "zh": "挪威-俄罗斯边境规则"
+      },
+      "canonicalUrl": "https://www.politiet.no/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "legal_border_zone",
+      "severity": "critical",
+      "summary": {
+        "en": "The border with Russia is strictly monitored. Violations are criminal offenses enforced by military border guards.",
+        "zh": "与俄罗斯的边界受到严格监控。违规行为属于刑事犯罪，由军事边防警卫执行。"
+      },
+      "mitigations": [
+        {
+          "en": "Do NOT cross the border line (even just a hand or foot) for a photo.",
+          "zh": "切勿越过边界线（即使只是手或脚）拍照。"
+        },
+        {
+          "en": "Do NOT throw objects across the border.",
+          "zh": "切勿向边界对面投掷物体。"
+        },
+        {
+          "en": "Do NOT photograph military personnel or installations if indicated.",
+          "zh": "如果标明禁止，切勿拍摄军事人员或设施。"
+        }
+      ]
+    },
+    {
+      "type": "weather_extreme_cold",
+      "severity": "high",
+      "summary": {
+        "en": "Inland Finnmark (Pasvik valley) is one of the coldest places in Norway, often reaching -30°C.",
+        "zh": "内陆芬马克（帕斯维克山谷）是挪威最冷的地方之一，气温经常达到 -30°C。"
+      },
+      "mitigations": [
+        {
+          "en": "Cover all skin. Frostbite risk is immediate.",
+          "zh": "遮盖所有皮肤。冻伤风险是即时的。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.no.kirkenes.logistics",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Flight booking to KKN (Note: SAS/Norwegian fly here, often via Oslo/Tromsø)",
+          "zh": "预订飞往 KKN 的航班（注：SAS/Norwegian 飞往此处，通常经由奥斯陆/特罗姆瑟）"
+        },
+        {
+          "en": "Transfer from airport (Airport bus corresponds with flight arrivals, otherwise expensive taxi)",
+          "zh": "机场接送（机场巴士与航班到达时间对应，否则出租车很贵）"
+        },
+        {
+          "en": "Passport (Must carry valid ID near the border zone)",
+          "zh": "护照（在边境区域附近必须随身携带有效身份证件）"
+        }
+      ]
+    },
+    {
+      "id": "chk.no.kirkenes.crab",
+      "category": "gear_packing",
+      "appliesToSeasons": ["winter_king_crab"],
+      "items": [
+        {
+          "en": "Wool base layers (Tour operators provide snow suits, but you need warm underwear)",
+          "zh": "羊毛打底衣（旅游运营商提供雪地服，但你需要保暖内衣）"
+        },
+        {
+          "en": "Empty stomach (King Crab safaris provide unlimited crab legs - it is a huge meal)",
+          "zh": "空腹（帝王蟹之旅提供无限量蟹腿——这是一顿大餐）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.no.kirkenes.border.conduct",
+      "category": "legal",
+      "severity": "blocker",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["border_visit", "pasvik", "snowmobile"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "At the Russian border marker (Grense Jakobselv or Skafferhullet): strictly NO crossing. Even touching the marker on the other side is illegal. Fines are heavy (approx 10,000 NOK).",
+          "zh": "在俄罗斯边界标志处（Grense Jakobselv 或 Skafferhullet）：严禁越界。即使触摸另一侧的标志也是违法的。罚款很重（约 10,000 挪威克朗）。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Read border behavior rules posted at sites",
+              "zh": "阅读现场张贴的边境行为规则"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["safety", "legal"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.no.kirkenes.crab.booking",
+      "category": "booking",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["king_crab_safari"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "King Crab Safaris are the main attraction. They usually include transport, clothing, and a meal. Book at least 1-2 weeks in advance in winter season.",
+          "zh": "帝王蟹之旅是主要景点。通常包含交通、服装和餐食。冬季请至少提前 1-2 周预订。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Book King Crab Safari",
+              "zh": "预订帝王蟹之旅"
+            },
+            "dueOffsetDays": -14,
+            "tags": ["booking"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 // src/contact/services/contact.service.ts
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from './file-storage.service';
 import { RateLimitService } from './rate-limit.service';
@@ -184,5 +184,131 @@ export class ContactService {
         },
       });
     }
+  }
+
+  /**
+   * 获取联系消息列表（管理接口）
+   */
+  async getContactMessages(query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    userId?: string;
+    search?: string;
+  }) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.userId) {
+      where.userId = query.userId;
+    }
+
+    if (query.search) {
+      where.message = { contains: query.search, mode: 'insensitive' };
+    }
+
+    const [messages, total] = await Promise.all([
+      this.prisma.contactMessage.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          images: true,
+        },
+      }),
+      this.prisma.contactMessage.count({ where }),
+    ]);
+
+    // 为每个图片生成访问URL
+    const messagesWithUrls = messages.map(msg => ({
+      ...msg,
+      images: msg.images.map((img: any) => ({
+        ...img,
+        fileSize: img.fileSize.toString(),
+        fileUrl: this.fileStorage.getFileUrl(img.filePath),
+      })),
+    }));
+
+    return {
+      messages: messagesWithUrls,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 获取联系消息详情（管理接口）
+   */
+  async getContactMessageById(messageId: string) {
+    const message = await this.prisma.contactMessage.findUnique({
+      where: { id: messageId },
+      include: {
+        images: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException(`Contact message not found: ${messageId}`);
+    }
+
+    // 为每个图片生成访问URL
+    const imagesWithUrls = message.images.map((img: any) => ({
+      ...img,
+      fileSize: img.fileSize.toString(),
+      fileUrl: this.fileStorage.getFileUrl(img.filePath),
+    }));
+
+    return {
+      ...message,
+      images: imagesWithUrls,
+    };
+  }
+
+  /**
+   * 更新联系消息状态（管理接口）
+   */
+  async updateContactMessageStatus(messageId: string, status: string) {
+    const message = await this.prisma.contactMessage.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException(`Contact message not found: ${messageId}`);
+    }
+
+    const validStatuses = ['pending', 'read', 'replied', 'resolved'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException(`Invalid status: ${status}`);
+    }
+
+    const updatedMessage = await this.prisma.contactMessage.update({
+      where: { id: messageId },
+      data: { status },
+      include: {
+        images: true,
+      },
+    });
+
+    // 为每个图片生成访问URL
+    const imagesWithUrls = updatedMessage.images.map((img: any) => ({
+      ...img,
+      fileSize: img.fileSize.toString(),
+      fileUrl: this.fileStorage.getFileUrl(img.filePath),
+    }));
+
+    return {
+      ...updatedMessage,
+      images: imagesWithUrls,
+    };
   }
 }

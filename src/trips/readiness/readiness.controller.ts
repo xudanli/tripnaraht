@@ -69,7 +69,11 @@ import {
   UpdatePackingListItemResponseDto,
 } from './dto/packing-list.dto';
 import { GetSolutionsResponseDto } from './dto/solution.dto';
-import { Delete, Put } from '@nestjs/common';
+import { Delete, Put, Param as ParamDecorator } from '@nestjs/common';
+import { TripConflictsService } from '../services/trip-conflicts.service';
+import { ConflictType } from '../dto/trip-conflicts.dto';
+import { PackStorageService } from './storage/pack-storage.service';
+import { GetReadinessPacksQueryDto, ReadinessPackListResponseDto, CreateReadinessPackDto, UpdateReadinessPackDto } from './dto/admin-pack.dto';
 
 export class CheckReadinessDto {
   destinationId!: string;
@@ -115,6 +119,8 @@ export class ReadinessController {
     private readonly findingMarksService: FindingMarksService,
     private readonly packingListService: PackingListService,
     private readonly solutionService: SolutionService,
+    private readonly tripConflictsService: TripConflictsService,
+    private readonly packStorageService: PackStorageService,
   ) {}
 
   @Public()
@@ -588,16 +594,30 @@ export class ReadinessController {
     @Query('lang') lang?: 'en' | 'zh',
   ): Promise<any> {
     try {
+      // 获取行程信息以获取目的地
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { destination: true },
+      });
+
+      if (!trip) {
+        throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+      }
+
       // 从行程获取上下文
-      const result = await this.readinessService.checkFromDestination(tripId, {
+      const result = await this.readinessService.checkFromDestination(
+        trip.destination,
+        {
         traveler: {},
         trip: {},
         itinerary: {
           countries: [],
         },
-      }, {
+        },
+        {
         lang: lang || 'en',
-      });
+        },
+      );
 
       // 提取风险信息
       const risks = result.findings.flatMap(f => f.risks.map(r => ({
@@ -607,6 +627,32 @@ export class ReadinessController {
         mitigation: r.mitigations || [],
         emergencyContacts: [], // Risk 对象没有 emergencyContacts 字段
       })));
+
+      // 获取时间冲突并转换为风险
+      try {
+        const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
+        const timeConflicts = conflictsResult.conflicts.filter(
+          c => c.type === ConflictType.TIME_CONFLICT
+        );
+
+        // 将时间冲突转换为风险格式
+        // 使用 'logistics_remote' 作为类型，因为时间冲突与行程安排/物流相关
+        const conflictRisks = timeConflicts.map(conflict => ({
+          type: 'logistics_remote' as const,
+          severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
+          message: conflict.description,
+          mitigation: conflict.suggestions?.map(s => s.description) || [],
+          emergencyContacts: [],
+        }));
+
+        // 将时间冲突风险添加到风险列表中
+        risks.push(...conflictRisks);
+      } catch (conflictError) {
+        // 如果获取冲突失败，记录日志但不影响主流程
+        this.logger.warn(
+          `Failed to get time conflicts for trip ${tripId}: ${(conflictError as Error).message}`
+        );
+      }
 
       return successResponse({
         tripId,
@@ -1069,6 +1115,273 @@ export class ReadinessController {
     }
 
     return false;
+  }
+
+  // ==================== Pack管理接口 ====================
+
+  @Public()
+  @Get('admin/packs')
+  @ApiOperation({
+    summary: '获取准备度Pack列表（管理接口）',
+    description: '获取准备度Pack列表，支持分页、筛选、搜索。需要管理员权限。',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
+  @ApiQuery({ name: 'countryCode', required: false, type: String, description: '国家代码筛选' })
+  @ApiQuery({ name: 'destinationId', required: false, type: String, description: '目的地ID筛选' })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: '是否激活' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回Pack列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getReadinessPacks(@Query() query: GetReadinessPacksQueryDto): Promise<any> {
+    try {
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const skip = (page - 1) * limit;
+
+      const where: any = {};
+
+      if (query.countryCode) {
+        where.countryCode = query.countryCode;
+      }
+
+      if (query.destinationId) {
+        where.destinationId = query.destinationId;
+      }
+
+      if (query.isActive !== undefined) {
+        where.isActive = query.isActive;
+      }
+
+      if (query.search) {
+        where.OR = [
+          { packId: { contains: query.search, mode: 'insensitive' } },
+          { displayName: { contains: query.search, mode: 'insensitive' } },
+        ];
+      }
+
+      const [packs, total] = await Promise.all([
+        this.prisma.readinessPack.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { updatedAt: 'desc' },
+          select: {
+            id: true,
+            packId: true,
+            destinationId: true,
+            displayName: true,
+            version: true,
+            lastReviewedAt: true,
+            countryCode: true,
+            region: true,
+            city: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        this.prisma.readinessPack.count({ where }),
+      ]);
+
+      const result: ReadinessPackListResponseDto = {
+        packs: packs as any,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get readiness packs: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packs/:id')
+  @ApiOperation({
+    summary: '获取准备度Pack详情（管理接口）',
+    description: '根据Pack ID获取完整的Pack数据。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: 'Pack ID（packId）', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回Pack详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Pack不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getReadinessPackById(@ParamDecorator('id') packId: string): Promise<any> {
+    try {
+      const pack = await this.packStorageService.loadPack(packId);
+      if (!pack) {
+        throw new NotFoundException(`Readiness pack not found: ${packId}`);
+      }
+
+      // 获取数据库记录以获取元数据
+      const record = await this.prisma.readinessPack.findUnique({
+        where: { packId },
+      });
+
+      return successResponse({
+        ...pack,
+        id: record?.id,
+        isActive: record?.isActive,
+        createdAt: record?.createdAt,
+        updatedAt: record?.updatedAt,
+      });
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to get readiness pack: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('admin/packs')
+  @ApiOperation({
+    summary: '创建准备度Pack（管理接口）',
+    description: '创建新的准备度Pack。需要管理员权限。',
+  })
+  @ApiBody({ type: CreateReadinessPackDto })
+  @ApiResponse({
+    status: 201,
+    description: '成功创建Pack',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '输入数据验证失败',
+    type: ApiErrorResponseDto,
+  })
+  async createReadinessPack(@Body() dto: CreateReadinessPackDto): Promise<any> {
+    try {
+      const success = await this.packStorageService.savePack(dto.pack);
+      if (!success) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to save pack');
+      }
+
+      const pack = await this.packStorageService.loadPack(dto.pack.packId);
+      return successResponse(pack);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to create readiness pack: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Put('admin/packs/:id')
+  @ApiOperation({
+    summary: '更新准备度Pack（管理接口）',
+    description: '更新准备度Pack数据或状态。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: 'Pack ID（packId）', type: String })
+  @ApiBody({ type: UpdateReadinessPackDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新Pack',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Pack不存在',
+    type: ApiErrorResponseDto,
+  })
+  async updateReadinessPack(
+    @ParamDecorator('id') packId: string,
+    @Body() dto: UpdateReadinessPackDto,
+  ): Promise<any> {
+    try {
+      const existing = await this.prisma.readinessPack.findUnique({
+        where: { packId },
+      });
+
+      if (!existing) {
+        throw new NotFoundException(`Readiness pack not found: ${packId}`);
+      }
+
+      // 如果提供了pack数据，更新pack
+      if (dto.pack) {
+        const success = await this.packStorageService.savePack(dto.pack);
+        if (!success) {
+          return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to update pack');
+        }
+      }
+
+      // 如果提供了isActive，更新状态
+      if (dto.isActive !== undefined) {
+        await this.prisma.readinessPack.update({
+          where: { packId },
+          data: { isActive: dto.isActive },
+        });
+      }
+
+      const pack = await this.packStorageService.loadPack(packId);
+      return successResponse(pack);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to update readiness pack: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Delete('admin/packs/:id')
+  @ApiOperation({
+    summary: '删除准备度Pack（管理接口）',
+    description: '软删除准备度Pack（设置isActive=false）。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: 'Pack ID（packId）', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除Pack',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Pack不存在',
+    type: ApiErrorResponseDto,
+  })
+  async deleteReadinessPack(@ParamDecorator('id') packId: string): Promise<any> {
+    try {
+      const existing = await this.prisma.readinessPack.findUnique({
+        where: { packId },
+      });
+
+      if (!existing) {
+        throw new NotFoundException(`Readiness pack not found: ${packId}`);
+      }
+
+      await this.prisma.readinessPack.update({
+        where: { packId },
+        data: { isActive: false },
+      });
+
+      return successResponse({ message: 'Pack deleted successfully' });
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to delete readiness pack: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
   }
 }
 

@@ -1,0 +1,192 @@
+{
+  "packId": "pack.se.abisko",
+  "destinationId": "SE-NORRBOTTEN",
+  "displayName": {
+    "en": "Abisko & Kiruna Travel Readiness",
+    "zh": "阿比斯库与基律纳旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "SE",
+    "region": "Norrbotten",
+    "city": "Kiruna/Abisko",
+    "lat": 68.3495,
+    "lng": 18.8312
+  },
+  "supportedSeasons": ["aurora_winter", "polar_night", "spring_skiing"],
+  "sources": [
+    {
+      "sourceId": "src.swedishtouristassociation.com",
+      "authority": "STF (Swedish Tourist Association)",
+      "type": "html",
+      "title": {
+        "en": "Abisko Turiststation & Mountain Stations",
+        "zh": "瑞典游客协会 (STF) 阿比斯库站"
+      },
+      "canonicalUrl": "https://www.swedishtouristassociation.com/"
+    },
+    {
+      "sourceId": "src.sj.se",
+      "authority": "SJ (Swedish Railways)",
+      "type": "html",
+      "title": {
+        "en": "Train Traffic Information",
+        "zh": "SJ 火车交通信息"
+      },
+      "canonicalUrl": "https://www.sj.se/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_extreme_cold",
+      "severity": "critical",
+      "summary": {
+        "en": "Abisko and Kiruna have a continental climate, making them significantly colder than coastal Norway. Temps of -30°C (-22°F) are common.",
+        "zh": "阿比斯库和基律纳属于大陆性气候，比挪威沿海地区冷得多。-30°C (-22°F) 的气温很常见。"
+      },
+      "mitigations": [
+        {
+          "en": "Avoid water-based moisturizers on face before going out (they freeze); use oil-based creams.",
+          "zh": "出门前避免在脸上使用水基保湿霜（会结冰）；请使用油基面霜。"
+        },
+        {
+          "en": "Batteries die instantly. Keep phones inside jacket layers with a hand warmer.",
+          "zh": "电池会瞬间没电。将手机放在夹克内层，并贴上暖宝宝。"
+        },
+        {
+          "en": "Do not touch metal surfaces with bare hands.",
+          "zh": "切勿用裸手触摸金属表面。"
+        }
+      ]
+    },
+    {
+      "type": "logistics_train_reliability",
+      "severity": "high",
+      "summary": {
+        "en": "The Iron Ore Line (Malmbanan) is prone to disruptions, derailments, and snow delays. Replacement buses may be used.",
+        "zh": "铁矿石运输线 (Malmbanan) 容易发生中断、脱轨和因雪延误。可能会使用替代巴士。"
+      },
+      "mitigations": [
+        {
+          "en": "Check SJ app for real-time traffic info frequently.",
+          "zh": "频繁查看 SJ 应用程序以获取实时交通信息。"
+        },
+        {
+          "en": "Allow extra buffer time if connecting to flights in Kiruna.",
+          "zh": "如果在基律纳转机，请预留额外的缓冲时间。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.se.abisko.logistics",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Pre-book STF Aurora Sky Station chairlift tickets (sells out months ahead)",
+          "zh": "提前预订 STF 极光天空站的缆车票（提前数月售罄）"
+        },
+        {
+          "en": "Transfer booking Kiruna Airport -> Abisko (Bus 91 or private transfer)",
+          "zh": "预订基律纳机场到阿比斯库的接驳交通（91 路巴士或私人接送）"
+        },
+        {
+          "en": "Book Icehotel entry ticket if just visiting for the day",
+          "zh": "如果只是一日游，请预订冰酒店的参观门票"
+        }
+      ]
+    },
+    {
+      "id": "chk.se.abisko.gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Toe warmers and hand warmers (chemical heat packs)",
+          "zh": "脚趾暖宝宝和暖手宝（化学加热包）"
+        },
+        {
+          "en": "Tripod for photography (essential for Aurora)",
+          "zh": "摄影三脚架（拍摄极光必备）"
+        },
+        {
+          "en": "Red light headlamp (to preserve night vision for others)",
+          "zh": "红光头灯（为了保护他人的夜视能力）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.se.aurora.etiquette",
+      "category": "culture",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "geo.city",
+              "values": ["Abisko", "Björkliden"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["aurora_hunting", "photography"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Abisko is a serious photography destination. Do NOT use white flashlights or phone screens at observation spots (like the helipad or the lake). Use red light only.",
+          "zh": "阿比斯库是一个严肃的摄影目的地。请勿在观测点（如直升机停机坪或湖边）使用白光手电筒或手机屏幕。仅限使用红光。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Switch phone/headlamp to red light mode",
+              "zh": "将手机/头灯切换到红光模式"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["behavior"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.se.icehotel.booking",
+      "category": "logistics",
+      "severity": "blocker",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["icehotel"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "The Icehotel in Jukkasjärvi is 20-30 mins from Kiruna and 1.5 hours from Abisko. Day visits (10:00-18:00) require tickets. Overnight 'Cold Rooms' are an extreme experience (-5°C inside).",
+          "zh": "位于尤卡斯耶尔维的冰酒店距离基律纳 20-30 分钟车程，距离阿比斯库 1.5 小时。日间参观（10:00-18:00）需要门票。过夜\"冷房\"是一种极端体验（室内 -5°C）。"
+        },
+        "askUser": [
+          {
+            "en": "Are you planning to sleep in a Cold Room or just visit?",
+            "zh": "您是计划在冷房过夜还是仅仅参观？"
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

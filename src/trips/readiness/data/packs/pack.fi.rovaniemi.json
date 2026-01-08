@@ -1,0 +1,265 @@
+{
+  "packId": "pack.fi.rovaniemi",
+  "destinationId": "FI-ROVANIEMI",
+  "displayName": {
+    "en": "Rovaniemi Travel Readiness",
+    "zh": "罗瓦涅米旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "FI",
+    "region": "Lapland",
+    "city": "Rovaniemi",
+    "lat": 66.5039,
+    "lng": 25.7294
+  },
+  "supportedSeasons": ["winter", "summer", "shoulder", "all"],
+  "sources": [
+    {
+      "sourceId": "src.visitrovaniemi.fi",
+      "authority": "Visit Rovaniemi",
+      "type": "html",
+      "title": {
+        "en": "Official Tourism of Rovaniemi",
+        "zh": "罗瓦涅米官方旅游局"
+      },
+      "canonicalUrl": "https://www.visitrovaniemi.fi/"
+    },
+    {
+      "sourceId": "src.ilmatieteenlaitos.fi",
+      "authority": "Finnish Meteorological Institute",
+      "type": "html",
+      "title": {
+        "en": "Weather & Aurora Alerts",
+        "zh": "天气与极光警报"
+      },
+      "canonicalUrl": "https://en.ilmatieteenlaitos.fi/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_extreme",
+      "severity": "high",
+      "summary": {
+        "en": "Winter temperatures often drop between -20°C and -35°C (-4°F to -31°F). Frostbite can occur on exposed skin within minutes.",
+        "zh": "冬季气温经常降至 -20°C 到 -35°C (-4°F 到 -31°F)。裸露的皮肤在几分钟内就可能发生冻伤。"
+      },
+      "mitigations": [
+        {
+          "en": "Dress in 3-4 layers: thermal base, wool/fleece mid, down jacket, windproof shell.",
+          "zh": "穿着 3-4 层衣物：保暖内衣、羊毛/抓绒中层、羽绒服、防风外层。"
+        },
+        {
+          "en": "Cover face with a scarf or balaclava; wear two pairs of socks (thin liner + thick wool).",
+          "zh": "用围巾或巴拉克拉瓦帽遮住面部；穿两双袜子（薄内衬袜 + 厚羊毛袜）。"
+        },
+        {
+          "en": "Keep electronic devices (phones/cameras) close to your body heat to prevent battery death.",
+          "zh": "将电子设备（手机/相机）贴近身体保暖，以防电池耗尽。"
+        }
+      ]
+    },
+    {
+      "type": "wildlife",
+      "severity": "medium",
+      "summary": {
+        "en": "Reindeer roam freely and often stand on roads. They are camouflaged in the dark and do not fear cars.",
+        "zh": "驯鹿自由漫游，经常站在道路上。它们在黑暗中很难被发现（有伪装色），且不害怕汽车。"
+      },
+      "mitigations": [
+        {
+          "en": "Drive cautiously, especially at dawn, dusk, and night.",
+          "zh": "驾驶时要小心，尤其是在黎明、黄昏和夜间。"
+        },
+        {
+          "en": "If you see one reindeer, assume there are more nearby.",
+          "zh": "如果你看到一只驯鹿，请假设附近还有更多。"
+        }
+      ]
+    },
+    {
+      "type": "terrain",
+      "severity": "medium",
+      "summary": {
+        "en": "Sidewalks and town streets are often covered in packed ice and can be extremely slippery.",
+        "zh": "人行道和城镇街道经常覆盖着压实的冰，可能非常滑。"
+      },
+      "mitigations": [
+        {
+          "en": "Wear boots with non-slip soles or use detachable anti-slip grips/spikes.",
+          "zh": "穿防滑底的靴子或使用可拆卸的防滑冰爪。"
+        },
+        {
+          "en": "Walk like a penguin: lean forward slightly and keep weight on your front leg.",
+          "zh": "像企鹅一样走路：身体微前倾，重心放在前腿上。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.fi.winter-gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["winter", "shoulder"],
+      "items": [
+        {
+          "en": "Thermal base layers (Merino wool recommended)",
+          "zh": "保暖打底衣（推荐美利奴羊毛）"
+        },
+        {
+          "en": "Heavy insulated winter boots (rated for -20°C or lower)",
+          "zh": "厚保暖冬季靴（额定温度 -20°C 或更低）"
+        },
+        {
+          "en": "Touchscreen gloves + heavy mittens (mittens keep fingers warmer together)",
+          "zh": "触屏手套 + 厚连指手套（连指手套让手指在一起更暖和）"
+        },
+        {
+          "en": "Reflectors (safety reflectors for walking in the dark - mandatory by law)",
+          "zh": "反光挂件（在黑暗中行走的安全反光板 - 法律强制要求）"
+        },
+        {
+          "en": "Portable power bank (cold drains batteries fast)",
+          "zh": "便携式充电宝（寒冷会加速电池消耗）"
+        },
+        {
+          "en": "Moisturizer and lip balm (air is very dry)",
+          "zh": "保湿霜和润唇膏（空气非常干燥）"
+        }
+      ]
+    },
+    {
+      "id": "chk.fi.logistics-santa",
+      "category": "logistics",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Book husky/reindeer safaris months in advance for December visits",
+          "zh": "如果是 12 月访问，请提前数月预订哈士奇/驯鹿雪橇活动"
+        },
+        {
+          "en": "Dinner reservations (restaurants in Rovaniemi center get full in peak season)",
+          "zh": "晚餐预订（旺季时罗瓦涅米市中心的餐厅会客满）"
+        },
+        {
+          "en": "Download 'Menevä' or 'Valopilkku' taxi apps (Uber availability varies)",
+          "zh": "下载 'Menevä' 或 'Valopilkku' 出租车应用（Uber 可用性不稳定）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.fi.legal.reflector",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.season",
+              "value": "winter"
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.season",
+              "value": "shoulder"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "In Finland, the Road Traffic Act requires pedestrians to use a reflector when moving on the road during dark hours, even in built-up areas. This applies to tourists too.",
+          "zh": "在芬兰，道路交通法要求行人在黑暗时段在道路上行走时必须使用反光挂件，即使在市区也是如此。这也适用于游客。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Buy or pack a hanging safety reflector",
+              "zh": "购买或打包一个悬挂式安全反光件"
+            },
+            "dueOffsetDays": -3,
+            "tags": ["packing", "safety"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.booking.christmas",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["santa_claus_village", "husky_safari", "igloo_hotel"]
+            }
+          },
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["ATTRACTION_THEME_PARK", "ACCOMMODATION_IGLOO"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "blocker",
+        "message": {
+          "en": "December is peak season. Activities (Husky, Reindeer, Snowmobile) and Glass Igloos often sell out 3-6 months in advance. Taxis can have long wait times.",
+          "zh": "12 月是旺季。活动（哈士奇、驯鹿、雪地摩托）和玻璃冰屋通常提前 3-6 个月售罄。出租车可能需要等待很长时间。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Book accommodation and major activities",
+              "zh": "预订住宿和主要活动"
+            },
+            "dueOffsetDays": -90,
+            "tags": ["booking"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.aurora.expectations",
+      "category": "activities_bookings",
+      "severity": "low",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["aurora_hunting", "northern_lights"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "The Northern Lights are natural and never guaranteed. You need clear skies and solar activity. Rovaniemi creates light pollution; for better chances, move away from the city center (e.g., Ounasvaara or Arctic Garden).",
+          "zh": "北极光是自然现象，绝无保证。你需要晴朗的天空和太阳活动。罗瓦涅米有光污染；为了增加机会，请远离市中心（例如前往 Ounasvaara 或 Arctic Garden）。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Download 'Aurora' or 'My Aurora Forecast' app",
+              "zh": "下载 'Aurora' 或 'My Aurora Forecast' 应用"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["tools"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

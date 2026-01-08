@@ -1,0 +1,338 @@
+{
+  "packId": "pack.sj.svalbard",
+  "destinationId": "SJ-SVALBARD",
+  "displayName": {
+    "en": "Svalbard Travel Readiness",
+    "zh": "斯瓦尔巴旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "SJ",
+    "region": "Svalbard",
+    "city": "Longyearbyen",
+    "lat": 78.2232,
+    "lng": 15.6267
+  },
+  "supportedSeasons": ["polar_night", "polar_day", "shoulder", "winter"],
+  "sources": [
+    {
+      "sourceId": "src.sysselmesteren.no",
+      "authority": "Governor of Svalbard",
+      "type": "html",
+      "title": {
+        "en": "Governor of Svalbard - Safety & Laws",
+        "zh": "斯瓦尔巴总督 - 安全与法律"
+      },
+      "canonicalUrl": "https://www.sysselmesteren.no/en/"
+    },
+    {
+      "sourceId": "src.visitsvalbard.com",
+      "authority": "Visit Svalbard",
+      "type": "html",
+      "title": {
+        "en": "Svalbard Tourist Information",
+        "zh": "斯瓦尔巴旅游信息"
+      },
+      "canonicalUrl": "https://en.visitsvalbard.com/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "wildlife",
+      "severity": "high",
+      "summary": {
+        "en": "Polar bears are a threat throughout Svalbard. They can attack without warning anywhere outside the settlements.",
+        "zh": "北极熊是斯瓦尔巴全境的威胁。在定居点以外的任何地方，它们都可能在没有预警的情况下发起攻击。"
+      },
+      "mitigations": [
+        {
+          "en": "Do not leave the settlement (Longyearbyen) without polar bear protection (rifle and flare gun).",
+          "zh": "如果没有北极熊防护装备（步枪和信号枪），请勿离开定居点（朗伊尔城）。"
+        },
+        {
+          "en": "It is strongly recommended to join organized tours with armed guides rather than going alone.",
+          "zh": "强烈建议参加由武装向导带领的有组织旅游团，而不是单独行动。"
+        },
+        {
+          "en": "Be vigilant and scan the horizon constantly.",
+          "zh": "保持警惕并不断观察地平线。"
+        },
+        {
+          "en": "Camping requires strict perimeter watch or tripwire fences.",
+          "zh": "露营需要严格的周边守卫或绊网围栏。"
+        }
+      ]
+    },
+    {
+      "type": "weather_extreme",
+      "severity": "high",
+      "summary": {
+        "en": "Extreme Arctic cold risks frostbite and hypothermia. Weather changes instantly; whiteouts can cause total loss of orientation.",
+        "zh": "极地严寒存在冻伤和体温过低的风险。天气瞬间变化；白毛风（Whiteouts）可能导致方向感完全丧失。"
+      },
+      "mitigations": [
+        {
+          "en": "Wear wool base layers (no cotton) and windproof/down outer layers.",
+          "zh": "穿着羊毛内层（不要穿棉质）和防风/羽绒外层。"
+        },
+        {
+          "en": "Cover all exposed skin in winter to prevent frostbite.",
+          "zh": "冬季遮盖所有裸露的皮肤以防冻伤。"
+        },
+        {
+          "en": "Stay in the settlement during storms.",
+          "zh": "暴风雨期间请留在定居点内。"
+        },
+        {
+          "en": "Carry GPS and emergency beacon (PLB/InReach) outside town.",
+          "zh": "出城时携带 GPS 和紧急信标（PLB/InReach）。"
+        }
+      ]
+    },
+    {
+      "type": "terrain",
+      "severity": "high",
+      "summary": {
+        "en": "Glaciers contain hidden crevasses. Sea ice can be unstable or break off unexpectedly.",
+        "zh": "冰川包含隐藏的裂缝。海冰可能不稳定或意外断裂。"
+      },
+      "mitigations": [
+        {
+          "en": "Do not travel on glaciers without proper equipment and training.",
+          "zh": "没有适当的装备和训练，不要在冰川上行走。"
+        },
+        {
+          "en": "Use a local guide for glacier crossing or ice cave visits.",
+          "zh": "穿越冰川或参观冰洞时请聘请当地向导。"
+        },
+        {
+          "en": "Check sea ice thickness reports before snowmobiling.",
+          "zh": "驾驶雪地摩托前查看海冰厚度报告。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.sj.arctic-gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Wool base layers (top and bottom) - strictly no cotton",
+          "zh": "羊毛打底衣物（上装和下装）- 严禁棉质"
+        },
+        {
+          "en": "Heavy down parka and insulated trousers (ski pants)",
+          "zh": "厚羽绒大衣和保暖裤（滑雪裤）"
+        },
+        {
+          "en": "Windproof and waterproof shell layer",
+          "zh": "防风防水外层"
+        },
+        {
+          "en": "Thick wool socks and sturdy winter boots",
+          "zh": "厚羊毛袜和坚固的冬季靴子"
+        },
+        {
+          "en": "Balaclava or neck gaiter + windproof hat",
+          "zh": "巴拉克拉瓦帽或护颈 + 防风帽"
+        },
+        {
+          "en": "Mittens (warmer than gloves) and liner gloves",
+          "zh": "连指手套（比分指手套更暖和）和内衬手套"
+        },
+        {
+          "en": "Indoor shoes or heavy socks (custom to remove boots indoors)",
+          "zh": "室内鞋或厚袜子（室内脱靴是当地习俗）"
+        }
+      ]
+    },
+    {
+      "id": "chk.sj.documents",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Valid Passport (Required for EVERYONE, including Norwegians)",
+          "zh": "有效护照（所有人必须，包括挪威人）"
+        },
+        {
+          "en": "Return ticket (often checked by customs)",
+          "zh": "返程机票（海关经常检查）"
+        },
+        {
+          "en": "Travel insurance that covers Arctic rescue/evacuation",
+          "zh": "包含极地救援/撤离的旅行保险"
+        }
+      ]
+    },
+    {
+      "id": "chk.sj.safety-remote",
+      "category": "safety_hazards",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Rent/Carry Polar Bear protection (High caliber rifle + flare gun)",
+          "zh": "租赁/携带北极熊防护装备（大口径步枪 + 信号枪）"
+        },
+        {
+          "en": "Satellite phone or InReach device (No cell coverage outside town)",
+          "zh": "卫星电话或 InReach 设备（城外无手机信号）"
+        },
+        {
+          "en": "Inform Governor (Sysselmesteren) if planning long independent expeditions",
+          "zh": "如果计划长期独立探险，请通知总督（Sysselmesteren）"
+        },
+        {
+          "en": "Paper maps and compass (GPS batteries fail in cold)",
+          "zh": "纸质地图和指南针（GPS 电池在寒冷中会失效）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.sj.wildlife.polar-bear",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "skiing", "snowmobiling", "camping", "photography"]
+            }
+          },
+          {
+            "eq": {
+              "path": "itinerary.leavesSettlement",
+              "value": true
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "blocker",
+        "message": {
+          "en": "Leaving the settlement zone without polar bear protection is illegal and life-threatening. You must carry a rifle and flare gun, or be with a certified guide.",
+          "zh": "在没有北极熊防护装备的情况下离开定居点区域是违法且危及生命的。您必须携带步枪和信号枪，或由经过认证的向导陪同。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Book a guided tour OR apply for firearms permit rental",
+              "zh": "预订带向导的旅游团 或 申请枪支租赁许可证"
+            },
+            "dueOffsetDays": -30,
+            "tags": ["booking", "safety"]
+          }
+        ],
+        "askUser": [
+          {
+            "en": "Do you have weapons training and a valid background check for renting a rifle?",
+            "zh": "您是否有武器训练和有效的背景调查以租赁步枪？"
+          },
+          {
+            "en": "Will you be accompanied by a local guide?",
+            "zh": "您会有当地向导陪同吗？"
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.sj.logistics.passport",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "exists": "trip.startDate"
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Svalbard is outside the Schengen area. Strict ID control applies. You MUST have a valid passport (or national ID card for EU/EEA citizens) to board the flight to/from Longyearbyen.",
+          "zh": "斯瓦尔巴不在申根区内。实行严格的身份检查。您必须持有有效护照（或欧盟/欧洲经济区公民的国民身份证）才能登机往返朗伊尔城。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Ensure passport validity",
+              "zh": "确保护照有效期"
+            },
+            "dueOffsetDays": -60,
+            "tags": ["documents"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.sj.environment.cultural",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["hiking", "sightseeing", "exploration"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Strict environmental laws: All traces of human activity from before 1946 are protected cultural heritage. Do not touch or move artifacts. It is forbidden to pick flowers/plants.",
+          "zh": "严格的环境法律：1946 年之前的所有人类活动痕迹都是受保护的文化遗产。请勿触摸或移动文物。严禁采摘花草/植物。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Read the Svalbard Environmental Protection Act summary",
+              "zh": "阅读斯瓦尔巴环境保护法摘要"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["legal"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.sj.customs.shoes-off",
+      "category": "logistics",
+      "severity": "low",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["HOTEL", "MUSEUM", "RESTAURANT"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "It is customary to take off your shoes when entering hotels, museums, and some public buildings in Longyearbyen. Bring indoor slippers or warm socks.",
+          "zh": "在朗伊尔城进入酒店、博物馆和一些公共建筑时，习惯上要脱鞋。请携带室内拖鞋或保暖袜。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Pack indoor slippers or thick wool socks",
+              "zh": "打包室内拖鞋或厚羊毛袜"
+            },
+            "dueOffsetDays": -5,
+            "tags": ["packing"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

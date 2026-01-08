@@ -379,11 +379,15 @@ export class LlmService {
       }
     } catch (error: any) {
       // 如果网络请求失败，自动回退到 Mock 模式
-      const isNetworkError = error.message?.includes('no response received') || 
+      const isNetworkError = 
+        error.message?.includes('no response received') || 
         error.message?.includes('network') || 
+        error.message?.includes('aborted') ||
+        error.message?.includes('timeout') ||
         error.code === 'ECONNREFUSED' ||
         error.code === 'ECONNRESET' ||
-        error.code === 'ETIMEDOUT';
+        error.code === 'ETIMEDOUT' ||
+        error.code === 'ECONNABORTED';
       
       if (isNetworkError) {
         this.logger.warn(`LLM API call failed (${error.message}), falling back to mock mode`);
@@ -713,13 +717,19 @@ export class LlmService {
       body.messages[0].content += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
     }
 
+    // 根据请求大小动态调整超时时间
+    // 对于大型请求（如行程编排），使用更长的超时时间
+    const promptLength = prompt.length;
+    const timeout = promptLength > 50000 ? 180000 : promptLength > 20000 ? 120000 : 60000; // 3分钟/2分钟/1分钟
+
     try {
+      this.logger.debug(`调用 DeepSeek API (prompt长度: ${promptLength}, 超时: ${timeout}ms)`);
       const response = await axios.post('https://api.deepseek.com/v1/chat/completions', body, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        timeout: 60000, // 增加超时时间
+        timeout,
         proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
         httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
       });
@@ -729,6 +739,18 @@ export class LlmService {
       };
       return data.choices?.[0]?.message?.content || '';
     } catch (error: any) {
+      // 检查是否是超时或中止错误
+      const isTimeoutOrAbort = 
+        error.code === 'ECONNABORTED' ||
+        error.message?.includes('aborted') ||
+        error.message?.includes('timeout') ||
+        error.code === 'ETIMEDOUT';
+      
+      if (isTimeoutOrAbort) {
+        this.logger.warn(`DeepSeek API 请求超时或中止 (prompt长度: ${promptLength}, 超时设置: ${timeout}ms): ${error.message}`);
+        throw new Error(`DeepSeek API request timeout or aborted: ${error.message}`);
+      }
+      
       if (error.response) {
         throw new Error(`DeepSeek API error: ${error.response.status} ${JSON.stringify(error.response.data)}`);
       }

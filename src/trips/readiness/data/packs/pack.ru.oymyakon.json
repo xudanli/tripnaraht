@@ -1,0 +1,128 @@
+{
+  "packId": "pack.ru.oymyakon",
+  "destinationId": "RU-SAKHA",
+  "displayName": {
+    "en": "Pole of Cold Expedition",
+    "zh": "极寒极点探险 (奥伊米亚康)"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T00:00:00Z",
+  "geo": {
+    "countryCode": "RU",
+    "region": "Sakha Republic",
+    "city": "Yakutsk/Oymyakon",
+    "lat": 63.4641,
+    "lng": 142.7737
+  },
+  "supportedSeasons": ["deep_winter"],
+  "sources": [
+    {
+      "sourceId": "src.visityakutia.com",
+      "authority": "Visit Yakutia",
+      "type": "html",
+      "title": {
+        "en": "Official Tourism Portal",
+        "zh": "雅库特官方旅游门户"
+      },
+      "canonicalUrl": "http://visityakutia.com/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_life_threatening",
+      "severity": "critical",
+      "summary": {
+        "en": "Temperatures below -50°C (-58°F) are standard. At -60°C, exposed skin freezes in seconds. Your spit can freeze before hitting the ground. Metal sticks to skin instantly.",
+        "zh": "低于 -50°C (-58°F) 的气温是常态。在 -60°C 时，裸露的皮肤几秒钟内就会冻结。吐出的口水落地前就会结冰。金属会瞬间粘在皮肤上。"
+      },
+      "mitigations": [
+        {
+          "en": "Do NOT wear metal frame glasses (they will freeze to your face). Use plastic or contacts.",
+          "zh": "切勿佩戴金属框眼镜（会冻在脸上）。请使用塑料框或隐形眼镜。"
+        },
+        {
+          "en": "Cover face completely. Breathe through a scarf/mask to warm the air before it hits lungs.",
+          "zh": "完全遮住面部。透过围巾/面罩呼吸，在空气进入肺部前将其加热。"
+        }
+      ]
+    },
+    {
+      "type": "logistics_machinery_failure",
+      "severity": "high",
+      "summary": {
+        "en": "Cars must be kept running 24/7 or parked in heated garages. If an engine stops on the Kolyma Highway ('Road of Bones'), it may never restart, leading to fatal freezing.",
+        "zh": "汽车必须 24/7 保持运转或停在加热的车库中。如果引擎在科雷马公路（\"尸骨之路\"）上熄火，可能永远无法重启，导致致命的冻结。"
+      },
+      "mitigations": [
+        {
+          "en": "Travel in a convoy (two cars minimum) for backup.",
+          "zh": "结伴出行（至少两辆车）以备后援。"
+        },
+        {
+          "en": "Hire experienced local drivers who know how to fix frozen mechanics.",
+          "zh": "雇佣有经验的当地司机，他们知道如何修理冻结的机械。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.ru.extreme_gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["deep_winter"],
+      "items": [
+        {
+          "en": "Valenki (Traditional felt boots) or Baffin -100°C rated boots. Regular hiking boots will fail.",
+          "zh": "Valenki（传统毡靴）或 Baffin -100°C 评级靴子。普通登山靴会失效（鞋底冻裂）。"
+        },
+        {
+          "en": "Fur (Real fur is standard here for a reason, synthetics often underperform).",
+          "zh": "皮草（真皮草在这里是标准配置是有原因的，合成材料往往表现不佳）。"
+        },
+        {
+          "en": "Cash (Rubles) - Electronic payments fail due to cold or lack of signal.",
+          "zh": "现金（卢布）- 电子支付因寒冷或无信号而失效。"
+        }
+      ]
+    },
+    {
+      "id": "chk.ru.logistics",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Visa & geopolitical check (Entry rules are strict and changeable).",
+          "zh": "签证与地缘政治检查（入境规则严格且多变）。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.ru.oymyakon.certificate",
+      "category": "culture",
+      "severity": "low",
+      "when": {
+        "always": true
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Visitors can get an official 'Pole of Cold' certificate from the Keeper of the Cold in Oymyakon, stating the temperature on the day of visit.",
+          "zh": "游客可以从奥伊米亚康的\"寒冷守护者\"那里获得官方的\"极寒极点\"证书，上面注明访问当天的气温。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Ask guide to arrange certificate ceremony",
+              "zh": "请向导安排颁证仪式"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["activity"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

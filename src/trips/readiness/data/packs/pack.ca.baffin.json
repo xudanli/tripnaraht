@@ -1,0 +1,145 @@
+{
+  "packId": "pack.ca.baffin",
+  "destinationId": "CA-NUNAVUT",
+  "displayName": {
+    "en": "Nunavut Floe Edge Expedition",
+    "zh": "努纳武特浮冰边缘探险"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T00:00:00Z",
+  "geo": {
+    "countryCode": "CA",
+    "region": "Nunavut",
+    "city": "Pond Inlet / Iqaluit",
+    "lat": 72.7002,
+    "lng": -77.9599
+  },
+  "supportedSeasons": ["floe_edge_spring"],
+  "sources": [
+    {
+      "sourceId": "src.travelnunavut.ca",
+      "authority": "Travel Nunavut",
+      "type": "html",
+      "title": {
+        "en": "Official Travel Guide",
+        "zh": "官方旅游指南"
+      },
+      "canonicalUrl": "https://travelnunavut.ca/"
+    },
+    {
+      "sourceId": "src.pc.gc.ca",
+      "authority": "Parks Canada",
+      "type": "html",
+      "title": {
+        "en": "Polar Bear Safety in Nunavut",
+        "zh": "努纳武特北极熊安全"
+      },
+      "canonicalUrl": "https://www.pc.gc.ca/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "wildlife_polar_bear",
+      "severity": "critical",
+      "summary": {
+        "en": "Nunavut has the highest density of polar bears. They are apex predators and will hunt humans. Encounters are real and dangerous.",
+        "zh": "努纳武特拥有最高密度的北极熊。它们是顶级掠食者，会猎杀人类。遭遇是真实的且危险的。"
+      },
+      "mitigations": [
+        {
+          "en": "Must travel with an armed Inuit guide or licensed outfitter.",
+          "zh": "必须跟随武装的因纽特向导或持牌户外机构出行。"
+        },
+        {
+          "en": "Bear bangers and pepper spray are secondary defenses; avoidance is primary.",
+          "zh": "驱熊弹和胡椒喷雾是次要防御；避让是主要的。"
+        }
+      ]
+    },
+    {
+      "type": "terrain_sea_ice",
+      "severity": "high",
+      "summary": {
+        "en": "Travel is often by 'Qamutik' (wooden sled) pulled by snowmobile over sea ice. Ice cracks and open water leads can appear unexpectedly.",
+        "zh": "旅行通常是乘坐雪地摩托拉的 'Qamutik'（木制雪橇）在海冰上进行。冰裂缝和开阔水域可能会意外出现。"
+      },
+      "mitigations": [
+        {
+          "en": "Hold on tight to the sled (suspension is minimal).",
+          "zh": "紧紧抓住雪橇（减震极少，非常颠簸）。"
+        },
+        {
+          "en": "Trust the Inuit guide's knowledge of ice conditions implicitly.",
+          "zh": "绝对信任因纽特向导对冰况的了解。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.ca.floe_edge_gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["floe_edge_spring"],
+      "items": [
+        {
+          "en": "Expedition Parka (Canada Goose/Quartz Nature level). It is windy on the open ice.",
+          "zh": "探险级派克大衣（Canada Goose/Quartz Nature 级别）。开阔冰面上风很大。"
+        },
+        {
+          "en": "Polarized Sunglasses (Snow blindness is instant on the Floe Edge).",
+          "zh": "偏光太阳镜（在浮冰边缘雪盲症会瞬间发生）。"
+        },
+        {
+          "en": "Sunscreen (24-hour sun reflecting off ice burns skin fast).",
+          "zh": "防晒霜（24小时的阳光在冰面上反射，会快速灼伤皮肤）。"
+        }
+      ]
+    },
+    {
+      "id": "chk.ca.culture",
+      "category": "culture",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Alcohol restrictions (Many Nunavut communities are 'dry' or 'restricted'. Do not bring alcohol without checking).",
+          "zh": "酒精限制（许多努纳武特社区是\"禁酒\"或\"限制\"的。未核实前请勿携带酒精）。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.ca.narwhal.quiet",
+      "category": "nature",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["narwhal_watching", "floe_edge"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Narwhals are extremely sensitive to sound. When at the Floe Edge waiting for them, you must remain silent. No sudden movements. Drone usage is strictly regulated.",
+          "zh": "独角鲸对声音极其敏感。在浮冰边缘等待它们时，必须保持安静。不要有突然的动作。无人机的使用受到严格监管。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Practice silence protocols",
+              "zh": "练习静默协议"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["behavior"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

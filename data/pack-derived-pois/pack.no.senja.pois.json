@@ -1,0 +1,78 @@
+{
+  "sourcePackId": "pack.no.senja",
+  "destinationName": "Senja",
+  "derivedPOIs": [
+    {
+      "poiId": "poi.no.segla",
+      "names": {
+        "en": "Segla Mountain",
+        "zh": "塞格拉山"
+      },
+      "canonicalType": "ATTRACTION_NATURE_MOUNTAIN",
+      "derivedFrom": {
+        "ruleId": "rule.no.senja.hiking.segla",
+        "hazardType": "terrain_steep",
+        "context": "Steep, exposed cliffs with loose rocks. Not suitable for fear of heights."
+      },
+      "riskLevel": "high",
+      "actionItem": {
+        "en": "Only hike with proper boots. Avoid in wet/windy weather. Consider hiking 'Hesten' nearby for a safer view OF Segla.",
+        "zh": "仅在穿着合适靴子的情况下徒步。避免在潮湿/大风天气攀登。建议攀登附近的 'Hesten' 以获得更安全且能看到塞格拉山的视野。"
+      }
+    },
+    {
+      "poiId": "poi.no.gryllefjord_ferry",
+      "names": {
+        "en": "Gryllefjord Ferry Terminal",
+        "zh": "Gryllefjord 渡轮码头"
+      },
+      "canonicalType": "TRANSPORT_FERRY",
+      "derivedFrom": {
+        "ruleId": "rule.no.senja.ferry.seasonal",
+        "hazardType": "logistics_disruption",
+        "context": "Connection to Andenes (Vesterålen). Closed in winter (usually Sep-May)."
+      },
+      "riskLevel": "high",
+      "actionItem": {
+        "en": "Check operating dates strictly. If closed, detour via mainland adds 3-4 hours driving.",
+        "zh": "严格检查运营日期。如果关闭，经大陆绕行需增加 3-4 小时车程。"
+      }
+    },
+    {
+      "poiId": "poi.no.senja_scenic_route",
+      "names": {
+        "en": "Scenic Route Senja (Fv 862)",
+        "zh": "塞尼亚风景公路 (Fv 862)"
+      },
+      "canonicalType": "ROUTE_SCENIC",
+      "derivedFrom": {
+        "ruleId": "rule.no.senja.driving.narrow",
+        "hazardType": "driving_road_conditions",
+        "context": "Narrow roads, single-lane tunnels, difficult for campers."
+      },
+      "riskLevel": "medium",
+      "actionItem": {
+        "en": "Be prepared to reverse to 'Møteplass' (passing places). Watch for cyclists and sheep in tunnels.",
+        "zh": "做好倒车至\"会车点 (Møteplass)\"的准备。注意隧道内的骑行者和羊。"
+      }
+    },
+    {
+      "poiId": "poi.no.botnhamn_ferry",
+      "names": {
+        "en": "Botnhamn Ferry Terminal",
+        "zh": "Botnhamn 渡轮码头"
+      },
+      "canonicalType": "TRANSPORT_FERRY",
+      "derivedFrom": {
+        "ruleId": "chk.no.senja.logistics",
+        "hazardType": "logistics_schedule",
+        "context": "Main connection to Tromsø. Queues can be long in summer."
+      },
+      "riskLevel": "medium",
+      "actionItem": {
+        "en": "Arrive at least 45 mins before departure in peak season.",
+        "zh": "旺季请至少在出发前 45 分钟到达排队。"
+      }
+    }
+  ]
+}

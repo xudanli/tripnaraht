@@ -1,0 +1,117 @@
+{
+  "packId": "pack.se.lulea",
+  "destinationId": "SE-LULEA",
+  "displayName": {
+    "en": "Luleå Travel Readiness",
+    "zh": "吕勒奥旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "SE",
+    "region": "Norrbotten",
+    "city": "Luleå",
+    "lat": 65.5848,
+    "lng": 22.1567
+  },
+  "supportedSeasons": ["ice_road_winter", "summer"],
+  "sources": [
+    {
+      "sourceId": "src.visitlulea.se",
+      "authority": "Visit Luleå",
+      "type": "html",
+      "title": {
+        "en": "Luleå Archipelago & Ice Roads",
+        "zh": "吕勒奥群岛与冰上公路"
+      },
+      "canonicalUrl": "https://visitlulea.se/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "driving_ice_road",
+      "severity": "high",
+      "summary": {
+        "en": "Driving on the frozen sea (Ice Roads) is official but carries risks. Speed limit is usually 30 km/h to prevent creating waves under the ice that can crack it.",
+        "zh": "在冰冻的海面（冰上公路）上驾驶是官方允许的，但有风险。限速通常为 30 公里/小时，以防止在冰下产生可能导致冰裂的波浪。"
+      },
+      "mitigations": [
+        {
+          "en": "Strictly adhere to the 30 km/h speed limit.",
+          "zh": "严格遵守 30 公里/小时的限速。"
+        },
+        {
+          "en": "Do not stop the car near other cars (distribute weight).",
+          "zh": "不要在其他车辆附近停车（分散重量）。"
+        },
+        {
+          "en": "Keep seatbelt OFF if advised by locals (rare, but traditional for quick escape), though modern rules usually say ON.",
+          "zh": "如果当地人建议，请解开安全带（罕见，但在传统上是为了快速逃生），尽管现代规则通常要求系好。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.se.lulea.culture",
+      "category": "culture",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Visit Gammelstad Church Town (UNESCO Heritage) - Visitor center has limited winter hours.",
+          "zh": "参观加默尔斯塔德教堂村（UNESCO 遗产）- 游客中心冬季开放时间有限。"
+        },
+        {
+          "en": "Rent 'Kicksled' (Spark) for local transport on ice.",
+          "zh": "租用 'Kicksled'（Spark，一种冰上滑板车）作为冰上交通工具。"
+        }
+      ]
+    },
+    {
+      "id": "chk.se.lulea.driving",
+      "category": "logistics",
+      "appliesToSeasons": ["ice_road_winter"],
+      "items": [
+        {
+          "en": "Verify ice road status (Isbanan) - usually opens Jan-Mar.",
+          "zh": "核实冰上公路（Isbanan）状态 - 通常 1 月至 3 月开放。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.se.lulea.drone.no_fly",
+      "category": "legal",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["photography", "drone"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Luleå is home to a major Air Force base (F 21). There are large restricted no-fly zones for drones. Checking the drone map is mandatory.",
+          "zh": "吕勒奥是一个主要空军基地 (F 21) 的所在地。有大片无人机禁飞区。强制要求查看无人机地图。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check Swedish drone map (LFV)",
+              "zh": "查看瑞典无人机地图 (LFV)"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["legal"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

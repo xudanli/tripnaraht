@@ -1,0 +1,182 @@
+{
+  "packId": "pack.no.lofoten",
+  "destinationId": "NO-LOFOTEN",
+  "displayName": {
+    "en": "Lofoten Islands Travel Readiness",
+    "zh": "罗弗敦群岛旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Nordland",
+    "city": "Svolvær",
+    "lat": 68.2354,
+    "lng": 14.5682
+  },
+  "supportedSeasons": ["skrei_winter", "midnight_sun", "northern_lights"],
+  "sources": [
+    {
+      "sourceId": "src.lofoten.info",
+      "authority": "Destination Lofoten",
+      "type": "html",
+      "title": {
+        "en": "Official Travel Guide to Lofoten",
+        "zh": "罗弗敦官方旅游指南"
+      },
+      "canonicalUrl": "https://lofoten.info/"
+    },
+    {
+      "sourceId": "src.175.no",
+      "authority": "Vegvesen (Road Authority)",
+      "type": "html",
+      "title": {
+        "en": "Traffic Information & Road Closures",
+        "zh": "交通信息与道路封闭状况"
+      },
+      "canonicalUrl": "https://www.vegvesen.no/trafikk"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_wind",
+      "severity": "critical",
+      "summary": {
+        "en": "Lofoten is exposed to the open ocean. Severe gales are common. The bridges connecting the islands (e.g., Gimsøystraumen) CLOSE automatically when wind speeds exceed safety limits.",
+        "zh": "罗弗敦暴露在开阔的海洋中。强烈的大风很常见。当风速超过安全限制时，连接岛屿的桥梁（例如 Gimsøystraumen）会自动关闭。"
+      },
+      "mitigations": [
+        {
+          "en": "Check road status (175.no) constantly during bad weather.",
+          "zh": "恶劣天气期间请不断查看路况（175.no）。"
+        },
+        {
+          "en": "Be prepared to be stuck on one island for a day.",
+          "zh": "做好被困在某个岛上一天的准备。"
+        }
+      ]
+    },
+    {
+      "type": "terrain_avalanche_hiking",
+      "severity": "high",
+      "summary": {
+        "en": "Famous summer hikes like 'Reinebringen' are EXTREMELY DANGEROUS in winter due to avalanche risk and ice on steep stairs. Fatalities have occurred.",
+        "zh": "著名的夏季徒步路线如 'Reinebringen'（雷纳布林根）在冬季极度危险，存在雪崩风险且陡峭的阶梯结冰。曾发生过死亡事故。"
+      },
+      "mitigations": [
+        {
+          "en": "Do NOT hike Reinebringen in winter unless you are a professional climber with gear.",
+          "zh": "除非你是装备齐全的专业登山者，否则冬季切勿攀登 Reinebringen。"
+        },
+        {
+          "en": "Stick to flat coastal walks or guided snowshoe tours.",
+          "zh": "坚持走平坦的海岸步道或参加有向导的雪鞋行走团。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.no.lofoten.logistics",
+      "category": "logistics",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Ferry Booking (Bodø - Moskenes): Essential to book weeks/months ahead for vehicles.",
+          "zh": "渡轮预订（博德 - 莫斯克内斯）：车辆必须提前数周/数月预订。"
+        },
+        {
+          "en": "Seasickness medication (The Bodø-Moskenes crossing is notorious for rough seas).",
+          "zh": "晕船药（博德-莫斯克内斯航线以风浪大而臭名昭著）。"
+        },
+        {
+          "en": "Accommodation booking (Rorbuer often have minimum stay requirements).",
+          "zh": "住宿预订（渔屋 Rorbuer 通常有最低入住天数要求）。"
+        }
+      ]
+    },
+    {
+      "id": "chk.no.lofoten.photography",
+      "category": "gear_packing",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Wide angle lens (for landscapes and Aurora)",
+          "zh": "广角镜头（用于风景和极光）"
+        },
+        {
+          "en": "Microfiber cloths (lots of sea spray on lenses)",
+          "zh": "超细纤维擦镜布（镜头上会有很多海水飞沫）"
+        },
+        {
+          "en": "Drone (check strict no-fly zones near Svolvær and Leknes airports)",
+          "zh": "无人机（检查斯沃尔韦尔和莱克内斯机场附近的严格禁飞区）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.no.lofoten.driving.e10",
+      "category": "driving_conditions",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.transportType",
+              "value": "rental_car"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "The E10 road is the main lifeline. It is narrow, winding, and shared with large fish trucks. In winter, it is icy/snowy. Pull over to let locals/trucks pass if you are driving slowly.",
+          "zh": "E10 公路是主要生命线。它狭窄、蜿蜒，且有大型运鱼卡车通行。冬季路面有冰雪。如果您开得慢，请靠边停车让当地人/卡车先行。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Rent a car with studded tires (standard in winter)",
+              "zh": "租用带钉胎的汽车（冬季标准配置）"
+            },
+            "dueOffsetDays": -30,
+            "tags": ["transport"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.no.lofoten.fishing.skrei",
+      "category": "culture",
+      "severity": "info",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.dates",
+              "values": ["February", "March", "April"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "Jan-Apr is 'Skrei' season (Arctic Cod migration). Racks full of drying fish are everywhere (smell is strong). Restaurants serve fresh cod tongues and liver - local delicacies.",
+          "zh": "1月至4月是 'Skrei' 季节（北极鳕鱼洄游）。到处都是挂满干鱼的架子（气味很重）。餐厅供应新鲜的鳕鱼舌和肝——这是当地的美味佳肴。"
+        },
+        "askUser": [
+          {
+            "en": "Are you interested in booking a fishing boat trip?",
+            "zh": "您有兴趣预订出海钓鱼行程吗？"
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

@@ -921,8 +921,13 @@ export class TripsService {
       NEPTUNE: '空间魔法师 Neptune（海獭 🦦）',
     };
 
-    // 根据决策日志生成提醒
+    // 根据决策日志生成提醒（过滤掉"无风险"的条目）
     for (const log of decisionLogs) {
+      // 跳过"无风险"的条目
+      if (this.isNoRiskEntry(log)) {
+        continue;
+      }
+
       const severity = log.action === 'REJECT' ? AlertSeverity.WARNING :
                        log.action === 'ADJUST' ? AlertSeverity.INFO :
                        AlertSeverity.SUCCESS;
@@ -1026,8 +1031,13 @@ export class TripsService {
 
     const evidenceItems: EvidenceItemDto[] = [];
 
-    // 处理决策日志中的证据引用
+    // 处理决策日志中的证据引用（过滤掉"无风险"的条目）
     for (const log of decisionLogs) {
+      // 跳过"无风险"的条目
+      if (this.isNoRiskEntry(log)) {
+        continue;
+      }
+
       if (log.evidenceRefs && log.evidenceRefs.length > 0) {
         for (const evidenceRef of log.evidenceRefs) {
           evidenceItems.push({
@@ -1319,21 +1329,23 @@ export class TripsService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    // 查询总数
-    const total = await this.prisma.decisionLog.count({
-      where: { tripId },
-    });
-
-    // 查询决策日志
-    const logs = await this.prisma.decisionLog.findMany({
+    // 查询所有决策日志（用于过滤和分页）
+    const allLogs = await this.prisma.decisionLog.findMany({
       where: { tripId },
       orderBy: { timestamp: 'desc' },
-      skip: offset,
-      take: limit,
     });
 
+    // 过滤掉"无风险"的条目
+    const filteredLogs = allLogs.filter(log => !this.isNoRiskEntry(log));
+
+    // 计算过滤后的总数
+    const total = filteredLogs.length;
+
+    // 应用分页
+    const paginatedLogs = filteredLogs.slice(offset, offset + limit);
+
     // 转换为DTO格式
-    const items: DecisionLogEntryDto[] = logs.map(log => ({
+    const items: DecisionLogEntryDto[] = paginatedLogs.map(log => ({
       id: log.id,
       date: log.timestamp.toISOString(),
       description: log.explanation,
@@ -1353,6 +1365,34 @@ export class TripsService {
       limit,
       offset,
     };
+  }
+
+  /**
+   * 判断是否是"无风险"的条目（不需要显示的条目）
+   * 
+   * 无风险条目的特征：
+   * - action 为 ALLOW
+   * - explanation 包含"未发现"、"无需"、"均在可接受范围内"、"允许继续"等关键词
+   */
+  private isNoRiskEntry(log: any): boolean {
+    // 如果不是 ALLOW 动作，肯定是有风险的
+    if (log.action !== 'ALLOW') {
+      return false;
+    }
+
+    const explanation = log.explanation || '';
+    const noRiskKeywords = [
+      '未发现',
+      '无需',
+      '均在可接受范围内',
+      '允许继续',
+      '无问题',
+      '没有问题',
+      '未发现问题',
+    ];
+
+    // 如果解释中包含"无风险"关键词，则认为是无风险条目
+    return noRiskKeywords.some(keyword => explanation.includes(keyword));
   }
 
   /**

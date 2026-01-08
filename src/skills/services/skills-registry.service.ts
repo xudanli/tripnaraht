@@ -103,6 +103,13 @@ export class SkillsRegistryService {
   }
 
   /**
+   * 检查 Skill 是否已注册
+   */
+  hasSkill(name: string): boolean {
+    return this.skills.has(name);
+  }
+
+  /**
    * 获取所有 Skills
    */
   getAllSkills(): Skill[] {

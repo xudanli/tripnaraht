@@ -1,0 +1,124 @@
+{
+  "packId": "pack.no.nordkapp",
+  "destinationId": "NO-NORDKAPP",
+  "displayName": {
+    "en": "Nordkapp Travel Readiness",
+    "zh": "北角旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Finnmark",
+    "city": "Honningsvåg",
+    "lat": 71.1695,
+    "lng": 25.7832
+  },
+  "supportedSeasons": ["winter_convoy", "midnight_sun"],
+  "sources": [
+    {
+      "sourceId": "src.nordkapp.no",
+      "authority": "Visit Nordkapp",
+      "type": "html",
+      "title": {
+        "en": "Official North Cape Tourism",
+        "zh": "北角官方旅游局"
+      },
+      "canonicalUrl": "https://www.nordkapp.no/en/"
+    },
+    {
+      "sourceId": "src.vegvesen.convoy",
+      "authority": "Vegvesen (Road Authority)",
+      "type": "html",
+      "title": {
+        "en": "Convoy Driving Rules (Kolonnekjøring)",
+        "zh": "车队护送驾驶规则"
+      },
+      "canonicalUrl": "https://www.vegvesen.no/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "driving_convoy",
+      "severity": "critical",
+      "summary": {
+        "en": "The last 13km to North Cape (E69) is CLOSED to individual traffic in winter. You must join a scheduled convoy (Kolonnekjøring) led by a snowplow.",
+        "zh": "通往北角的最后 13 公里（E69公路）在冬季对个人交通封闭。您必须加入由扫雪车带领的定点车队（Kolonnekjøring）。"
+      },
+      "mitigations": [
+        {
+          "en": "Arrive at the meeting point (Skarsvåg junction) at least 15 mins before departure.",
+          "zh": "至少在出发前 15 分钟到达集合点（Skarsvåg 路口）。"
+        },
+        {
+          "en": "Have enough fuel/battery and warm clothes in the car in case of waiting.",
+          "zh": "车内需有足够的燃料/电量和保暖衣物，以防等待。"
+        },
+        {
+          "en": "If the weather is too severe, the convoy will be cancelled.",
+          "zh": "如果天气太恶劣，车队护送将被取消。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.no.nordkapp.convoy",
+      "category": "driving_conditions",
+      "appliesToSeasons": ["winter_convoy"],
+      "items": [
+        {
+          "en": "Flashlight/Headlamp (mandatory to have easily accessible)",
+          "zh": "手电筒/头灯（强制要求易于取用）"
+        },
+        {
+          "en": "Tow rope and shovel (highly recommended)",
+          "zh": "拖车绳和铲子（强烈推荐）"
+        },
+        {
+          "en": "Full tank of fuel/Full charge (no gas station at the cape)",
+          "zh": "满油/满电（北角海角没有加油站）"
+        },
+        {
+          "en": "Check convoy times (usually 11:00 and 13:00, subject to change)",
+          "zh": "检查车队出发时间（通常是 11:00 和 13:00，可能会变动）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.no.nordkapp.convoy.conduct",
+      "category": "driving_conditions",
+      "severity": "blocker",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["north_cape_hall", "driving_e69"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "In a convoy: Keep eye contact with the car in front. Use hazard lights if you stop. Never leave the line. Do not turn on fog lights unless necessary (blinds others).",
+          "zh": "在车队中：保持看到前车。如果停车请使用双闪灯。永远不要离开队列。除非必要，不要打开雾灯（会晃瞎他人）。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Review 'Convoy Driving' guidelines",
+              "zh": "复习\"车队驾驶\"指南"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["safety"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

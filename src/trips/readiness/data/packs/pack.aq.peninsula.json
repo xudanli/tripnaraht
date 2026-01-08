@@ -1,0 +1,213 @@
+{
+  "packId": "pack.aq.peninsula",
+  "destinationId": "AQ-PENINSULA",
+  "displayName": {
+    "en": "Antarctica Peninsula Expedition",
+    "zh": "南极半岛探险巡游"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T00:00:00Z",
+  "geo": {
+    "countryCode": "AQ",
+    "region": "Antarctic Peninsula",
+    "city": "N/A (Expedition Cruise)",
+    "lat": -64.8255,
+    "lng": -63.4915
+  },
+  "supportedSeasons": ["austral_summer_early", "austral_summer_peak", "austral_summer_late"],
+  "sources": [
+    {
+      "sourceId": "src.iaato.org",
+      "authority": "IAATO (Intl Assoc of Antarctica Tour Operators)",
+      "type": "html",
+      "title": {
+        "en": "Visitor Guidelines",
+        "zh": "访客行为指南"
+      },
+      "canonicalUrl": "https://iaato.org/visitor-guidelines/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_drake_passage",
+      "severity": "critical",
+      "summary": {
+        "en": "The Drake Passage crossing (approx 48 hours each way) creates some of the roughest seas on Earth. The 'Drake Shake' involves massive swells that can cause severe seasickness and injury from falling.",
+        "zh": "穿越德雷克海峡（单程约 48 小时）会经历地球上最狂暴的海况。\"德雷克震荡 (Drake Shake)\" 伴随着巨大的涌浪，可能导致严重的晕船和跌倒受伤。"
+      },
+      "mitigations": [
+        {
+          "en": "Start taking seasickness medication (patch or pills) BEFORE the ship leaves the calm Beagle Channel.",
+          "zh": "在船离开平静的比格尔海峡之前，就开始使用晕船药（贴片或药丸）。"
+        },
+        {
+          "en": "Always keep one hand for the ship ('One hand for yourself, one for the ship').",
+          "zh": "永远留一只手扶船（\"一只手照顾自己，一只手照顾船\"）。"
+        },
+        {
+          "en": "Secure all loose items in your cabin.",
+          "zh": "固定好船舱内所有松散的物品。"
+        }
+      ]
+    },
+    {
+      "type": "transport_zodiac",
+      "severity": "high",
+      "summary": {
+        "en": "Landings are done via Zodiacs (rubber boats). Wet landings involve stepping into freezing water. Sudden ice shifts or wind can make boarding dangerous.",
+        "zh": "登陆通过冲锋舟（Zodiac）进行。湿登陆意味着要踩入冰冷的海水中。突然的冰层移动或风会让登船变得危险。"
+      },
+      "mitigations": [
+        {
+          "en": "Use the 'Sailor's Grip' (forearm to forearm) when being helped by crew.",
+          "zh": "在船员帮助下登船时，使用\"水手抓握法\"（前臂抓前臂）。"
+        },
+        {
+          "en": "Never stand up in a Zodiac unless instructed.",
+          "zh": "除非接到指示，否则绝不要在冲锋舟上站起来。"
+        }
+      ]
+    },
+    {
+      "type": "environment_katabatic_winds",
+      "severity": "medium",
+      "summary": {
+        "en": "Katabatic winds can descend from glaciers instantly, dropping temperatures and creating whiteout conditions during landings.",
+        "zh": "下降风（Katabatic winds）可能会瞬间从冰川冲下，导致气温骤降并在登陆期间造成白视天气。"
+      },
+      "mitigations": [
+        {
+          "en": "Always bring your life jacket and essential meds ashore, even for a short landing.",
+          "zh": "即使是短时间登陆，也务必携带救生衣和必要药物上岸（以防被困岸上）。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.aq.gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Waterproof Pants (MANDATORY for Zodiac rides to keep legs dry from splash).",
+          "zh": "防水裤（冲锋舟乘坐必须，防止腿部被海水打湿）。"
+        },
+        {
+          "en": "Tall Rubber Boots (Muck Boots) - Often provided by the ship, check size in advance.",
+          "zh": "高筒橡胶靴（Muck Boots）- 船方通常提供，请提前核实尺码。"
+        },
+        {
+          "en": "Seasickness Patch (Scopolamine) - Prescription often required.",
+          "zh": "晕船贴（东莨菪碱）- 通常需要处方。"
+        },
+        {
+          "en": "Sunglasses and high SPF Sunscreen (The ozone hole is right above you; UV is deadly).",
+          "zh": "太阳镜和高倍防晒霜（臭氧空洞就在头顶；紫外线是致命的）。"
+        }
+      ]
+    },
+    {
+      "id": "chk.aq.biosecurity",
+      "category": "legal",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Vacuum all outer layers pockets (No seeds, dirt, or crumbs allowed).",
+          "zh": "吸尘清理所有外层衣物口袋（严禁携带种子、泥土或面包屑）。"
+        },
+        {
+          "en": "Scrub boots with disinfectant before and after every landing.",
+          "zh": "每次登陆前后都要用消毒剂擦洗靴子。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.aq.wildlife.distance",
+      "category": "legal",
+      "severity": "blocker",
+      "when": {
+        "always": true
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "IAATO Rule: Maintain 5 meters (15 feet) from penguins and seabirds. Maintain 15 meters (50 feet) from fur seals. Always yield right of way to wildlife. Never block their path to the sea.",
+          "zh": "IAATO 规则：与企鹅和海鸟保持 5 米（15 英尺）距离。与海豹保持 15 米（50 英尺）距离。始终给野生动物让路。永远不要阻挡它们通往大海的路径。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Attend mandatory IAATO briefing on board",
+              "zh": "参加船上强制性的 IAATO 简报会"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["safety"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.aq.environment.pristine",
+      "category": "legal",
+      "severity": "high",
+      "when": {
+        "always": true
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Take nothing but photos, leave nothing but footprints. Do not take rocks, bones, or feathers. Do not kneel or lie on the snow/ground (biosecurity risk). No eating on shore.",
+          "zh": "除了照片什么都不要带走，除了脚印什么都不要留下。不要拿走石头、骨头或羽毛。不要跪或躺在雪地/地面上（生物安全风险）。严禁在岸上进食。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Inspect clothes for seeds/Velcro debris",
+              "zh": "检查衣物是否有种子/魔术贴碎屑"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["packing"]
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.aq.drone.ban",
+      "category": "legal",
+      "severity": "blocker",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["drone", "photography"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Recreational drone flying is effectively BANNED in Antarctica by IAATO to protect wildlife. You need a special scientific permit which is nearly impossible for tourists to get. Leave the drone at home.",
+          "zh": "为了保护野生动物，IAATO 实际上禁止在南极进行娱乐性无人机飞行。你需要一个特殊的科学许可证，游客几乎不可能获得。把无人机留在家里。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Remove drone from packing list",
+              "zh": "从打包清单中移除无人机"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["packing"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

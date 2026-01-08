@@ -84,6 +84,13 @@ export class RouteDirectionPoiGeneratorService {
         where: {
           uuid: { in: usableUuids },
         },
+        include: {
+          City: {
+            select: {
+              countryCode: true,
+            },
+          },
+        },
       });
 
       for (const place of places) {
@@ -137,9 +144,13 @@ export class RouteDirectionPoiGeneratorService {
       }
 
       const places = await this.prisma.$queryRaw<any[]>`
-        SELECT * FROM "Place"
+        SELECT 
+          p.*,
+          c."countryCode" as "city_countryCode"
+        FROM "Place" p
+        LEFT JOIN "City" c ON p."cityId" = c.id
         WHERE 
-          location IS NOT NULL
+          p.location IS NOT NULL
           AND (${Prisma.raw(typeConditions)})
           ${regionFilter}
           ${corridorFilter}
@@ -197,10 +208,14 @@ export class RouteDirectionPoiGeneratorService {
         }
 
         const places = await this.prisma.$queryRaw<any[]>`
-          SELECT * FROM "Place"
+          SELECT 
+            p.*,
+            c."countryCode" as "city_countryCode"
+          FROM "Place" p
+          LEFT JOIN "City" c ON p."cityId" = c.id
           WHERE 
-            location IS NOT NULL
-            AND metadata->>'regionKey' = ANY(${routeRegions})
+            p.location IS NOT NULL
+            AND p.metadata->>'regionKey' = ANY(${routeRegions})
             ${corridorFilter}
           LIMIT 30
         `;
@@ -229,6 +244,13 @@ export class RouteDirectionPoiGeneratorService {
         const candidateIds = candidates.map(c => c.id);
         const places = await this.prisma.place.findMany({
           where: { uuid: { in: candidateIds } },
+          include: {
+            City: {
+              select: {
+                countryCode: true,
+              },
+            },
+          },
         });
         const placeMap = new Map(places.map(p => [p.uuid, p]));
 
@@ -319,6 +341,9 @@ export class RouteDirectionPoiGeneratorService {
       ? this.extractLocation(place.location)
       : undefined;
 
+    // 获取国家代码（支持两种格式：City 关系对象或 city_countryCode 字段）
+    const countryCode = place.City?.countryCode || place.city_countryCode || null;
+
     // 推断 ActivityType
     const activityType = this.inferActivityType(place.category, metadata);
 
@@ -359,9 +384,52 @@ export class RouteDirectionPoiGeneratorService {
       riskLevel,
       weatherSensitivity,
       intentTags: this.extractIntentTags(metadata, place.category),
-      qualityScore: place.rating ? place.rating / 5.0 : 0.5,
+      qualityScore: this.normalizeRating(place.rating, countryCode),
       mustSee: priority === 'core',
     };
+  }
+
+  /**
+   * 根据国家代码规范化评分
+   * 对于中国（CN），5分是最高星级
+   * 对于其他国家，默认也是5分制（可根据需要扩展）
+   * 
+   * @param rating 原始评分
+   * @param countryCode 国家代码（ISO 3166-1 alpha-2）
+   * @returns 归一化后的评分（0-1之间）
+   */
+  private normalizeRating(rating: number | null | undefined, countryCode?: string | null): number {
+    if (!rating) {
+      return 0.5; // 默认中等评分
+    }
+
+    // 获取国家的最大评分值
+    const maxRating = this.getMaxRatingForCountry(countryCode);
+    
+    // 归一化到 0-1 范围
+    return Math.min(1.0, Math.max(0.0, rating / maxRating));
+  }
+
+  /**
+   * 获取指定国家的最大评分值
+   * 
+   * @param countryCode 国家代码（ISO 3166-1 alpha-2）
+   * @returns 最大评分值
+   */
+  private getMaxRatingForCountry(countryCode?: string | null): number {
+    if (!countryCode) {
+      return 5.0; // 默认5分制
+    }
+
+    const code = countryCode.toUpperCase();
+    
+    // 中国（包括所有变体）使用5分制
+    if (code === 'CN' || code.startsWith('CN_')) {
+      return 5.0;
+    }
+
+    // 默认使用5分制（可根据需要扩展其他国家的评分系统）
+    return 5.0;
   }
 
   /**

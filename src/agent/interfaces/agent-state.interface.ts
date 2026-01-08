@@ -84,10 +84,17 @@ export interface AgentState {
 
   /** 结果状态 */
   result: {
-    status: 'DRAFT' | 'READY' | 'NEED_MORE_INFO' | 'NEED_CONSENT' | 'FAILED' | 'TIMEOUT';
+    status: 'DRAFT' | 'READY' | 'NEED_MORE_INFO' | 'NEED_CONSENT' | 'FAILED' | 'TIMEOUT' | 'SUSPENDED';
     timeline: any[];
     dropped_items: any[];
     explanations: any[];
+    /** HITL 挂起相关信息（仅在 status === 'SUSPENDED' 时存在） */
+    suspensionInfo?: {
+      approvalId: string;
+      skillName: string;
+      summary: string;
+      payload: any;
+    };
   };
 
   /** 可观测性指标 */

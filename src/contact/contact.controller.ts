@@ -2,6 +2,7 @@
 import {
   Controller,
   Post,
+  Get,
   UseInterceptors,
   UploadedFiles,
   Body,
@@ -9,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   HttpException,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -19,13 +21,17 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiExtraModels,
+  ApiQuery,
+  ApiParam,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { ContactService, MulterFile } from './services/contact.service';
-import { StandardResponse, successResponse, errorResponse } from '../common/dto/standard-response.dto';
+import { StandardResponse, successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ContactMessageResponseDto } from './dto/contact-message.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { GetContactMessagesQueryDto, UpdateContactMessageStatusDto, ReplyContactMessageDto } from './dto/admin-contact.dto';
+import { Query, Param, Put, Body as BodyParam, NotFoundException as NotFoundExceptionClass } from '@nestjs/common';
 
 @ApiTags('contact')
 @ApiExtraModels(ApiSuccessResponseDto, ApiErrorResponseDto, ContactMessageResponseDto)
@@ -198,6 +204,141 @@ export class ContactController {
       // 其他错误，返回内部错误
       this.contactService['logger'].error(`发送联系消息失败: ${error.message}`, error.stack);
       return errorResponse('INTERNAL_ERROR', '服务器内部错误，请稍后重试');
+    }
+  }
+
+  // ==================== 管理接口 ====================
+
+  @Get('admin/messages')
+  @ApiOperation({
+    summary: '获取联系消息列表（管理接口）',
+    description: '获取联系消息列表，支持分页、状态筛选、搜索。需要管理员权限。',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'read', 'replied', 'resolved'], description: '状态筛选' })
+  @ApiQuery({ name: 'userId', required: false, type: String, description: '用户ID筛选' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（消息内容）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回消息列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getContactMessages(@Query() query: GetContactMessagesQueryDto) {
+    try {
+      const result = await this.contactService.getContactMessages(query);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/messages/:id')
+  @ApiOperation({
+    summary: '获取联系消息详情（管理接口）',
+    description: '根据消息ID获取消息详细信息，包括图片。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '消息ID', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回消息详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '消息不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getContactMessageById(@Param('id') messageId: string) {
+    try {
+      const message = await this.contactService.getContactMessageById(messageId);
+      return successResponse(message);
+    } catch (error: any) {
+      if (error instanceof NotFoundExceptionClass) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Put('admin/messages/:id/status')
+  @ApiOperation({
+    summary: '更新联系消息状态（管理接口）',
+    description: '更新联系消息的状态（pending/read/replied/resolved）。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '消息ID', type: String })
+  @ApiBody({ type: UpdateContactMessageStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新消息状态',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '消息不存在',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '输入数据验证失败',
+    type: ApiErrorResponseDto,
+  })
+  async updateContactMessageStatus(
+    @Param('id') messageId: string,
+    @BodyParam() dto: UpdateContactMessageStatusDto,
+  ) {
+    try {
+      const message = await this.contactService.updateContactMessageStatus(messageId, dto.status);
+      return successResponse(message);
+    } catch (error: any) {
+      if (error instanceof NotFoundExceptionClass) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post('admin/messages/:id/reply')
+  @ApiOperation({
+    summary: '回复联系消息（管理接口）',
+    description: '回复联系消息，会自动将状态更新为replied。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '消息ID', type: String })
+  @ApiBody({ type: ReplyContactMessageDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功回复消息',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '消息不存在',
+    type: ApiErrorResponseDto,
+  })
+  async replyContactMessage(
+    @Param('id') messageId: string,
+    @BodyParam() dto: ReplyContactMessageDto,
+  ) {
+    try {
+      // 先更新状态为replied
+      const message = await this.contactService.updateContactMessageStatus(messageId, 'replied');
+      
+      // TODO: 这里可以添加发送回复邮件的逻辑
+      // await this.contactService.sendReplyEmail(messageId, dto.reply);
+      
+      return successResponse({
+        ...message,
+        reply: dto.reply,
+        repliedAt: new Date(),
+      });
+    } catch (error: any) {
+      if (error instanceof NotFoundExceptionClass) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 }

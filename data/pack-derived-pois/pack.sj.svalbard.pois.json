@@ -1,0 +1,78 @@
+{
+  "sourcePackId": "pack.sj.svalbard",
+  "destinationName": "Svalbard",
+  "derivedPOIs": [
+    {
+      "poiId": "poi.sj.safety_boundary",
+      "names": {
+        "en": "Polar Bear Safety Signs (Longyearbyen Limits)",
+        "zh": "北极熊安全区边界标志"
+      },
+      "canonicalType": "LEGAL_BOUNDARY",
+      "derivedFrom": {
+        "ruleId": "rule.sj.wildlife.polar-bear",
+        "hazardType": "wildlife_dangerous",
+        "context": "Leaving the settlement zone without polar bear protection is illegal and life-threatening."
+      },
+      "riskLevel": "critical",
+      "actionItem": {
+        "en": "Do NOT pass this sign without a high-caliber rifle and flare gun (or an armed guide).",
+        "zh": "没有携带大口径步枪和信号枪（或武装向导），严禁越过此标志。"
+      }
+    },
+    {
+      "poiId": "poi.sj.airport",
+      "names": {
+        "en": "Svalbard Airport (LYR)",
+        "zh": "斯瓦尔巴朗伊尔机场"
+      },
+      "canonicalType": "TRANSPORT_AIRPORT",
+      "derivedFrom": {
+        "ruleId": "rule.sj.logistics.passport",
+        "hazardType": "legal",
+        "context": "Svalbard is outside Schengen. Strict ID control applies."
+      },
+      "riskLevel": "low",
+      "actionItem": {
+        "en": "Present valid Passport (or National ID for EU/EEA) upon arrival and departure.",
+        "zh": "抵离时必须出示有效护照（欧盟/EEA公民可用身份证）。"
+      }
+    },
+    {
+      "poiId": "poi.sj.store",
+      "names": {
+        "en": "Svalbardbutikken (Coop)",
+        "zh": "斯瓦尔巴唯一超市 (Coop)"
+      },
+      "canonicalType": "SHOP_GROCERY",
+      "derivedFrom": {
+        "ruleId": "chk.sj.documents",
+        "hazardType": "logistics_supply",
+        "context": "Alcohol sales are rationed and require flight documentation."
+      },
+      "riskLevel": "low",
+      "actionItem": {
+        "en": "Bring your boarding pass to purchase alcohol. Check opening hours (closed early).",
+        "zh": "购买酒精需出示登机牌。注意营业时间（关门较早）。"
+      }
+    },
+    {
+      "poiId": "poi.sj.pyramiden",
+      "names": {
+        "en": "Pyramiden (Soviet Ghost Town)",
+        "zh": "金字塔城 (苏联幽灵城)"
+      },
+      "canonicalType": "ATTRACTION_CULTURAL_RUIN",
+      "derivedFrom": {
+        "ruleId": "rule.sj.environment.cultural",
+        "hazardType": "legal",
+        "context": "All traces of human activity from before 1946 are protected cultural heritage."
+      },
+      "riskLevel": "medium",
+      "actionItem": {
+        "en": "Do not touch or remove any loose objects/artifacts found in the buildings or on the ground.",
+        "zh": "不要触摸或带走建筑物内或地面上发现的任何松散物体/文物。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "sourcePackId": "pack.fi.lapland",
+  "destinationName": "Lapland (Region)",
+  "derivedPOIs": [
+    {
+      "poiId": "poi.fi.inari_siida",
+      "names": {
+        "en": "Siida - Sámi Museum and Nature Center (Inari)",
+        "zh": "Siida - 萨米博物馆与自然中心 (伊纳里)"
+      },
+      "canonicalType": "MUSEUM_CULTURAL",
+      "derivedFrom": {
+        "ruleId": "rule.fi.sami.respect",
+        "hazardType": "culture_sensitivity",
+        "context": "Sámi culture is living. Do not photograph locals without permission. Avoid fake costumes."
+      },
+      "riskLevel": "medium",
+      "actionItem": {
+        "en": "Buy handicrafts only with the 'Sámi Duodji' label. Treat the culture with respect.",
+        "zh": "仅购买带有 'Sámi Duodji' 标签的手工艺品。以尊重的态度对待当地文化。"
+      }
+    },
+    {
+      "poiId": "poi.fi.highways_remote",
+      "names": {
+        "en": "Highways E75 / 79 (Remote Stretches)",
+        "zh": "E75 / 79 号公路 (偏远路段)"
+      },
+      "canonicalType": "ROUTE_DRIVING",
+      "derivedFrom": {
+        "ruleId": "hazards.logistics_remote_driving",
+        "hazardType": "logistics_fuel",
+        "context": "Long distances, sparse gas stations, moose collisions."
+      },
+      "riskLevel": "high",
+      "actionItem": {
+        "en": "Fill tank whenever below 50%. Keep headlights ON at all times. Watch for moose/reindeer.",
+        "zh": "油量低于 50% 时立即加满。始终打开车灯。警惕驼鹿和驯鹿。"
+      }
+    },
+    {
+      "poiId": "poi.fi.ev_charging_network",
+      "names": {
+        "en": "EV Charging Stations (ABC / K-Lataus)",
+        "zh": "电动汽车充电站 (ABC / K-Lataus)"
+      },
+      "canonicalType": "SERVICE_STATION",
+      "derivedFrom": {
+        "ruleId": "hazards.logistics_remote_driving",
+        "hazardType": "weather_cold_battery",
+        "context": "EV range drops 30-50% in extreme cold."
+      },
+      "riskLevel": "high",
+      "actionItem": {
+        "en": "Plan charging stops conservatively. Verify charger functionality in apps beforehand.",
+        "zh": "保守规划充电站点。提前在 App 中核实充电桩是否可用。"
+      }
+    },
+    {
+      "poiId": "poi.fi.wilderness_forest",
+      "names": {
+        "en": "Lapland Forests (Berry/Mushroom spots)",
+        "zh": "拉普兰森林 (浆果/蘑菇采摘点)"
+      },
+      "canonicalType": "ATTRACTION_NATURE",
+      "derivedFrom": {
+        "ruleId": "rule.fi.nature.everymansright",
+        "hazardType": "legal_access",
+        "context": "Everyman's Right allows hiking/picking anywhere, provided no disturbance."
+      },
+      "riskLevel": "low",
+      "actionItem": {
+        "en": "Enjoy freedom to roam but stay away from private houses and yards.",
+        "zh": "享受漫游的自由，但请远离私人住宅和庭院。"
+      }
+    }
+  ]
+}

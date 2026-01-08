@@ -45,6 +45,8 @@ import { createRailPassActions } from '../railpass/actions/railpass-agent-action
 import { createReadinessActions } from './services/actions/readiness.actions';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
 import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.service';
+import { ReactSystemPromptService } from './services/react-system-prompt.service';
+import { PlanExecuteModule } from './plan-execute/plan-execute.module';
 
 /**
  * Agent Module
@@ -65,6 +67,7 @@ import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.s
     DecisionModule,
     MemoryModule,
     RagModule, // RAG 模块（用于增强对话）
+    PlanExecuteModule, // Plan-and-Execute Agent 模块
   ],
   controllers: [AgentController],
   providers: [
@@ -82,11 +85,13 @@ import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.s
     LlmPlanService,
     WebBrowseExecutorService,
     TripNaraSystemPromptService,
+    ReactSystemPromptService,
   ],
   exports: [
     AgentService,
     ActionRegistryService,
     TripNaraSystemPromptService,
+    ReactSystemPromptService,
   ],
 })
 export class AgentModule {

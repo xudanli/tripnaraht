@@ -168,6 +168,35 @@ async function createMcpServer() {
   
   console.error(`Registered ${allSkills.length} tools successfully`);
 
+  // 注册 Prompts（可选）
+  try {
+    const { ALL_MCP_PROMPTS } = await import('./mcp-prompts');
+    console.error(`Registering ${ALL_MCP_PROMPTS.length} prompts...`);
+    
+    for (const prompt of ALL_MCP_PROMPTS) {
+      try {
+        server.registerPrompt(
+          prompt.name,
+          {
+            description: prompt.description,
+            arguments: prompt.arguments || [],
+          },
+          async () => {
+            return {
+              messages: prompt.messages,
+            };
+          }
+        );
+        console.error(`  ✓ Registered prompt: ${prompt.name}`);
+      } catch (error: any) {
+        console.error(`  ✗ Failed to register prompt ${prompt.name}:`, error.message);
+      }
+    }
+  } catch (error: any) {
+    // Prompts 是可选的，如果导入失败也不影响使用
+    console.error('Note: Prompts not available (optional feature)');
+  }
+
   return { server, app, allSkills };
 }
 

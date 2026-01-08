@@ -225,6 +225,37 @@ export function buildReadinessCheckVisaWindowSchema() {
   };
 }
 
+export function buildDecisionRequestApprovalSchema() {
+  return {
+    action: z.object({
+      type: z.string().describe('操作类型'),
+      description: z.string().describe('操作描述'),
+      details: z.record(z.any()).describe('操作详情'),
+    }),
+    context: z.object({
+      tripId: z.string().optional().describe('行程 ID'),
+      userId: z.string().optional().describe('用户 ID'),
+      decisionReason: z.string().optional().describe('决策原因'),
+      alternatives: z.array(z.object({
+        option: z.string(),
+        description: z.string(),
+        pros: z.array(z.string()).optional(),
+        cons: z.array(z.string()).optional(),
+      })).optional().describe('替代方案'),
+    }).optional(),
+    riskLevel: z.enum(['low', 'medium', 'high', 'critical']).describe('风险等级'),
+    required: z.boolean().optional().describe('是否必需'),
+    expiresAt: z.string().optional().describe('审批过期时间（ISO 8601）'),
+    autoApproveAfter: z.number().optional().describe('自动审批延迟（秒）'),
+  };
+}
+
+export function buildDecisionCheckApprovalSchema() {
+  return {
+    approvalId: z.string().describe('审批 ID'),
+  };
+}
+
 export function getSchemaForSkill(skillName: string): any {
   const schemaMap: Record<string, () => any> = {
     'dem.getProfile': buildDemGetProfileSchema,
@@ -233,6 +264,8 @@ export function getSchemaForSkill(skillName: string): any {
     'decision.neptuneRepair': buildDecisionNeptuneRepairSchema,
     'decision.runThreeGuardians': buildDecisionRunThreeGuardiansSchema,
     'decision.explainForHuman': buildDecisionExplainForHumanSchema,
+    'decision.requestApproval': buildDecisionRequestApprovalSchema,
+    'decision.checkApproval': buildDecisionCheckApprovalSchema,
     'routeDirection.pickForIntent': buildRouteDirectionPickForIntentSchema,
     'routeDirection.listForCountry': buildRouteDirectionListForCountrySchema,
     'readiness.generateChecklist': buildReadinessGenerateChecklistSchema,

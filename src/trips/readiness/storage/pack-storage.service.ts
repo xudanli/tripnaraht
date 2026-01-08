@@ -10,6 +10,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
@@ -111,6 +112,175 @@ export class PackStorageService {
       this.logger.error(`Failed to find packs by country ${countryCode}: ${error.message}`);
       return [];
     }
+  }
+
+  /**
+   * 根据城市名称查找 Pack
+   * @param cityName 城市名称（不区分大小写）
+   * @param countryCode 可选的国家代码，用于精确匹配
+   */
+  async findPackByCity(cityName: string, countryCode?: string): Promise<ReadinessPack | null> {
+    try {
+      // 使用 PostgreSQL 的 ILIKE 进行不区分大小写的查询
+      let whereClause = Prisma.sql`WHERE "isActive" = true AND LOWER("city") = LOWER(${cityName})`;
+      
+      if (countryCode) {
+        whereClause = Prisma.sql`${whereClause} AND "countryCode" = ${countryCode.toUpperCase()}`;
+      }
+
+      const records = await this.prisma.$queryRaw<any[]>`
+        SELECT *
+        FROM "ReadinessPack"
+        ${whereClause}
+        ORDER BY version DESC
+        LIMIT 1
+      `;
+
+      if (records.length === 0) {
+        return null;
+      }
+
+      return records[0].packData as unknown as ReadinessPack;
+    } catch (error: any) {
+      this.logger.error(`Failed to find pack by city ${cityName}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 根据 region 查找 Pack
+   * @param regionName 地区名称（不区分大小写）
+   */
+  async findPacksByRegion(regionName: string): Promise<ReadinessPack[]> {
+    try {
+      // 使用 PostgreSQL 的 ILIKE 进行不区分大小写的查询
+      const records = await this.prisma.$queryRaw<any[]>`
+        SELECT *
+        FROM "ReadinessPack"
+        WHERE "isActive" = true 
+          AND LOWER("region") = LOWER(${regionName})
+        ORDER BY "updatedAt" DESC
+      `;
+
+      return records.map(record => record.packData as unknown as ReadinessPack);
+    } catch (error: any) {
+      this.logger.error(`Failed to find packs by region ${regionName}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 根据坐标查找最近的 Pack
+   * @param lat 纬度
+   * @param lng 经度
+   * @param maxDistanceKm 最大距离（公里），默认 50km
+   */
+  async findNearestPack(lat: number, lng: number, maxDistanceKm: number = 50): Promise<ReadinessPack | null> {
+    try {
+      // 使用 Haversine 公式计算距离
+      // 由于 Prisma 可能不支持 PostGIS 的 ST_Distance，我们使用原始 SQL 查询
+      const records = await this.prisma.$queryRaw<any[]>`
+        SELECT 
+          *,
+          (
+            6371 * acos(
+              cos(radians(${lat})) * 
+              cos(radians("latitude")) * 
+              cos(radians("longitude") - radians(${lng})) + 
+              sin(radians(${lat})) * 
+              sin(radians("latitude"))
+            )
+          ) AS distance_km
+        FROM "ReadinessPack"
+        WHERE 
+          "isActive" = true
+          AND "latitude" IS NOT NULL
+          AND "longitude" IS NOT NULL
+        ORDER BY distance_km ASC
+        LIMIT 1
+      `;
+
+      if (records.length === 0) {
+        return null;
+      }
+
+      const record = records[0];
+      const distanceKm = parseFloat(record.distance_km);
+
+      // 如果距离超过阈值，返回 null
+      if (distanceKm > maxDistanceKm) {
+        this.logger.debug(`Nearest pack is ${distanceKm.toFixed(2)}km away, exceeds threshold ${maxDistanceKm}km`);
+        return null;
+      }
+
+      this.logger.debug(`Found nearest pack ${record.packId} at ${distanceKm.toFixed(2)}km away`);
+
+      return record.packData as unknown as ReadinessPack;
+    } catch (error: any) {
+      // 如果 SQL 查询失败（例如数据库不支持），尝试使用简单的坐标范围查询
+      this.logger.warn(`Failed to find nearest pack using SQL: ${error.message}, falling back to simple query`);
+      
+      try {
+        // 降级方案：查找所有有坐标的 packs，然后在内存中计算距离
+        const allRecords = await this.prisma.readinessPack.findMany({
+          where: {
+            isActive: true,
+            latitude: { not: null },
+            longitude: { not: null },
+          },
+        });
+
+        let nearestPack: ReadinessPack | null = null;
+        let minDistance = Infinity;
+
+        for (const record of allRecords) {
+          if (record.latitude === null || record.longitude === null) continue;
+
+          const distance = this.calculateHaversineDistance(
+            lat,
+            lng,
+            record.latitude,
+            record.longitude
+          );
+
+          if (distance < minDistance && distance <= maxDistanceKm) {
+            minDistance = distance;
+            nearestPack = record.packData as unknown as ReadinessPack;
+          }
+        }
+
+        return nearestPack;
+      } catch (fallbackError: any) {
+        this.logger.error(`Failed to find nearest pack: ${fallbackError.message}`);
+        return null;
+      }
+    }
+  }
+
+  /**
+   * 计算两点之间的 Haversine 距离（公里）
+   */
+  private calculateHaversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371; // 地球半径（公里）
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLng = this.toRadians(lng2 - lng1);
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(lat1)) *
+        Math.cos(this.toRadians(lat2)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /**
+   * 将角度转换为弧度
+   */
+  private toRadians(degrees: number): number {
+    return degrees * (Math.PI / 180);
   }
 
   /**

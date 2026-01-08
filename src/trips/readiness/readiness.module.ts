@@ -6,7 +6,7 @@
  * 准备度检查模块
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ReadinessService } from './services/readiness.service';
 import { ReadinessChecker } from './engine/readiness-checker';
@@ -34,9 +34,10 @@ import { ChecklistStatusService } from './services/checklist-status.service';
 import { FindingMarksService } from './services/finding-marks.service';
 import { PackingListService } from './services/packing-list.service';
 import { SolutionService } from './services/solution.service';
+import { TripsModule } from '../trips.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule],
+  imports: [PrismaModule, UsersModule, forwardRef(() => TripsModule)],
   controllers: [ReadinessController],
   providers: [
     ReadinessService,

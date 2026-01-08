@@ -1,11 +1,12 @@
 // src/agent/services/agent.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { RouterOutput, RouteType, RouterReason } from '../interfaces/router.interface';
 import { RouterService } from './router.service';
 import { AgentStateService } from './agent-state.service';
 import { System1ExecutorService } from './system1-executor.service';
 import { OrchestratorService } from './orchestrator.service';
+import { DAGOrchestratorService } from '../plan-execute/orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
@@ -25,6 +26,7 @@ export class AgentService {
     private stateService: AgentStateService,
     private system1Executor: System1ExecutorService,
     private orchestrator: OrchestratorService,
+    @Optional() private dagOrchestrator?: DAGOrchestratorService,
     private eventTelemetry?: EventTelemetryService,
     private requestDeduplication?: RequestDeduplicationService,
   ) {}
@@ -131,8 +133,16 @@ export class AgentService {
           },
         });
       } else {
-        // System 2 慢速路径（ReAct）
-        state = await this.orchestrator.execute(state, routeOutput.budget);
+        // System 2 慢速路径（Plan-and-Execute Agent）
+        // 使用新的 DAG Orchestrator 替代 ReAct 循环
+        if (this.dagOrchestrator) {
+          // 使用 Plan-and-Execute Agent (并行编排器)
+          state = await this.executeSystem2PlanAndExecute(state, routeOutput.budget, request);
+        } else {
+          // 降级：使用原有的 ReAct 循环
+          this.logger.warn('DAGOrchestratorService 未可用，降级使用 ReAct 循环');
+          state = await this.orchestrator.execute(state, routeOutput.budget);
+        }
         
         // 从状态中提取结果
         result = {
@@ -170,7 +180,13 @@ export class AgentService {
         result: {
           status: this.mapStateStatusToResultStatus(state.result.status),
           answer_text: answerText,
-          payload: result,
+          payload: {
+            ...result,
+            // 🕵️ HITL: 如果状态是 SUSPENDED，在 payload 中包含 suspensionInfo
+            ...(state.result.status === 'SUSPENDED' && state.result.suspensionInfo
+              ? { suspensionInfo: state.result.suspensionInfo }
+              : {}),
+          },
         },
         explain: {
           decision_log: state.react.decision_log,
@@ -230,6 +246,7 @@ export class AgentService {
       DRAFT: 'NEED_MORE_INFO',
       NEED_MORE_INFO: 'NEED_MORE_INFO',
       NEED_CONSENT: 'NEED_CONSENT',
+      SUSPENDED: 'NEED_CONFIRMATION', // 🕵️ HITL: SUSPENDED 映射到 NEED_CONFIRMATION
       FAILED: 'FAILED',
       TIMEOUT: 'TIMEOUT',
     };
@@ -251,6 +268,15 @@ export class AgentService {
       return '需要更多信息才能完成规划，请提供日期、人数、城市或预算等信息。';
     }
 
+    // 🕵️ HITL: 处理 SUSPENDED 状态
+    if (state.result.status === 'SUSPENDED') {
+      const suspensionInfo = state.result.suspensionInfo;
+      if (suspensionInfo) {
+        return `操作需要您的确认：${suspensionInfo.summary}。请查看审批请求（ID: ${suspensionInfo.approvalId}）。`;
+      }
+      return '操作需要您的确认，请查看审批请求。';
+    }
+
     if (state.result.status === 'FAILED') {
       return '无法完成规划，请检查约束条件或联系客服。';
     }
@@ -260,6 +286,118 @@ export class AgentService {
     }
 
     return '正在处理中...';
+  }
+
+  /**
+   * 执行 System 2 Plan-and-Execute Agent
+   * 
+   * 使用 DAG Orchestrator 替代 ReAct 循环
+   */
+  private async executeSystem2PlanAndExecute(
+    state: AgentState,
+    budget: {
+      max_seconds: number;
+      max_steps: number;
+      max_browser_steps: number;
+    },
+    request: RouteAndRunRequestDto,
+  ): Promise<AgentState> {
+    if (!this.dagOrchestrator) {
+      throw new Error('DAGOrchestratorService 未可用');
+    }
+
+    this.logger.log(`[Agent] 使用 Plan-and-Execute Agent 执行 System2 任务`);
+
+    try {
+      // 1. 调用 DAG Orchestrator
+      const dagResult = await this.dagOrchestrator.run(
+        state.request_id,
+        request.message,
+      );
+
+      // 2. 将 DAG 结果转换回 AgentState
+      const updatedState = this.convertDAGResultToAgentState(state, dagResult);
+
+      // 3. 更新状态
+      return this.stateService.update(state.request_id, updatedState);
+    } catch (error: any) {
+      this.logger.error(`Plan-and-Execute Agent 执行失败: ${error.message}`, error.stack);
+      
+      // 降级：标记为失败
+      return this.stateService.update(state.request_id, {
+        result: {
+          ...state.result,
+          status: 'FAILED',
+          explanations: [
+            ...(state.result.explanations || []),
+            `Plan-and-Execute Agent 执行失败: ${error.message}`,
+          ],
+        },
+      });
+    }
+  }
+
+  /**
+   * 将 DAG 编排结果转换回 AgentState
+   */
+  private convertDAGResultToAgentState(
+    originalState: AgentState,
+    dagResult: any,
+  ): Partial<AgentState> {
+    // 根据 DAG 结果更新 AgentState
+    const explanations: string[] = [
+      ...(originalState.result.explanations || []),
+      dagResult.summary || 'Plan-and-Execute Agent 执行完成',
+    ];
+
+    // 从 memory 中提取关键信息
+    const memoryKeys = Object.keys(dagResult.memory || {});
+    const completedTasks = dagResult.plan?.filter((t: any) => t.status === 'completed') || [];
+
+    // 构建解释
+    if (completedTasks.length > 0) {
+      explanations.push(`成功执行 ${completedTasks.length} 个任务`);
+    }
+
+    // 确定最终状态
+    let finalStatus: AgentState['result']['status'] = 'READY';
+    if (dagResult.status === 'failed') {
+      finalStatus = 'FAILED';
+    } else if (dagResult.status === 'timeout' || dagResult.status === 'deadlock') {
+      finalStatus = 'TIMEOUT';
+    } else if (dagResult.status === 'done') {
+      finalStatus = 'READY';
+    }
+
+    // 检查是否有审批挂起
+    const suspendedTask = dagResult.plan?.find((t: any) => 
+      t.result && t.result.includes('SUSPENDED')
+    );
+    if (suspendedTask) {
+      finalStatus = 'SUSPENDED';
+    }
+
+    // 扩展 memory（使用类型断言，因为 memory 类型是严格的）
+    const updatedMemory = { ...originalState.memory };
+    (updatedMemory as any).dagResult = {
+      taskCount: dagResult.plan?.length || 0,
+      completedCount: completedTasks.length,
+      memoryKeys,
+      status: dagResult.status,
+    };
+
+    return {
+      result: {
+        ...originalState.result,
+        status: finalStatus,
+        explanations,
+      },
+      memory: updatedMemory as typeof originalState.memory,
+      observability: {
+        ...originalState.observability,
+        tool_calls: (originalState.observability.tool_calls || 0) + (dagResult.plan?.length || 0),
+      },
+    };
   }
 }
 

@@ -1,0 +1,117 @@
+{
+  "packId": "pack.cl.torres-winter",
+  "destinationId": "CL-MAGALLANES",
+  "displayName": {
+    "en": "Patagonia Winter & Puma Tracking",
+    "zh": "巴塔哥尼亚冬季与美洲狮追踪"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T00:00:00Z",
+  "geo": {
+    "countryCode": "CL",
+    "region": "Magallanes",
+    "city": "Puerto Natales",
+    "lat": -51.7269,
+    "lng": -72.5038
+  },
+  "supportedSeasons": ["austral_winter"],
+  "sources": [
+    {
+      "sourceId": "src.conaf.cl",
+      "authority": "CONAF (National Forest Corporation)",
+      "type": "html",
+      "title": {
+        "en": "Park Status & Winter Rules",
+        "zh": "公园状态与冬季规则"
+      },
+      "canonicalUrl": "https://www.conaf.cl/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "wildlife_puma",
+      "severity": "high",
+      "summary": {
+        "en": "Pumas are more active and come lower down the mountains in winter. Encounters are frequent on tracking tours.",
+        "zh": "美洲狮在冬季更活跃，且会下到更低的山区。在追踪行程中遭遇非常频繁。"
+      },
+      "mitigations": [
+        {
+          "en": "Never run. Maintain eye contact. Do not crouch.",
+          "zh": "绝对不要跑。保持眼神接触。不要蹲下。"
+        },
+        {
+          "en": "Always stay with your guide. Solo hiking in puma territory in winter is risky.",
+          "zh": "始终跟随向导。冬季在美洲狮领地独自徒步是有风险的。"
+        }
+      ]
+    },
+    {
+      "type": "logistics_closures",
+      "severity": "medium",
+      "summary": {
+        "en": "Most 'Refugios' (hostels) and campsites are CLOSED in winter. Public transport buses cease operation.",
+        "zh": "大多数 'Refugios'（旅舍）和露营地在冬季关闭。公共交通巴士停止运营。"
+      },
+      "mitigations": [
+        {
+          "en": "You must stay in the few open hotels (e.g., Explora, Tierra) or arrange private logistics.",
+          "zh": "必须入住少数开放的酒店（如 Explora, Tierra）或安排私人后勤。"
+        },
+        {
+          "en": "Hiking the 'W' trek in winter often requires a mandatory hired guide by regulation.",
+          "zh": "根据规定，冬季徒步 'W' 线通常需要强制雇佣向导。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.cl.winter_gear",
+      "category": "gear_packing",
+      "appliesToSeasons": ["austral_winter"],
+      "items": [
+        {
+          "en": "Micro-spikes or Crampons (Trails are icy/packed snow).",
+          "zh": "微型冰爪或全齿冰爪（小径结冰/积雪压实）。"
+        },
+        {
+          "en": "Gaiters (To keep snow out of boots in deep drifts).",
+          "zh": "雪套（防止深雪灌入靴子）。"
+        },
+        {
+          "en": "Binoculars (Essential for spotting Pumas camouflage against rocks).",
+          "zh": "双筒望远镜（在岩石背景中发现伪装的美洲狮必不可少）。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.cl.wind",
+      "category": "weather",
+      "severity": "high",
+      "when": {
+        "always": true
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "Patagonian wind is legendary (up to 120km/h). In winter, this creates extreme wind chill. Secure all gear. Lean into the wind when walking.",
+          "zh": "巴塔哥尼亚的风是传奇级的（最高可达 120km/h）。在冬季，这会产生极端的风寒效应。固定好所有装备。行走时身体迎风倾斜。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check wind forecast (Windy.com)",
+              "zh": "查看风力预报 (Windy.com)"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["safety"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

@@ -237,21 +237,97 @@ export class ReadinessService {
     
     const lang = options?.lang || 'en';
     
-    const pack = await this.packStorage.findPackByDestination(destinationId);
+    // ========== 多级匹配策略 ==========
     
+    // 1. 精确 destinationId 匹配
+    let pack = await this.packStorage.findPackByDestination(destinationId);
     if (pack) {
+      this.logger.debug(`Found pack by exact destinationId: ${destinationId} -> ${pack.packId}`);
       return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
     }
 
-    // 如果没有找到 Pack，尝试从国家代码加载
-    const countryCode = destinationId.split('-')[0];
-    const packs = await this.packStorage.findPacksByCountry(countryCode);
-    
-    if (packs.length > 0) {
-      return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
+    // 2. 解析 destinationId，提取城市和地区信息
+    const parts = destinationId.split('-');
+    const countryCode = parts[0];
+    const cityOrRegion = parts.slice(1).join('-');
+
+    // 3. 城市名称匹配（如果 destinationId 包含城市信息）
+    if (cityOrRegion) {
+      // 尝试直接匹配城市名（不区分大小写）
+      pack = await this.packStorage.findPackByCity(cityOrRegion, countryCode);
+      if (pack) {
+        this.logger.debug(`Found pack by city: ${cityOrRegion} -> ${pack.packId}`);
+        return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+      }
+
+      // 尝试匹配城市名的变体（例如 "ROVANIEMI" vs "Rovaniemi"）
+      const cityNameVariants = [
+        cityOrRegion,
+        cityOrRegion.charAt(0).toUpperCase() + cityOrRegion.slice(1).toLowerCase(),
+        cityOrRegion.toLowerCase(),
+        cityOrRegion.toUpperCase(),
+      ];
+
+      for (const variant of cityNameVariants) {
+        pack = await this.packStorage.findPackByCity(variant, countryCode);
+        if (pack) {
+          this.logger.debug(`Found pack by city variant: ${variant} -> ${pack.packId}`);
+          return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+        }
+      }
     }
 
-    // 如果都没有，返回空结果
+    // 4. Region 匹配（如果 destinationId 包含 region 信息）
+    if (cityOrRegion) {
+      const regionPacks = await this.packStorage.findPacksByRegion(cityOrRegion);
+      if (regionPacks.length > 0) {
+        this.logger.debug(`Found ${regionPacks.length} pack(s) by region: ${cityOrRegion}`);
+        return this.readinessChecker.checkMultipleDestinations(regionPacks, enhancedContext, lang);
+      }
+
+      // 尝试 region 名称的变体
+      const regionVariants = [
+        cityOrRegion,
+        cityOrRegion.charAt(0).toUpperCase() + cityOrRegion.slice(1).toLowerCase(),
+        cityOrRegion.toLowerCase(),
+        cityOrRegion.toUpperCase(),
+      ];
+
+      for (const variant of regionVariants) {
+        const variantPacks = await this.packStorage.findPacksByRegion(variant);
+        if (variantPacks.length > 0) {
+          this.logger.debug(`Found ${variantPacks.length} pack(s) by region variant: ${variant}`);
+          return this.readinessChecker.checkMultipleDestinations(variantPacks, enhancedContext, lang);
+        }
+      }
+    }
+
+    // 5. 坐标匹配（如果提供了坐标）
+    if (options?.geoLat && options?.geoLng) {
+      pack = await this.packStorage.findNearestPack(
+        options.geoLat,
+        options.geoLng,
+        50 // 50km 阈值
+      );
+      if (pack) {
+        this.logger.debug(`Found pack by coordinates: (${options.geoLat}, ${options.geoLng}) -> ${pack.packId}`);
+        return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+      }
+    }
+
+    // 6. 国家代码匹配（降级策略）
+    if (countryCode) {
+      const packs = await this.packStorage.findPacksByCountry(countryCode);
+      if (packs.length > 0) {
+        this.logger.debug(`Found ${packs.length} pack(s) by country: ${countryCode}`);
+        // 如果有多个国家级别的 packs，返回所有（让规则引擎处理）
+        // 或者可以选择最通用的 pack（如果有优先级标记）
+        return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
+      }
+    }
+
+    // 7. 如果都没有找到，返回空结果
+    this.logger.warn(`No pack found for destination: ${destinationId}`);
     return {
       findings: [],
       summary: {

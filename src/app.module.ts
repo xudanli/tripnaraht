@@ -30,6 +30,7 @@ import { RagModule } from './rag/rag.module';
 import { AuthModule } from './auth/auth.module';
 import { ContactModule } from './contact/contact.module';
 import { SkillsModule } from './skills/skills.module';
+import { CitiesModule } from './cities/cities.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { SkillsModule } from './skills/skills.module';
     RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
     ContactModule, // 联系我们模块
     SkillsModule, // Skills 模块（能力颗粒层）
+    CitiesModule, // 城市模块
   ],
 })
 export class AppModule {}

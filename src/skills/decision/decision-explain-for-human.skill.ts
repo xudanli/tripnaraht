@@ -48,6 +48,15 @@ export interface DecisionExplainForHumanOutput extends SkillOutput {
     why: string;
     impact: string;
   }>;
+  /** 完整解释文本（用于向后兼容） */
+  explanation?: string;
+  /** 摘要文本（用于向后兼容） */
+  summary?: string;
+  /** 关键点列表（用于向后兼容） */
+  keyPoints?: Array<{
+    point: string;
+    category: string;
+  }>;
 }
 
 @Injectable()
@@ -109,6 +118,9 @@ export class DecisionExplainForHumanSkill implements Skill<DecisionExplainForHum
           },
           riskHighlights: [],
           tradeOffs: [],
+          explanation: '暂无决策记录',
+          summary: '暂无决策记录',
+          keyPoints: [],
         };
       }
 
@@ -130,10 +142,27 @@ export class DecisionExplainForHumanSkill implements Skill<DecisionExplainForHum
       // 5. 提取取舍
       const tradeOffs = this.extractTradeOffs(decisionLog);
 
+      // 生成完整解释和摘要（用于向后兼容）
+      const explanation = [
+        userFacingNarrative.abuSection,
+        userFacingNarrative.drdreSection,
+        userFacingNarrative.neptuneSection,
+      ].join('\n\n');
+
+      const summary = `本次决策共涉及 ${decisionLog.length} 条记录，${riskHighlights.length} 个风险点，${tradeOffs.length} 个取舍。`;
+
+      const keyPoints = riskHighlights.map(rh => ({
+        point: rh.explanation,
+        category: rh.severity,
+      }));
+
       return {
         userFacingNarrative,
         riskHighlights,
         tradeOffs,
+        explanation,
+        summary,
+        keyPoints,
       };
     } catch (error: any) {
       this.logger.error(`生成用户解释失败: ${error.message}`, error.stack);

@@ -1,0 +1,117 @@
+{
+  "packId": "pack.fi.saariselka",
+  "destinationId": "FI-SAARISELKA",
+  "displayName": {
+    "en": "Saariselkä Travel Readiness",
+    "zh": "萨利瑟尔卡旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "FI",
+    "region": "Lapland",
+    "city": "Saariselkä",
+    "lat": 68.4196,
+    "lng": 27.4116
+  },
+  "supportedSeasons": ["aurora_winter", "ski_season"],
+  "sources": [
+    {
+      "sourceId": "src.nationalparks.fi.urho",
+      "authority": "Metsähallitus (Urho Kekkonen National Park)",
+      "type": "html",
+      "title": {
+        "en": "Urho Kekkonen National Park Guide",
+        "zh": "乌尔霍·吉科宁国家公园指南"
+      },
+      "canonicalUrl": "https://www.nationalparks.fi/urhokekkonennp"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "terrain_getting_lost",
+      "severity": "medium",
+      "summary": {
+        "en": "Urho Kekkonen National Park is huge. While trails near Saariselkä are marked, snow can obscure them. Getting lost in -20°C is dangerous.",
+        "zh": "乌尔霍·吉科宁国家公园非常巨大。虽然萨利瑟尔卡附近的小径有标记，但积雪可能会掩盖它们。在 -20°C 下迷路是危险的。"
+      },
+      "mitigations": [
+        {
+          "en": "Stay on marked trails (maintained tracks).",
+          "zh": "停留在标记的小径（维护好的轨道）上。"
+        },
+        {
+          "en": "Download the '112 Suomi' app for emergency location sharing.",
+          "zh": "下载 '112 Suomi' 应用程序以便分享紧急位置。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.fi.saariselka.accommodation",
+      "category": "booking",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Glass Igloo booking (Kakslauttanen or similar) - Book 6-12 months ahead for peak season.",
+          "zh": "玻璃冰屋预订（Kakslauttanen 或类似）- 旺季需提前 6-12 个月预订。"
+        },
+        {
+          "en": "Transfer arrangement (Igloo resorts are often far from the bus station/airport).",
+          "zh": "接送安排（冰屋度假村通常距离巴士站/机场较远）。"
+        }
+      ]
+    },
+    {
+      "id": "chk.fi.saariselka.activity",
+      "category": "gear_packing",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Ski goggles (Essential for the 1.2km toboggan run to prevent snow blindness/wind tears).",
+          "zh": "滑雪镜（对于 1.2 公里的雪橇滑道至关重要，可防止雪盲/风泪）。"
+        },
+        {
+          "en": "Helmet (Recommended for tobogganing, the track is fast/icy).",
+          "zh": "头盔（推荐用于滑雪橇，赛道很快/结冰）。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.fi.toboggan.safety",
+      "category": "safety_hazards",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["toboggan", "sledding"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Saariselkä has the longest toboggan run in Northern Europe. It is fast. Do not stop in the middle of the track. Keep distance from the person in front.",
+          "zh": "萨利瑟尔卡拥有北欧最长的雪橇滑道。速度很快。不要在滑道中间停下来。与前人保持距离。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check toboggan run conditions",
+              "zh": "检查雪橇滑道状况"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["activity"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

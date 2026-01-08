@@ -1,0 +1,109 @@
+{
+  "packId": "pack.no.alta",
+  "destinationId": "NO-ALTA",
+  "displayName": {
+    "en": "Alta Travel Readiness",
+    "zh": "阿尔塔旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Finnmark",
+    "city": "Alta",
+    "lat": 69.9689,
+    "lng": 23.2717
+  },
+  "supportedSeasons": ["aurora_winter", "midnight_sun"],
+  "sources": [
+    {
+      "sourceId": "src.visitalta.no",
+      "authority": "Visit Alta",
+      "type": "html",
+      "title": {
+        "en": "Official Alta Tourism",
+        "zh": "阿尔塔官方旅游局"
+      },
+      "canonicalUrl": "https://www.visitalta.no/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_stable_cold",
+      "severity": "high",
+      "summary": {
+        "en": "Alta has a more stable, dry climate than Tromsø, which is good for Aurora but means colder temperatures (often -15°C to -25°C).",
+        "zh": "阿尔塔的气候比特罗姆瑟更稳定、干燥，这有利于极光观测，但也意味着更低的气温（通常在 -15°C 到 -25°C）。"
+      },
+      "mitigations": [
+        {
+          "en": "Pack heavy wool layers.",
+          "zh": "打包厚羊毛层。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.no.alta.sorrisniva",
+      "category": "booking",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Book Sorrisniva Igloo Hotel overnight stay well in advance.",
+          "zh": "提前预订 Sorrisniva 冰酒店的过夜住宿。"
+        },
+        {
+          "en": "Pack wool long johns and a hat for sleeping (sleeping bags are provided, but head stays out).",
+          "zh": "打包羊毛长裤和睡帽（酒店提供睡袋，但头露在外面）。"
+        }
+      ]
+    },
+    {
+      "id": "chk.no.alta.museum",
+      "category": "culture",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Note: Outdoor UNESCO Rock Carvings are covered in snow in winter. Only the museum indoor exhibition is open.",
+          "zh": "注意：户外的 UNESCO 岩画在冬季被雪覆盖。只有博物馆室内展览开放。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.no.alta.aurora.cathedral",
+      "category": "culture",
+      "severity": "info",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.poiCanonicalTypes",
+              "values": ["CHURCH", "CATHEDRAL"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "The Northern Lights Cathedral is a modern architectural icon. Check opening hours as they vary for tourists due to church services.",
+          "zh": "北极光大教堂是现代建筑的标志。请查看开放时间，因教堂服务，对游客的开放时间会有所不同。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Check Cathedral visitor hours",
+              "zh": "查看大教堂游客参观时间"
+            },
+            "dueOffsetDays": 0,
+            "tags": ["sightseeing"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

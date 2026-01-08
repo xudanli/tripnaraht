@@ -9,12 +9,13 @@
  * 输出：abuResult / drdreResult / neptuneResult + finalPlan + decisionSummary
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { WorldModelContext, RoutePlanDraft } from '../../trips/decision/shared/world-model.types';
 import { StrategyOrchestratorService } from '../../trips/decision/services/strategy-orchestrator.service';
 import { WorldBuildContextSkill } from '../world/world-build-context.skill';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
 
 export interface DecisionRunThreeGuardiansInput extends SkillInput {
   /** 行程 ID（如果有） */
@@ -59,6 +60,8 @@ export interface DecisionRunThreeGuardiansOutput extends SkillOutput {
       reason: string;
     }>;
   };
+  /** 所有决策日志 */
+  allLogs: DecisionLogEntry[];
 }
 
 @Injectable()
@@ -73,9 +76,9 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
   };
 
   constructor(
-    private readonly strategyOrchestrator: StrategyOrchestratorService,
     private readonly worldBuildContext: WorldBuildContextSkill,
     private readonly prisma: PrismaService,
+    @Optional() private readonly strategyOrchestrator?: StrategyOrchestratorService,
   ) {}
 
   async execute(input: DecisionRunThreeGuardiansInput): Promise<DecisionRunThreeGuardiansOutput> {
@@ -96,6 +99,9 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
       }
 
       // 2. 执行策略编排
+      if (!this.strategyOrchestrator) {
+        throw new Error('StrategyOrchestratorService 未可用，请确保 DecisionModule 已正确加载');
+      }
       const result = await this.strategyOrchestrator.run(world, input.planCandidate);
 
       // 3. 分离三个守护者的结果
@@ -123,16 +129,16 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
       };
 
       const drdreResult = {
-        adjusted: drdreLogs.some(log => log.action === 'ADJUST'),
-        adjustedPlan: result.plan,
+        adjusted: drdreLogs.some((log: DecisionLogEntry) => log.action === 'ADJUST'),
+        adjustedPlan: result.plan || undefined,
         changes: drdreLogs
-          .filter(log => log.action === 'ADJUST')
-          .map(log => ({
+          .filter((log: DecisionLogEntry) => log.action === 'ADJUST')
+          .map((log: DecisionLogEntry) => ({
             type: log.action,
             explanation: log.explanation,
             metadata: log.evidenceRefs ? { evidenceRefs: log.evidenceRefs } : undefined,
           })),
-        decisionLog: drdreLogs.map(log => ({
+        decisionLog: drdreLogs.map((log: DecisionLogEntry) => ({
           persona: log.persona,
           action: log.action,
           explanation: log.explanation,
@@ -142,17 +148,17 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
       };
 
       const neptuneResult = {
-        repaired: neptuneLogs.some(log => log.action === 'REPLACE'),
-        repairedPlan: result.plan,
+        repaired: neptuneLogs.some((log: DecisionLogEntry) => log.action === 'REPLACE'),
+        repairedPlan: result.plan || undefined,
         replacements: neptuneLogs
-          .filter(log => log.action === 'REPLACE')
-          .map(log => ({
+          .filter((log: DecisionLogEntry) => log.action === 'REPLACE')
+          .map((log: DecisionLogEntry) => ({
             from: log.evidenceRefs?.[0],
             to: log.evidenceRefs?.[1],
             explanation: log.explanation,
             metadata: log.evidenceRefs ? { evidenceRefs: log.evidenceRefs } : undefined,
           })),
-        decisionLog: neptuneLogs.map(log => ({
+        decisionLog: neptuneLogs.map((log: DecisionLogEntry) => ({
           persona: log.persona,
           action: log.action,
           explanation: log.explanation,
@@ -183,6 +189,7 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
         neptuneResult,
         finalPlan: result.plan,
         decisionSummary,
+        allLogs: result.logs,
       };
     } catch (error: any) {
       this.logger.error(`执行三人格策略失败: ${error.message}`, error.stack);
@@ -192,14 +199,14 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
 
   private generateSummary(result: any): string {
     if (!result.allowed) {
-      return `Abu 拒绝了计划：${result.logs.find(log => log.persona === 'ABU' && log.action === 'REJECT')?.explanation || '安全检查未通过'}`;
+      return `Abu 拒绝了计划：${result.logs.find((log: DecisionLogEntry) => log.persona === 'ABU' && log.action === 'REJECT')?.explanation || '安全检查未通过'}`;
     }
 
     const actions = [];
-    if (result.logs.some(log => log.persona === 'DR_DRE' && log.action === 'ADJUST')) {
+    if (result.logs.some((log: DecisionLogEntry) => log.persona === 'DR_DRE' && log.action === 'ADJUST')) {
       actions.push('Dr.Dre 调整了行程节奏');
     }
-    if (result.logs.some(log => log.persona === 'NEPTUNE' && log.action === 'REPLACE')) {
+    if (result.logs.some((log: DecisionLogEntry) => log.persona === 'NEPTUNE' && log.action === 'REPLACE')) {
       actions.push('Neptune 替换了部分路段');
     }
     if (actions.length === 0) {

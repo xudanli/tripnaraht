@@ -1,0 +1,22 @@
+{
+  "packId": "pack.no.senja",
+  "destinationId": "NO-SENJA",
+  "displayName": {
+    "en": "Senja Travel Readiness",
+    "zh": "塞尼亚旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-01-08T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Troms",
+    "city": "Senja",
+    "lat": 69.3000,
+    "lng": 17.5000
+  },
+  "supportedSeasons": ["summer", "shoulder"],
+  "sources": [],
+  "hazards": [],
+  "checklists": [],
+  "rules": []
+}

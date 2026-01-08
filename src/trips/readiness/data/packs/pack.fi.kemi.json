@@ -1,0 +1,163 @@
+{
+  "packId": "pack.fi.kemi",
+  "destinationId": "FI-KEMI",
+  "displayName": {
+    "en": "Kemi Travel Readiness",
+    "zh": "凯米旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "FI",
+    "region": "Sea Lapland",
+    "city": "Kemi",
+    "lat": 65.7350,
+    "lng": 24.5658
+  },
+  "supportedSeasons": ["icebreaker_winter", "midnight_sun"],
+  "sources": [
+    {
+      "sourceId": "src.experience365.fi",
+      "authority": "Kemi Tourism (Experience365)",
+      "type": "html",
+      "title": {
+        "en": "Icebreaker Sampo & SnowCastle Info",
+        "zh": "桑普号破冰船与冰雪城堡信息"
+      },
+      "canonicalUrl": "https://experience365.fi/"
+    },
+    {
+      "sourceId": "src.vr.fi",
+      "authority": "VR (Finnish Railways)",
+      "type": "html",
+      "title": {
+        "en": "Train Schedules (Rovaniemi-Kemi)",
+        "zh": "火车时刻表（罗瓦涅米-凯米）"
+      },
+      "canonicalUrl": "https://www.vr.fi/en"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "weather_wind_chill",
+      "severity": "high",
+      "summary": {
+        "en": "Kemi is located on the coast of the Bothnian Bay. The wind coming off the frozen sea makes the 'real feel' temperature significantly colder than inland Lapland.",
+        "zh": "凯米位于波的尼亚湾沿岸。从冰冻海面吹来的风使得体感温度比内陆拉普兰要冷得多。"
+      },
+      "mitigations": [
+        {
+          "en": "Windproof outer layers are non-negotiable.",
+          "zh": "防风外层是绝对不可协商的必须品。"
+        },
+        {
+          "en": "Cover all exposed skin to prevent windburn.",
+          "zh": "遮盖所有裸露的皮肤以防风灼伤。"
+        }
+      ]
+    },
+    {
+      "type": "terrain_sea_ice",
+      "severity": "critical",
+      "summary": {
+        "en": "Walking on the frozen sea is popular, but active shipping lanes exist (kept open by icebreakers). The ice near these lanes is unstable and dangerous.",
+        "zh": "在冰冻的海面上行走很受欢迎，但存在活跃的航道（由破冰船保持开通）。这些航道附近的冰层不稳定且危险。"
+      },
+      "mitigations": [
+        {
+          "en": "Only walk on marked ice tracks or with a guide.",
+          "zh": "只在标记的冰道上行走或跟随向导。"
+        },
+        {
+          "en": "Stay far away from open water channels created by ships.",
+          "zh": "远离船只开辟的开阔水道。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.fi.kemi.icebreaker",
+      "category": "booking",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Book Icebreaker Cruise (Sampo or Arktis) 3-4 months ahead.",
+          "zh": "提前 3-4 个月预订破冰船巡游（桑普号 Sampo 或 Arktis 号）。"
+        },
+        {
+          "en": "Check height requirement for ice floating (usually min 145cm).",
+          "zh": "检查冰海漂浮的身高要求（通常最低 145cm）。"
+        },
+        {
+          "en": "Train tickets Rovaniemi <-> Kemi (VR trains are reliable but schedule is fixed).",
+          "zh": "罗瓦涅米 <-> 凯米的火车票（VR 火车很可靠，但时刻表是固定的）。"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.fi.kemi.floating.restrictions",
+      "category": "safety_hazards",
+      "severity": "blocker",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["ice_floating", "icebreaker"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Safety survival suits for ice floating have minimum height requirements (typically 145cm / 4ft 9in) for the seal to work properly. Small children cannot float in the sea.",
+          "zh": "冰海漂浮的安全救生服有最低身高要求（通常为 145cm），以确保密封性正常工作。小孩不能在海里漂浮。"
+        },
+        "askUser": [
+          {
+            "en": "Does everyone in your party meet the 145cm height requirement?",
+            "zh": "您团队中的每个人都达到 145cm 的身高要求了吗？"
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.fi.kemi.snowcastle.season",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["snowcastle", "lumilinna"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "The actual 'SnowCastle' (made of snow/ice) is built annually and usually opens late Jan to April. However, the 'SnowExperience365' (indoor cold room) and Glass Villas are open year-round.",
+          "zh": "真正的\"冰雪城堡\"（由雪/冰制成）每年建造一次，通常在 1 月底至 4 月开放。但是，\"SnowExperience365\"（室内冷室）和玻璃别墅全年开放。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Verify SnowCastle opening date if visiting in Jan",
+              "zh": "如果在 1 月访问，请核实冰雪城堡的开放日期"
+            },
+            "dueOffsetDays": -14,
+            "tags": ["planning"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

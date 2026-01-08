@@ -1,0 +1,78 @@
+{
+  "sourcePackId": "pack.fi.rovaniemi",
+  "destinationName": "Rovaniemi",
+  "derivedPOIs": [
+    {
+      "poiId": "poi.fi.santa_claus_village",
+      "names": {
+        "en": "Santa Claus Village",
+        "zh": "圣诞老人村"
+      },
+      "canonicalType": "ATTRACTION_THEME_PARK",
+      "derivedFrom": {
+        "ruleId": "rule.fi.booking.christmas",
+        "hazardType": "logistics_crowd",
+        "context": "December is peak season. Activities sell out 3-6 months in advance."
+      },
+      "riskLevel": "high",
+      "actionItem": {
+        "en": "Book husky/reindeer rides and meet-and-greets months ahead. Expect long taxi queues.",
+        "zh": "提前数月预订哈士奇/驯鹿雪橇和见面会。做好排队等出租车的准备。"
+      }
+    },
+    {
+      "poiId": "poi.fi.ounasvaara",
+      "names": {
+        "en": "Ounasvaara Hill / Arctic Garden",
+        "zh": "欧纳斯瓦拉山 / 北极花园"
+      },
+      "canonicalType": "VIEWPOINT_AURORA",
+      "derivedFrom": {
+        "ruleId": "rule.fi.aurora.expectations",
+        "hazardType": "environment_light_pollution",
+        "context": "Rovaniemi creates light pollution. Move away from city center for better Aurora chances."
+      },
+      "riskLevel": "low",
+      "actionItem": {
+        "en": "Walk here from the city center for darker skies to spot Northern Lights.",
+        "zh": "从市中心步行至此，寻找更暗的天空以观测北极光。"
+      }
+    },
+    {
+      "poiId": "poi.fi.rovaniemi_center",
+      "names": {
+        "en": "Rovaniemi City Center (Lordi's Square)",
+        "zh": "罗瓦涅米市中心 (洛迪广场)"
+      },
+      "canonicalType": "CITY_CENTER",
+      "derivedFrom": {
+        "ruleId": "rule.fi.legal.reflector",
+        "hazardType": "slippery_conditions",
+        "context": "Sidewalks are packed ice. Pedestrians must use reflectors by law."
+      },
+      "riskLevel": "medium",
+      "actionItem": {
+        "en": "Wear anti-slip grips on shoes. Hang a reflector on your coat visible to cars.",
+        "zh": "鞋上穿防滑钉。在外套上悬挂对车辆可见的反光件。"
+      }
+    },
+    {
+      "poiId": "poi.fi.alko_rovaniemi",
+      "names": {
+        "en": "Alko Rovaniemi",
+        "zh": "Alko 酒类专卖店"
+      },
+      "canonicalType": "SHOP_LIQUOR",
+      "derivedFrom": {
+        "ruleId": "rule.fi.alcohol.sales",
+        "hazardType": "logistics_supply",
+        "context": "Strong alcohol >5.5% only sold in monopoly stores."
+      },
+      "riskLevel": "low",
+      "actionItem": {
+        "en": "Check opening hours. Closed on Sundays and holidays.",
+        "zh": "检查营业时间。周日及节假日休息。"
+      }
+    }
+  ]
+}

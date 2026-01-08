@@ -1,0 +1,182 @@
+{
+  "packId": "pack.no.tromso",
+  "destinationId": "NO-TROMSO",
+  "displayName": {
+    "en": "Tromsø Travel Readiness",
+    "zh": "特罗姆瑟旅行准备度"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2025-01-20T00:00:00Z",
+  "geo": {
+    "countryCode": "NO",
+    "region": "Troms",
+    "city": "Tromsø",
+    "lat": 69.6492,
+    "lng": 18.9553
+  },
+  "supportedSeasons": ["northern_lights_winter", "midnight_sun", "polar_night"],
+  "sources": [
+    {
+      "sourceId": "src.visittromso.no",
+      "authority": "Visit Tromsø",
+      "type": "html",
+      "title": {
+        "en": "Official Travel Guide to Tromsø",
+        "zh": "特罗姆瑟官方旅游指南"
+      },
+      "canonicalUrl": "https://www.visittromso.no/"
+    },
+    {
+      "sourceId": "src.tromsfylkestrafikk.no",
+      "authority": "Troms Fylkestrafikk",
+      "type": "html",
+      "title": {
+        "en": "Bus & Ferry Timetables",
+        "zh": "公共巴士与渡轮时刻表"
+      },
+      "canonicalUrl": "https://fylkestrafikk.no/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "slippery_urban",
+      "severity": "high",
+      "summary": {
+        "en": "Tromsø is built on hills. In winter, sidewalks turn into sheets of solid ice. Falls and broken bones are very common among tourists.",
+        "zh": "特罗姆瑟建在山坡上。冬季，人行道会变成坚硬的冰层。游客滑倒和骨折的情况非常普遍。"
+      },
+      "mitigations": [
+        {
+          "en": "Wear 'brodder' (spikes/crampons) on your shoes at all times in the city.",
+          "zh": "在城市中行走时，请务必时刻在鞋上穿戴 'brodder'（防滑冰爪）。"
+        },
+        {
+          "en": "Walk like a penguin.",
+          "zh": "像企鹅一样走路（重心前倾）。"
+        }
+      ]
+    },
+    {
+      "type": "weather_marine",
+      "severity": "medium",
+      "summary": {
+        "en": "Coastal weather is unpredictable. Rain can wash away snow, and cloudy skies often block the Aurora in the city.",
+        "zh": "沿海天气不可预测。雨水可能会冲走积雪，多云的天空经常在城市内遮挡极光。"
+      },
+      "mitigations": [
+        {
+          "en": "Book 'Aurora Chase' tours that drive inland (to Finland border) for clear skies.",
+          "zh": "预订\"追光团\"，他们会开车前往内陆（至芬兰边境）寻找晴朗的天空。"
+        },
+        {
+          "en": "Be prepared for tour cancellations due to storms.",
+          "zh": "做好因风暴导致旅游团取消的心理准备。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "chk.no.tromso.apps",
+      "category": "tools",
+      "appliesToSeasons": ["all"],
+      "items": [
+        {
+          "en": "Troms Billett (App for buying bus tickets - cheaper than on board)",
+          "zh": "Troms Billett（购买巴士票的应用 - 比上车买票便宜）"
+        },
+        {
+          "en": "Troms Reise (App for bus schedules and real-time tracking)",
+          "zh": "Troms Reise（巴士时刻表和实时追踪应用）"
+        },
+        {
+          "en": "EasyPark (For parking if renting a car - parking is expensive)",
+          "zh": "EasyPark（如果租车，用于停车支付 - 停车费很贵）"
+        }
+      ]
+    },
+    {
+      "id": "chk.no.tromso.activities",
+      "category": "booking",
+      "appliesToSeasons": ["winter"],
+      "items": [
+        {
+          "en": "Whale Watching tour (Nov-Jan) - Book 1-2 months ahead",
+          "zh": "观鲸团（11月-1月）- 提前 1-2 个月预订"
+        },
+        {
+          "en": "Dog Sledding - High demand, book early",
+          "zh": "狗拉雪橇 - 需求量大，尽早预订"
+        },
+        {
+          "en": "Fjellheisen Cable Car ticket (can buy on site, but check wind status)",
+          "zh": "Fjellheisen 缆车票（可现场购买，但需先查看风力状况）"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.no.tromso.whale.season",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "any": [
+          {
+            "containsAny": {
+              "path": "itinerary.activities",
+              "values": ["whale_watching", "orca", "wildlife"]
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Whales (Orcas and Humpbacks) migrate. The season is typically late Oct to end of Jan. By February, they are usually gone further north. Tours often involve 2-3 hours of boat travel each way.",
+          "zh": "鲸鱼（虎鲸和座头鲸）会迁徙。季节通常是 10 月下旬到 1 月底。到了 2 月，它们通常已经向更北处游去。观鲸团通常包含单程 2-3 小时的船程。"
+        },
+        "askUser": [
+          {
+            "en": "Is your trip dates within the whale season (Nov-Jan)?",
+            "zh": "您的旅行日期在观鲸季节（11月-1月）内吗？"
+          }
+        ]
+      },
+      "evidence": []
+    },
+    {
+      "id": "rule.no.tromso.driving.tunnels",
+      "category": "driving_conditions",
+      "severity": "medium",
+      "when": {
+        "any": [
+          {
+            "eq": {
+              "path": "itinerary.transportType",
+              "value": "rental_car"
+            }
+          }
+        ]
+      },
+      "then": {
+        "level": "info",
+        "message": {
+          "en": "Tromsø has a complex system of underground tunnels WITH roundabouts inside. GPS can lose signal inside. Know your exit beforehand.",
+          "zh": "特罗姆瑟拥有复杂的地下隧道系统，隧道内部甚至有环岛。GPS 在内部可能会丢失信号。请提前知道您的出口。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Study the tunnel map if driving",
+              "zh": "如果开车，请研究隧道地图"
+            },
+            "dueOffsetDays": -1,
+            "tags": ["driving"]
+          }
+        ]
+      },
+      "evidence": []
+    }
+  ]
+}

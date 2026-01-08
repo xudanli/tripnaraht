@@ -70,10 +70,14 @@ import { PlannerAgentService } from './orchestration/planner-agent.service';
 import { NarratorAgentService } from './orchestration/narrator-agent.service';
 import { LangGraphOrchestratorService } from './orchestration/langgraph-orchestrator.service';
 import { ReadinessAgentService } from './readiness/readiness-agent.service';
+import { ApprovalService } from './services/approval.service';
+import { AgentResumeService } from './services/agent-resume.service';
+import { ApprovalController } from './controllers/approval.controller';
+import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.scheduler';
 
 @Module({
   imports: [TransportModule, ReadinessModule, PlacesModuleOrLite, RouteDirectionsModule, MemoryModule, LlmModule],
-  controllers: [DecisionController, DecisionStatsController],
+  controllers: [DecisionController, DecisionStatsController, ApprovalController],
   providers: [
     TripDecisionEngineService,
     SenseToolsAdapter,
@@ -119,6 +123,9 @@ import { ReadinessAgentService } from './readiness/readiness-agent.service';
     NarratorAgentService,
     LangGraphOrchestratorService,
     ReadinessAgentService,
+    ApprovalService,
+    AgentResumeService,
+    ApprovalCleanupScheduler,
   ],
   exports: [
     TripDecisionEngineService,
@@ -164,6 +171,8 @@ import { ReadinessAgentService } from './readiness/readiness-agent.service';
     NarratorAgentService,
     LangGraphOrchestratorService,
     ReadinessAgentService,
+    ApprovalService,
+    AgentResumeService,
   ],
 })
 export class DecisionModule {}

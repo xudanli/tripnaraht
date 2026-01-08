@@ -8,7 +8,7 @@
  * 输出：scores + warnings[] + suggestedFixes[]
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripMetricsService } from '../../trips/services/trip-metrics.service';
@@ -58,8 +58,8 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tripMetricsService: TripMetricsService,
-    private readonly tripConflictsService: TripConflictsService,
+    @Optional() private readonly tripMetricsService?: TripMetricsService,
+    @Optional() private readonly tripConflictsService?: TripConflictsService,
   ) {}
 
   async execute(input: TripQuickEvaluateInput): Promise<TripQuickEvaluateOutput> {
@@ -93,8 +93,29 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
       }
 
       // 2. 获取指标和冲突
-      const metrics = await this.tripMetricsService.getTripMetrics(input.tripId);
-      const conflicts = await this.tripConflictsService.getConflicts(input.tripId);
+      let metrics: any = null;
+      let conflicts: any = { conflicts: [], total: 0 };
+
+      if (this.tripMetricsService) {
+        try {
+          metrics = await this.tripMetricsService.getTripMetrics(input.tripId);
+        } catch (error: any) {
+          this.logger.warn(`获取行程指标失败: ${error.message}`);
+        }
+      } else {
+        this.logger.warn('TripMetricsService 未可用，使用默认值');
+      }
+
+      if (this.tripConflictsService) {
+        try {
+          conflicts = await this.tripConflictsService.getConflicts(input.tripId);
+        } catch (error: any) {
+          this.logger.warn(`获取行程冲突失败: ${error.message}`);
+          conflicts = { conflicts: [], total: 0 };
+        }
+      } else {
+        this.logger.warn('TripConflictsService 未可用，使用默认值');
+      }
 
       // 3. 计算评分
       const scores = this.calculateScores(trip, metrics, conflicts);
@@ -118,16 +139,20 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
 
   private calculateScores(trip: any, metrics: any, conflicts: any): TripQuickEvaluateOutput['scores'] {
     // 1. 安全性评分（基于冲突的严重程度）
-    const highSeverityConflicts = conflicts.conflicts.filter((c: any) => c.severity === 'HIGH').length;
-    const safetyScore = Math.max(0, 100 - highSeverityConflicts * 20 - conflicts.total * 5);
+    const highSeverityConflicts = conflicts?.conflicts?.filter((c: any) => c.severity === 'HIGH').length || 0;
+    const totalConflicts = conflicts?.total || 0;
+    const safetyScore = Math.max(0, 100 - highSeverityConflicts * 20 - totalConflicts * 5);
 
     // 2. 节奏评分（基于疲劳指数和缓冲时间）
-    const avgFatigue = metrics.summary.totalFatigue / (trip.TripDay.length || 1);
-    const pacingScore = Math.max(0, 100 - (avgFatigue / 100) * 50 - (metrics.summary.totalBuffer < 60 ? 20 : 0));
+    const totalFatigue = metrics?.summary?.totalFatigue || 0;
+    const totalBuffer = metrics?.summary?.totalBuffer || 0;
+    const dayCount = trip.TripDay?.length || 1;
+    const avgFatigue = totalFatigue / dayCount;
+    const pacingScore = Math.max(0, 100 - (avgFatigue / 100) * 50 - (totalBuffer < 60 ? 20 : 0));
 
     // 3. 可执行性评分（基于时间冲突和缓冲不足）
-    const timeConflicts = conflicts.conflicts.filter((c: any) => c.type === 'TIME_CONFLICT').length;
-    const bufferIssues = conflicts.conflicts.filter((c: any) => c.type === 'BUFFER_INSUFFICIENT').length;
+    const timeConflicts = conflicts?.conflicts?.filter((c: any) => c.type === 'TIME_CONFLICT').length || 0;
+    const bufferIssues = conflicts?.conflicts?.filter((c: any) => c.type === 'BUFFER_INSUFFICIENT').length || 0;
     const executabilityScore = Math.max(0, 100 - timeConflicts * 30 - bufferIssues * 10);
 
     // 4. 多样性评分（基于活动类型和分布）
@@ -146,7 +171,14 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
     const categories = new Set<string>();
     let totalActivities = 0;
 
+    if (!trip?.TripDay || !Array.isArray(trip.TripDay)) {
+      return 50; // 默认中等多样性
+    }
+
     for (const day of trip.TripDay) {
+      if (!day?.ItineraryItem || !Array.isArray(day.ItineraryItem)) {
+        continue;
+      }
       for (const item of day.ItineraryItem) {
         totalActivities++;
         if (item.Place?.category) {
@@ -173,55 +205,64 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
     const warnings: TripQuickEvaluateOutput['warnings'] = [];
 
     // 1. 从冲突中提取警告
-    for (const conflict of conflicts.conflicts) {
-      warnings.push({
-        type: conflict.type,
-        severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
-        message: conflict.description,
-        affectedDays: conflict.affectedDays,
-        affectedItemIds: conflict.affectedItemIds,
-      });
-    }
-
-    // 2. 检测连续行车时间过长
-    for (let i = 0; i < trip.TripDay.length - 1; i++) {
-      const day1 = trip.TripDay[i];
-      const day2 = trip.TripDay[i + 1];
-
-      const day1Metrics = metrics.days?.find((d: any) => d.date === DateTime.fromJSDate(day1.date).toISODate());
-      const day2Metrics = metrics.days?.find((d: any) => d.date === DateTime.fromJSDate(day2.date).toISODate());
-      const day1Drive = day1Metrics?.metrics?.drive || 0;
-      const day2Drive = day2Metrics?.metrics?.drive || 0;
-
-      if (day1Drive + day2Drive > 480) { // 超过 8 小时
+    if (conflicts?.conflicts && Array.isArray(conflicts.conflicts)) {
+      for (const conflict of conflicts.conflicts) {
         warnings.push({
-          type: 'CONSECUTIVE_LONG_DRIVE',
-          severity: 'high',
-          message: `D${i + 1} 与 D${i + 2} 总行车时长过长（${Math.round((day1Drive + day2Drive) / 60)} 小时），建议拆分或增加休息`,
-          affectedDays: [
-            DateTime.fromJSDate(day1.date).toISODate() || '',
-            DateTime.fromJSDate(day2.date).toISODate() || '',
-          ],
+          type: conflict.type || 'UNKNOWN',
+          severity: (conflict.severity?.toLowerCase() || 'low') as 'high' | 'medium' | 'low',
+          message: conflict.description || '未知冲突',
+          affectedDays: conflict.affectedDays,
+          affectedItemIds: conflict.affectedItemIds,
         });
       }
     }
 
-    // 3. 检测某日行程全是 transit
-    for (let i = 0; i < trip.TripDay.length; i++) {
-      const day = trip.TripDay[i];
-      const allTransit = day.ItineraryItem.every((item: any) => {
-        const metadata = item.Place?.metadata as any;
-        return metadata?.type === 'transit' || item.Place?.category === 'TRANSIT';
-      });
+    // 2. 检测连续行车时间过长
+    if (metrics?.days && trip.TripDay?.length > 1) {
+      for (let i = 0; i < trip.TripDay.length - 1; i++) {
+        const day1 = trip.TripDay[i];
+        const day2 = trip.TripDay[i + 1];
 
-      if (allTransit && day.ItineraryItem.length > 0) {
-        warnings.push({
-          type: 'ALL_TRANSIT_DAY',
-          severity: 'medium',
-          message: `D${i + 1} 行程全是中转/交通，没有实际游览活动`,
-          affectedDays: [DateTime.fromJSDate(day.date).toISODate() || ''],
-          affectedItemIds: day.ItineraryItem.map((item: any) => item.id),
+        const day1Metrics = metrics.days.find((d: any) => d.date === DateTime.fromJSDate(day1.date).toISODate());
+        const day2Metrics = metrics.days.find((d: any) => d.date === DateTime.fromJSDate(day2.date).toISODate());
+        const day1Drive = day1Metrics?.metrics?.drive || 0;
+        const day2Drive = day2Metrics?.metrics?.drive || 0;
+
+        if (day1Drive + day2Drive > 480) { // 超过 8 小时
+          warnings.push({
+            type: 'CONSECUTIVE_LONG_DRIVE',
+            severity: 'high',
+            message: `D${i + 1} 与 D${i + 2} 总行车时长过长（${Math.round((day1Drive + day2Drive) / 60)} 小时），建议拆分或增加休息`,
+            affectedDays: [
+              DateTime.fromJSDate(day1.date).toISODate() || '',
+              DateTime.fromJSDate(day2.date).toISODate() || '',
+            ],
+          });
+        }
+      }
+    }
+
+    // 3. 检测某日行程全是 transit
+    if (trip?.TripDay && Array.isArray(trip.TripDay)) {
+      for (let i = 0; i < trip.TripDay.length; i++) {
+        const day = trip.TripDay[i];
+        if (!day?.ItineraryItem || !Array.isArray(day.ItineraryItem) || day.ItineraryItem.length === 0) {
+          continue;
+        }
+        const allTransit = day.ItineraryItem.every((item: any) => {
+          const metadata = item.Place?.metadata as any;
+          return metadata?.type === 'transit' || item.Place?.category === 'TRANSIT';
         });
+
+        if (allTransit) {
+          warnings.push({
+            type: 'ALL_TRANSIT_DAY',
+            severity: 'medium',
+            message: `D${i + 1} 行程全是中转/交通，没有实际游览活动`,
+            affectedDays: [DateTime.fromJSDate(day.date).toISODate() || ''],
+            affectedItemIds: day.ItineraryItem.map((item: any) => item.id).filter((id: any) => id),
+          });
+        }
       }
     }
 

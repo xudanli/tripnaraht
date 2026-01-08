@@ -6,6 +6,7 @@ import { CreateItineraryItemDto } from './dto/create-itinerary-item.dto';
 import { UpdateItineraryItemDto } from './dto/update-itinerary-item.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('itinerary-items')
 @Controller('itinerary-items')
@@ -47,6 +48,7 @@ export class ItineraryItemsController {
     }
   }
 
+  @Public()
   @Get()
   @ApiOperation({ 
     summary: '获取所有行程项',
@@ -70,6 +72,7 @@ export class ItineraryItemsController {
     return successResponse(items);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ 
     summary: '获取单个行程项详情',
@@ -98,10 +101,17 @@ export class ItineraryItemsController {
     }
   }
 
+  @Public()
   @Patch(':id')
   @ApiOperation({ 
-    summary: '更新行程项',
-    description: '更新行程项信息。如果更新了时间，系统会重新校验营业时间。'
+    summary: '更新行程项（智能时间调整）',
+    description: `更新行程项信息。如果更新了开始时间，系统会：
+1. 根据前一个行程项的位置和当前行程项的位置计算实际距离
+2. 根据距离自动选择合适的交通方式（< 2km 步行，2-50km 驾车，> 50km 公共交通）
+3. 使用地图API计算实际的旅行时间
+4. 自动调整后续行程项的时间，确保时间安排合理
+5. 如果时间不合理（早于计算出的时间超过30分钟），会给出警告
+6. 重新校验营业时间`
   })
   @ApiParam({ name: 'id', description: '行程项 ID (UUID)' })
   @ApiResponse({ 
