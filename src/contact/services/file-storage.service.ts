@@ -1,5 +1,5 @@
 // src/contact/services/file-storage.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -18,9 +18,9 @@ export class FileStorageService {
   private readonly logger = new Logger(FileStorageService.name);
   private readonly uploadDir: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 从环境变量获取上传目录，默认为 uploads/contact
-    this.uploadDir = this.configService.get<string>('CONTACT_UPLOAD_DIR') || 
+    this.uploadDir = this.configService?.get<string>('CONTACT_UPLOAD_DIR') || 
                      join(process.cwd(), 'uploads', 'contact');
     
     // 确保上传目录存在

@@ -14,6 +14,8 @@ import { INarratorAgent, LangGraphState } from './langgraph-orchestrator.interfa
 import { TripNaraCoreToolOutput } from '../tools/tripnara-core-tool.interface';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
+import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
+import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage } from '../../../agent/context-engine/utils/langgraph-context-integration';
 
 @Injectable()
 export class NarratorAgentService implements INarratorAgent {
@@ -22,6 +24,7 @@ export class NarratorAgentService implements INarratorAgent {
 
   constructor(
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly contextEngineer?: ContextEngineerService,
   ) {
     // 检查是否启用 LLM
     // 检查是否有 LLM 配置（优先 DeepSeek，内网环境可用）
@@ -36,37 +39,74 @@ export class NarratorAgentService implements INarratorAgent {
   }
 
   /**
-   * 生成可读解释
+   * 生成可读解释（集成 Context Engineer）
    */
   async generateExplanation(
     coreToolOutput: TripNaraCoreToolOutput,
+    state?: LangGraphState,
     complianceResult?: LangGraphState['complianceResult']
   ): Promise<string> {
     this.logger.debug('生成可读解释');
 
-    // 如果 LLM 可用，优先使用 LLM
+    // 1. 构建上下文（如果 Context Engineer 和 state 可用）
+    let contextPackage;
+    if (this.contextEngineer && state) {
+      try {
+        const ctx = await buildContextForNode(state, this.contextEngineer, {
+          agent: 'NARRATOR',
+          phase: state.planningPhase || 'FINALIZING',
+          tokenBudget: 2400, // Narrator 需要较少的上下文
+          requiredTopics: ['DECISION_LOG', 'PLAN_SUMMARY'], // Narrator 需要决策日志和计划摘要
+        });
+        contextPackage = ctx.contextPackage;
+        this.logger.debug(`Context Package 构建完成: ${contextPackage.blocks.length} 个块, ${contextPackage.totalTokens} tokens`);
+      } catch (error: any) {
+        this.logger.warn(`构建 Context Package 失败: ${error.message}，继续使用原始输出`);
+      }
+    }
+
+    // 2. 如果 LLM 可用，优先使用 LLM（使用增强的上下文）
     if (this.useLlm && this.llmService) {
       try {
-        return await this.generateExplanationWithLlm(coreToolOutput, complianceResult);
+        return await this.generateExplanationWithLlm(coreToolOutput, state, contextPackage, complianceResult);
       } catch (error) {
         this.logger.warn(`LLM 生成失败，回退到模板模式: ${error instanceof Error ? error.message : String(error)}`);
         // 回退到模板模式
       }
     }
 
-    // 使用模板作为回退或默认方案
+    // 3. 使用模板作为回退或默认方案
     if (!coreToolOutput.allowed) {
       return this.generateRejectionExplanation(coreToolOutput);
     }
 
-    return this.generateSuccessExplanation(coreToolOutput, complianceResult);
+    const explanation = this.generateSuccessExplanation(coreToolOutput, complianceResult);
+
+    // 4. 写入回写（如果 Context Engineer 和 state 可用）
+    if (this.contextEngineer && state && state.metadata?.tripRunId) {
+      try {
+        await writeBackFromNode(state, this.contextEngineer, {
+          tripRunId: state.metadata.tripRunId as string,
+          attemptNumber: (state.metadata.attemptNumber as number) || 1,
+          scratchpad: {
+            planOutline: `Narrator 生成解释完成: ${coreToolOutput.allowed ? 'ALLOWED' : 'REJECTED'}`,
+          },
+        });
+      } catch (error: any) {
+        this.logger.warn(`写入回写失败: ${error.message}`);
+      }
+    }
+
+    return explanation;
   }
 
   /**
-   * 使用 LLM 生成解释
+   * 使用 LLM 生成解释（增强上下文）
    */
   private async generateExplanationWithLlm(
     coreToolOutput: TripNaraCoreToolOutput,
+    state?: LangGraphState,
+    contextPackage?: any,
     complianceResult?: LangGraphState['complianceResult']
   ): Promise<string> {
     const decisionLogs = coreToolOutput.logs || [];
@@ -75,6 +115,12 @@ export class NarratorAgentService implements INarratorAgent {
       drDre: decisionLogs.filter(log => log.persona === 'DR_DRE'),
       neptune: decisionLogs.filter(log => log.persona === 'NEPTUNE'),
     };
+
+    // 构建增强的 prompt（如果 Context Package 可用）
+    let contextPrompt = '';
+    if (contextPackage) {
+      contextPrompt = `\n\n上下文信息：\n${buildPromptFromContextPackage(contextPackage)}\n`;
+    }
 
     const prompt = `你是一个旅行规划助手，负责将技术性的决策结果转化为友好、易懂的自然语言解释。
 
@@ -86,7 +132,7 @@ export class NarratorAgentService implements INarratorAgent {
 决策日志：
 ${JSON.stringify(personaLogs, null, 2)}
 
-${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}
+${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}
 
 请生成一段友好、易懂的中文解释，要求：
 1. 如果路线被拒绝，要说明原因并给出建议
@@ -94,6 +140,7 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
 3. 语言要友好、专业，但不过于技术化
 4. 如果有合规要求，要明确提示
 5. 长度控制在 200 字以内
+6. 如果上下文信息中有相关的决策历史或计划摘要，可以引用它们来增强解释的准确性
 
 只返回解释文本，不要其他格式。`;
 

@@ -7,6 +7,8 @@ import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
+  console.log('🚀 [Bootstrap] 开始启动应用...');
+  
   // 根据环境变量设置日志级别（生产环境默认不显示 debug）
   const logLevels = process.env.LOG_LEVEL 
     ? process.env.LOG_LEVEL.split(',').map(level => level.trim() as any)
@@ -14,9 +16,11 @@ async function bootstrap() {
       ? ['error', 'warn', 'log'] // 生产环境不显示 debug
       : ['error', 'warn', 'log', 'debug']; // 开发环境显示所有日志
   
+  console.log('🏭 [Bootstrap] 创建 NestFactory...');
   const app = await NestFactory.create(AppModule, {
     logger: logLevels,
   });
+  console.log('✅ [Bootstrap] NestFactory 创建完成');
   
   // 设置全局 API 前缀
   app.setGlobalPrefix('api');
@@ -155,10 +159,12 @@ async function bootstrap() {
   } else if (process.env.NODE_ENV !== 'production') {
     console.log('⚠️  CORS 配置: 未配置 FRONTEND_URL，开发模式允许所有来源');
   }
+  console.log('✅ [Bootstrap] 中间件和 CORS 配置完成');
   
   // ============================================
   // 📚 Swagger/OpenAPI 文档配置
   // ============================================
+  console.log('📚 [Bootstrap] 开始配置 Swagger...');
   const config = new DocumentBuilder()
     .setTitle('TripNara API')
     .setDescription('智能旅行规划 API - 支持行程创建、地点查询、AI 策略计算等功能')
@@ -184,19 +190,26 @@ async function bootstrap() {
     .addCookieAuth('refresh_token')
     .addBearerAuth()
     .build();
+  console.log('✅ [Bootstrap] Swagger config 创建完成');
   
+  console.log('📄 [Bootstrap] 开始生成 Swagger 文档...');
   const document = SwaggerModule.createDocument(app, config);
+  console.log('✅ [Bootstrap] Swagger document 创建完成');
+  
+  console.log('🎨 [Bootstrap] 开始设置 Swagger UI...');
   // Swagger UI 路径设置为 /api-docs，避免与 API 路径冲突
   SwaggerModule.setup('api-docs', app, document, {
     customSiteTitle: 'TripNara API 文档',
     customfavIcon: '/favicon.ico',
     customCss: '.swagger-ui .topbar { display: none }',
   });
+  console.log('✅ [Bootstrap] Swagger UI 设置完成');
   
+  console.log('🌐 [Bootstrap] 开始监听端口...');
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0'); // ✅ 关键：不要只绑 127.0.0.1
-  console.log(`API listening on http://0.0.0.0:${port}`);
-  console.log(`📚 Swagger 文档: http://0.0.0.0:${port}/api`);
+  console.log(`✅ [Bootstrap] API listening on http://0.0.0.0:${port}`);
+  console.log(`📚 Swagger 文档: http://0.0.0.0:${port}/api-docs`);
 }
 
 bootstrap();

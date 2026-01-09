@@ -28,7 +28,7 @@ export class SkillScannerService {
    * @throws Error 如果检测到命名冲突
    */
   async scanAndRegisterSkills(skillClasses: Type<Skill>[]): Promise<void> {
-    this.logger.log(`开始扫描 ${skillClasses.length} 个 Skill 类...`);
+    this.logger.log(`[SkillScanner] 开始扫描 ${skillClasses.length} 个 Skill 类...`);
 
     let registeredCount = 0;
     let skippedCount = 0;
@@ -126,7 +126,7 @@ export class SkillScannerService {
     }
 
     this.logger.log(
-      `扫描完成: 成功注册 ${registeredCount} 个 Skill，跳过 ${skippedCount} 个`,
+      `[SkillScanner] 扫描完成: 成功注册 ${registeredCount} 个 Skill，跳过 ${skippedCount} 个`,
     );
   }
 

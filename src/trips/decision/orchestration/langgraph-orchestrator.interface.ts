@@ -128,9 +128,9 @@ export interface ILangGraphOrchestrator {
  */
 export interface IPlannerAgent {
   /**
-   * 分析用户查询
+   * 分析用户查询（集成 Context Engineer）
    */
-  analyzeQuery(query: string): Promise<{
+  analyzeQuery(state: LangGraphState): Promise<{
     intent: string;
     extractedParams: LangGraphState['extractedParams'];
     nextStep: 'CORE_DECISION' | 'COMPLIANCE_CHECK' | 'LOCAL_INSIGHT';
@@ -144,10 +144,11 @@ export interface IPlannerAgent {
  */
 export interface INarratorAgent {
   /**
-   * 生成可读解释
+   * 生成可读解释（集成 Context Engineer）
    */
   generateExplanation(
     coreToolOutput: any,
+    state?: LangGraphState,
     complianceResult?: LangGraphState['complianceResult']
   ): Promise<string>;
 }

@@ -46,6 +46,7 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
     description: '基于 DEM 数据生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数',
     version: '1.0.0',
     category: 'dem' as const,
+    toolGroup: 'DOMAIN' as const,
   };
 
   constructor(

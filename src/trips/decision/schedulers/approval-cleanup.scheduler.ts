@@ -16,7 +16,8 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// 临时注释掉 @Cron，因为 ScheduleModule 可能未导入，导致初始化阻塞
+// import { Cron, CronExpression } from '@nestjs/schedule';
 import { ApprovalService } from '../services/approval.service';
 
 @Injectable()
@@ -28,15 +29,18 @@ export class ApprovalCleanupScheduler implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.logger.log('ApprovalCleanupScheduler 已启动（每 5 分钟清理一次过期审批请求）');
+    this.logger.log('ApprovalCleanupScheduler 已启动（定时任务已临时禁用）');
+    // TODO: 如果 ScheduleModule 未导入，@Cron 装饰器可能导致初始化阻塞
+    // 临时禁用定时任务，避免阻塞 MCP 服务器启动
   }
 
   /**
    * 每 5 分钟清理一次过期的审批请求
    * 
    * 注意：需要确保 ScheduleModule 已在 TasksModule 中注册
+   * 临时禁用：避免 @Cron 装饰器导致初始化阻塞
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  // @Cron(CronExpression.EVERY_5_MINUTES)
   async handleCleanup() {
     try {
       const count = await this.approvalService.cleanupExpiredRequests();

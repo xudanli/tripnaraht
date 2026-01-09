@@ -6,13 +6,16 @@
  * 决策层模块：整合 Abu、Dr.Dre、Neptune 三个策略
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
 import { SenseToolsAdapter } from './adapters/sense-tools.adapter';
 import { CandidatePoolService } from './candidates/candidate-pool.service';
 import { TravelReliabilityService } from './travel/reliability.service';
 import { EventTriggerService } from './events/event-trigger.service';
 import { EvaluationService } from './evaluation/evaluation.service';
+import { E2EReplayService } from './evaluation/e2e-replay.service';
+import { E2ECaseStorageService } from './evaluation/e2e-case-storage.service';
+import { DecisionLogClusteringService } from './evaluation/decision-log-clustering.service';
 import { VersionService } from './versioning/version.service';
 import { ExplainabilityService } from './explainability/explainability.service';
 import { LearningService } from './learning/learning.service';
@@ -41,6 +44,8 @@ if (isMcpMode && process.env.ENABLE_FULL_PLACES_MODULE !== 'true') {
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { MemoryModule } from '../../agent/memory/memory.module';
 import { LlmModule } from '../../llm/llm.module';
+import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
+import { SkillsModule } from '../../skills/skills.module';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
@@ -76,7 +81,7 @@ import { ApprovalController } from './controllers/approval.controller';
 import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.scheduler';
 
 @Module({
-  imports: [TransportModule, ReadinessModule, PlacesModuleOrLite, RouteDirectionsModule, MemoryModule, LlmModule],
+  imports: [TransportModule, forwardRef(() => ReadinessModule), PlacesModuleOrLite, RouteDirectionsModule, MemoryModule, LlmModule, ContextEngineModule, forwardRef(() => SkillsModule)], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [DecisionController, DecisionStatsController, ApprovalController],
   providers: [
     TripDecisionEngineService,
@@ -117,6 +122,9 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     HeuristicDietService,
     TripFeedbackService,
     DecisionLogStorageService,
+    E2ECaseStorageService,
+    E2EReplayService,
+    DecisionLogClusteringService,
     TripNaraCoreToolService,
     GraphDataConverterService,
     PlannerAgentService,
@@ -164,7 +172,10 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     DecisionStatsService,
     HeuristicDietService,
     TripFeedbackService,
+    E2ECaseStorageService,
     DecisionLogStorageService,
+    E2EReplayService,
+    DecisionLogClusteringService,
     TripNaraCoreToolService,
     GraphDataConverterService,
     PlannerAgentService,

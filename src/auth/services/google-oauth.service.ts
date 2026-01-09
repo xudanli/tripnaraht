@@ -1,5 +1,5 @@
 // src/auth/services/google-oauth.service.ts
-import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, InternalServerErrorException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { GoogleIdTokenPayload, GoogleTokenResponse } from '../interfaces/google-token-payload.interface';
@@ -12,10 +12,10 @@ export class GoogleOAuthService {
   private readonly clientSecret: string;
   private readonly redirectUri: string;
 
-  constructor(private configService: ConfigService) {
-    this.clientId = this.configService.get<string>('GOOGLE_CLIENT_ID') || '';
-    this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET') || '';
-    this.redirectUri = this.configService.get<string>('GOOGLE_REDIRECT_URI') || '';
+  constructor(@Optional() private configService?: ConfigService) {
+    this.clientId = this.configService?.get<string>('GOOGLE_CLIENT_ID') || '';
+    this.clientSecret = this.configService?.get<string>('GOOGLE_CLIENT_SECRET') || '';
+    this.redirectUri = this.configService?.get<string>('GOOGLE_REDIRECT_URI') || '';
 
     if (!this.clientId) {
       this.logger.warn('GOOGLE_CLIENT_ID is not set. Google OAuth will not work.');

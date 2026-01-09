@@ -56,10 +56,28 @@ async function createMcpServer() {
   
   try {
     console.error('Calling NestFactory.createApplicationContext...');
-    app = await NestFactory.createApplicationContext(McpAppModule, {
-      logger: ['error', 'warn', 'log'], // 只记录重要日志
-    });
-    console.error('NestJS application context created successfully');
+    try {
+      // 添加超时保护，避免无限等待
+      // 使用更详细的日志级别，以便看到 onModuleInit 的日志
+      const createPromise = NestFactory.createApplicationContext(McpAppModule, {
+        logger: ['error', 'warn', 'log', 'debug', 'verbose'], // 包含更多日志以调试 onModuleInit
+      });
+      
+      // 增加超时时间到 60 秒，以便有足够时间看到日志
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('createApplicationContext timeout after 60s')), 60000)
+      );
+      
+      console.error('Waiting for createApplicationContext to complete...');
+      app = await Promise.race([createPromise, timeoutPromise]);
+      console.error('NestJS application context created successfully');
+    } catch (ctxError: any) {
+      console.error('Error in createApplicationContext:', ctxError.message);
+      if (ctxError.stack) {
+        console.error('Stack:', ctxError.stack);
+      }
+      throw ctxError;
+    }
     
     console.error('Getting SkillsRegistryService...');
     try {

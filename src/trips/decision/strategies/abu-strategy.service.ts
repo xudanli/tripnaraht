@@ -18,7 +18,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionSource } from '../shared/decision-result.types';
+import { DecisionResult, DecisionAction, DecisionSource, DecisionStage } from '../shared/decision-result.types';
 import { validatePhysicalRealityModel } from '../models/physical-reality.model';
 
 @Injectable()
@@ -62,6 +62,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -81,6 +82,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -102,6 +104,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -128,6 +131,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -154,6 +158,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [demHardViolation.segmentId],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -183,6 +188,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: closedRoads.map(r => r.roadId),
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -210,6 +216,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: highRiskHazards.map(h => h.zoneId),
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -250,6 +257,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
           },
         ],
       };
@@ -272,6 +280,28 @@ export class AbuStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'ABU_GATE',
+          },
+        ],
+      };
+    }
+
+    // 7️⃣ 检查 DEM Evidence 是否存在（缺失 = REJECT）
+    if (!physical.demEvidence || physical.demEvidence.length === 0) {
+      this.logger.warn(`计划 ${plan.tripId} 缺少 DEM Evidence，Abu 必须 REJECT`);
+      return {
+        allowed: false,
+        action: 'REJECT',
+        logs: [
+          {
+            persona: 'ABU',
+            action: 'REJECT',
+            explanation: '缺少 DEM Evidence（DEM 证据是必需的），路线不应继续',
+            reasonCodes: ['E_DEM_MISSING'],
+            evidenceRefs: [],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'PHYSICAL',
+            decisionStage: 'DEM_EVIDENCE',
           },
         ],
       };
@@ -291,6 +321,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
           evidenceRefs: [],
           timestamp: new Date().toISOString(),
           decisionSource: 'PHYSICAL',
+          decisionStage: 'ABU_GATE',
         },
       ],
     };

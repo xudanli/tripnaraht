@@ -1,5 +1,5 @@
 // src/auth/services/token.service.ts
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,11 +15,11 @@ export class TokenService {
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
-    private configService: ConfigService,
+    @Optional() private configService?: ConfigService,
   ) {
-    this.accessTokenExpiresIn = this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '15m';
+    this.accessTokenExpiresIn = this.configService?.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '15m';
     this.refreshTokenExpiresInDays = parseInt(
-      this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRES_IN_DAYS') || '30',
+      this.configService?.get<string>('JWT_REFRESH_TOKEN_EXPIRES_IN_DAYS') || '30',
       10,
     );
   }

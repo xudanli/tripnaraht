@@ -1,5 +1,5 @@
 // src/contact/services/contact-notification.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
@@ -9,17 +9,17 @@ export class ContactNotificationService {
   private readonly transporter: nodemailer.Transporter | null;
   private readonly notificationEmail: string;
 
-  constructor(private configService: ConfigService) {
-    const smtpHost = this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com';
-    const smtpPort = parseInt(this.configService.get<string>('SMTP_PORT') || '587', 10);
-    const smtpUser = this.configService.get<string>('SMTP_USER');
-    const smtpPassword = this.configService.get<string>('SMTP_PASSWORD') || 
-                         this.configService.get<string>('SMTP_PASS');
-    const smtpFrom = this.configService.get<string>('SMTP_FROM') || smtpUser;
-    const smtpSecure = this.configService.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
+  constructor(@Optional() private configService?: ConfigService) {
+    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpPort = parseInt(this.configService?.get<string>('SMTP_PORT') || '587', 10);
+    const smtpUser = this.configService?.get<string>('SMTP_USER');
+    const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || 
+                         this.configService?.get<string>('SMTP_PASS');
+    const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
+    const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 
     // 客服邮箱，从环境变量读取，默认为 contact@tripnara.com
-    this.notificationEmail = this.configService.get<string>('CONTACT_NOTIFICATION_EMAIL') || 
+    this.notificationEmail = this.configService?.get<string>('CONTACT_NOTIFICATION_EMAIL') || 
                             'contact@tripnara.com';
 
     if (!smtpUser || !smtpPassword) {

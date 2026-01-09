@@ -37,7 +37,7 @@ import {
   RoutePlanDraft,
   RouteSegment,
 } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource } from '../shared/decision-result.types';
+import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, DecisionStage } from '../shared/decision-result.types';
 import { SpatialReplacementService } from '../services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from '../services/spatial-issue-detector.service';
 import { SpatialIssue } from '../interfaces/spatial-issue.interface';
@@ -93,6 +93,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
+            decisionStage: 'SPATIAL_REPAIR',
           },
         ],
       };
@@ -115,6 +116,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'HEURISTIC',
+            decisionStage: 'SPATIAL_REPAIR',
           },
         ],
       };
@@ -146,6 +148,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
           evidenceRefs: [issue.issueId],
           timestamp: new Date().toISOString(),
           decisionSource: 'PHILOSOPHY',
+          decisionStage: 'SPATIAL_REPAIR',
         });
         continue;
       }
@@ -178,6 +181,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [issue.issueId],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHILOSOPHY',
+            decisionStage: 'SPATIAL_REPAIR',
           });
           continue;
         }
@@ -207,6 +211,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [issue.issueId],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHILOSOPHY',
+            decisionStage: 'SPATIAL_REPAIR',
           });
           continue;
         }
@@ -222,6 +227,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
         evidenceRefs: [issue.issueId],
         timestamp: new Date().toISOString(),
         decisionSource: 'PHYSICAL', // 空间替换基于物理现实
+        decisionStage: 'SPATIAL_REPAIR',
       });
     }
 

@@ -1,6 +1,6 @@
 // src/data-contracts/adapters/iceland-weather.adapter.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WeatherAdapter } from './weather.adapter.interface';
 import { WeatherData, WeatherQuery, ExtendedWeatherData, WeatherAlert } from '../interfaces/weather.interface';
@@ -17,7 +17,7 @@ import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
  */
 @Injectable()
 export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter {
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     super(IcelandWeatherAdapter.name, {
       baseURL: 'https://vedur.is',
       timeout: 15000,

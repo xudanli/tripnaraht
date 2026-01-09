@@ -18,7 +18,9 @@ export interface SkillMetadata {
   name: string;
   description: string;
   version: string;
-    category: 'decision' | 'dem' | 'routeDirection' | 'countryPack' | 'readiness' | 'whatIf' | 'analytics' | 'rag' | 'world' | 'trip';
+  category: 'decision' | 'dem' | 'routeDirection' | 'countryPack' | 'readiness' | 'whatIf' | 'analytics' | 'rag' | 'world' | 'trip';
+  /** 工具分组：DOMAIN（领域工具）或 CONTEXT（上下文工具） */
+  toolGroup?: 'DOMAIN' | 'CONTEXT';
 }
 
 export interface Skill<TInput extends SkillInput = SkillInput, TOutput extends SkillOutput = SkillOutput> {

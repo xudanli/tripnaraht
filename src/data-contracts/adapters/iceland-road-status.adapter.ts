@@ -1,6 +1,6 @@
 // src/data-contracts/adapters/iceland-road-status.adapter.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoadStatusAdapter } from './road-status.adapter.interface';
 import { RoadStatus, RoadStatusQuery, ExtendedRoadStatus } from '../interfaces/road-status.interface';
@@ -23,7 +23,7 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
   private readonly baseUrl = 'https://www.road.is';
   private readonly datexUrl = 'https://www.road.is/travel-info/road-conditions-and-weather/road-conditions-api/';
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     super(IcelandRoadStatusAdapter.name, {
       baseURL: 'https://www.road.is',
       timeout: 15000,

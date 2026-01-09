@@ -5,7 +5,7 @@
  * 提供通用的 LLM 调用方法，用于从文本中提取结构化数据
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { createOpenAIHttp } from '../../llm/utils/openai-http.factory';
@@ -17,9 +17,9 @@ export class LlmExtractionService {
   private readonly openaiHttp: AxiosInstance;
   private readonly apiKey?: string;
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+  constructor(@Optional() private configService?: ConfigService) {
+    this.apiKey = this.configService?.get<string>('OPENAI_API_KEY');
+    const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
     this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
   }
 

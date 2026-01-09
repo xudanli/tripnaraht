@@ -34,7 +34,7 @@ import {
   RoutePlanDraft,
   RouteSegment,
 } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource } from '../shared/decision-result.types';
+import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, DecisionStage } from '../shared/decision-result.types';
 import { DayProfile, PaceConstraints, RollingFatigueIssue } from '../interfaces/day-profile.interface';
 import { SplitOperation, BufferDayOperation, DrDreOperation } from '../interfaces/dr-dre-operation.interface';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
@@ -119,6 +119,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'HUMAN',
+            decisionStage: 'PACE_ADJUST',
           },
         ],
       };
@@ -136,6 +137,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
         evidenceRefs: [],
         timestamp: new Date().toISOString(),
         decisionSource: 'HUMAN',
+        decisionStage: 'PACE_ADJUST',
       });
     }
 

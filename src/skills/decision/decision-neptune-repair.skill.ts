@@ -47,6 +47,7 @@ export class DecisionNeptuneRepairSkill implements Skill<DecisionNeptuneRepairIn
     description: '在保持路线哲学的前提下，替换不可用的路段、入口或 POI。可以 REPLACE，但不能改变路线方向。',
     version: '1.0.0',
     category: 'decision' as const,
+    toolGroup: 'DOMAIN' as const,
   };
 
   constructor(

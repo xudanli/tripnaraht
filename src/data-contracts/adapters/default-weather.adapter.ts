@@ -1,6 +1,6 @@
 // src/data-contracts/adapters/default-weather.adapter.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WeatherAdapter } from './weather.adapter.interface';
 import { WeatherData, WeatherQuery, WeatherAlert } from '../interfaces/weather.interface';
@@ -17,8 +17,8 @@ import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
 export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter {
   private readonly apiKey: string | undefined;
 
-  constructor(private configService: ConfigService) {
-    const apiKey = configService.get<string>('OPENWEATHER_API_KEY');
+  constructor(@Optional() private configService?: ConfigService) {
+    const apiKey = configService?.get<string>('OPENWEATHER_API_KEY');
     super(DefaultWeatherAdapter.name, {
       baseURL: 'https://api.openweathermap.org/data/2.5',
       timeout: 10000,

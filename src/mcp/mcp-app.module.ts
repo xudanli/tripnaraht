@@ -14,9 +14,18 @@ import { RouteDirectionsModule } from '../route-directions/route-directions.modu
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { SkillsModule } from '../skills/skills.module';
 
-// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认启用
-// 如需禁用，设置 ENABLE_DECISION_SKILLS=false
-const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS !== 'false';
+// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认禁用（避免启动阻塞）
+// 如需启用，设置 ENABLE_DECISION_SKILLS=true
+const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS === 'true';
+// ReadinessModule 在 MCP 模式下默认禁用（避免启动阻塞）
+const enableReadinessModule = process.env.ENABLE_READINESS_MODULE === 'true';
+// PlacesModule 在 MCP 模式下默认禁用（导致启动阻塞）
+// 如需 EmbeddingService，可以在 SkillsModule 中单独导入 PlacesLiteModule
+const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
+// ContextEngineModule 在 MCP 模式下默认启用（核心功能）
+const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE !== 'false';
+// TripsModule 在 MCP 模式下默认禁用（避免启动阻塞）
+const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
 
 @Module({
   imports: [
@@ -24,10 +33,10 @@ const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS !== 'false';
       isGlobal: true,
     }),
     PrismaModule,
-    // 只导入 Skills 需要的模块
+    // 只导入 Skills 需要的模块（在 MCP 模式下，大部分模块默认禁用以加快启动）
     ...(enableDecisionSkills ? [DecisionModule] : []),
+    ...(enableReadinessModule ? [ReadinessModule] : []),
     RouteDirectionsModule,
-    ReadinessModule,
     SkillsModule,
   ],
 })

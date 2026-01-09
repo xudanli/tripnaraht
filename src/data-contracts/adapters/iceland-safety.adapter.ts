@@ -1,6 +1,6 @@
 // src/data-contracts/adapters/iceland-safety.adapter.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IcelandSafetyAlert } from '../interfaces/iceland-specific.interface';
 import { BaseAdapter } from './base.adapter';
@@ -16,7 +16,7 @@ import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
  */
 @Injectable()
 export class IcelandSafetyAdapter extends BaseAdapter {
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     super(IcelandSafetyAdapter.name, {
       baseURL: 'https://safetravel.is',
       timeout: 15000,

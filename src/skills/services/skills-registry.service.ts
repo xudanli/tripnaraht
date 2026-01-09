@@ -25,6 +25,15 @@ import {
   SKILL_TRIP_QUICK_EVALUATE,
   SKILL_COUNTRY_PACK_SUGGEST_IMPROVEMENTS,
   SKILL_WORLD_BUILD_CONTEXT,
+  SKILL_COUNTRY_PACK_GET_BLOCKS,
+  SKILL_COUNTRY_PACK_RANK_BLOCKS,
+  SKILL_CONTEXT_BUILD,
+  SKILL_CONTEXT_COMPRESS,
+  SKILL_CONTEXT_EVALUATE,
+  SKILL_CONTEXT_REGRESSION_TESTS,
+  SKILL_PLAN_SELECT_SLICES,
+  SKILL_TOOLS_SELECT,
+  SKILL_DECISION_LOG_APPEND,
 } from '../skills.tokens';
 
 @Injectable()
@@ -59,6 +68,15 @@ export class SkillsRegistryService {
     @Optional()
     @Inject(SKILL_COUNTRY_PACK_SUGGEST_IMPROVEMENTS)
     private readonly countryPackSuggestImprovements?: Skill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_GET_BLOCKS) private readonly countryPackGetBlocks?: Skill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_RANK_BLOCKS) private readonly countryPackRankBlocks?: Skill,
+    @Optional() @Inject(SKILL_CONTEXT_BUILD) private readonly contextBuild?: Skill,
+    @Optional() @Inject(SKILL_CONTEXT_COMPRESS) private readonly contextCompress?: Skill,
+    @Optional() @Inject(SKILL_CONTEXT_EVALUATE) private readonly contextEvaluate?: Skill,
+    @Optional() @Inject(SKILL_CONTEXT_REGRESSION_TESTS) private readonly contextRegressionTests?: Skill,
+    @Optional() @Inject(SKILL_PLAN_SELECT_SLICES) private readonly planSelectSlices?: Skill,
+    @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly toolsSelect?: Skill,
+    @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly decisionLogAppend?: Skill,
   ) {
     // 注册所有 Skills（只注册成功注入的）
     if (this.demGetProfile) this.registerSkill(this.demGetProfile);
@@ -78,6 +96,15 @@ export class SkillsRegistryService {
     if (this.countryPackValidate) this.registerSkill(this.countryPackValidate);
     if (this.countryPackGenerateRegressionTests) this.registerSkill(this.countryPackGenerateRegressionTests);
     if (this.countryPackSuggestImprovements) this.registerSkill(this.countryPackSuggestImprovements);
+    if (this.countryPackGetBlocks) this.registerSkill(this.countryPackGetBlocks);
+    if (this.countryPackRankBlocks) this.registerSkill(this.countryPackRankBlocks);
+    if (this.contextBuild) this.registerSkill(this.contextBuild);
+    if (this.contextCompress) this.registerSkill(this.contextCompress);
+    if (this.contextEvaluate) this.registerSkill(this.contextEvaluate);
+    if (this.contextRegressionTests) this.registerSkill(this.contextRegressionTests);
+    if (this.planSelectSlices) this.registerSkill(this.planSelectSlices);
+    if (this.toolsSelect) this.registerSkill(this.toolsSelect);
+    if (this.decisionLogAppend) this.registerSkill(this.decisionLogAppend);
   }
 
   /**

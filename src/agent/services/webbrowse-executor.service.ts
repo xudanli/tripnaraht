@@ -1,5 +1,5 @@
 // src/agent/services/webbrowse-executor.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Browser, Page, chromium } from 'playwright';
 
@@ -33,7 +33,7 @@ export class WebBrowseExecutorService {
   private readonly maxConcurrentPages = 3; // 最大并发页面数
   private activePages = new Set<Page>();
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     // 检查是否启用 WebBrowse（默认启用，但可以通过环境变量禁用）
     this.enabled = process.env.ENABLE_WEBBROWSE !== 'false';
     if (!this.enabled) {

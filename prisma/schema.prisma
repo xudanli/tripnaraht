@@ -906,6 +906,7 @@ model DecisionLog {
   persona          String   @db.VarChar(20) // 'ABU' | 'DR_DRE' | 'NEPTUNE'
   action           String   @db.VarChar(20) // 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE'
   decisionSource   String   @map("decision_source") @db.VarChar(20) // 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC'
+  decisionStage    String   @map("decision_stage") @db.VarChar(20) // 'ROUTE_PICK' | 'DEM_EVIDENCE' | 'ABU_GATE' | 'PACE_ADJUST' | 'SPATIAL_REPAIR' | 'READINESS' | 'FINALIZE'
   explanation      String   @db.Text
   reasonCodes      String[] @map("reason_codes")
   evidenceRefs     String[] @map("evidence_refs")
@@ -916,9 +917,11 @@ model DecisionLog {
   @@index([countryCode])
   @@index([routeDirectionId])
   @@index([decisionSource])
+  @@index([decisionStage])
   @@index([persona])
   @@index([timestamp])
   @@index([countryCode, routeDirectionId, decisionSource])
+  @@index([decisionStage, decisionSource])
   @@map("decision_logs")
 }
 
@@ -991,6 +994,65 @@ model TripOutcomeFeedback {
   @@index([userId])
   @@index([tripId])
   @@map("trip_outcome_feedback")
+}
+
+// ========== TripNARA Context Engineer System ==========
+
+// TripRun: 一次规划会话（用户点击"生成路线"）
+model TripRun {
+  id              String        @id @default(uuid()) @db.Uuid
+  tripId          String?       @map("trip_id") @db.Uuid
+  userId          String?       @map("user_id") @db.Uuid
+  userQuery       String        @map("user_query") @db.Text
+  planningPhase   String        @map("planning_phase") @db.VarChar(50)
+  currentAgent    String?       @map("current_agent") @db.VarChar(50)
+  status          String        @default("IN_PROGRESS") @db.VarChar(20) // IN_PROGRESS, COMPLETED, FAILED
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  completedAt     DateTime?     @map("completed_at")
+  metadata        Json?
+  
+  TripAttempt     TripAttempt[]
+  
+  @@index([tripId])
+  @@index([userId])
+  @@index([planningPhase])
+  @@index([status])
+  @@index([createdAt])
+  @@map("trip_runs")
+}
+
+// TripAttempt: 一次候选方案（plan candidate）的迭代
+model TripAttempt {
+  id              String        @id @default(uuid()) @db.Uuid
+  tripRunId       String        @map("trip_run_id") @db.Uuid
+  attemptNumber   Int           @default(1) @map("attempt_number")
+  
+  // Scratchpad（工作计划摘要）
+  planOutline     String?       @map("plan_outline") @db.Text // 要做什么
+  openQuestions   String[]      @map("open_questions") // 缺什么信息
+  constraintsAssumed String[]   @map("constraints_assumed") // 假设了哪些约束
+  nextActions     String[]      @map("next_actions") // 下一步要调用哪些 tools / skills
+  failureNotes    String?       @map("failure_notes") @db.Text // 失败原因摘要
+  
+  // 状态
+  status          String        @default("PENDING") @db.VarChar(20) // PENDING, IN_PROGRESS, COMPLETED, FAILED
+  resultSummary   String?       @map("result_summary") @db.Text
+  artifacts       Json? // 结构化结果引用（文件路径、ID等）
+  
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  completedAt     DateTime?     @map("completed_at")
+  metadata        Json?
+  
+  TripRun         TripRun       @relation(fields: [tripRunId], references: [id], onDelete: Cascade)
+  
+  @@unique([tripRunId, attemptNumber]) // 复合唯一键：一个 run 的同一 attemptNumber 只能有一个
+  @@index([tripRunId])
+  @@index([status])
+  @@index([attemptNumber])
+  @@index([createdAt])
+  @@map("trip_attempts")
 }
 
 // ========== TripNARA RAG System ==========
@@ -1185,4 +1247,29 @@ model ApprovalRequest {
   @@index([toolCallId])
   @@index([expiresAt])
   @@map("approval_requests")
+}
+
+// ========== TripNARA Hazard Zones System ==========
+
+// 危险区域表（用于存储地理危险区域信息）
+model HazardZone {
+  id            String   @id @default(uuid()) @db.Uuid
+  zoneId        String   @unique @map("zone_id") @db.VarChar(100) // 外部标识符（如 OSM ID 或自定义 ID）
+  countryCode   String   @map("country_code") @db.VarChar(2) // ISO 3166-1 alpha-2
+  type          String   @db.VarChar(20) // 'AVALANCHE' | 'MUDSLIDE' | 'FLOOD' | 'ICE' | 'VOLCANIC' | 'OTHER'
+  level         String   @db.VarChar(20) // 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH'
+  geom          Unsupported("geography")? // PostGIS geography (Point, Polygon, LineString)
+  seasonality   Json? // { highRiskMonths: number[], lowRiskMonths: number[] }
+  description   String?  @db.Text
+  metadata      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([countryCode])
+  @@index([type])
+  @@index([level])
+  @@index([countryCode, type])
+  @@index([countryCode, level])
+  @@index([geom], type: Gist)
+  @@map("hazard_zones")
 }

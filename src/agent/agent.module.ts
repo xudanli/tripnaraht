@@ -1,5 +1,5 @@
 // src/agent/agent.module.ts
-import { Module } from '@nestjs/common';
+import { Module, Optional } from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import { AgentService } from './services/agent.service';
 import { RouterService } from './services/router.service';
@@ -96,11 +96,11 @@ import { PlanExecuteModule } from './plan-execute/plan-execute.module';
 })
 export class AgentModule {
   constructor(
-    private actionRegistry: ActionRegistryService,
     private placesService: PlacesService,
     private tripsService: TripsService,
     private itineraryItemsService: ItineraryItemsService,
     private webBrowseExecutor: WebBrowseExecutorService,
+    @Optional() private actionRegistry?: ActionRegistryService,
     private vectorSearchService?: VectorSearchService,
     private entityResolutionService?: EntityResolutionService,
     private transportRoutingService?: TransportRoutingService,
@@ -117,6 +117,10 @@ export class AgentModule {
    * 注册基础 Actions
    */
   private registerBasicActions() {
+    if (!this.actionRegistry) {
+      return; // ActionRegistryService 未注入，跳过注册
+    }
+    
     // 注册 Trip Actions
     const tripActions = createTripActions(this.tripsService, this.itineraryItemsService);
     this.actionRegistry.registerMany(tripActions);

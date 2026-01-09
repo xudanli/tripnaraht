@@ -1,0 +1,36 @@
+-- Add decisionStage column to decision_logs table
+-- This field tracks which stage of the decision pipeline the log entry was created at
+
+-- Step 1: Add column (nullable first, to handle existing data)
+ALTER TABLE "decision_logs" 
+ADD COLUMN IF NOT EXISTS "decision_stage" VARCHAR(20);
+
+-- Step 2: Update existing records with default value (FINALIZE for backward compatibility)
+UPDATE "decision_logs" 
+SET "decision_stage" = 'FINALIZE' 
+WHERE "decision_stage" IS NULL;
+
+-- Step 3: Add check constraint to ensure valid decisionStage values
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM information_schema.table_constraints 
+    WHERE constraint_schema = 'public' 
+    AND table_name = 'decision_logs' 
+    AND constraint_name = 'decision_logs_decision_stage_check'
+  ) THEN
+    ALTER TABLE "decision_logs" 
+    ADD CONSTRAINT "decision_logs_decision_stage_check" 
+    CHECK ("decision_stage" IN ('ROUTE_PICK', 'DEM_EVIDENCE', 'ABU_GATE', 'PACE_ADJUST', 'SPATIAL_REPAIR', 'READINESS', 'FINALIZE'));
+  END IF;
+END $$;
+
+-- Step 4: Set NOT NULL constraint (after all data is updated)
+ALTER TABLE "decision_logs" 
+ALTER COLUMN "decision_stage" SET NOT NULL;
+
+-- Step 5: Add indexes for efficient filtering
+CREATE INDEX IF NOT EXISTS "decision_logs_decision_stage_idx" ON "decision_logs"("decision_stage");
+
+-- Step 6: Add composite index for decisionStage + decisionSource (for analytics)
+CREATE INDEX IF NOT EXISTS "decision_logs_decision_stage_decision_source_idx" ON "decision_logs"("decision_stage", "decision_source");

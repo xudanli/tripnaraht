@@ -19,7 +19,11 @@ import { PlanTask, PlanStep, ReplanResult, ContextSummary } from './types';
  */
 function loadReplannerPromptFromDocs(): string {
   try {
+    // 使用 try-catch 包装，避免在模块加载时阻塞
     const docsPath = join(process.cwd(), 'docs', 'SKILLS.md');
+    if (!require('fs').existsSync(docsPath)) {
+      throw new Error(`文件不存在: ${docsPath}`);
+    }
     const content = readFileSync(docsPath, 'utf-8');
 
     const replannerSectionStart = content.indexOf('### 2. 🔄 The Replanner');

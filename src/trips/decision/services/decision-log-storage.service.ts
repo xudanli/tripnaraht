@@ -7,7 +7,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { DecisionLogEntry } from '../shared/decision-result.types';
+import { DecisionLogEntry, DecisionStage } from '../shared/decision-result.types';
 
 @Injectable()
 export class DecisionLogStorageService {
@@ -36,6 +36,7 @@ export class DecisionLogStorageService {
           persona: entry.persona,
           action: entry.action,
           decisionSource: entry.decisionSource,
+          decisionStage: entry.decisionStage,
           explanation: entry.explanation,
           reasonCodes: entry.reasonCodes,
           evidenceRefs: entry.evidenceRefs || [],
@@ -75,6 +76,7 @@ export class DecisionLogStorageService {
           persona: entry.persona,
           action: entry.action,
           decisionSource: entry.decisionSource,
+          decisionStage: entry.decisionStage,
           explanation: entry.explanation,
           reasonCodes: entry.reasonCodes,
           evidenceRefs: entry.evidenceRefs || [],
@@ -98,6 +100,7 @@ export class DecisionLogStorageService {
     routeDirectionId?: string;
     persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
     decisionSource?: 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC';
+    decisionStage?: DecisionStage;
     startDate?: Date;
     endDate?: Date;
     limit?: number;
@@ -118,6 +121,9 @@ export class DecisionLogStorageService {
     }
     if (filters.decisionSource) {
       where.decisionSource = filters.decisionSource;
+    }
+    if (filters.decisionStage) {
+      where.decisionStage = filters.decisionStage;
     }
     if (filters.startDate || filters.endDate) {
       where.timestamp = {};
@@ -143,7 +149,84 @@ export class DecisionLogStorageService {
       evidenceRefs: log.evidenceRefs,
       timestamp: log.timestamp.toISOString(),
       decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
+      decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
     }));
+  }
+
+  /**
+   * 根据 ID 获取单个决策日志
+   */
+  async getLogById(logId: string): Promise<DecisionLogEntry | null> {
+    try {
+      const log = await this.prisma.decisionLog.findUnique({
+        where: { id: logId },
+      });
+
+      if (!log) {
+        return null;
+      }
+
+      return {
+        persona: log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
+        action: log.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
+        explanation: log.explanation,
+        reasonCodes: log.reasonCodes,
+        evidenceRefs: log.evidenceRefs,
+        timestamp: log.timestamp.toISOString(),
+        decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
+        decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
+      };
+    } catch (error: any) {
+      this.logger.error(`获取决策日志失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新决策日志的元数据
+   */
+  async updateLogMetadata(
+    logId: string,
+    metadata: Record<string, any>,
+  ): Promise<DecisionLogEntry> {
+    try {
+      // 先获取现有日志
+      const existingLog = await this.prisma.decisionLog.findUnique({
+        where: { id: logId },
+      });
+
+      if (!existingLog) {
+        throw new Error(`决策日志 ${logId} 不存在`);
+      }
+
+      // 合并元数据
+      const updatedMetadata = {
+        ...((existingLog.metadata as Record<string, any>) || {}),
+        ...metadata,
+      };
+
+      // 更新日志
+      const updatedLog = await this.prisma.decisionLog.update({
+        where: { id: logId },
+        data: {
+          metadata: updatedMetadata,
+        },
+      });
+
+      return {
+        persona: updatedLog.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
+        action: updatedLog.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
+        explanation: updatedLog.explanation,
+        reasonCodes: updatedLog.reasonCodes,
+        evidenceRefs: updatedLog.evidenceRefs,
+        timestamp: updatedLog.timestamp.toISOString(),
+        decisionSource: updatedLog.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
+        decisionStage: ((updatedLog as any).decisionStage || 'FINALIZE') as DecisionStage,
+      };
+    } catch (error: any) {
+      this.logger.error(`更新决策日志元数据失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
 

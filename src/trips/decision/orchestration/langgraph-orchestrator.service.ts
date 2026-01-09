@@ -43,8 +43,8 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
     };
 
     try {
-      // 1. Planner Agent: 分析查询
-      const plannerResult = await this.plannerAgent.analyzeQuery(userQuery);
+      // 1. Planner Agent: 分析查询（传入完整 state，支持 Context Engineer 集成）
+      const plannerResult = await this.plannerAgent.analyzeQuery(initialState);
       initialState.extractedParams = plannerResult.extractedParams;
 
       // 2. 根据下一步决定流程
@@ -55,9 +55,10 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
         initialState.coreToolInput = coreToolInput;
         initialState.coreToolOutput = coreToolOutput;
 
-        // 3. Narrator Agent: 生成解释
+        // 3. Narrator Agent: 生成解释（传入完整 state，支持 Context Engineer 集成）
         const explanation = await this.narratorAgent.generateExplanation(
           coreToolOutput,
+          initialState,
           initialState.complianceResult
         );
         initialState.finalResponse = explanation;
@@ -74,6 +75,7 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
 
         const explanation = await this.narratorAgent.generateExplanation(
           coreToolOutput,
+          initialState,
           initialState.complianceResult
         );
         initialState.finalResponse = explanation;
@@ -90,6 +92,7 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
 
         const explanation = await this.narratorAgent.generateExplanation(
           coreToolOutput,
+          initialState,
           initialState.complianceResult
         );
         initialState.finalResponse = explanation;

@@ -8,7 +8,7 @@
  * Abu → Dr.Dre → Neptune → Finalize
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AbuStrategy } from '../strategies/abu-strategy.service';
 import { DrDreStrategy } from '../strategies/dr-dre-strategy.service';
 import { NeptuneStrategy } from '../strategies/neptune-strategy.service';
@@ -18,6 +18,8 @@ import {
 } from '../shared/world-model.types';
 import { DecisionResult, DecisionLogEntry } from '../shared/decision-result.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
+import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
+import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
 
 /**
  * 策略编排结果
@@ -42,6 +44,8 @@ export class StrategyOrchestratorService {
     private readonly dre: DrDreStrategy,
     private readonly nep: NeptuneStrategy,
     private readonly logStorage: DecisionLogStorageService,
+    @Optional() private readonly contextEngineer?: ContextEngineerService,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
   /**
@@ -77,6 +81,25 @@ export class StrategyOrchestratorService {
 
     // 1️⃣ Abu 评估（安全否决者）
     this.logger.debug('执行 Abu 策略...');
+    
+    // 为 Abu 构建上下文（如果 Context Engineer 可用）
+    if (this.contextEngineer && plan.tripId) {
+      try {
+        const ctx = await this.contextEngineer.build({
+          tripId: plan.tripId,
+          phase: 'SAFETY_CHECK',
+          agent: 'ABU',
+          userQuery: `安全评估: ${plan.tripId}`,
+          tokenBudget: 3000,
+          requiredTopics: ['ABU_RULES', 'COUNTRY_SAFETY', 'COUNTRY_ROAD_RULES', 'REJECTION_LOG'],
+        });
+        this.logger.debug(`Abu Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
+        // 注意：Abu 策略的 evaluate() 方法目前不接收上下文，但上下文已构建并可用于后续决策
+      } catch (error: any) {
+        this.logger.warn(`为 Abu 构建上下文失败: ${error.message}`);
+      }
+    }
+    
     const abuResult = await this.abu.evaluate(world, currentPlan);
     allLogs.push(...abuResult.logs);
 
@@ -92,6 +115,24 @@ export class StrategyOrchestratorService {
 
     // 2️⃣ Dr.Dre 评估（结构修复者）
     this.logger.debug('执行 Dr.Dre 策略...');
+    
+    // 为 Dr.Dre 构建上下文（如果 Context Engineer 可用）
+    if (this.contextEngineer && plan.tripId) {
+      try {
+        const ctx = await this.contextEngineer.build({
+          tripId: plan.tripId,
+          phase: 'PACING_ADJUSTMENT',
+          agent: 'DR_DRE',
+          userQuery: `节奏调整: ${plan.tripId}`,
+          tokenBudget: 3000,
+          requiredTopics: ['PLAN_DAY', 'PLAN_SEGMENT', 'DECISION_LOG'],
+        });
+        this.logger.debug(`Dr.Dre Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
+      } catch (error: any) {
+        this.logger.warn(`为 Dr.Dre 构建上下文失败: ${error.message}`);
+      }
+    }
+    
     const dreResult = await this.dre.evaluate(world, currentPlan);
     allLogs.push(...dreResult.logs);
 
@@ -103,6 +144,24 @@ export class StrategyOrchestratorService {
 
     // 3️⃣ Neptune 评估（空间修复者）
     this.logger.debug('执行 Neptune 策略...');
+    
+    // 为 Neptune 构建上下文（如果 Context Engineer 可用）
+    if (this.contextEngineer && plan.tripId) {
+      try {
+        const ctx = await this.contextEngineer.build({
+          tripId: plan.tripId,
+          phase: 'FINALIZING',
+          agent: 'NEPTUNE',
+          userQuery: `空间修复: ${plan.tripId}`,
+          tokenBudget: 3000,
+          requiredTopics: ['REJECTION_LOG', 'PLAN_SEGMENT', 'DECISION_LOG'],
+        });
+        this.logger.debug(`Neptune Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
+      } catch (error: any) {
+        this.logger.warn(`为 Neptune 构建上下文失败: ${error.message}`);
+      }
+    }
+    
     const nepResult = await this.nep.evaluate(world, currentPlan);
     allLogs.push(...nepResult.logs);
 
@@ -121,7 +180,7 @@ export class StrategyOrchestratorService {
 
     this.logger.debug(`策略编排完成: ${finalAction}, 日志数: ${allLogs.length}`);
 
-    // 5️⃣ 保存决策日志到数据库（异步，不阻塞主流程）
+    // 5️⃣ 保存决策日志到数据库（使用 decision.logAppend skill，如果可用）
     this.saveLogs(allLogs, world, plan).catch(error => {
       this.logger.warn(`Failed to save decision logs: ${error}`);
     });
@@ -135,7 +194,7 @@ export class StrategyOrchestratorService {
   }
 
   /**
-   * 保存决策日志到数据库
+   * 保存决策日志到数据库（优先使用 decision.logAppend skill）
    */
   private async saveLogs(
     logs: DecisionLogEntry[],
@@ -146,6 +205,38 @@ export class StrategyOrchestratorService {
       return;
     }
 
+    // 优先使用 decision.logAppend skill（如果可用）
+    if (this.skillsRegistry) {
+      try {
+        const decisionLogAppendSkill = this.skillsRegistry.getSkill('decision.logAppend');
+        if (decisionLogAppendSkill) {
+          const result = await decisionLogAppendSkill.execute({
+            tripId: plan.tripId,
+            countryCode: world.physical.countryCode,
+            routeDirectionId: plan.routeDirectionId,
+            entries: logs.map((log) => ({
+              persona: log.persona,
+              action: log.action,
+              reasonCodes: log.reasonCodes,
+              explanation: log.explanation,
+              decisionSource: log.decisionSource,
+              decisionStage: log.decisionStage,
+              evidenceRefs: log.evidenceRefs,
+              timestamp: log.timestamp,
+            })),
+            metadata: {
+              month: world.physical.month,
+            },
+          });
+          this.logger.debug(`使用 decision.logAppend skill 保存了 ${result.writtenCount} 条日志`);
+          return;
+        }
+      } catch (error: any) {
+        this.logger.warn(`使用 decision.logAppend skill 失败: ${error.message}，回退到直接保存`);
+      }
+    }
+
+    // 回退到直接调用 DecisionLogStorageService
     await this.logStorage.saveLogEntries(logs, {
       tripId: plan.tripId,
       countryCode: world.physical.countryCode,

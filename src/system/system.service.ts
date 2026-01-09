@@ -1,5 +1,5 @@
 // src/system/system.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
  */
 @Injectable()
 export class SystemService {
-  constructor(private configService: ConfigService) {}
+  constructor(@Optional() private configService?: ConfigService) {}
 
   /**
    * 获取系统状态
@@ -49,7 +49,7 @@ export class SystemService {
    * 获取 OCR Provider 状态
    */
   private getOcrProvider(): 'mock' | 'google' | 'unavailable' {
-    const apiKey = this.configService.get<string>('GOOGLE_VISION_API_KEY');
+    const apiKey = this.configService?.get<string>('GOOGLE_VISION_API_KEY');
     return apiKey ? 'google' : 'mock';
   }
 
@@ -57,7 +57,7 @@ export class SystemService {
    * 获取 POI Provider 状态
    */
   private getPoiProvider(): 'mock' | 'google' | 'osm' | 'unavailable' {
-    const googleKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+    const googleKey = this.configService?.get<string>('GOOGLE_PLACES_API_KEY');
     if (googleKey) return 'google';
     // 可以检查 OSM 配置
     return 'mock';
@@ -67,9 +67,9 @@ export class SystemService {
    * 获取 ASR Provider 状态
    */
   private getAsrProvider(): 'mock' | 'openai' | 'google' | 'azure' | 'unavailable' {
-    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    const openaiKey = this.configService?.get<string>('OPENAI_API_KEY');
     if (openaiKey) return 'openai';
-    const googleKey = this.configService.get<string>('GOOGLE_SPEECH_API_KEY');
+    const googleKey = this.configService?.get<string>('GOOGLE_SPEECH_API_KEY');
     if (googleKey) return 'google';
     return 'mock';
   }
@@ -78,9 +78,9 @@ export class SystemService {
    * 获取 TTS Provider 状态
    */
   private getTtsProvider(): 'mock' | 'openai' | 'google' | 'azure' | 'unavailable' {
-    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    const openaiKey = this.configService?.get<string>('OPENAI_API_KEY');
     if (openaiKey) return 'openai';
-    const googleKey = this.configService.get<string>('GOOGLE_TTS_API_KEY');
+    const googleKey = this.configService?.get<string>('GOOGLE_TTS_API_KEY');
     if (googleKey) return 'google';
     return 'mock';
   }
@@ -89,11 +89,11 @@ export class SystemService {
    * 获取 LLM Provider 状态
    */
   private getLlmProvider(): 'mock' | 'openai' | 'anthropic' | 'google' | 'unavailable' {
-    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    const openaiKey = this.configService?.get<string>('OPENAI_API_KEY');
     if (openaiKey) return 'openai';
-    const anthropicKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    const anthropicKey = this.configService?.get<string>('ANTHROPIC_API_KEY');
     if (anthropicKey) return 'anthropic';
-    const googleKey = this.configService.get<string>('GOOGLE_AI_API_KEY');
+    const googleKey = this.configService?.get<string>('GOOGLE_AI_API_KEY');
     if (googleKey) return 'google';
     return 'mock';
   }

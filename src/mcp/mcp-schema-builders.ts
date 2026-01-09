@@ -256,6 +256,287 @@ export function buildDecisionCheckApprovalSchema() {
   };
 }
 
+export function buildDecisionStageSchema() {
+  return {
+    tripId: z.string().optional().describe('Trip ID'),
+    routeDirectionId: z.string().optional().describe('路线方向 ID'),
+    countryCode: z.string().optional().describe('国家代码'),
+    stage: z
+      .enum([
+        'ROUTE_PICK',
+        'DEM_EVIDENCE',
+        'ABU_GATE',
+        'PACE_ADJUST',
+        'SPATIAL_REPAIR',
+        'READINESS',
+        'FINALIZE',
+      ])
+      .optional()
+      .describe('决策阶段过滤（可选）'),
+    startDate: z.string().optional().describe('开始日期（ISO 8601）'),
+    endDate: z.string().optional().describe('结束日期（ISO 8601）'),
+    limit: z.number().optional().describe('返回数量限制'),
+  };
+}
+
+export function buildDecisionReplaySchema() {
+  return {
+    caseId: z.string().optional().describe('E2E Case ID（可选，如果提供则从存储加载）'),
+    testCase: z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        description: z.string(),
+        input: z.record(z.any()),
+        expected: z.record(z.any()).optional(),
+      })
+      .optional()
+      .describe('直接提供 E2E Case（如果 caseId 未提供）'),
+    inputs: z
+      .object({
+        tripId: z.string().optional(),
+        countryCode: z.string(),
+        userProfile: z.record(z.any()),
+        season: z.number().optional(),
+        userQuery: z.string().optional(),
+      })
+      .optional()
+      .describe('或者直接提供输入（简化版）'),
+    expectedLogs: z.array(z.record(z.any())).optional().describe('可选的期望日志（用于 diff）'),
+  };
+}
+
+export function buildContextCompilePackageSchema() {
+  return {
+    inputContext: z
+      .object({
+        userQuery: z.string().describe('用户请求'),
+        planningPhase: z.string().optional().describe('规划阶段（可选）'),
+        currentState: z
+          .object({
+            tripId: z.string().optional(),
+            phase: z.string().optional(),
+            agent: z.string().optional(),
+            constraints: z.array(z.string()).optional(),
+          })
+          .optional()
+          .describe('当前状态（可选）'),
+        constraints: z.array(z.string()).optional().describe('约束列表（可选）'),
+      })
+      .describe('输入上下文'),
+    options: z
+      .object({
+        enableCompression: z.boolean().optional().describe('是否启用压缩（默认 false）'),
+        enableEvaluation: z.boolean().optional().describe('是否启用评估（默认 false）'),
+        enableToolSelection: z.boolean().optional().describe('是否启用工具选择（默认 true）'),
+        maxTokens: z.number().optional().describe('最大 token 数（可选）'),
+        targetCompressionRatio: z.number().min(0).max(1).optional().describe('目标压缩比（0-1，可选）'),
+        tokenBudget: z.number().optional().describe('Token 预算（用于 context-build，默认 3600）'),
+        includePrivate: z.boolean().optional().describe('是否包含私有块（用于 context-build，默认 false）'),
+      })
+      .optional()
+      .describe('编译选项'),
+  };
+}
+
+export function buildGeoFindNearbyPOISchema() {
+  return {
+    location: z
+      .object({
+        lat: z.number().min(-90).max(90).describe('纬度'),
+        lng: z.number().min(-180).max(180).describe('经度'),
+      })
+      .describe('位置'),
+    radius: z.number().positive().describe('搜索半径（米）'),
+    category: z
+      .array(
+        z.enum(['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL', 'NATURE', 'VIEWPOINT', 'HISTORIC_SITE']),
+      )
+      .optional()
+      .describe('POI 类别过滤（可选）'),
+    filters: z
+      .object({
+        minRating: z.number().min(0).max(5).optional().describe('最小评分'),
+        hasOpeningHours: z.boolean().optional().describe('是否有营业时间信息'),
+        paymentMethods: z.array(z.string()).optional().describe('支持的支付方式'),
+      })
+      .optional()
+      .describe('额外过滤条件（可选）'),
+    limit: z.number().positive().max(100).optional().describe('返回数量限制（默认 50，最大 100）'),
+  };
+}
+
+export function buildGeoSampleElevationProfileSchema() {
+  return {
+    polyline: z
+      .array(
+        z.object({
+          lat: z.number().min(-90).max(90).describe('纬度'),
+          lng: z.number().min(-180).max(180).describe('经度'),
+        }),
+      )
+      .min(2)
+      .describe('路线点数组（polyline）'),
+    samplingInterval: z.number().positive().max(1000).optional().describe('采样间隔（米），默认 100，最大 1000'),
+    maxSamples: z.number().positive().max(5000).optional().describe('最大采样点数量（默认 1000，最大 5000）'),
+  };
+}
+
+export function buildHitlCreateApprovalTaskSchema() {
+  return {
+    taskType: z
+      .enum(['DECISION_REJECT', 'PLAN_REPLACEMENT', 'RISK_CONFIRMATION', 'CUSTOM'])
+      .describe('任务类型'),
+    title: z.string().describe('任务标题'),
+    description: z.string().describe('任务描述'),
+    payload: z
+      .object({
+        decisionLogId: z.string().optional().describe('关联的决策日志 ID（可选）'),
+        tripId: z.string().optional().describe('Trip ID（可选）'),
+        routeDirectionId: z.string().optional().describe('路线方向 ID（可选）'),
+        context: z.record(z.any()).describe('审批上下文'),
+      })
+      .describe('任务负载'),
+    options: z
+      .object({
+        required: z.boolean().optional().describe('是否必需（默认 true）'),
+        expiresAt: z.string().optional().describe('过期时间（ISO 8601 格式）'),
+        notifyChannels: z.array(z.string()).optional().describe('通知渠道'),
+        priority: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('优先级'),
+        riskLevel: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('风险等级'),
+        threadId: z.string().optional().describe('会话/线程 ID（用于 Agent 恢复上下文）'),
+        toolCallId: z.string().optional().describe('LLM 工具调用的 ID（用于回填结果）'),
+      })
+      .optional()
+      .describe('选项'),
+  };
+}
+
+export function buildHitlResolveApprovalTaskSchema() {
+  return {
+    taskId: z.string().describe('任务 ID'),
+    action: z.enum(['approve', 'reject', 'request_changes']).describe('操作：approve / reject / request_changes'),
+    feedback: z.string().optional().describe('用户反馈（可选）'),
+    userId: z.string().optional().describe('审批人 ID（可选）'),
+  };
+}
+
+export function buildRoutePackNewSkeletonSchema() {
+  return {
+    routeDirectionId: z.number().optional().describe('路线方向 ID（可选）'),
+    routeDirectionUuid: z.string().optional().describe('路线方向 UUID（可选）'),
+    countryCode: z.string().length(2).describe('国家代码（ISO 3166-1 alpha-2）'),
+    routeDirectionName: z.string().optional().describe('路线方向名称（如果未提供 routeDirectionId）'),
+    routeDirectionNameCN: z.string().optional().describe('路线方向中文名称（可选）'),
+    routeDirectionNameEN: z.string().optional().describe('路线方向英文名称（可选）'),
+    version: z.string().optional().describe('Pack 版本（默认 "1.0.0"）'),
+  };
+}
+
+export function buildRoutePackValidateSchema() {
+  return {
+    pack: z
+      .object({
+        metadata: z
+          .object({
+            packId: z.string(),
+            routeDirectionId: z.number().optional(),
+            routeDirectionUuid: z.string().optional(),
+            countryCode: z.string(),
+            version: z.string(),
+            lastVerifiedAt: z.string(),
+          })
+          .describe('Pack 元数据'),
+        blocks: z
+          .array(
+            z.object({
+              blockId: z.string(),
+              type: z.enum(['constraint', 'preference', 'safety', 'logistics', 'seasonality', 'risk']),
+              content: z.string(),
+              evidence: z.array(z.any()).optional(),
+              source: z.string().optional(),
+              lastVerifiedAt: z.string().optional(),
+              metadata: z.record(z.any()).optional(),
+            }),
+          )
+          .describe('Pack 块列表'),
+      })
+      .describe('RoutePack 数据'),
+  };
+}
+
+export function buildRoutePackGenerateRegressionTestsSchema() {
+  return {
+    pack: z
+      .object({
+        metadata: z.any(),
+        blocks: z.array(z.any()),
+      })
+      .describe('RoutePack 数据'),
+    testScenarios: z
+      .array(
+        z.object({
+          name: z.string(),
+          context: z.object({
+            countryCode: z.string(),
+            season: z.number().min(1).max(12).optional(),
+            userProfile: z
+              .object({
+                pacePreference: z.enum(['SLOW', 'MEDIUM', 'FAST']).optional(),
+                altitudeTolerance: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
+                riskTolerance: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
+              })
+              .optional(),
+          }),
+          expectedOutcomes: z.array(z.string()).optional(),
+        }),
+      )
+      .optional()
+      .describe('测试场景（可选，默认生成标准场景）'),
+  };
+}
+
+export function buildGeoFindCandidateWithinCorridorSchema() {
+  return {
+    originalLocation: z
+      .object({
+        lat: z.number().min(-90).max(90).describe('纬度'),
+        lng: z.number().min(-180).max(180).describe('经度'),
+      })
+      .describe('原始位置'),
+    corridorGeom: z
+      .union([z.string(), z.any()])
+      .describe('路线走廊几何（WKT 格式或 PostGIS geometry）'),
+    countryCode: z.string().length(2).describe('国家代码（ISO 3166-1 alpha-2）'),
+    bufferRadius: z.number().min(1).max(50000).optional().describe('缓冲半径（米，默认 20000m，最大 50000m）'),
+    candidateType: z.enum(['POI', 'ENTRY', 'BOTH']).optional().describe('候选类型（默认 BOTH）'),
+    poiCategory: z.array(z.string()).optional().describe('POI 类别过滤（可选）'),
+    limit: z.number().min(1).max(100).optional().describe('返回数量限制（默认 50，最大 100）'),
+  };
+}
+
+export function buildGeoCheckHazardZonesSchema() {
+  return {
+    route: z
+      .array(
+        z.object({
+          lat: z.number().min(-90).max(90).describe('纬度'),
+          lng: z.number().min(-180).max(180).describe('经度'),
+        }),
+      )
+      .min(2)
+      .describe('路线点数组（至少 2 个点）'),
+    countryCode: z.string().length(2).describe('国家代码（ISO 3166-1 alpha-2）'),
+    month: z.number().min(1).max(12).optional().describe('月份（1-12，用于季节性过滤）'),
+    minLevel: z.enum(['NONE', 'LOW', 'MEDIUM', 'HIGH']).optional().describe('危险等级过滤（可选）'),
+    hazardTypes: z
+      .array(z.enum(['AVALANCHE', 'MUDSLIDE', 'FLOOD', 'ICE', 'VOLCANIC', 'OTHER']))
+      .optional()
+      .describe('危险类型过滤（可选）'),
+    bufferRadius: z.number().min(1).max(10000).optional().describe('缓冲半径（米，默认 1000m，最大 10000m）'),
+  };
+}
+
 export function getSchemaForSkill(skillName: string): any {
   const schemaMap: Record<string, () => any> = {
     'dem.getProfile': buildDemGetProfileSchema,
@@ -266,6 +547,18 @@ export function getSchemaForSkill(skillName: string): any {
     'decision.explainForHuman': buildDecisionExplainForHumanSchema,
     'decision.requestApproval': buildDecisionRequestApprovalSchema,
     'decision.checkApproval': buildDecisionCheckApprovalSchema,
+    'decision.stage': buildDecisionStageSchema,
+    'decision.replay': buildDecisionReplaySchema,
+    'context.compilePackage': buildContextCompilePackageSchema,
+    'geo.findNearbyPOI': buildGeoFindNearbyPOISchema,
+    'geo.sampleElevationProfile': buildGeoSampleElevationProfileSchema,
+    'hitl.createApprovalTask': buildHitlCreateApprovalTaskSchema,
+    'hitl.resolveApprovalTask': buildHitlResolveApprovalTaskSchema,
+    'routePack.newSkeleton': buildRoutePackNewSkeletonSchema,
+    'routePack.validate': buildRoutePackValidateSchema,
+    'routePack.generateRegressionTests': buildRoutePackGenerateRegressionTestsSchema,
+    'geo.findCandidateWithinCorridor': buildGeoFindCandidateWithinCorridorSchema,
+    'geo.checkHazardZones': buildGeoCheckHazardZonesSchema,
     'routeDirection.pickForIntent': buildRouteDirectionPickForIntentSchema,
     'routeDirection.listForCountry': buildRouteDirectionListForCountrySchema,
     'readiness.generateChecklist': buildReadinessGenerateChecklistSchema,

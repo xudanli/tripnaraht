@@ -26,7 +26,11 @@ const promptLoaderLogger = new Logger('PlannerPromptLoader');
 function loadPlannerPromptFromDocs(): string {
   try {
     // 从项目根目录读取 docs/SKILLS.md
+    // 使用 try-catch 包装，避免在模块加载时阻塞
     const docsPath = join(process.cwd(), 'docs', 'SKILLS.md');
+    if (!require('fs').existsSync(docsPath)) {
+      throw new Error(`文件不存在: ${docsPath}`);
+    }
     const content = readFileSync(docsPath, 'utf-8');
 
     // 提取 "### 1. 🧠 The Planner" 到下一个 "###" 之间的 markdown 代码块内容

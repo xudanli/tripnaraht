@@ -8,12 +8,14 @@
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { DecisionStatsService } from './services/decision-stats.service';
 import { HeuristicDietService } from './services/heuristic-diet.service';
+import { DecisionLogClusteringService } from './evaluation/decision-log-clustering.service';
 
 @Controller('decision-stats')
 export class DecisionStatsController {
   constructor(
     private readonly decisionStats: DecisionStatsService,
     private readonly heuristicDiet: HeuristicDietService,
+    private readonly clusteringService: DecisionLogClusteringService,
   ) {}
 
   /**
@@ -109,6 +111,81 @@ export class DecisionStatsController {
   @Get('heuristic-diet-plan')
   async getHeuristicDietPlan() {
     return this.heuristicDiet.generateDietPlan();
+  }
+
+  /**
+   * 分析最常见的拒绝原因
+   * 
+   * GET /decision-stats/rejection-reasons?countryCode=IS&limit=10
+   */
+  @Get('rejection-reasons')
+  async getRejectionReasons(
+    @Query('countryCode') countryCode?: string,
+    @Query('routeDirectionId') routeDirectionId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    
+    return this.clusteringService.analyzeRejectionReasons({
+      countryCode,
+      routeDirectionId,
+      startDate: start,
+      endDate: end,
+      limit: limitNum,
+    });
+  }
+
+  /**
+   * 分析最常见的替换原因
+   * 
+   * GET /decision-stats/replacement-reasons?countryCode=IS&limit=10
+   */
+  @Get('replacement-reasons')
+  async getReplacementReasons(
+    @Query('countryCode') countryCode?: string,
+    @Query('routeDirectionId') routeDirectionId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    
+    return this.clusteringService.analyzeReplacementReasons({
+      countryCode,
+      routeDirectionId,
+      startDate: start,
+      endDate: end,
+      limit: limitNum,
+    });
+  }
+
+  /**
+   * 生成决策质量报告
+   * 
+   * GET /decision-stats/quality-report?countryCode=IS&startDate=2024-01-01&endDate=2024-12-31
+   */
+  @Get('quality-report')
+  async getQualityReport(
+    @Query('countryCode') countryCode?: string,
+    @Query('routeDirectionId') routeDirectionId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    
+    return this.clusteringService.generateQualityReport({
+      countryCode,
+      routeDirectionId,
+      startDate: start,
+      endDate: end,
+    });
   }
 }
 

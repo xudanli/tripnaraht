@@ -1,0 +1,40 @@
+{
+  "id": "iceland-highlands-001",
+  "name": "冰岛高地路线 - 中等强度用户",
+  "description": "测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+  "input": {
+    "userProfile": {
+      "pacePreference": "MEDIUM",
+      "altitudeTolerance": "MEDIUM",
+      "riskTolerance": "MEDIUM",
+      "travelPhilosophy": "adventure",
+      "preferredRouteTypes": ["highlands", "nature", "hiking"]
+    },
+    "season": 7,
+    "countryCode": "IS",
+    "userQuery": "我想在7月去冰岛高地，中等强度，7天行程"
+  },
+  "expected": {
+    "routeDirectionTags": ["highlands", "nature"],
+    "abuExpected": {
+      "action": "ALLOW",
+      "reasonCodes": []
+    },
+    "drdreExpected": {
+      "mustAdjust": false
+    },
+    "neptuneExpected": {
+      "mustRepair": false
+    },
+    "finalState": {
+      "allowed": true,
+      "planDays": 7
+    }
+  },
+  "metadata": {
+    "tags": ["iceland", "highlands", "summer"],
+    "priority": "P1",
+    "source": "iceland-highlands",
+    "description": "冰岛高地路线 E2E 测试用例"
+  }
+}

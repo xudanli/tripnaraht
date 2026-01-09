@@ -16,7 +16,13 @@
     "mcp:server": "npx tsx src/mcp/mcp-server.ts",
     "mcp:skills": "npx tsx src/mcp/mcp-skills-server.ts",
     "mcp:test": "npx tsx src/mcp/test-mcp-skills.ts",
-    "mcp:check": "tsc --noEmit --project tsconfig.backend.json"
+    "mcp:check": "tsc --noEmit --project tsconfig.backend.json",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:context-engine": "jest --testPathPatterns=context-engine",
+    "test:skills": "jest --testPathPatterns=skills",
+    "test:acceptance": "jest --testPathPatterns=acceptance-tests"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",

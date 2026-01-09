@@ -1,6 +1,6 @@
 // src/data-contracts/adapters/iceland-aurora.adapter.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseAdapter } from './base.adapter';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
@@ -22,7 +22,7 @@ export class IcelandAuroraAdapter extends BaseAdapter {
   private readonly noaaUrl = 'https://services.swpc.noaa.gov';
   private readonly openWeatherClient: ReturnType<typeof HttpClientFactory.create>;
 
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     super(IcelandAuroraAdapter.name, {
       timeout: 10000,
     });

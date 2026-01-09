@@ -1,5 +1,5 @@
 // src/auth/strategies/jwt.strategy.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -7,11 +7,11 @@ import { TripNaraAccessTokenPayload } from '../interfaces/google-token-payload.i
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService) {
+  constructor(@Optional() private configService?: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production',
+      secretOrKey: configService?.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production',
     });
   }
 

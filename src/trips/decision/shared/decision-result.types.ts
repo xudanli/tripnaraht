@@ -33,6 +33,20 @@ export type DecisionPersona = 'ABU' | 'DR_DRE' | 'NEPTUNE';
 export type DecisionSource = "PHYSICAL" | "HUMAN" | "PHILOSOPHY" | "HEURISTIC";
 
 /**
+ * 决策阶段
+ * 
+ * 用于追踪决策发生在流水线的哪一步，便于 E2E 回放、A/B 测试、错误聚类
+ */
+export type DecisionStage =
+  | 'ROUTE_PICK'        // 路线方向选择
+  | 'DEM_EVIDENCE'      // DEM 证据生成
+  | 'ABU_GATE'          // Abu 安全检查
+  | 'PACE_ADJUST'        // Dr.Dre 节奏调整
+  | 'SPATIAL_REPAIR'     // Neptune 空间修复
+  | 'READINESS'          // 旅行准备度检查
+  | 'FINALIZE';          // 最终确认
+
+/**
  * 决策日志条目
  */
 export interface DecisionLogEntry {
@@ -44,6 +58,8 @@ export interface DecisionLogEntry {
   timestamp: string;
   /** 决策来源（第一性原理追踪） */
   decisionSource: DecisionSource;
+  /** 决策阶段（流水线位置追踪） */
+  decisionStage: DecisionStage;
 }
 
 /**

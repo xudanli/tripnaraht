@@ -1,5 +1,5 @@
 // src/auth/services/email-verification.service.ts
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as nodemailer from 'nodemailer';
@@ -13,17 +13,17 @@ export class EmailVerificationService {
 
   constructor(
     private prisma: PrismaService,
-    private configService: ConfigService,
+    @Optional() private configService?: ConfigService,
   ) {
     // 配置邮件发送器
-    const smtpHost = this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com';
-    const smtpPort = parseInt(this.configService.get<string>('SMTP_PORT') || '587', 10);
-    const smtpUser = this.configService.get<string>('SMTP_USER');
+    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpPort = parseInt(this.configService?.get<string>('SMTP_PORT') || '587', 10);
+    const smtpUser = this.configService?.get<string>('SMTP_USER');
     // 支持 SMTP_PASSWORD 和 SMTP_PASS 两种环境变量名
-    const smtpPassword = this.configService.get<string>('SMTP_PASSWORD') || this.configService.get<string>('SMTP_PASS');
-    const smtpFrom = this.configService.get<string>('SMTP_FROM') || smtpUser;
+    const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || this.configService?.get<string>('SMTP_PASS');
+    const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
     // 支持 SMTP_SECURE 环境变量（true/false 字符串）
-    const smtpSecure = this.configService.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
+    const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 
     if (!smtpUser || !smtpPassword) {
       this.logger.warn('SMTP 配置未完整，邮件发送功能可能不可用');
@@ -106,10 +106,10 @@ export class EmailVerificationService {
     // 发送邮件
     try {
       // Resend 要求 from 字段必须是有效的邮箱格式
-      let smtpFrom = this.configService.get<string>('SMTP_FROM');
+      let smtpFrom = this.configService?.get<string>('SMTP_FROM');
       if (!smtpFrom) {
         // 如果没有设置 SMTP_FROM，尝试从 SMTP_USER 构造
-        const smtpUser = this.configService.get<string>('SMTP_USER');
+        const smtpUser = this.configService?.get<string>('SMTP_USER');
         if (smtpUser && smtpUser.includes('@')) {
           smtpFrom = smtpUser;
         } else {
@@ -117,7 +117,7 @@ export class EmailVerificationService {
           smtpFrom = 'noreply@tripnara.com';
         }
       }
-      const appName = this.configService.get<string>('APP_NAME') || 'TripNARA';
+      const appName = this.configService?.get<string>('APP_NAME') || 'TripNARA';
 
       await this.transporter.sendMail({
         from: smtpFrom,

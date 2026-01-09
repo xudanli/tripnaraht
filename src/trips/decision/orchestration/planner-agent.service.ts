@@ -14,6 +14,8 @@ import { IPlannerAgent, LangGraphState } from './langgraph-orchestrator.interfac
 import { TripNaraCoreToolInput } from '../tools/tripnara-core-tool.interface';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
+import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
+import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage } from '../../../agent/context-engine/utils/langgraph-context-integration';
 
 @Injectable()
 export class PlannerAgentService implements IPlannerAgent {
@@ -22,6 +24,7 @@ export class PlannerAgentService implements IPlannerAgent {
 
   constructor(
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly contextEngineer?: ContextEngineerService,
   ) {
     // 检查是否启用 LLM（如果 LlmService 可用且配置了 API Key）
     // 检查是否有 LLM 配置（优先 DeepSeek，内网环境可用）
@@ -36,31 +39,92 @@ export class PlannerAgentService implements IPlannerAgent {
   }
 
   /**
-   * 分析用户查询
+   * 分析用户查询（集成 Context Engineer）
    */
-  async analyzeQuery(query: string): Promise<{
+  async analyzeQuery(state: LangGraphState): Promise<{
     intent: string;
     extractedParams: LangGraphState['extractedParams'];
     nextStep: 'CORE_DECISION' | 'COMPLIANCE_CHECK' | 'LOCAL_INSIGHT';
   }> {
+    const query = state.userQuery || '';
     this.logger.debug(`分析用户查询: ${query}`);
 
-    // 如果 LLM 可用，优先使用 LLM
+    // 1. 构建上下文（如果 Context Engineer 可用）
+    let contextPackage;
+    if (this.contextEngineer) {
+      try {
+        const ctx = await buildContextForNode(state, this.contextEngineer, {
+          agent: 'PLANNER',
+          phase: state.planningPhase || 'DRAFTING',
+          tokenBudget: 3600,
+          requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY'], // Planner 需要的基础信息
+        });
+        contextPackage = ctx.contextPackage;
+        this.logger.debug(`Context Package 构建完成: ${contextPackage.blocks.length} 个块, ${contextPackage.totalTokens} tokens`);
+      } catch (error: any) {
+        this.logger.warn(`构建 Context Package 失败: ${error.message}，继续使用原始查询`);
+      }
+    }
+
+    // 2. 构建增强的 prompt（如果 Context Package 可用）
+    let enhancedQuery = query;
+    if (contextPackage) {
+      const contextPrompt = buildPromptFromContextPackage(contextPackage);
+      enhancedQuery = `上下文信息:\n${contextPrompt}\n\n用户查询: ${query}`;
+    }
+
+    // 3. 如果 LLM 可用，优先使用 LLM
     if (this.useLlm && this.llmService) {
       try {
-        return await this.analyzeQueryWithLlm(query);
+        const result = await this.analyzeQueryWithLlm(enhancedQuery);
+        
+        // 4. 写入回写（如果 Context Engineer 可用）
+        if (this.contextEngineer && state.metadata?.tripRunId) {
+          try {
+            await writeBackFromNode(state, this.contextEngineer, {
+              tripRunId: state.metadata.tripRunId as string,
+              attemptNumber: (state.metadata.attemptNumber as number) || 1,
+              scratchpad: {
+                planOutline: `Planner 分析完成: intent=${result.intent}, nextStep=${result.nextStep}`,
+                nextActions: [result.nextStep],
+              },
+            });
+          } catch (error: any) {
+            this.logger.warn(`写入回写失败: ${error.message}`);
+          }
+        }
+        
+        return result;
       } catch (error) {
         this.logger.warn(`LLM 分析失败，回退到规则匹配: ${error instanceof Error ? error.message : String(error)}`);
         // 回退到规则匹配
       }
     }
 
-    // 使用规则匹配作为回退或默认方案
-    return this.analyzeQueryWithRules(query);
+    // 5. 使用规则匹配作为回退或默认方案
+    const result = this.analyzeQueryWithRules(query);
+    
+    // 6. 写入回写（如果 Context Engineer 可用）
+    if (this.contextEngineer && state.metadata?.tripRunId) {
+      try {
+        await writeBackFromNode(state, this.contextEngineer, {
+          tripRunId: state.metadata.tripRunId as string,
+          attemptNumber: (state.metadata.attemptNumber as number) || 1,
+          scratchpad: {
+            planOutline: `Planner 分析完成（规则匹配）: intent=${result.intent}, nextStep=${result.nextStep}`,
+            nextActions: [result.nextStep],
+          },
+        });
+      } catch (error: any) {
+        this.logger.warn(`写入回写失败: ${error.message}`);
+      }
+    }
+    
+    return result;
   }
 
   /**
-   * 使用 LLM 分析查询
+   * 使用 LLM 分析查询（内部方法，接收增强后的 query）
    */
   private async analyzeQueryWithLlm(query: string): Promise<{
     intent: string;
