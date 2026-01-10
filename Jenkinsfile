@@ -67,13 +67,24 @@ pipeline {
           # 2. 拉取最新镜像
           docker pull ${IMAGE_REPO}:latest
           
-          # 3. 运行新容器，并注入 ENV_FILE
-          docker run -d \\
-            --name ${IMAGE_NAME} \\
-            --restart unless-stopped \\
-            -p ${APP_PORT}:${APP_PORT} \\
-            --env-file ${ENV_FILE} \\
-            ${IMAGE_REPO}:latest
+          # 3. 运行新容器（检查环境变量文件是否存在）
+          if [ -f "${ENV_FILE}" ]; then
+            echo "使用环境变量文件: ${ENV_FILE}"
+            docker run -d \\
+              --name ${IMAGE_NAME} \\
+              --restart unless-stopped \\
+              -p ${APP_PORT}:${APP_PORT} \\
+              --env-file ${ENV_FILE} \\
+              ${IMAGE_REPO}:latest
+          else
+            echo "警告: 环境变量文件 ${ENV_FILE} 不存在，将使用容器内的默认环境变量"
+            echo "如需使用环境变量文件，请确保文件存在于: ${ENV_FILE}"
+            docker run -d \\
+              --name ${IMAGE_NAME} \\
+              --restart unless-stopped \\
+              -p ${APP_PORT}:${APP_PORT} \\
+              ${IMAGE_REPO}:latest
+          fi
         """
       }
     }
