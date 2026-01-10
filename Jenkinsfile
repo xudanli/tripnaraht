@@ -55,4 +55,27 @@ pipeline {
     }
 
   }
+  stage('Deploy') {
+      steps {
+        // 注意：这里假设 Jenkins Agent 就在部署的目标服务器上
+        // 如果不在，需要使用 ssh 远程执行命令
+        sh """
+          set -eux
+          # 1. 停止并删除旧容器
+          docker stop ${IMAGE_NAME} || true
+          docker rm ${IMAGE_NAME} || true
+          
+          # 2. 拉取最新镜像
+          docker pull ${IMAGE_REPO}:latest
+          
+          # 3. 运行新容器，并注入 ENV_FILE
+          docker run -d \\
+            --name ${IMAGE_NAME} \\
+            --restart unless-stopped \\
+            -p ${APP_PORT}:${APP_PORT} \\
+            --env-file ${ENV_FILE} \\
+            ${IMAGE_REPO}:latest
+        """
+      }
+    }
 }
