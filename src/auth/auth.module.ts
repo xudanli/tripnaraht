@@ -20,9 +20,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        console.log('🔑 [AuthModule] JwtModule.registerAsync useFactory called');
         const expiresIn = configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '15m';
+        const secret = configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production';
+        console.log('🔑 [AuthModule] JwtModule config created');
         return {
-          secret: configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production',
+          secret: secret,
           signOptions: {
             expiresIn: expiresIn as any, // JWT accepts string like '15m', '1h', etc.
           },

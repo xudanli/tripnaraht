@@ -9,6 +9,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { ApprovalService } from '../../trips/decision/services/approval.service';
@@ -51,9 +52,30 @@ export class DecisionCheckApprovalSkill implements Skill<DecisionCheckApprovalIn
     category: 'decision' as const,
   };
 
+  private approvalService?: ApprovalService;
+
   constructor(
-    @Optional() private readonly approvalService?: ApprovalService,
-  ) {}
+    private readonly moduleRef: ModuleRef,
+  ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // ApprovalService 在 execute 方法中通过 ModuleRef 获取
+  }
+
+  /**
+   * 懒加载获取 ApprovalService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getApprovalService(): ApprovalService | null {
+    if (!this.approvalService) {
+      try {
+        this.approvalService = this.moduleRef.get(ApprovalService, { strict: false });
+      } catch (error) {
+        // 可选依赖，不记录警告
+        return null;
+      }
+    }
+    return this.approvalService || null;
+  }
 
   async execute(input: DecisionCheckApprovalInput): Promise<DecisionCheckApprovalOutput> {
     this.logger.log(`检查审批状态: ${input.approvalId}`);
@@ -66,14 +88,15 @@ export class DecisionCheckApprovalSkill implements Skill<DecisionCheckApprovalIn
       };
     }
 
-    if (!this.approvalService) {
+    const approvalService = this.getApprovalService();
+    if (!approvalService) {
       return {
         status: 'not_found',
         message: 'ApprovalService 未可用',
       };
     }
 
-    const approval = await this.approvalService.checkStatus(input.approvalId);
+    const approval = await approvalService.checkStatus(input.approvalId);
 
     if (!approval) {
       return {

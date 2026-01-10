@@ -111,12 +111,7 @@ export class SkillsRegistryService {
    * 注册 Skill
    */
   registerSkill(skill: Skill): void {
-    if (!skill) {
-      console.error('⚠️ SkillsRegistryService Warning: Attempted to register undefined skill');
-      return;
-    }
-    if (!skill.metadata) {
-      console.error('⚠️ SkillsRegistryService Warning: Skill missing metadata', skill);
+    if (!skill || !skill.metadata) {
       return;
     }
     this.skills.set(skill.metadata.name, skill);

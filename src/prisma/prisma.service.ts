@@ -15,22 +15,41 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // 在构造函数中检查是否在 MCP 模式下（通过环境变量或进程名判断）
     const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                       process.env.MCP_MODE === 'true';
-    const allowNoDb = this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
+    
+    // 检查是否有 DATABASE_URL（如果没有，也应该跳过连接）
+    const databaseUrl = this.configService?.get<string>('DATABASE_URL') || process.env.DATABASE_URL;
+    const allowNoDb = !databaseUrl ||
+                      this.configService?.get<string>('ALLOW_NO_DATABASE') === 'true' ||
                       process.env.ALLOW_NO_DATABASE === 'true' ||
                       isMcpMode;
     
     this.skipConnection = allowNoDb;
     
     if (this.skipConnection) {
-      this.logger.warn('PrismaService: Skipping database connection (MCP/test mode)');
+      if (!databaseUrl) {
+        this.logger.warn('PrismaService: DATABASE_URL 未设置，跳过数据库连接');
+      } else {
+        this.logger.warn('PrismaService: Skipping database connection (MCP/test mode)');
+      }
     }
   }
 
   async onModuleInit() {
+    // 使用 console.log 确保日志能输出（即使 Logger 有问题）
+    console.log('🔌 [Prisma] PrismaService onModuleInit called - START');
     this.logger.log('🔌 [Prisma] PrismaService onModuleInit called');
     
     if (this.skipConnection) {
+      console.log('⚠️ [Prisma] Skipping database connection (MCP/test mode)');
       this.logger.warn('⚠️ [Prisma] Skipping database connection (MCP/test mode)');
+      console.log('🔌 [Prisma] PrismaService onModuleInit called - END (skipConnection)');
+      return;
+    }
+    
+    // 检查是否有 DATABASE_URL
+    const databaseUrl = this.configService?.get<string>('DATABASE_URL') || process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      this.logger.warn('⚠️ [Prisma] DATABASE_URL 未设置，跳过数据库连接');
       return;
     }
     

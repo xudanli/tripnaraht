@@ -9,6 +9,7 @@
  */
 
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { ApprovalService } from '../../trips/decision/services/approval.service';
@@ -91,13 +92,45 @@ export class HitlCreateApprovalTaskSkill
     category: 'decision' as const,
   };
 
+  private approvalService?: ApprovalService;
+  private decisionLogStorage?: DecisionLogStorageService;
+
   constructor(
-    @Optional() private readonly approvalService?: ApprovalService,
-    @Optional() private readonly decisionLogStorage?: DecisionLogStorageService,
+    private readonly moduleRef: ModuleRef,
   ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // ApprovalService 和 DecisionLogStorageService 在 execute 方法中通过 ModuleRef 获取
+  }
+
+  /**
+   * 懒加载获取 ApprovalService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getApprovalService(): ApprovalService | null {
     if (!this.approvalService) {
-      this.logger.warn('ApprovalService 未注入，hitl.createApprovalTask 功能将不可用');
+      try {
+        this.approvalService = this.moduleRef.get(ApprovalService, { strict: false });
+      } catch (error) {
+        this.logger.warn('无法获取 ApprovalService，hitl.createApprovalTask 功能将不可用');
+        return null;
+      }
     }
+    return this.approvalService || null;
+  }
+
+  /**
+   * 懒加载获取 DecisionLogStorageService
+   */
+  private getDecisionLogStorage(): DecisionLogStorageService | null {
+    if (!this.decisionLogStorage) {
+      try {
+        this.decisionLogStorage = this.moduleRef.get(DecisionLogStorageService, { strict: false });
+      } catch (error) {
+        // 可选依赖，不记录警告
+        return null;
+      }
+    }
+    return this.decisionLogStorage || null;
   }
 
   async execute(
@@ -108,15 +141,17 @@ export class HitlCreateApprovalTaskSkill
     );
 
     try {
-      if (!this.approvalService) {
+      const approvalService = this.getApprovalService();
+      if (!approvalService) {
         throw new Error('ApprovalService 未注入，无法创建审批任务');
       }
 
       // 1. 验证决策日志 ID（如果提供）
       let decisionLogId = input.payload.decisionLogId;
-      if (decisionLogId && this.decisionLogStorage) {
+      const decisionLogStorage = this.getDecisionLogStorage();
+      if (decisionLogId && decisionLogStorage) {
         try {
-          const log = await this.decisionLogStorage.getLogById(decisionLogId);
+          const log = await decisionLogStorage.getLogById(decisionLogId);
           if (!log) {
             this.logger.warn(`决策日志 ${decisionLogId} 不存在，将创建无关联的审批任务`);
             decisionLogId = undefined;
@@ -159,19 +194,19 @@ export class HitlCreateApprovalTaskSkill
       };
 
       // 3. 创建审批请求
-      const approvalResult = await this.approvalService.createRequest(approvalData);
+      const approvalResult = await approvalService.createRequest(approvalData);
 
       // 4. 如果提供了决策日志 ID，记录关联
-      if (decisionLogId && this.decisionLogStorage) {
+      if (decisionLogId && decisionLogStorage) {
         try {
-          const log = await this.decisionLogStorage.getLogById(decisionLogId);
+          const log = await decisionLogStorage.getLogById(decisionLogId);
           if (log) {
             const updatedMetadata = {
               approvalTaskId: approvalResult.id,
               approvalTaskType: input.taskType,
               approvalTaskCreatedAt: new Date().toISOString(),
             };
-            await this.decisionLogStorage.updateLogMetadata(decisionLogId, updatedMetadata);
+            await decisionLogStorage.updateLogMetadata(decisionLogId, updatedMetadata);
             this.logger.debug(`已关联审批任务 ${approvalResult.id} 到决策日志 ${decisionLogId}`);
           }
         } catch (error: any) {

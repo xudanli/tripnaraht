@@ -46,6 +46,14 @@ import { MemoryModule } from '../../agent/memory/memory.module';
 import { LlmModule } from '../../llm/llm.module';
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
 import { SkillsModule } from '../../skills/skills.module';
+
+// 允许通过环境变量禁用某些模块（用于诊断和性能优化）
+const enableReadinessModule = process.env.ENABLE_READINESS_MODULE !== 'false';
+const enableRouteDirectionsModule = process.env.ENABLE_ROUTE_DIRECTIONS_MODULE !== 'false';
+// ContextEngineModule 默认禁用，如需启用设置 ENABLE_CONTEXT_ENGINE_MODULE=true
+const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === 'true';
+// SkillsModule 默认启用（已修复循环依赖）
+const enableSkillsModule = process.env.ENABLE_SKILLS_MODULE !== 'false';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
@@ -81,7 +89,16 @@ import { ApprovalController } from './controllers/approval.controller';
 import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.scheduler';
 
 @Module({
-  imports: [TransportModule, forwardRef(() => ReadinessModule), PlacesModuleOrLite, RouteDirectionsModule, MemoryModule, LlmModule, ContextEngineModule, forwardRef(() => SkillsModule)], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
+  imports: [
+    TransportModule,
+    ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []),
+    PlacesModuleOrLite,
+    ...(enableRouteDirectionsModule ? [RouteDirectionsModule] : []),
+    MemoryModule,
+    LlmModule,
+    ...(enableContextEngineModule ? [ContextEngineModule] : []),
+    ...(enableSkillsModule ? [forwardRef(() => SkillsModule)] : []),
+  ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [DecisionController, DecisionStatsController, ApprovalController],
   providers: [
     TripDecisionEngineService,

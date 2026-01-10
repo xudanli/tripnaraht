@@ -54,13 +54,19 @@ export class DataContractsModule implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    console.log('🔌 [DataContractsModule] onModuleInit called - START');
     // 注册天气适配器（先注册特定适配器，再注册默认适配器）
+    console.log('🔌 [DataContractsModule] Registering weather adapters...');
     this.router.registerWeatherAdapter(this.icelandWeather);
     this.router.registerWeatherAdapter(this.defaultWeather);
+    console.log('🔌 [DataContractsModule] Weather adapters registered');
     
     // 注册路况适配器（先注册特定适配器，再注册默认适配器）
+    console.log('🔌 [DataContractsModule] Registering road status adapters...');
     this.router.registerRoadStatusAdapter(this.icelandRoad);
     this.router.registerRoadStatusAdapter(this.defaultRoad);
+    console.log('🔌 [DataContractsModule] Road status adapters registered');
+    console.log('🔌 [DataContractsModule] onModuleInit called - END');
   }
 }
 

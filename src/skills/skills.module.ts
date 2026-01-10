@@ -13,6 +13,7 @@ import { TripsModule } from '../trips/trips.module';
 import { ContextEngineModule } from '../agent/context-engine/context-engine.module';
 import { PlacesModule } from '../places/places.module';
 import { PlacesEmbeddingModule } from '../places/places-embedding.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -114,9 +115,10 @@ import {
   SKILL_WORLD_BUILD_CONTEXT,
 } from './skills.tokens';
 
-// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认启用
-// 如需禁用，设置 ENABLE_DECISION_SKILLS=false
-const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS !== 'false';
+// DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule）
+// 默认禁用 DecisionModule 导入以避免循环依赖问题
+// 如需启用，设置 ENABLE_DECISION_SKILLS=true
+const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS === 'true';
 // readiness.generateChecklist 目前依赖 DecisionModule（ReadinessAgentService 在 decision 模块内）
 const enableReadinessChecklistSkill = enableDecisionSkills;
 // MCP 模式下默认禁用 ReadinessModule 和 TripsModule（避免启动阻塞）
@@ -126,7 +128,8 @@ const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
 // PlacesEmbeddingModule 在 MCP 模式下默认启用（只提供 EmbeddingService，不阻塞启动）
 const enablePlacesEmbeddingModule = process.env.ENABLE_PLACES_EMBEDDING_MODULE !== 'false';
 // ContextEngineModule 在 MCP 模式下默认启用（核心功能）
-const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE !== 'false';
+// 临时禁用 ContextEngineModule 以测试是否是循环依赖导致的阻塞
+const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === 'true';
 const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
 
 @Module({
@@ -140,6 +143,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []), // 使用 forwardRef 避免与 ReadinessModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> SkillsModule -> ReadinessModule）
     ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
+    PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
@@ -350,6 +354,7 @@ export class SkillsModule {
     @Optional() private readonly hitlCreateApprovalTaskSkill?: HitlCreateApprovalTaskSkill,
     @Optional() private readonly hitlResolveApprovalTaskSkill?: HitlResolveApprovalTaskSkill,
   ) {
+    
     // 手动注册新 Decision Skills（没有 token 的）
     if (this.decisionStageSkill) {
       this.skillsRegistry.registerSkill(this.decisionStageSkill);
@@ -416,7 +421,6 @@ export class SkillsModule {
     if (isMcpMode && process.env.ENABLE_SKILL_SCAN_IN_CONSTRUCTOR === 'true') {
       // 使用 setImmediate 延迟执行，确保所有依赖都已注入
       setImmediate(() => {
-        console.error('[SkillsModule] 在构造函数中执行 Skill 扫描（延迟）...');
         this.logger.log('[SkillsModule] 在构造函数中执行 Skill 扫描（延迟）...');
         // 这里暂时不执行扫描，只是记录日志
       });
@@ -428,23 +432,16 @@ export class SkillsModule {
    * 
    * 注意：由于 NestJS 的初始化顺序，我们通过 OnModuleInit 生命周期钩子来执行扫描
    * 
-   * 临时禁用：测试是否是 onModuleInit 导致的阻塞
+   * 已禁用：避免启动阻塞，Skills 可以在运行时通过装饰器自动注册
    */
-  // async onModuleInit() {
   async _onModuleInit_DISABLED() {
-    // 使用 console.error 确保日志能够输出（即使在 Logger 未初始化时）
-    console.error('[SkillsModule] onModuleInit() 开始执行...');
-    this.logger.log('[SkillsModule] onModuleInit() 开始执行...');
-    
     // 检查是否在 MCP 模式下
     const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                       process.env.MCP_MODE === 'true';
     
     // 临时禁用 onModuleInit 中的扫描逻辑，以测试是否是扫描导致的阻塞
-    // TODO: 如果应用上下文能成功创建，说明问题在扫描逻辑中
     if (isMcpMode && process.env.DISABLE_SKILL_SCAN === 'true') {
-      console.error('[SkillsModule] Skill 扫描已禁用（DISABLE_SKILL_SCAN=true），直接返回');
-      this.logger.log('[SkillsModule] Skill 扫描已禁用，直接返回');
+      this.logger.log('[SkillsModule] Skill 扫描已禁用（DISABLE_SKILL_SCAN=true），直接返回');
       return;
     }
     
@@ -457,30 +454,24 @@ export class SkillsModule {
         // 其他手动注册的 Skill 类可以保留（向后兼容）
       ];
       
-      console.error(`[SkillsModule] 准备扫描 ${skillClasses.length} 个 Skill 类...`);
       this.logger.log(`[SkillsModule] 准备扫描 ${skillClasses.length} 个 Skill 类...`);
       
       // 在 MCP 模式下，使用更短的超时时间
       const timeoutMs = isMcpMode ? 2000 : 5000;
       
-      console.error(`[SkillsModule] 开始扫描，超时时间: ${timeoutMs}ms`);
       // 添加超时保护，避免无限等待
       const scanPromise = this.skillScanner.scanAndRegisterSkills(skillClasses);
       const timeoutPromise = new Promise<void>((_, reject) => 
         setTimeout(() => {
-          console.error(`[SkillsModule] scanAndRegisterSkills 超时（${timeoutMs}ms），继续启动...`);
           this.logger.warn(`[SkillsModule] scanAndRegisterSkills 超时（${timeoutMs}ms），继续启动...`);
           reject(new Error(`scanAndRegisterSkills timeout after ${timeoutMs}ms`));
         }, timeoutMs)
       );
       
       try {
-        console.error('[SkillsModule] 等待扫描完成...');
         await Promise.race([scanPromise, timeoutPromise]);
-        console.error('[SkillsModule] onModuleInit() 扫描完成');
         this.logger.log('[SkillsModule] onModuleInit() 扫描完成');
       } catch (timeoutError: any) {
-        console.error(`[SkillsModule] 扫描异常: ${timeoutError.message}`);
         if (timeoutError.message.includes('timeout')) {
           this.logger.warn('[SkillsModule] 扫描超时，但继续启动（Skills 可以在运行时注册）');
         } else {
@@ -489,13 +480,11 @@ export class SkillsModule {
         }
       }
     } catch (error: any) {
-      console.error(`[SkillsModule] onModuleInit() 执行失败: ${error.message}`, error.stack);
       this.logger.error(`[SkillsModule] onModuleInit() 执行失败: ${error.message}`, error.stack);
       // 不抛出错误，避免阻止应用启动
       // 在 MCP 模式下，即使扫描失败，也应该继续启动
     }
     
-    console.error('[SkillsModule] onModuleInit() 方法结束（无论成功或失败）');
     this.logger.log('[SkillsModule] onModuleInit() 方法结束（无论成功或失败）');
   }
 }

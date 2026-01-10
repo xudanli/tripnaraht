@@ -9,6 +9,7 @@
  */
 
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { SkillsRegistryService } from '../services/skills-registry.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
@@ -77,16 +78,37 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
   private skillEmbeddingsCache = new Map<string, number[]>();
   private cacheEnabled = true;
 
+  private skillsRegistry?: SkillsRegistryService;
+
   constructor(
-    private readonly skillsRegistry: SkillsRegistryService,
+    private readonly moduleRef: ModuleRef,
     @Optional() @Inject(EmbeddingService) private readonly embeddingService?: EmbeddingService,
   ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // SkillsRegistryService 在 execute 方法中通过 ModuleRef 获取
+    
     // 如果 EmbeddingService 可用，启用向量检索；否则降级到规则匹配
     if (this.embeddingService) {
       this.logger.log('Tool RAG Embedding 已启用，将使用向量检索');
     } else {
       this.logger.warn('EmbeddingService 未注入，Tool RAG 将降级到规则匹配');
     }
+  }
+
+  /**
+   * 懒加载获取 SkillsRegistryService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getSkillsRegistry(): SkillsRegistryService {
+    if (!this.skillsRegistry) {
+      try {
+        this.skillsRegistry = this.moduleRef.get(SkillsRegistryService, { strict: false });
+      } catch (error) {
+        this.logger.error('无法获取 SkillsRegistryService，tools.select 功能将不可用');
+        throw new Error('SkillsRegistryService 未注入，tools.select 功能不可用');
+      }
+    }
+    return this.skillsRegistry;
   }
 
   async execute(input: ToolsSelectInput): Promise<ToolsSelectOutput> {
@@ -96,7 +118,8 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
 
     try {
       // 1. 获取所有可用工具
-      let allSkills = this.skillsRegistry.getAllSkills();
+      const skillsRegistry = this.getSkillsRegistry();
+      let allSkills = skillsRegistry.getAllSkills();
 
       // 1.1 按工具分组过滤（如果指定）
       if (input.toolGroupFilter && input.toolGroupFilter !== 'ALL') {

@@ -40,33 +40,40 @@ import { CitiesModule } from './cities/cities.module';
     PrismaModule,
     AuthModule,
     RedisModule, // Redis 缓存模块
-    PlacesModule,
-    TripsModule,
-    ItineraryItemsModule,
-    TasksModule, // 定时任务模块
-    CountriesModule, // 国家档案模块
-    TransportModule, // 交通规划模块
-    FlightPricesModule, // 机票价格参考模块
-    ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
-    HotelsModule, // 酒店价格模块
-    PlanningPolicyModule, // 规划策略模块（画像驱动、稳健度评估、What-If）
-    VoiceModule, // 语音解析模块
-    VisionModule, // 视觉识别模块（拍照识别 POI）
-    ScheduleActionModule, // 行程动作执行模块
-    SystemModule, // 系统状态模块
-    UsersModule, // 用户画像模块
-    TripTemplatesModule, // 行程模板模块
-    LlmModule, // LLM 通用服务模块
-    TrailsModule, // 徒步路线模块
-    AgentModule, // Agent 模块（Router + Orchestrator）
-    RailPassModule, // RailPass 合规与订座决策模块
-    ReadinessModule, // 旅行准备度检查模块
     DataContractsModule, // 数据契约模块（适配器模式）
-    RouteDirectionsModule, // 国家级路线方向资产模块
-    RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
+    // ✅ 第一批：基础服务模块（已确认正常）
+    SystemModule, // 系统状态模块
     ContactModule, // 联系我们模块
-    SkillsModule, // Skills 模块（能力颗粒层）
+    UsersModule, // 用户画像模块
+    CountriesModule, // 国家档案模块
     CitiesModule, // 城市模块
+    LlmModule, // LLM 通用服务模块
+    PlacesModule, // 地点相关模块
+    FlightPricesModule, // 机票价格参考模块
+    HotelsModule, // 酒店价格模块
+    // 第二批：行程相关模块
+    ItineraryItemsModule,
+    TripTemplatesModule, // ✅ 重新启用，但通过环境变量控制 DecisionModule 的依赖模块
+    // 第三批：优化和决策模块
+    // ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
+    // PlanningPolicyModule, // 规划策略模块（画像驱动、稳健度评估、What-If）
+    // 第四批：交通
+    // TransportModule, // 交通规划模块
+    // 第五批：高级功能
+    // TasksModule, // 定时任务模块
+    // VoiceModule, // 语音解析模块
+    // VisionModule, // 视觉识别模块（拍照识别 POI）
+    // ScheduleActionModule, // 行程动作执行模块
+    // TrailsModule, // 徒步路线模块
+    // 第六批：行程核心模块（可能有循环依赖）
+    // TripsModule,
+    // 第七批：智能体和技能（可能有问题）
+    // AgentModule, // Agent 模块（Router + Orchestrator）
+    // RailPassModule, // RailPass 合规与订座决策模块
+    // ReadinessModule, // 旅行准备度检查模块
+    // RouteDirectionsModule, // 国家级路线方向资产模块
+    // RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
+    // SkillsModule, // Skills 模块（能力颗粒层）
   ],
 })
 export class AppModule {}

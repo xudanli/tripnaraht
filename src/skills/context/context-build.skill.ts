@@ -9,6 +9,7 @@
  */
 
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { ContextEngineerService } from '../../agent/context-engine/services/context-engineer.service';
 import { ContextPackage, ContextPackageOptions } from '../../agent/context-engine/types/context-package.types';
@@ -56,12 +57,29 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
     toolGroup: 'CONTEXT' as const,
   };
 
+  private contextEngineer?: ContextEngineerService;
+
   constructor(
-    @Optional() private readonly contextEngineer?: ContextEngineerService,
+    private readonly moduleRef: ModuleRef,
   ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // ContextEngineerService 在 execute 方法中通过 ModuleRef 获取
+  }
+
+  /**
+   * 懒加载获取 ContextEngineerService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getContextEngineer(): ContextEngineerService | null {
     if (!this.contextEngineer) {
-      this.logger.warn('ContextEngineerService 未注入，context.build 功能将不可用');
+      try {
+        this.contextEngineer = this.moduleRef.get(ContextEngineerService, { strict: false });
+      } catch (error) {
+        this.logger.warn('无法获取 ContextEngineerService，context.build 功能将不可用');
+        return null;
+      }
     }
+    return this.contextEngineer || null;
   }
 
   async execute(input: ContextBuildInput): Promise<ContextBuildOutput> {
@@ -81,11 +99,12 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
         excludeTopics: input.excludeTopics,
       };
 
-      if (!this.contextEngineer) {
+      const contextEngineer = this.getContextEngineer();
+      if (!contextEngineer) {
         throw new Error('ContextEngineerService 未注入，context.build 功能不可用');
       }
 
-      const contextPackage = await this.contextEngineer.build(options);
+      const contextPackage = await contextEngineer.build(options);
 
       return {
         contextPackage,

@@ -332,11 +332,13 @@ export class DataSourceRouterService implements OnModuleInit {
    * 模块初始化
    */
   onModuleInit() {
+    console.log('🔌 [DataSourceRouter] onModuleInit called - START');
     this.logger.log('数据源路由器服务已初始化');
     this.logger.log(`已注册 ${this.roadStatusAdapters.length} 个路况适配器`);
     this.logger.log(`已注册 ${this.weatherAdapters.length} 个天气适配器`);
     this.logger.log(`已注册 ${this.transportAdapters.length} 个公共交通适配器`);
     this.logger.log(`已注册 ${this.ferryAdapters.length} 个轮渡适配器`);
+    console.log('🔌 [DataSourceRouter] onModuleInit called - END');
   }
 }
 
