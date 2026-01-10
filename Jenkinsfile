@@ -54,8 +54,7 @@ pipeline {
       }
     }
 
-  }
-  stage('Deploy') {
+    stage('Deploy') {
       steps {
         // 注意：这里假设 Jenkins Agent 就在部署的目标服务器上
         // 如果不在，需要使用 ssh 远程执行命令
@@ -78,4 +77,5 @@ pipeline {
         """
       }
     }
+  }
 }
