@@ -7,6 +7,12 @@ COPY package*.json ./
 # 若没有 package-lock.json，先在本地/CI 生成并提交
 RUN npm ci
 
+# 拷贝 Prisma schema（用于生成 Prisma Client）
+COPY prisma ./prisma
+
+# 生成 Prisma Client（必须在构建之前）
+RUN npx prisma generate
+
 COPY . .
 RUN npm run build
 
