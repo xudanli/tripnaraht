@@ -15,16 +15,24 @@ sudo apt-get install nginx
 
 ### 步骤 2: 获取 SSL 证书（Let's Encrypt）
 
+**重要**: 如果端口 80 已被占用（如 Nginx 正在运行），使用 `--nginx` 插件而不是 `--standalone`。
+
 ```bash
-# 安装 certbot
+# 安装 certbot 和 nginx 插件
 sudo apt-get install certbot python3-certbot-nginx
 
-# 获取证书（确保 DNS 已配置 api.tripnara.com 指向 47.253.148.159）
+# 方法 1: 使用 nginx 插件（推荐，自动配置）
 sudo certbot --nginx -d api.tripnara.com
 
-# 或手动获取（不使用 nginx 插件）
-sudo certbot certonly --standalone -d api.tripnara.com
+# 方法 2: 如果必须使用 standalone（需要先停止 Nginx）
+# sudo systemctl stop nginx
+# sudo certbot certonly --standalone -d api.tripnara.com
+# sudo systemctl start nginx
 ```
+
+**注意**: 
+- `--nginx` 模式不需要停止 Nginx，certbot 会自动配置
+- 确保 DNS 已配置 `api.tripnara.com` 指向服务器 IP `47.253.148.159`
 
 ### 步骤 3: 创建 Nginx 配置文件
 
