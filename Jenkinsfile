@@ -31,10 +31,7 @@ pipeline {
         sh '''
           set -eux
           docker version
-          docker build --pull --no-cache \
-            -t ${IMAGE_REPO}:${IMAGE_TAG} \
-            -t ${IMAGE_REPO}:latest \
-            .
+          docker build --pull --no-cache -t ${IMAGE_REPO}:${IMAGE_TAG} -t ${IMAGE_REPO}:latest .
         '''
       }
     }
