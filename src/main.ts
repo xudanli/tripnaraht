@@ -18,6 +18,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   console.log('🚀 [Bootstrap] 开始启动应用...');
@@ -66,6 +67,10 @@ async function bootstrap() {
   // Cookie parser middleware (must be before other middleware)
   const cookieParser = require('cookie-parser');
   app.use(cookieParser());
+  
+  // 全局异常过滤器（必须在其他全局配置之前注册）
+  console.log('✅ 全局异常过滤器已注册');
+  app.useGlobalFilters(new AllExceptionsFilter());
   
   // HTTP 访问日志 - 使用拦截器（推荐方式，更可靠）
   console.log('✅ HTTP 访问日志拦截器已注册');

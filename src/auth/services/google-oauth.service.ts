@@ -36,6 +36,12 @@ export class GoogleOAuthService {
    * @param redirectUri The redirect URI (should match the origin of the calling page for Popup mode)
    */
   async exchangeCodeForTokens(code: string, redirectUri?: string): Promise<GoogleTokenResponse> {
+    // Validate configuration
+    if (!this.clientId || !this.clientSecret) {
+      this.logger.error('Google OAuth configuration is missing. GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required.');
+      throw new BadRequestException('Google OAuth is not configured. Please contact administrator.');
+    }
+    
     // For Popup mode, redirectUri should be the origin of the calling page
     // If not provided, use the configured redirectUri
     const finalRedirectUri: string = redirectUri ?? this.redirectUri;
@@ -88,6 +94,10 @@ export class GoogleOAuthService {
         this.logger.debug(error.stack);
       }
       
+      // Ensure we always throw a BadRequestException (400), not an unhandled error (500)
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new BadRequestException(`Failed to exchange authorization code: ${errorDetail}`);
     }
   }
@@ -97,6 +107,12 @@ export class GoogleOAuthService {
    * Validates signature, audience, issuer, and expiration
    */
   async verifyIdToken(idToken: string): Promise<GoogleIdTokenPayload> {
+    // Validate configuration
+    if (!this.clientId) {
+      this.logger.error('Google OAuth configuration is missing. GOOGLE_CLIENT_ID is required.');
+      throw new BadRequestException('Google OAuth is not configured. Please contact administrator.');
+    }
+    
     try {
       const ticket = await this.oauth2Client.verifyIdToken({
         idToken,
@@ -138,13 +154,16 @@ export class GoogleOAuthService {
         family_name: payload.family_name,
       };
     } catch (error: any) {
-      this.logger.error(`Failed to verify ID token: ${error.message}`, error.stack);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      this.logger.error(`Failed to verify ID token: ${errorMessage}`, error?.stack);
       
+      // Re-throw BadRequestException as-is
       if (error instanceof BadRequestException) {
         throw error;
       }
       
-      throw new BadRequestException(`Failed to verify ID token: ${error.message}`);
+      // Ensure we always throw a BadRequestException (400), not an unhandled error (500)
+      throw new BadRequestException(`Failed to verify ID token: ${errorMessage}`);
     }
   }
 

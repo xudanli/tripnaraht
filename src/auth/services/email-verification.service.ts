@@ -62,95 +62,114 @@ export class EmailVerificationService {
    * 发送验证码到邮箱
    */
   async sendVerificationCode(email: string): Promise<void> {
-    // 验证邮箱格式
-    if (!this.validateEmail(email)) {
-      throw new BadRequestException('无效的邮箱地址');
-    }
-
-    // 检查是否已有未使用的验证码（防止频繁发送）
-    const existingCode = await this.prisma.emailVerificationCode.findFirst({
-      where: {
-        email,
-        used: false,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    // 如果 1 分钟内已发送过验证码，拒绝再次发送
-    if (existingCode) {
-      const timeSinceLastSend = Date.now() - existingCode.createdAt.getTime();
-      if (timeSinceLastSend < 60000) { // 60 秒
-        throw new BadRequestException('验证码发送过于频繁，请稍后再试');
-      }
-    }
-
-    // 生成验证码
-    const code = this.generateCode();
-    const expiresAt = new Date(Date.now() + this.codeExpirationMinutes * 60 * 1000);
-
-    // 保存验证码到数据库
-    await this.prisma.emailVerificationCode.create({
-      data: {
-        email,
-        code,
-        expiresAt,
-        used: false,
-      },
-    });
-
-    // 发送邮件
     try {
-      // Resend 要求 from 字段必须是有效的邮箱格式
-      let smtpFrom = this.configService?.get<string>('SMTP_FROM');
-      if (!smtpFrom) {
-        // 如果没有设置 SMTP_FROM，尝试从 SMTP_USER 构造
-        const smtpUser = this.configService?.get<string>('SMTP_USER');
-        if (smtpUser && smtpUser.includes('@')) {
-          smtpFrom = smtpUser;
-        } else {
-          // 如果 SMTP_USER 不是邮箱格式，使用默认值（需要在 Resend 中验证的域名）
-          smtpFrom = 'noreply@tripnara.com';
-        }
+      // 验证邮箱格式
+      if (!this.validateEmail(email)) {
+        throw new BadRequestException('无效的邮箱地址');
       }
-      const appName = this.configService?.get<string>('APP_NAME') || 'TripNARA';
 
-      await this.transporter.sendMail({
-        from: smtpFrom,
-        to: email,
-        subject: `${appName} 邮箱验证码`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">${appName} 邮箱验证</h2>
-            <p>您好，</p>
-            <p>您的验证码是：</p>
-            <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
-              <h1 style="color: #007bff; font-size: 32px; margin: 0; letter-spacing: 5px;">${code}</h1>
-            </div>
-            <p>验证码有效期为 ${this.codeExpirationMinutes} 分钟，请勿泄露给他人。</p>
-            <p>如果这不是您的操作，请忽略此邮件。</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-            <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>
-          </div>
-        `,
-        text: `您的 ${appName} 验证码是：${code}，有效期为 ${this.codeExpirationMinutes} 分钟。`,
+      // 检查 SMTP 配置
+      const smtpUser = this.configService?.get<string>('SMTP_USER');
+      const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || this.configService?.get<string>('SMTP_PASS');
+      if (!smtpUser || !smtpPassword) {
+        this.logger.error('SMTP 配置不完整，无法发送验证码邮件');
+        throw new BadRequestException('邮件服务未配置，请联系管理员');
+      }
+
+      // 检查是否已有未使用的验证码（防止频繁发送）
+      const existingCode = await this.prisma.emailVerificationCode.findFirst({
+        where: {
+          email,
+          used: false,
+          expiresAt: {
+            gt: new Date(),
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
       });
 
-      this.logger.debug(`验证码已发送到 ${email}`);
+      // 如果 1 分钟内已发送过验证码，拒绝再次发送
+      if (existingCode) {
+        const timeSinceLastSend = Date.now() - existingCode.createdAt.getTime();
+        if (timeSinceLastSend < 60000) { // 60 秒
+          throw new BadRequestException('验证码发送过于频繁，请稍后再试');
+        }
+      }
+
+      // 生成验证码
+      const code = this.generateCode();
+      const expiresAt = new Date(Date.now() + this.codeExpirationMinutes * 60 * 1000);
+
+      // 保存验证码到数据库
+      await this.prisma.emailVerificationCode.create({
+        data: {
+          email,
+          code,
+          expiresAt,
+          used: false,
+        },
+      });
+
+      // 发送邮件
+      try {
+        // Resend 要求 from 字段必须是有效的邮箱格式
+        let smtpFrom = this.configService?.get<string>('SMTP_FROM');
+        if (!smtpFrom) {
+          // 如果没有设置 SMTP_FROM，尝试从 SMTP_USER 构造
+          if (smtpUser && smtpUser.includes('@')) {
+            smtpFrom = smtpUser;
+          } else {
+            // 如果 SMTP_USER 不是邮箱格式，使用默认值（需要在 Resend 中验证的域名）
+            smtpFrom = 'noreply@tripnara.com';
+          }
+        }
+        const appName = this.configService?.get<string>('APP_NAME') || 'TripNARA';
+
+        await this.transporter.sendMail({
+          from: smtpFrom,
+          to: email,
+          subject: `${appName} 邮箱验证码`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">${appName} 邮箱验证</h2>
+              <p>您好，</p>
+              <p>您的验证码是：</p>
+              <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
+                <h1 style="color: #007bff; font-size: 32px; margin: 0; letter-spacing: 5px;">${code}</h1>
+              </div>
+              <p>验证码有效期为 ${this.codeExpirationMinutes} 分钟，请勿泄露给他人。</p>
+              <p>如果这不是您的操作，请忽略此邮件。</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>
+            </div>
+          `,
+          text: `您的 ${appName} 验证码是：${code}，有效期为 ${this.codeExpirationMinutes} 分钟。`,
+        });
+
+        this.logger.debug(`验证码已发送到 ${email}`);
+      } catch (error: any) {
+        this.logger.error(`发送验证码邮件失败: ${error?.message || error}`, error?.stack);
+        // 记录详细错误信息用于调试
+        if (error?.response) {
+          this.logger.error(`SMTP 响应错误: ${JSON.stringify(error.response)}`);
+        }
+        if (error?.code) {
+          this.logger.error(`SMTP 错误代码: ${error.code}`);
+        }
+        const errorMessage = error?.message || error?.toString() || 'Unknown error';
+        throw new BadRequestException(`发送验证码失败: ${errorMessage}`);
+      }
     } catch (error: any) {
-      this.logger.error(`发送验证码邮件失败: ${error.message}`, error.stack);
-      // 记录详细错误信息用于调试
-      if (error.response) {
-        this.logger.error(`SMTP 响应错误: ${JSON.stringify(error.response)}`);
+      // Re-throw BadRequestException as-is
+      if (error instanceof BadRequestException) {
+        throw error;
       }
-      if (error.code) {
-        this.logger.error(`SMTP 错误代码: ${error.code}`);
-      }
-      throw new BadRequestException(`发送验证码失败: ${error.message}`);
+      // Log unexpected errors
+      this.logger.error(`发送验证码时发生意外错误: ${error?.message || error}`, error?.stack);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      throw new BadRequestException(`发送验证码失败: ${errorMessage}`);
     }
   }
 

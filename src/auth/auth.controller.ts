@@ -86,17 +86,17 @@ export class AuthController {
       // 3. Exchange code for tokens (using origin as redirect_uri for Popup mode)
       const tokenResponse = await this.googleOAuthService.exchangeCodeForTokens(dto.code, origin);
 
-      // 2. Verify and decode ID token
+      // 4. Verify and decode ID token
       const idTokenPayload = await this.googleOAuthService.verifyIdToken(tokenResponse.id_token);
 
-      // 3. Upsert user
+      // 5. Upsert user
       const { user, isNewUser } = await this.authUserService.upsertUserFromGoogle(idTokenPayload);
 
-      // 4. Issue TripNARA tokens
+      // 6. Issue TripNARA tokens
       const accessToken = await this.tokenService.issueAccessToken(user.id, user.email || undefined);
       const { token: refreshToken, expiresAt } = await this.tokenService.issueRefreshToken(user.id);
 
-      // 5. Set refresh token as httpOnly cookie
+      // 7. Set refresh token as httpOnly cookie
       const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
       res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
@@ -117,10 +117,15 @@ export class AuthController {
         accessToken,
       };
     } catch (error: any) {
+      // Re-throw HttpExceptions (BadRequestException, UnauthorizedException, etc.)
       if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
         throw error;
       }
-      throw new BadRequestException(`Authentication failed: ${error.message}`);
+      // Log unexpected errors for debugging
+      console.error('[AuthController] Google code authentication error:', error);
+      // Extract error message safely
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      throw new BadRequestException(`Authentication failed: ${errorMessage}`);
     }
   }
 
@@ -181,10 +186,15 @@ export class AuthController {
         accessToken,
       };
     } catch (error: any) {
+      // Re-throw HttpExceptions (BadRequestException, UnauthorizedException, etc.)
       if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
         throw error;
       }
-      throw new BadRequestException(`Authentication failed: ${error.message}`);
+      // Log unexpected errors for debugging
+      console.error('[AuthController] Google ID token authentication error:', error);
+      // Extract error message safely
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      throw new BadRequestException(`Authentication failed: ${errorMessage}`);
     }
   }
 
@@ -326,10 +336,15 @@ export class AuthController {
       await this.emailVerificationService.sendVerificationCode(dto.email);
       return { message: '验证码已发送，请查收邮件' };
     } catch (error: any) {
+      // Re-throw BadRequestException as-is
       if (error instanceof BadRequestException) {
         throw error;
       }
-      throw new BadRequestException(`发送验证码失败: ${error.message}`);
+      // Log unexpected errors for debugging
+      console.error('[AuthController] Send verification code error:', error);
+      // Extract error message safely
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      throw new BadRequestException(`发送验证码失败: ${errorMessage}`);
     }
   }
 
