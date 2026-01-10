@@ -14,8 +14,8 @@ pipeline {
     DOCKER_REGISTRY = 'https://index.docker.io/v1/'
 
     APP_PORT  = '3000'
-    # 可选：后端 env 文件（放服务器上，不进 git）
-    ENV_FILE  = '/opt/tripnara/backend.env'
+   // 可选：后端 env 文件（放服务器上，不进 git）
+    ENV_FILE  = '/opt/tripnara/env'
     IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
   }
 
