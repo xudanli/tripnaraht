@@ -9,6 +9,8 @@ RUN npm ci
 
 COPY . .
 # 关键：显式生成 Prisma Client（避免 postinstall 在 schema 缺失时生成不完整）
+# 设置一个假的 DATABASE_URL 用于生成类型（不需要实际连接）
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 RUN npx prisma generate
 RUN npm run build
 
