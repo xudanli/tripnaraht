@@ -36,85 +36,33 @@ sudo certbot --nginx -d api.tripnara.com
 
 ### 步骤 3: 创建 Nginx 配置文件
 
+**重要**: 直接复制下面的配置内容，不要包含 Markdown 代码块标记（```nginx 和 ```）。
+
 ```bash
 sudo nano /etc/nginx/sites-available/tripnara-api
 ```
 
-配置文件内容：
+**基础配置（用于 certbot 验证，获取证书前使用）**:
 
 ```nginx
-# HTTP 重定向到 HTTPS
 server {
     listen 80;
     server_name api.tripnara.com;
 
-    # 重定向所有 HTTP 请求到 HTTPS
-    return 301 https://$server_name$request_uri;
-}
-
-# HTTPS 服务器
-server {
-    listen 443 ssl http2;
-    server_name api.tripnara.com;
-
-    # SSL 证书路径（Let's Encrypt）
-    ssl_certificate /etc/letsencrypt/live/api.tripnara.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.tripnara.com/privkey.pem;
-
-    # SSL 配置（推荐的安全配置）
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    # 安全头
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # 日志
-    access_log /var/log/nginx/tripnara-api-access.log;
-    error_log /var/log/nginx/tripnara-api-error.log;
-
-    # 代理到后端应用（本地 HTTP）
     location / {
         proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        
-        # WebSocket 支持（如果需要）
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        
-        # 标准代理头
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
-        
-        # 超时设置
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-        
-        # 禁用缓存（API 响应）
-        proxy_cache_bypass $http_upgrade;
-        
-        # CORS 头（如果需要，通常后端已处理）
-        # add_header Access-Control-Allow-Origin https://tripnara.com always;
-        # add_header Access-Control-Allow-Credentials true always;
-    }
-
-    # 健康检查端点（可选）
-    location /health {
-        proxy_pass http://127.0.0.1:3000/api/system/status;
-        access_log off;
     }
 }
 ```
+
+**注意**: 
+- 复制时只复制 `server { ... }` 部分，不要包含 ```nginx 标记
+- 获取证书后，certbot 会自动更新此配置添加 SSL
+- 或者参考项目根目录的 `nginx-tripnara-api.conf` 文件（完整 HTTPS 配置）
 
 ### 步骤 4: 启用配置
 
