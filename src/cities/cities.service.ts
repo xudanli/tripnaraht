@@ -62,15 +62,28 @@ export class CitiesService {
       // 如果没有搜索关键词，使用标准 Prisma 查询
       // 如果提供了国家代码，使用原始 SQL 查询确保过滤条件生效（临时修复）
       if (normalizedCountryCode) {
-        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询（带国家代码过滤）`);
+        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询（带国家代码过滤）: countryCode=${normalizedCountryCode}`);
+        
+        // 使用参数化查询确保安全
         const cities = await this.prisma.$queryRaw<any[]>`
           SELECT * FROM "City" 
-          WHERE "countryCode" = ${normalizedCountryCode}
+          WHERE "countryCode" = ${normalizedCountryCode}::text
           ORDER BY "countryCode" ASC, "name" ASC
-          LIMIT ${limit}
-          OFFSET ${offset}
+          LIMIT ${limit}::int
+          OFFSET ${offset}::int
         `;
+        
         this.logger.debug(`[CitiesService.findAll] 原始 SQL 查询结果: ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
+        if (cities.length > 0) {
+          const actualCountryCodes = [...new Set(cities.map(c => c.countryCode))];
+          this.logger.debug(`[CitiesService.findAll] 返回的城市国家代码: ${actualCountryCodes.join(', ')}`);
+          if (!actualCountryCodes.includes(normalizedCountryCode)) {
+            this.logger.error(`[CitiesService.findAll] 严重错误！查询 countryCode=${normalizedCountryCode}，但返回的城市 countryCode 为: ${actualCountryCodes.join(', ')}`);
+          }
+        } else {
+          this.logger.warn(`[CitiesService.findAll] 未找到国家代码为 ${normalizedCountryCode} 的城市`);
+        }
+        
         return cities.map(city => this.mapToDto(city));
       }
 
