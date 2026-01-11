@@ -40,11 +40,13 @@ export class TripsService {
    * 2. 木桶效应计算（Pacing Strategy）
    * 3. 预算切分（Budget Strategy）
    * 4. 自动创建 TripDay 记录
+   * 5. 创建 TripCollaborator 记录关联创建者
    * 
    * @param dto 创建行程的输入数据
+   * @param userId 创建者用户ID（必需）
    * @returns 创建成功的 Trip 对象
    */
-  async create(dto: CreateTripDto) {
+  async create(dto: CreateTripDto, userId: string) {
     // ============================================
     // 步骤 0: 验证目的地国家代码和 Place 数据
     // ============================================
@@ -171,6 +173,18 @@ export class TripsService {
         tripDays.push(tripDay);
       }
 
+      // C. 创建 TripCollaborator 记录，关联创建者
+      if (userId) {
+        await tx.tripCollaborator.create({
+          data: {
+            id: randomUUID(),
+            tripId: trip.id,
+            userId: userId,
+            role: 'OWNER', // 创建者默认为 OWNER 角色
+          } as any,
+        });
+      }
+
       // 返回完整的 Trip 对象（包含关联的 TripDay）
       return {
         ...trip,
@@ -182,7 +196,7 @@ export class TripsService {
   /**
    * 从草案创建行程
    */
-  async createFromDraft(dto: SaveTripDraftDto) {
+  async createFromDraft(dto: SaveTripDraftDto, userId: string) {
     const draft = dto.draft;
 
     // 验证草案数据
@@ -201,7 +215,7 @@ export class TripsService {
     };
 
     // 创建 Trip（使用现有方法）
-    const trip = await this.create(createTripDto);
+    const trip = await this.create(createTripDto, userId);
 
     // 批量创建 ItineraryItem
     const itemsCount = await this.tripDraftService.createItineraryItemsFromDraft(
@@ -223,7 +237,19 @@ export class TripsService {
    * @param userId 当前用户 ID（可选，用于判断是否已收藏）
    */
   async findAll(userId?: string) {
+    // 如果提供了 userId，只返回该用户作为协作者的行程
+    const where = userId
+      ? {
+          TripCollaborator: {
+            some: {
+              userId: userId,
+            },
+          },
+        }
+      : {};
+
     const trips = await this.prisma.trip.findMany({
+      where,
       include: {
         TripDay: {
           include: {
@@ -278,6 +304,22 @@ export class TripsService {
     // Hard guard: prevent Prisma from seeing null/undefined id
     if (!id || typeof id !== 'string' || !id.trim()) {
       throw new BadRequestException('tripId is required');
+    }
+
+    // 如果提供了 userId，验证用户是否有权限访问该行程
+    if (userId) {
+      const collaborator = await this.prisma.tripCollaborator.findUnique({
+        where: {
+          tripId_userId: {
+            tripId: id,
+            userId: userId,
+          },
+        },
+      });
+
+      if (!collaborator) {
+        throw new NotFoundException(`行程 ID ${id} 不存在或您没有权限访问`);
+      }
     }
 
     const trip = await this.prisma.trip.findUnique({

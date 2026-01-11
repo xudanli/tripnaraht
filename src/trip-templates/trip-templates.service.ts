@@ -80,7 +80,7 @@ export class TripTemplatesService {
   /**
    * 基于模板创建行程
    */
-  async createTripFromTemplate(dto: CreateTripFromTemplateDto) {
+  async createTripFromTemplate(dto: CreateTripFromTemplateDto, userId: string) {
     // 获取模板
     const template = await this.findOne(dto.templateId);
     
@@ -104,6 +104,6 @@ export class TripTemplatesService {
     };
 
     // 调用 TripsService 创建行程
-    return await this.tripsService.create(createTripDto);
+    return await this.tripsService.create(createTripDto, userId);
   }
 }

@@ -69,4 +69,7 @@ export enum ErrorCode {
   
   // 不支持的操作
   UNSUPPORTED_ACTION = 'UNSUPPORTED_ACTION',
+  
+  // 未授权（需要登录）
+  UNAUTHORIZED = 'UNAUTHORIZED',
 }

@@ -5,6 +5,7 @@ import { TripTemplatesService } from './trip-templates.service';
 import { GetTripTemplatesQueryDto, TripTemplateResponseDto, CreateTripFromTemplateDto } from './dto/trip-template.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('trip-templates')
 @Controller('trip-templates')
@@ -82,9 +83,17 @@ export class TripsFromTemplateController {
     description: '输入数据验证失败（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async createFromTemplate(@Body() dto: CreateTripFromTemplateDto) {
+  async createFromTemplate(
+    @Body() dto: CreateTripFromTemplateDto,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
     try {
-      const trip = await this.tripTemplatesService.createTripFromTemplate(dto);
+      const userId = user?.userId;
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+      
+      const trip = await this.tripTemplatesService.createTripFromTemplate(dto, userId);
       return successResponse(trip);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

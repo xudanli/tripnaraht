@@ -87,14 +87,22 @@ export class TripsController {
     description: '输入数据验证失败（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async create(@Body() body: CreateTripDto | SaveTripDraftDto) {
+  async create(
+    @Body() body: CreateTripDto | SaveTripDraftDto,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
     try {
+      const userId = user?.userId;
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+      
       // 检查是否是草案保存请求（包含 draft 字段）
       if ('draft' in body) {
-        const trip = await this.tripsService.createFromDraft(body as SaveTripDraftDto);
+        const trip = await this.tripsService.createFromDraft(body as SaveTripDraftDto, userId);
         return successResponse(trip);
       } else {
-        const trip = await this.tripsService.create(body as CreateTripDto);
+        const trip = await this.tripsService.create(body as CreateTripDto, userId);
         return successResponse(trip);
       }
     } catch (error: any) {
@@ -116,8 +124,16 @@ export class TripsController {
     description: '成功创建行程或需要澄清（统一响应格式）',
     type: ApiSuccessResponseDto,
   })
-  async createFromNaturalLanguage(@Body() dto: CreateTripFromNaturalLanguageDto) {
+  async createFromNaturalLanguage(
+    @Body() dto: CreateTripFromNaturalLanguageDto,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
     try {
+      const userId = user?.userId;
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+
       // 使用 LLM 解析自然语言
       const parseResult = await this.llmService.naturalLanguageToTripParams({
         text: dto.text,
@@ -172,7 +188,7 @@ export class TripsController {
       };
 
       // 创建行程
-      const trip = await this.tripsService.create(createTripDto);
+      const trip = await this.tripsService.create(createTripDto, userId);
       
       // 异步生成行程规划点（不阻塞响应）
       // 计算行程天数
