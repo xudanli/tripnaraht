@@ -1,0 +1,26 @@
+# =========================
+# repo-root/docker-compose.yml
+# （默认：数据库是外部 Postgres（RDS/自建），用 DATABASE_URL 连接）
+# =========================
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tripnara:latest
+    container_name: tripnara-app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    ports:
+      - "3000:3000"
+
+  # 部署时一次性迁移（推荐：Jenkins 跑完 migrate 再 up）
+  migrate:
+    image: tripnara:latest
+    container_name: tripnara-migrate
+    profiles: ["ops"]
+    restart: "no"
+    env_file:
+      - ./.env
+    command: ["sh", "-lc", "node ./node_modules/.bin/prisma migrate deploy"]
