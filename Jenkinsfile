@@ -16,7 +16,17 @@ pipeline {
         sh '''
           set -eu
           docker version
-          docker compose version
+          # 检测 Docker Compose 命令（支持 V2 和 V1）
+          if docker compose version >/dev/null 2>&1; then
+            echo "使用 docker compose (V2)"
+            echo "DOCKER_COMPOSE_CMD=docker compose" >> $WORKSPACE/.docker-compose-cmd
+          elif docker-compose version >/dev/null 2>&1; then
+            echo "使用 docker-compose (V1)"
+            echo "DOCKER_COMPOSE_CMD=docker-compose" >> $WORKSPACE/.docker-compose-cmd
+          else
+            echo "错误: 未找到 docker compose 或 docker-compose 命令"
+            exit 1
+          fi
         '''
       }
     }
@@ -41,7 +51,16 @@ pipeline {
       steps {
         sh '''
           set -eu
-          docker compose build
+          # 检测并使用正确的 Docker Compose 命令
+          if docker compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker compose"
+          elif docker-compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker-compose"
+          else
+            echo "错误: 未找到 docker compose 或 docker-compose 命令"
+            exit 1
+          fi
+          ${DOCKER_COMPOSE_CMD} build
         '''
       }
     }
@@ -50,7 +69,16 @@ pipeline {
       steps {
         sh '''
           set -eu
-          docker compose --profile ops run --rm migrate
+          # 检测并使用正确的 Docker Compose 命令
+          if docker compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker compose"
+          elif docker-compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker-compose"
+          else
+            echo "错误: 未找到 docker compose 或 docker-compose 命令"
+            exit 1
+          fi
+          ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate
         '''
       }
     }
@@ -59,8 +87,17 @@ pipeline {
       steps {
         sh '''
           set -eu
-          docker compose up -d --remove-orphans
-          docker compose ps
+          # 检测并使用正确的 Docker Compose 命令
+          if docker compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker compose"
+          elif docker-compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE_CMD="docker-compose"
+          else
+            echo "错误: 未找到 docker compose 或 docker-compose 命令"
+            exit 1
+          fi
+          ${DOCKER_COMPOSE_CMD} up -d --remove-orphans
+          ${DOCKER_COMPOSE_CMD} ps
         '''
       }
     }
