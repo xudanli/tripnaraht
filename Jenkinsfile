@@ -48,6 +48,20 @@ pipeline {
             set -eu
             umask 077
             printf "%s" "$DOTENV" > .env
+            # 验证 .env 文件已写入
+            if [ ! -f .env ]; then
+              echo "❌ 错误: .env 文件未创建"
+              exit 1
+            fi
+            echo "✅ .env 文件已创建"
+            # 验证 SMTP 配置（不显示敏感信息）
+            if grep -q "^SMTP_" .env; then
+              echo "✅ .env 文件中包含 SMTP 配置"
+              grep "^SMTP_" .env | sed 's/PASSWORD=.*/PASSWORD=***/' || true
+            else
+              echo "⚠️  警告: .env 文件中未找到 SMTP 配置"
+              echo "请检查 Jenkins Credentials 配置"
+            fi
           '''
         }
       }
@@ -159,12 +173,27 @@ pipeline {
           # 重新创建并启动容器（强制重新创建以确保加载新的环境变量）
           ${DOCKER_COMPOSE_CMD} up -d --force-recreate --remove-orphans
           ${DOCKER_COMPOSE_CMD} ps
-          # 验证环境变量是否已加载（仅检查 SMTP_HOST，不显示敏感信息）
+          # 验证环境变量是否已加载
           echo "验证环境变量..."
-          if docker exec tripnara-app sh -c 'test -n "$SMTP_HOST"' 2>/dev/null; then
+          sleep 2  # 等待容器完全启动
+          SMTP_HOST=$(docker exec tripnara-app sh -c 'echo $SMTP_HOST' 2>/dev/null || echo "")
+          SMTP_USER=$(docker exec tripnara-app sh -c 'echo $SMTP_USER' 2>/dev/null || echo "")
+          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_USER" ]; then
             echo "✅ SMTP 环境变量已加载"
+            echo "  SMTP_HOST: $SMTP_HOST"
+            echo "  SMTP_USER: $SMTP_USER"
           else
-            echo "⚠️  警告: SMTP 环境变量可能未加载，请检查配置"
+            echo "⚠️  警告: SMTP 环境变量未加载"
+            echo "检查 .env 文件内容（前10行，隐藏敏感信息）："
+            head -10 .env | sed 's/PASSWORD=.*/PASSWORD=***/' || echo "无法读取 .env 文件"
+            echo ""
+            echo "检查容器环境变量："
+            docker exec tripnara-app env | grep SMTP || echo "未找到 SMTP 环境变量"
+            echo ""
+            echo "可能的原因："
+            echo "  1. Jenkins Credentials 中未配置 SMTP 变量"
+            echo "  2. .env 文件格式不正确"
+            echo "  3. docker-compose.yml 中的 env_file 配置有问题"
           fi
         '''
       }
