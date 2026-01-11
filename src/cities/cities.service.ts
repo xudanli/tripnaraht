@@ -60,30 +60,23 @@ export class CitiesService {
       }
 
       // 如果没有搜索关键词，使用标准 Prisma 查询
-      // 直接构建 where 对象，确保查询条件正确
-      const where: Prisma.CityWhereInput = normalizedCountryCode
-        ? { countryCode: normalizedCountryCode }
-        : {};
-
-      // 添加详细的调试日志
-      this.logger.debug(`[CitiesService.findAll] 构建 where 对象: ${JSON.stringify(where)}`);
-      this.logger.debug(`[CitiesService.findAll] normalizedCountryCode=${normalizedCountryCode}, where.countryCode=${(where as any).countryCode}`);
-
-      // 查询城市
-      this.logger.debug(`[CitiesService.findAll] 执行 Prisma 查询: where=${JSON.stringify(where)}, limit=${limit}, offset=${offset}`);
-      
-      // 使用 $queryRaw 直接测试 SQL 查询，确认问题
+      // 如果提供了国家代码，使用原始 SQL 查询确保过滤条件生效（临时修复）
       if (normalizedCountryCode) {
-        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询进行验证...`);
-        const rawCities = await this.prisma.$queryRaw<any[]>`
-          SELECT * FROM "City" WHERE "countryCode" = ${normalizedCountryCode} LIMIT ${limit} OFFSET ${offset}
+        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询（带国家代码过滤）`);
+        const cities = await this.prisma.$queryRaw<any[]>`
+          SELECT * FROM "City" 
+          WHERE "countryCode" = ${normalizedCountryCode}
+          ORDER BY "countryCode" ASC, "name" ASC
+          LIMIT ${limit}
+          OFFSET ${offset}
         `;
-        this.logger.debug(`[CitiesService.findAll] 原始 SQL 查询结果: ${rawCities.length} 个城市`);
-        if (rawCities.length > 0) {
-          const rawCountryCodes = [...new Set(rawCities.map(c => c.countryCode))];
-          this.logger.debug(`[CitiesService.findAll] 原始 SQL 返回的国家代码: ${rawCountryCodes.join(', ')}`);
-        }
+        this.logger.debug(`[CitiesService.findAll] 原始 SQL 查询结果: ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
+        return cities.map(city => this.mapToDto(city));
       }
+
+      // 如果没有国家代码，使用标准 Prisma 查询
+      const where: Prisma.CityWhereInput = {};
+      this.logger.debug(`[CitiesService.findAll] 使用 Prisma 查询（无国家代码过滤）: where=${JSON.stringify(where)}`);
       
       const cities = await this.prisma.city.findMany({
         where,
