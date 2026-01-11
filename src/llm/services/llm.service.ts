@@ -137,103 +137,12 @@ export class LlmService {
       // 验证必需字段
       const hasAllRequiredFields = parsed.destination && parsed.startDate && parsed.endDate && parsed.totalBudget;
 
-      if (!hasAllRequiredFields) {
-        // 字段缺失，需要澄清
-        this.logger.debug('Missing required fields, returning needsClarification: true');
-        return {
-          params: parsed as TripCreationParams,
-          needsClarification: true,
-          clarificationQuestions: this.generateClarificationQuestions(parsed),
-        };
-      }
-
-      // 检查用户输入是否明确提到了日期和预算（优先信任用户的明确输入）
-      const userText = dto.text.toLowerCase();
-      const hasExplicitDate = this.hasExplicitDate(userText);
-      const hasExplicitBudget = this.hasExplicitBudget(userText);
-      
-      this.logger.debug(`User input analysis: hasExplicitDate=${hasExplicitDate}, hasExplicitBudget=${hasExplicitBudget}`);
-
-      // 如果用户明确提到了日期和预算，即使 LLM 标记为推断，也信任用户的输入
-      if (hasExplicitDate && hasExplicitBudget) {
-        this.logger.debug('User explicitly mentioned both date and budget, trusting user input and proceeding without clarification');
-        return {
-          params: parsed as TripCreationParams,
-          needsClarification: false,
-        };
-      }
-
-      // 如果用户明确提到了日期，即使 LLM 标记为推断，也信任用户的输入（预算可以推断）
-      if (hasExplicitDate && parsed.startDate && parsed.endDate) {
-        // 检查日期是否合理
-        const hasReasonableDates = this.hasReasonableInferredValues(parsed, ['startDate', 'endDate']);
-        if (hasReasonableDates) {
-          this.logger.debug('User explicitly mentioned date, trusting user input and proceeding without clarification');
-          return {
-            params: parsed as TripCreationParams,
-            needsClarification: false,
-          };
-        }
-      }
-
-      // 如果用户明确提到了预算，即使 LLM 标记为推断，也信任用户的输入（日期可以推断）
-      if (hasExplicitBudget && parsed.totalBudget) {
-        // 检查预算是否合理
-        const hasReasonableBudget = this.hasReasonableInferredValues(parsed, ['totalBudget']);
-        if (hasReasonableBudget) {
-          // 如果日期也合理，直接使用
-          if (parsed.startDate && parsed.endDate) {
-            const hasReasonableDates = this.hasReasonableInferredValues(parsed, ['startDate', 'endDate']);
-            if (hasReasonableDates) {
-              this.logger.debug('User explicitly mentioned budget, and dates are reasonable, proceeding without clarification');
-              return {
-                params: parsed as TripCreationParams,
-                needsClarification: false,
-              };
-            }
-          }
-        }
-      }
-
-      // 优先检查 LLM 标记的 needsClarification（如果用户没有明确提到，信任 LLM 的判断）
-      if (parsed.needsClarification === true) {
-        this.logger.debug('LLM marked needsClarification: true, returning clarification questions');
-        return {
-          params: parsed as TripCreationParams,
-          needsClarification: true,
-          clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
-        };
-      }
-
-      // 如果 LLM 没有明确标记 needsClarification，但有 inferredFields，检查推断值是否合理
-      // 如果推断值合理且完整，可以选择直接使用（不要求澄清）
-      if (parsed.inferredFields && Array.isArray(parsed.inferredFields) && parsed.inferredFields.length > 0) {
-        // 检查推断值是否合理
-        const hasReasonableInferredValues = this.hasReasonableInferredValues(parsed, parsed.inferredFields);
-        
-        if (hasReasonableInferredValues) {
-          // 推断值合理，可以选择直接使用（不要求澄清）
-          this.logger.debug(`Found reasonable inferredFields: ${JSON.stringify(parsed.inferredFields)}, proceeding without clarification`);
-          return {
-            params: parsed as TripCreationParams,
-            needsClarification: false,
-          };
-        } else {
-          // 推断值不合理或缺失，需要澄清
-          this.logger.debug(`Found inferredFields with unreasonable values: ${JSON.stringify(parsed.inferredFields)}, treating as needsClarification`);
-          return {
-            params: parsed as TripCreationParams,
-            needsClarification: true,
-            clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
-          };
-        }
-      }
-
-
-      this.logger.debug('All fields present and needsClarification is false, proceeding with trip creation');
+      // 总是返回澄清问题，让用户确认/选择信息
+      this.logger.debug('Always returning needsClarification: true to let user confirm/select information');
       return {
         params: parsed as TripCreationParams,
-        needsClarification: false,
+        needsClarification: true,
+        clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
       };
     } catch (error: any) {
       this.logger.error(`Failed to parse natural language: ${error.message}`);
@@ -972,30 +881,37 @@ ${JSON.stringify(error, null, 2)}
 
   private generateClarificationQuestions(parsed: any, inferredFields?: string[]): string[] {
     const questions: string[] = [];
-    
+
+    // 总是询问目的地（如果缺失）
     if (!parsed.destination) {
       questions.push('请告诉我您想去哪个国家或地区？');
+    } else {
+      // 即使有值，也询问确认
+      questions.push(`您想去 ${parsed.destination} 吗？请确认目的地。`);
     }
-    
-    // 如果字段缺失或者是推断的，需要询问
-    const needsDateClarification = 
-      !parsed.startDate || 
-      !parsed.endDate || 
-      inferredFields?.includes('startDate') || 
-      inferredFields?.includes('endDate');
-    
-    if (needsDateClarification) {
+
+    // 总是询问日期（让用户确认）
+    if (!parsed.startDate || !parsed.endDate) {
       questions.push('请告诉我您的出行日期？');
+    } else {
+      // 即使有值，也询问确认
+      const startDate = parsed.startDate.includes('T') 
+        ? parsed.startDate.split('T')[0] 
+        : parsed.startDate;
+      const endDate = parsed.endDate.includes('T') 
+        ? parsed.endDate.split('T')[0] 
+        : parsed.endDate;
+      questions.push(`您的出行日期是 ${startDate} 到 ${endDate} 吗？请确认。`);
     }
-    
-    const needsBudgetClarification = 
-      !parsed.totalBudget || 
-      inferredFields?.includes('totalBudget');
-    
-    if (needsBudgetClarification) {
+
+    // 总是询问预算（让用户确认）
+    if (!parsed.totalBudget) {
       questions.push('请告诉我您的预算范围？');
+    } else {
+      // 即使有值，也询问确认
+      questions.push(`您的预算是 ${parsed.totalBudget} 元人民币吗？请确认。`);
     }
-    
+
     return questions;
   }
 
