@@ -59,7 +59,7 @@ pipeline {
           set -eu
           # 检测并使用正确的 Docker Compose 命令
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            source $WORKSPACE/.docker-compose-cmd
+            . $WORKSPACE/.docker-compose-cmd
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
@@ -85,7 +85,7 @@ pipeline {
         sh '''
           set -eu
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            source $WORKSPACE/.docker-compose-cmd
+            . $WORKSPACE/.docker-compose-cmd
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
@@ -109,7 +109,7 @@ pipeline {
         sh '''
           set -eu
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            source $WORKSPACE/.docker-compose-cmd
+            . $WORKSPACE/.docker-compose-cmd
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
