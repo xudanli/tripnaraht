@@ -61,6 +61,16 @@ DATABASE_URL="postgresql://user:password@pgm-bp11qeau0n455339mo.pg.rds.aliyuncs.
 APIFY_API_TOKEN="apify_api_xxx"
 VITE_MAPBOX_ACCESS_TOKEN="pk.xxx"
 
+# SMTP 邮件服务配置
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASSWORD="your-app-password"
+SMTP_FROM="noreply@tripnara.com"
+
+# CORS 配置
+FRONTEND_URL="https://tripnara.com"
+
 # 其他配置
 NODE_ENV="production"
 PORT="3000"
