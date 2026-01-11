@@ -155,11 +155,16 @@ async function bootstrap() {
         return callback(null, true);
       }
       
-      // 如果没有配置 FRONTEND_URL，开发环境允许所有来源
+      // 如果没有配置 FRONTEND_URL
       if (frontendUrls.length === 0) {
         if (process.env.NODE_ENV === 'production') {
-          console.warn('⚠️  CORS: 生产环境未配置 FRONTEND_URL，拒绝所有请求');
-          return callback(new Error('CORS not configured for production'));
+          // 生产环境：允许所有来源，但记录严重警告
+          // 建议尽快配置 FRONTEND_URL 以提高安全性
+          console.error('🚨 [CORS 安全警告] 生产环境未配置 FRONTEND_URL，当前允许所有来源');
+          console.error('   请尽快在环境变量中配置 FRONTEND_URL 或 FRONTEND_URLS');
+          console.error('   例如: FRONTEND_URL=https://tripnara.com');
+          // 允许请求，但记录警告
+          return callback(null, true);
         }
         // 开发环境：允许所有来源
         return callback(null, true);
