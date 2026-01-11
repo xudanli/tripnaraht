@@ -19,12 +19,17 @@ export class CitiesService {
     const { countryCode, q, limit = 50, offset = 0 } = query;
 
     try {
+      // 添加详细的输入日志
+      this.logger.debug(`[CitiesService.findAll] 收到查询参数: ${JSON.stringify({ countryCode, q, limit, offset })}`);
+      
       // 规范化国家代码（转换为大写）
       const normalizedCountryCode = countryCode ? countryCode.toUpperCase().trim() : undefined;
       
       // 添加调试日志
       if (normalizedCountryCode) {
-        this.logger.debug(`查询城市: countryCode=${normalizedCountryCode}, q=${q || 'none'}, limit=${limit}, offset=${offset}`);
+        this.logger.debug(`[CitiesService.findAll] 规范化后的国家代码: ${normalizedCountryCode}`);
+      } else {
+        this.logger.debug(`[CitiesService.findAll] 未提供国家代码，将返回所有城市`);
       }
 
       // 如果有搜索关键词，使用原始 SQL 查询以支持不区分大小写搜索
@@ -60,11 +65,26 @@ export class CitiesService {
         ? { countryCode: normalizedCountryCode }
         : {};
 
-      // 添加调试日志，确认 where 条件
-      this.logger.debug(`设置查询条件: where=${JSON.stringify(where)}, normalizedCountryCode=${normalizedCountryCode}`);
+      // 添加详细的调试日志
+      this.logger.debug(`[CitiesService.findAll] 构建 where 对象: ${JSON.stringify(where)}`);
+      this.logger.debug(`[CitiesService.findAll] normalizedCountryCode=${normalizedCountryCode}, where.countryCode=${(where as any).countryCode}`);
 
       // 查询城市
-      this.logger.debug(`执行 Prisma 查询: where=${JSON.stringify(where)}, limit=${limit}, offset=${offset}`);
+      this.logger.debug(`[CitiesService.findAll] 执行 Prisma 查询: where=${JSON.stringify(where)}, limit=${limit}, offset=${offset}`);
+      
+      // 使用 $queryRaw 直接测试 SQL 查询，确认问题
+      if (normalizedCountryCode) {
+        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询进行验证...`);
+        const rawCities = await this.prisma.$queryRaw<any[]>`
+          SELECT * FROM "City" WHERE "countryCode" = ${normalizedCountryCode} LIMIT ${limit} OFFSET ${offset}
+        `;
+        this.logger.debug(`[CitiesService.findAll] 原始 SQL 查询结果: ${rawCities.length} 个城市`);
+        if (rawCities.length > 0) {
+          const rawCountryCodes = [...new Set(rawCities.map(c => c.countryCode))];
+          this.logger.debug(`[CitiesService.findAll] 原始 SQL 返回的国家代码: ${rawCountryCodes.join(', ')}`);
+        }
+      }
+      
       const cities = await this.prisma.city.findMany({
         where,
         take: limit,
@@ -74,6 +94,8 @@ export class CitiesService {
           { name: 'asc' },
         ],
       });
+      
+      this.logger.debug(`[CitiesService.findAll] Prisma findMany 查询结果: ${cities.length} 个城市`);
       
       // 添加调试日志，检查返回的城市
       if (normalizedCountryCode && cities.length > 0) {
