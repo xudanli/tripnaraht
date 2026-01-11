@@ -108,11 +108,109 @@ SELECT PostGIS_version();
    SELECT * FROM pg_extension WHERE extname LIKE 'postgis%';
    ```
 
+## 解决失败的迁移（P3009 错误）
+
+如果之前迁移失败，Prisma 会记录失败的迁移，阻止新的迁移。需要先解决失败的迁移记录。
+
+### 错误信息
+
+```
+Error: P3009
+migrate found failed migrations in the target database, new migrations will not be applied.
+The `20251225191251_add_route_directions` migration started at 2026-01-11 05:48:11.796832 UTC failed
+```
+
+### 解决方案
+
+#### 方案 1：标记失败迁移为已回滚（推荐）
+
+连接到数据库，将失败的迁移标记为已回滚：
+
+```sql
+-- 连接到目标数据库
+\c tripnara_prod
+
+-- 查看失败的迁移
+SELECT * FROM "_prisma_migrations" WHERE finished_at IS NULL;
+
+-- 标记失败的迁移为已回滚（替换 migration_name 为实际的迁移名称）
+UPDATE "_prisma_migrations" 
+SET finished_at = NOW(), 
+    rolled_back_at = NOW() 
+WHERE migration_name = '20251225191251_add_route_directions' 
+  AND finished_at IS NULL;
+```
+
+#### 方案 2：使用 Prisma migrate resolve 命令（如果数据库用户有权限）
+
+在容器中运行：
+
+```bash
+# 标记为已应用（如果迁移实际上已经成功，只是标记失败）
+npx prisma migrate resolve --applied 20251225191251_add_route_directions
+
+# 或标记为已回滚（如果迁移确实失败，需要重新运行）
+npx prisma migrate resolve --rolled-back 20251225191251_add_route_directions
+```
+
+在 Jenkins 中，可以在 Migrate stage 之前添加一个清理步骤，或者手动修复数据库。
+
+#### 方案 3：手动修复数据库并标记迁移
+
+如果迁移因为 PostGIS 扩展缺失而失败，但表已经部分创建：
+
+1. **安装 PostGIS 扩展**（如果还没有安装）
+2. **删除部分创建的数据库对象**（表、索引等）
+3. **标记迁移为已回滚**
+
+```sql
+-- 1. 安装 PostGIS（如果还没有）
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- 2. 查看是否有部分创建的对象（需要根据实际情况调整）
+SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE '%route_directions%';
+
+-- 3. 删除部分创建的对象（如果有）
+-- DROP TABLE IF EXISTS "RouteDirection" CASCADE;
+
+-- 4. 标记迁移为已回滚
+UPDATE "_prisma_migrations" 
+SET finished_at = NOW(), 
+    rolled_back_at = NOW() 
+WHERE migration_name = '20251225191251_add_route_directions' 
+  AND finished_at IS NULL;
+```
+
+### 完整解决流程
+
+1. **安装 PostGIS 扩展**
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS postgis;
+   CREATE EXTENSION IF NOT EXISTS postgis_topology;
+   ```
+
+2. **清理失败的迁移记录**
+   ```sql
+   UPDATE "_prisma_migrations" 
+   SET finished_at = NOW(), 
+       rolled_back_at = NOW() 
+   WHERE migration_name = '20251225191251_add_route_directions' 
+     AND finished_at IS NULL;
+   ```
+
+3. **清理部分创建的对象**（如果有）
+   - 检查是否有部分创建的表、索引等
+   - 手动删除或使用 Prisma 的回滚命令
+
+4. **重新运行 Jenkins 构建**
+   - 迁移会重新尝试执行
+
 ## 下一步
 
-1. 联系数据库管理员，在目标数据库中安装 PostGIS 扩展
-2. 或者使用有权限的数据库用户执行 `CREATE EXTENSION postgis;`
-3. 安装完成后，重新运行 Jenkins 构建
+1. 连接数据库，安装 PostGIS 扩展
+2. 标记失败的迁移为已回滚
+3. 清理部分创建的对象（如果有）
+4. 重新运行 Jenkins 构建
 
 ## 相关资源
 
