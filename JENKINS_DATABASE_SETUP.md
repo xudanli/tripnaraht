@@ -207,25 +207,79 @@ WHERE migration_name = '20251225191251_add_route_directions'
 
 ## 快速修复脚本
 
-项目提供了修复脚本 `scripts/fix-failed-migration.sql`，可以快速修复失败的迁移：
+### ⚠️ 重要：必须先修复数据库状态
+
+**当前错误**：P3009 - 检测到失败的迁移记录，阻止新的迁移执行。
+
+**必须执行的步骤**（在数据库中）：
+
+1. **连接到数据库**
+   ```bash
+   # 使用 psql 连接（从 DATABASE_URL 提取信息）
+   psql "postgresql://user:password@pgm-bp11qeau0n455339mo.pg.rds.aliyuncs.com:5432/tripnara_prod?sslmode=disable"
+   
+   # 或使用环境变量
+   export PGHOST=pgm-bp11qeau0n455339mo.pg.rds.aliyuncs.com
+   export PGPORT=5432
+   export PGDATABASE=tripnara_prod
+   export PGUSER=your_username
+   export PGPASSWORD=your_password
+   psql
+   ```
+
+2. **查看失败的迁移**
+   ```sql
+   SELECT 
+       migration_name,
+       started_at,
+       finished_at,
+       rolled_back_at
+   FROM "_prisma_migrations" 
+   WHERE finished_at IS NULL
+   ORDER BY started_at DESC;
+   ```
+
+3. **标记失败的迁移为已回滚**（必须执行）
+   ```sql
+   UPDATE "_prisma_migrations" 
+   SET 
+       finished_at = NOW(), 
+       rolled_back_at = NOW() 
+   WHERE migration_name = '20251225191251_add_route_directions' 
+     AND finished_at IS NULL;
+   ```
+
+4. **验证修复**
+   ```sql
+   SELECT 
+       migration_name,
+       started_at,
+       finished_at,
+       rolled_back_at
+   FROM "_prisma_migrations" 
+   WHERE migration_name = '20251225191251_add_route_directions';
+   ```
+
+5. **安装 PostGIS 扩展**（如果还没有）
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS postgis;
+   CREATE EXTENSION IF NOT EXISTS postgis_topology;
+   ```
+
+### 使用项目提供的脚本
+
+项目提供了修复脚本 `scripts/fix-failed-migration.sql`：
 
 ```bash
-# 连接到数据库
-psql "postgresql://user:password@host:5432/tripnara_prod?sslmode=disable"
+# 方法1：使用 psql 执行脚本
+psql "postgresql://user:password@host:5432/tripnara_prod?sslmode=disable" -f scripts/fix-failed-migration.sql
 
-# 执行修复脚本
+# 方法2：在 psql 中执行
+psql "postgresql://user:password@host:5432/tripnara_prod?sslmode=disable"
 \i scripts/fix-failed-migration.sql
 ```
 
-或者直接在数据库中执行：
-
-```sql
--- 标记失败的迁移为已回滚
-UPDATE "_prisma_migrations" 
-SET finished_at = NOW(), rolled_back_at = NOW() 
-WHERE migration_name = '20251225191251_add_route_directions' 
-  AND finished_at IS NULL;
-```
+**注意**：脚本中的迁移名称可能需要根据实际情况调整。
 
 ## 下一步
 
