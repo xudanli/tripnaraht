@@ -47,22 +47,44 @@ else
 fi
 echo ""
 
-# 4. 检查 Jenkins 工作目录（如果存在）
+# 4. 检查可能的 .env 文件位置
 echo "4️⃣ 检查可能的 .env 文件位置..."
-POSSIBLE_PATHS=(
-    "/var/jenkins_home/workspace/tripnara-backend/.env"
-    "/var/jenkins_home/workspace/tripnara-ht/.env"
-    "$HOME/project/.env"
-    "$(pwd)/.env"
-    "/srv/jenkins/workspace/tripnara-backend/.env"
+echo ""
+
+# 自动检测常见的 Jenkins 工作目录
+JENKINS_WORKSPACES=(
+    "/var/jenkins_home/workspace"
+    "/srv/jenkins/workspace"
+    "/home/jenkins/workspace"
+    "/opt/jenkins/workspace"
 )
+
+# 当前目录和常见项目路径
+POSSIBLE_PATHS=(
+    "$(pwd)/.env"
+    "$HOME/project/.env"
+    "$HOME/tripnara/.env"
+)
+
+# 尝试从 Jenkins 工作目录查找
+for workspace_base in "${JENKINS_WORKSPACES[@]}"; do
+    if [ -d "$workspace_base" ]; then
+        echo "检查 Jenkins 工作目录: $workspace_base"
+        # 查找包含 tripnara 的项目目录
+        for project_dir in "$workspace_base"/tripnara*; do
+            if [ -d "$project_dir" ] && [ -f "$project_dir/.env" ]; then
+                POSSIBLE_PATHS+=("$project_dir/.env")
+            fi
+        done
+    fi
+done
 
 FOUND_ENV=false
 for path in "${POSSIBLE_PATHS[@]}"; do
     if [ -f "$path" ]; then
         echo -e "${GREEN}✅ 找到 .env 文件: $path${NC}"
         echo ""
-        echo "文件内容（SMTP 相关）："
+        echo "文件内容（SMTP 相关，隐藏密码）："
         grep "^SMTP_" "$path" | sed 's/PASSWORD=.*/PASSWORD=***/' || echo "未找到 SMTP 配置"
         FOUND_ENV=true
         echo ""
@@ -75,10 +97,16 @@ done
 
 if [ "$FOUND_ENV" = false ]; then
     echo -e "${YELLOW}⚠️  未找到 .env 文件${NC}"
+    echo ""
     echo "可能的原因："
-    echo "  1. Jenkins 构建后已删除 .env 文件（正常行为）"
+    echo "  1. Jenkins 构建后已删除 .env 文件（正常行为，Jenkinsfile 在 post 阶段会删除）"
     echo "  2. .env 文件在其他位置"
     echo "  3. Jenkins 构建时未正确写入 .env 文件"
+    echo ""
+    echo "提示："
+    echo "  - 查看 Jenkins 构建日志中的 'Write .env from Jenkins Credentials' 阶段"
+    echo "  - 确认 Jenkins Credentials 配置是否正确"
+    echo "  - 检查 Jenkins 工作目录路径"
 fi
 echo ""
 
