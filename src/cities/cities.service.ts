@@ -64,9 +64,11 @@ export class CitiesService {
       if (normalizedCountryCode) {
         this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询（带国家代码过滤）: countryCode=${normalizedCountryCode}`);
         
-        // 使用参数化查询确保安全
+        // 使用参数化查询确保安全，排除 location 字段（geography 类型无法反序列化）
         const cities = await this.prisma.$queryRaw<any[]>`
-          SELECT * FROM "City" 
+          SELECT 
+            id, name, "countryCode", adcode, "nameCN", "nameEN", timezone, metadata
+          FROM "City" 
           WHERE "countryCode" = ${normalizedCountryCode}::text
           ORDER BY "countryCode" ASC, "name" ASC
           LIMIT ${limit}::int
