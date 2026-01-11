@@ -111,7 +111,19 @@ pipeline {
             
             # 重新尝试迁移
             echo "🔄 重新尝试迁移..."
-            ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate
+            if ! ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate; then
+              echo ""
+              echo "❌ 迁移仍然失败。可能的原因："
+              echo "1. PostGIS 扩展未安装在正确的数据库中（请确认是在 tripnara_prod 数据库中安装）"
+              echo "2. 数据库用户权限不足，无法使用 PostGIS 扩展"
+              echo "3. DATABASE_URL 格式问题，导致连接到错误的数据库"
+              echo ""
+              echo "请检查："
+              echo "- 确认 PostGIS 扩展已安装在 tripnara_prod 数据库"
+              echo "- 执行: SELECT * FROM pg_extension WHERE extname = 'postgis';"
+              echo "- 检查 DATABASE_URL 是否正确指向 tripnara_prod 数据库"
+              exit 1
+            fi
           fi
         '''
       }
