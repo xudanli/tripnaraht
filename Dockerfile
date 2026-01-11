@@ -25,14 +25,3 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 CMD ["node", "dist/src/main.js"]
-
-
-# =========================
-# repo-root/.dockerignore
-# =========================
-node_modules
-dist
-.git
-.gitignore
-.env
-*.log
