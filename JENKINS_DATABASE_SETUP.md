@@ -205,12 +205,45 @@ WHERE migration_name = '20251225191251_add_route_directions'
 4. **重新运行 Jenkins 构建**
    - 迁移会重新尝试执行
 
+## 快速修复脚本
+
+项目提供了修复脚本 `scripts/fix-failed-migration.sql`，可以快速修复失败的迁移：
+
+```bash
+# 连接到数据库
+psql "postgresql://user:password@host:5432/tripnara_prod?sslmode=disable"
+
+# 执行修复脚本
+\i scripts/fix-failed-migration.sql
+```
+
+或者直接在数据库中执行：
+
+```sql
+-- 标记失败的迁移为已回滚
+UPDATE "_prisma_migrations" 
+SET finished_at = NOW(), rolled_back_at = NOW() 
+WHERE migration_name = '20251225191251_add_route_directions' 
+  AND finished_at IS NULL;
+```
+
 ## 下一步
 
-1. 连接数据库，安装 PostGIS 扩展
-2. 标记失败的迁移为已回滚
-3. 清理部分创建的对象（如果有）
-4. 重新运行 Jenkins 构建
+1. **安装 PostGIS 扩展**（如果还没有）
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS postgis;
+   CREATE EXTENSION IF NOT EXISTS postgis_topology;
+   ```
+
+2. **修复失败的迁移记录**
+   - 使用提供的 SQL 脚本：`scripts/fix-failed-migration.sql`
+   - 或手动执行 UPDATE 语句
+
+3. **清理部分创建的对象**（如果有）
+   - 检查是否有部分创建的表
+   - 手动删除
+
+4. **重新运行 Jenkins 构建**
 
 ## 相关资源
 
