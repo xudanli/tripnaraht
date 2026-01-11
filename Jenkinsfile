@@ -148,8 +148,24 @@ pipeline {
               exit 1
             fi
           fi
-          ${DOCKER_COMPOSE_CMD} up -d --remove-orphans
+          # 验证 .env 文件存在
+          if [ ! -f .env ]; then
+            echo "❌ 错误: .env 文件不存在，无法启动容器"
+            exit 1
+          fi
+          echo "✅ .env 文件存在，继续启动容器..."
+          # 停止并删除现有容器，确保重新加载环境变量
+          ${DOCKER_COMPOSE_CMD} down 2>/dev/null || true
+          # 重新创建并启动容器（强制重新创建以确保加载新的环境变量）
+          ${DOCKER_COMPOSE_CMD} up -d --force-recreate --remove-orphans
           ${DOCKER_COMPOSE_CMD} ps
+          # 验证环境变量是否已加载（仅检查 SMTP_HOST，不显示敏感信息）
+          echo "验证环境变量..."
+          if docker exec tripnara-app sh -c 'test -n "$SMTP_HOST"' 2>/dev/null; then
+            echo "✅ SMTP 环境变量已加载"
+          else
+            echo "⚠️  警告: SMTP 环境变量可能未加载，请检查配置"
+          fi
         '''
       }
     }
