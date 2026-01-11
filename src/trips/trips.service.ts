@@ -181,6 +181,7 @@ export class TripsService {
             tripId: trip.id,
             userId: userId,
             role: 'OWNER', // 创建者默认为 OWNER 角色
+            updatedAt: new Date(),
           } as any,
         });
       }
