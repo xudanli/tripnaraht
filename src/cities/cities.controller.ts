@@ -68,12 +68,23 @@ export class CitiesController {
   })
   async findAll(@Query() query: GetCitiesQueryDto): Promise<any> {
     try {
+      // 添加调试日志
+      if (query.countryCode) {
+        this.logger.debug(`收到城市查询请求: countryCode=${query.countryCode}, q=${query.q || 'none'}`);
+      }
+      
       const cities = await this.citiesService.findAll(query);
+      
+      // 添加调试日志
+      if (query.countryCode) {
+        this.logger.debug(`返回城市列表: countryCode=${query.countryCode}, 找到 ${cities.length} 个城市`);
+      }
+      
       return successResponse({
         cities,
         total: cities.length,
         ...(query.countryCode && {
-          countryCode: query.countryCode,
+          countryCode: query.countryCode.toUpperCase(),
           totalInCountry: await this.citiesService.countByCountry(query.countryCode),
         }),
       });

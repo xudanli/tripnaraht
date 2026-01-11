@@ -19,6 +19,14 @@ export class CitiesService {
     const { countryCode, q, limit = 50, offset = 0 } = query;
 
     try {
+      // 规范化国家代码（转换为大写）
+      const normalizedCountryCode = countryCode ? countryCode.toUpperCase().trim() : undefined;
+      
+      // 添加调试日志
+      if (normalizedCountryCode) {
+        this.logger.debug(`查询城市: countryCode=${normalizedCountryCode}, q=${q || 'none'}, limit=${limit}, offset=${offset}`);
+      }
+
       // 如果有搜索关键词，使用原始 SQL 查询以支持不区分大小写搜索
       if (q) {
         const searchTerm = q.trim();
@@ -27,7 +35,7 @@ export class CitiesService {
           SELECT *
           FROM "City"
           WHERE 
-            ${countryCode ? Prisma.sql`"countryCode" = ${countryCode.toUpperCase()} AND` : Prisma.sql``}
+            ${normalizedCountryCode ? Prisma.sql`"countryCode" = ${normalizedCountryCode} AND` : Prisma.sql``}
             (
               LOWER(COALESCE("nameCN", '')) LIKE LOWER(${`%${searchTerm}%`}) OR
               LOWER(COALESCE("nameEN", '')) LIKE LOWER(${`%${searchTerm}%`}) OR
@@ -37,6 +45,12 @@ export class CitiesService {
           LIMIT ${limit}
           OFFSET ${offset}
         `;
+        
+        // 添加调试日志
+        if (normalizedCountryCode) {
+          this.logger.debug(`搜索城市结果: 找到 ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
+        }
+        
         return cities.map(city => this.mapToDto(city));
       }
 
@@ -44,8 +58,8 @@ export class CitiesService {
       const where: Prisma.CityWhereInput = {};
 
       // 国家代码过滤
-      if (countryCode) {
-        where.countryCode = countryCode.toUpperCase();
+      if (normalizedCountryCode) {
+        where.countryCode = normalizedCountryCode;
       }
 
       // 查询城市
@@ -58,6 +72,26 @@ export class CitiesService {
           { name: 'asc' },
         ],
       });
+
+      // 添加调试日志
+      if (normalizedCountryCode) {
+        this.logger.debug(`查询城市结果: 找到 ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
+        if (cities.length === 0) {
+          // 检查数据库中是否有该国家的城市
+          const totalCount = await this.prisma.city.count({
+            where: { countryCode: normalizedCountryCode },
+          });
+          this.logger.warn(`未找到国家代码为 ${normalizedCountryCode} 的城市。数据库中该国家的城市总数: ${totalCount}`);
+          
+          // 列出数据库中实际存在的国家代码（用于调试）
+          const distinctCountries = await this.prisma.city.findMany({
+            select: { countryCode: true },
+            distinct: ['countryCode'],
+            take: 10,
+          });
+          this.logger.debug(`数据库中存在的国家代码示例: ${distinctCountries.map(c => c.countryCode).join(', ')}`);
+        }
+      }
 
       // 转换为 DTO
       return cities.map(city => this.mapToDto(city));
