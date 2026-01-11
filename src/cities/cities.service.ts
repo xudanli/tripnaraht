@@ -55,14 +55,13 @@ export class CitiesService {
       }
 
       // 如果没有搜索关键词，使用标准 Prisma 查询
-      const where: Prisma.CityWhereInput = {};
+      // 直接构建 where 对象，确保查询条件正确
+      const where: Prisma.CityWhereInput = normalizedCountryCode
+        ? { countryCode: normalizedCountryCode }
+        : {};
 
-      // 国家代码过滤
-      if (normalizedCountryCode) {
-        where.countryCode = normalizedCountryCode;
-        // 添加调试日志，确认 where 条件
-        this.logger.debug(`设置查询条件: where.countryCode = ${normalizedCountryCode}, where对象: ${JSON.stringify(where)}`);
-      }
+      // 添加调试日志，确认 where 条件
+      this.logger.debug(`设置查询条件: where=${JSON.stringify(where)}, normalizedCountryCode=${normalizedCountryCode}`);
 
       // 查询城市
       this.logger.debug(`执行 Prisma 查询: where=${JSON.stringify(where)}, limit=${limit}, offset=${offset}`);
