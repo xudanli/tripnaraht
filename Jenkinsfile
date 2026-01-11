@@ -1,9 +1,3 @@
-# =========================
-# repo-root/Jenkinsfile
-# 说明：
-# - 需要 Jenkins 节点上能跑：docker + docker compose（你现在是 docker.sock 方式）
-# - Credentials 里创建 Secret text，ID：tripnara-dotenv-prod（内容就是完整 .env）
-# =========================
 pipeline {
   agent any
 
