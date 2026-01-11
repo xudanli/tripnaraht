@@ -239,7 +239,9 @@ WHERE migration_name = '20251225191251_add_route_directions'
    ORDER BY started_at DESC;
    ```
 
-3. **标记失败的迁移为已回滚**（必须执行）
+3. **标记失败的迁移为已回滚**（必须执行并提交）
+   
+   **方法1：修复特定的迁移**
    ```sql
    UPDATE "_prisma_migrations" 
    SET 
@@ -248,6 +250,21 @@ WHERE migration_name = '20251225191251_add_route_directions'
    WHERE migration_name = '20251225191251_add_route_directions' 
      AND finished_at IS NULL;
    ```
+   
+   **方法2：修复所有失败的迁移**（推荐，更简单）
+   ```sql
+   UPDATE "_prisma_migrations" 
+   SET 
+       finished_at = NOW(), 
+       rolled_back_at = NOW() 
+   WHERE finished_at IS NULL;
+   ```
+   
+   **⚠️ 重要：**
+   - 执行 UPDATE 后，**必须提交事务**（COMMIT）
+   - 在 psql 中，默认是自动提交的
+   - 在某些数据库管理工具中，需要点击"提交"按钮或执行 `COMMIT;`
+   - 如果使用事务，必须执行 `COMMIT;` 才能生效
 
 4. **验证修复**
    ```sql
