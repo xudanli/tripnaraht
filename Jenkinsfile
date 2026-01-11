@@ -99,7 +99,20 @@ pipeline {
               exit 1
             fi
           fi
-          ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate
+          
+          # 尝试运行迁移
+          if ! ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate; then
+            echo "⚠️  迁移失败，尝试修复失败的迁移记录..."
+            # 使用 Prisma migrate resolve 修复失败的迁移
+            # 注意：这需要数据库用户有权限修改 _prisma_migrations 表
+            ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate sh -c "
+              node ./node_modules/.bin/prisma migrate resolve --rolled-back 20251225191251_add_route_directions || true
+            " || echo "⚠️  自动修复失败，请手动在数据库中执行修复 SQL（见 JENKINS_DATABASE_SETUP.md）"
+            
+            # 重新尝试迁移
+            echo "🔄 重新尝试迁移..."
+            ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate
+          fi
         '''
       }
     }
