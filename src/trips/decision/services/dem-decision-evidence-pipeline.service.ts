@@ -16,10 +16,10 @@
  * 4. 生成可解释失败说明
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TripPlan, PlanDay } from '../plan-model';
-import { DEMElevationService } from '../../readiness/services/dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from '../../readiness/services/dem-effort-metadata.service';
+import { DEMElevationService } from '../../dem/services/dem-elevation.service';
+import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
 import {
   DemDecisionEvidence,
   DemEvidencePipelineResult,
@@ -32,9 +32,13 @@ export class DemDecisionEvidencePipelineService {
   private readonly logger = new Logger(DemDecisionEvidencePipelineService.name);
 
   constructor(
-    private readonly demElevationService: DEMElevationService,
-    private readonly demEffortService: DEMEffortMetadataService,
-  ) {}
+    @Optional() private readonly demElevationService?: DEMElevationService,
+    @Optional() private readonly demEffortService?: DEMEffortMetadataService,
+  ) {
+    if (!demElevationService || !demEffortService) {
+      this.logger.warn('DEMElevationService or DEMEffortMetadataService not available. DEM features will be disabled.');
+    }
+  }
 
   /**
    * 为整个计划生成 DEM 证据管道结果

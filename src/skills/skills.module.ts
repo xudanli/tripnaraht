@@ -14,6 +14,7 @@ import { ContextEngineModule } from '../agent/context-engine/context-engine.modu
 import { PlacesModule } from '../places/places.module';
 import { PlacesEmbeddingModule } from '../places/places-embedding.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { DemModule } from '../trips/dem/dem.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -138,6 +139,8 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     // 先导入 PlacesEmbeddingModule，确保 EmbeddingService 在 ToolsSelectSkill 之前可用
     ...(enablePlacesEmbeddingModule ? [PlacesEmbeddingModule] : []), // 只提供 EmbeddingService（用于 Tool RAG Embedding），默认启用，不阻塞启动
     ...(enablePlacesModule ? [PlacesModule] : []), // 完整的 PlacesModule（包含所有服务），默认禁用（导致启动阻塞）
+    // DEM 模块（独立模块，不形成循环依赖）
+    DemModule, // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要）
     // 其他模块
     ...(enableDecisionSkills ? [forwardRef(() => DecisionModule)] : []), // 使用 forwardRef 避免与 DecisionModule 的循环依赖
     // 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true

@@ -22,7 +22,7 @@ import { DecisionModule } from './decision/decision.module';
 import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule], // 使用 forwardRef 解决循环依赖：TripsModule -> DecisionModule -> ReadinessModule -> TripsModule
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule], // 必需：TripsService 需要 DecisionLogStorageService
   controllers: [TripsController],
   providers: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService, TripSuggestionsService],
   exports: [TripsService, FlightPriceService, FlightPriceDetailService, ScheduleConverterService, ActionHistoryService, TripExtendedService, TripRecapService, TripEmergencyService, TripBudgetService, TripAdjustmentService, TripDraftService, TripMetricsService, TripConflictsService, TripIntentService, TripOptimizationService, TripSuggestionsService], // 导出 Service，供其他模块使用

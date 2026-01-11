@@ -46,7 +46,7 @@ class MockRedisService {
           return RedisModule;
         })(),
     POIModule,
-    MemoryModule,
+    // MemoryModule, // 暂时禁用，测试是否导致阻塞
   ],
   controllers: [RouteDirectionsController],
   providers: [

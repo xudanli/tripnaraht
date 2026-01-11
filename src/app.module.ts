@@ -68,12 +68,12 @@ import { CitiesModule } from './cities/cities.module';
     // ScheduleActionModule, // 行程动作执行模块
     // TrailsModule, // 徒步路线模块
     // 第六批：行程核心模块（可能有循环依赖）
-    // TripsModule, // 临时禁用，避免启动阻塞（可能与 DecisionModule/SkillsModule 循环依赖）
+    TripsModule, // 恢复：已确认问题在 TripsModule 或其依赖链
     // 第七批：智能体和技能（可能有问题）
     RailPassModule, // RailPass 合规与订座决策模块（测试中）
-    // ReadinessModule, // 旅行准备度检查模块（临时禁用，排查启动阻塞问题）
-    // RouteDirectionsModule, // 国家级路线方向资产模块（临时禁用，避免启动阻塞）
-    RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）（测试中）
+    // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
+    RouteDirectionsModule, // 恢复：测试是否导致阻塞
+    // RagModule, // 暂时禁用，测试是否导致阻塞
     // AgentModule, // Agent 模块（Router + Orchestrator）（临时禁用，避免启动阻塞）
     // SkillsModule, // Skills 模块（能力颗粒层）
   ],

@@ -16,10 +16,10 @@
  * 5. 识别强制休息点（连续高海拔、连续上升等）
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { DEMElevationService } from '../../readiness/services/dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from '../../readiness/services/dem-effort-metadata.service';
+import { DEMElevationService } from '../../dem/services/dem-elevation.service';
+import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
 
 export interface ElevationProfilePoint {
   /** 距离起点的距离（米） */
@@ -141,9 +141,13 @@ export class DEMRouteSegmentationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly demElevationService: DEMElevationService,
-    private readonly demEffortService: DEMEffortMetadataService,
-  ) {}
+    @Optional() private readonly demElevationService?: DEMElevationService,
+    @Optional() private readonly demEffortService?: DEMEffortMetadataService,
+  ) {
+    if (!demElevationService || !demEffortService) {
+      this.logger.warn('DEMElevationService or DEMEffortMetadataService not available. DEM features will be disabled.');
+    }
+  }
 
   /**
    * 对RouteDirection的corridor进行自动拆段分析

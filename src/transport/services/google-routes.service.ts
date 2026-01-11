@@ -1,5 +1,5 @@
 // src/transport/services/google-routes.service.ts
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import * as https from 'https';
@@ -17,10 +17,10 @@ import { TransportOption, TransportMode } from '../interfaces/transport.interfac
  * API 文档：https://routes.googleapis.com/directions/v2:computeRoutes
  */
 @Injectable()
-export class GoogleRoutesService {
+export class GoogleRoutesService implements OnModuleInit {
   private readonly logger = new Logger(GoogleRoutesService.name);
   private readonly apiKey: string | undefined;
-  private readonly axiosInstance: AxiosInstance;
+  private axiosInstance?: AxiosInstance; // 延迟初始化
   private readonly baseURL: string; // 强制 HTTPS 的 baseURL
   
   // Circuit breaker: 如果连续失败超过阈值，暂时禁用 API
@@ -65,6 +65,19 @@ export class GoogleRoutesService {
       this.baseURL = 'https://routes.googleapis.com';
     }
     
+    // ⚠️ 延迟初始化 axios 实例，避免在构造函数中创建 HttpsProxyAgent 可能导致阻塞
+    // axios 实例将在 onModuleInit 中创建
+  }
+
+  /**
+   * 延迟初始化 axios 实例
+   * 避免在构造函数中创建 HttpsProxyAgent 可能导致阻塞（DNS 解析等）
+   */
+  async onModuleInit() {
+    if (this.axiosInstance) {
+      return; // 已经初始化
+    }
+
     // 检查代理环境变量
     const proxyUrl =
       process.env.HTTPS_PROXY ||
@@ -116,6 +129,40 @@ export class GoogleRoutesService {
         return Promise.reject(error);
       }
     );
+  }
+
+  /**
+   * 获取 axios 实例（延迟初始化）
+   */
+  private getAxiosInstance(): AxiosInstance {
+    if (!this.axiosInstance) {
+      // 如果还没初始化，同步初始化（虽然不推荐，但作为后备）
+      this.logger.warn('GoogleRoutesService: axios 实例尚未初始化，同步初始化（可能阻塞）');
+      const proxyUrl =
+        process.env.HTTPS_PROXY ||
+        process.env.https_proxy ||
+        process.env.ALL_PROXY ||
+        process.env.all_proxy;
+      const httpsAgent = proxyUrl
+        ? new HttpsProxyAgent<string>(proxyUrl)
+        : new https.Agent({
+            keepAlive: true,
+            family: 4,
+            rejectUnauthorized: true,
+          });
+      this.axiosInstance = axios.create({
+        baseURL: this.baseURL,
+        timeout: 10000,
+        httpsAgent,
+        proxy: false,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': this.apiKey || '',
+          'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,distanceMeters',
+        },
+      });
+    }
+    return this.axiosInstance;
   }
 
   /**
@@ -207,7 +254,7 @@ export class GoogleRoutesService {
       
       this.logger.debug(`Google Routes API 请求: ${finalUrl}`);
       
-      const response = await this.axiosInstance.post(apiPath, requestBody);
+      const response = await this.getAxiosInstance().post(apiPath, requestBody);
 
       // 成功：重置失败计数
       this.consecutiveFailures = 0;

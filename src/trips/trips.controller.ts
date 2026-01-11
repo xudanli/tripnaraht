@@ -262,6 +262,25 @@ export class TripsController {
     return successResponse(trips);
   }
 
+  @Get('attention-queue')
+  @ApiOperation({
+    summary: '获取关注队列',
+    description: '获取需要用户关注的队列列表，用于 Dashboard 页面的 Attention Queue 显示。支持全局查询（所有行程）或按 tripId 过滤。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回关注队列（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getAttentionQueue(@Query() query: GetAttentionQueueQueryDto) {
+    try {
+      const result = await this.tripsService.getAttentionQueue(query);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get(':id')
   @ApiOperation({ 
     summary: '获取单个行程详情（全景视图）',

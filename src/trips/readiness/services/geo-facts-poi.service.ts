@@ -15,7 +15,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { PrismaClient } from '@prisma/client';
 import { POIPickupScorerService, PickupPoint } from './poi-pickup-scorer.service';
 import { POITrailheadService, TrailAccessPoint } from './poi-trailhead.service';
-import { DEMElevationService } from './dem-elevation.service';
+import { DEMElevationService } from '../../dem/services/dem-elevation.service';
 
 export interface POIFeatures {
   /** Top 集合点（出海/交通） */

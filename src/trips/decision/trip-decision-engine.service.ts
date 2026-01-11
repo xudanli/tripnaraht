@@ -8,6 +8,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { TripWorldState, TravelLeg, GeoPoint, ActivityCandidate } from './world-model';
 import { TripPlan, PlanDay, PlanSlot } from './plan-model';
 import { abuSelectCoreActivities } from './strategies/abu';
@@ -56,9 +57,12 @@ export interface SenseTools {
 export class TripDecisionEngineService {
   private readonly logger = new Logger(TripDecisionEngineService.name);
 
+  private readinessService?: ReadinessService;
+  private readinessAgent?: ReadinessAgentService;
+
   constructor(
     private readonly tools: SenseToolsAdapter,
-    @Optional() private readonly readinessService?: ReadinessService,
+    private readonly moduleRef: ModuleRef,
     // private readonly poiFeaturesAdapter?: PoiFeaturesAdapterService,
     @Optional() private readonly routeDirectionSelector?: RouteDirectionSelectorService,
     @Optional() private readonly routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService,
@@ -77,8 +81,42 @@ export class TripDecisionEngineService {
     @Optional() private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
     @Optional() private readonly strategyOrchestrator?: StrategyOrchestratorService,
     @Optional() private readonly planConverter?: PlanConverterService,
-    @Optional() private readonly readinessAgent?: ReadinessAgentService
-  ) {}
+  ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // ReadinessService 和 ReadinessAgentService 在需要时通过 ModuleRef 获取
+  }
+
+  /**
+   * 懒加载获取 ReadinessService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getReadinessService(): ReadinessService | null {
+    if (!this.readinessService) {
+      try {
+        this.readinessService = this.moduleRef.get(ReadinessService, { strict: false });
+      } catch (error) {
+        this.logger.warn('无法获取 ReadinessService，准备度检查功能将不可用');
+        return null;
+      }
+    }
+    return this.readinessService || null;
+  }
+
+  /**
+   * 懒加载获取 ReadinessAgentService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getReadinessAgent(): ReadinessAgentService | null {
+    if (!this.readinessAgent) {
+      try {
+        this.readinessAgent = this.moduleRef.get(ReadinessAgentService, { strict: false });
+      } catch (error) {
+        this.logger.warn('无法获取 ReadinessAgentService，准备度代理功能将不可用');
+        return null;
+      }
+    }
+    return this.readinessAgent || null;
+  }
 
   /**
    * 生成初始计划
@@ -107,16 +145,17 @@ export class TripDecisionEngineService {
     const planGenerateStartTime = Date.now();
 
     // 可选：运行准备度检查（使用 Pack + 能力包 + 地理特征增强）
-    if (this.readinessService) {
+    const readinessService = this.getReadinessService();
+    if (readinessService) {
       try {
-        const context = this.readinessService.extractTripContext(state);
+        const context = readinessService.extractTripContext(state);
         
         // 获取起始位置坐标（用于地理特征增强）
         // 优先使用第一天的酒店位置，如果没有则尝试从候选活动中获取
         const startLocation = state.context.anchors?.hotelLocationsByDate?.[state.context.startDate] ||
           state.candidatesByDate[state.context.startDate]?.[0]?.location?.point;
         
-        const readinessResult = await this.readinessService.checkFromDestination(
+        const readinessResult = await readinessService.checkFromDestination(
           state.context.destination,
           context,
           {
@@ -140,7 +179,7 @@ export class TripDecisionEngineService {
         }
         
         // 将 Readiness Findings 转换为 Constraints，影响决策
-        const readinessConstraints = await this.readinessService.getConstraints(readinessResult);
+        const readinessConstraints = await readinessService.getConstraints(readinessResult);
         
         // 将 readiness 约束信息存储到 state 中，供后续决策使用
         // 通过 state.signals.alerts 传递准备度信息
@@ -1055,7 +1094,8 @@ export class TripDecisionEngineService {
 
     // 生成准备度检查清单（如果 ReadinessAgent 可用且有 worldContext）
     let readiness: TravelReadinessResult | undefined;
-    if (this.readinessAgent && selectedRouteDirection) {
+    const readinessAgent = this.getReadinessAgent();
+    if (readinessAgent && selectedRouteDirection) {
       try {
         // 重新构建 worldContext（如果之前已经构建过）
         // 注意：这里简化处理，实际上应该将 worldContext 提升到外部作用域
@@ -1111,7 +1151,7 @@ export class TripDecisionEngineService {
           routeDirection,
         };
 
-        readiness = this.readinessAgent.run(worldContextForReadiness, finalPlan);
+        readiness = readinessAgent.run(worldContextForReadiness, finalPlan);
         this.logger.log(`生成准备度检查清单: ${readiness.items.length} 项`);
       } catch (error) {
         this.logger.warn(`准备度检查清单生成失败: ${error}`);

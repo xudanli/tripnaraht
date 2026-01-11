@@ -26,26 +26,23 @@ import { POITrailheadService } from './services/poi-trailhead.service';
 import { GeoFactsService } from './services/geo-facts.service';
 import { GeoFactsCacheService } from './services/geo-facts-cache.service';
 import { CapabilityPackEvaluatorService } from './services/capability-pack-evaluator.service';
-import { DEMElevationService } from './services/dem-elevation.service';
-import { DEMEffortMetadataService } from './services/dem-effort-metadata.service';
 import { ReadinessController } from './readiness.controller';
+import { DemModule } from '../dem/dem.module';
 import { UsersModule } from '../../users/users.module';
 import { ChecklistStatusService } from './services/checklist-status.service';
 import { FindingMarksService } from './services/finding-marks.service';
 import { PackingListService } from './services/packing-list.service';
 import { SolutionService } from './services/solution.service';
-import { TripsModule } from '../trips.module';
-
-// 允许通过环境变量控制 TripsModule 导入（避免启动阻塞）
-// 默认禁用（与 app.module.ts 保持一致），除非明确设置 ENABLE_TRIPS_MODULE=true
-// 如果 TripsModule 被禁用，ReadinessModule 仍然可以正常工作（某些功能可能不可用）
-const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
+// 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
+// 暂时禁用，验证懒加载方案是否能解决问题
+// import { TripsModule } from '../trips.module';
 
 @Module({
   imports: [
     PrismaModule, 
-    UsersModule, 
-    ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []),
+    UsersModule,
+    DemModule, // 导入 DemModule 以使用 DEM 服务
+    // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],
   providers: [
@@ -67,8 +64,7 @@ const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
     GeoFactsService,
     GeoFactsCacheService,
     CapabilityPackEvaluatorService,
-    DEMElevationService,
-    DEMEffortMetadataService,
+    // DEMElevationService 和 DEMEffortMetadataService 已移至 DemModule
     ChecklistStatusService,
     FindingMarksService,
     PackingListService,
@@ -90,8 +86,7 @@ const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
     GeoFactsService,
     GeoFactsCacheService,
     CapabilityPackEvaluatorService,
-    DEMElevationService,
-    DEMEffortMetadataService,
+    // DEMElevationService 和 DEMEffortMetadataService 已移至 DemModule
   ],
 })
 export class ReadinessModule {}

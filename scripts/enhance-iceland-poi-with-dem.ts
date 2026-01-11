@@ -16,7 +16,7 @@
 
 import { PrismaClient, PlaceCategory, Prisma } from '@prisma/client';
 import { PhysicalMetadataGenerator } from '../src/places/utils/physical-metadata-generator.util';
-import { DEMElevationService } from '../src/trips/readiness/services/dem-elevation.service';
+import { DEMElevationService } from '../src/trips/dem/services/dem-elevation.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { HIGH_ELEVATION_THRESHOLD } from '../src/places/utils/physical-metadata-constants';
 

@@ -13,8 +13,8 @@
  * 同一条路线，不同 RouteDirection，每天走法不同
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { DEMEffortMetadataService, RoutePoint } from '../../readiness/services/dem-effort-metadata.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
 import { GeoPoint } from '../world-model';
 import { PlanDay, PlanSlot } from '../plan-model';
 
@@ -55,8 +55,12 @@ export class DEMDailyEnergyService {
   private readonly logger = new Logger(DEMDailyEnergyService.name);
 
   constructor(
-    private readonly demEffortService: DEMEffortMetadataService
-  ) {}
+    @Optional() private readonly demEffortService?: DEMEffortMetadataService
+  ) {
+    if (!demEffortService) {
+      this.logger.warn('DEMEffortMetadataService not available. DEM energy calculation will be disabled.');
+    }
+  }
 
   /**
    * 计算一天的体力消耗预算

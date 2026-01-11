@@ -9,8 +9,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { DEMElevationService } from '../../trips/readiness/services/dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from '../../trips/readiness/services/dem-effort-metadata.service';
+import { DEMElevationService } from '../../trips/dem/services/dem-elevation.service';
+import { DEMEffortMetadataService, RoutePoint } from '../../trips/dem/services/dem-effort-metadata.service';
 
 export interface DemGetProfileInput extends SkillInput {
   /** 路线点数组（polyline） */

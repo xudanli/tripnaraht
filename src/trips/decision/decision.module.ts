@@ -28,7 +28,6 @@ import { MonitoringService } from './monitoring/monitoring.service';
 import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
 import { TransportModule } from '../../transport/transport.module';
-import { ReadinessModule } from '../readiness/readiness.module';
 // 在 MCP 模式下使用轻量级 PlacesLiteModule，避免启动卡死
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
                   process.env.MCP_MODE === 'true';
@@ -46,15 +45,18 @@ import { MemoryModule } from '../../agent/memory/memory.module';
 import { LlmModule } from '../../llm/llm.module';
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
 import { SkillsModule } from '../../skills/skills.module';
+import { DemModule } from '../dem/dem.module';
 
-// 允许通过环境变量禁用某些模块（用于诊断和性能优化）
-const enableReadinessModule = process.env.ENABLE_READINESS_MODULE !== 'false';
+// 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
+// 注意：DecisionModule 现在主要通过 DemModule 获取 DEM 服务，而不是直接依赖 ReadinessModule
+// 暂时禁用 ReadinessModule 导入，使用懒加载获取 ReadinessService
+// import { ReadinessModule } from '../readiness/readiness.module';
 // 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true
 const enableRouteDirectionsModule = process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true';
 // ContextEngineModule 默认禁用，如需启用设置 ENABLE_CONTEXT_ENGINE_MODULE=true
 const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === 'true';
-// SkillsModule 默认启用（已修复循环依赖）
-const enableSkillsModule = process.env.ENABLE_SKILLS_MODULE !== 'false';
+// SkillsModule 默认禁用（测试是否导致阻塞）
+const enableSkillsModule = process.env.ENABLE_SKILLS_MODULE === 'true';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
@@ -91,117 +93,138 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
 
 @Module({
   imports: [
-    TransportModule,
-    ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []),
-    PlacesModuleOrLite,
+    TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
+    DemModule, // 恢复：DemModule 不是问题
+    // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
+    // PlacesModuleOrLite, // 暂时禁用，检查依赖错误和依赖链
     ...(enableRouteDirectionsModule ? [RouteDirectionsModule] : []),
-    MemoryModule,
-    LlmModule,
+    // MemoryModule, // 暂时禁用，测试是否导致阻塞
+    // LlmModule, // 暂时禁用，测试是否导致阻塞
     ...(enableContextEngineModule ? [ContextEngineModule] : []),
     ...(enableSkillsModule ? [forwardRef(() => SkillsModule)] : []),
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
-  controllers: [DecisionController, DecisionStatsController, ApprovalController],
+  controllers: [
+    // 二分法：暂时禁用 DecisionController（测试是否是 StrategyOrchestratorService 导致阻塞）
+    // DecisionController, // 需要 StrategyOrchestratorService
+    // 二分法：暂时禁用 DecisionStatsController 和 ApprovalController（它们需要已禁用的服务）
+    // DecisionStatsController, // 需要 DecisionStatsService, HeuristicDietService, DecisionLogClusteringService
+    // ApprovalController, // 需要 ApprovalService, AgentResumeService
+  ],
   providers: [
     TripDecisionEngineService,
     SenseToolsAdapter,
-    CandidatePoolService,
-    TravelReliabilityService,
-    EventTriggerService,
-    EvaluationService,
-    VersionService,
-    ExplainabilityService,
-    LearningService,
-    AdvancedConstraintsService,
-    ConstraintChecker,
-    RouteDirectionConstraintsService,
-    DecisionCacheService,
-    BatchProcessingService,
-    MonitoringService,
+    // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
+    // CandidatePoolService,
+    // TravelReliabilityService,
+    // 二分法：暂时禁用前半部分的前半的前半的后半 providers，测试是否导致阻塞
+    // EventTriggerService,
+    // EvaluationService,
+    // VersionService,
+    // ExplainabilityService,
+    // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
+    // LearningService,
+    // AdvancedConstraintsService,
+    // ConstraintChecker,
+    // RouteDirectionConstraintsService,
+    // DecisionCacheService,
+    // BatchProcessingService,
+    // MonitoringService,
     // PoiFeaturesAdapterService,
-    DEMDailyEnergyService,
-    DEMRouteSegmentationService,
-    DEMRiskScoringService,
-    DEMEvidenceChainService,
-    DryRunPlannerService,
-    DemDecisionEvidencePipelineService,
-    DemEvidenceEnforcerService,
-    DemDecisionEvidenceService,
-    WeatherDecisionEvidenceService,
-    PersonaExplanationService,
-    StrategyOrchestratorService,
-    SpatialReplacementService,
-    SpatialIssueDetectorService,
-    FatigueCalculatorService,
-    AbuStrategy,
-    DrDreStrategy,
-    NeptuneStrategy,
-    PlanConverterService,
-    DecisionStatsService,
-    HeuristicDietService,
-    TripFeedbackService,
-    DecisionLogStorageService,
-    E2ECaseStorageService,
-    E2EReplayService,
-    DecisionLogClusteringService,
-    TripNaraCoreToolService,
-    GraphDataConverterService,
-    PlannerAgentService,
-    NarratorAgentService,
-    LangGraphOrchestratorService,
-    ReadinessAgentService,
-    ApprovalService,
-    AgentResumeService,
-    ApprovalCleanupScheduler,
+    // 二分法：暂时禁用前半部分的后半 providers，测试是否导致阻塞
+    // DEMDailyEnergyService,
+    // DEMRouteSegmentationService,
+    // DEMRiskScoringService,
+    // DEMEvidenceChainService,
+    // DryRunPlannerService,
+    // 二分法：暂时禁用 TripNaraCoreToolService 及其依赖链，测试是否导致阻塞
+    // 但需要恢复策略服务，因为 SkillsModule 的 Decision Skills 需要它们
+    // DemDecisionEvidencePipelineService, // 暂时禁用：TripNaraCoreToolService 需要它
+    // DemEvidenceEnforcerService,
+    // DemDecisionEvidenceService,
+    // WeatherDecisionEvidenceService,
+    // PersonaExplanationService,
+    // StrategyOrchestratorService, // 二分法：暂时禁用，测试是否导致阻塞（所有使用都是可选的）
+    SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
+    SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
+    FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
+    AbuStrategy, // 必需：DecisionAbuCheckSkill 需要它
+    DrDreStrategy, // 必需：DecisionDrdrePaceSkill 需要它
+    NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
+    // PlanConverterService,
+    // 二分法：暂时禁用后半部分非必需服务，测试是否导致阻塞
+    // DecisionStatsService,
+    // HeuristicDietService,
+    // TripFeedbackService,
+    DecisionLogStorageService, // 必需：TripsService 需要它
+    // E2ECaseStorageService,
+    // E2EReplayService,
+    // DecisionLogClusteringService,
+    // TripNaraCoreToolService,
+    // GraphDataConverterService,
+    // PlannerAgentService, // 已测试，不是问题
+    // NarratorAgentService, // 已测试，不是问题
+    // LangGraphOrchestratorService, // 已测试，不是问题
+    ReadinessAgentService, // 必需：SkillsModule 需要它
+    // ApprovalService,
+    // AgentResumeService,
+    // ApprovalCleanupScheduler,
   ],
   exports: [
     TripDecisionEngineService,
-    CandidatePoolService,
-    TravelReliabilityService,
-    EventTriggerService,
-    EvaluationService,
-    VersionService,
-    ExplainabilityService,
-    LearningService,
-    AdvancedConstraintsService,
-    ConstraintChecker,
-    RouteDirectionConstraintsService,
-    DecisionCacheService,
-    BatchProcessingService,
-    MonitoringService,
+    // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
+    // CandidatePoolService,
+    // TravelReliabilityService,
+    // 二分法：暂时禁用前半部分的前半的前半的后半 providers，测试是否导致阻塞
+    // EventTriggerService,
+    // EvaluationService,
+    // VersionService,
+    // ExplainabilityService,
+    // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
+    // LearningService,
+    // AdvancedConstraintsService,
+    // ConstraintChecker,
+    // RouteDirectionConstraintsService,
+    // DecisionCacheService,
+    // BatchProcessingService,
+    // MonitoringService,
     // PoiFeaturesAdapterService,
-    DEMDailyEnergyService,
-    DEMRouteSegmentationService,
-    DEMRiskScoringService,
-    DEMEvidenceChainService,
-    DryRunPlannerService,
-    DemDecisionEvidencePipelineService,
-    DemEvidenceEnforcerService,
-    DemDecisionEvidenceService,
-    WeatherDecisionEvidenceService,
-    PersonaExplanationService,
-    StrategyOrchestratorService,
-    SpatialReplacementService,
-    SpatialIssueDetectorService,
-    FatigueCalculatorService,
-    AbuStrategy,
-    DrDreStrategy,
-    NeptuneStrategy,
-    PlanConverterService,
-    DecisionStatsService,
-    HeuristicDietService,
-    TripFeedbackService,
-    E2ECaseStorageService,
-    DecisionLogStorageService,
-    E2EReplayService,
-    DecisionLogClusteringService,
-    TripNaraCoreToolService,
-    GraphDataConverterService,
-    PlannerAgentService,
-    NarratorAgentService,
-    LangGraphOrchestratorService,
-    ReadinessAgentService,
-    ApprovalService,
-    AgentResumeService,
+    // 二分法：暂时禁用前半部分的后半 providers，测试是否导致阻塞
+    // DEMDailyEnergyService,
+    // DEMRouteSegmentationService,
+    // DEMRiskScoringService,
+    // DEMEvidenceChainService,
+    // DryRunPlannerService,
+    // 二分法：暂时禁用 TripNaraCoreToolService 及其依赖链，测试是否导致阻塞
+    // 但需要恢复策略服务，因为 SkillsModule 的 Decision Skills 需要它们
+    // DemDecisionEvidencePipelineService, // 暂时禁用：TripNaraCoreToolService 需要它
+    // DemEvidenceEnforcerService,
+    // DemDecisionEvidenceService,
+    // WeatherDecisionEvidenceService,
+    // PersonaExplanationService,
+    // StrategyOrchestratorService, // 二分法：暂时禁用，测试是否导致阻塞（所有使用都是可选的）
+    SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
+    SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
+    FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
+    AbuStrategy, // 必需：DecisionAbuCheckSkill 需要它
+    DrDreStrategy, // 必需：DecisionDrdrePaceSkill 需要它
+    NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
+    // PlanConverterService,
+    // 二分法：暂时禁用后半部分非必需服务，测试是否导致阻塞
+    // DecisionStatsService,
+    // HeuristicDietService,
+    // TripFeedbackService,
+    DecisionLogStorageService, // 必需：TripsService 需要它
+    // E2ECaseStorageService,
+    // E2EReplayService,
+    // DecisionLogClusteringService,
+    // TripNaraCoreToolService,
+    // GraphDataConverterService,
+    // PlannerAgentService, // 已测试，不是问题
+    // NarratorAgentService, // 已测试，不是问题
+    // LangGraphOrchestratorService, // 已测试，不是问题
+    ReadinessAgentService, // 必需：SkillsModule 需要它
+    // ApprovalService,
+    // AgentResumeService,
   ],
 })
 export class DecisionModule {}

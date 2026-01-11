@@ -7,8 +7,8 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { DEMElevationService } from './dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from './dem-effort-metadata.service';
+import { DEMElevationService } from '../../dem/services/dem-elevation.service';
+import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
 import { TerrainFacts, TerrainStats, EffortLevel, RouteSegmentId } from '../types/terrain-facts.types';
 import { DEFAULT_TERRAIN_POLICY, EffortLevelMapping } from '../config/terrain-policy.config';
 import * as crypto from 'crypto';

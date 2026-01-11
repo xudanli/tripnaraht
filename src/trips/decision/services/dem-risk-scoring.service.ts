@@ -13,10 +13,10 @@
  * 3. 为Dr.Dre和Neptune提供风险权重
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ActivityCandidate } from '../world-model';
 import { PlanDay, TripPlan } from '../plan-model';
-import { DEMElevationService } from '../../readiness/services/dem-elevation.service';
+import { DEMElevationService } from '../../dem/services/dem-elevation.service';
 
 export interface ActivityRiskScore {
   /** 活动ID */
@@ -85,8 +85,12 @@ export class DEMRiskScoringService {
   private readonly logger = new Logger(DEMRiskScoringService.name);
 
   constructor(
-    private readonly demElevationService: DEMElevationService,
-  ) {}
+    @Optional() private readonly demElevationService?: DEMElevationService,
+  ) {
+    if (!demElevationService) {
+      this.logger.warn('DEMElevationService not available. DEM risk scoring will be disabled.');
+    }
+  }
 
   /**
    * 计算单个活动的风险评分

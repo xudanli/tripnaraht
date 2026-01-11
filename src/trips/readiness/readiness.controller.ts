@@ -21,6 +21,7 @@ import {
   Delete,
   Put,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   ApiTags,
   ApiOperation,
@@ -113,6 +114,8 @@ export class CheckReadinessDto {
 export class ReadinessController {
   private readonly logger = new Logger(ReadinessController.name);
 
+  private tripConflictsService?: TripConflictsService;
+
   constructor(
     private readonly readinessService: ReadinessService,
     private readonly capabilityPackEvaluator: CapabilityPackEvaluatorService,
@@ -123,8 +126,27 @@ export class ReadinessController {
     private readonly packingListService: PackingListService,
     private readonly solutionService: SolutionService,
     private readonly packStorageService: PackStorageService,
-    @Optional() private readonly tripConflictsService?: TripConflictsService,
-  ) {}
+    private readonly moduleRef: ModuleRef,
+  ) {
+    // ⚠️ 使用懒加载避免循环依赖死锁
+    // TripConflictsService 在需要时通过 ModuleRef 获取
+  }
+
+  /**
+   * 懒加载获取 TripConflictsService
+   * 避免在构造函数中注入，防止循环依赖死锁
+   */
+  private getTripConflictsService(): TripConflictsService | null {
+    if (!this.tripConflictsService) {
+      try {
+        this.tripConflictsService = this.moduleRef.get(TripConflictsService, { strict: false });
+      } catch (error) {
+        this.logger.warn('无法获取 TripConflictsService，时间冲突检查功能将不可用');
+        return null;
+      }
+    }
+    return this.tripConflictsService || null;
+  }
 
   @Public()
   @Post('check')
@@ -633,10 +655,11 @@ export class ReadinessController {
 
       // 获取时间冲突并转换为风险
       try {
-        if (!this.tripConflictsService) {
+        const tripConflictsService = this.getTripConflictsService();
+        if (!tripConflictsService) {
           this.logger.warn('TripConflictsService 未注入，跳过时间冲突检查');
         } else {
-          const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
+          const conflictsResult = await tripConflictsService.getConflicts(tripId);
           const timeConflicts = conflictsResult.conflicts.filter(
             c => c.type === ConflictType.TIME_CONFLICT
           );

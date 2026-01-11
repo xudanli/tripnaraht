@@ -42,7 +42,7 @@ import {
 } from '../src/trips/decision/models/physical-reality.model';
 import { DemDecisionEvidence } from '../src/trips/decision/interfaces/dem-decision-evidence.interface';
 import { validatePhysicalRealityModel } from '../src/trips/decision/models/physical-reality.model';
-import { DEMElevationService } from '../src/trips/readiness/services/dem-elevation.service';
+import { DEMElevationService } from '../src/trips/dem/services/dem-elevation.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const prisma = new PrismaClient();
