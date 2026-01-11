@@ -60,9 +60,12 @@ export class CitiesService {
       // 国家代码过滤
       if (normalizedCountryCode) {
         where.countryCode = normalizedCountryCode;
+        // 添加调试日志，确认 where 条件
+        this.logger.debug(`设置查询条件: where.countryCode = ${normalizedCountryCode}, where对象: ${JSON.stringify(where)}`);
       }
 
       // 查询城市
+      this.logger.debug(`执行 Prisma 查询: where=${JSON.stringify(where)}, limit=${limit}, offset=${offset}`);
       const cities = await this.prisma.city.findMany({
         where,
         take: limit,
@@ -72,6 +75,14 @@ export class CitiesService {
           { name: 'asc' },
         ],
       });
+      
+      // 添加调试日志，检查返回的城市
+      if (normalizedCountryCode && cities.length > 0) {
+        const actualCountryCodes = [...new Set(cities.map(c => c.countryCode))];
+        if (actualCountryCodes.length > 0 && !actualCountryCodes.includes(normalizedCountryCode)) {
+          this.logger.warn(`查询条件未生效！查询 countryCode=${normalizedCountryCode}，但返回的城市 countryCode 为: ${actualCountryCodes.join(', ')}`);
+        }
+      }
 
       // 添加调试日志
       if (normalizedCountryCode) {
