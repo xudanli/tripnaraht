@@ -19,19 +19,19 @@ pipeline {
           # 检测 Docker Compose 命令（支持 V2 和 V1）
           if docker compose version >/dev/null 2>&1; then
             echo "✓ 检测到 docker compose (V2)"
-            echo "DOCKER_COMPOSE_CMD=docker compose" > $WORKSPACE/.docker-compose-cmd
+            echo "docker compose" > $WORKSPACE/.docker-compose-cmd
           elif command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then
             echo "✓ 检测到 docker-compose (V1)"
-            echo "DOCKER_COMPOSE_CMD=docker-compose" > $WORKSPACE/.docker-compose-cmd
+            echo "docker-compose" > $WORKSPACE/.docker-compose-cmd
           elif [ -f /usr/local/bin/docker-compose ] && /usr/local/bin/docker-compose version >/dev/null 2>&1; then
             echo "✓ 检测到 /usr/local/bin/docker-compose"
-            echo "DOCKER_COMPOSE_CMD=/usr/local/bin/docker-compose" > $WORKSPACE/.docker-compose-cmd
+            echo "/usr/local/bin/docker-compose" > $WORKSPACE/.docker-compose-cmd
           else
             echo "⚠️  警告: 未找到 docker compose 或 docker-compose 命令"
             echo "如果后续构建失败，请安装 Docker Compose:"
             echo "  - Docker Compose V2: 通常是 Docker Desktop 的一部分，或运行 'apt-get install docker-compose-plugin'"
             echo "  - Docker Compose V1: 运行 'curl -L \"https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose'"
-            echo "DOCKER_COMPOSE_CMD=" > $WORKSPACE/.docker-compose-cmd
+            echo "" > $WORKSPACE/.docker-compose-cmd
           fi
         '''
       }
@@ -57,9 +57,9 @@ pipeline {
       steps {
         sh '''
           set -eu
-          # 检测并使用正确的 Docker Compose 命令
+          # 读取或检测 Docker Compose 命令
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            . $WORKSPACE/.docker-compose-cmd
+            DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
@@ -85,7 +85,7 @@ pipeline {
         sh '''
           set -eu
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            . $WORKSPACE/.docker-compose-cmd
+            DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
@@ -109,7 +109,7 @@ pipeline {
         sh '''
           set -eu
           if [ -f $WORKSPACE/.docker-compose-cmd ]; then
-            . $WORKSPACE/.docker-compose-cmd
+            DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
           fi
           if [ -z "$DOCKER_COMPOSE_CMD" ]; then
             if docker compose version >/dev/null 2>&1; then
