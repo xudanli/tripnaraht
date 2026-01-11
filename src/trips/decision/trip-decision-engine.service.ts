@@ -7,7 +7,7 @@
  * 只做决策，不做 UI，不做爬取
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TripWorldState, TravelLeg, GeoPoint, ActivityCandidate } from './world-model';
 import { TripPlan, PlanDay, PlanSlot } from './plan-model';
 import { abuSelectCoreActivities } from './strategies/abu';
@@ -58,26 +58,26 @@ export class TripDecisionEngineService {
 
   constructor(
     private readonly tools: SenseToolsAdapter,
-    private readonly readinessService?: ReadinessService,
+    @Optional() private readonly readinessService?: ReadinessService,
     // private readonly poiFeaturesAdapter?: PoiFeaturesAdapterService,
-    private readonly routeDirectionSelector?: RouteDirectionSelectorService,
-    private readonly routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService,
-    private readonly observabilityService?: RouteDirectionObservabilityService,
-    private readonly compliancePlugin?: CompliancePluginService,
-    private readonly transportPlugin?: TransportPluginService,
-    private readonly demDailyEnergyService?: DEMDailyEnergyService,
-    private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
-    private readonly demRiskScoringService?: DEMRiskScoringService,
-    private readonly demEvidenceChainService?: DEMEvidenceChainService,
-    private readonly decisionParamsInjector?: DecisionParamsInjectorService,
-    private readonly memoryService?: MemoryService,
-    private readonly dryRunPlanner?: DryRunPlannerService,
-    private readonly demEvidencePipeline?: DemDecisionEvidencePipelineService,
-    private readonly demEvidenceEnforcer?: DemEvidenceEnforcerService,
-    private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
-    private readonly strategyOrchestrator?: StrategyOrchestratorService,
-    private readonly planConverter?: PlanConverterService,
-    private readonly readinessAgent?: ReadinessAgentService
+    @Optional() private readonly routeDirectionSelector?: RouteDirectionSelectorService,
+    @Optional() private readonly routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService,
+    @Optional() private readonly observabilityService?: RouteDirectionObservabilityService,
+    @Optional() private readonly compliancePlugin?: CompliancePluginService,
+    @Optional() private readonly transportPlugin?: TransportPluginService,
+    @Optional() private readonly demDailyEnergyService?: DEMDailyEnergyService,
+    @Optional() private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
+    @Optional() private readonly demRiskScoringService?: DEMRiskScoringService,
+    @Optional() private readonly demEvidenceChainService?: DEMEvidenceChainService,
+    @Optional() private readonly decisionParamsInjector?: DecisionParamsInjectorService,
+    @Optional() private readonly memoryService?: MemoryService,
+    @Optional() private readonly dryRunPlanner?: DryRunPlannerService,
+    @Optional() private readonly demEvidencePipeline?: DemDecisionEvidencePipelineService,
+    @Optional() private readonly demEvidenceEnforcer?: DemEvidenceEnforcerService,
+    @Optional() private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
+    @Optional() private readonly strategyOrchestrator?: StrategyOrchestratorService,
+    @Optional() private readonly planConverter?: PlanConverterService,
+    @Optional() private readonly readinessAgent?: ReadinessAgentService
   ) {}
 
   /**

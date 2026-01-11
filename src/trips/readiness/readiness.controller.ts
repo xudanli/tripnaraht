@@ -17,6 +17,9 @@ import {
   HttpStatus,
   Logger,
   NotFoundException,
+  Optional,
+  Delete,
+  Put,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -69,7 +72,7 @@ import {
   UpdatePackingListItemResponseDto,
 } from './dto/packing-list.dto';
 import { GetSolutionsResponseDto } from './dto/solution.dto';
-import { Delete, Put, Param as ParamDecorator } from '@nestjs/common';
+import { Param as ParamDecorator } from '@nestjs/common';
 import { TripConflictsService } from '../services/trip-conflicts.service';
 import { ConflictType } from '../dto/trip-conflicts.dto';
 import { PackStorageService } from './storage/pack-storage.service';
@@ -119,8 +122,8 @@ export class ReadinessController {
     private readonly findingMarksService: FindingMarksService,
     private readonly packingListService: PackingListService,
     private readonly solutionService: SolutionService,
-    private readonly tripConflictsService: TripConflictsService,
     private readonly packStorageService: PackStorageService,
+    @Optional() private readonly tripConflictsService?: TripConflictsService,
   ) {}
 
   @Public()
@@ -630,23 +633,27 @@ export class ReadinessController {
 
       // 获取时间冲突并转换为风险
       try {
-        const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
-        const timeConflicts = conflictsResult.conflicts.filter(
-          c => c.type === ConflictType.TIME_CONFLICT
-        );
+        if (!this.tripConflictsService) {
+          this.logger.warn('TripConflictsService 未注入，跳过时间冲突检查');
+        } else {
+          const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
+          const timeConflicts = conflictsResult.conflicts.filter(
+            c => c.type === ConflictType.TIME_CONFLICT
+          );
 
-        // 将时间冲突转换为风险格式
-        // 使用 'logistics_remote' 作为类型，因为时间冲突与行程安排/物流相关
-        const conflictRisks = timeConflicts.map(conflict => ({
-          type: 'logistics_remote' as const,
-          severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
-          message: conflict.description,
-          mitigation: conflict.suggestions?.map(s => s.description) || [],
-          emergencyContacts: [],
-        }));
+          // 将时间冲突转换为风险格式
+          // 使用 'logistics_remote' 作为类型，因为时间冲突与行程安排/物流相关
+          const conflictRisks = timeConflicts.map(conflict => ({
+            type: 'logistics_remote' as const,
+            severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
+            message: conflict.description,
+            mitigation: conflict.suggestions?.map(s => s.description) || [],
+            emergencyContacts: [],
+          }));
 
-        // 将时间冲突风险添加到风险列表中
-        risks.push(...conflictRisks);
+          // 将时间冲突风险添加到风险列表中
+          risks.push(...conflictRisks);
+        }
       } catch (conflictError) {
         // 如果获取冲突失败，记录日志但不影响主流程
         this.logger.warn(

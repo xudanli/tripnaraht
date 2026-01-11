@@ -45,6 +45,10 @@ export class WebBrowseExecutorService {
    * 初始化浏览器实例（懒加载）
    */
   private async getBrowser(): Promise<Browser> {
+    if (!this.enabled) {
+      throw new Error('WebBrowse is disabled (ENABLE_WEBBROWSE=false)');
+    }
+
     if (!this.browser) {
       try {
         this.browser = await chromium.launch({
@@ -60,7 +64,9 @@ export class WebBrowseExecutorService {
         this.logger.debug('Browser instance created');
       } catch (error: any) {
         this.logger.error(`Failed to launch browser: ${error?.message || String(error)}`);
-        throw new Error(`Browser launch failed: ${error?.message || String(error)}`);
+        // 不抛出错误，而是返回一个友好的错误信息
+        // 这样 ExecutorService 可以捕获并触发 Replanner
+        throw new Error(`Browser launch failed: ${error?.message || String(error)}. If you don't need WebBrowse, set ENABLE_WEBBROWSE=false`);
       }
     }
     return this.browser;

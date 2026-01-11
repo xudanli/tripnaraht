@@ -500,6 +500,7 @@ model Trip {
   destination      String
   startDate        DateTime
   endDate          DateTime
+  status           String?            @default("PLANNING") // PLANNING, IN_PROGRESS, COMPLETED, CANCELLED
   budgetConfig     Json?
   pacingConfig     Json?
   createdAt        DateTime           @default(now())
@@ -514,6 +515,8 @@ model Trip {
   TripChecklistStatus TripChecklistStatus[]
   TripFindingMark     TripFindingMark[]
   TripPackingListItem TripPackingListItem[]
+  
+  @@index([status])
 }
 
 model TripCollaborator {

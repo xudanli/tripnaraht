@@ -2,6 +2,7 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
+import { TripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
 import { FlightPriceService } from './services/flight-price.service';
@@ -152,6 +153,7 @@ export class TripsService {
           destination: normalizedCountryCode,
           startDate: start.toJSDate(),
           endDate: end.toJSDate(),
+          status: dto.status || TripStatus.PLANNING, // 使用传入的状态或默认值
           budgetConfig: budgetConfig as any,
           pacingConfig: pacingConfig as any,
           updatedAt: new Date(),
@@ -374,6 +376,33 @@ export class TripsService {
   }
 
   /**
+   * 验证状态转换是否合法
+   * 
+   * @param currentStatus 当前状态
+   * @param newStatus 新状态
+   * @throws BadRequestException 如果状态转换不合法
+   */
+  private validateStatusTransition(currentStatus: string | null, newStatus: TripStatus): void {
+    // 如果当前状态为空，允许设置为任何状态
+    if (!currentStatus) {
+      return;
+    }
+
+    // 已取消的行程不能改回其他状态
+    if (currentStatus === TripStatus.CANCELLED) {
+      throw new BadRequestException('已取消的行程不能修改状态');
+    }
+
+    // 已完成的行程不能改回规划中或进行中
+    if (currentStatus === TripStatus.COMPLETED && 
+        (newStatus === TripStatus.PLANNING || newStatus === TripStatus.IN_PROGRESS)) {
+      throw new BadRequestException('已完成的行程不能改回规划中或进行中状态');
+    }
+
+    // 其他状态转换都是允许的
+  }
+
+  /**
    * 更新行程基本信息
    * 
    * @param id 行程 ID
@@ -421,6 +450,13 @@ export class TripsService {
         ...existingMetadata,
         travelers: dto.travelers,
       };
+    }
+
+    // 处理状态更新
+    if (dto.status !== undefined) {
+      // 验证状态转换
+      this.validateStatusTransition(existingTrip.status, dto.status);
+      updateData.status = dto.status;
     }
 
     // 如果更新了日期，需要重新计算天数
@@ -502,17 +538,26 @@ export class TripsService {
     });
 
     // 判断行程状态
-    let progress: 'PLANNING' | 'ONGOING' | 'COMPLETED' = 'PLANNING';
-    if (trip.startDate && trip.endDate) {
-      const startDate = new Date(trip.startDate);
-      const endDate = new Date(trip.endDate);
-      
-      if (now < startDate) {
-        progress = 'PLANNING'; // 规划中
-      } else if (now >= startDate && now <= endDate) {
-        progress = 'ONGOING'; // 进行中
+    // 优先使用数据库中的 status，如果没有则根据日期自动计算
+    let status: TripStatus;
+    if (trip.status && Object.values(TripStatus).includes(trip.status as TripStatus)) {
+      // 使用数据库中的状态
+      status = trip.status as TripStatus;
+    } else {
+      // 根据日期自动计算状态
+      if (trip.startDate && trip.endDate) {
+        const startDate = new Date(trip.startDate);
+        const endDate = new Date(trip.endDate);
+        
+        if (now < startDate) {
+          status = TripStatus.PLANNING; // 规划中
+        } else if (now >= startDate && now <= endDate) {
+          status = TripStatus.IN_PROGRESS; // 进行中
+        } else {
+          status = TripStatus.COMPLETED; // 已完成
+        }
       } else {
-        progress = 'COMPLETED'; // 已完成
+        status = TripStatus.PLANNING; // 默认状态
       }
     }
 
@@ -616,6 +661,8 @@ export class TripsService {
 
     return {
       ...tripData,
+      // 添加状态字段（优先使用数据库中的状态）
+      status: status,
       // 添加点赞和收藏字段
       isLiked,
       isCollected,
@@ -628,7 +675,7 @@ export class TripsService {
         totalMeals: totalMeals,
         totalRest: totalRest,
         totalTransit: totalTransit,
-        progress: progress,
+        progress: status, // 保持向后兼容，使用 status 值
         budgetStats: budgetStats,
       },
       pipelineStatus,

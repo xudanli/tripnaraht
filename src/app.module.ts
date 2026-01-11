@@ -1,6 +1,7 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { PlacesModule } from './places/places.module';
 import { TripsModule } from './trips/trips.module';
@@ -37,6 +38,7 @@ import { CitiesModule } from './cities/cities.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(), // 提供定时任务支持（SchedulerRegistry）
     PrismaModule,
     AuthModule,
     RedisModule, // Redis 缓存模块
@@ -53,12 +55,12 @@ import { CitiesModule } from './cities/cities.module';
     HotelsModule, // 酒店价格模块
     // 第二批：行程相关模块
     ItineraryItemsModule,
-    TripTemplatesModule, // ✅ 重新启用，但通过环境变量控制 DecisionModule 的依赖模块
+    // TripTemplatesModule, // 临时禁用，避免启动阻塞（依赖 TripsModule，而 TripsModule 已禁用）
     // 第三批：优化和决策模块
-    // ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
-    // PlanningPolicyModule, // 规划策略模块（画像驱动、稳健度评估、What-If）
+    ItineraryOptimizationModule, // 路线优化模块（节奏感算法）
+    PlanningPolicyModule, // 规划策略模块（画像驱动、稳健度评估、What-If）
     // 第四批：交通
-    // TransportModule, // 交通规划模块
+    TransportModule, // 交通规划模块
     // 第五批：高级功能
     // TasksModule, // 定时任务模块
     // VoiceModule, // 语音解析模块
@@ -66,13 +68,13 @@ import { CitiesModule } from './cities/cities.module';
     // ScheduleActionModule, // 行程动作执行模块
     // TrailsModule, // 徒步路线模块
     // 第六批：行程核心模块（可能有循环依赖）
-    // TripsModule,
+    // TripsModule, // 临时禁用，避免启动阻塞（可能与 DecisionModule/SkillsModule 循环依赖）
     // 第七批：智能体和技能（可能有问题）
-    // AgentModule, // Agent 模块（Router + Orchestrator）
-    // RailPassModule, // RailPass 合规与订座决策模块
-    // ReadinessModule, // 旅行准备度检查模块
-    // RouteDirectionsModule, // 国家级路线方向资产模块
-    // RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）
+    RailPassModule, // RailPass 合规与订座决策模块（测试中）
+    // ReadinessModule, // 旅行准备度检查模块（临时禁用，排查启动阻塞问题）
+    // RouteDirectionsModule, // 国家级路线方向资产模块（临时禁用，避免启动阻塞）
+    RagModule, // RAG 模块（文档索引、合规规则提取、路线知识整理）（测试中）
+    // AgentModule, // Agent 模块（Router + Orchestrator）（临时禁用，避免启动阻塞）
     // SkillsModule, // Skills 模块（能力颗粒层）
   ],
 })

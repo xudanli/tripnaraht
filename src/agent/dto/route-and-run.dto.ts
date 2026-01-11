@@ -1,8 +1,9 @@
 // src/agent/dto/route-and-run.dto.ts
-import { IsString, IsOptional, IsObject, IsBoolean, IsNumber, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsBoolean, IsNumber, ValidateNested, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
+import { LlmProvider } from '../../llm/dto/llm-request.dto';
 
 export class ConversationContextDto {
   @ApiPropertyOptional({ 
@@ -83,6 +84,16 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsNumber()
   cost_budget_usd?: number;
+
+  @ApiPropertyOptional({ 
+    description: 'LLM 提供商（auto/openai/deepseek/gemini/anthropic），auto 表示使用系统推荐的模型',
+    example: 'auto',
+    enum: ['auto', 'openai', 'deepseek', 'gemini', 'anthropic'],
+    default: 'auto',
+  })
+  @IsOptional()
+  @IsEnum(['auto', 'openai', 'deepseek', 'gemini', 'anthropic'])
+  llm_provider?: 'auto' | 'openai' | 'deepseek' | 'gemini' | 'anthropic';
 }
 
 export class RouteAndRunRequestDto {

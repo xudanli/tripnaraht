@@ -26,6 +26,7 @@ export class ApprovalStorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    this.logger.log('[ApprovalStorageService] onModuleInit 开始执行...');
     // 在 onModuleInit 中检查数据库连接状态（此时 PrismaService.onModuleInit() 已经执行）
     this.useDatabase = !!this.prisma && this.prisma.isDbConnected();
     
@@ -44,6 +45,7 @@ export class ApprovalStorageService implements OnModuleInit {
       // 仅在内存存储模式下启动过期清理任务（数据库模式下使用 ApprovalCleanupScheduler）
       this.startExpirationCleanup();
     }
+    this.logger.log('[ApprovalStorageService] onModuleInit 执行完成');
   }
 
   /**

@@ -68,24 +68,20 @@ export class CitiesController {
   })
   async findAll(@Query() query: GetCitiesQueryDto): Promise<any> {
     try {
-      // 添加调试日志
-      if (query.countryCode) {
-        this.logger.debug(`收到城市查询请求: countryCode=${query.countryCode}, q=${query.q || 'none'}`);
-      }
+      this.logger.debug(`[CitiesController] 收到城市查询请求: ${JSON.stringify(query)}`);
       
-      const cities = await this.citiesService.findAll(query);
+      const result = await this.citiesService.findAll(query);
       
-      // 添加调试日志
-      if (query.countryCode) {
-        this.logger.debug(`返回城市列表: countryCode=${query.countryCode}, 找到 ${cities.length} 个城市`);
-      }
+      this.logger.debug(`[CitiesController] ✅ 返回城市列表: ${result.cities.length} 个城市 (total=${result.total}, hasMore=${result.hasMore})`);
       
       return successResponse({
-        cities,
-        total: cities.length,
+        cities: result.cities,
+        total: result.total,
+        hasMore: result.hasMore,
+        limit: result.limit,
+        offset: result.offset,
         ...(query.countryCode && {
           countryCode: query.countryCode.toUpperCase(),
-          totalInCountry: await this.citiesService.countByCountry(query.countryCode),
         }),
       });
     } catch (error) {

@@ -14,9 +14,24 @@ export class CitiesService {
   /**
    * 获取城市列表
    * 支持按国家代码过滤和关键词搜索
+   * 返回城市列表和分页信息
    */
-  async findAll(query: GetCitiesQueryDto): Promise<CityDto[]> {
-    const { countryCode, q, limit = 50, offset = 0 } = query;
+  async findAll(query: GetCitiesQueryDto): Promise<{
+    cities: CityDto[];
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  }> {
+    // 限制limit最大值，防止性能问题
+    const maxLimit = 1000;
+    let { countryCode, q, limit = 50, offset = 0 } = query;
+    
+    // 限制limit不超过最大值
+    if (limit > maxLimit) {
+      limit = maxLimit;
+      this.logger.warn(`[CitiesService.findAll] limit超过最大值${maxLimit}，已自动调整为${maxLimit}`);
+    }
 
     try {
       // 添加详细的输入日志
@@ -32,67 +47,103 @@ export class CitiesService {
         this.logger.debug(`[CitiesService.findAll] 未提供国家代码，将返回所有城市`);
       }
 
-      // 如果有搜索关键词，使用原始 SQL 查询以支持不区分大小写搜索
+      // 如果有搜索关键词，使用 Prisma 查询以支持不区分大小写搜索
       if (q) {
         const searchTerm = q.trim();
-        // 使用 PostgreSQL 的 LOWER() 和 LIKE 进行不区分大小写搜索
-        const cities = await this.prisma.$queryRaw<any[]>`
-          SELECT *
-          FROM "City"
-          WHERE 
-            ${normalizedCountryCode ? Prisma.sql`"countryCode" = ${normalizedCountryCode} AND` : Prisma.sql``}
-            (
-              LOWER(COALESCE("nameCN", '')) LIKE LOWER(${`%${searchTerm}%`}) OR
-              LOWER(COALESCE("nameEN", '')) LIKE LOWER(${`%${searchTerm}%`}) OR
-              LOWER("name") LIKE LOWER(${`%${searchTerm}%`})
-            )
-          ORDER BY "countryCode" ASC, "name" ASC
-          LIMIT ${limit}
-          OFFSET ${offset}
-        `;
+        const searchPattern = `%${searchTerm}%`;
         
-        // 添加调试日志
+        // 构建 where 条件
+        const whereCondition: Prisma.CityWhereInput = {
+          OR: [
+            { nameCN: { contains: searchTerm, mode: 'insensitive' } },
+            { nameEN: { contains: searchTerm, mode: 'insensitive' } },
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        };
+        
         if (normalizedCountryCode) {
-          this.logger.debug(`搜索城市结果: 找到 ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
+          whereCondition.countryCode = normalizedCountryCode;
         }
         
-        return cities.map(city => this.mapToDto(city));
+        // 查询总数
+        const total = await this.prisma.city.count({
+          where: whereCondition,
+        });
+        
+        // 查询城市列表
+        const cities = await this.prisma.city.findMany({
+          where: whereCondition,
+          take: limit,
+          skip: offset,
+          orderBy: [
+            { countryCode: 'asc' },
+            { name: 'asc' },
+          ],
+        });
+        
+        const cityDtos = cities.map(city => this.mapToDto(city));
+        const hasMore = offset + cityDtos.length < total;
+        
+        // 添加调试日志
+        this.logger.debug(`搜索城市结果: 找到 ${cityDtos.length} 个城市 (searchTerm=${searchTerm}, countryCode=${normalizedCountryCode || 'all'}, total=${total}, hasMore=${hasMore})`);
+        
+        return {
+          cities: cityDtos,
+          total,
+          hasMore,
+          limit,
+          offset,
+        };
       }
 
       // 如果没有搜索关键词，使用标准 Prisma 查询
-      // 如果提供了国家代码，使用原始 SQL 查询确保过滤条件生效（临时修复）
+      // 如果提供了国家代码，使用 Prisma 查询（更可靠）
       if (normalizedCountryCode) {
-        this.logger.debug(`[CitiesService.findAll] 使用原始 SQL 查询（带国家代码过滤）: countryCode=${normalizedCountryCode}`);
+        this.logger.debug(`[CitiesService.findAll] 使用 Prisma 查询（带国家代码过滤）: countryCode=${normalizedCountryCode}, limit=${limit}, offset=${offset}`);
         
-        // 使用参数化查询确保安全，排除 location 字段（geography 类型无法反序列化）
-        const cities = await this.prisma.$queryRaw<any[]>`
-          SELECT 
-            id, name, "countryCode", adcode, "nameCN", "nameEN", timezone, metadata
-          FROM "City" 
-          WHERE "countryCode" = ${normalizedCountryCode}::text
-          ORDER BY "countryCode" ASC, "name" ASC
-          LIMIT ${limit}::int
-          OFFSET ${offset}::int
-        `;
+        // 明确构建 where 条件
+        const whereCondition = {
+          countryCode: normalizedCountryCode,
+        };
         
-        this.logger.debug(`[CitiesService.findAll] 原始 SQL 查询结果: ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
-        if (cities.length > 0) {
-          const actualCountryCodes = [...new Set(cities.map(c => c.countryCode))];
-          this.logger.debug(`[CitiesService.findAll] 返回的城市国家代码: ${actualCountryCodes.join(', ')}`);
-          if (!actualCountryCodes.includes(normalizedCountryCode)) {
-            this.logger.error(`[CitiesService.findAll] 严重错误！查询 countryCode=${normalizedCountryCode}，但返回的城市 countryCode 为: ${actualCountryCodes.join(', ')}`);
-          }
-        } else {
-          this.logger.warn(`[CitiesService.findAll] 未找到国家代码为 ${normalizedCountryCode} 的城市`);
-        }
+        // 查询总数
+        const total = await this.prisma.city.count({
+          where: whereCondition,
+        });
         
-        return cities.map(city => this.mapToDto(city));
+        // 查询城市列表
+        const cities = await this.prisma.city.findMany({
+          where: whereCondition,
+          take: limit,
+          skip: offset,
+          orderBy: [
+            { countryCode: 'asc' },
+            { name: 'asc' },
+          ],
+        });
+        
+        const cityDtos = cities.map(city => this.mapToDto(city));
+        const hasMore = offset + cityDtos.length < total;
+        
+        this.logger.debug(`[CitiesService.findAll] ✅ Prisma 查询结果: ${cityDtos.length} 个城市 (countryCode=${normalizedCountryCode}, total=${total}, hasMore=${hasMore})`);
+        
+        return {
+          cities: cityDtos,
+          total,
+          hasMore,
+          limit,
+          offset,
+        };
       }
 
       // 如果没有国家代码，使用标准 Prisma 查询
       const where: Prisma.CityWhereInput = {};
       this.logger.debug(`[CitiesService.findAll] 使用 Prisma 查询（无国家代码过滤）: where=${JSON.stringify(where)}`);
       
+      // 查询总数
+      const total = await this.prisma.city.count({ where });
+      
+      // 查询城市列表
       const cities = await this.prisma.city.findMany({
         where,
         take: limit,
@@ -103,38 +154,18 @@ export class CitiesService {
         ],
       });
       
-      this.logger.debug(`[CitiesService.findAll] Prisma findMany 查询结果: ${cities.length} 个城市`);
+      const cityDtos = cities.map(city => this.mapToDto(city));
+      const hasMore = offset + cityDtos.length < total;
       
-      // 添加调试日志，检查返回的城市
-      if (normalizedCountryCode && cities.length > 0) {
-        const actualCountryCodes = [...new Set(cities.map(c => c.countryCode))];
-        if (actualCountryCodes.length > 0 && !actualCountryCodes.includes(normalizedCountryCode)) {
-          this.logger.warn(`查询条件未生效！查询 countryCode=${normalizedCountryCode}，但返回的城市 countryCode 为: ${actualCountryCodes.join(', ')}`);
-        }
-      }
+      this.logger.debug(`[CitiesService.findAll] Prisma findMany 查询结果: ${cityDtos.length} 个城市 (total=${total}, hasMore=${hasMore})`);
 
-      // 添加调试日志
-      if (normalizedCountryCode) {
-        this.logger.debug(`查询城市结果: 找到 ${cities.length} 个城市 (countryCode=${normalizedCountryCode})`);
-        if (cities.length === 0) {
-          // 检查数据库中是否有该国家的城市
-          const totalCount = await this.prisma.city.count({
-            where: { countryCode: normalizedCountryCode },
-          });
-          this.logger.warn(`未找到国家代码为 ${normalizedCountryCode} 的城市。数据库中该国家的城市总数: ${totalCount}`);
-          
-          // 列出数据库中实际存在的国家代码（用于调试）
-          const distinctCountries = await this.prisma.city.findMany({
-            select: { countryCode: true },
-            distinct: ['countryCode'],
-            take: 10,
-          });
-          this.logger.debug(`数据库中存在的国家代码示例: ${distinctCountries.map(c => c.countryCode).join(', ')}`);
-        }
-      }
-
-      // 转换为 DTO
-      return cities.map(city => this.mapToDto(city));
+      return {
+        cities: cityDtos,
+        total,
+        hasMore,
+        limit,
+        offset,
+      };
     } catch (error: any) {
       this.logger.error(`Failed to find cities: ${error.message}`, error.stack);
       throw error;

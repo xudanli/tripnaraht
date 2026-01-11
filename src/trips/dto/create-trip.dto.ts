@@ -1,7 +1,8 @@
 // src/trips/dto/create-trip.dto.ts
-import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TripStatus } from './trip-status.dto';
 
 /**
  * 行动能力标签枚举
@@ -99,4 +100,14 @@ export class CreateTripDto {
   @ValidateNested({ each: true, message: 'travelers 数组中的每个元素必须符合 TravelerDto 格式' })
   @Type(() => TravelerDto)
   travelers!: TravelerDto[];
+
+  @ApiPropertyOptional({
+    description: '行程状态',
+    enum: TripStatus,
+    example: TripStatus.PLANNING,
+    default: TripStatus.PLANNING
+  })
+  @IsOptional()
+  @IsEnum(TripStatus, { message: 'status 必须是有效的行程状态' })
+  status?: TripStatus;
 }

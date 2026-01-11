@@ -107,5 +107,8 @@ export interface AgentState {
     fallback_used: boolean;
     planner_type?: 'llm' | 'rule_based'; // 规划器类型（LLM 或规则引擎）
   };
+
+  /** LLM 提供商（可选，用于覆盖系统默认设置） */
+  llm_provider?: 'auto' | 'openai' | 'deepseek' | 'gemini' | 'anthropic';
 }
 

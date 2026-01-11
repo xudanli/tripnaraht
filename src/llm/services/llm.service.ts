@@ -94,6 +94,15 @@ export class LlmService {
   }
 
   /**
+   * 获取系统推荐的默认提供商
+   * 
+   * @returns 系统推荐的 LLM 提供商
+   */
+  getDefaultProvider(): LlmProvider {
+    return this.defaultProvider;
+  }
+
+  /**
    * 自然语言转接口参数
    * 将用户的口语化需求转换为创建行程的接口参数
    */

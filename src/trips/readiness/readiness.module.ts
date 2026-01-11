@@ -36,8 +36,17 @@ import { PackingListService } from './services/packing-list.service';
 import { SolutionService } from './services/solution.service';
 import { TripsModule } from '../trips.module';
 
+// 允许通过环境变量控制 TripsModule 导入（避免启动阻塞）
+// 默认禁用（与 app.module.ts 保持一致），除非明确设置 ENABLE_TRIPS_MODULE=true
+// 如果 TripsModule 被禁用，ReadinessModule 仍然可以正常工作（某些功能可能不可用）
+const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
+
 @Module({
-  imports: [PrismaModule, UsersModule, forwardRef(() => TripsModule)],
+  imports: [
+    PrismaModule, 
+    UsersModule, 
+    ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []),
+  ],
   controllers: [ReadinessController],
   providers: [
     ReadinessService,

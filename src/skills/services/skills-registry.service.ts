@@ -5,7 +5,7 @@
  * 统一注册和管理所有 Skills
  */
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, Logger } from '@nestjs/common';
 import { Skill } from '../interfaces/skill.interface';
 import {
   SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
@@ -39,6 +39,7 @@ import {
 @Injectable()
 export class SkillsRegistryService {
   private readonly skills = new Map<string, Skill>();
+  private readonly logger = new Logger(SkillsRegistryService.name);
 
   constructor(
     @Optional() @Inject(SKILL_DEM_GET_PROFILE) private readonly demGetProfile?: Skill,
@@ -78,7 +79,9 @@ export class SkillsRegistryService {
     @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly toolsSelect?: Skill,
     @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly decisionLogAppend?: Skill,
   ) {
+    this.logger.log('[SkillsRegistryService] 构造函数开始执行...');
     // 注册所有 Skills（只注册成功注入的）
+    this.logger.debug('[SkillsRegistryService] 开始注册 Skills...');
     if (this.demGetProfile) this.registerSkill(this.demGetProfile);
     if (this.worldBuildContext) this.registerSkill(this.worldBuildContext);
     if (this.decisionAbuCheck) this.registerSkill(this.decisionAbuCheck);
@@ -105,6 +108,7 @@ export class SkillsRegistryService {
     if (this.planSelectSlices) this.registerSkill(this.planSelectSlices);
     if (this.toolsSelect) this.registerSkill(this.toolsSelect);
     if (this.decisionLogAppend) this.registerSkill(this.decisionLogAppend);
+    this.logger.log(`[SkillsRegistryService] 构造函数完成，已注册 ${this.skills.size} 个 Skills`);
   }
 
   /**

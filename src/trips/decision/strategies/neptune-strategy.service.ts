@@ -30,7 +30,7 @@
  * - 替换后 check：核心标签/体验仍然覆盖
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import {
   WorldModelContext,
@@ -57,7 +57,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
   constructor(
     private readonly spatialReplacement: SpatialReplacementService,
     private readonly spatialIssueDetector: SpatialIssueDetectorService,
-    private readonly routeDirectionsService?: RouteDirectionsService,
+    @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
   ) {}
 
   /**

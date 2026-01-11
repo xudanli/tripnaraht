@@ -1,6 +1,7 @@
 // src/agent/services/llm-plan-service.ts
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
+import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { ActionRegistryService } from './action-registry.service';
 import { TripNaraSystemPromptService } from './tripnara-system-prompt.service';
@@ -82,10 +83,11 @@ export class LlmPlanService {
         required: ['action_name', 'input', 'reasoning', 'confidence', 'should_continue'],
       };
 
-      // 调用 LLM（使用默认 provider）
-      // 注意：callLlm 是私有方法，我们需要使用公开的方法
-      // 为了简化，我们创建一个通用的调用方法
-      const response = await this.callLlmWithSchema(prompt, schema);
+      // 获取 provider（从 state 的 metadata 中获取，如果没有则使用系统默认）
+      const provider = this.getProviderFromState(state);
+      
+      // 调用 LLM（使用指定的或默认的 provider）
+      const response = await this.llmService.callLlmWithSchema(provider, prompt, schema);
 
       // 清理响应：移除 markdown 代码块标记
       const cleanedResponse = this.cleanJsonResponse(response);
@@ -266,25 +268,34 @@ ${actionDescriptions}
   }
 
   /**
-   * 调用 LLM（使用反射访问 LlmService 的私有方法）
-   * 注意：这是临时方案，理想情况下应该修改 LlmService 添加公开的通用调用方法
+   * 从 AgentState 中获取 LLM Provider
+   * 
+   * @param state Agent 状态
+   * @returns LLM Provider
    */
-  private async callLlmWithSchema(prompt: string, schema: any): Promise<string> {
-    try {
-      // 使用类型断言访问私有方法（临时方案）
-      const llmServiceAny = this.llmService as any;
-      if (typeof llmServiceAny.callLlm === 'function') {
-        // 获取默认 provider
-        const defaultProvider = llmServiceAny.defaultProvider || 'OPENAI';
-        return await llmServiceAny.callLlm(defaultProvider, prompt, schema);
-      } else {
-        this.logger.warn('LlmService.callLlm method not available, LLM Plan will be disabled');
-        throw new Error('LLM call method not available');
+  private getProviderFromState(state: AgentState): LlmProvider {
+    // 从 state 中获取 llm_provider（如果存在）
+    const llmProvider = state.llm_provider;
+    
+    if (llmProvider && llmProvider !== 'auto') {
+      // 转换为 LlmProvider 枚举值（注意：枚举值是 'openai', 'deepseek' 等，不是 'OPENAI'）
+      switch (llmProvider) {
+        case 'openai':
+          return LlmProvider.OPENAI;
+        case 'deepseek':
+          return LlmProvider.DEEPSEEK;
+        case 'gemini':
+          return LlmProvider.GEMINI;
+        case 'anthropic':
+          return LlmProvider.ANTHROPIC;
+        default:
+          this.logger.warn(`Unknown llm_provider: ${llmProvider}, using default`);
+          return this.llmService.getDefaultProvider();
       }
-    } catch (error: any) {
-      this.logger.error(`Failed to call LLM: ${error?.message || String(error)}`);
-      throw error;
     }
+    
+    // 使用系统推荐的默认 provider（'auto' 或未指定时）
+    return this.llmService.getDefaultProvider();
   }
 }
 

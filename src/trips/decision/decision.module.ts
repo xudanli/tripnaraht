@@ -49,7 +49,8 @@ import { SkillsModule } from '../../skills/skills.module';
 
 // 允许通过环境变量禁用某些模块（用于诊断和性能优化）
 const enableReadinessModule = process.env.ENABLE_READINESS_MODULE !== 'false';
-const enableRouteDirectionsModule = process.env.ENABLE_ROUTE_DIRECTIONS_MODULE !== 'false';
+// 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true
+const enableRouteDirectionsModule = process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true';
 // ContextEngineModule 默认禁用，如需启用设置 ENABLE_CONTEXT_ENGINE_MODULE=true
 const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === 'true';
 // SkillsModule 默认启用（已修复循环依赖）

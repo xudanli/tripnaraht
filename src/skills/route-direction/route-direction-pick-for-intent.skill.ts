@@ -6,7 +6,7 @@
  * 输出：{ routeDirectionId, reasoning, alternatives }
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { RouteDirectionSelectorService, UserIntent } from '../../route-directions/services/route-direction-selector.service';
 
@@ -47,13 +47,18 @@ export class RouteDirectionPickForIntentSkill implements Skill<RouteDirectionPic
   };
 
   constructor(
-    private readonly routeDirectionSelector: RouteDirectionSelectorService,
+    @Optional() private readonly routeDirectionSelector?: RouteDirectionSelectorService,
   ) {}
 
   async execute(input: RouteDirectionPickForIntentInput): Promise<RouteDirectionPickForIntentOutput> {
     this.logger.debug(
       `执行 routeDirection.pickForIntent: country=${input.countryCode}, season=${input.season}, tags=${input.userIntentTags.join(',')}`
     );
+
+    if (!this.routeDirectionSelector) {
+      this.logger.warn('RouteDirectionSelectorService 不可用，返回默认值');
+      throw new Error('RouteDirectionSelectorService 不可用，无法选择路线方向');
+    }
 
     // 构建 UserIntent
     const userIntent: UserIntent = {

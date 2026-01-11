@@ -129,7 +129,8 @@ const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
 const enablePlacesEmbeddingModule = process.env.ENABLE_PLACES_EMBEDDING_MODULE !== 'false';
 // ContextEngineModule 在 MCP 模式下默认启用（核心功能）
 // 临时禁用 ContextEngineModule 以测试是否是循环依赖导致的阻塞
-const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === 'true';
+// 注意：与 McpAppModule 保持一致，默认启用（!== 'false'）
+const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE !== 'false';
 const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
 
 @Module({
@@ -139,7 +140,8 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enablePlacesModule ? [PlacesModule] : []), // 完整的 PlacesModule（包含所有服务），默认禁用（导致启动阻塞）
     // 其他模块
     ...(enableDecisionSkills ? [forwardRef(() => DecisionModule)] : []), // 使用 forwardRef 避免与 DecisionModule 的循环依赖
-    RouteDirectionsModule,
+    // 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true
+    ...(process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true' ? [RouteDirectionsModule] : []),
     ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []), // 使用 forwardRef 避免与 ReadinessModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> SkillsModule -> ReadinessModule）
     ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
@@ -354,6 +356,7 @@ export class SkillsModule {
     @Optional() private readonly hitlCreateApprovalTaskSkill?: HitlCreateApprovalTaskSkill,
     @Optional() private readonly hitlResolveApprovalTaskSkill?: HitlResolveApprovalTaskSkill,
   ) {
+    this.logger.log('[SkillsModule] 构造函数开始执行...');
     
     // 手动注册新 Decision Skills（没有 token 的）
     if (this.decisionStageSkill) {
@@ -425,6 +428,7 @@ export class SkillsModule {
         // 这里暂时不执行扫描，只是记录日志
       });
     }
+    this.logger.log('[SkillsModule] 构造函数执行完成');
   }
 
   /**

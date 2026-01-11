@@ -107,25 +107,112 @@ export class ExecutorService {
   }
 
   /**
-   * 从描述中提取工具名称（简化实现）
+   * 从描述中提取工具名称
+   * 
+   * 优先级：
+   * 1. 从反引号中提取工具名（如 "使用 `webbrowse.browse` 查询..."）
+   * 2. 从 ActionRegistry 中查找匹配的工具
+   * 3. 使用模式匹配（向后兼容）
    */
   private extractToolName(description: string): string {
-    // 简单的关键词匹配
+    // 1. 优先从反引号中提取工具名（Planner 会在描述中明确指定工具）
+    // 例如："使用 `webbrowse.browse` 查询..." -> "webbrowse.browse"
+    const backtickMatch = description.match(/`([a-z_]+\.[a-z_]+)`/);
+    if (backtickMatch && backtickMatch[1]) {
+      const toolName = backtickMatch[1];
+      // 验证工具是否存在
+      if (this.actionRegistry && this.actionRegistry.has(toolName)) {
+        return toolName;
+      }
+      // 如果工具不存在，记录警告但继续尝试其他方法
+      this.logger.warn(`描述中提到的工具 ${toolName} 不存在，尝试其他方法`);
+    }
+
+    // 2. 从 ActionRegistry 中查找匹配的工具（基于描述关键词）
+    if (this.actionRegistry) {
+      const availableActions = this.actionRegistry.list();
+      
+      // 根据描述中的关键词匹配工具
+      const keywords = description.toLowerCase();
+      
+      // 按匹配度排序：完全匹配 > 部分匹配
+      const matchedActions = availableActions
+        .map(action => {
+          const actionNameLower = action.name.toLowerCase();
+          const descriptionLower = action.description.toLowerCase();
+          
+          // 计算匹配分数
+          let score = 0;
+          
+          // 如果工具名或描述包含关键词，增加分数
+          if (keywords.includes('天气') || keywords.includes('weather')) {
+            if (actionNameLower.includes('weather') || descriptionLower.includes('天气')) {
+              score += 10;
+            }
+          }
+          if (keywords.includes('汇率') || keywords.includes('exchange') || keywords.includes('currency')) {
+            if (actionNameLower.includes('currency') || descriptionLower.includes('汇率')) {
+              score += 10;
+            }
+          }
+          if (keywords.includes('地点') || keywords.includes('place') || keywords.includes('poi')) {
+            if (actionNameLower.includes('place') || descriptionLower.includes('地点')) {
+              score += 10;
+            }
+          }
+          if (keywords.includes('浏览') || keywords.includes('browse') || keywords.includes('网页')) {
+            if (actionNameLower.includes('browse') || descriptionLower.includes('浏览')) {
+              score += 10;
+            }
+          }
+          if (keywords.includes('行程') || keywords.includes('trip')) {
+            if (actionNameLower.includes('trip') || descriptionLower.includes('行程')) {
+              score += 5;
+            }
+          }
+          
+          return { action, score };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+      
+      if (matchedActions.length > 0) {
+        const bestMatch = matchedActions[0].action;
+        this.logger.debug(`从描述中匹配到工具: ${bestMatch.name} (分数: ${matchedActions[0].score})`);
+        return bestMatch.name;
+      }
+    }
+
+    // 3. 向后兼容：使用简单的模式匹配（仅当上述方法都失败时）
     const patterns: Record<string, string> = {
-      '查询.*天气': 'weather.query',
-      '预订.*酒店': 'booking.bookHotel',
-      '搜索.*地点': 'places.search',
-      '获取.*信息': 'info.get',
+      '查询.*天气': 'webbrowse.browse', // 改为使用 webbrowse.browse 而不是不存在的 weather.query
+      '预订.*酒店': 'webbrowse.browse',
+      '搜索.*地点': 'places.resolve_entities',
+      '获取.*信息': 'webbrowse.browse',
+      '查询.*汇率': 'webbrowse.browse', // 改为使用 webbrowse.browse
     };
 
     for (const [pattern, toolName] of Object.entries(patterns)) {
       if (new RegExp(pattern).test(description)) {
-        return toolName;
+        // 验证工具是否存在
+        if (this.actionRegistry && this.actionRegistry.has(toolName)) {
+          return toolName;
+        }
+        // 如果模式匹配的工具不存在，继续尝试下一个模式
       }
     }
 
-    // 默认返回一个通用工具
-    return 'general.execute';
+    // 4. 最后的降级方案：如果 ActionRegistry 可用，返回第一个可用工具（不推荐，但比报错好）
+    if (this.actionRegistry) {
+      const availableActions = this.actionRegistry.list();
+      if (availableActions.length > 0) {
+        this.logger.warn(`无法从描述中提取工具名，使用降级方案: ${availableActions[0].name}`);
+        return availableActions[0].name;
+      }
+    }
+
+    // 5. 如果所有方法都失败，抛出错误而不是返回不存在的工具
+    throw new Error(`无法从描述中提取工具名: "${description}"。请确保描述中包含工具名称（如 "使用 \`webbrowse.browse\` ..."）`);
   }
 
   /**

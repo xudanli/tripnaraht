@@ -24,6 +24,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 process.env.MCP_MODE ??= 'true';
 process.env.DISABLE_REDIS ??= 'true';
 process.env.ALLOW_NO_DATABASE ??= 'true';
+// 确保 ContextEngineModule 默认启用（与 McpAppModule 保持一致）
+process.env.ENABLE_CONTEXT_ENGINE_MODULE ??= 'true';
 
 // Helper function to format tool response
 function formatResponse(data: any): { content: Array<{ type: 'text'; text: string }> } {
@@ -63,13 +65,27 @@ async function createMcpServer() {
         logger: ['error', 'warn', 'log', 'debug', 'verbose'], // 包含更多日志以调试 onModuleInit
       });
       
+      // 添加进度日志
+      const progressInterval = setInterval(() => {
+        console.error('⏳ [MCP] 仍在等待应用上下文创建...');
+      }, 5000); // 每 5 秒输出一次进度
+      
       // 增加超时时间到 60 秒，以便有足够时间看到日志
       const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('createApplicationContext timeout after 60s')), 60000)
+        setTimeout(() => {
+          clearInterval(progressInterval);
+          reject(new Error('createApplicationContext timeout after 60s'));
+        }, 60000)
       );
       
       console.error('Waiting for createApplicationContext to complete...');
-      app = await Promise.race([createPromise, timeoutPromise]);
+      try {
+        app = await Promise.race([createPromise, timeoutPromise]);
+        clearInterval(progressInterval);
+      } catch (error) {
+        clearInterval(progressInterval);
+        throw error;
+      }
       console.error('NestJS application context created successfully');
     } catch (ctxError: any) {
       console.error('Error in createApplicationContext:', ctxError.message);

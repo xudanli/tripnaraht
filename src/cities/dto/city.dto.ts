@@ -1,6 +1,8 @@
 // src/cities/dto/city.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * 城市 DTO
@@ -75,19 +77,27 @@ export class GetCitiesQueryDto {
     description: '国家代码（ISO 3166-1 alpha-2）',
     example: 'JP',
   })
+  @IsOptional()
+  @IsString()
   countryCode?: string;
 
   @ApiPropertyOptional({
     description: '搜索关键词（支持中文名、英文名、名称）',
     example: '东京',
   })
+  @IsOptional()
+  @IsString()
   q?: string;
 
   @ApiPropertyOptional({
-    description: '返回数量限制',
+    description: '返回数量限制（最大1000，默认50）',
     example: 50,
     default: 50,
   })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   limit?: number;
 
   @ApiPropertyOptional({
@@ -95,5 +105,9 @@ export class GetCitiesQueryDto {
     example: 0,
     default: 0,
   })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   offset?: number;
 }

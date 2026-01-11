@@ -48,7 +48,19 @@ async function bootstrap() {
     });
     
     console.log('⏳ [Bootstrap] 等待 NestFactory.create() 完成...');
-    app = await Promise.race([createPromise, timeoutPromise]);
+    
+    // 添加进度日志，每 5 秒输出一次
+    const progressInterval = setInterval(() => {
+      console.log('⏳ [Bootstrap] 仍在等待 NestFactory.create() 完成... (已等待 ' + Math.floor((Date.now() - startTime) / 1000) + ' 秒)');
+    }, 5000);
+    
+    try {
+      app = await Promise.race([createPromise, timeoutPromise]);
+      clearInterval(progressInterval);
+    } catch (error) {
+      clearInterval(progressInterval);
+      throw error;
+    }
     const duration = Date.now() - startTime;
     console.log(`✅ [Bootstrap] NestFactory 创建完成 (耗时: ${duration}ms)`);
   } catch (error: any) {

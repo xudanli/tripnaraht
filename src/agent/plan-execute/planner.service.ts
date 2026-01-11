@@ -11,6 +11,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
+import { ActionRegistryService } from '../services/action-registry.service';
 import { PlanTask, TaskStatus } from './types';
 
 /**
@@ -66,6 +67,7 @@ export class PlannerService {
 
   constructor(
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly actionRegistry?: ActionRegistryService,
   ) {}
 
   /**
@@ -73,11 +75,13 @@ export class PlannerService {
    * 
    * @param userGoal 用户目标
    * @param context 上下文信息
+   * @param provider LLM 提供商（可选，默认使用系统推荐的）
    * @returns PlanTask 数组（DAG）
    */
   async generateDAGPlan(
     userGoal: string,
     context: string,
+    provider?: LlmProvider,
   ): Promise<PlanTask[]> {
     this.logger.log(`生成 DAG 计划: ${userGoal.substring(0, 50)}...`);
 
@@ -94,10 +98,35 @@ export class PlannerService {
 
       // 替换 Prompt 模板变量
       const currentDate = new Date().toISOString().split('T')[0];
-      const systemPrompt = cachedPlannerPrompt
+      
+      // 获取可用工具列表（如果 ActionRegistry 可用）
+      const availableToolsSection = this.buildAvailableToolsSection();
+      
+      let systemPrompt = cachedPlannerPrompt
         .replace(/\{\{USER_QUERY\}\}/g, userGoal)
         .replace(/\{\{CONTEXT_SUMMARY\}\}/g, context || '无上下文')
         .replace(/\{\{CURRENT_DATE\}\}/g, currentDate);
+      
+      // 如果 Prompt 中包含 {{AVAILABLE_TOOLS}} 占位符，替换为实际工具列表
+      if (systemPrompt.includes('{{AVAILABLE_TOOLS}}')) {
+        systemPrompt = systemPrompt.replace(/\{\{AVAILABLE_TOOLS\}\}/g, availableToolsSection);
+      } else {
+        // 如果没有占位符，在 Tool Categories 部分后追加工具列表
+        // 尝试匹配 "# Tool Categories" 或 "## Tool Categories" 后追加
+        const toolCategoriesPattern = /(#+ Tool Categories[\s\S]*?)(#+ Few-Shot Examples|## Example|# Few-Shot Examples)/;
+        if (toolCategoriesPattern.test(systemPrompt)) {
+          systemPrompt = systemPrompt.replace(
+            toolCategoriesPattern,
+            `$1\n\n${availableToolsSection}\n\n$2`
+          );
+        } else {
+          // 如果找不到 Tool Categories 部分，在 Core Responsibilities 后追加
+          systemPrompt = systemPrompt.replace(
+            /(# Core Responsibilities[\s\S]*?)(# Tool Categories|# Few-Shot Examples|## Example)/,
+            `$1\n\n${availableToolsSection}\n\n$2`
+          );
+        }
+      }
 
       // 定义输出 Schema
       const schema = {
@@ -124,8 +153,11 @@ export class PlannerService {
       // 构建完整的 prompt（系统提示词已经包含了用户查询）
       const fullPrompt = systemPrompt;
 
+      // 使用指定的 provider 或系统默认的 provider
+      const llmProvider = provider || LlmProvider.OPENAI;
+
       const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        llmProvider,
         fullPrompt,
         schema,
       );
@@ -212,6 +244,75 @@ export class PlannerService {
         }
       }
     }
+  }
+
+  /**
+   * 构建可用工具列表部分（用于注入到 Prompt 中）
+   */
+  private buildAvailableToolsSection(): string {
+    if (!this.actionRegistry) {
+      return '**注意**: ActionRegistry 未可用，无法获取工具列表。请使用系统已注册的工具。';
+    }
+
+    const actions = this.actionRegistry.list();
+    
+    if (actions.length === 0) {
+      return '**注意**: 当前没有注册的工具。';
+    }
+
+    // 按类别分组工具
+    const toolsByCategory: Record<string, Array<{ name: string; description: string }>> = {};
+    
+    actions.forEach(action => {
+      const category = action.name.split('.')[0]; // 提取类别（如 'trip', 'places'）
+      if (!toolsByCategory[category]) {
+        toolsByCategory[category] = [];
+      }
+      toolsByCategory[category].push({
+        name: action.name,
+        description: action.description,
+      });
+    });
+
+    // 构建工具列表文本
+    const sections: string[] = [];
+    sections.push('# Available Tools (可用工具列表)');
+    sections.push('');
+    sections.push('**重要**: 你只能使用以下已注册的工具。不要使用不存在的工具（如 `weather.query`、`general.execute` 等）。');
+    sections.push('');
+
+    // 按类别输出工具
+    const categoryOrder = ['trip', 'places', 'transport', 'itinerary', 'policy', 'readiness', 'webbrowse', 'railpass'];
+    const otherCategories = Object.keys(toolsByCategory).filter(cat => !categoryOrder.includes(cat));
+    const allCategories = [...categoryOrder, ...otherCategories];
+
+    for (const category of allCategories) {
+      if (!toolsByCategory[category]) continue;
+      
+      sections.push(`## ${category} Tools`);
+      sections.push('');
+      
+      toolsByCategory[category].forEach(tool => {
+        sections.push(`- **${tool.name}**: ${tool.description}`);
+      });
+      
+      sections.push('');
+    }
+
+    sections.push('**使用规则**:');
+    sections.push('1. **必须**在任务的 `description` 中，使用反引号明确指定工具名称（如 "使用 `places.resolve_entities` 解析用户输入中的地点"）');
+    sections.push('2. 工具名称必须用反引号包裹，格式：`工具名`（如 `webbrowse.browse`、`places.resolve_entities`）');
+    sections.push('3. 不要使用未列出的工具');
+    sections.push('4. 如果任务需要的信息无法通过现有工具获取，请在 `description` 中说明，系统会通过 Replanner 调整计划');
+    sections.push('');
+    sections.push('**示例**：');
+    sections.push('- ✅ 正确: "使用 `webbrowse.browse` 查询冰岛7月的天气信息"');
+    sections.push('- ✅ 正确: "使用 `places.resolve_entities` 解析用户输入中的地点"');
+    sections.push('- ❌ 错误: "查询冰岛7月的天气"（没有指定工具名）');
+    sections.push('- ❌ 错误: "使用 weather.query 查询天气"（工具不存在）');
+    sections.push('');
+
+    return sections.join('\n');
   }
 
   /**

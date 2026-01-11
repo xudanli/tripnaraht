@@ -1,30 +1,135 @@
 // src/countries/countries.controller.ts
-import { Controller, Get, Put, Param, Body, NotFoundException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { Controller, Get, Put, Param, Body, Query, NotFoundException, Logger } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { CountriesService } from './countries.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
 import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack.dto';
+import { GetCountriesQueryDto } from './dto/get-countries-query.dto';
+import { CountryProfileDto } from './dto/country-profile.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('countries')
 @Controller('countries')
 export class CountriesController {
+  private readonly logger = new Logger(CountriesController.name);
+
   constructor(private readonly countriesService: CountriesService) {}
 
+  @Public()
+  @Get('packs')
+  @ApiOperation({
+    summary: '获取所有国家 Pack 配置列表',
+    description: '返回所有已配置的国家 Pack 列表，包括风险阈值、体力等级映射、地形约束等',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回所有国家 Pack 配置列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getAllCountryPacks() {
+    try {
+      const packs = await this.countriesService.getAllCountryPacks();
+      return successResponse(packs);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get()
   @ApiOperation({
-    summary: '获取所有国家列表',
-    description: '返回所有已配置的国家档案列表，包含基本信息和货币代码',
+    summary: '获取国家列表',
+    description: '支持搜索和分页。可以按中文名、英文名或国家代码搜索。',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: '搜索关键词（支持中文名、英文名、国家代码），例如：日本',
+    example: '日本',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: '返回数量限制（最大1000，不指定则返回所有国家）',
+    example: 100,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    description: '偏移量（用于分页）',
+    example: 0,
+    type: Number,
   })
   @ApiResponse({
     status: 200,
     description: '成功返回国家列表（统一响应格式）',
     type: ApiSuccessResponseDto,
   })
-  async findAll() {
-    const countries = await this.countriesService.findAll();
-    return successResponse(countries);
+  async findAll(@Query() query: GetCountriesQueryDto) {
+    try {
+      this.logger.debug(`[CountriesController] 收到国家查询请求: ${JSON.stringify(query)}`);
+      
+      const result = await this.countriesService.findAll(query);
+      
+      this.logger.debug(`[CountriesController] ✅ 返回国家列表: ${result.countries.length} 个国家 (total=${result.total}, hasMore=${result.hasMore})`);
+      
+      return successResponse({
+        countries: result.countries,
+        total: result.total,
+        hasMore: result.hasMore,
+        limit: result.limit,
+        offset: result.offset,
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get countries: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get(':countryCode/profile')
+  @ApiOperation({
+    summary: '获取完整的国家档案信息',
+    description:
+      '返回指定国家的完整档案信息，包括：\n' +
+      '- 基础信息（国家代码、名称、更新时间）\n' +
+      '- 货币和支付信息（货币代码、汇率、支付类型、支付建议）\n' +
+      '- 电源信息（电压、频率、插座类型）\n' +
+      '- 紧急信息（报警电话、医疗电话等）\n' +
+      '- 签证信息（针对中国公民的签证政策）\n' +
+      '- 合规信息（驾驶规则、无人机规则、酒精政策等）\n' +
+      '- 旅行文化（小费习惯、禁忌列表、节庆信息等）',
+  })
+  @ApiParam({
+    name: 'countryCode',
+    description: '国家代码（ISO 3166-1 alpha-2）',
+    example: 'JP',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回完整的国家档案信息（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '未找到指定国家的档案（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getCountryProfile(@Param('countryCode') countryCode: string) {
+    try {
+      const profile = await this.countriesService.getCountryProfile(countryCode);
+      return successResponse(profile);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`Failed to get country profile: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
   }
 
   @Get(':countryCode/currency-strategy')
@@ -95,25 +200,6 @@ export class CountriesController {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Get('packs')
-  @ApiOperation({
-    summary: '获取所有国家 Pack 配置列表',
-    description: '返回所有已配置的国家 Pack 列表，包括风险阈值、体力等级映射、地形约束等',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回所有国家 Pack 配置列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getAllCountryPacks() {
-    try {
-      const packs = await this.countriesService.getAllCountryPacks();
-      return successResponse(packs);
-    } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

@@ -10,12 +10,15 @@
  * - 变量引用解析（ReWOO 优化）
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PlannerService } from './planner.service';
 import { ReplannerService } from './replanner.service';
 import { ExecutorService } from './executor.service';
 import { ContextAssemblerService } from './context-assembler.service';
+import { AgentStateService } from '../services/agent-state.service';
 import { PlanTask, OrchestrationResult, ContextSummary, ExecutionResult } from './types';
+import { LlmProvider } from '../../llm/dto/llm-request.dto';
+import { LlmService } from '../../llm/services/llm.service';
 
 @Injectable()
 export class DAGOrchestratorService {
@@ -30,6 +33,8 @@ export class DAGOrchestratorService {
     private readonly replanner: ReplannerService,
     private readonly executor: ExecutorService,
     private readonly contextAssembler: ContextAssemblerService,
+    @Optional() private readonly agentStateService?: AgentStateService,
+    @Optional() private readonly llmService?: LlmService,
   ) {}
 
   /**
@@ -50,8 +55,11 @@ export class DAGOrchestratorService {
       const context = await this.contextAssembler.getSummary(threadId, userGoal);
       const contextSummary = context.currentState || '初始状态';
 
-      // 2. 生成初始 DAG 计划
-      let tasks = await this.planner.generateDAGPlan(userGoal, contextSummary);
+      // 2. 获取 LLM Provider（从 AgentState 中获取）
+      const llmProvider = this.getLlmProvider(threadId);
+
+      // 3. 生成初始 DAG 计划
+      let tasks = await this.planner.generateDAGPlan(userGoal, contextSummary, llmProvider);
       const memory: Record<string, any> = {};
       let iteration = 0;
       let totalStepsExecuted = 0;
@@ -73,7 +81,7 @@ export class DAGOrchestratorService {
         if (anyFailed) {
           // 触发 Replanner 尝试修复路径
           this.logger.warn('[DAG] ⚠️ Some tasks failed, triggering replanner');
-          const replanResult = await this.replanner.replan(userGoal, tasks, memory);
+          const replanResult = await this.replanner.replan(userGoal, tasks, memory, llmProvider);
           if (replanResult.hasUpdates) {
             this.logger.log('[DAG] 🔄 Plan updated by Replanner');
             tasks = replanResult.newPlan;
@@ -102,7 +110,7 @@ export class DAGOrchestratorService {
           this.logger.error(`Remaining pending tasks: ${tasks.filter(t => t.status === 'pending').map(t => t.id).join(', ')}`);
           
           // 触发 Replanner 尝试解开死锁
-          const replanResult = await this.replanner.replan(userGoal, tasks, memory);
+          const replanResult = await this.replanner.replan(userGoal, tasks, memory, llmProvider);
           if (replanResult.hasUpdates) {
             this.logger.log('[DAG] 🔄 Replanner attempted to resolve deadlock');
             tasks = replanResult.newPlan;
@@ -190,7 +198,7 @@ export class DAGOrchestratorService {
         // --- 阶段 F: 重规划（如果有失败或需要重规划）---
         if (batchHasFailures || shouldReplan) {
           this.logger.log('[DAG] 🔄 Triggering replanner');
-          const replanResult = await this.replanner.replan(userGoal, tasks, memory);
+          const replanResult = await this.replanner.replan(userGoal, tasks, memory, llmProvider);
 
           if (replanResult.hasUpdates) {
             this.logger.log(
@@ -525,5 +533,38 @@ export class DAGOrchestratorService {
     const total = tasks.length;
 
     return `执行完成: ${completed}/${total} 成功, ${failed} 失败`;
+  }
+
+  /**
+   * 从 AgentState 获取 LLM Provider
+   * 
+   * @param threadId 线程 ID（对应 AgentState 的 request_id）
+   * @returns LLM Provider
+   */
+  private getLlmProvider(threadId: string): LlmProvider {
+    if (this.agentStateService) {
+      const state = this.agentStateService.get(threadId);
+      if (state?.llm_provider && state.llm_provider !== 'auto') {
+        // 转换为 LlmProvider 枚举值
+        switch (state.llm_provider) {
+          case 'openai':
+            return LlmProvider.OPENAI;
+          case 'deepseek':
+            return LlmProvider.DEEPSEEK;
+          case 'gemini':
+            return LlmProvider.GEMINI;
+          case 'anthropic':
+            return LlmProvider.ANTHROPIC;
+        }
+      }
+    }
+    
+    // 使用系统推荐的默认 provider（'auto' 或未指定时）
+    if (this.llmService) {
+      return this.llmService.getDefaultProvider();
+    }
+    
+    // 降级：如果没有 LlmService，使用 OpenAI
+    return LlmProvider.OPENAI;
   }
 }

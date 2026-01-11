@@ -1,13 +1,18 @@
 // src/countries/countries.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
 import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack.dto';
+import { GetCountriesQueryDto } from './dto/get-countries-query.dto';
+import { CountryProfileDto } from './dto/country-profile.dto';
 import { CurrencyMathUtil } from '../common/utils/currency-math.util';
 import { getCountryPack, COUNTRY_PACKS, CountryPack } from '../trips/readiness/config/country-pack.config';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class CountriesService {
+  private readonly logger = new Logger(CountriesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -78,30 +83,110 @@ export class CountriesService {
 
   /**
    * 获取所有国家列表
+   * 支持搜索和分页
    * 
    * 返回字段分类：
    * - 🌍 通用字段：isoCode, nameCN, nameEN, currencyCode, currencyName, paymentType（适用于所有国家用户）
    * - 🇨🇳 中国特定字段：exchangeRateToCNY（仅对中国用户有意义）
    * - 🌍 国际化字段：exchangeRateToUSD（国际标准基准，适用于所有用户）
    * 
-   * @returns 国家列表（包含基本信息和货币代码）
+   * @param query 查询参数（搜索关键词、limit、offset）
+   * @returns 国家列表和分页信息
    */
-  async findAll() {
-    return this.prisma.countryProfile.findMany({
-      select: {
-        isoCode: true,           // 🌍 通用
-        nameCN: true,            // 🌍 通用
-        nameEN: true,            // 🌍 通用（新增，用于国际化）
-        currencyCode: true,      // 🌍 通用
-        currencyName: true,      // 🌍 通用
-        paymentType: true,       // 🌍 通用
-        exchangeRateToCNY: true, // 🇨🇳 中国特定
-        exchangeRateToUSD: true, // 🌍 国际化字段
-      },
-      orderBy: {
-        nameCN: 'asc',
-      },
-    });
+  async findAll(query: GetCountriesQueryDto): Promise<{
+    countries: any[];
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  }> {
+    // 如果没有指定limit，默认返回所有国家
+    // 限制limit最大值，防止性能问题（国家数量通常不超过300个）
+    const maxLimit = 1000;
+    let { q, limit, offset = 0 } = query;
+    
+    // 如果没有指定limit，返回所有国家
+    if (limit === undefined) {
+      // 先查询总数，然后使用总数作为limit
+      const totalCount = await this.prisma.countryProfile.count({
+        where: q ? {
+          OR: [
+            { nameCN: { contains: q.trim() } },
+            { nameEN: { contains: q.trim(), mode: 'insensitive' } },
+            { isoCode: { contains: q.trim().toUpperCase() } },
+          ],
+        } : {},
+      });
+      limit = totalCount;
+      this.logger.debug(`[CountriesService.findAll] 未指定limit，自动设置为总数: ${limit}`);
+    }
+    
+    // 限制limit不超过最大值
+    if (limit > maxLimit) {
+      limit = maxLimit;
+      this.logger.warn(`[CountriesService.findAll] limit超过最大值${maxLimit}，已自动调整为${maxLimit}`);
+    }
+
+    try {
+      this.logger.debug(`[CountriesService.findAll] 收到查询参数: ${JSON.stringify({ q, limit, offset })}`);
+
+      // 构建where条件
+      const whereCondition: Prisma.CountryProfileWhereInput = {};
+
+      // 如果有搜索关键词，添加搜索条件
+      if (q) {
+        const searchTerm = q.trim();
+        // 对于中文，mode: 'insensitive' 不需要，但对于英文需要
+        // 使用多个条件，对中文字段不使用 mode，对英文字段使用 mode
+        const upperSearchTerm = searchTerm.toUpperCase();
+        whereCondition.OR = [
+          { nameCN: { contains: searchTerm } }, // 中文不需要 case insensitive
+          { nameEN: { contains: searchTerm, mode: 'insensitive' } }, // 英文需要 case insensitive
+          { isoCode: { contains: upperSearchTerm } }, // ISO代码部分匹配（大写）
+        ];
+        this.logger.debug(`[CountriesService.findAll] 搜索关键词: ${searchTerm}`);
+      }
+
+      // 查询总数
+      const total = await this.prisma.countryProfile.count({
+        where: whereCondition,
+      });
+
+      // 查询国家列表
+      const countries = await this.prisma.countryProfile.findMany({
+        where: whereCondition,
+        select: {
+          isoCode: true,           // 🌍 通用
+          nameCN: true,            // 🌍 通用
+          nameEN: true,            // 🌍 通用（新增，用于国际化）
+          currencyCode: true,      // 🌍 通用
+          currencyName: true,      // 🌍 通用
+          paymentType: true,       // 🌍 通用
+          exchangeRateToCNY: true, // 🇨🇳 中国特定
+          exchangeRateToUSD: true, // 🌍 国际化字段
+        },
+        take: limit,
+        skip: offset,
+        orderBy: {
+          nameCN: 'asc',
+        },
+      });
+
+      const hasMore = offset + countries.length < total;
+
+      this.logger.debug(`[CountriesService.findAll] ✅ 查询结果: ${countries.length} 个国家 (total=${total}, hasMore=${hasMore})`);
+
+      return {
+        countries,
+        total,
+        hasMore,
+        limit,
+        offset,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to find countries: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
@@ -159,6 +244,45 @@ export class CountriesService {
       `Country Pack 配置目前通过配置文件管理。请修改 src/trips/readiness/config/country-pack.config.ts 中的 COUNTRY_PACKS 配置。` +
       `国家代码: ${countryCode}`
     );
+  }
+
+  /**
+   * 获取完整的国家档案信息
+   * 
+   * 返回所有字段，包括：
+   * - 基础字段（isoCode, nameCN, nameEN, updatedAt）
+   * - 货币和支付字段（currencyCode, currencyName, exchangeRateToCNY, exchangeRateToUSD, paymentType, paymentInfo）
+   * - 所有JSON字段（powerInfo, emergency, visaForCN, complianceInfo, travelCulture）
+   * 
+   * @param countryCode 国家代码（ISO 3166-1 alpha-2）
+   * @returns 完整的国家档案信息
+   */
+  async getCountryProfile(countryCode: string): Promise<CountryProfileDto> {
+    const profile = await this.prisma.countryProfile.findUnique({
+      where: { isoCode: countryCode.toUpperCase() },
+    });
+
+    if (!profile) {
+      throw new NotFoundException(`未找到国家代码为 ${countryCode} 的国家档案`);
+    }
+
+    return {
+      isoCode: profile.isoCode,
+      nameCN: profile.nameCN,
+      nameEN: profile.nameEN || undefined,
+      updatedAt: profile.updatedAt,
+      currencyCode: profile.currencyCode || undefined,
+      currencyName: profile.currencyName || undefined,
+      exchangeRateToCNY: profile.exchangeRateToCNY || undefined,
+      exchangeRateToUSD: profile.exchangeRateToUSD || undefined,
+      paymentType: profile.paymentType || undefined,
+      paymentInfo: profile.paymentInfo as any || undefined,
+      powerInfo: profile.powerInfo as any || undefined,
+      emergency: profile.emergency as any || undefined,
+      visaForCN: profile.visaForCN as any || undefined,
+      complianceInfo: profile.complianceInfo as any || undefined,
+      travelCulture: profile.travelCulture as any || undefined,
+    };
   }
 }
 

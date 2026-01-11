@@ -294,11 +294,30 @@ export class System1ExecutorService {
       }
     }
 
-    // 默认：返回需要更多信息
+    // 默认：返回需要更多信息，并提供友好的引导
+    const hasTripId = !!state.trip.trip_id;
+    
+    let guidanceMessage = '';
+    if (hasTripId) {
+      guidanceMessage = `我可以帮您：\n\n` +
+        `• **添加地点**：例如"添加东京塔"或"在行程中加入浅草寺"\n` +
+        `• **删除地点**：例如"删除浅草寺"或"移除东京塔"\n` +
+        `• **查询地点**：例如"推荐新宿的拉面店"或"附近有什么景点"\n` +
+        `• **规划行程**：例如"规划5天东京游"或"帮我规划行程"\n\n` +
+        `请告诉我您想要做什么？`;
+    } else {
+      guidanceMessage = `我可以帮您：\n\n` +
+        `• **规划行程**：例如"规划5天东京游"或"帮我规划冰岛7日行程"\n` +
+        `• **查询地点**：例如"推荐新宿的拉面店"或"东京有什么好玩的"\n` +
+        `• **搜索景点**：例如"搜索东京塔"或"查找浅草寺"\n` +
+        `• **创建行程**：告诉我目的地、日期和偏好，我来为您规划\n\n` +
+        `请告诉我您想要做什么？`;
+    }
+    
     return {
       success: false,
       result: null,
-      answerText: '请提供更具体的操作指令',
+      answerText: guidanceMessage,
     };
   }
 

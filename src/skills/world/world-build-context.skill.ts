@@ -11,7 +11,7 @@
  * 输出：WorldModelContext + missingPieces
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { WorldModelContext } from '../../trips/decision/shared/world-model.types';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -65,7 +65,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly routeDirectionsService: RouteDirectionsService,
+    @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
   ) {}
 
   async execute(input: WorldBuildContextInput): Promise<WorldBuildContextOutput> {
@@ -126,20 +126,25 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
 
       // 3. 获取 RouteDirection
       let routeDirection: any;
-      try {
-        if (routeDirectionId) {
-          routeDirection = await this.routeDirectionsService.findRouteDirectionByUuid(routeDirectionId);
-        } else {
-          // 如果没有指定，尝试获取第一个可用的
-          const routeDirectionsResult = await this.routeDirectionsService.findRouteDirectionsByCountry(countryCode, {
-            month: season,
-            limit: 1,
-          });
-          routeDirection = routeDirectionsResult.active?.[0];
-        }
-      } catch (error: any) {
-        this.logger.warn(`获取 RouteDirection 失败: ${error?.message || error}`);
+      if (!this.routeDirectionsService) {
+        this.logger.warn('RouteDirectionsService 不可用，将使用空的 RouteDirection');
         missingPieces.routeDirectionMissing = true;
+      } else {
+        try {
+          if (routeDirectionId) {
+            routeDirection = await this.routeDirectionsService.findRouteDirectionByUuid(routeDirectionId);
+          } else {
+            // 如果没有指定，尝试获取第一个可用的
+            const routeDirectionsResult = await this.routeDirectionsService.findRouteDirectionsByCountry(countryCode, {
+              month: season,
+              limit: 1,
+            });
+            routeDirection = routeDirectionsResult.active?.[0];
+          }
+        } catch (error: any) {
+          this.logger.warn(`获取 RouteDirection 失败: ${error?.message || error}`);
+          missingPieces.routeDirectionMissing = true;
+        }
       }
 
       if (!routeDirection) {

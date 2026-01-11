@@ -301,7 +301,7 @@ export class TripsController {
   @Put(':id')
   @ApiOperation({
     summary: '更新行程基本信息',
-    description: '更新行程的基本信息，包括目的地、日期、预算、旅行者等。支持部分更新（只更新提供的字段）。',
+    description: '更新行程的基本信息，包括目的地、日期、预算、旅行者、状态等。支持部分更新（只更新提供的字段）。状态更新会进行合法性验证：已取消的行程不能修改状态，已完成的行程不能改回规划中或进行中。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
   @ApiBody({ type: UpdateTripDto })

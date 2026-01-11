@@ -154,11 +154,18 @@ Return ONLY a JSON array of PlanStep objects:
 
   /**
    * 重规划
+   * 
+   * @param userGoal 用户目标
+   * @param currentPlan 当前计划
+   * @param memory 执行记忆
+   * @param provider LLM 提供商（可选，默认使用系统推荐的）
+   * @returns 重规划结果
    */
   async replan(
     userGoal: string,
     currentPlan: PlanTask[],
     memory: Record<string, any>,
+    provider?: LlmProvider,
   ): Promise<ReplanResult> {
     this.logger.debug(`重规划: ${currentPlan.length} 个步骤`);
 
@@ -250,8 +257,11 @@ Return ONLY a JSON array of PlanStep objects:
         required: ['plan'],
       };
 
+      // 使用指定的 provider 或系统默认的 provider
+      const llmProvider = provider || LlmProvider.OPENAI;
+
       const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI, // 使用 OpenAI provider
+        llmProvider,
         fullPrompt,
         schema,
       );

@@ -79,6 +79,8 @@ export class AgentStateService {
         cost_est_usd: 0.0,
         fallback_used: false,
       },
+      // 从 options 中提取 llm_provider（如果提供）
+      llm_provider: options?.llm_provider || 'auto',
     };
 
     this.states.set(requestId, state);
