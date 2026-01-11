@@ -14,18 +14,24 @@ pipeline {
     stage('Precheck') {
       steps {
         sh '''
-          set -eu
+          set -e
           docker version
           # 检测 Docker Compose 命令（支持 V2 和 V1）
           if docker compose version >/dev/null 2>&1; then
-            echo "使用 docker compose (V2)"
-            echo "DOCKER_COMPOSE_CMD=docker compose" >> $WORKSPACE/.docker-compose-cmd
-          elif docker-compose version >/dev/null 2>&1; then
-            echo "使用 docker-compose (V1)"
-            echo "DOCKER_COMPOSE_CMD=docker-compose" >> $WORKSPACE/.docker-compose-cmd
+            echo "✓ 检测到 docker compose (V2)"
+            echo "DOCKER_COMPOSE_CMD=docker compose" > $WORKSPACE/.docker-compose-cmd
+          elif command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then
+            echo "✓ 检测到 docker-compose (V1)"
+            echo "DOCKER_COMPOSE_CMD=docker-compose" > $WORKSPACE/.docker-compose-cmd
+          elif [ -f /usr/local/bin/docker-compose ] && /usr/local/bin/docker-compose version >/dev/null 2>&1; then
+            echo "✓ 检测到 /usr/local/bin/docker-compose"
+            echo "DOCKER_COMPOSE_CMD=/usr/local/bin/docker-compose" > $WORKSPACE/.docker-compose-cmd
           else
-            echo "错误: 未找到 docker compose 或 docker-compose 命令"
-            exit 1
+            echo "⚠️  警告: 未找到 docker compose 或 docker-compose 命令"
+            echo "如果后续构建失败，请安装 Docker Compose:"
+            echo "  - Docker Compose V2: 通常是 Docker Desktop 的一部分，或运行 'apt-get install docker-compose-plugin'"
+            echo "  - Docker Compose V1: 运行 'curl -L \"https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose'"
+            echo "DOCKER_COMPOSE_CMD=" > $WORKSPACE/.docker-compose-cmd
           fi
         '''
       }
@@ -52,14 +58,23 @@ pipeline {
         sh '''
           set -eu
           # 检测并使用正确的 Docker Compose 命令
-          if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker compose"
-          elif docker-compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker-compose"
-          else
-            echo "错误: 未找到 docker compose 或 docker-compose 命令"
-            exit 1
+          if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+            source $WORKSPACE/.docker-compose-cmd
           fi
+          if [ -z "$DOCKER_COMPOSE_CMD" ]; then
+            if docker compose version >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker-compose"
+            elif [ -f /usr/local/bin/docker-compose ]; then
+              DOCKER_COMPOSE_CMD="/usr/local/bin/docker-compose"
+            else
+              echo "❌ 错误: 未找到 docker compose 或 docker-compose 命令"
+              echo "请安装 Docker Compose 插件或二进制文件"
+              exit 1
+            fi
+          fi
+          echo "使用命令: ${DOCKER_COMPOSE_CMD}"
           ${DOCKER_COMPOSE_CMD} build
         '''
       }
@@ -69,14 +84,20 @@ pipeline {
       steps {
         sh '''
           set -eu
-          # 检测并使用正确的 Docker Compose 命令
-          if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker compose"
-          elif docker-compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker-compose"
-          else
-            echo "错误: 未找到 docker compose 或 docker-compose 命令"
-            exit 1
+          if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+            source $WORKSPACE/.docker-compose-cmd
+          fi
+          if [ -z "$DOCKER_COMPOSE_CMD" ]; then
+            if docker compose version >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker-compose"
+            elif [ -f /usr/local/bin/docker-compose ]; then
+              DOCKER_COMPOSE_CMD="/usr/local/bin/docker-compose"
+            else
+              echo "❌ 错误: 未找到 docker compose 或 docker-compose 命令"
+              exit 1
+            fi
           fi
           ${DOCKER_COMPOSE_CMD} --profile ops run --rm migrate
         '''
@@ -87,14 +108,20 @@ pipeline {
       steps {
         sh '''
           set -eu
-          # 检测并使用正确的 Docker Compose 命令
-          if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker compose"
-          elif docker-compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE_CMD="docker-compose"
-          else
-            echo "错误: 未找到 docker compose 或 docker-compose 命令"
-            exit 1
+          if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+            source $WORKSPACE/.docker-compose-cmd
+          fi
+          if [ -z "$DOCKER_COMPOSE_CMD" ]; then
+            if docker compose version >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE_CMD="docker-compose"
+            elif [ -f /usr/local/bin/docker-compose ]; then
+              DOCKER_COMPOSE_CMD="/usr/local/bin/docker-compose"
+            else
+              echo "❌ 错误: 未找到 docker compose 或 docker-compose 命令"
+              exit 1
+            fi
           fi
           ${DOCKER_COMPOSE_CMD} up -d --remove-orphans
           ${DOCKER_COMPOSE_CMD} ps
