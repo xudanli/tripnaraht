@@ -52,6 +52,77 @@ export class ClaudeOrchestratorService {
   }
 
   /**
+   * 获取 LLM 提供商（支持请求参数和降级机制）
+   */
+  private getLlmProvider(request: RouteAndRunRequestDto): LlmProvider {
+    // 1. 优先使用请求参数中的 llm_provider
+    const requestProvider = request.options?.llm_provider;
+    if (requestProvider && requestProvider !== 'auto') {
+      switch (requestProvider) {
+        case 'openai':
+          return LlmProvider.OPENAI;
+        case 'deepseek':
+          return LlmProvider.DEEPSEEK;
+        case 'gemini':
+          return LlmProvider.GEMINI;
+        case 'anthropic':
+          return LlmProvider.ANTHROPIC;
+        default:
+          break;
+      }
+    }
+    
+    // 2. 使用系统默认提供商
+    return this.llmService.getDefaultProvider();
+  }
+
+  /**
+   * 获取降级提供商列表（当主提供商失败时使用）
+   */
+  private getFallbackProviders(primaryProvider: LlmProvider): LlmProvider[] {
+    const fallbackOrder: LlmProvider[] = [
+      LlmProvider.DEEPSEEK,  // 优先使用 DeepSeek（成本低、速度快）
+      LlmProvider.OPENAI,     // 其次 OpenAI
+      LlmProvider.GEMINI,     // 最后 Gemini
+    ];
+    
+    // 移除主提供商，返回其他提供商作为降级选项
+    return fallbackOrder.filter(p => p !== primaryProvider);
+  }
+
+  /**
+   * 使用 LLM 调用，支持降级机制
+   */
+  private async callLlmWithFallback(
+    primaryProvider: LlmProvider,
+    prompt: string,
+    schema: any,
+    operationName: string,
+  ): Promise<string> {
+    // 首先尝试主提供商
+    try {
+      return await this.llmService.callLlmWithSchema(primaryProvider, prompt, schema);
+    } catch (error: any) {
+      this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${primaryProvider} 失败: ${error?.message}`);
+      
+      // 如果主提供商失败，尝试降级提供商
+      const fallbackProviders = this.getFallbackProviders(primaryProvider);
+      for (const fallbackProvider of fallbackProviders) {
+        try {
+          this.logger.debug(`[Claude Orchestrator] ${operationName} 尝试降级到 ${fallbackProvider}...`);
+          return await this.llmService.callLlmWithSchema(fallbackProvider, prompt, schema);
+        } catch (fallbackError: any) {
+          this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${fallbackProvider} 也失败: ${fallbackError?.message}`);
+          continue;
+        }
+      }
+      
+      // 所有提供商都失败，抛出最后一个错误
+      throw error;
+    }
+  }
+
+  /**
    * 智能编排主入口
    */
   async orchestrate(
@@ -62,15 +133,19 @@ export class ClaudeOrchestratorService {
     this.logger.log(`[Claude Orchestrator] 开始编排: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
     this.logger.debug(`[Claude Orchestrator] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
 
+    // 获取 LLM 提供商（支持请求参数和降级）
+    const llmProvider = this.getLlmProvider(request);
+    this.logger.debug(`[Claude Orchestrator] 使用 LLM 提供商: ${llmProvider}`);
+
     try {
-      // 1. 使用 Claude 分析用户意图
+      // 1. 使用 LLM 分析用户意图
       this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
-      const intentAnalysis = await this.analyzeIntent(request, context);
+      const intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
       this.logger.log(`[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`);
 
-      // 2. 使用 Claude 选择路由策略
+      // 2. 使用 LLM 选择路由策略
       this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
-      const routingDecision = await this.decideRouting(intentAnalysis);
+      const routingDecision = await this.decideRouting(intentAnalysis, llmProvider);
       this.logger.log(`[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`);
 
       // 3. 根据路由决策选择执行路径
@@ -103,17 +178,17 @@ export class ClaudeOrchestratorService {
         };
       }
 
-      // 4. System 2 路径：使用 Claude 选择 Skills
+      // 4. System 2 路径：使用 LLM 选择 Skills
       this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
-      const skillsPlan = await this.selectSkills(intentAnalysis, routingDecision, context);
+      const skillsPlan = await this.selectSkills(intentAnalysis, routingDecision, context, llmProvider);
       this.logger.log(`[Claude Orchestrator] ✅ Skills 选择完成: ${skillsPlan.selectedSkills.length} 个 Skills`);
       if (skillsPlan.selectedSkills.length > 0) {
         this.logger.debug(`[Claude Orchestrator] 选择的 Skills: ${skillsPlan.selectedSkills.map(s => s.skillName).join(', ')}`);
       }
 
-      // 5. 使用 Claude 编排执行计划
+      // 5. 使用 LLM 编排执行计划
       this.logger.debug(`[Claude Orchestrator] 步骤 5/6: 编排执行计划...`);
-      const executionPlan = await this.planExecution(skillsPlan, routingDecision);
+      const executionPlan = await this.planExecution(skillsPlan, routingDecision, llmProvider);
       this.logger.log(`[Claude Orchestrator] ✅ 执行计划完成: ${executionPlan.steps.length} 个步骤`);
 
       // 6. 执行计划
@@ -153,17 +228,18 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 分析用户意图（使用 Claude）
+   * 分析用户意图（使用指定的 LLM 提供商，支持降级）
    */
   private async analyzeIntent(
     request: RouteAndRunRequestDto,
     context: AgentContext,
+    provider: LlmProvider,
   ): Promise<IntentAnalysis> {
     const prompt = this.buildIntentAnalysisPrompt(request, context);
     
     try {
-      const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.ANTHROPIC,
+      const response = await this.callLlmWithFallback(
+        provider,
         prompt,
         {
           type: 'object',
@@ -190,6 +266,7 @@ export class ClaudeOrchestratorService {
           },
           required: ['intentType', 'complexity', 'requiredCapabilities', 'confidence', 'reasoning'],
         },
+        '意图分析',
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -242,16 +319,17 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 路由决策（使用 Claude）
+   * 路由决策（使用指定的 LLM 提供商，支持降级）
    */
   private async decideRouting(
     intentAnalysis: IntentAnalysis,
+    provider: LlmProvider,
   ): Promise<RoutingDecision> {
     const prompt = this.buildRoutingPrompt(intentAnalysis);
     
     try {
-      const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.ANTHROPIC,
+      const response = await this.callLlmWithFallback(
+        provider,
         prompt,
         {
           type: 'object',
@@ -279,6 +357,7 @@ export class ClaudeOrchestratorService {
           },
           required: ['route', 'confidence', 'reasoning', 'budget'],
         },
+        '路由决策',
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -300,12 +379,13 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 选择 Skills（使用 Claude）
+   * 选择 Skills（使用指定的 LLM 提供商）
    */
   private async selectSkills(
     intentAnalysis: IntentAnalysis,
     routingDecision: RoutingDecision,
     context: AgentContext,
+    provider: LlmProvider,
   ): Promise<SkillsPlan> {
     // 获取所有可用的 Skills
     const availableSkills = this.getAvailableSkills();
@@ -326,8 +406,8 @@ export class ClaudeOrchestratorService {
     );
     
     try {
-      const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.ANTHROPIC,
+      const response = await this.callLlmWithFallback(
+        provider,
         prompt,
         {
           type: 'object',
@@ -357,6 +437,7 @@ export class ClaudeOrchestratorService {
           },
           required: ['selectedSkills', 'executionOrder', 'dependencies'],
         },
+        'Skills 选择',
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -372,11 +453,12 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 编排执行计划（使用 Claude）
+   * 编排执行计划（使用指定的 LLM 提供商）
    */
   private async planExecution(
     skillsPlan: SkillsPlan,
     routingDecision: RoutingDecision,
+    provider: LlmProvider,
   ): Promise<ExecutionPlan> {
     if (skillsPlan.selectedSkills.length === 0) {
       return {
@@ -393,7 +475,7 @@ export class ClaudeOrchestratorService {
     
     try {
       const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.ANTHROPIC,
+        provider,
         prompt,
         {
           type: 'object',
