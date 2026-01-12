@@ -19,6 +19,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { SecurityMiddleware } from './common/middlewares/security.middleware';
 
 async function bootstrap() {
   console.log('🚀 [Bootstrap] 开始启动应用...');
@@ -80,6 +81,14 @@ async function bootstrap() {
   const cookieParser = require('cookie-parser');
   app.use(cookieParser());
   
+  // 安全中间件（应该在其他中间件之前，尽早拦截恶意请求）
+  console.log('✅ 安全中间件已注册');
+  const securityMiddleware = new SecurityMiddleware();
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.use((req: any, res: any, next: any) => {
+    securityMiddleware.use(req, res, next);
+  });
+  
   // 全局异常过滤器（必须在其他全局配置之前注册）
   console.log('✅ 全局异常过滤器已注册');
   app.useGlobalFilters(new AllExceptionsFilter());
@@ -91,7 +100,6 @@ async function bootstrap() {
   // HTTP 访问日志 - 同时使用中间件作为备选（确保捕获所有请求，包括 401 和使用 @Res() 的情况）
   const logger = new Logger('HTTP');
   console.log('✅ HTTP 访问日志中间件已注册');
-  const httpAdapter = app.getHttpAdapter();
   httpAdapter.use((req: any, res: any, next: any) => {
     // 设置浏览器缓存为72小时（259200秒）
     // 排除 API 路径和动态内容，只对静态资源设置缓存
