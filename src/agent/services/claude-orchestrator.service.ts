@@ -192,7 +192,7 @@ export class ClaudeOrchestratorService {
         },
       );
 
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+      const parsed = this.extractJSONFromResponse(response);
       return parsed as IntentAnalysis;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] 意图分析失败，使用默认值: ${error?.message}`);
@@ -204,6 +204,40 @@ export class ClaudeOrchestratorService {
         confidence: 0.5,
         reasoning: '意图分析失败，使用默认值',
       };
+    }
+  }
+
+  /**
+   * 从 LLM 响应中提取 JSON（处理可能包含 markdown 代码块或解释性文本的情况）
+   */
+  private extractJSONFromResponse(response: string): any {
+    if (!response || typeof response !== 'string') {
+      throw new Error('响应为空或格式不正确');
+    }
+
+    let cleaned = response.trim();
+    
+    // 移除 markdown 代码块标记（更严格的匹配，支持多行）
+    cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/i, '');
+    cleaned = cleaned.replace(/\n?\s*```$/i, '');
+    cleaned = cleaned.trim();
+    
+    // 尝试提取 JSON 对象（如果响应中包含其他文本）
+    // 使用更宽松的匹配，包括可能的多行 JSON
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    // 再次清理可能的空白字符
+    cleaned = cleaned.trim();
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (parseError: any) {
+      this.logger.error(`JSON 解析失败，原始响应（前500字符）: ${response.substring(0, 500)}`);
+      this.logger.error(`清理后的内容（前500字符）: ${cleaned.substring(0, 500)}`);
+      throw parseError;
     }
   }
 
@@ -247,7 +281,7 @@ export class ClaudeOrchestratorService {
         },
       );
 
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+      const parsed = this.extractJSONFromResponse(response);
       return parsed as RoutingDecision;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] 路由决策失败，使用默认值: ${error?.message}`);
@@ -325,7 +359,7 @@ export class ClaudeOrchestratorService {
         },
       );
 
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+      const parsed = this.extractJSONFromResponse(response);
       return parsed as SkillsPlan;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] Skills 选择失败: ${error?.message}`);
@@ -421,7 +455,7 @@ export class ClaudeOrchestratorService {
         },
       );
 
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+      const parsed = this.extractJSONFromResponse(response);
       return parsed as ExecutionPlan;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] 执行计划编排失败: ${error?.message}`);

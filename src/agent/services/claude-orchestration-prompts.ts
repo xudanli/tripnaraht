@@ -32,7 +32,9 @@ export const INTENT_ANALYSIS_PROMPT = `
 
 [输出要求]
 
-必须返回有效的 JSON 格式：
+【重要】你必须只返回 JSON 格式，不要包含任何其他文本、解释或 markdown 代码块标记（如 \`\`\`json）。
+
+直接返回 JSON 对象，格式如下：
 
 {
   "intentType": "simple_query" | "complex_planning" | "analysis" | "decision" | "mixed",
@@ -99,7 +101,9 @@ export const ROUTING_DECISION_PROMPT = `
 
 [输出要求]
 
-必须返回有效的 JSON 格式：
+【重要】你必须只返回 JSON 格式，不要包含任何其他文本、解释或 markdown 代码块标记（如 \`\`\`json）。
+
+直接返回 JSON 对象，格式如下：
 
 {
   "route": "SYSTEM1_API" | "SYSTEM1_RAG" | "SYSTEM2_REASONING" | "SYSTEM2_ANALYSIS" | "SYSTEM2_WEBBROWSE",
@@ -169,7 +173,9 @@ export const SKILLS_SELECTION_PROMPT = `
 
 [输出要求]
 
-必须返回有效的 JSON 格式：
+【重要】你必须只返回 JSON 格式，不要包含任何其他文本、解释或 markdown 代码块标记（如 \`\`\`json）。
+
+直接返回 JSON 对象，格式如下：
 
 {
   "selectedSkills": [
@@ -223,7 +229,9 @@ export const EXECUTION_PLANNING_PROMPT = `
 
 [输出要求]
 
-必须返回有效的 JSON 格式：
+【重要】你必须只返回 JSON 格式，不要包含任何其他文本、解释或 markdown 代码块标记（如 \`\`\`json）。
+
+直接返回 JSON 对象，格式如下：
 
 {
   "steps": [
