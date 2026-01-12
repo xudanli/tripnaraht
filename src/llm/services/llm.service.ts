@@ -687,6 +687,16 @@ export class LlmService {
 
     const model = this.configService?.get<string>('ANTHROPIC_MODEL') || process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307';
     
+    // 支持自定义 base URL（用于代理）
+    const baseUrl = this.configService?.get<string>('ANTHROPIC_BASE_URL') || 
+                    process.env.ANTHROPIC_BASE_URL || 
+                    'https://api.anthropic.com';
+    
+    // 确保 base URL 以 /v1/messages 结尾（如果 base URL 已经包含路径，则直接使用）
+    const apiUrl = baseUrl.endsWith('/v1/messages') 
+      ? baseUrl 
+      : `${baseUrl.replace(/\/$/, '')}/v1/messages`;
+    
     const body: any = {
       model,
       max_tokens: 4096,
@@ -698,7 +708,8 @@ export class LlmService {
     }
 
     try {
-      const response = await axios.post('https://api.anthropic.com/v1/messages', body, {
+      this.logger.debug(`[Anthropic] 调用 API: ${apiUrl}, model: ${model}`);
+      const response = await axios.post(apiUrl, body, {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
