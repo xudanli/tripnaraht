@@ -474,7 +474,7 @@ export class ClaudeOrchestratorService {
     const prompt = this.buildExecutionPlanningPrompt(skillsPlan, routingDecision);
     
     try {
-      const response = await this.llmService.callLlmWithSchema(
+      const response = await this.callLlmWithFallback(
         provider,
         prompt,
         {
@@ -535,6 +535,7 @@ export class ClaudeOrchestratorService {
           },
           required: ['steps', 'parallelGroups', 'fallbackStrategy'],
         },
+        '执行计划编排',
       );
 
       const parsed = this.extractJSONFromResponse(response);
