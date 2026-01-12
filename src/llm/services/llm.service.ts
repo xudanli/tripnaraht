@@ -5,6 +5,8 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import dns from 'node:dns';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
@@ -680,17 +682,23 @@ export class LlmService {
    * 调用 Anthropic API
    */
   private async callAnthropic(prompt: string, schema?: any): Promise<string> {
-    const apiKey = this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
+    // 优先从 .env 文件直接读取（确保 .env 文件的优先级高于 process.env）
+    // 因为 ConfigService.get() 也会读取 process.env，而 process.env 的优先级更高
+    const envPath = path.resolve(process.cwd(), '.env');
+    const envConfig = dotenv.config({ path: envPath }).parsed || {};
+    
+    // 优先使用 .env 文件的值，如果 .env 文件中没有，再使用 process.env
+    const apiKey = envConfig.ANTHROPIC_API_KEY || this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured (checked ConfigService and process.env)');
+      throw new Error('ANTHROPIC_API_KEY not configured (checked .env file, ConfigService and process.env)');
     }
 
-    const model = this.configService?.get<string>('ANTHROPIC_MODEL') || process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307';
+    // 优先使用 .env 文件的值
+    const model = envConfig.ANTHROPIC_MODEL || this.configService?.get<string>('ANTHROPIC_MODEL') || process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307';
     
     // 支持自定义 base URL（用于代理）
-    const baseUrl = this.configService?.get<string>('ANTHROPIC_BASE_URL') || 
-                    process.env.ANTHROPIC_BASE_URL || 
-                    'https://api.anthropic.com';
+    // 优先使用 .env 文件的值
+    const baseUrl = envConfig.ANTHROPIC_BASE_URL || this.configService?.get<string>('ANTHROPIC_BASE_URL') || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
     
     // 确保 base URL 以 /v1/messages 结尾（如果 base URL 已经包含路径，则直接使用）
     const apiUrl = baseUrl.endsWith('/v1/messages') 

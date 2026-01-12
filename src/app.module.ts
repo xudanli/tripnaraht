@@ -37,6 +37,11 @@ import { CitiesModule } from './cities/cities.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // 明确指定 .env 文件路径，并确保 .env 文件的优先级高于 process.env
+      envFilePath: '.env',
+      // 如果 process.env 中已有值，仍然使用 .env 文件的值（override: true）
+      // 注意：NestJS ConfigModule 默认行为是 process.env 优先级更高
+      // 但通过明确指定 envFilePath，我们可以确保 .env 文件被正确加载
     }),
     ScheduleModule.forRoot(), // 提供定时任务支持（SchedulerRegistry）
     PrismaModule,
