@@ -327,10 +327,15 @@ export class AgentService {
     this.logger.log(`[Agent] 使用 Plan-and-Execute Agent 执行 System2 任务`);
 
     try {
-      // 1. 调用 DAG Orchestrator
+      // 1. 调用 DAG Orchestrator（传递 tripId 等上下文信息）
       const dagResult = await this.dagOrchestrator.run(
         state.request_id,
         request.message,
+        {
+          tripId: request.trip_id,
+          userId: request.user_id,
+          requestId: request.request_id,
+        },
       );
 
       // 2. 将 DAG 结果转换回 AgentState

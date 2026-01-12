@@ -23,6 +23,11 @@ import { LlmService } from '../../llm/services/llm.service';
 @Injectable()
 export class DAGOrchestratorService {
   private readonly logger = new Logger(DAGOrchestratorService.name);
+  private executionContext: {
+    tripId?: string | null;
+    userId?: string;
+    requestId?: string;
+  } = {};
 
   // 配置
   private readonly maxSteps = 50; // 最大步骤数（防止死循环）
@@ -43,11 +48,17 @@ export class DAGOrchestratorService {
    * 
    * @param threadId 线程 ID
    * @param userGoal 用户目标
+   * @param executionContext 执行上下文（包含 tripId, userId 等）
    * @returns 编排结果
    */
   async run(
     threadId: string,
     userGoal: string,
+    executionContext?: {
+      tripId?: string | null;
+      userId?: string;
+      requestId?: string;
+    },
   ): Promise<OrchestrationResult> {
     this.logger.log(`[DAG] 开始 DAG 编排: threadId=${threadId}, goal=${userGoal.substring(0, 50)}...`);
 
@@ -55,6 +66,9 @@ export class DAGOrchestratorService {
       // 1. 初始化上下文
       const context = await this.contextAssembler.getSummary(threadId, userGoal);
       const contextSummary = context.currentState || '初始状态';
+      
+      // 保存执行上下文（用于传递给 actions）
+      this.executionContext = executionContext || {};
 
       // 2. 获取 LLM Provider（从 AgentState 中获取）
       const llmProvider = this.getLlmProvider(threadId);
@@ -307,8 +321,15 @@ export class DAGOrchestratorService {
       description: resolvedDescription,
     };
 
-    // 5. 执行任务
-    return this.executor.executeStep(enrichedTask, memory, { context: enrichedContext, globalContext: globalContext });
+    // 5. 执行任务（传递执行上下文，包括 tripId）
+    return this.executor.executeStep(enrichedTask, memory, {
+      context: enrichedContext,
+      globalContext: globalContext,
+      tripId: this.executionContext.tripId,
+      userId: this.executionContext.userId,
+      requestId: this.executionContext.requestId,
+      trip: this.executionContext.tripId ? { trip_id: this.executionContext.tripId } : undefined,
+    });
   }
 
   /**

@@ -223,15 +223,26 @@ export class ExecutorService {
     memory: Record<string, any>,
     context: any,
   ): any {
+    // 从 context 中提取 tripId（如果存在）
+    const tripId = context?.tripId || context?.trip?.trip_id || context?.trip_id;
+    
     // 简单的参数提取
     // 实际应该使用 LLM 来解析
-    return {
+    const input: any = {
       description,
       context: {
         memory,
         ...context,
       },
     };
+    
+    // 如果找到了 tripId，添加到 input 中（优先使用）
+    if (tripId) {
+      input.trip_id = tripId;
+      input.tripId = tripId; // 同时支持两种命名
+    }
+    
+    return input;
   }
 
   /**
