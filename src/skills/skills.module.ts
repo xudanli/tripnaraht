@@ -15,6 +15,7 @@ import { PlacesModule } from '../places/places.module';
 import { PlacesEmbeddingModule } from '../places/places-embedding.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DemModule } from '../trips/dem/dem.module';
+import { LlmModule } from '../llm/llm.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -70,6 +71,52 @@ import { GeoFindNearbyPOISkill } from './geo/geo-find-nearby-poi.skill';
 import { GeoSampleElevationProfileSkill } from './geo/geo-sample-elevation-profile.skill';
 import { GeoFindCandidateWithinCorridorSkill } from './geo/geo-find-candidate-within-corridor.skill';
 import { GeoCheckHazardZonesSkill } from './geo/geo-check-hazard-zones.skill';
+
+// Plan Skills - Architect
+import { PlanArchitectGenerateSkeletonSkill } from './plan/architect/plan-architect-generate-skeleton.skill';
+import { PlanArchitectCompareOptionsSkill } from './plan/architect/plan-architect-compare-options.skill';
+import { PlanArchitectCommitOptionSkill } from './plan/architect/plan-architect-commit-option.skill';
+
+// Plan Skills - Budget
+import { PlanBudgetEstimateBaselineSkill } from './plan/budget/plan-budget-estimate-baseline.skill';
+import { PlanBudgetDetectOverrunSkill } from './plan/budget/plan-budget-detect-overrun.skill';
+import { PlanBudgetProposeTradeoffsSkill } from './plan/budget/plan-budget-propose-tradeoffs.skill';
+
+// Plan Skills - Transit
+import { PlanTransitBuildTransferGraphSkill } from './plan/transit/plan-transit-build-transfer-graph.skill';
+import { PlanTransitSuggestModesSkill } from './plan/transit/plan-transit-suggest-modes.skill';
+import { PlanTransitGeneratePlanBSkill } from './plan/transit/plan-transit-generate-plan-b.skill';
+
+// Plan Skills - Pace
+import { PlanPaceComputeTimeWindowsSkill } from './plan/pace/plan-pace-compute-time-windows.skill';
+import { PlanPaceFatigueScoreSkill } from './plan/pace/plan-pace-fatigue-score.skill';
+import { PlanPaceAdjustScheduleSkill } from './plan/pace/plan-pace-adjust-schedule.skill';
+
+// Plan Skills - Gate
+import { PlanGatePrecheckSkill } from './plan/gate/plan-gate-precheck.skill';
+import { PlanGateRunThreeGuardiansSkill } from './plan/gate/plan-gate-run-three-guardians.skill';
+import { PlanGateProposeSafeAlternativesSkill } from './plan/gate/plan-gate-propose-safe-alternatives.skill';
+
+// Plan Skills - Evidence
+import { PlanEvidenceBuildEnvelopeSkill } from './plan/evidence/plan-evidence-build-envelope.skill';
+
+// Plan Skills - Constraints
+import { PlanConstraintsDetectConflictsSkill } from './plan/constraints/plan-constraints-detect-conflicts.skill';
+import { PlanConstraintsArbitrateTradeoffsSkill } from './plan/constraints/plan-constraints-arbitrate-tradeoffs.skill';
+
+// Plan Skills - Log
+import { PlanLogAppendDecisionSkill } from './plan/log/plan-log-append-decision.skill';
+
+// Exec Skills
+import { ExecRemindSkill } from './exec/exec-remind.skill';
+import { ExecHandleChangeSkill } from './exec/exec-handle-change.skill';
+import { ExecFallbackSkill } from './exec/exec-fallback.skill';
+
+// Detail Skills
+import { DetailUnderstandStatusSkill } from './detail/detail-understand-status.skill';
+import { DetailAnalyzeHealthSkill } from './detail/detail-analyze-health.skill';
+import { DetailExplainDecisionSkill } from './detail/detail-explain-decision.skill';
+import { DetailShowEvidenceSkill } from './detail/detail-show-evidence.skill';
 
 // Decision Skills (additional)
 import { DecisionLogAppendSkill } from './decision/decision-log-append.skill';
@@ -149,6 +196,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
+    LlmModule, // 导入 LlmModule 以支持规划技能使用 LlmService
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
@@ -282,6 +330,52 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     GeoSampleElevationProfileSkill,
     GeoFindCandidateWithinCorridorSkill,
     GeoCheckHazardZonesSkill,
+    
+    // Plan Skills - Architect
+    PlanArchitectGenerateSkeletonSkill,
+    PlanArchitectCompareOptionsSkill,
+    PlanArchitectCommitOptionSkill,
+    
+    // Plan Skills - Budget
+    PlanBudgetEstimateBaselineSkill,
+    PlanBudgetDetectOverrunSkill,
+    PlanBudgetProposeTradeoffsSkill,
+    
+    // Plan Skills - Transit
+    PlanTransitBuildTransferGraphSkill,
+    PlanTransitSuggestModesSkill,
+    PlanTransitGeneratePlanBSkill,
+    
+    // Plan Skills - Pace
+    PlanPaceComputeTimeWindowsSkill,
+    PlanPaceFatigueScoreSkill,
+    PlanPaceAdjustScheduleSkill,
+    
+    // Plan Skills - Gate
+    PlanGatePrecheckSkill,
+    PlanGateRunThreeGuardiansSkill,
+    PlanGateProposeSafeAlternativesSkill,
+    
+    // Plan Skills - Evidence
+    PlanEvidenceBuildEnvelopeSkill,
+    
+    // Plan Skills - Constraints
+    PlanConstraintsDetectConflictsSkill,
+    PlanConstraintsArbitrateTradeoffsSkill,
+    
+    // Plan Skills - Log
+    PlanLogAppendDecisionSkill,
+    
+    // Exec Skills
+    ExecRemindSkill,
+    ExecHandleChangeSkill,
+    ExecFallbackSkill,
+    
+    // Detail Skills
+    DetailUnderstandStatusSkill,
+    DetailAnalyzeHealthSkill,
+    DetailExplainDecisionSkill,
+    DetailShowEvidenceSkill,
   ],
   exports: [
     SkillsRegistryService,
@@ -333,6 +427,52 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     DecisionCheckApprovalSkill,
     HitlCreateApprovalTaskSkill,
     HitlResolveApprovalTaskSkill,
+    
+    // Plan Skills - Architect
+    PlanArchitectGenerateSkeletonSkill,
+    PlanArchitectCompareOptionsSkill,
+    PlanArchitectCommitOptionSkill,
+    
+    // Plan Skills - Budget
+    PlanBudgetEstimateBaselineSkill,
+    PlanBudgetDetectOverrunSkill,
+    PlanBudgetProposeTradeoffsSkill,
+    
+    // Plan Skills - Transit
+    PlanTransitBuildTransferGraphSkill,
+    PlanTransitSuggestModesSkill,
+    PlanTransitGeneratePlanBSkill,
+    
+    // Plan Skills - Pace
+    PlanPaceComputeTimeWindowsSkill,
+    PlanPaceFatigueScoreSkill,
+    PlanPaceAdjustScheduleSkill,
+    
+    // Plan Skills - Gate
+    PlanGatePrecheckSkill,
+    PlanGateRunThreeGuardiansSkill,
+    PlanGateProposeSafeAlternativesSkill,
+    
+    // Plan Skills - Evidence
+    PlanEvidenceBuildEnvelopeSkill,
+    
+    // Plan Skills - Constraints
+    PlanConstraintsDetectConflictsSkill,
+    PlanConstraintsArbitrateTradeoffsSkill,
+    
+    // Plan Skills - Log
+    PlanLogAppendDecisionSkill,
+    
+    // Exec Skills
+    ExecRemindSkill,
+    ExecHandleChangeSkill,
+    ExecFallbackSkill,
+    
+    // Detail Skills
+    DetailUnderstandStatusSkill,
+    DetailAnalyzeHealthSkill,
+    DetailExplainDecisionSkill,
+    DetailShowEvidenceSkill,
   ],
 })
 // 临时注释掉 OnModuleInit，以测试是否是 onModuleInit 导致的阻塞

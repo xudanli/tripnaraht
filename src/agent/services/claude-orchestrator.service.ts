@@ -875,16 +875,89 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
   ): any {
     // 使用步骤中定义的输入，或从前面步骤的结果中提取
+    let input: any = {};
+    
     if (step.input) {
       // 替换结果引用（例如：${step1.result}）
       const inputStr = JSON.stringify(step.input);
       const processedInput = inputStr.replace(/\$\{(\w+)\}/g, (match, key) => {
         return results[key] ? JSON.stringify(results[key]) : match;
       });
-      return JSON.parse(processedInput);
+      input = JSON.parse(processedInput);
     }
     
-    return {};
+    // 从上下文和请求中提取实际值，替换占位符
+    const actualTripId = context.tripId || request.trip_id;
+    const actualUserId = context.userId || request.user_id;
+    
+    // 递归替换占位符
+    input = this.replacePlaceholders(input, {
+      tripId: actualTripId,
+      trip_id: actualTripId,
+      userId: actualUserId,
+      user_id: actualUserId,
+      requestId: context.requestId || request.request_id,
+    });
+    
+    // 如果 input 中没有 tripId，但 context 中有，自动添加
+    if (actualTripId && !input.tripId && !input.trip_id) {
+      input.tripId = actualTripId;
+    }
+    
+    return input;
+  }
+  
+  /**
+   * 替换输入中的占位符文本
+   */
+  private replacePlaceholders(input: any, replacements: Record<string, any>): any {
+    if (typeof input === 'string') {
+      // 替换常见的占位符文本
+      const placeholderPatterns = [
+        /需要从用户请求中提取/gi,
+        /none/gi,
+        /undefined/gi,
+        /null/gi,
+      ];
+      
+      let result = input;
+      for (const pattern of placeholderPatterns) {
+        if (pattern.test(result)) {
+          // 如果包含占位符，尝试从 replacements 中获取值
+          if (result.toLowerCase().includes('trip') && replacements.tripId) {
+            result = replacements.tripId;
+          } else if (result.toLowerCase().includes('user') && replacements.userId) {
+            result = replacements.userId;
+          } else if (result.toLowerCase().includes('request') && replacements.requestId) {
+            result = replacements.requestId;
+          }
+        }
+      }
+      
+      return result;
+    } else if (Array.isArray(input)) {
+      return input.map(item => this.replacePlaceholders(item, replacements));
+    } else if (input && typeof input === 'object') {
+      const result: any = {};
+      for (const [key, value] of Object.entries(input)) {
+        // 特殊处理 tripId 相关字段
+        if ((key === 'tripId' || key === 'trip_id') && 
+            (typeof value === 'string' && 
+             (value === 'none' || value === 'undefined' || value === 'null' || 
+              value.includes('需要从用户请求中提取')))) {
+          result[key] = replacements.tripId || replacements.trip_id;
+        } else if ((key === 'userId' || key === 'user_id') && 
+                   (typeof value === 'string' && 
+                    (value === 'none' || value === 'undefined' || value === 'null'))) {
+          result[key] = replacements.userId || replacements.user_id;
+        } else {
+          result[key] = this.replacePlaceholders(value, replacements);
+        }
+      }
+      return result;
+    }
+    
+    return input;
   }
 
   /**

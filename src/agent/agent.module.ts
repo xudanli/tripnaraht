@@ -44,10 +44,20 @@ import { createWebBrowseActions } from './services/actions/webbrowse.actions';
 import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
 import { createReadinessActions } from './services/actions/readiness.actions';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
+import { createPlanningActions } from './services/actions/planning.actions';
+import { createExecutionActions } from './services/actions/execution.actions';
+import { createTripDetailActions } from './services/actions/trip-detail.actions';
 import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.service';
 import { ReactSystemPromptService } from './services/react-system-prompt.service';
 import { PlanExecuteModule } from './plan-execute/plan-execute.module';
 import { ClaudeOrchestratorService } from './services/claude-orchestrator.service';
+import { PersonaShellService } from './services/persona-shell.service';
+import { PlanningWorkbenchAgentService } from './services/planning-workbench-agent.service';
+import { ExecutionAgentService } from './services/execution-agent.service';
+import { TripDetailAgentService } from './services/trip-detail-agent.service';
+import { ExecutionController } from './execution.controller';
+import { TripDetailController } from './trip-detail.controller';
+import { PlanningWorkbenchController } from './planning-workbench.controller';
 import { SkillsModule } from '../skills/skills.module';
 
 /**
@@ -72,7 +82,7 @@ import { SkillsModule } from '../skills/skills.module';
     PlanExecuteModule, // Plan-and-Execute Agent 模块
     SkillsModule, // Skills 模块（用于 Claude 编排）
   ],
-  controllers: [AgentController],
+  controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController],
   providers: [
     AgentService,
     RouterService,
@@ -90,6 +100,10 @@ import { SkillsModule } from '../skills/skills.module';
     TripNaraSystemPromptService,
     ReactSystemPromptService,
     ClaudeOrchestratorService, // Claude 编排服务
+    PersonaShellService, // 人格外壳服务
+    PlanningWorkbenchAgentService, // 规划工作台 Agent
+    ExecutionAgentService, // 执行阶段 Agent
+    TripDetailAgentService, // 行程详情页 Agent
   ],
   exports: [
     AgentService,
@@ -112,6 +126,9 @@ export class AgentModule {
     private feasibilityService?: FeasibilityService,
     private railPassService?: RailPassService,
     private readinessService?: ReadinessService,
+    @Optional() private planningWorkbenchAgent?: PlanningWorkbenchAgentService,
+    @Optional() private executionAgent?: ExecutionAgentService,
+    @Optional() private tripDetailAgent?: TripDetailAgentService,
   ) {
     // 注册基础 Actions（在模块初始化时）
     this.registerBasicActions();
@@ -169,6 +186,24 @@ export class AgentModule {
     if (this.readinessService) {
       const readinessActions = createReadinessActions(this.readinessService);
       this.actionRegistry.registerMany(readinessActions);
+    }
+    
+    // 注册 Planning Actions
+    if (this.planningWorkbenchAgent) {
+      const planningActions = createPlanningActions(this.planningWorkbenchAgent);
+      this.actionRegistry.registerMany(planningActions);
+    }
+    
+    // 注册 Execution Actions
+    if (this.executionAgent) {
+      const executionActions = createExecutionActions(this.executionAgent);
+      this.actionRegistry.registerMany(executionActions);
+    }
+    
+    // 注册 Trip Detail Actions
+    if (this.tripDetailAgent) {
+      const tripDetailActions = createTripDetailActions(this.tripDetailAgent);
+      this.actionRegistry.registerMany(tripDetailActions);
     }
   }
 }
