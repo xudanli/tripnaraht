@@ -7,6 +7,7 @@ import dns from 'node:dns';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, DecisionSupportDto, LlmProvider } from '../dto/llm-request.dto';
 import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
@@ -683,9 +684,15 @@ export class LlmService {
    */
   private async callAnthropic(prompt: string, schema?: any): Promise<string> {
     // 优先从 .env 文件直接读取（确保 .env 文件的优先级高于 process.env）
-    // 因为 ConfigService.get() 也会读取 process.env，而 process.env 的优先级更高
+    // 使用 dotenv.parse() 而不是 dotenv.config()，避免修改 process.env
     const envPath = path.resolve(process.cwd(), '.env');
-    const envConfig = dotenv.config({ path: envPath }).parsed || {};
+    let envConfig: Record<string, string> = {};
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      envConfig = dotenv.parse(envContent);
+    } catch (error: any) {
+      this.logger.warn(`[Anthropic] 无法读取 .env 文件: ${envPath}, 错误: ${error?.message || error}`);
+    }
     
     // 优先使用 .env 文件的值，如果 .env 文件中没有，再使用 process.env
     const apiKey = envConfig.ANTHROPIC_API_KEY || this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
@@ -699,6 +706,10 @@ export class LlmService {
     // 支持自定义 base URL（用于代理）
     // 优先使用 .env 文件的值
     const baseUrl = envConfig.ANTHROPIC_BASE_URL || this.configService?.get<string>('ANTHROPIC_BASE_URL') || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+    
+    // 添加调试日志
+    this.logger.debug(`[Anthropic] 配置来源: .env=${!!envConfig.ANTHROPIC_MODEL}, ConfigService=${!!this.configService?.get<string>('ANTHROPIC_MODEL')}, process.env=${!!process.env.ANTHROPIC_MODEL}`);
+    this.logger.debug(`[Anthropic] 最终配置: model=${model}, baseUrl=${baseUrl}`);
     
     // 确保 base URL 以 /v1/messages 结尾（如果 base URL 已经包含路径，则直接使用）
     const apiUrl = baseUrl.endsWith('/v1/messages') 
