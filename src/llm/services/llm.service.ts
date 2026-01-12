@@ -723,7 +723,18 @@ export class LlmService {
     };
 
     if (schema) {
-      body.messages[0].content += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
+      // 强化 JSON 格式要求，确保返回纯 JSON（不要包含任何解释性文本）
+      body.messages[0].content += `\n\n【重要】你必须只返回 JSON 格式，不要包含任何其他文本、解释或 markdown 代码块标记。
+
+请严格按照以下 JSON Schema 返回结果：
+
+${JSON.stringify(schema, null, 2)}
+
+要求：
+1. 只返回 JSON 对象，不要包含 \`\`\`json 或 \`\`\` 标记
+2. 不要添加任何解释性文字
+3. 确保 JSON 格式完全有效
+4. 所有字段必须符合 schema 定义`;
     }
 
     try {
