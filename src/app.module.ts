@@ -74,7 +74,7 @@ import { CitiesModule } from './cities/cities.module';
     // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
     // RagModule, // 暂时禁用，测试是否导致阻塞
-    // AgentModule, // Agent 模块（Router + Orchestrator）（临时禁用，避免启动阻塞）
+    AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
     // SkillsModule, // Skills 模块（能力颗粒层）
   ],
 })

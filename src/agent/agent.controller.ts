@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiQuery } from '@nestjs/s
 import { AgentService } from './services/agent.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 /**
  * Agent Controller
@@ -32,6 +33,7 @@ export class AgentController {
    * - SYSTEM2_REASONING: ReAct + 工具 + TravelPlanner/Critic
    * - SYSTEM2_WEBBROWSE: 无头浏览器兜底（仅授权后）
    */
+  @Public() // 暂时设为公开路由，用于测试（生产环境可能需要认证）
   @Post('route_and_run')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
