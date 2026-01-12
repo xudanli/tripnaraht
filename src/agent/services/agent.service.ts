@@ -1,16 +1,18 @@
 // src/agent/services/agent.service.ts
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
-import { RouterOutput, RouteType, RouterReason } from '../interfaces/router.interface';
+import { RouterOutput, RouteType, RouterReason, UIStatus } from '../interfaces/router.interface';
 import { RouterService } from './router.service';
 import { AgentStateService } from './agent-state.service';
 import { System1ExecutorService } from './system1-executor.service';
 import { OrchestratorService } from './orchestrator.service';
 import { DAGOrchestratorService } from '../plan-execute/orchestrator.service';
+import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
+import { AgentContext } from '../interfaces/claude-orchestration.interface';
 
 /**
  * Agent Service
@@ -27,6 +29,7 @@ export class AgentService {
     private system1Executor: System1ExecutorService,
     private orchestrator: OrchestratorService,
     @Optional() private dagOrchestrator?: DAGOrchestratorService,
+    @Optional() private claudeOrchestrator?: ClaudeOrchestratorService,
     private eventTelemetry?: EventTelemetryService,
     private requestDeduplication?: RequestDeduplicationService,
   ) {}
@@ -39,6 +42,21 @@ export class AgentService {
     this.logger.debug(`Processing request: ${request.request_id}`);
 
     try {
+      // 0. Feature Flag: 使用 Claude 编排（如果启用）
+      const envFlag = process.env.USE_CLAUDE_ORCHESTRATION === 'true' || 
+                      process.env.USE_CLAUDE_ORCHESTRATION === '"true"';
+      const requestFlag = request.options?.use_claude_orchestration === true;
+      const useClaudeOrchestration = envFlag || requestFlag;
+      
+      this.logger.debug(`[AgentService] Claude 编排检查: envFlag=${envFlag}, requestFlag=${requestFlag}, useClaudeOrchestration=${useClaudeOrchestration}, claudeOrchestrator=${!!this.claudeOrchestrator}`);
+      
+      if (useClaudeOrchestration && this.claudeOrchestrator) {
+        this.logger.log(`[AgentService] ✅ 使用 Claude 编排模式: request_id=${request.request_id}`);
+        return await this.routeAndRunWithClaude(request, startTime);
+      } else if (useClaudeOrchestration && !this.claudeOrchestrator) {
+        this.logger.warn(`[AgentService] ⚠️ Claude 编排已启用，但 ClaudeOrchestratorService 未注入`);
+      }
+
       // 0. 检查请求去重（如果是短时间内相同的请求，复用之前的结果）
       if (this.requestDeduplication && !request.options?.dry_run) {
         const requestHash = this.requestDeduplication.generateRequestHash(request);
@@ -398,6 +416,172 @@ export class AgentService {
         tool_calls: (originalState.observability.tool_calls || 0) + (dagResult.plan?.length || 0),
       },
     };
+  }
+
+  /**
+   * 使用 Claude 编排的路由和执行
+   */
+  private async routeAndRunWithClaude(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+  ): Promise<RouteAndRunResponseDto> {
+    if (!this.claudeOrchestrator) {
+      throw new Error('ClaudeOrchestratorService 未可用');
+    }
+
+    try {
+      // 构建 Agent 上下文
+      const context: AgentContext = {
+        requestId: request.request_id,
+        userId: request.user_id,
+        tripId: request.trip_id,
+        conversationHistory: request.conversation_context?.recent_messages,
+        userPreferences: {},
+      };
+
+      // 使用 Claude 编排
+      const orchestrationResult = await this.claudeOrchestrator.orchestrate(request, context);
+
+      // 检查是否是 System 1 路径
+      const route = orchestrationResult.result?.routingDecision?.route || RouteType.SYSTEM2_REASONING;
+      const isSystem1 = route.startsWith('SYSTEM1');
+
+      // 如果是 System 1 路径，需要调用 System1Executor 执行
+      if (isSystem1 && orchestrationResult.success) {
+        this.logger.debug(`[AgentService] Claude 编排返回 System 1 路径: ${route}`);
+        
+        // 创建临时状态用于 System 1 执行
+        const tempState = this.stateService.createInitialState(
+          request.message,
+          request.user_id,
+          request.trip_id,
+          request.options
+        );
+
+        // 调用 System1Executor 执行
+        const system1Result = await this.system1Executor.execute(route as RouteType, tempState);
+        
+        // 构建响应（结合 Claude 编排的决策日志）
+        const latency = Date.now() - startTime;
+        return {
+          request_id: request.request_id,
+          route: {
+            route: route as RouteType,
+            confidence: orchestrationResult.result?.routingDecision?.confidence || 0.8,
+            reasons: [RouterReason.LLM_DECISION],
+            required_capabilities: orchestrationResult.result?.routingDecision?.requiredCapabilities || [],
+            consent_required: false,
+            budget: orchestrationResult.result?.routingDecision?.budget || {
+              max_seconds: 3,
+              max_steps: 1,
+              max_browser_steps: 0,
+            },
+            ui_hint: {
+              mode: 'fast',
+              status: system1Result.success ? UIStatus.DONE : UIStatus.FAILED,
+              message: system1Result.success ? '处理完成' : '处理失败',
+            },
+          },
+          result: {
+            status: system1Result.success ? 'OK' : 'FAILED',
+            answer_text: system1Result.answerText,
+            payload: {
+              timeline: system1Result.result?.timeline || [],
+              dropped_items: system1Result.result?.dropped_items || [],
+              candidates: system1Result.result?.candidates || [],
+              evidence: system1Result.result?.evidence || [],
+              robustness: system1Result.result?.robustness || null,
+            },
+          },
+          explain: {
+            decision_log: orchestrationResult.decisionLog || [],
+          },
+          observability: {
+            latency_ms: latency,
+            router_ms: 0, // Claude 编排包含路由决策
+            system_mode: 'SYSTEM1',
+            tool_calls: 1,
+            browser_steps: 0,
+            tokens_est: 0,
+            cost_est_usd: 0,
+            fallback_used: false,
+          },
+        };
+      }
+
+      // System 2 路径：使用编排结果
+      const latency = Date.now() - startTime;
+      const response: RouteAndRunResponseDto = {
+        request_id: request.request_id,
+        route: {
+          route: route as RouteType,
+          confidence: orchestrationResult.result?.routingDecision?.confidence || 0.8,
+          reasons: [RouterReason.LLM_DECISION],
+          required_capabilities: orchestrationResult.result?.routingDecision?.requiredCapabilities || [],
+          consent_required: orchestrationResult.result?.routingDecision?.consentRequired || false,
+          budget: orchestrationResult.result?.routingDecision?.budget || {
+            max_seconds: 60,
+            max_steps: 8,
+            max_browser_steps: 0,
+          },
+          ui_hint: {
+            mode: isSystem1 ? 'fast' : 'slow',
+            status: orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED,
+            message: orchestrationResult.success ? '处理完成' : '处理失败',
+          },
+        },
+        result: {
+          status: orchestrationResult.success ? 'OK' : 'FAILED',
+          answer_text: orchestrationResult.answerText,
+          payload: {
+            timeline: [],
+            dropped_items: [],
+            candidates: [],
+            evidence: [],
+            robustness: null,
+            // 扩展 payload 以包含编排结果（使用类型断言）
+            ...(orchestrationResult.result ? { orchestrationResult: orchestrationResult.result } : {}),
+          } as any,
+        },
+        explain: {
+          decision_log: orchestrationResult.decisionLog || [],
+        },
+        observability: {
+          latency_ms: latency,
+          router_ms: 0, // Claude 编排包含路由决策
+          system_mode: isSystem1 ? 'SYSTEM1' : 'SYSTEM2',
+          tool_calls: orchestrationResult.stepsExecuted.length,
+          browser_steps: 0,
+          tokens_est: TokenCalculator.estimateTotalTokens(
+            request.message,
+            orchestrationResult.answerText,
+            {
+              orchestrationResult: orchestrationResult.result,
+              stepsExecuted: orchestrationResult.stepsExecuted,
+              decisionLog: orchestrationResult.decisionLog,
+            }
+          ),
+          cost_est_usd: orchestrationResult.totalCost || 0,
+          fallback_used: false,
+        },
+      };
+
+      return response;
+    } catch (error: any) {
+      this.logger.error(`[AgentService] Claude 编排失败: ${error?.message || String(error)}`, error?.stack);
+      
+      // 降级到原有逻辑
+      this.logger.warn('[AgentService] Claude 编排失败，降级使用原有路由逻辑');
+      // 移除 Feature Flag，重新执行原有逻辑
+      const fallbackRequest = {
+        ...request,
+        options: {
+          ...request.options,
+          use_claude_orchestration: false,
+        },
+      };
+      return this.routeAndRun(fallbackRequest);
+    }
   }
 }
 

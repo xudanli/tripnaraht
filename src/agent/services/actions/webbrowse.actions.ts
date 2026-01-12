@@ -77,6 +77,16 @@ export function createWebBrowseActions(
         },
       },
       execute: async (input: any, state: any): Promise<any> => {
+        // 验证必需的 URL 参数
+        if (!input.url || typeof input.url !== 'string') {
+          return {
+            success: false,
+            error: 'URL parameter is required but was not provided. The webbrowse.browse action requires a valid URL to browse.',
+            url: input.url,
+            shouldReplan: true, // 标记需要重规划
+          };
+        }
+
         const result: WebBrowseResult = await webBrowseExecutor.browse(input.url, {
           extractText: input.extract_text !== false,
           extractLinks: input.extract_links === true,

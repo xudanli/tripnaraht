@@ -27,6 +27,7 @@ export class DAGOrchestratorService {
   // 配置
   private readonly maxSteps = 50; // 最大步骤数（防止死循环）
   private readonly maxIterations = 100; // 最大迭代次数
+  private readonly maxReplanAttempts = 5; // 最大连续重规划次数（防止重规划循环）
 
   constructor(
     private readonly planner: PlannerService,
@@ -63,6 +64,7 @@ export class DAGOrchestratorService {
       const memory: Record<string, any> = {};
       let iteration = 0;
       let totalStepsExecuted = 0;
+      let consecutiveReplanAttempts = 0; // 连续重规划次数
 
       this.logger.log(`[DAG] Plan generated with ${tasks.length} tasks.`);
 
@@ -79,15 +81,34 @@ export class DAGOrchestratorService {
 
         const anyFailed = tasks.some(t => t.status === 'failed');
         if (anyFailed) {
+          // 检查是否超过最大连续重规划次数
+          if (consecutiveReplanAttempts >= this.maxReplanAttempts) {
+            this.logger.error(`[DAG] ❌ 连续重规划次数已达上限 (${this.maxReplanAttempts})，停止重规划`);
+            return {
+              status: 'failed',
+              plan: tasks,
+              memory,
+              error: `连续重规划 ${this.maxReplanAttempts} 次后仍无法恢复，可能存在根本性问题`,
+            };
+          }
+
           // 触发 Replanner 尝试修复路径
-          this.logger.warn('[DAG] ⚠️ Some tasks failed, triggering replanner');
+          consecutiveReplanAttempts++;
+          this.logger.warn(`[DAG] ⚠️ Some tasks failed, triggering replanner (attempt ${consecutiveReplanAttempts}/${this.maxReplanAttempts})`);
           const replanResult = await this.replanner.replan(userGoal, tasks, memory, llmProvider);
           if (replanResult.hasUpdates) {
             this.logger.log('[DAG] 🔄 Plan updated by Replanner');
             tasks = replanResult.newPlan;
+            // 重置失败任务状态，让它们重新执行
+            tasks.forEach(t => {
+              if (t.status === 'failed') {
+                t.status = 'pending';
+              }
+            });
             continue;
           } else {
             // 重规划也无法解决
+            this.logger.error(`[DAG] ❌ 重规划未产生更新，停止重规划`);
             return {
               status: 'failed',
               plan: tasks,
@@ -172,6 +193,9 @@ export class DAGOrchestratorService {
               task.outputData = execResult.fullData; // [关键] 存储输出数据
               task.completedAt = new Date();
               memory[task.id] = execResult.fullData; // 存入共享内存
+
+              // 任务成功执行，重置重规划计数器
+              consecutiveReplanAttempts = 0;
 
               // 检查是否需要重规划
               if (execResult.shouldReplan) {

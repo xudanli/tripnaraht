@@ -23,6 +23,7 @@ export enum RouterReason {
   NO_API = 'NO_API',
   REALTIME_WEB = 'REALTIME_WEB',
   HIGH_RISK_ACTION = 'HIGH_RISK_ACTION',
+  LLM_DECISION = 'LLM_DECISION', // Claude 编排决策
 }
 
 /**

@@ -94,6 +94,15 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsEnum(['auto', 'openai', 'deepseek', 'gemini', 'anthropic'])
   llm_provider?: 'auto' | 'openai' | 'deepseek' | 'gemini' | 'anthropic';
+
+  @ApiPropertyOptional({ 
+    description: '是否使用 Claude 编排（Feature Flag）',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  use_claude_orchestration?: boolean;
 }
 
 export class RouteAndRunRequestDto {

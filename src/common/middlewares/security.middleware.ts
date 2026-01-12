@@ -13,7 +13,7 @@ interface SecurityEvent {
 export class SecurityMiddleware implements NestMiddleware {
   private readonly logger = new Logger('Security');
 
-  // 已知的攻击模式
+  // 已知的攻击模式（用于 URL 路径和 body）
   private readonly attackPatterns: SecurityEvent[] = [
     // PHPUnit 相关漏洞（虽然这是 Node.js 应用，但仍需阻止）
     {
@@ -29,17 +29,17 @@ export class SecurityMiddleware implements NestMiddleware {
       severity: 'high',
       description: 'Path traversal attempt detected',
     },
-    // SQL 注入尝试
+    // SQL 注入尝试（更精确的模式）
     {
       type: 'sql_injection',
-      pattern: /(\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b.*\b(from|into|table|database|schema)\b)|('|(\\')|(;)|(--)|(#)|(\/\*)|(\*\/))/i,
+      pattern: /\b(union\s+select|insert\s+into|drop\s+table|delete\s+from|update\s+.*\s+set|exec\s*\(|execute\s*\(|';?\s*(--|#|\/\*)|'or\s+['\d]|'and\s+['\d])/i,
       severity: 'critical',
       description: 'SQL injection attempt detected',
     },
-    // 命令注入尝试
+    // 命令注入尝试（更精确的模式，检测实际的命令执行模式）
     {
       type: 'command_injection',
-      pattern: /[;&|`$(){}[\]]|(\$\(|`|;|\|\||&&)/,
+      pattern: /(\$\s*\([^)]*\)|`[^`]*`|;\s*(ls|cat|rm|wget|curl|nc|bash|sh|python|perl)|(\|\||&&)\s*(ls|cat|rm|wget|curl|nc|bash|sh|python|perl))/i,
       severity: 'critical',
       description: 'Command injection attempt detected',
     },
@@ -88,10 +88,11 @@ export class SecurityMiddleware implements NestMiddleware {
       return this.handleThreat(req, res, next, urlThreat, { url, method, ip, userAgent });
     }
 
-    // 检查查询参数
+    // 检查查询参数（使用更宽松的规则，只检查明显的攻击模式）
     if (req.query) {
       const queryString = JSON.stringify(req.query);
-      const queryThreat = this.detectThreat(queryString);
+      // 对于查询参数，只检查路径遍历和明显的 SQL 注入，不检查命令注入（因为查询参数中常见字符会误报）
+      const queryThreat = this.detectQueryThreat(queryString);
       if (queryThreat) {
         return this.handleThreat(req, res, next, queryThreat, { url, method, ip, userAgent, location: 'query' });
       }
@@ -140,6 +141,33 @@ export class SecurityMiddleware implements NestMiddleware {
         return pattern;
       }
     }
+    return null;
+  }
+
+  // 查询参数专用的威胁检测（更宽松，避免误报）
+  private detectQueryThreat(input: string): SecurityEvent | null {
+    // 只检查明显的路径遍历
+    const pathTraversal = /\.\.\/|\.\.\\|\.\.%2f|\.\.%5c|%2e%2e%2f|%2e%2e%5c/i;
+    if (pathTraversal.test(input)) {
+      return {
+        type: 'path_traversal',
+        pattern: pathTraversal,
+        severity: 'high',
+        description: 'Path traversal attempt detected in query parameters',
+      };
+    }
+
+    // 只检查明显的 SQL 注入（更精确的模式）
+    const sqlInjection = /\b(union\s+select|insert\s+into|drop\s+table|delete\s+from|';?\s*(--|#|\/\*)|'or\s+1\s*=\s*1|'and\s+1\s*=\s*1)/i;
+    if (sqlInjection.test(input)) {
+      return {
+        type: 'sql_injection',
+        pattern: sqlInjection,
+        severity: 'critical',
+        description: 'SQL injection attempt detected in query parameters',
+      };
+    }
+
     return null;
   }
 

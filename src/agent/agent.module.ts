@@ -47,6 +47,8 @@ import { ReadinessService } from '../trips/readiness/services/readiness.service'
 import { TripNaraSystemPromptService } from './services/tripnara-system-prompt.service';
 import { ReactSystemPromptService } from './services/react-system-prompt.service';
 import { PlanExecuteModule } from './plan-execute/plan-execute.module';
+import { ClaudeOrchestratorService } from './services/claude-orchestrator.service';
+import { SkillsModule } from '../skills/skills.module';
 
 /**
  * Agent Module
@@ -68,6 +70,7 @@ import { PlanExecuteModule } from './plan-execute/plan-execute.module';
     MemoryModule,
     RagModule, // RAG 模块（用于增强对话）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
+    SkillsModule, // Skills 模块（用于 Claude 编排）
   ],
   controllers: [AgentController],
   providers: [
@@ -86,6 +89,7 @@ import { PlanExecuteModule } from './plan-execute/plan-execute.module';
     WebBrowseExecutorService,
     TripNaraSystemPromptService,
     ReactSystemPromptService,
+    ClaudeOrchestratorService, // Claude 编排服务
   ],
   exports: [
     AgentService,

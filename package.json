@@ -22,7 +22,8 @@
     "test:coverage": "jest --coverage",
     "test:context-engine": "jest --testPathPatterns=context-engine",
     "test:skills": "jest --testPathPatterns=skills",
-    "test:acceptance": "jest --testPathPatterns=acceptance-tests"
+    "test:acceptance": "jest --testPathPatterns=acceptance-tests",
+    "test:claude-orchestration": "ts-node scripts/test-claude-orchestration.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",
