@@ -13,6 +13,10 @@ import { RequestDeduplicationService } from './request-deduplication.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
+import { resolveOrchestrationMode } from '../utils/resolve-orchestration-mode.util';
+import { signalsFromRequest } from '../utils/orchestration-signals.util';
+import { routePolicy } from '../utils/orchestration-policy.util';
+import { OrchestrationStep, SubAgentType, DecisionLogEntry } from '../interfaces/trip-plan.interface';
 
 /**
  * Agent Service
@@ -35,6 +39,83 @@ export class AgentService {
   ) {}
 
   /**
+   * 将状态机步骤映射到 UI 状态（P1 改进：UI 状态映射）
+   */
+  private mapOrchestrationStepToUIState(
+    step: OrchestrationStep,
+    gateResult?: string,
+  ): {
+    phase: OrchestrationStep;
+    ui_status: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed';
+    progress_percent: number;
+    message: string;
+    requires_user_action: boolean;
+  } {
+    const stepProgressMap: Record<OrchestrationStep, number> = {
+      INTAKE: 12.5,
+      RESEARCH: 25.0,
+      GATE_EVAL: 37.5,
+      PLAN_GEN: 50.0,
+      VERIFY: 62.5,
+      REPAIR: 75.0,
+      NARRATE: 87.5,
+      DONE: 100.0,
+      FAILED: 0,
+    };
+
+    const stepMessageMap: Record<OrchestrationStep, string> = {
+      INTAKE: '正在解析请求...',
+      RESEARCH: '正在收集数据...',
+      GATE_EVAL: '正在评估行程可行性...',
+      PLAN_GEN: '正在生成行程安排...',
+      VERIFY: '正在验证行程...',
+      REPAIR: '正在修复行程问题...',
+      NARRATE: '正在生成说明...',
+      DONE: '处理完成',
+      FAILED: '处理失败',
+    };
+
+    let uiStatus: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed' = 'thinking';
+    let requiresUserAction = false;
+
+    switch (step) {
+      case 'INTAKE':
+      case 'RESEARCH':
+      case 'PLAN_GEN':
+      case 'NARRATE':
+        uiStatus = 'thinking';
+        break;
+      case 'GATE_EVAL':
+        uiStatus = 'verifying';
+        if (gateResult === 'NEED_CONFIRM') {
+          uiStatus = 'awaiting_confirmation';
+          requiresUserAction = true;
+        }
+        break;
+      case 'VERIFY':
+        uiStatus = 'verifying';
+        break;
+      case 'REPAIR':
+        uiStatus = 'repairing';
+        break;
+      case 'DONE':
+        uiStatus = 'done';
+        break;
+      case 'FAILED':
+        uiStatus = 'failed';
+        break;
+    }
+
+    return {
+      phase: step,
+      ui_status: uiStatus,
+      progress_percent: stepProgressMap[step] || 0,
+      message: stepMessageMap[step] || '处理中...',
+      requires_user_action: requiresUserAction,
+    };
+  }
+
+  /**
    * 路由并执行
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
@@ -42,20 +123,137 @@ export class AgentService {
     this.logger.debug(`Processing request: ${request.request_id}`);
 
     try {
-      // 0. Feature Flag: 使用 Claude 编排（如果启用）
-      const envFlag = process.env.USE_CLAUDE_ORCHESTRATION === 'true' || 
-                      process.env.USE_CLAUDE_ORCHESTRATION === '"true"';
-      const requestFlag = request.options?.use_claude_orchestration === true;
-      const useClaudeOrchestration = envFlag || requestFlag;
-      
-      this.logger.debug(`[AgentService] Claude 编排检查: envFlag=${envFlag}, requestFlag=${requestFlag}, useClaudeOrchestration=${useClaudeOrchestration}, claudeOrchestrator=${!!this.claudeOrchestrator}`);
-      
-      if (useClaudeOrchestration && this.claudeOrchestrator) {
-        this.logger.log(`[AgentService] ✅ 使用 Claude 编排模式: request_id=${request.request_id}`);
-        return await this.routeAndRunWithClaude(request, startTime);
-      } else if (useClaudeOrchestration && !this.claudeOrchestrator) {
-        this.logger.warn(`[AgentService] ⚠️ Claude 编排已启用，但 ClaudeOrchestratorService 未注入`);
+      // 0. 检查是否是规划请求（需要拦截，重定向到规划工作台）
+      if (this.isPlanningRequest(request)) {
+        this.logger.debug(`[AgentService] 检测到规划请求，重定向到规划工作台: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
+        return this.createRedirectToPlanningWorkbenchResponse(request, startTime);
       }
+
+      // 0.1 验证 trip_id（统一入口强制要求 trip_id）
+      if (!request.trip_id || request.trip_id === '') {
+        this.logger.warn(`[AgentService] 缺少 trip_id: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
+        return this.createMissingTripIdErrorResponse(request, startTime);
+      }
+
+      // 0.2 检查入口来源和操作权限（只读模式限制）
+      if (request.options?.entry_point === 'trip_detail_page' && 
+          request.options?.readonly_mode === true) {
+        if (this.isModificationRequest(request.message)) {
+          this.logger.debug(`[AgentService] 只读模式限制: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
+          return this.createReadonlyModeRestrictionResponse(request, startTime);
+        }
+      }
+
+      // 1. 从请求中提取路由信号
+      const signals = signalsFromRequest(request);
+      this.logger.debug(
+        `[AgentService] 路由信号提取: taskType=${signals.taskType}, risk=${signals.risk}, complexity=${signals.complexity}, request_id=${request.request_id}`,
+      );
+
+      // 1. 基于 Feature Flags 和信号进行策略决策
+      const decision = routePolicy(process.env, request.options, signals);
+      // 结构化日志（固定化字段，用于打点/聚合）
+      // 结构化日志字段（固定化，用于 metrics/聚合）
+      // 这些字段在所有请求中都会输出，方便日志聚合和监控
+      const logFields = {
+        request_id: request.request_id,
+        // 核心编排字段（稳定字段）
+        orchestration_mode_resolved: decision.mode, // 实际执行的模式
+        orchestration_mode_recommended: decision.recommendations?.useStateMachine ? 'CLAUDE_SM' : decision.mode, // 建议的模式
+        task_type: signals.taskType,
+        risk: signals.risk,
+        requires_consent: decision.recommendations?.requireConsent ?? false,
+        needs_audit: decision.recommendations?.enableAudit ?? false,
+        // 辅助字段
+        max_seconds: request.options?.max_seconds ?? 60,
+        latency_budget_ms: signals.latencyBudgetMs,
+        reason: decision.reason,
+        matched_rules: decision.matchedRules,
+      };
+      this.logger.log(logFields, `[AgentService] 编排策略决策`);
+      
+      // Metrics 打点（用于监控和观察）
+      // TODO: 接入 Prometheus/DataDog 等 metrics 系统
+      // this.metrics?.recordMode(decision.mode, request.request_id);
+      // this.metrics?.recordRisk(signals.risk, request.request_id);
+      // this.metrics?.recordConsent(decision.recommendations?.requireConsent ?? false, request.request_id);
+      // this.metrics?.recordRecommendationVsExecution(
+      //   decision.recommendations?.useStateMachine ?? false,
+      //   decision.mode,
+      //   request.request_id,
+      // );
+      
+      // 详细的 debug 日志
+      this.logger.debug(
+        `[AgentService] 策略建议: useStateMachine=${decision.recommendations?.useStateMachine}, enableAudit=${decision.recommendations?.enableAudit}, requireConsent=${decision.recommendations?.requireConsent}, recommendation_reason=${decision.recommendations?.reason}`,
+      );
+
+      // 记录 trace 信息（用于观测和回放）
+      // 关键：明确区分 resolved（实际执行）和 recommended（仅建议）
+      let traceInfo = {
+        orchestration: {
+          // 实际执行的路径（强制）
+          resolved: {
+            mode: decision.mode,
+            reason: decision.reason,
+            matchedRules: decision.matchedRules,
+          },
+          // 建议（不影响执行）
+          recommended: decision.recommendations ? {
+            useStateMachine: decision.recommendations.useStateMachine,
+            enableAudit: decision.recommendations.enableAudit,
+            requireConsent: decision.recommendations.requireConsent,
+            reason: decision.recommendations.reason,
+          } : undefined,
+          // 信号和标志位
+          signals: {
+            taskType: signals.taskType,
+            risk: signals.risk,
+            complexity: signals.complexity,
+            needsAudit: signals.needsAudit,
+            requiresStructuredOutput: signals.requiresStructuredOutput,
+            expectsToolCalls: signals.expectsToolCalls,
+            legacyWellSupported: signals.legacyWellSupported,
+            latencyBudgetMs: signals.latencyBudgetMs,
+          },
+          flags: {
+            env: {
+              USE_CLAUDE_ORCHESTRATION: decision.flags.env_USE_CLAUDE_ORCHESTRATION,
+            },
+            options: {
+              use_claude_orchestration: decision.flags.opt_use_claude_orchestration,
+              use_state_machine_orchestration: decision.flags.opt_use_state_machine_orchestration,
+            },
+            derived: {
+              use_state_machine_orchestration: decision.flags.derived_use_state_machine_orchestration,
+            },
+          },
+        },
+        timestamp: new Date().toISOString(),
+        
+        // 结构化日志字段（固定化，用于打点/聚合）
+        orchestration_mode: decision.mode,
+        orchestration_recommended_sm: decision.recommendations?.useStateMachine ?? false,
+        risk: signals.risk,
+        task_type: signals.taskType,
+        requires_consent: decision.recommendations?.requireConsent ?? false,
+        max_seconds: request.options?.max_seconds ?? 60,
+        latency_budget_ms: signals.latencyBudgetMs,
+      };
+
+      // 2. 根据决策执行相应路径
+      if (decision.mode === 'CLAUDE_SM' && this.claudeOrchestrator) {
+        this.logger.log(`[AgentService] ✅ 使用 Claude 状态机编排: request_id=${request.request_id}`);
+        return await this.routeAndRunWithClaudeStateMachine(request, startTime, traceInfo);
+      } else if (decision.mode === 'CLAUDE_DYNAMIC' && this.claudeOrchestrator) {
+        this.logger.log(`[AgentService] ✅ 使用 Claude 动态编排: request_id=${request.request_id}`);
+        return await this.routeAndRunWithClaude(request, startTime, traceInfo);
+      } else if ((decision.mode === 'CLAUDE_SM' || decision.mode === 'CLAUDE_DYNAMIC') && !this.claudeOrchestrator) {
+        this.logger.warn(`[AgentService] ⚠️ Claude 编排已启用，但 ClaudeOrchestratorService 未注入，降级到 LEGACY 模式`);
+      }
+
+      // LEGACY 模式或降级路径继续执行
+      // traceInfo 已经在上方创建，不需要再次创建
 
       // 0. 检查请求去重（如果是短时间内相同的请求，复用之前的结果）
       if (this.requestDeduplication && !request.options?.dry_run) {
@@ -207,7 +405,20 @@ export class AgentService {
           },
         },
         explain: {
-          decision_log: state.react.decision_log,
+          decision_log: state.react.decision_log.map(log => ({
+            request_id: state.request_id,
+            step: 'DONE' as OrchestrationStep, // LEGACY 模式使用 DONE 作为默认步骤
+            actor: 'Orchestrator' as SubAgentType,
+            inputs_summary: `Action: ${log.chosen_action}, Reason: ${log.reason_code}`,
+            outputs_summary: `执行了 ${log.chosen_action}，策略: ${log.policy_id}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              step_number: log.step,
+              facts: log.facts,
+              policy_id: log.policy_id,
+            },
+          })),
         },
         observability: {
           latency_ms: latency,
@@ -218,6 +429,19 @@ export class AgentService {
           tokens_est: tokensEst,
           cost_est_usd: state.observability.cost_est_usd,
           fallback_used: state.observability.fallback_used,
+          // Trace 信息（用于观测和回放）
+          // 注意：LEGACY 模式也需要 trace，但 signals 可能为空（如果未启用 Claude）
+          trace: traceInfo || {
+            orchestration: {
+              resolved: {
+                mode: 'LEGACY',
+                reason: 'Claude orchestration disabled, using legacy routing',
+                matchedRules: ['legacy_fallback'],
+              },
+            },
+            timestamp: new Date().toISOString(),
+            orchestration_mode: 'LEGACY',
+          },
         },
       };
 
@@ -426,9 +650,102 @@ export class AgentService {
   /**
    * 使用 Claude 编排的路由和执行
    */
+  /**
+   * 使用 Claude 编排（状态机版本）
+   */
+  private async routeAndRunWithClaudeStateMachine(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    traceInfo?: { orchestration: any; timestamp: string },
+  ): Promise<RouteAndRunResponseDto> {
+    this.logger.log(`[AgentService] 使用 Claude 状态机编排: request_id=${request.request_id}`);
+
+    if (!this.claudeOrchestrator) {
+      throw new Error('ClaudeOrchestratorService 未注入');
+    }
+
+    // 构建 AgentContext
+    const context: AgentContext = {
+      requestId: request.request_id,
+      userId: request.user_id,
+      tripId: request.trip_id,
+      conversationHistory: request.conversation_context?.recent_messages,
+    };
+
+    // 调用状态机编排
+    const orchestrationResult = await this.claudeOrchestrator.orchestrateWithStateMachine(request, context);
+
+    // 构建响应
+    const latency = Date.now() - startTime;
+    
+    // P1 改进：映射状态机步骤到 UI 状态
+    const currentStep = orchestrationResult.result?.state?.current_step || (orchestrationResult.success ? 'DONE' : 'FAILED');
+    const gateResult = orchestrationResult.result?.gate_result?.gate_result;
+    const uiState = this.mapOrchestrationStepToUIState(currentStep as OrchestrationStep, gateResult);
+    
+    const response: RouteAndRunResponseDto = {
+      request_id: request.request_id,
+      route: {
+        route: orchestrationResult.success ? RouteType.SYSTEM2_REASONING : RouteType.SYSTEM2_REASONING,
+        confidence: 0.8,
+        reasons: [RouterReason.LLM_DECISION],
+        required_capabilities: ['planning'],
+        consent_required: false,
+        budget: {
+          max_seconds: request.options?.max_seconds || 60,
+          max_steps: request.options?.max_steps || 8,
+          max_browser_steps: request.options?.max_browser_steps || 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED,
+          message: orchestrationResult.success ? '处理完成' : '处理失败',
+        },
+      },
+      // P1 改进：UI 状态映射
+      ui_state: uiState,
+      result: {
+        status: orchestrationResult.success ? 'OK' : 'FAILED',
+        answer_text: orchestrationResult.answerText,
+        payload: {
+          timeline: orchestrationResult.result?.itinerary?.days || [],
+          dropped_items: [],
+          candidates: [],
+          evidence: orchestrationResult.result?.state?.decision_log || [],
+          robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
+          // 状态机编排结果（新增）
+          orchestrationResult: orchestrationResult.result ? {
+            state: orchestrationResult.result.state,
+            itinerary: orchestrationResult.result.itinerary,
+            gate_result: orchestrationResult.result.gate_result,
+            decision_log: orchestrationResult.result.decision_log,
+          } : undefined,
+        },
+      },
+      explain: {
+        decision_log: orchestrationResult.decisionLog || [],
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: 0,
+        system_mode: 'SYSTEM2',
+        tool_calls: orchestrationResult.stepsExecuted?.length || 0,
+        browser_steps: 0,
+        tokens_est: 0, // TODO: 计算 token
+        cost_est_usd: orchestrationResult.totalCost || 0,
+        fallback_used: false,
+        // Trace 信息（用于观测和回放）
+        trace: traceInfo,
+      },
+    };
+
+    return response;
+  }
+
   private async routeAndRunWithClaude(
     request: RouteAndRunRequestDto,
     startTime: number,
+    traceInfo?: { orchestration: any; timestamp: string },
   ): Promise<RouteAndRunResponseDto> {
     if (!this.claudeOrchestrator) {
       throw new Error('ClaudeOrchestratorService 未可用');
@@ -510,12 +827,24 @@ export class AgentService {
             tokens_est: 0,
             cost_est_usd: 0,
             fallback_used: false,
+            trace: traceInfo, // Trace 信息（用于观测和回放）
           },
         };
       }
 
       // System 2 路径：使用编排结果
       const latency = Date.now() - startTime;
+      
+      // 检查是否是关键依赖缺失（需要用户澄清）
+      const needsUserConfirmation = !orchestrationResult.success && 
+        orchestrationResult.result?.needsUserConfirmation === true;
+      const clarificationMessage = orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText;
+      
+      // 确定状态：如果是关键依赖缺失，使用 NEED_MORE_INFO；否则根据 success 判断
+      const resultStatus = needsUserConfirmation 
+        ? 'NEED_MORE_INFO' 
+        : (orchestrationResult.success ? 'OK' : 'FAILED');
+      
       const response: RouteAndRunResponseDto = {
         request_id: request.request_id,
         route: {
@@ -531,13 +860,17 @@ export class AgentService {
           },
           ui_hint: {
             mode: isSystem1 ? 'fast' : 'slow',
-            status: orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED,
-            message: orchestrationResult.success ? '处理完成' : '处理失败',
+            status: needsUserConfirmation 
+              ? UIStatus.AWAITING_CONFIRMATION 
+              : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED),
+            message: needsUserConfirmation 
+              ? '需要您的确认' 
+              : (orchestrationResult.success ? '处理完成' : '处理失败'),
           },
         },
         result: {
-          status: orchestrationResult.success ? 'OK' : 'FAILED',
-          answer_text: orchestrationResult.answerText,
+          status: resultStatus,
+          answer_text: needsUserConfirmation ? clarificationMessage : orchestrationResult.answerText,
           payload: {
             timeline: [],
             dropped_items: [],
@@ -546,6 +879,13 @@ export class AgentService {
             robustness: null,
             // 扩展 payload 以包含编排结果（使用类型断言）
             ...(orchestrationResult.result ? { orchestrationResult: orchestrationResult.result } : {}),
+            // 如果是关键依赖缺失，在 payload 中包含澄清信息
+            ...(needsUserConfirmation ? {
+              clarificationInfo: {
+                missingServices: orchestrationResult.result?.missingServices || [],
+                solutions: orchestrationResult.result?.solutions || [],
+              },
+            } : {}),
           } as any,
         },
         explain: {
@@ -566,12 +906,14 @@ export class AgentService {
               decisionLog: orchestrationResult.decisionLog,
             }
           ),
-          cost_est_usd: orchestrationResult.totalCost || 0,
-          fallback_used: false,
-        },
-      };
+        cost_est_usd: orchestrationResult.totalCost || 0,
+        fallback_used: false,
+        // Trace 信息（用于观测和回放）
+        trace: traceInfo,
+      },
+    };
 
-      return response;
+    return response;
     } catch (error: any) {
       this.logger.error(`[AgentService] Claude 编排失败: ${error?.message || String(error)}`, error?.stack);
       
@@ -587,6 +929,372 @@ export class AgentService {
       };
       return this.routeAndRun(fallbackRequest);
     }
+  }
+
+  /**
+   * 判断是否是规划请求（需要重定向到规划工作台）
+   * 
+   * 核心原则：只拦截从零开始的行程规划请求，不拦截已创建行程的查询/修改请求
+   */
+  private isPlanningRequest(request: RouteAndRunRequestDto): boolean {
+    const message = request.message.toLowerCase().trim();
+    const hasNoTripId = !request.trip_id || request.trip_id === '';
+    
+    // 如果已有 trip_id，肯定不是规划请求（可能是查询已有行程的规划）
+    if (!hasNoTripId) {
+      return false;
+    }
+    
+    // 白名单：明确不是规划请求的关键词
+    const excludeKeywords = [
+      '查询规划', '查看规划', '显示规划', '规划查询', '规划详情',
+      'query plan', 'show plan', 'view plan', 'display plan', 'plan details'
+    ];
+    
+    if (excludeKeywords.some(keyword => message.includes(keyword))) {
+      return false;
+    }
+    
+    // 规则1: 明确包含规划关键词
+    const planningKeywords = [
+      '规划', 'plan', '设计', '制定', '安排', '行程规划',
+      '帮我规划', '帮我设计', '帮我安排', '生成行程',
+      'create a trip', 'plan a trip', 'design itinerary', 'make itinerary'
+    ];
+    
+    const hasPlanningKeyword = planningKeywords.some(keyword => 
+      message.includes(keyword)
+    );
+    
+    // 规则2: 明确提到"新行程"、"第一次"等
+    const isNewTrip = /(?:新|第一次|first time|new trip)/.test(message);
+    
+    // 规则3: 包含目的地和天数（更严格：必须同时有目的地+天数+规划关键词）
+    const destinationPattern = /(?:去|到|visit|go to|travel to)\s+([\u4e00-\u9fa5]{2,}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/;
+    const daysPattern = /\d+\s*(?:天|days?|day)/;
+    const hasDestinationAndDays = destinationPattern.test(message) && 
+                                   daysPattern.test(message) && 
+                                   hasPlanningKeyword; // 必须同时有规划关键词
+    
+    // 规则4: 包含"从零开始"、"从头规划"等明确表达
+    const isFromScratch = /(?:从零开始|从头规划|from scratch|start from)/.test(message);
+    
+    return hasPlanningKeyword || 
+           isNewTrip ||
+           hasDestinationAndDays ||
+           isFromScratch;
+  }
+
+  /**
+   * 判断是否是修改类请求
+   * 
+   * 注意：这个判断可能不够准确，建议：
+   * 1. 使用 LLM 进行更准确的意图识别（但会增加延迟）
+   * 2. 基于用户反馈持续优化关键词列表
+   * 3. 考虑使用机器学习模型
+   */
+  private isModificationRequest(message: string): boolean {
+    const messageLower = message.toLowerCase().trim();
+    
+    // 修改类关键词（中文）
+    const modificationKeywordsCN = [
+      '修改', '删除', '添加', '更新', '调整', '变更', '替换', '移除',
+      '增加', '减少', '编辑', '改动', '更改',
+    ];
+    
+    // 修改类关键词（英文）
+    const modificationKeywordsEN = [
+      'modify', 'delete', 'remove', 'add', 'update', 'change', 'adjust', 'edit',
+      'replace', 'insert', 'append', 'drop', 'alter',
+    ];
+    
+    // 检查是否包含修改类关键词
+    const hasModificationKeyword = [
+      ...modificationKeywordsCN,
+      ...modificationKeywordsEN,
+    ].some(keyword => messageLower.includes(keyword));
+    
+    // 排除查询类表达（避免误判）
+    const queryKeywords = [
+      '查询', '查看', '显示', '展示', '了解', '知道', '看看',
+      'query', 'show', 'display', 'view', 'see', 'check', 'get',
+    ];
+    
+    const hasQueryKeyword = queryKeywords.some(keyword => messageLower.includes(keyword));
+    
+    // 如果同时包含查询和修改关键词，根据位置判断意图
+    if (hasQueryKeyword && hasModificationKeyword) {
+      // 检查查询关键词是否在修改关键词之前（更可能是查询意图）
+      const queryIndices = queryKeywords.map(k => messageLower.indexOf(k)).filter(i => i >= 0);
+      const modIndices = [...modificationKeywordsCN, ...modificationKeywordsEN]
+        .map(k => messageLower.indexOf(k)).filter(i => i >= 0);
+      
+      if (queryIndices.length > 0 && modIndices.length > 0) {
+        const queryIndex = Math.min(...queryIndices);
+        const modIndex = Math.min(...modIndices);
+        if (queryIndex < modIndex) {
+          return false; // 查询意图更强（查询关键词在前）
+        } else {
+          return true; // 修改意图更强（修改关键词在前）
+        }
+      }
+    }
+    
+    return hasModificationKeyword && !hasQueryKeyword;
+  }
+
+  /**
+   * 创建缺少 trip_id 的错误响应
+   */
+  private createMissingTripIdErrorResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING, // 保持兼容
+        confidence: 1.0,
+        reasons: [RouterReason.MISSING_INFO],
+        required_capabilities: [],
+        consent_required: false,
+        budget: {
+          max_seconds: 60,
+          max_steps: 8,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: UIStatus.AWAITING_CONFIRMATION,
+          message: '需要选择行程',
+        },
+      },
+      result: {
+        status: 'FAILED',
+        answer_text: '智能体统一入口只为具体行程服务，请提供 trip_id。如果您想规划新行程，请使用规划工作台。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          redirectInfo: {
+            redirect_to: '/planning-workbench/execute',
+            redirect_reason: 'MISSING_TRIP_ID',
+            original_request: {
+              message: request.message,
+              user_id: request.user_id,
+            },
+          },
+        },
+      },
+      explain: {
+        decision_log: [{
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Router' as SubAgentType,
+          inputs_summary: `缺少 trip_id: ${request.message}`,
+          outputs_summary: '返回错误提示',
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            error_code: 'MISSING_TRIP_ID',
+          },
+        }],
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: latency,
+        system_mode: 'SYSTEM1',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: 'LEGACY',
+              reason: 'Missing trip_id, returning error',
+              matchedRules: ['TRIP_ID_REQUIRED'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  /**
+   * 创建只读模式限制的响应
+   */
+  private createReadonlyModeRestrictionResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 1.0,
+        reasons: [RouterReason.HIGH_RISK_ACTION],
+        required_capabilities: [],
+        consent_required: false,
+        budget: {
+          max_seconds: 60,
+          max_steps: 8,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: UIStatus.REDIRECT_REQUIRED,
+          message: '行程详情页只支持查询操作',
+        },
+      },
+      result: {
+        status: 'REDIRECT_REQUIRED',
+        answer_text: '行程详情页只支持查询操作，如需修改请前往规划工作台。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          redirectInfo: {
+            redirect_to: '/planning-workbench/execute',
+            redirect_reason: 'READONLY_MODE_RESTRICTION',
+            original_request: {
+              message: request.message,
+              user_id: request.user_id,
+            },
+          },
+        },
+      },
+      explain: {
+        decision_log: [{
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Router' as SubAgentType,
+          inputs_summary: `只读模式限制: ${request.message}`,
+          outputs_summary: '重定向到规划工作台',
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            entry_point: request.options?.entry_point,
+            readonly_mode: true,
+            redirect_reason: 'READONLY_MODE_RESTRICTION',
+          },
+        }],
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: latency,
+        system_mode: 'REDIRECT',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: 'LEGACY',
+              reason: 'Readonly mode restriction, redirecting to planning workbench',
+              matchedRules: ['READONLY_MODE_CHECK'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  /**
+   * 创建重定向到规划工作台的响应
+   */
+  private createRedirectToPlanningWorkbenchResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING, // 保持兼容
+        confidence: 1.0,
+        reasons: [RouterReason.REDIRECT_TO_PLANNING_WORKBENCH],
+        required_capabilities: ['planning'],
+        consent_required: false,
+        budget: {
+          max_seconds: 60,
+          max_steps: 8,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: UIStatus.REDIRECT_REQUIRED,
+          message: '需要前往规划工作台',
+        },
+      },
+      result: {
+        status: 'REDIRECT_REQUIRED',
+        answer_text: '行程规划功能已迁移到规划工作台，请使用 POST /planning-workbench/execute 接口。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          redirectInfo: {
+            redirect_to: '/planning-workbench/execute',
+            redirect_reason: 'PLANNING_REQUEST_DETECTED',
+            original_request: {
+              message: request.message,
+              user_id: request.user_id,
+            },
+          },
+        },
+      },
+      explain: {
+        decision_log: [{
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Router' as SubAgentType,
+          inputs_summary: `检测到规划请求: ${request.message}`,
+          outputs_summary: '重定向到规划工作台',
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            redirect_reason: 'PLANNING_REQUEST_DETECTED',
+          },
+        }],
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: latency,
+        system_mode: 'REDIRECT',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: 'LEGACY',
+              reason: 'Planning request detected, redirecting to planning workbench',
+              matchedRules: ['PLANNING_REQUEST_INTERCEPT'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+        },
+      },
+    };
   }
 }
 

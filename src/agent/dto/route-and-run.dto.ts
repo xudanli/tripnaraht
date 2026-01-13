@@ -4,6 +4,8 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
+import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef } from '../interfaces/trip-plan.interface';
+import { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 
 export class ConversationContextDto {
   @ApiPropertyOptional({ 
@@ -103,6 +105,33 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   use_claude_orchestration?: boolean;
+
+  @ApiPropertyOptional({ 
+    description: '是否使用状态机编排（默认 true，仅在 use_claude_orchestration=true 时生效）',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  use_state_machine_orchestration?: boolean;
+
+  @ApiPropertyOptional({ 
+    description: '入口来源标识（用于权限控制和操作限制）',
+    example: 'trip_detail_page',
+    enum: ['trip_detail_page', 'trip_list_page', 'dashboard', 'planning_workbench'],
+  })
+  @IsOptional()
+  @IsEnum(['trip_detail_page', 'trip_list_page', 'dashboard', 'planning_workbench'])
+  entry_point?: 'trip_detail_page' | 'trip_list_page' | 'dashboard' | 'planning_workbench';
+
+  @ApiPropertyOptional({ 
+    description: '只读模式标志（true 时限制为查询类操作）',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  readonly_mode?: boolean;
 }
 
 export class RouteAndRunRequestDto {
@@ -168,6 +197,29 @@ export class RouteAndRunResponseDto {
   })
   route!: RouterOutputDto;
 
+  @ApiPropertyOptional({ 
+    description: 'UI 状态（P1 改进：状态机步骤到 UI 状态的映射，用于前端加载状态显示）',
+    example: {
+      phase: 'GATE_EVAL',
+      ui_status: 'verifying',
+      progress_percent: 37.5,
+      message: '正在评估行程可行性...',
+      requires_user_action: false,
+    },
+  })
+  ui_state?: {
+    /** 当前状态机步骤 */
+    phase: 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED';
+    /** UI 状态（映射自状态机步骤） */
+    ui_status: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed';
+    /** 进度百分比（0-100） */
+    progress_percent?: number;
+    /** 用户友好的消息 */
+    message?: string;
+    /** 是否需要用户操作 */
+    requires_user_action?: boolean;
+  };
+
   @ApiProperty({ 
     description: '执行结果',
     example: {
@@ -179,18 +231,57 @@ export class RouteAndRunResponseDto {
         candidates: [],
         evidence: [],
         robustness: null,
+        orchestrationResult: {
+          state: {
+            request_id: 'req-001',
+            current_step: 'DONE',
+            itinerary: {
+              request_id: 'req-001',
+              days: [],
+            },
+            gate_result: {
+              gate_result: 'ALLOW',
+              violations: [],
+              required_adjustments: [],
+              confidence: 0.8,
+              evidence_refs: [],
+            },
+            narration: {
+              user_friendly_summary: '已为您生成行程安排',
+              day_by_day_narrative: [],
+              highlights: [],
+              tips: [],
+            },
+            decision_log: [],
+          },
+        },
       },
     },
   })
   result!: {
-    status: 'OK' | 'NEED_MORE_INFO' | 'NEED_CONSENT' | 'NEED_CONFIRMATION' | 'FAILED' | 'TIMEOUT';
+    status: 'OK' | 'NEED_MORE_INFO' | 'NEED_CONSENT' | 'NEED_CONFIRMATION' | 'FAILED' | 'TIMEOUT' | 'REDIRECT_REQUIRED';
     answer_text: string;
     payload: {
-      timeline: any[];
-      dropped_items: any[];
-      candidates: any[];
-      evidence: any[];
-      robustness: any;
+      timeline: ItineraryDay[];
+      dropped_items: ItineraryItem[];
+      candidates: any[]; // TODO: 定义明确的 Candidate 类型
+      evidence: EvidenceRef[];
+      robustness: number | null;
+      orchestrationResult?: {
+        state?: OrchestratorState;
+        itinerary?: Itinerary;
+        gate_result?: GateResult;
+        decision_log?: DecisionLogEntry[];
+      };
+      // 重定向信息（仅在 REDIRECT_REQUIRED 时存在）
+      redirectInfo?: {
+        redirect_to: string;
+        redirect_reason: string;
+        original_request: {
+          message: string;
+          user_id: string;
+        };
+      };
     };
   };
 
@@ -209,7 +300,7 @@ export class RouteAndRunResponseDto {
     },
   })
   explain!: {
-    decision_log: any[];
+    decision_log: DecisionLogEntry[];
   };
 
   @ApiProperty({ 
@@ -223,17 +314,85 @@ export class RouteAndRunResponseDto {
       tokens_est: 0,
       cost_est_usd: 0.0,
       fallback_used: false,
+      trace: {
+        orchestration: {
+          mode: 'LEGACY',
+          reason: 'Claude orchestration disabled',
+          flags: {},
+        },
+        timestamp: '2024-01-13T10:00:00.000Z',
+      },
     },
   })
   observability!: {
     latency_ms: number;
     router_ms: number;
-    system_mode: 'SYSTEM1' | 'SYSTEM2';
+    system_mode: 'SYSTEM1' | 'SYSTEM2' | 'REDIRECT';
     tool_calls: number;
     browser_steps: number;
     tokens_est: number;
     cost_est_usd: number;
     fallback_used: boolean;
+    trace?: {
+      orchestration: {
+        // 实际执行的路径（强制，不可变）
+        resolved: {
+          mode: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM';
+          reason: string;
+          matchedRules: string[];
+        };
+        // 建议（不影响执行，可选）
+        recommended?: {
+          useStateMachine?: boolean;
+          enableAudit?: boolean;
+          requireConsent?: boolean;
+          reason?: string;
+        };
+        // 路由信号
+        signals?: {
+          taskType: string;
+          risk: string;
+          complexity: string;
+          needsAudit: boolean;
+          requiresStructuredOutput: boolean;
+          expectsToolCalls: boolean;
+          legacyWellSupported: boolean;
+          latencyBudgetMs: number;
+        };
+        // 标志位
+        flags?: {
+          env?: Record<string, any>;
+          options?: Record<string, any>;
+          derived?: Record<string, any>;
+        };
+      };
+      timestamp: string;
+      // 结构化日志字段（固定化，用于打点/聚合）
+      orchestration_mode?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM';
+      orchestration_recommended_sm?: boolean;
+      risk?: string;
+      task_type?: string;
+      requires_consent?: boolean;
+      max_seconds?: number;
+      latency_budget_ms?: number;
+      // 执行步骤（可选）
+      steps?: Array<{
+        step_id: string;
+        step_name: string;
+        skill_name?: string;
+        action_name?: string;
+        success: boolean;
+        duration_ms: number;
+        evidence_refs?: string[];
+      }>;
+      // 证据（可选）
+      evidence?: Array<{
+        evidence_id: string;
+        source: string;
+        type: string;
+        timestamp: string;
+      }>;
+    };
   };
 }
 
