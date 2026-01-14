@@ -61,6 +61,16 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
     description: '构建完整的世界模型上下文（PhysicalRealityModel + HumanCapabilityModel + RouteDirection），一次性拉齐决策所需的所有数据',
     version: '1.0.0',
     category: 'world' as const,
+    inputSchema: {
+      dependencies: [
+        { param: 'countryCode', alternatives: ['tripId'] },
+        { param: 'tripId', alternatives: ['countryCode'] },
+      ],
+      extractors: {
+        tripId: 'tripId',
+        countryCode: 'countryCode',
+      },
+    },
   };
 
   constructor(

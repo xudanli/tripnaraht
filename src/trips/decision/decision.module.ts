@@ -143,7 +143,7 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     // DemDecisionEvidenceService,
     // WeatherDecisionEvidenceService,
     // PersonaExplanationService,
-    // StrategyOrchestratorService, // 二分法：暂时禁用，测试是否导致阻塞（所有使用都是可选的）
+    StrategyOrchestratorService, // 恢复：DecisionRunThreeGuardiansSkill 需要它（所有依赖都已提供，应该不会导致阻塞）
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
@@ -201,7 +201,7 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     // DemDecisionEvidenceService,
     // WeatherDecisionEvidenceService,
     // PersonaExplanationService,
-    // StrategyOrchestratorService, // 二分法：暂时禁用，测试是否导致阻塞（所有使用都是可选的）
+    StrategyOrchestratorService, // 恢复：让 SkillsModule 可以注入（DecisionRunThreeGuardiansSkill 需要它）
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）

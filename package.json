@@ -23,7 +23,11 @@
     "test:context-engine": "jest --testPathPatterns=context-engine",
     "test:skills": "jest --testPathPatterns=skills",
     "test:acceptance": "jest --testPathPatterns=acceptance-tests",
-    "test:claude-orchestration": "ts-node scripts/test-claude-orchestration.ts"
+    "test:claude-orchestration": "ts-node scripts/test-claude-orchestration.ts",
+    "script:clean-iceland-poi": "tsx scripts/clean-iceland-poi-data.ts",
+    "script:clean-iceland-poi:dry-run": "tsx scripts/clean-iceland-poi-data.ts --dry-run",
+    "script:translate-iceland-poi-names": "tsx scripts/translate-iceland-poi-names.ts",
+    "script:translate-iceland-poi-names:dry-run": "tsx scripts/translate-iceland-poi-names.ts --dry-run"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",

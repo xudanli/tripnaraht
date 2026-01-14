@@ -9,6 +9,13 @@ import { VRPTWOptimizerService } from './services/vrptw-optimizer.service';
 import { EnhancedVRPTWOptimizerService } from './services/enhanced-vrptw-optimizer.service';
 import { RobustTimeMatrixService } from './services/robust-time-matrix.service';
 import { ExplanationService } from './services/explanation.service';
+import { DataExpiryPolicyService } from './services/data-expiry-policy.service';
+import { ConservativeStrategyService } from './services/conservative-strategy.service';
+import { MetricsAggregatorService } from './services/metrics-aggregator.service';
+import { MultiStrategyRouteGeneratorService } from './services/multi-strategy-route-generator.service';
+import { ProductExplainableOutputBuilderService } from './services/product-explainable-output-builder.service';
+import { AlternativeComparisonService } from './services/alternative-comparison.service';
+import { ScenarioOptimizationService } from './services/scenario-optimization.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
 
@@ -27,6 +34,13 @@ import { TransportModule } from '../transport/transport.module';
     EnhancedVRPTWOptimizerService,
     RobustTimeMatrixService,
     ExplanationService,
+    DataExpiryPolicyService,
+    ConservativeStrategyService,
+    MetricsAggregatorService,
+    MultiStrategyRouteGeneratorService,
+    ProductExplainableOutputBuilderService,
+    AlternativeComparisonService,
+    ScenarioOptimizationService,
   ],
   exports: [
     RouteOptimizationService,
@@ -34,6 +48,13 @@ import { TransportModule } from '../transport/transport.module';
     VRPTWOptimizerService,
     RobustTimeMatrixService,
     ExplanationService,
+    DataExpiryPolicyService,
+    ConservativeStrategyService,
+    MetricsAggregatorService,
+    MultiStrategyRouteGeneratorService,
+    ProductExplainableOutputBuilderService,
+    AlternativeComparisonService,
+    ScenarioOptimizationService,
   ],
 })
 export class ItineraryOptimizationModule {}

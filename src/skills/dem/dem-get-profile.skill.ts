@@ -47,6 +47,9 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
     version: '1.0.0',
     category: 'dem' as const,
     toolGroup: 'DOMAIN' as const,
+    inputSchema: {
+      required: ['polyline'],
+    },
   };
 
   constructor(

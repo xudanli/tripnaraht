@@ -59,6 +59,15 @@ import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
 import { SkillsModule } from '../skills/skills.module';
+// 子 Agent 服务（Claude 编排）
+import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
+import { ClaudeGatekeeperAgentService } from './services/sub-agents/gatekeeper-agent.service';
+import { ClaudeComplianceAgentService } from './services/sub-agents/compliance-agent.service';
+import { ClaudeLocalInsightAgentService } from './services/sub-agents/local-insight-agent.service';
+import { ClaudeCoreDecisionAgentService } from './services/sub-agents/core-decision-agent.service';
+import { ClaudeNarratorAgentService } from './services/sub-agents/narrator-agent.service';
+import { SkillInputValidatorService } from './services/skill-input-validator.service';
+import { SkillInputSchemaGeneratorService } from './services/skill-input-schema-generator.service';
 
 /**
  * Agent Module
@@ -104,6 +113,15 @@ import { SkillsModule } from '../skills/skills.module';
     PlanningWorkbenchAgentService, // 规划工作台 Agent
     ExecutionAgentService, // 执行阶段 Agent
     TripDetailAgentService, // 行程详情页 Agent
+    // Claude 编排子 Agent
+    ClaudePlannerAgentService, // Planner Agent（Claude 编排）
+    ClaudeGatekeeperAgentService, // Gatekeeper Agent（Claude 编排）
+    ClaudeComplianceAgentService, // Compliance Agent（Claude 编排）
+    ClaudeLocalInsightAgentService, // LocalInsight Agent（Claude 编排）
+    ClaudeCoreDecisionAgentService, // CoreDecision Agent（Claude 编排）
+    ClaudeNarratorAgentService, // Narrator Agent（Claude 编排）
+    SkillInputValidatorService, // Skill 输入参数验证服务
+    SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
   ],
   exports: [
     AgentService,

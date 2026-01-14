@@ -16,6 +16,7 @@ import { PlacesEmbeddingModule } from '../places/places-embedding.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DemModule } from '../trips/dem/dem.module';
 import { LlmModule } from '../llm/llm.module';
+import { TransportModule } from '../transport/transport.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -71,6 +72,18 @@ import { GeoFindNearbyPOISkill } from './geo/geo-find-nearby-poi.skill';
 import { GeoSampleElevationProfileSkill } from './geo/geo-sample-elevation-profile.skill';
 import { GeoFindCandidateWithinCorridorSkill } from './geo/geo-find-candidate-within-corridor.skill';
 import { GeoCheckHazardZonesSkill } from './geo/geo-check-hazard-zones.skill';
+
+// Transport Skills
+import { TransportSearchSkill } from './transport/transport-search.skill';
+
+// Places Skills
+import { PoiSearchSkill } from './places/poi-search.skill';
+import { OpeningHoursGetSkill } from './places/opening-hours-get.skill';
+
+// Itinerary Skills
+import { ItineraryGenerateSkill } from './itinerary/itinerary-generate.skill';
+import { ItineraryVerifySkill } from './itinerary/itinerary-verify.skill';
+import { RepairApplySkill } from './itinerary/repair-apply.skill';
 
 // Plan Skills - Architect
 import { PlanArchitectGenerateSkeletonSkill } from './plan/architect/plan-architect-generate-skeleton.skill';
@@ -195,6 +208,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []), // 使用 forwardRef 避免与 ReadinessModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> SkillsModule -> ReadinessModule）
     ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
+    TransportModule, // 导入 TransportModule 以支持 TransportSearchSkill 使用 TransportRoutingService
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
     LlmModule, // 导入 LlmModule 以支持规划技能使用 LlmService
   ],
@@ -331,6 +345,18 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     GeoFindCandidateWithinCorridorSkill,
     GeoCheckHazardZonesSkill,
     
+    // Transport Skills
+    TransportSearchSkill,
+    
+    // Places Skills
+    PoiSearchSkill,
+    OpeningHoursGetSkill,
+    
+    // Itinerary Skills
+    ItineraryGenerateSkill,
+    ItineraryVerifySkill,
+    RepairApplySkill,
+    
     // Plan Skills - Architect
     PlanArchitectGenerateSkeletonSkill,
     PlanArchitectCompareOptionsSkill,
@@ -420,6 +446,18 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     GeoSampleElevationProfileSkill,
     GeoFindCandidateWithinCorridorSkill,
     GeoCheckHazardZonesSkill,
+    
+    // Transport Skills
+    TransportSearchSkill,
+    
+    // Places Skills
+    PoiSearchSkill,
+    OpeningHoursGetSkill,
+    
+    // Itinerary Skills
+    ItineraryGenerateSkill,
+    ItineraryVerifySkill,
+    RepairApplySkill,
     ...(enableDecisionSkills
       ? [DecisionLogAppendSkill, DecisionStageSkill, DecisionReplaySkill]
       : []),
@@ -493,6 +531,12 @@ export class SkillsModule {
     @Optional() private readonly geoSampleElevationProfileSkill?: GeoSampleElevationProfileSkill,
     @Optional() private readonly geoFindCandidateWithinCorridorSkill?: GeoFindCandidateWithinCorridorSkill,
     @Optional() private readonly geoCheckHazardZonesSkill?: GeoCheckHazardZonesSkill,
+    @Optional() private readonly transportSearchSkill?: TransportSearchSkill,
+    @Optional() private readonly poiSearchSkill?: PoiSearchSkill,
+    @Optional() private readonly openingHoursGetSkill?: OpeningHoursGetSkill,
+    @Optional() private readonly itineraryGenerateSkill?: ItineraryGenerateSkill,
+    @Optional() private readonly itineraryVerifySkill?: ItineraryVerifySkill,
+    @Optional() private readonly repairApplySkill?: RepairApplySkill,
     @Optional() private readonly routePackNewSkeletonSkill?: RoutePackNewSkeletonSkill,
     @Optional() private readonly routePackValidateSkill?: RoutePackValidateSkill,
     @Optional() private readonly routePackGenerateRegressionTestsSkill?: RoutePackGenerateRegressionTestsSkill,
@@ -533,6 +577,36 @@ export class SkillsModule {
     if (this.geoCheckHazardZonesSkill) {
       this.skillsRegistry.registerSkill(this.geoCheckHazardZonesSkill);
       this.logger.debug('Registered GeoCheckHazardZonesSkill');
+    }
+    
+    // 手动注册新 Transport Skills
+    if (this.transportSearchSkill) {
+      this.skillsRegistry.registerSkill(this.transportSearchSkill);
+      this.logger.debug('Registered TransportSearchSkill');
+    }
+    
+    // 手动注册新 Places Skills
+    if (this.poiSearchSkill) {
+      this.skillsRegistry.registerSkill(this.poiSearchSkill);
+      this.logger.debug('Registered PoiSearchSkill');
+    }
+    if (this.openingHoursGetSkill) {
+      this.skillsRegistry.registerSkill(this.openingHoursGetSkill);
+      this.logger.debug('Registered OpeningHoursGetSkill');
+    }
+    
+    // 手动注册新 Itinerary Skills
+    if (this.itineraryGenerateSkill) {
+      this.skillsRegistry.registerSkill(this.itineraryGenerateSkill);
+      this.logger.debug('Registered ItineraryGenerateSkill');
+    }
+    if (this.itineraryVerifySkill) {
+      this.skillsRegistry.registerSkill(this.itineraryVerifySkill);
+      this.logger.debug('Registered ItineraryVerifySkill');
+    }
+    if (this.repairApplySkill) {
+      this.skillsRegistry.registerSkill(this.repairApplySkill);
+      this.logger.debug('Registered RepairApplySkill');
     }
     
     // 手动注册新 RoutePack Skills（没有 token 的）

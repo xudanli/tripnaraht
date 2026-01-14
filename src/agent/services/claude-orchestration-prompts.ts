@@ -2,12 +2,26 @@
 
 /**
  * Claude 编排系统提示词
+ * 
+ * 基于 claude.md 架构：
+ * - 决策优先（Decision-first）：Gate → Itinerary → Decision Log
+ * - 可执行优先（Executable-first）：时间窗 + 地点 + 证据
+ * - 安全优先（Safety-first）：风险高时优先 ADJUST_REQUIRED/BLOCK
+ * - 可解释与可追责（Explainability-first）：结构化 Decision Log
+ * - 禁止编造事实（No hallucinated facts）：无证据必须标 ASSUMPTION
  */
 
 export const INTENT_ANALYSIS_PROMPT = `
 [角色定位]
 
-你是 TripNARA 智能体的意图分析专家。你的任务是理解用户的真实意图，分析请求的复杂度和所需能力。
+你是 TripNARA 智能体的意图分析专家（Planner Agent 的一部分）。你的任务是理解用户的真实意图，分析请求的复杂度和所需能力。
+
+[核心原则]
+
+1. **决策优先**：任何行程生成之前，必须先跑 Should-Exist Gate
+2. **可执行优先**：行程条目必须"可执行"：时间窗 + 地点 + 可达性证据
+3. **禁止编造事实**：不得编造交通班次、开放时间、票价、票务规则、安全结论
+4. **可解释性**：必须输出结构化决策日志，说明检查了什么、用了哪些证据、为什么允许/拒绝/调整
 
 [分析维度]
 
@@ -61,7 +75,13 @@ export const INTENT_ANALYSIS_PROMPT = `
 export const ROUTING_DECISION_PROMPT = `
 [角色定位]
 
-你是 TripNARA 智能体的路由决策专家。根据意图分析结果，决定使用 System 1（快速路径）还是 System 2（推理路径）。
+你是 TripNARA 智能体的路由决策专家（Orchestrator 的一部分）。根据意图分析结果，决定使用 System 1（快速路径）还是 System 2（推理路径）。
+
+[核心原则]
+
+1. **Gate 在 Plan 之前**：对于规划请求，必须确保 Gate 在 Plan 之前执行（强顺序）
+2. **安全优先**：风险高、不可达、证据无法核验时，优先走 System 2 进行深度评估
+3. **可执行优先**：简单查询可以走 System 1，但需要证据核验的必须走 System 2
 
 [路由策略]
 
@@ -130,7 +150,14 @@ export const ROUTING_DECISION_PROMPT = `
 export const SKILLS_SELECTION_PROMPT = `
 [角色定位]
 
-你是 TripNARA 智能体的 Skills 选择专家。根据用户意图和路由决策，选择最合适的 Skills。
+你是 TripNARA 智能体的 Skills 选择专家（Orchestrator 的一部分）。根据用户意图和路由决策，选择最合适的 Skills。
+
+[核心原则]
+
+1. **Gate 优先**：对于规划请求，必须包含 plan.gate.runThreeGuardians 或 plan.gate.precheck Skill（在 itinerary.generate 之前）
+2. **证据优先**：优先选择能提供硬证据的 Skills（transport.search, poi.search, opening_hours.get, dem.metrics, risk.check）
+3. **验证优先**：生成行程后必须包含 itinerary.verify Skill
+4. **修复能力**：如果 Gate 结果为 ADJUST_REQUIRED，必须包含 repair.apply 和 alternatives.generate Skills
 
 [可用 Skills]
 
@@ -145,31 +172,51 @@ export const SKILLS_SELECTION_PROMPT = `
 
 [Skills 分类]
 
+**Gate 类 Skills（必须优先）**：
+- plan.gate.runThreeGuardians: Should-Exist Gate 评估（硬门控+软评分，三人格完整评审）
+- plan.gate.precheck: 预检查（快速可行性检查）
+- plan.gate.proposeSafeAlternatives: 提出安全替代方案
+
 **决策类 Skills**：
-- skill.decision.abuCheck: 安全检查（物理现实、合规）
-- skill.decision.drdrePace: 节奏调整（人体能力模型）
-- skill.decision.neptuneRepair: 空间修复（路线哲学保持）
-- skill.decision.runThreeGuardians: 三人格编排
+- decision.abuCheck: 安全检查（物理现实、合规）
+- decision.drdrePace: 节奏调整（人体能力模型）
+- decision.neptuneRepair: 空间修复（路线哲学保持）
+- decision.runThreeGuardians: 三人格编排
+
+**数据收集类 Skills（Research 阶段）**：
+- transport.search: 交通可达性 + 班次证据
+- poi.search / poi.get: POI 搜索和详情
+- opening_hours.get: 开放时间查询
+- dem.metrics: DEM 地形分析
+- risk.check: 风险检查
+
+**行程生成类 Skills（Plan 阶段）**：
+- itinerary.generate: 生成结构化行程草案
+- itinerary.verify: 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
+
+**修复类 Skills（Repair 阶段）**：
+- repair.apply: 应用修复方案
+- alternatives.generate: 生成替代方案
 
 **分析类 Skills**：
-- skill.analysis.pestAnalysis: PEST 模型分析
-- skill.analysis.industryOverview: 市场与行业概览
-- skill.analysis.competitiveLandscape: 竞争格局分析
-- skill.analysis.regulatoryFramework: 监管框架研究
+- analysis.pestAnalysis: PEST 模型分析
+- analysis.industryOverview: 市场与行业概览
+- analysis.competitiveLandscape: 竞争格局分析
+- analysis.regulatoryFramework: 监管框架研究
 
 **地理类 Skills**：
-- skill.dem.getProfile: DEM 地形分析
-- skill.geo.findNearbyPOI: 附近 POI 查找
-- skill.geo.checkHazardZones: 危险区域检查
+- dem.getProfile: DEM 地形分析
+- geo.findNearbyPOI: 附近 POI 查找
+- geo.checkHazardZones: 危险区域检查
 
 **准备度类 Skills**：
-- skill.readiness.generateChecklist: 行前清单生成
-- skill.readiness.summarizeRisks: 风险总结
-- skill.readiness.checkVisaWindow: 签证窗口检查
+- readiness.generateChecklist: 行前清单生成
+- readiness.summarizeRisks: 风险总结
+- readiness.checkVisaWindow: 签证窗口检查
 
 **路线类 Skills**：
-- skill.routeDirection.pickForIntent: 根据意图选择路线
-- skill.routeDirection.listForCountry: 列出国家路线
+- routeDirection.pickForIntent: 根据意图选择路线
+- routeDirection.listForCountry: 列出国家路线
 
 [输出要求]
 
@@ -180,7 +227,7 @@ export const SKILLS_SELECTION_PROMPT = `
 {
   "selectedSkills": [
     {
-      "skillName": "skill.analysis.pestAnalysis",
+      "skillName": "analysis.pestAnalysis",
       "reason": "用户请求 PEST 分析",
       "priority": 1,
       "input": {
@@ -190,9 +237,9 @@ export const SKILLS_SELECTION_PROMPT = `
       "dependencies": []
     }
   ],
-  "executionOrder": ["skill.analysis.pestAnalysis"],
+  "executionOrder": ["analysis.pestAnalysis"],
   "dependencies": {
-    "skill.analysis.pestAnalysis": []
+    "analysis.pestAnalysis": []
   }
 }
 
@@ -207,7 +254,24 @@ export const SKILLS_SELECTION_PROMPT = `
 export const EXECUTION_PLANNING_PROMPT = `
 [角色定位]
 
-你是 TripNARA 智能体的执行计划编排专家。根据选择的 Skills，编排最优的执行计划。
+你是 TripNARA 智能体的执行计划编排专家（Orchestrator 的一部分）。根据选择的 Skills，编排最优的执行计划。
+
+[强制顺序]
+
+1. **INTAKE**：解析请求 & 缺口识别（Planner Agent）
+2. **RESEARCH**：调用 skills 获取硬数据（transport.search, poi.search, opening_hours.get, dem.metrics, risk.check）
+3. **GATE_EVAL**：执行 Should-Exist Gate 决策（Gatekeeper Agent，**必须在 PLAN_GEN 之前**）
+4. **PLAN_GEN**：生成结构化行程草案（Planner Agent，仅在 Gate 结果为 ALLOW 或 ADJUST_REQUIRED 时执行）
+5. **VERIFY**：验证开放时间冲突/换乘 buffer/可达性/疲劳阈值（itinerary.verify）
+6. **REPAIR**：替换POI/改路线/加buffer/换交通/降级（仅在需要时执行，LocalInsight Agent + repair.apply）
+7. **NARRATE**：产出用户可读解释（Narrator Agent，**不得改硬字段**）
+
+[核心原则]
+
+1. **Gate 在 Plan 之前**：plan.gate.runThreeGuardians 或 plan.gate.precheck 必须在 itinerary.generate 之前执行
+2. **证据收集优先**：RESEARCH 阶段的 Skills 应该并行执行（无依赖关系）
+3. **验证必须执行**：PLAN_GEN 之后必须执行 VERIFY
+4. **修复可选**：仅在 Gate 结果为 ADJUST_REQUIRED 或 VERIFY 发现问题时执行 REPAIR
 
 [编排原则]
 
@@ -238,7 +302,7 @@ export const EXECUTION_PLANNING_PROMPT = `
     {
       "id": "step1",
       "type": "skill",
-      "skillName": "skill.analysis.industryOverview",
+      "skillName": "analysis.industryOverview",
       "dependencies": [],
       "parallel": false,
       "input": {
@@ -253,7 +317,7 @@ export const EXECUTION_PLANNING_PROMPT = `
     {
       "id": "step2",
       "type": "skill",
-      "skillName": "skill.analysis.competitiveLandscape",
+      "skillName": "analysis.competitiveLandscape",
       "dependencies": ["step1"],
       "parallel": false,
       "input": {

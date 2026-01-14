@@ -9,6 +9,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { AbuStrategy } from '../strategies/abu-strategy.service';
 import { DrDreStrategy } from '../strategies/dr-dre-strategy.service';
 import { NeptuneStrategy } from '../strategies/neptune-strategy.service';
@@ -38,14 +39,15 @@ export interface StrategyOrchestrationResult {
 @Injectable()
 export class StrategyOrchestratorService {
   private readonly logger = new Logger(StrategyOrchestratorService.name);
+  private contextEngineer?: ContextEngineerService;
+  private skillsRegistry?: SkillsRegistryService;
 
   constructor(
     private readonly abu: AbuStrategy,
     private readonly dre: DrDreStrategy,
     private readonly nep: NeptuneStrategy,
     private readonly logStorage: DecisionLogStorageService,
-    @Optional() private readonly contextEngineer?: ContextEngineerService,
-    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    private readonly moduleRef: ModuleRef, // 使用 ModuleRef 懒加载可选依赖
   ) {}
 
   /**
@@ -83,9 +85,10 @@ export class StrategyOrchestratorService {
     this.logger.debug('执行 Abu 策略...');
     
     // 为 Abu 构建上下文（如果 Context Engineer 可用）
-    if (this.contextEngineer && plan.tripId) {
+    const contextEngineer = this.getContextEngineer();
+    if (contextEngineer && plan.tripId) {
       try {
-        const ctx = await this.contextEngineer.build({
+        const ctx = await contextEngineer.build({
           tripId: plan.tripId,
           phase: 'SAFETY_CHECK',
           agent: 'ABU',
@@ -117,9 +120,9 @@ export class StrategyOrchestratorService {
     this.logger.debug('执行 Dr.Dre 策略...');
     
     // 为 Dr.Dre 构建上下文（如果 Context Engineer 可用）
-    if (this.contextEngineer && plan.tripId) {
+    if (contextEngineer && plan.tripId) {
       try {
-        const ctx = await this.contextEngineer.build({
+        const ctx = await contextEngineer.build({
           tripId: plan.tripId,
           phase: 'PACING_ADJUSTMENT',
           agent: 'DR_DRE',
@@ -146,9 +149,9 @@ export class StrategyOrchestratorService {
     this.logger.debug('执行 Neptune 策略...');
     
     // 为 Neptune 构建上下文（如果 Context Engineer 可用）
-    if (this.contextEngineer && plan.tripId) {
+    if (contextEngineer && plan.tripId) {
       try {
-        const ctx = await this.contextEngineer.build({
+        const ctx = await contextEngineer.build({
           tripId: plan.tripId,
           phase: 'FINALIZING',
           agent: 'NEPTUNE',
@@ -206,9 +209,10 @@ export class StrategyOrchestratorService {
     }
 
     // 优先使用 decision.logAppend skill（如果可用）
-    if (this.skillsRegistry) {
+    const skillsRegistry = this.getSkillsRegistry();
+    if (skillsRegistry) {
       try {
-        const decisionLogAppendSkill = this.skillsRegistry.getSkill('decision.logAppend');
+        const decisionLogAppendSkill = skillsRegistry.getSkill('decision.logAppend');
         if (decisionLogAppendSkill) {
           const result = await decisionLogAppendSkill.execute({
             tripId: plan.tripId,
@@ -269,6 +273,48 @@ export class StrategyOrchestratorService {
     }
 
     return 'ALLOW';
+  }
+
+  /**
+   * 懒加载获取 ContextEngineerService
+   * 避免在构造函数中注入，防止启动阻塞
+   */
+  private getContextEngineer(): ContextEngineerService | undefined {
+    if (this.contextEngineer === undefined) {
+      try {
+        this.contextEngineer = this.moduleRef.get(ContextEngineerService, { strict: false });
+        if (this.contextEngineer) {
+          this.logger.debug('[StrategyOrchestratorService] 懒加载获取 ContextEngineerService 成功');
+        } else {
+          this.contextEngineer = null as any; // 标记为已尝试获取，但不可用
+        }
+      } catch (error) {
+        this.logger.debug('[StrategyOrchestratorService] ContextEngineerService 不可用（懒加载失败）');
+        this.contextEngineer = null as any; // 标记为已尝试获取
+      }
+    }
+    return this.contextEngineer || undefined;
+  }
+
+  /**
+   * 懒加载获取 SkillsRegistryService
+   * 避免在构造函数中注入，防止启动阻塞
+   */
+  private getSkillsRegistry(): SkillsRegistryService | undefined {
+    if (this.skillsRegistry === undefined) {
+      try {
+        this.skillsRegistry = this.moduleRef.get(SkillsRegistryService, { strict: false });
+        if (this.skillsRegistry) {
+          this.logger.debug('[StrategyOrchestratorService] 懒加载获取 SkillsRegistryService 成功');
+        } else {
+          this.skillsRegistry = null as any; // 标记为已尝试获取，但不可用
+        }
+      } catch (error) {
+        this.logger.debug('[StrategyOrchestratorService] SkillsRegistryService 不可用（懒加载失败）');
+        this.skillsRegistry = null as any; // 标记为已尝试获取
+      }
+    }
+    return this.skillsRegistry || undefined;
   }
 }
 

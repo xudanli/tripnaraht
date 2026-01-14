@@ -13,6 +13,9 @@ import {
 } from '../interfaces/plan-request.interface';
 import { RobustTimeMatrixService } from './robust-time-matrix.service';
 import { ExplanationService } from './explanation.service';
+import { DataExpiryPolicyService, TimestampedData } from './data-expiry-policy.service';
+import { ConservativeStrategyService, DataQualityCheckResult, ConservativeResult } from './conservative-strategy.service';
+import { MetricsAggregatorService, ExecutionRecord } from './metrics-aggregator.service';
 
 /**
  * 增强型 VRPTW 求解器
@@ -31,17 +34,89 @@ export class EnhancedVRPTWOptimizerService {
 
   constructor(
     private robustTimeMatrixService: RobustTimeMatrixService,
-    private explanationService: ExplanationService
+    private explanationService: ExplanationService,
+    private dataExpiryPolicyService: DataExpiryPolicyService,
+    private conservativeStrategyService: ConservativeStrategyService,
+    private metricsAggregatorService: MetricsAggregatorService
   ) {}
 
   /**
    * 求解单日规划
    */
-  async solve(request: PlanRequest): Promise<OptimizationResult> {
-    this.logger.debug(`开始求解单日规划：${request.nodes.length} 个节点`);
+  async solve(
+    request: PlanRequest,
+    options?: {
+      request_id?: string;
+      data_sources?: {
+        dem?: TimestampedData<any>;
+        transport?: TimestampedData<any>;
+        opening_hours?: TimestampedData<Record<string, any>>;
+        weather?: TimestampedData<any>;
+        poi?: TimestampedData<Record<string, any>>;
+      };
+    }
+  ): Promise<OptimizationResult> {
+    const startTime = Date.now();
+    const requestId = options?.request_id || `req_${Date.now()}`;
+    
+    this.logger.debug(`开始求解单日规划：${request.nodes.length} 个节点, request_id=${requestId}`);
 
-    // 0. 应用 pacing 偏好映射
-    const adjustedRequest = this.applyPacingPreference(request);
+    try {
+      // 0. 数据质量检查（如果提供了数据源）
+      if (options?.data_sources) {
+        const dataQuality = await this.conservativeStrategyService.checkDataQuality(
+          request,
+          options.data_sources
+        );
+
+        // 应用保守策略
+        const conservativeResult = await this.conservativeStrategyService.applyConservativeStrategy(
+          request,
+          dataQuality
+        );
+
+        // 如果被拒绝，返回不可行结果
+        if (conservativeResult.decision === 'REJECT') {
+          const solveTime = Date.now() - startTime;
+          
+          // 记录执行结果
+          this.recordExecution({
+            request_id: requestId,
+            timestamp: new Date().toISOString(),
+            status: 'REJECTED',
+            rejection_reason: conservativeResult.reason || 'DATA_QUALITY_ISSUE',
+            solve_time_ms: solveTime,
+            data_quality: {
+              missing: dataQuality.missing_data_list.map(m => m.type),
+              stale: dataQuality.stale_data_list.map(s => s.type),
+              low_reliability: dataQuality.stale_data_list
+                .filter(s => s.reliability === 'LOW')
+                .map(s => s.type),
+            },
+          });
+
+          return this.createInfeasibleResult(
+            conservativeResult.explanation || '数据质量不符合要求',
+            request,
+            request.nodes
+          );
+        }
+
+        // 如果需要调整，应用约束
+        if (conservativeResult.decision === 'ADJUST' && conservativeResult.constraints) {
+          // 应用保守约束（例如：增加安全缓冲、避开高风险区域等）
+          request = this.applyConservativeConstraints(request, conservativeResult.constraints);
+          this.logger.debug(`应用保守策略约束: ${conservativeResult.strategy}`);
+        }
+
+        // 如果有警告，记录日志
+        if (conservativeResult.warnings && conservativeResult.warnings.length > 0) {
+          this.logger.warn(`数据质量警告: ${conservativeResult.warnings.map(w => w.message).join('; ')}`);
+        }
+      }
+
+      // 1. 应用 pacing 偏好映射
+      const adjustedRequest = this.applyPacingPreference(request);
 
     // 1. 预处理：展开多时间窗为虚拟节点
     const { expandedNodes, virtualNodeMap } = this.expandMultiTimeWindows(adjustedRequest.nodes);
@@ -89,13 +164,44 @@ export class EnhancedVRPTWOptimizerService {
     );
 
     // 5. 后处理：合并虚拟节点，生成最终结果
-    return this.postProcess(
+    const result = this.postProcess(
       adjustedRequest,
       solution,
       expandedNodes,
       virtualNodeMap,
       timeMatrix
     );
+
+    // 6. 记录执行结果
+    const solveTime = Date.now() - startTime;
+    this.recordExecution({
+      request_id: requestId,
+      timestamp: new Date().toISOString(),
+      status: result.status === 'INFEASIBLE' ? 'REJECTED' : 'SUCCESS',
+      rejection_reason: result.status === 'INFEASIBLE' ? 'INFEASIBLE_SOLUTION' : undefined,
+      optimization_result: result,
+      solve_time_ms: solveTime,
+      data_quality: options?.data_sources ? {
+        missing: [],
+        stale: [],
+        low_reliability: [],
+      } : undefined,
+    });
+
+    return result;
+    } catch (error: any) {
+      // 记录失败
+      const solveTime = Date.now() - startTime;
+      this.recordExecution({
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+        status: 'FAILED',
+        solve_time_ms: solveTime,
+      });
+
+      this.logger.error(`求解失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
@@ -1235,6 +1341,62 @@ export class EnhancedVRPTWOptimizerService {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  /**
+   * 应用保守约束
+   */
+  private applyConservativeConstraints(
+    request: PlanRequest,
+    constraints: {
+      require_verified_route?: boolean;
+      avoid_segments?: string[];
+      safety_buffer_multiplier?: number;
+      max_risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+    }
+  ): PlanRequest {
+    const modified = { ...request };
+
+    // 应用安全缓冲倍数
+    if (constraints.safety_buffer_multiplier) {
+      modified.transport_policy = {
+        ...modified.transport_policy,
+        buffer_factor: (modified.transport_policy?.buffer_factor || 1.2) * constraints.safety_buffer_multiplier,
+        fixed_buffer_min: Math.round(
+          (modified.transport_policy?.fixed_buffer_min || 15) * constraints.safety_buffer_multiplier
+        ),
+      };
+    }
+
+    // 避开指定路段（通过过滤节点实现）
+    if (constraints.avoid_segments && constraints.avoid_segments.length > 0) {
+      const avoidNodeIds = new Set(
+        constraints.avoid_segments
+          .map(seg => seg.split('-').map(Number))
+          .flat()
+      );
+      
+      // 过滤掉需要避开的节点（但保留硬节点）
+      modified.nodes = modified.nodes.filter(
+        node => !avoidNodeIds.has(node.id) || node.constraints?.is_hard_node
+      );
+      
+      this.logger.debug(`保守策略：避开 ${avoidNodeIds.size} 个节点`);
+    }
+
+    return modified;
+  }
+
+  /**
+   * 记录执行结果
+   */
+  private recordExecution(record: ExecutionRecord): void {
+    try {
+      this.metricsAggregatorService.recordExecution(record);
+    } catch (error: any) {
+      // 记录失败不应该影响主流程
+      this.logger.warn(`记录执行结果失败: ${error.message}`);
+    }
   }
 }
 

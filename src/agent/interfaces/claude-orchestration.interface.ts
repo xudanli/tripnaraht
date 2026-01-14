@@ -4,6 +4,10 @@
  * Claude 编排相关接口定义
  */
 
+import { DecisionLogEntry } from './trip-plan.interface';
+import { ErrorType } from './error-types.interface';
+import { ClarificationQuestion } from './clarification.interface';
+
 /**
  * 意图分析结果
  */
@@ -84,7 +88,18 @@ export interface ExecutionPlan {
  */
 export interface OrchestrationResult {
   success: boolean;
-  result: any;
+  result: {
+    // 业务结果（成功时）
+    [key: string]: any;
+    
+    // 澄清消息相关字段（失败且需要澄清时）
+    needsUserConfirmation?: boolean;
+    clarificationMessage?: string; // 向后兼容：简单字符串格式
+    clarificationQuestions?: ClarificationQuestion[]; // 新增：结构化问题数组
+    missingServices?: string[];
+    solutions?: string[];
+    errorType?: ErrorType;
+  };
   answerText: string;
   stepsExecuted: Array<{
     stepId: string;
@@ -97,12 +112,7 @@ export interface OrchestrationResult {
   }>;
   totalDuration: number;
   totalCost?: number;
-  decisionLog?: Array<{
-    step: string;
-    decision: string;
-    reasoning: string;
-    timestamp: string;
-  }>;
+  decisionLog?: DecisionLogEntry[];
 }
 
 /**

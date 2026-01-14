@@ -73,6 +73,15 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
     description: '一次性执行三人格策略编排（Abu → Dr.Dre → Neptune），返回结构化决策结果和最终计划',
     version: '1.0.0',
     category: 'decision' as const,
+    inputSchema: {
+      dependencies: [
+        { param: 'world', alternatives: ['tripId'] },
+        { param: 'tripId', alternatives: ['world'] },
+      ],
+      extractors: {
+        tripId: 'tripId',
+      },
+    },
   };
 
   constructor(

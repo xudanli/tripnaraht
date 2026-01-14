@@ -24,6 +24,7 @@ export enum RouterReason {
   REALTIME_WEB = 'REALTIME_WEB',
   HIGH_RISK_ACTION = 'HIGH_RISK_ACTION',
   LLM_DECISION = 'LLM_DECISION', // Claude 编排决策
+  REDIRECT_TO_PLANNING_WORKBENCH = 'REDIRECT_TO_PLANNING_WORKBENCH', // 重定向到规划工作台
 }
 
 /**
@@ -38,6 +39,7 @@ export enum UIStatus {
   AWAITING_CONFIRMATION = 'awaiting_confirmation',
   DONE = 'done',
   FAILED = 'failed',
+  REDIRECT_REQUIRED = 'redirect_required', // 需要重定向
 }
 
 /**

@@ -165,13 +165,21 @@ export class EnhancedChatService {
     context: RouteQuestionContext,
     structuredAnswer?: string
   ): Promise<EnhancedAnswer> {
-    // 1. RAG 检索相关文档
-    const ragSnippets = await this.ragService.retrieve({
-      query: question,
-      collection: 'travel_guides',
-      countryCode: context.countryCode,
-      limit: 5,
-    });
+    // 1. RAG 检索相关文档（添加错误处理）
+    let ragSnippets: Array<{ content: string; source?: string; score: number }> = [];
+    try {
+      const retrieved = await this.ragService.retrieve({
+        query: question,
+        collection: 'travel_guides',
+        countryCode: context.countryCode,
+        limit: 5,
+      });
+      // 确保返回的是数组
+      ragSnippets = Array.isArray(retrieved) ? retrieved : [];
+    } catch (error: any) {
+      this.logger.warn(`RAG 检索失败: ${error?.message || 'unknown error'}`);
+      ragSnippets = [];
+    }
 
     // 2. 获取当地洞察（如果相关）
     let localInsights: Array<{ content: string; tags: string[] }> = [];
@@ -181,12 +189,12 @@ export class EnhancedChatService {
           context.countryCode,
           this.extractTagsFromQuestion(question)
         );
-        localInsights = insights.map(insight => ({
-          content: insight.content,
-          tags: insight.tags,
-        }));
+        localInsights = Array.isArray(insights) ? insights.map(insight => ({
+          content: insight.content || '',
+          tags: Array.isArray(insight.tags) ? insight.tags : [],
+        })) : [];
       } catch (error: any) {
-        this.logger.warn(`获取当地洞察失败: ${error.message}`);
+        this.logger.warn(`获取当地洞察失败: ${error?.message || 'unknown error'}`);
       }
     }
 
@@ -195,7 +203,7 @@ export class EnhancedChatService {
 
     if (ragSnippets.length > 0) {
       const ragContent = ragSnippets
-        .map(s => s.content.substring(0, 200))
+        .map(s => (s.content || '').substring(0, 200))
         .join('\n\n');
       
       if (answer) {
@@ -207,7 +215,7 @@ export class EnhancedChatService {
 
     if (localInsights.length > 0) {
       const insightsText = localInsights
-        .map(i => `• ${i.content.substring(0, 150)}`)
+        .map(i => `• ${(i.content || '').substring(0, 150)}`)
         .join('\n');
       answer += '\n\n当地建议：\n' + insightsText;
     }
@@ -217,9 +225,9 @@ export class EnhancedChatService {
       source: structuredAnswer ? 'HYBRID' : 'RAG',
       structuredData: structuredAnswer ? { answer: structuredAnswer } : undefined,
       ragSnippets: ragSnippets.map(s => ({
-        content: s.content,
+        content: s.content || '',
         source: s.source,
-        score: s.score,
+        score: s.score || 0,
       })),
       localInsights,
     };

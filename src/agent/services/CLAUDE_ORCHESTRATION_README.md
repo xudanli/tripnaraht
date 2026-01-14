@@ -85,7 +85,7 @@ Claude Orchestrator
 **Claude 编排流程**：
 1. 意图分析：识别为 `analysis` 类型，复杂度 `complex`
 2. 路由决策：选择 `SYSTEM2_ANALYSIS`
-3. Skills 选择：选择 `skill.analysis.pestAnalysis`
+3. Skills 选择：选择 `analysis.pestAnalysis`
 4. 执行计划：编排 PEST 分析执行步骤
 5. 执行：调用 PEST 分析 Skill
 

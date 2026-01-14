@@ -1,11 +1,12 @@
 // src/places/services/entity-resolution.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { VectorSearchService } from './vector-search.service';
 import { AdminDivisionService } from './admin-division.service';
 import { AmapPOIService } from './amap-poi.service';
 import { GooglePlacesService } from './google-places.service';
+import { PlacesService } from '../places.service';
 
 /**
  * 实体解析结果
@@ -53,8 +54,9 @@ export class EntityResolutionService {
     private prisma: PrismaService,
     private vectorSearchService: VectorSearchService,
     private adminDivisionService: AdminDivisionService,
-    private amapPOIService?: AmapPOIService,
-    private googlePlacesService?: GooglePlacesService,
+    @Optional() private amapPOIService?: AmapPOIService,
+    @Optional() private googlePlacesService?: GooglePlacesService,
+    @Optional() private placesService?: PlacesService,
   ) {}
 
   /**
@@ -184,11 +186,61 @@ export class EntityResolutionService {
       results.push(...otherResults);
     }
 
-    // 步骤4: 对缺失的must-have POI，尝试外部地理编码
+    // 步骤4: 对缺失的must-have POI，尝试外部地理编码并自动创建
     const needsClarification: Array<{ poi: string; options: string[] }> = [];
     for (const missingPoi of missingPois) {
       const externalResult = await this.tryExternalGeocoding(missingPoi, extracted, lat, lng);
       if (externalResult) {
+        // 如果外部地理编码成功，尝试自动创建 Place 记录
+        if (externalResult.id === 0 && this.placesService) {
+          try {
+            // 确定城市 ID（从 extracted 或通过 POI 别名映射）
+            let cityId: number | null = null;
+            const cityHint = this.adminDivisionService.mapPoiAliasToCity(missingPoi);
+            const cityName = cityHint || extracted.cities[0];
+            
+            if (cityName) {
+              // 查询 City 表获取 cityId
+              const matchingCities = await this.prisma.$queryRaw<Array<{ id: number; nameCN: string; name: string }>>`
+                SELECT id, "nameCN", name FROM "City" 
+                WHERE "nameCN" = ${cityName} 
+                   OR "nameCN" LIKE ${`%${cityName}%`}
+                   OR name = ${cityName}
+                   OR name LIKE ${`%${cityName}%`}
+                LIMIT 1
+              `;
+              
+              if (matchingCities.length > 0) {
+                cityId = matchingCities[0].id;
+                this.logger.debug(`[resolveEntities] 找到城市: ${cityName} -> cityId: ${cityId}`);
+              }
+            }
+            
+            // 创建 Place 记录
+            const createdPlace = await this.placesService.createPlace({
+              nameCN: externalResult.nameCN || externalResult.name,
+              nameEN: externalResult.nameEN || null,
+              category: externalResult.category as any,
+              lat: externalResult.lat,
+              lng: externalResult.lng,
+              address: externalResult.address || null,
+              cityId: cityId || 0, // 如果找不到城市，使用 0（允许为空）
+              metadata: {
+                ...externalResult.metadata,
+                source: 'external_geocoding',
+                createdAt: new Date().toISOString(),
+              },
+            });
+            
+            // 更新结果中的 ID
+            externalResult.id = createdPlace.id;
+            this.logger.debug(`[resolveEntities] 自动创建 Place: ${missingPoi} -> ID: ${createdPlace.id}`);
+          } catch (error: any) {
+            this.logger.warn(`[resolveEntities] 自动创建 Place 失败: ${missingPoi} - ${error?.message}`);
+            // 即使创建失败，仍然使用外部地理编码的结果（id=0）
+          }
+        }
+        
         results.push(externalResult);
         const idx = missingPois.indexOf(missingPoi);
         if (idx >= 0) {

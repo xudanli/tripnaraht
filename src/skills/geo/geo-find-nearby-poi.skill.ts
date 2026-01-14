@@ -9,7 +9,7 @@
  */
 
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { PlacesService } from '../../places/places.service';
 import { PlaceWithDistance } from '../../places/dto/geo-result.dto';
@@ -95,11 +95,30 @@ export class GeoFindNearbyPOISkill implements Skill<GeoFindNearbyPOIInput, GeoFi
   /** 最大返回数量 */
   private readonly MAX_LIMIT = 100;
 
-  metadata = {
+  metadata: SkillMetadata = {
     name: 'geo.findNearbyPOI',
     description: '查找附近 POI：带类型/半径/过滤的空间查询，统一 PostGIS 访问的安全出口',
     version: '1.0.0',
-    category: 'rag' as const,
+    category: 'trip' as const,
+    toolGroup: 'DOMAIN' as const,
+    inputSchema: {
+      required: ['location', 'radius'],
+      typeChecks: {
+        location: {
+          type: 'object',
+        },
+        radius: {
+          type: 'number',
+          min: 0,
+          max: 50000, // 最大 50 公里
+        },
+        limit: {
+          type: 'number',
+          min: 1,
+          max: 100,
+        },
+      },
+    },
   };
 
   constructor(

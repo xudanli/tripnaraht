@@ -17,6 +17,7 @@ import { resolveOrchestrationMode } from '../utils/resolve-orchestration-mode.ut
 import { signalsFromRequest } from '../utils/orchestration-signals.util';
 import { routePolicy } from '../utils/orchestration-policy.util';
 import { OrchestrationStep, SubAgentType, DecisionLogEntry } from '../interfaces/trip-plan.interface';
+import { MetricsRecorder, extractMetricsFromResponse } from '../utils/agent-metrics.util';
 
 /**
  * Agent Service
@@ -124,14 +125,32 @@ export class AgentService {
 
     try {
       // 0. 检查是否是规划请求（需要拦截，重定向到规划工作台）
-      if (this.isPlanningRequest(request)) {
+      // 注意：创建新行程时 trip_id 为 null 是正常的，应该允许通过（自然语言创建行程功能）
+      // 如果 trip_id 为空且是规划请求，说明是创建新行程，不应该重定向
+      const isFromDashboard = request.options?.entry_point === 'dashboard';
+      const hasNoTripId = !request.trip_id || request.trip_id === '';
+      const isPlanningReq = this.isPlanningRequest(request);
+      const isCreatingNewTrip = hasNoTripId && isPlanningReq;
+      
+      // 只有在非创建新行程场景下才重定向到规划工作台
+      // 如果是从 dashboard 创建新行程，或者 trip_id 为空且是规划请求，都允许通过
+      if (isPlanningReq && !isCreatingNewTrip && !isFromDashboard) {
         this.logger.debug(`[AgentService] 检测到规划请求，重定向到规划工作台: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
         return this.createRedirectToPlanningWorkbenchResponse(request, startTime);
       }
+      
+      // 调试日志：记录判断结果
+      if (isPlanningReq) {
+        this.logger.debug(`[AgentService] 规划请求判断: isCreatingNewTrip=${isCreatingNewTrip}, isFromDashboard=${isFromDashboard}, hasNoTripId=${hasNoTripId}, trip_id=${request.trip_id}`);
+      }
 
-      // 0.1 验证 trip_id（统一入口强制要求 trip_id）
-      if (!request.trip_id || request.trip_id === '') {
-        this.logger.warn(`[AgentService] 缺少 trip_id: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
+      // 0.1 验证 trip_id
+      // 注意：创建新行程时 trip_id 为 null 是正常的（通过自然语言创建行程功能）
+      // 只有在已有行程的操作（查询、修改等）时才需要 trip_id
+      // 如果是从 dashboard 创建新行程，或者 trip_id 为空且是规划请求，允许 trip_id 为 null
+      if (!isCreatingNewTrip && !isFromDashboard && (!request.trip_id || request.trip_id === '')) {
+        // 只有在非创建新行程场景下才要求 trip_id
+        this.logger.warn(`[AgentService] 缺少 trip_id（非创建新行程场景）: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
         return this.createMissingTripIdErrorResponse(request, startTime);
       }
 
@@ -173,15 +192,14 @@ export class AgentService {
       this.logger.log(logFields, `[AgentService] 编排策略决策`);
       
       // Metrics 打点（用于监控和观察）
-      // TODO: 接入 Prometheus/DataDog 等 metrics 系统
-      // this.metrics?.recordMode(decision.mode, request.request_id);
-      // this.metrics?.recordRisk(signals.risk, request.request_id);
-      // this.metrics?.recordConsent(decision.recommendations?.requireConsent ?? false, request.request_id);
-      // this.metrics?.recordRecommendationVsExecution(
-      //   decision.recommendations?.useStateMachine ?? false,
-      //   decision.mode,
-      //   request.request_id,
-      // );
+      MetricsRecorder.recordOrchestrationMode(decision.mode);
+      MetricsRecorder.recordRisk(signals.risk);
+      if (request.options?.entry_point) {
+        MetricsRecorder.recordEntryPoint(request.options.entry_point);
+      }
+      if (request.options?.readonly_mode !== undefined) {
+        MetricsRecorder.recordReadonlyMode(request.options.readonly_mode);
+      }
       
       // 详细的 debug 日志
       this.logger.debug(
@@ -447,6 +465,18 @@ export class AgentService {
 
       this.logger.debug(`Request completed: ${request.request_id}, latency: ${latency}ms`);
 
+      // 提取并记录 Metrics
+      const metrics = extractMetricsFromResponse(response);
+      if (metrics.redirect_reason) {
+        MetricsRecorder.recordRedirect(metrics.redirect_reason, metrics.entry_point);
+      }
+      if (metrics.error_type) {
+        MetricsRecorder.recordClarification(metrics.error_type);
+      }
+      if (metrics.decision_log_completeness !== undefined) {
+        MetricsRecorder.recordDecisionLogCompleteness(metrics.decision_log_completeness);
+      }
+
       // 缓存响应（用于请求去重）
       if (this.requestDeduplication && !request.options?.dry_run) {
         const requestHash = this.requestDeduplication.generateRequestHash(request);
@@ -683,52 +713,76 @@ export class AgentService {
     const gateResult = orchestrationResult.result?.gate_result?.gate_result;
     const uiState = this.mapOrchestrationStepToUIState(currentStep as OrchestrationStep, gateResult);
     
-    const response: RouteAndRunResponseDto = {
-      request_id: request.request_id,
-      route: {
-        route: orchestrationResult.success ? RouteType.SYSTEM2_REASONING : RouteType.SYSTEM2_REASONING,
-        confidence: 0.8,
-        reasons: [RouterReason.LLM_DECISION],
-        required_capabilities: ['planning'],
-        consent_required: false,
-        budget: {
-          max_seconds: request.options?.max_seconds || 60,
-          max_steps: request.options?.max_steps || 8,
-          max_browser_steps: request.options?.max_browser_steps || 0,
+      // 检查是否需要用户澄清
+      const needsUserConfirmation = !orchestrationResult.success && 
+        orchestrationResult.result?.needsUserConfirmation === true;
+      const resultStatus = needsUserConfirmation 
+        ? 'NEED_MORE_INFO' 
+        : (orchestrationResult.success ? 'OK' : 'FAILED');
+
+      const response: RouteAndRunResponseDto = {
+        request_id: request.request_id,
+        route: {
+          route: orchestrationResult.success ? RouteType.SYSTEM2_REASONING : RouteType.SYSTEM2_REASONING,
+          confidence: 0.8,
+          reasons: [RouterReason.LLM_DECISION],
+          required_capabilities: ['planning'],
+          consent_required: false,
+          budget: {
+            max_seconds: request.options?.max_seconds || 60,
+            max_steps: request.options?.max_steps || 8,
+            max_browser_steps: request.options?.max_browser_steps || 0,
+          },
+          ui_hint: {
+            mode: 'slow',
+            status: needsUserConfirmation 
+              ? UIStatus.AWAITING_CONFIRMATION 
+              : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED),
+            message: needsUserConfirmation 
+              ? '需要您的确认' 
+              : (orchestrationResult.success ? '处理完成' : '处理失败'),
+          },
         },
-        ui_hint: {
-          mode: 'slow',
-          status: orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED,
-          message: orchestrationResult.success ? '处理完成' : '处理失败',
+        // P1 改进：UI 状态映射
+        ui_state: uiState,
+        result: {
+          status: resultStatus,
+          answer_text: needsUserConfirmation 
+            ? (orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText)
+            : orchestrationResult.answerText,
+          payload: {
+            timeline: orchestrationResult.result?.itinerary?.days || [],
+            dropped_items: [],
+            candidates: [],
+            evidence: orchestrationResult.result?.state?.decision_log || [],
+            robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
+            // 状态机编排结果
+            orchestrationResult: orchestrationResult.result && orchestrationResult.result.state 
+              ? {
+                  state: orchestrationResult.result.state,
+                  itinerary: orchestrationResult.result.itinerary,
+                  gate_result: orchestrationResult.result.gate_result,
+                  decision_log: orchestrationResult.result.decision_log,
+                } 
+              : undefined,
+            // 澄清消息相关字段（统一放在 payload 中）
+            ...(needsUserConfirmation ? {
+              needsUserConfirmation: true,
+              clarificationMessage: orchestrationResult.result?.clarificationMessage,
+              clarificationQuestions: orchestrationResult.result?.clarificationQuestions,
+              missingServices: orchestrationResult.result?.missingServices || [],
+              solutions: orchestrationResult.result?.solutions || [],
+              errorType: orchestrationResult.result?.errorType,
+            } : {}),
+          },
         },
-      },
-      // P1 改进：UI 状态映射
-      ui_state: uiState,
-      result: {
-        status: orchestrationResult.success ? 'OK' : 'FAILED',
-        answer_text: orchestrationResult.answerText,
-        payload: {
-          timeline: orchestrationResult.result?.itinerary?.days || [],
-          dropped_items: [],
-          candidates: [],
-          evidence: orchestrationResult.result?.state?.decision_log || [],
-          robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
-          // 状态机编排结果（新增）
-          orchestrationResult: orchestrationResult.result ? {
-            state: orchestrationResult.result.state,
-            itinerary: orchestrationResult.result.itinerary,
-            gate_result: orchestrationResult.result.gate_result,
-            decision_log: orchestrationResult.result.decision_log,
-          } : undefined,
+        explain: {
+          decision_log: orchestrationResult.decisionLog || [],
         },
-      },
-      explain: {
-        decision_log: orchestrationResult.decisionLog || [],
-      },
-      observability: {
-        latency_ms: latency,
-        router_ms: 0,
-        system_mode: 'SYSTEM2',
+        observability: {
+          latency_ms: latency,
+          router_ms: 0,
+          system_mode: 'SYSTEM2',
         tool_calls: orchestrationResult.stepsExecuted?.length || 0,
         browser_steps: 0,
         tokens_est: 0, // TODO: 计算 token
@@ -738,6 +792,15 @@ export class AgentService {
         trace: traceInfo,
       },
     };
+
+    // 提取并记录 Metrics
+    const metrics = extractMetricsFromResponse(response);
+    if (metrics.error_type) {
+      MetricsRecorder.recordClarification(metrics.error_type);
+    }
+    if (metrics.decision_log_completeness !== undefined) {
+      MetricsRecorder.recordDecisionLogCompleteness(metrics.decision_log_completeness);
+    }
 
     return response;
   }
@@ -877,16 +940,27 @@ export class AgentService {
             candidates: [],
             evidence: [],
             robustness: null,
-            // 扩展 payload 以包含编排结果（使用类型断言）
-            ...(orchestrationResult.result ? { orchestrationResult: orchestrationResult.result } : {}),
-            // 如果是关键依赖缺失，在 payload 中包含澄清信息
+            // 扩展 payload 以包含编排结果
+            ...(orchestrationResult.result && orchestrationResult.result.state 
+              ? { 
+                  orchestrationResult: {
+                    state: orchestrationResult.result.state,
+                    itinerary: orchestrationResult.result.itinerary,
+                    gate_result: orchestrationResult.result.gate_result,
+                    decision_log: orchestrationResult.result.decision_log,
+                  }
+                } 
+              : {}),
+            // 澄清消息相关字段（统一放在 payload 中）
             ...(needsUserConfirmation ? {
-              clarificationInfo: {
-                missingServices: orchestrationResult.result?.missingServices || [],
-                solutions: orchestrationResult.result?.solutions || [],
-              },
+              needsUserConfirmation: true,
+              clarificationMessage: orchestrationResult.result?.clarificationMessage,
+              clarificationQuestions: orchestrationResult.result?.clarificationQuestions,
+              missingServices: orchestrationResult.result?.missingServices || [],
+              solutions: orchestrationResult.result?.solutions || [],
+              errorType: orchestrationResult.result?.errorType,
             } : {}),
-          } as any,
+          },
         },
         explain: {
           decision_log: orchestrationResult.decisionLog || [],
@@ -1084,8 +1158,9 @@ export class AgentService {
             redirect_to: '/planning-workbench/execute',
             redirect_reason: 'MISSING_TRIP_ID',
             original_request: {
-              message: request.message,
+              message: request.message.substring(0, 200), // 限制长度并脱敏
               user_id: request.user_id,
+              trip_id: request.trip_id || undefined,
             },
           },
         },
@@ -1168,8 +1243,9 @@ export class AgentService {
             redirect_to: '/planning-workbench/execute',
             redirect_reason: 'READONLY_MODE_RESTRICTION',
             original_request: {
-              message: request.message,
+              message: request.message.substring(0, 200), // 限制长度并脱敏
               user_id: request.user_id,
+              trip_id: request.trip_id || undefined,
             },
           },
         },
@@ -1254,8 +1330,9 @@ export class AgentService {
             redirect_to: '/planning-workbench/execute',
             redirect_reason: 'PLANNING_REQUEST_DETECTED',
             original_request: {
-              message: request.message,
+              message: request.message.substring(0, 200), // 限制长度并脱敏
               user_id: request.user_id,
+              trip_id: request.trip_id || undefined,
             },
           },
         },

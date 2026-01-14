@@ -8,7 +8,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../../interfaces/skill.interface';
+import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../../interfaces/skill.interface';
 import { PlanState } from '../shared/plan-state.types';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
@@ -39,12 +39,21 @@ export interface PlanBudgetProposeTradeoffsOutput extends SkillOutput {
 export class PlanBudgetProposeTradeoffsSkill implements Skill<PlanBudgetProposeTradeoffsInput, PlanBudgetProposeTradeoffsOutput> {
   private readonly logger = new Logger(PlanBudgetProposeTradeoffsSkill.name);
 
-  metadata = {
+  metadata: SkillMetadata = {
     name: 'plan.budget.proposeTradeoffs',
     description: '给出"最小牺牲"的降本方案，不破坏路线哲学',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
+    inputSchema: {
+      required: ['planState', 'targetSavings'],
+      typeChecks: {
+        targetSavings: {
+          type: 'number',
+          min: 0,
+        },
+      },
+    },
   };
 
   constructor(

@@ -6,6 +6,8 @@ import { RouterOutputDto } from './router-output.dto';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef } from '../interfaces/trip-plan.interface';
 import { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
+import { ErrorType } from '../interfaces/error-types.interface';
+import { ClarificationQuestion } from '../interfaces/clarification.interface';
 
 export class ConversationContextDto {
   @ApiPropertyOptional({ 
@@ -276,12 +278,20 @@ export class RouteAndRunResponseDto {
       // 重定向信息（仅在 REDIRECT_REQUIRED 时存在）
       redirectInfo?: {
         redirect_to: string;
-        redirect_reason: string;
+        redirect_reason: 'READONLY_MODE_RESTRICTION' | 'PLANNING_REQUEST_DETECTED' | 'INSUFFICIENT_PERMISSIONS' | 'FEATURE_MIGRATED' | 'MISSING_TRIP_ID';
         original_request: {
-          message: string;
+          message: string; // 已脱敏，最多 200 字符
           user_id: string;
+          trip_id?: string;
         };
       };
+      // 澄清消息相关字段（仅在 NEED_MORE_INFO 且需要澄清时存在）
+      needsUserConfirmation?: boolean;
+      clarificationMessage?: string; // 向后兼容：简单字符串格式
+      clarificationQuestions?: ClarificationQuestion[]; // 新增：结构化问题数组
+      missingServices?: string[];
+      solutions?: string[];
+      errorType?: ErrorType;
     };
   };
 
