@@ -68,6 +68,9 @@ pipeline {
     }
 
     stage('Build') {
+      options {
+        timeout(time: 30, unit: 'MINUTES')
+      }
       steps {
         sh '''
           set -eu
@@ -89,7 +92,26 @@ pipeline {
             fi
           fi
           echo "使用命令: ${DOCKER_COMPOSE_CMD}"
-          ${DOCKER_COMPOSE_CMD} build
+          echo "开始构建 Docker 镜像..."
+          echo "⏳ 这可能需要几分钟时间，请耐心等待..."
+          # 使用 --progress=plain 确保输出实时显示，避免 Jenkins heartbeat 超时
+          # 后台运行一个定期输出进程，保持 Jenkins heartbeat
+          (
+            while true; do
+              sleep 30
+              echo "[$(date +'%H:%M:%S')] 构建仍在进行中，请稍候..."
+            done
+          ) &
+          HEARTBEAT_PID=$!
+          # 执行构建，使用 --progress=plain 确保实时输出
+          if ${DOCKER_COMPOSE_CMD} build --progress=plain; then
+            kill $HEARTBEAT_PID 2>/dev/null || true
+            echo "✅ Docker 镜像构建完成"
+          else
+            kill $HEARTBEAT_PID 2>/dev/null || true
+            echo "❌ Docker 镜像构建失败"
+            exit 1
+          fi
         '''
       }
     }
