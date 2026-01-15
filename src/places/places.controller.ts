@@ -11,9 +11,11 @@ import { CreatePlaceDto } from './dto/create-place.dto';
 import { UpdatePlaceDto } from './dto/update-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
+import { GetPlacesAdminQueryDto, PlaceListAdminResponseDto } from './dto/admin-place.dto';
 import { PlaceCategory } from '@prisma/client';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('places')
 @Controller('places')
@@ -1178,6 +1180,163 @@ export class PlacesController {
       ErrorCode.UNSUPPORTED_ACTION,
       '地点推荐功能正在开发中，敬请期待。目前可以使用 /api/places/search 或 /api/places/search/semantic 进行地点搜索。',
     );
+  }
+
+  // ==================== 管理接口 ====================
+
+  @Public()
+  @Get('admin')
+  @ApiOperation({
+    summary: '获取地点列表（管理接口）',
+    description: '获取地点列表，支持分页、搜索、按类别和城市筛选。已优化查询性能，支持并行查询。',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量（最大100）', example: 20 })
+  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（名称、地址）' })
+  @ApiQuery({ 
+    name: 'category', 
+    required: false, 
+    enum: PlaceCategory, 
+    description: '地点类别',
+    example: 'ATTRACTION'
+  })
+  @ApiQuery({ name: 'cityId', required: false, type: Number, description: '城市ID', example: 1 })
+  @ApiQuery({ name: 'countryCode', required: false, type: String, description: '国家代码（ISO 3166-1 alpha-2）', example: 'JP' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getPlacesAdmin(@Query() query: GetPlacesAdminQueryDto) {
+    try {
+      // 限制最大每页数量
+      const limit = query.limit && query.limit > 100 ? 100 : query.limit;
+      
+      const result = await this.placesService.getPlacesAdmin({
+        page: query.page,
+        limit,
+        search: query.search,
+        category: query.category,
+        cityId: query.cityId,
+        countryCode: query.countryCode,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/:id')
+  @ApiOperation({
+    summary: '获取地点详情（管理接口）',
+    description: '根据地点ID获取地点详细信息。',
+  })
+  @ApiParam({ name: 'id', description: '地点ID', type: Number, example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '地点不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getPlaceAdminById(@Param('id', ParseIntPipe) id: number) {
+    try {
+      const place = await this.placesService.findOne(id);
+      if (!place) {
+        return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
+      }
+      return successResponse(place);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Put('admin/:id')
+  @ApiOperation({
+    summary: '更新地点（管理接口）',
+    description: '更新地点信息，包括名称、地址、坐标、元数据等。无需认证。',
+  })
+  @ApiParam({ name: 'id', description: '地点ID', type: Number, example: 1 })
+  @ApiBody({ type: UpdatePlaceDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新地点',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '地点不存在',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '输入数据验证失败',
+    type: ApiErrorResponseDto,
+  })
+  async updatePlaceAdmin(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updatePlaceDto: UpdatePlaceDto,
+  ) {
+    try {
+      const place = await this.placesService.updatePlace(id, updatePlaceDto);
+      return successResponse(place);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`更新地点失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Delete('admin/:id')
+  @ApiOperation({
+    summary: '删除地点（管理接口）',
+    description: '删除地点记录。注意：如果地点已被行程使用，删除可能会影响相关行程。无需认证。',
+  })
+  @ApiParam({ name: 'id', description: '地点ID', type: Number, example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除地点',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '地点不存在',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '地点正在使用中，无法删除',
+    type: ApiErrorResponseDto,
+  })
+  async deletePlaceAdmin(@Param('id', ParseIntPipe) id: number) {
+    try {
+      await this.placesService.deletePlace(id);
+      return successResponse({ message: '地点删除成功', id });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`删除地点失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
   }
 
   @Get(':id')

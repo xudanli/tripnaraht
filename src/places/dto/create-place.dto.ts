@@ -38,5 +38,9 @@ export class CreatePlaceDto {
   @IsOptional()
   @IsNumber()
   rating?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string; // 地点介绍
 }
 

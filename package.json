@@ -27,7 +27,8 @@
     "script:clean-iceland-poi": "tsx scripts/clean-iceland-poi-data.ts",
     "script:clean-iceland-poi:dry-run": "tsx scripts/clean-iceland-poi-data.ts --dry-run",
     "script:translate-iceland-poi-names": "tsx scripts/translate-iceland-poi-names.ts",
-    "script:translate-iceland-poi-names:dry-run": "tsx scripts/translate-iceland-poi-names.ts --dry-run"
+    "script:translate-iceland-poi-names:dry-run": "tsx scripts/translate-iceland-poi-names.ts --dry-run",
+    "script:add-place-indexes": "npx tsx scripts/add-place-indexes.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",

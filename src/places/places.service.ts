@@ -1,7 +1,7 @@
 // src/places/places.service.ts
 import { Injectable, Optional, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, PlaceCategory } from '@prisma/client';
 import { VectorSearchService } from './services/vector-search.service';
 import { PlaceWithDistance, RawPlaceResult } from './dto/geo-result.dto';
 import { CreatePlaceDto } from './dto/create-place.dto';
@@ -791,9 +791,29 @@ export class PlacesService {
       return null;
     }
 
-    // 提取坐标
-    const location = (place as any).location;
-    const coords = location ? this.extractCoordinates(location) : null;
+    // 提取坐标（使用 SQL 查询确保正确提取 PostGIS geography 类型）
+    let coords: { lat: number; lng: number } | null = null;
+    try {
+      const locationResult = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+        SELECT 
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ${id} AND location IS NOT NULL
+      `;
+      
+      if (locationResult.length > 0) {
+        coords = {
+          lat: Number(locationResult[0].lat),
+          lng: Number(locationResult[0].lng),
+        };
+      }
+    } catch (error: any) {
+      this.logger.warn(`提取地点 ${id} 的坐标失败: ${error.message}`);
+      // 降级：尝试使用 extractCoordinates 方法
+      const location = (place as any).location;
+      coords = location ? this.extractCoordinates(location) : null;
+    }
 
     // 解析元数据
     const metadata = (place.metadata as any) || {};
@@ -827,6 +847,7 @@ export class PlacesService {
       address: place.address,
       rating: place.rating,
       googlePlaceId: place.googlePlaceId,
+      description: (place as any).description,
       location: coords ? { lat: coords.lat, lng: coords.lng } : null,
       metadata,
       physicalMetadata,
@@ -838,6 +859,7 @@ export class PlacesService {
         countryCode: city.countryCode,
         timezone: city.timezone,
       } : null,
+      countryCode: city?.countryCode || null, // 单独返回国家代码，方便筛选和显示
       status: {
         isOpen,
         text: isOpen ? '营业中' : '已打烊',
@@ -1186,30 +1208,49 @@ export class PlacesService {
     if (dto.cityId !== undefined) updateData.cityId = dto.cityId;
     if (dto.googlePlaceId !== undefined) updateData.googlePlaceId = dto.googlePlaceId;
     if (dto.rating !== undefined) updateData.rating = dto.rating;
+    if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
     if (dto.physicalMetadata !== undefined) updateData.physicalMetadata = dto.physicalMetadata;
-
-    // 处理地理位置更新
-    if (dto.lat !== undefined && dto.lng !== undefined) {
-      updateData.location = Prisma.sql`ST_SetSRID(ST_MakePoint(${dto.lng}, ${dto.lat}), 4326)::geography`;
-    }
 
     // 如果更新了名称或元数据，可能需要更新embedding
     const needsEmbeddingUpdate = dto.nameCN !== undefined || dto.nameEN !== undefined || dto.metadata !== undefined;
 
-    const updatedPlace = await this.prisma.place.update({
-      where: { id },
-      data: updateData,
-    });
+    // 先更新非 location 字段
+    let updatedPlace;
+    if (Object.keys(updateData).length > 0) {
+      updatedPlace = await this.prisma.place.update({
+        where: { id },
+        data: updateData,
+      });
+    } else {
+      updatedPlace = place;
+    }
+
+    // 单独处理地理位置更新（使用原始 SQL，因为 Prisma 不支持直接更新 Unsupported 类型字段）
+    if (dto.lat !== undefined && dto.lng !== undefined) {
+      await this.prisma.$executeRaw`
+        UPDATE "Place"
+        SET location = ST_SetSRID(ST_MakePoint(${dto.lng}, ${dto.lat}), 4326)::geography
+        WHERE id = ${id}
+      `;
+      // 重新获取更新后的地点（包含 location 和 City 关联）
+      updatedPlace = await this.prisma.place.findUnique({
+        where: { id },
+        include: {
+          City: true,
+        },
+      });
+    }
 
     // 异步更新embedding（如果需要）
-    if (needsEmbeddingUpdate && this.embeddingService) {
+    if (needsEmbeddingUpdate && this.embeddingService && updatedPlace) {
       this.updatePlaceEmbedding(id, updatedPlace).catch(error => {
         this.logger.warn(`Failed to update embedding for place ${id}: ${error.message}`);
       });
     }
 
-    return updatedPlace;
+    // 使用 findOne 方法格式化返回数据（确保 location 等字段正确提取）
+    return this.findOne(id);
   }
 
   /**
@@ -1239,6 +1280,170 @@ export class PlacesService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * 获取地点列表（管理接口）
+   * 支持分页、搜索、按类别和城市筛选
+   * 优化：使用并行查询和优化的搜索策略
+   */
+  async getPlacesAdmin(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: PlaceCategory;
+    cityId?: number;
+    countryCode?: string;
+  }) {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100); // 限制最大每页数量为100
+    const skip = (page - 1) * limit;
+
+    // 构建查询条件
+    const where: Prisma.PlaceWhereInput = {};
+
+    // 搜索条件 - 优化：使用更高效的搜索方式
+    if (params.search) {
+      const searchTerm = params.search.trim();
+      // 如果搜索词很短，使用 startsWith 更高效
+      if (searchTerm.length <= 3) {
+        where.OR = [
+          { nameCN: { startsWith: searchTerm, mode: 'insensitive' } },
+          { nameEN: { startsWith: searchTerm, mode: 'insensitive' } },
+        ];
+      } else {
+        // 对于较长的搜索词，使用 contains
+        where.OR = [
+          { nameCN: { contains: searchTerm, mode: 'insensitive' } },
+          { nameEN: { contains: searchTerm, mode: 'insensitive' } },
+          { address: { contains: searchTerm, mode: 'insensitive' } },
+        ];
+      }
+    }
+
+    // 类别筛选
+    if (params.category) {
+      where.category = params.category;
+    }
+
+    // 城市筛选
+    if (params.cityId) {
+      where.cityId = params.cityId;
+    }
+
+    // 国家筛选（通过 City 关联）
+    if (params.countryCode) {
+      where.City = {
+        countryCode: params.countryCode.toUpperCase(), // 统一转换为大写
+      };
+    }
+
+    try {
+      // 优化：并行执行 count 和 findMany 查询
+      const [total, places] = await Promise.all([
+        this.prisma.place.count({ where }),
+        this.prisma.place.findMany({
+          where,
+          skip,
+          take: limit,
+          include: {
+            City: {
+              select: {
+                id: true,
+                name: true,
+                nameCN: true,
+                nameEN: true,
+                countryCode: true,
+                timezone: true,
+              },
+            },
+          },
+          orderBy: [
+            { createdAt: 'desc' },
+          ],
+        }),
+      ]);
+
+      // 批量提取坐标（使用 SQL 查询确保正确提取 PostGIS geography 类型）
+      const placeIds = places.map(p => p.id);
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (placeIds.length > 0) {
+        try {
+          const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            locationMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}，将使用降级方法`);
+        }
+      }
+
+      // 转换为响应格式 - 优化：批量处理
+      const placeList = places.map(place => {
+        // 优先使用 SQL 提取的坐标，降级使用 extractCoordinates
+        let coords: { lat: number; lng: number } | null = locationMap.get(place.id) || null;
+        
+        if (!coords) {
+          const location = (place as any).location;
+          coords = location ? this.extractCoordinates(location) : null;
+        }
+        
+        const metadata = (place.metadata as any) || {};
+        const physicalMetadata = (place.physicalMetadata as any) || {};
+        const city = place.City;
+
+        return {
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          category: place.category,
+          address: place.address,
+          rating: place.rating,
+          googlePlaceId: place.googlePlaceId,
+          description: (place as any).description,
+          location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+          metadata,
+          physicalMetadata,
+          city: city ? {
+            id: city.id,
+            name: city.name,
+            nameCN: city.nameCN,
+            nameEN: city.nameEN,
+            countryCode: city.countryCode,
+            timezone: city.timezone,
+          } : null,
+          countryCode: city?.countryCode || null, // 单独返回国家代码，方便筛选和显示
+          createdAt: place.createdAt,
+          updatedAt: place.updatedAt,
+        };
+      });
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        places: placeList,
+        total,
+        page,
+        limit,
+        totalPages,
+      };
+    } catch (error: any) {
+      this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
 

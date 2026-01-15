@@ -59,4 +59,9 @@ export class UpdatePlaceDto {
   @IsOptional()
   @IsObject()
   physicalMetadata?: any;
+
+  @ApiPropertyOptional({ description: '地点介绍' })
+  @IsOptional()
+  @IsString()
+  description?: string;
 }

@@ -542,6 +542,9 @@ export class SkillsModule {
     @Optional() private readonly routePackGenerateRegressionTestsSkill?: RoutePackGenerateRegressionTestsSkill,
     @Optional() private readonly hitlCreateApprovalTaskSkill?: HitlCreateApprovalTaskSkill,
     @Optional() private readonly hitlResolveApprovalTaskSkill?: HitlResolveApprovalTaskSkill,
+    @Optional() private readonly planGateRunThreeGuardiansSkill?: PlanGateRunThreeGuardiansSkill,
+    @Optional() private readonly planGatePrecheckSkill?: PlanGatePrecheckSkill,
+    @Optional() private readonly planGateProposeSafeAlternativesSkill?: PlanGateProposeSafeAlternativesSkill,
   ) {
     this.logger.log('[SkillsModule] 构造函数开始执行...');
     
@@ -631,6 +634,20 @@ export class SkillsModule {
     if (this.hitlResolveApprovalTaskSkill) {
       this.skillsRegistry.registerSkill(this.hitlResolveApprovalTaskSkill);
       this.logger.debug('Registered HitlResolveApprovalTaskSkill');
+    }
+    
+    // 手动注册 Plan Gate Skills（没有 token 的）
+    if (this.planGatePrecheckSkill) {
+      this.skillsRegistry.registerSkill(this.planGatePrecheckSkill);
+      this.logger.debug('Registered PlanGatePrecheckSkill');
+    }
+    if (this.planGateRunThreeGuardiansSkill) {
+      this.skillsRegistry.registerSkill(this.planGateRunThreeGuardiansSkill);
+      this.logger.debug('Registered PlanGateRunThreeGuardiansSkill');
+    }
+    if (this.planGateProposeSafeAlternativesSkill) {
+      this.skillsRegistry.registerSkill(this.planGateProposeSafeAlternativesSkill);
+      this.logger.debug('Registered PlanGateProposeSafeAlternativesSkill');
     }
 
     // 临时在构造函数中执行扫描（延迟到下一个 tick，确保依赖已初始化）
