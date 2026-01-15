@@ -7,6 +7,7 @@ import { SkillsRegistryService } from '../../skills/services/skills-registry.ser
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { ActionRegistryService } from './action-registry.service';
 import { Skill } from '../../skills/interfaces/skill.interface';
+import { Deadline, withTimeout, runBounded, SimpleLruCache } from './orchestration-utils';
 import {
   IntentAnalysis,
   RoutingDecision,
@@ -66,6 +67,7 @@ import { SkillInputValidatorService } from './skill-input-validator.service';
 @Injectable()
 export class ClaudeOrchestratorService {
   private readonly logger = new Logger(ClaudeOrchestratorService.name);
+  private readonly worldCache = new SimpleLruCache<any>(64, 10 * 60 * 1000); // 10分钟TTL
 
   constructor(
     private llmService: LlmService,
@@ -167,6 +169,7 @@ export class ClaudeOrchestratorService {
   async orchestrate(
     request: RouteAndRunRequestDto,
     context: AgentContext,
+    deadline?: { remainingMs: () => number; clamp: (ms: number, minMs?: number) => number },
   ): Promise<OrchestrationResult> {
     const startTime = Date.now();
     this.logger.log(`[Claude Orchestrator] 开始编排: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
@@ -177,7 +180,80 @@ export class ClaudeOrchestratorService {
     this.logger.debug(`[Claude Orchestrator] 使用 LLM 提供商: ${llmProvider}`);
 
     try {
-      // 1. 使用 LLM 分析用户意图
+      // 0. 提前检查：创建新行程场景（在 LLM 调用之前，避免超时）
+      // 如果用户请求规划新行程但缺少必要信息，提前返回错误
+      const isCreatingNewTrip = !request.trip_id || request.trip_id === '';
+      const messageLower = request.message.toLowerCase();
+      const isPlanningIntent = messageLower.includes('规划') ||
+                                messageLower.includes('计划') ||
+                                messageLower.includes('行程') ||
+                                messageLower.includes('安排') ||
+                                messageLower.includes('itinerary') ||
+                                messageLower.includes('trip') ||
+                                messageLower.includes('plan');
+      
+      // Fast Path: 新建行程规划直接规则路由（0 LLM调用）
+      if (isCreatingNewTrip && isPlanningIntent) {
+        const countryCode = this.extractCountryCodeFromMessage(request.message);
+        if (countryCode) {
+          this.logger.log(`[Claude Orchestrator] 🚀 Fast Path: 新建行程规划，countryCode=${countryCode}，跳过LLM调用`);
+          // 使用传入的 deadline 或创建新的
+          const fastPathDeadline = deadline 
+            ? new Deadline(deadline.clamp(12_000, 5000)) 
+            : new Deadline(12_000); // 12秒硬性止损
+          const decisionLog: DecisionLogEntry[] = [];
+          const stepsExecuted: OrchestrationResult['stepsExecuted'] = [];
+          
+          try {
+            const fastResult = await this.fastPathOrchestrate(
+              request,
+              context,
+              fastPathDeadline,
+              decisionLog,
+              stepsExecuted,
+            );
+            fastResult.totalDuration = Date.now() - startTime;
+            fastResult.decisionLog = decisionLog;
+            return fastResult;
+          } catch (error: any) {
+            this.logger.error(`[Claude Orchestrator] Fast Path 失败: ${error?.message}`);
+            // 降级到原有流程
+            this.logger.warn(`[Claude Orchestrator] 降级到原有LLM流程`);
+          }
+        } else {
+          // 缺少countryCode，提前返回错误
+          this.logger.warn(`[Claude Orchestrator] 创建新行程需要目的地信息，但无法从消息中提取 countryCode`);
+          return {
+            success: false,
+            result: {
+              needsUserConfirmation: true,
+              clarificationMessage: '无法完成行程规划，因为缺少必需的信息。\n\n缺失项：\n- 目的地国家或地区\n\n影响：\n- 无法构建世界模型上下文\n- 无法进行路线方向选择\n- 无法生成可执行的行程规划\n\n请提供更多信息，或联系系统管理员获取帮助。',
+              errorType: 'MISSING_REQUIRED_PARAM' as any,
+              missingParams: ['countryCode'],
+              solutions: [
+                '在消息中明确指定目的地国家或地区（如：日本、东京、Japan）',
+                '提供已保存的行程 ID，系统将自动获取国家代码',
+              ],
+            },
+            answerText: '无法完成行程规划，因为缺少必需的信息。\n\n缺失项：\n- 目的地国家或地区\n\n影响：\n- 无法构建世界模型上下文\n- 无法进行路线方向选择\n- 无法生成可执行的行程规划\n\n请提供更多信息，或联系系统管理员获取帮助。',
+            stepsExecuted: [],
+            totalDuration: Date.now() - startTime,
+            decisionLog: [
+              {
+                request_id: request.request_id,
+                step: 'INTAKE' as OrchestrationStep,
+                actor: 'Orchestrator' as SubAgentType,
+                inputs_summary: `用户请求: ${request.message}`,
+                outputs_summary: `提前验证失败: 缺少目的地信息`,
+                evidence_refs: [],
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+      }
+
+      // 1. 使用 LLM 分析用户意图（原有流程，作为fallback）
       this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
       const intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
       this.logger.log(`[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`);
@@ -223,6 +299,7 @@ export class ClaudeOrchestratorService {
         };
       }
 
+
       // 4. System 2 路径：使用 LLM 选择 Skills
       this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
       const skillsPlan = await this.selectSkills(intentAnalysis, routingDecision, context, llmProvider);
@@ -233,6 +310,73 @@ export class ClaudeOrchestratorService {
 
       // 4.5. 提前验证 Skills 输入参数（在 plan 编排之前，节省 LLM 成本）
       this.logger.debug(`[Claude Orchestrator] 步骤 4.5/6: 提前验证 Skills 输入参数...`);
+      
+      // 特殊处理：创建新行程场景（trip_id 为 null）
+      // 如果选择了需要 world/tripId 的 skills，应该先构建 world 上下文
+      if (isCreatingNewTrip) {
+        const needsWorldOrTripId = skillsPlan.selectedSkills.some(skill => {
+          if (!skill.skillName) return false;
+          const skillMeta = this.skillsRegistry?.getSkill(skill.skillName)?.metadata;
+          if (!skillMeta?.inputSchema) return false;
+          
+          // 检查是否需要 world 或 tripId
+          const schema = skillMeta.inputSchema;
+          const needsWorld = schema.dependencies?.some(dep => 
+            dep.param === 'world' || dep.alternatives?.includes('world')
+          );
+          const needsTripId = schema.dependencies?.some(dep => 
+            dep.param === 'tripId' || dep.alternatives?.includes('tripId')
+          );
+          
+          return needsWorld || needsTripId;
+        });
+        
+        if (needsWorldOrTripId) {
+          // 检查是否可以从消息中提取 countryCode（用于构建 world）
+          const countryCode = this.extractCountryCodeFromMessage(request.message);
+          if (!countryCode) {
+            this.logger.warn(`[Claude Orchestrator] 创建新行程需要 world 上下文，但无法从消息中提取 countryCode`);
+            return {
+              success: false,
+              result: {
+                needsUserConfirmation: true,
+                clarificationMessage: '无法完成行程规划，因为缺少必需的信息。\n\n缺失项：\n- 目的地国家或地区\n\n影响：\n- 无法构建世界模型上下文\n- 无法进行路线方向选择\n- 无法生成可执行的行程规划\n\n请提供更多信息，或联系系统管理员获取帮助。',
+                errorType: 'MISSING_REQUIRED_PARAM' as any,
+                missingParams: ['countryCode'],
+                solutions: [
+                  '在消息中明确指定目的地国家或地区（如：日本、东京、Japan）',
+                  '提供已保存的行程 ID，系统将自动获取国家代码',
+                ],
+              },
+              answerText: '无法完成行程规划，因为缺少必需的信息。\n\n缺失项：\n- 目的地国家或地区\n\n影响：\n- 无法构建世界模型上下文\n- 无法进行路线方向选择\n- 无法生成可执行的行程规划\n\n请提供更多信息，或联系系统管理员获取帮助。',
+              stepsExecuted: [],
+              totalDuration: Date.now() - startTime,
+              decisionLog: [],
+            };
+          }
+          
+          // 如果可以从消息中提取 countryCode，自动添加 world.buildContext 到 skillsPlan
+          // 确保后续步骤能够获取 world 上下文
+          const hasWorldBuildContext = skillsPlan.selectedSkills.some(s => s.skillName === 'world.buildContext');
+          if (!hasWorldBuildContext) {
+            this.logger.debug(`[Claude Orchestrator] 创建新行程场景：自动添加 world.buildContext 到 skillsPlan，countryCode: ${countryCode}`);
+            skillsPlan.selectedSkills.unshift({
+              skillName: 'world.buildContext',
+              reason: '创建新行程需要构建 world 上下文',
+              priority: 1,
+              input: {
+                countryCode: countryCode,
+              },
+              dependencies: [],
+            });
+            // 更新 executionOrder
+            if (!skillsPlan.executionOrder.includes('world.buildContext')) {
+              skillsPlan.executionOrder.unshift('world.buildContext');
+            }
+          }
+        }
+      }
+      
       const earlyValidationResult = await this.validateSkillsInputs(skillsPlan, context, request);
       if (!earlyValidationResult.valid && earlyValidationResult.clarificationMessage) {
         this.logger.warn(`[Claude Orchestrator] Skills 验证失败: ${earlyValidationResult.missingParams?.join(', ')}`);
@@ -286,6 +430,35 @@ export class ClaudeOrchestratorService {
       return result;
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] ❌ 编排失败: ${error?.message || String(error)}`, error?.stack);
+      
+      // 检查是否是超时错误
+      const isTimeoutError = error?.code === 'ECONNABORTED' || 
+                            error?.message?.includes('timeout') || 
+                            error?.message?.includes('超时') ||
+                            error?.message?.startsWith('TIMEOUT:');
+      
+      if (isTimeoutError) {
+        this.logger.error(`[Claude Orchestrator] 请求超时，返回超时错误信息`);
+        return {
+          success: false,
+          result: {
+            // 超时不应该设置 needsUserConfirmation，应该直接返回 TIMEOUT 状态
+            needsUserConfirmation: false,
+            clarificationMessage: '请求超时，请缩小范围或稍后重试。',
+            errorType: ErrorType.TIMEOUT_ERROR,
+            missingParams: [],
+            solutions: [
+              '请稍后重试',
+              '简化您的请求内容',
+              '减少请求的复杂度',
+            ],
+          },
+          answerText: '请求超时，请缩小范围或稍后重试。',
+          stepsExecuted: [],
+          totalDuration: Date.now() - startTime,
+          decisionLog: [],
+        };
+      }
       
       // 记录详细的错误信息
       const errorInfo = {
@@ -1852,6 +2025,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   async orchestrateWithStateMachine(
     request: RouteAndRunRequestDto,
     context: AgentContext,
+    deadline?: { remainingMs: () => number; clamp: (ms: number, minMs?: number) => number },
   ): Promise<OrchestrationResult> {
     const startTime = Date.now();
     this.logger.log(`[Claude Orchestrator] 开始状态机编排: request_id=${request.request_id}`);
@@ -3010,6 +3184,947 @@ ${JSON.stringify(routingDecision, null, 2)}
       })),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
+    };
+  }
+
+  // ==================== Fast Path Orchestration (强降超时) ====================
+
+  /**
+   * Fast Path 编排：规则路由，0 LLM调用
+   * 适用于新建行程规划场景
+   */
+  private async fastPathOrchestrate(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    deadline: Deadline,
+    decisionLog: DecisionLogEntry[],
+    stepsExecuted: OrchestrationResult['stepsExecuted'],
+  ): Promise<OrchestrationResult> {
+    const countryCode = this.extractCountryCodeFromMessage(request.message)!;
+    
+    // 提取实体（避免LLM）
+    const extracted = this.extractCommonEntities(request.message);
+    decisionLog.push({
+      request_id: request.request_id || context.requestId,
+      step: 'INTAKE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: `Fast Path: 提取实体`,
+      outputs_summary: `countryCode=${countryCode}, duration=${extracted.durationDays}, budget=${extracted.budget}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+    });
+
+    // 构建默认Skills计划（规则路由）
+    const skillsPlan = this.buildDefaultSkillsPlanForNewTrip(countryCode, extracted);
+    decisionLog.push({
+      request_id: request.request_id || context.requestId,
+      step: 'INTAKE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: `Fast Path: 构建Skills计划`,
+      outputs_summary: `选择了 ${skillsPlan.selectedSkills.length} 个Skills`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+    });
+
+    // 早期验证（跳过模板变量）
+    const earlyOk = await this.validateSkillsInputsFastPath(skillsPlan, context, request);
+    if (!earlyOk.valid) {
+      return this.buildFailResult(
+        Date.now(),
+        stepsExecuted,
+        decisionLog,
+        'MISSING_REQUIRED_PARAM',
+        earlyOk.message || '缺少必需参数',
+        earlyOk.missingParams || [],
+        earlyOk.solutions || [],
+      );
+    }
+
+    // 本地构建执行计划（拓扑排序+并行分组）
+    const plan = this.buildExecutionPlanLocally(skillsPlan);
+    decisionLog.push({
+      request_id: request.request_id || context.requestId,
+      step: 'INTAKE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: `Fast Path: 本地构建执行计划`,
+      outputs_summary: `计划包含 ${plan.steps.length} 个步骤，${plan.parallelGroups.length} 个并行组`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+    });
+
+    // 执行计划（并行+Deadline+缓存）
+    const execResult = await this.executePlanWithTimeout(
+      plan,
+      context,
+      request,
+      deadline,
+      stepsExecuted,
+      decisionLog,
+    );
+
+    // 组装结果
+    const itinerary = execResult.latestItinerary;
+    const world = execResult.latestWorld;
+    const gateResult = execResult.latestGate;
+
+    return {
+      success: execResult.success,
+      result: execResult.success
+        ? { itinerary, world, gateResult }
+        : execResult.failPayload,
+      answerText: execResult.answerText,
+      stepsExecuted,
+      totalDuration: 0,
+      decisionLog,
+    };
+  }
+
+  /**
+   * 提取常见实体（规则提取，避免LLM）
+   */
+  private extractCommonEntities(message: string): {
+    durationDays?: number;
+    budget?: number;
+    seasonMonth?: number;
+    partyProfile?: any;
+    userIntentTags: string[];
+  } {
+    const m = message || '';
+    const userIntentTags: string[] = [];
+    const lower = m.toLowerCase();
+
+    // duration: "5天" "五天" "5 days"
+    const durMatch = m.match(/(\d+)\s*(天|日|days?)/i);
+    const durationDays = durMatch ? Number(durMatch[1]) : undefined;
+
+    // budget: "预算2万" "2w" "20000"
+    let budget: number | undefined;
+    const b1 = m.match(/预算\s*([0-9]+)\s*(万|w)?/i);
+    if (b1) {
+      const n = Number(b1[1]);
+      const unit = (b1[2] || '').toLowerCase();
+      budget = unit === '万' || unit === 'w' ? n * 10_000 : n;
+    }
+
+    // season month: "1月" "January"
+    let seasonMonth: number | undefined;
+    const monthMatch = m.match(/(\d{1,2})\s*月/);
+    if (monthMatch) {
+      const mm = Number(monthMatch[1]);
+      if (mm >= 1 && mm <= 12) seasonMonth = mm;
+    } else {
+      const monthMap: Record<string, number> = {
+        jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+        apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+        aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
+        nov: 11, november: 11, dec: 12, december: 12,
+      };
+      for (const [k, v] of Object.entries(monthMap)) {
+        if (lower.includes(k)) {
+          seasonMonth = v;
+          break;
+        }
+      }
+    }
+
+    // party profile: "带娃" => family
+    if (m.includes('带娃') || m.includes('亲子') || lower.includes('kids') || lower.includes('child')) {
+      userIntentTags.push('family');
+    }
+    if (m.includes('轻松') || m.includes('悠闲') || lower.includes('relax')) {
+      userIntentTags.push('relaxed');
+    }
+    if (m.includes('特种兵') || m.includes('暴走') || lower.includes('intense')) {
+      userIntentTags.push('intense');
+    }
+    if (!userIntentTags.length) userIntentTags.push('general');
+
+    const partyProfile = userIntentTags.includes('family')
+      ? { pace: 'relaxed', fitness: 'medium', riskTolerance: 'low', mobilityProfile: 'stroller_possible' }
+      : undefined;
+
+    return { durationDays, budget, seasonMonth, partyProfile, userIntentTags };
+  }
+
+  /**
+   * 构建默认Skills计划（新建行程规划，规则路由）
+   */
+  private buildDefaultSkillsPlanForNewTrip(
+    countryCode: string,
+    extracted: { durationDays?: number; budget?: number; seasonMonth?: number; partyProfile?: any; userIntentTags: string[] },
+  ): SkillsPlan {
+    const selectedSkills: SkillsPlan['selectedSkills'] = [
+      {
+        skillName: 'world.buildContext',
+        reason: '创建新行程需构建 world 上下文',
+        priority: 1,
+        input: {
+          countryCode,
+          duration: extracted.durationDays,
+          season: extracted.seasonMonth,
+          partyProfile: extracted.partyProfile,
+        },
+      },
+      {
+        skillName: 'routeDirection.pickForIntent',
+        reason: '根据意图标签选路线方向',
+        priority: 2,
+        input: {
+          countryCode,
+          userIntentTags: extracted.userIntentTags,
+          season: extracted.seasonMonth,
+        },
+        dependencies: ['world.buildContext'],
+      },
+      {
+        skillName: 'itinerary.generate',
+        reason: '生成结构化行程草案',
+        priority: 3,
+        input: {
+          world: '${world.buildContext.result.world}',
+          routeDirection: '${routeDirection.pickForIntent.result.routeDirection}',
+          constraints: {
+            budget: extracted.budget,
+            durationDays: extracted.durationDays,
+          },
+          preferences: {
+            userIntentTags: extracted.userIntentTags,
+          },
+        },
+        dependencies: ['world.buildContext', 'routeDirection.pickForIntent'],
+      },
+      // 注意：plan.gate.runThreeGuardians 需要完整的 PlanState，在 Fast Path 中暂时跳过
+      // 由 itinerary.verify 负责检查可行性
+      // {
+      //   skillName: 'plan.gate.runThreeGuardians',
+      //   reason: 'Gate 检查（需要完整 PlanState，Fast Path 中暂时跳过）',
+      //   priority: 4,
+      //   input: { ... },
+      //   dependencies: ['itinerary.generate'],
+      // },
+      {
+        skillName: 'itinerary.verify',
+        reason: '验证开放时间/换乘 buffer/可达性/疲劳阈值（Fast Path 中替代 Gate 检查）',
+        priority: 4,
+        input: {
+          itinerary: '${itinerary.generate.result.itinerary}',
+        },
+        dependencies: ['itinerary.generate'],
+      },
+      {
+        skillName: 'repair.apply',
+        reason: '如 verify 发现问题则修复',
+        priority: 5,
+        input: {
+          itinerary: '${itinerary.generate.result.itinerary}',
+          adjustments: '${itinerary.verify.result.fixes}',
+        },
+        dependencies: ['itinerary.verify', 'itinerary.generate'],
+      },
+    ];
+
+    const executionOrder = selectedSkills
+      .slice()
+      .sort((a, b) => a.priority - b.priority)
+      .map((s) => s.skillName);
+
+    const dependencies: Record<string, string[]> = {};
+    for (const s of selectedSkills) {
+      dependencies[s.skillName] = s.dependencies || [];
+    }
+
+    return { selectedSkills, executionOrder, dependencies };
+  }
+
+  /**
+   * 快速验证Skills输入（跳过模板变量）
+   */
+  private async validateSkillsInputsFastPath(
+    skillsPlan: SkillsPlan,
+    context: AgentContext,
+    request: RouteAndRunRequestDto,
+  ): Promise<{
+    valid: boolean;
+    message?: string;
+    missingParams?: string[];
+    solutions?: string[];
+  }> {
+    if (!this.skillInputValidator) {
+      return { valid: true };
+    }
+
+    for (const s of skillsPlan.selectedSkills) {
+      // 跳过模板变量（${...}），只检查硬必填
+      const input = s.input || {};
+      const hasTemplateVars = JSON.stringify(input).includes('${');
+      
+      if (hasTemplateVars) {
+        // 有模板变量，跳过验证（会在执行时解析）
+        continue;
+      }
+
+      const skill = this.skillsRegistry?.getSkill(s.skillName);
+      const metadata = skill?.metadata;
+      const res = this.skillInputValidator.validate(s.skillName, input, metadata, {
+        context,
+        request,
+        stepResults: {},
+      });
+
+      if (!res.valid) {
+        return {
+          valid: false,
+          message: res.clarificationMessage || `技能输入验证失败: ${s.skillName} 缺少 ${res.missingParams?.join(', ')}`,
+          missingParams: res.missingParams || [],
+          solutions: res.solutions || [
+            '在消息中补充缺失信息（目的地/天数/预算/人群画像等）',
+            '或在代码中为缺失参数提供默认值/从上下文推断',
+          ],
+        };
+      }
+    }
+    return { valid: true };
+  }
+
+  /**
+   * 本地构建执行计划（拓扑排序+并行分组，避免LLM planExecution调用）
+   */
+  private buildExecutionPlanLocally(skillsPlan: SkillsPlan): ExecutionPlan {
+    // 创建节点
+    const nodes = skillsPlan.selectedSkills.map((s) => ({
+      skillName: s.skillName,
+      deps: (s.dependencies || []).slice(),
+      input: s.input || {},
+      fallback: this.defaultFallbackForSkill(s.skillName),
+    }));
+
+    // 拓扑排序
+    const inDeg = new Map<string, number>();
+    const out = new Map<string, string[]>();
+    for (const n of nodes) {
+      inDeg.set(n.skillName, 0);
+      out.set(n.skillName, []);
+    }
+    for (const n of nodes) {
+      for (const d of n.deps) {
+        inDeg.set(n.skillName, (inDeg.get(n.skillName) ?? 0) + 1);
+        out.get(d)?.push(n.skillName);
+      }
+    }
+
+    const queue: string[] = [];
+    for (const [k, v] of inDeg.entries()) if (v === 0) queue.push(k);
+
+    const order: string[] = [];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      order.push(cur);
+      for (const nxt of out.get(cur) ?? []) {
+        inDeg.set(nxt, (inDeg.get(nxt) ?? 0) - 1);
+        if ((inDeg.get(nxt) ?? 0) === 0) queue.push(nxt);
+      }
+    }
+
+    // 如果存在循环，降级到优先级顺序
+    if (order.length !== nodes.length) {
+      const byPriority = skillsPlan.selectedSkills
+        .slice()
+        .sort((a, b) => a.priority - b.priority)
+        .map((s) => s.skillName);
+      return this.buildExecutionPlanFromOrder(byPriority, skillsPlan);
+    }
+
+    return this.buildExecutionPlanFromOrder(order, skillsPlan);
+  }
+
+  /**
+   * 从顺序构建执行计划
+   */
+  private buildExecutionPlanFromOrder(order: string[], skillsPlan: SkillsPlan): ExecutionPlan {
+    const skillByName = new Map(skillsPlan.selectedSkills.map((s) => [s.skillName, s]));
+    const steps: ExecutionStep[] = [];
+    const done = new Set<string>();
+    let stepNo = 1;
+
+    while (done.size < order.length) {
+      const ready: string[] = [];
+      for (const name of order) {
+        if (done.has(name)) continue;
+        const deps = (skillByName.get(name)?.dependencies ?? []).filter(Boolean);
+        if (deps.every((d) => done.has(d))) ready.push(name);
+      }
+      if (!ready.length) break;
+
+      // 关键顺序：Gate必须在Generate之前，Verify在Generate之后，Repair在Verify之后
+      ready.sort((a, b) => a.localeCompare(b));
+
+      // 串行：world.buildContext 和 gate 不能并行
+      const serial = ready.filter((n) =>
+        ['world.buildContext', 'plan.gate.runThreeGuardians'].includes(n),
+      );
+      const parallel = ready.filter((n) => !serial.includes(n));
+
+      if (serial.length) {
+        const n = serial[0];
+        const s = skillByName.get(n)!;
+        steps.push({
+          id: `step${stepNo++}`,
+          type: 'skill',
+          skillName: n,
+          dependencies: (s.dependencies ?? []).map((dep) => this.findStepIdBySkillName(steps, dep)).filter(Boolean) as string[],
+          parallel: false,
+          input: s.input,
+          fallback: this.defaultFallbackForSkill(n),
+        });
+        done.add(n);
+        continue;
+      }
+
+      // 并行步骤
+      for (const n of parallel) {
+        const s = skillByName.get(n)!;
+        steps.push({
+          id: `step${stepNo++}`,
+          type: 'skill',
+          skillName: n,
+          dependencies: (s.dependencies ?? []).map((dep) => this.findStepIdBySkillName(steps, dep)).filter(Boolean) as string[],
+          parallel: true,
+          input: s.input,
+          fallback: this.defaultFallbackForSkill(n),
+        });
+        done.add(n);
+      }
+    }
+
+    // 计算并行组
+    const groupsMap = new Map<string, string[]>();
+    for (const s of steps) {
+      if (!s.parallel) continue;
+      const key = JSON.stringify(s.dependencies.slice().sort());
+      groupsMap.set(key, [...(groupsMap.get(key) ?? []), s.id]);
+    }
+    const parallelGroups = Array.from(groupsMap.values()).filter((g) => g.length >= 2);
+
+    return {
+      steps,
+      parallelGroups,
+      fallbackStrategy: { onError: 'continue', retryCount: 1 },
+    };
+  }
+
+  private findStepIdBySkillName(steps: ExecutionStep[], skillName: string): string | undefined {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].skillName === skillName) return steps[i].id;
+    }
+    return undefined;
+  }
+
+  private defaultFallbackForSkill(skillName: string): ExecutionStep['fallback'] {
+    if (skillName === 'world.buildContext') return { onError: 'stop' };
+    if (skillName === 'plan.gate.runThreeGuardians') return { onError: 'stop' };
+    if (skillName === 'itinerary.generate') return { onError: 'retry', retryCount: 1 };
+    if (skillName === 'itinerary.verify') return { onError: 'continue' };
+    if (skillName === 'repair.apply') return { onError: 'continue' };
+    return { onError: 'continue' };
+  }
+
+  /**
+   * 执行计划（并行+Deadline+缓存）
+   */
+  private async executePlanWithTimeout(
+    plan: ExecutionPlan,
+    context: AgentContext,
+    request: RouteAndRunRequestDto,
+    deadline: Deadline,
+    stepsExecuted: OrchestrationResult['stepsExecuted'],
+    decisionLog: DecisionLogEntry[],
+  ): Promise<{
+    success: boolean;
+    latestWorld?: any;
+    latestItinerary?: any;
+    latestGate?: any;
+    answerText: string;
+    failPayload: OrchestrationResult['result'];
+  }> {
+    const resultsByStepId: Record<string, any> = {};
+    const resultsBySkill: Record<string, any> = {};
+    const stepById = new Map(plan.steps.map((s) => [s.id, s]));
+    const depsMet = (step: ExecutionStep): boolean =>
+      step.dependencies.every((d) => resultsByStepId[d] !== undefined);
+    const pending = new Set(plan.steps.map((s) => s.id));
+    const maxConcurrency = 4;
+
+    while (pending.size) {
+      if (deadline.isExpired()) throw new Error('TIMEOUT: ORCHESTRATION_DEADLINE_EXCEEDED');
+
+      const readyIds = Array.from(pending).filter((id) => depsMet(stepById.get(id)!));
+      if (!readyIds.length) break;
+
+      const serialIds = readyIds.filter((id) => !stepById.get(id)!.parallel);
+      const parallelIds = readyIds.filter((id) => stepById.get(id)!.parallel);
+
+      // 串行执行
+      if (serialIds.length) {
+        const id = serialIds[0];
+        const step = stepById.get(id)!;
+        const out = await this.executeOneStepWithTimeout(
+          step,
+          context,
+          request,
+          deadline,
+          resultsByStepId,
+          resultsBySkill,
+          stepsExecuted,
+          decisionLog,
+        );
+        resultsByStepId[id] = out;
+        if (step.skillName) resultsBySkill[step.skillName] = out;
+        pending.delete(id);
+
+        // 检查Gate结果（Fast Path 中暂时跳过 Gate，由 verify 检查可行性）
+        // const gate = resultsBySkill['plan.gate.runThreeGuardians']?.result?.gateResult;
+        // if (gate === 'REJECT') {
+        //   return {
+        //     success: false,
+        //     answerText: 'Gate 结果为 REJECT：当前需求不可行或风险过高。',
+        //     failPayload: {
+        //       needsUserConfirmation: true,
+        //       clarificationMessage: '当前行程需求被 Gate 拒绝（REJECT）。请调整目的地/节奏/预算/人群画像后重试。',
+        //       errorType: ErrorType.VALIDATION_ERROR,
+        //       missingParams: [],
+        //       solutions: [
+        //         '降低节奏或延长天数',
+        //         '提升预算或减少跨城移动',
+        //         '提供更明确的出行人群与限制条件',
+        //       ],
+        //     },
+        //   };
+        // }
+        continue;
+      }
+
+      // 并行执行
+      const batch = parallelIds.slice(0, maxConcurrency);
+      const tasks = batch.map((id) => async () => {
+        const step = stepById.get(id)!;
+        const out = await this.executeOneStepWithTimeout(
+          step,
+          context,
+          request,
+          deadline,
+          resultsByStepId,
+          resultsBySkill,
+          stepsExecuted,
+          decisionLog,
+        );
+        return { id, step, out };
+      });
+
+      const outs = await runBounded(tasks, Math.min(maxConcurrency, batch.length));
+      for (const o of outs) {
+        resultsByStepId[o.id] = o.out;
+        if (o.step.skillName) resultsBySkill[o.step.skillName] = o.out;
+        pending.delete(o.id);
+      }
+    }
+
+    const latestWorld = resultsBySkill['world.buildContext']?.result?.world;
+    // Fast Path 中暂时跳过 Gate
+    // const latestGate = resultsBySkill['plan.gate.runThreeGuardians']?.result;
+    const latestGate = undefined;
+    const verify = resultsBySkill['itinerary.verify']?.result;
+    const repaired = resultsBySkill['repair.apply']?.result?.repairedItinerary;
+    const generated = resultsBySkill['itinerary.generate']?.result?.itinerary;
+
+    const itinerary = repaired ?? generated;
+    
+    // 分析失败原因，生成友好的错误消息和结构化的澄清问题
+    if (!itinerary) {
+      const failedSteps = stepsExecuted.filter(s => !s.success);
+      const failedSkillNames = failedSteps.map(s => s.skillName).filter(Boolean);
+      
+      let clarificationMessage = '抱歉，无法生成行程规划。';
+      let solutions: string[] = [];
+      let clarificationQuestions: ClarificationQuestion[] = [];
+      
+      // 根据失败的步骤提供具体建议和结构化问题
+      if (failedSkillNames.includes('world.buildContext')) {
+        clarificationMessage = '无法构建目的地信息，请确认目的地名称是否正确。';
+        solutions = [
+          '请提供更明确的目的地名称（如：冰岛、Iceland、IS）',
+          '检查目的地是否在我们的支持列表中',
+          '尝试使用国家或主要城市名称',
+        ];
+        // 生成结构化澄清问题
+        clarificationQuestions = [
+          {
+            id: 'question-destination',
+            question: '请选择您的目的地',
+            type: 'text',
+            required: true,
+            placeholder: '例如：冰岛、日本、瑞士',
+            hint: '这将帮助我们为您推荐合适的景点和活动',
+          },
+        ];
+      } else if (failedSkillNames.includes('routeDirection.pickForIntent')) {
+        clarificationMessage = '无法选择适合的路线方向，请提供更多旅行偏好信息。';
+        solutions = [
+          '请描述您的旅行风格（如：轻松、紧凑、文化、自然）',
+          '提供更多关于兴趣爱好的信息',
+          '指定旅行季节或月份',
+        ];
+        // 生成结构化澄清问题
+        clarificationQuestions = [
+          {
+            id: 'question-travel-style',
+            question: '您的旅行风格',
+            type: 'single_choice',
+            required: true,
+            options: ['轻松', '平衡', '紧凑'],
+            hint: '轻松：每天安排较少活动；平衡：适中安排；紧凑：尽可能多安排活动',
+            default: '平衡',
+          },
+          {
+            id: 'question-interests',
+            question: '您的主要兴趣（可多选）',
+            type: 'multi_choice',
+            required: false,
+            options: ['极光', '冰川', '温泉', '文化', '美食', '户外运动', '购物', '摄影'],
+            hint: '帮助我们为您推荐合适的景点和活动',
+          },
+          {
+            id: 'question-season',
+            question: '旅行月份',
+            type: 'single_choice',
+            required: false,
+            options: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+            hint: '选择旅行月份有助于推荐合适的活动和景点',
+          },
+        ];
+      } else if (failedSkillNames.includes('itinerary.generate')) {
+        clarificationMessage = '无法生成行程，可能是信息不足或目的地数据不完整。';
+        solutions = [
+          '请提供更详细的行程需求（天数、预算、旅行者信息）',
+          '尝试调整预算或天数范围',
+          '检查目的地是否在我们的数据库中',
+          '稍后重试，系统可能正在更新数据',
+        ];
+        // 生成结构化澄清问题
+        clarificationQuestions = [
+          {
+            id: 'question-duration',
+            question: '旅行天数',
+            type: 'number',
+            required: true,
+            placeholder: '例如：5',
+            hint: '请输入您计划的旅行天数',
+            validation: {
+              min: 1,
+              max: 30,
+            },
+          },
+          {
+            id: 'question-budget',
+            question: '总预算（人民币）',
+            type: 'number',
+            required: true,
+            placeholder: '例如：20000',
+            hint: '包含机票、住宿、餐饮、活动等所有费用',
+            validation: {
+              min: 1000,
+              max: 1000000,
+            },
+          },
+        ];
+      } else if (failedSkillNames.includes('itinerary.verify')) {
+        clarificationMessage = '生成的行程存在可行性问题，系统正在尝试修复。';
+        solutions = [
+          '请稍等，系统正在自动修复行程',
+          '如果问题持续，请调整行程天数或节奏',
+          '尝试提供更宽松的时间安排',
+        ];
+        // verify 失败通常不需要用户澄清，系统会自动修复
+      } else if (failedSteps.length > 0) {
+        clarificationMessage = '行程生成过程中遇到问题，请检查输入信息或稍后重试。';
+        solutions = [
+          '检查输入信息是否完整（目的地、天数、预算）',
+          '确认目的地名称正确',
+          '稍后重试',
+          '如果问题持续，请联系客服',
+        ];
+      } else {
+        clarificationMessage = '无法生成行程，请提供更详细的行程需求。';
+        solutions = [
+          '请包含以下信息：目的地、旅行天数、预算范围',
+          '描述旅行偏好（如：带娃、轻松、紧凑）',
+          '指定旅行时间（月份或日期）',
+        ];
+        // 生成通用澄清问题
+        clarificationQuestions = [
+          {
+            id: 'question-destination',
+            question: '请选择您的目的地',
+            type: 'text',
+            required: true,
+            placeholder: '例如：冰岛、日本、瑞士',
+            hint: '这将帮助我们为您推荐合适的景点和活动',
+          },
+          {
+            id: 'question-duration',
+            question: '旅行天数',
+            type: 'number',
+            required: true,
+            placeholder: '例如：5',
+            hint: '请输入您计划的旅行天数',
+            validation: {
+              min: 1,
+              max: 30,
+            },
+          },
+          {
+            id: 'question-budget',
+            question: '总预算（人民币）',
+            type: 'number',
+            required: true,
+            placeholder: '例如：20000',
+            hint: '包含机票、住宿、餐饮、活动等所有费用',
+            validation: {
+              min: 1000,
+              max: 1000000,
+            },
+          },
+        ];
+      }
+      
+      return {
+        success: false,
+        latestWorld,
+        latestGate,
+        latestItinerary: undefined,
+        answerText: clarificationMessage,
+        failPayload: {
+          needsUserConfirmation: true,
+          clarificationMessage,
+          clarificationQuestions: clarificationQuestions.length > 0 ? clarificationQuestions : undefined,
+          errorType: ErrorType.UNKNOWN_ERROR,
+          missingParams: [],
+          solutions,
+        },
+      };
+    }
+
+    const answerText = verify?.valid === false
+      ? '已生成行程，但发现部分可行性问题并尝试修复。'
+      : '行程已生成并通过验证。';
+
+    return {
+      success: true,
+      latestWorld,
+      latestGate,
+      latestItinerary: itinerary,
+      answerText,
+      failPayload: {},
+    };
+  }
+
+  /**
+   * 执行单个步骤（带超时+缓存）
+   */
+  private async executeOneStepWithTimeout(
+    step: ExecutionStep,
+    context: AgentContext,
+    request: RouteAndRunRequestDto,
+    deadline: Deadline,
+    resultsByStepId: Record<string, any>,
+    resultsBySkill: Record<string, any>,
+    stepsExecuted: OrchestrationResult['stepsExecuted'],
+    decisionLog: DecisionLogEntry[],
+  ): Promise<any> {
+    const started = Date.now();
+    const skillName = step.skillName!;
+    const skill = this.skillsRegistry?.getSkill(skillName);
+    
+    if (!skill) {
+      const err = `Missing skill: ${skillName}`;
+      stepsExecuted.push({ stepId: step.id, skillName, success: false, error: err, duration: Date.now() - started });
+      throw new Error(err);
+    }
+
+    // 准备输入（解析模板变量）
+    const preparedInput = this.prepareSkillInputWithTemplate(
+      step.input ?? {},
+      resultsByStepId,
+      resultsBySkill,
+      context,
+      request,
+    );
+
+    // 缓存 world.buildContext
+    if (skillName === 'world.buildContext') {
+      const cacheKey = this.worldCacheKey(preparedInput);
+      const cached = this.worldCache.get(cacheKey);
+      if (cached) {
+        const duration = Date.now() - started;
+        stepsExecuted.push({ stepId: step.id, skillName, success: true, result: cached, duration });
+        decisionLog.push({
+          request_id: request.request_id || context.requestId,
+          step: 'RESEARCH' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: `缓存命中: ${skillName}`,
+          outputs_summary: `cacheKey: ${cacheKey}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+        });
+        return cached;
+      }
+    }
+
+    // 每步超时预算
+    const timeoutMs = this.skillTimeoutMs(skillName, deadline);
+    const fallback = step.fallback ?? { onError: 'continue', retryCount: 0 };
+    const retryCount = fallback.onError === 'retry' ? Math.max(0, fallback.retryCount ?? 0) : 0;
+
+    let lastErr: any;
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
+      try {
+        const out = await withTimeout(skill.execute(preparedInput), timeoutMs, `SKILL:${skillName}`);
+        const duration = Date.now() - started;
+        stepsExecuted.push({ stepId: step.id, skillName, success: true, result: out, duration });
+
+        if (skillName === 'world.buildContext') {
+          const cacheKey = this.worldCacheKey(preparedInput);
+          this.worldCache.set(cacheKey, out);
+        }
+
+        return out;
+      } catch (e: any) {
+        lastErr = e;
+        if (attempt < retryCount) continue;
+
+        const duration = Date.now() - started;
+        stepsExecuted.push({ stepId: step.id, skillName, success: false, error: e?.message || String(e), duration });
+
+        if (fallback.onError === 'stop') throw e;
+        return { error: e?.message || String(e) };
+      }
+    }
+
+    throw lastErr;
+  }
+
+  /**
+   * 准备Skill输入（解析模板变量 ${skillName.result.path}）
+   */
+  private prepareSkillInputWithTemplate(
+    input: any,
+    _resultsByStepId: Record<string, any>,
+    resultsBySkill: Record<string, any>,
+    _ctx: AgentContext,
+    _req: RouteAndRunRequestDto,
+  ): any {
+    if (input === null || input === undefined) return input;
+    if (typeof input === 'string') return this.resolveTemplateString(input, resultsBySkill);
+    if (Array.isArray(input)) return input.map((x) => this.prepareSkillInputWithTemplate(x, _resultsByStepId, resultsBySkill, _ctx, _req));
+    if (typeof input === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(input)) {
+        out[k] = this.prepareSkillInputWithTemplate(v, _resultsByStepId, resultsBySkill, _ctx, _req);
+      }
+      return out;
+    }
+    return input;
+  }
+
+  /**
+   * 解析模板字符串 ${skillName.result.path}
+   */
+  private resolveTemplateString(s: string, resultsBySkill: Record<string, any>): any {
+    const m = s.match(/^\$\{([a-zA-Z0-9_.-]+)\}$/);
+    if (!m) return s;
+
+    const path = m[1]; // e.g. world.buildContext.result.world
+    const parts = path.split('.');
+    const skillName = `${parts[0]}.${parts[1]}`; // assumes "x.y" prefix
+    const rest = parts.slice(2);
+
+    const root = resultsBySkill[skillName];
+    if (!root) return undefined;
+
+    let cur: any = root;
+    for (const p of rest) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  }
+
+  /**
+   * 生成world缓存key
+   */
+  private worldCacheKey(input: any): string {
+    const stable = {
+      countryCode: input?.countryCode,
+      season: input?.season,
+      duration: input?.duration,
+      partyProfile: input?.partyProfile,
+    };
+    return `world:${JSON.stringify(stable)}`;
+  }
+
+  /**
+   * Skill超时预算（根据技能类型分配）
+   */
+  private skillTimeoutMs(skillName: string, deadline: Deadline): number {
+    const remaining = deadline.remainingMs();
+    if (skillName === 'world.buildContext') return deadline.clampTimeoutMs(Math.min(1800, remaining * 0.25));
+    if (skillName === 'routeDirection.pickForIntent') return deadline.clampTimeoutMs(900);
+    if (skillName === 'plan.gate.runThreeGuardians') return deadline.clampTimeoutMs(1400);
+    if (skillName === 'itinerary.generate') return deadline.clampTimeoutMs(Math.min(3000, remaining * 0.45));
+    if (skillName === 'itinerary.verify') return deadline.clampTimeoutMs(1800);
+    if (skillName === 'repair.apply') return deadline.clampTimeoutMs(1400);
+    return deadline.clampTimeoutMs(1200);
+  }
+
+  /**
+   * 构建失败结果
+   */
+  private buildFailResult(
+    started: number,
+    stepsExecuted: OrchestrationResult['stepsExecuted'],
+    decisionLog: DecisionLogEntry[],
+    errorType: string,
+    message: string,
+    missingParams: string[],
+    solutions: string[],
+  ): OrchestrationResult {
+    // 确保错误消息对用户友好，不是技术错误
+    let userFriendlyMessage = message;
+    
+    // 如果消息包含技术术语，转换为用户友好的描述
+    if (message.includes('itinerary') || message.includes('PlanState') || message.includes('skill')) {
+      userFriendlyMessage = '无法完成行程规划，请检查输入信息或稍后重试。';
+    }
+    
+    // 如果没有提供解决方案，添加默认建议
+    const finalSolutions = solutions.length > 0 ? solutions : [
+      '检查输入信息是否完整（目的地、天数、预算）',
+      '确认目的地名称正确',
+      '稍后重试',
+    ];
+    
+    return {
+      success: false,
+      result: {
+        needsUserConfirmation: true,
+        clarificationMessage: userFriendlyMessage,
+        errorType: errorType as any,
+        missingParams,
+        solutions: finalSolutions,
+      },
+      answerText: userFriendlyMessage,
+      stepsExecuted,
+      totalDuration: Date.now() - started,
+      decisionLog,
     };
   }
 }

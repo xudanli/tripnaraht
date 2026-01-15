@@ -18,6 +18,17 @@ import { signalsFromRequest } from '../utils/orchestration-signals.util';
 import { routePolicy } from '../utils/orchestration-policy.util';
 import { OrchestrationStep, SubAgentType, DecisionLogEntry } from '../interfaces/trip-plan.interface';
 import { MetricsRecorder, extractMetricsFromResponse } from '../utils/agent-metrics.util';
+import {
+  CircuitBreaker,
+  createDeadline,
+  FallbackGuard,
+  ModeLock,
+  normalizeError,
+  OrchestrationMode,
+  StabilityContext,
+  withTimeout,
+} from './orchestration-stability.util';
+import { ErrorType } from '../interfaces/error-types.interface';
 
 /**
  * Agent Service
@@ -27,6 +38,12 @@ import { MetricsRecorder, extractMetricsFromResponse } from '../utils/agent-metr
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
+
+  // Stability Layer components
+  private readonly modeLock = new ModeLock();
+  private readonly breakerSM = new CircuitBreaker(3, 30_000); // 3次失败后熔断30秒
+  private readonly breakerDyn = new CircuitBreaker(3, 30_000);
+  private readonly breakerLegacy = new CircuitBreaker(5, 15_000); // LEGACY 更宽松
 
   constructor(
     private router: RouterService,
@@ -117,13 +134,72 @@ export class AgentService {
   }
 
   /**
-   * 路由并执行
+   * 生成请求哈希（用于去重和 ModeLock）
+   */
+  private hashRequest(request: RouteAndRunRequestDto): string {
+    // 保持稳定：message + trip + options 中影响结果的字段
+    const stable = {
+      trip_id: request.trip_id ?? null,
+      message: request.message ?? '',
+      options: {
+        entry_point: request?.options?.entry_point,
+        use_claude_orchestration: request?.options?.use_claude_orchestration,
+        use_state_machine_orchestration: request?.options?.use_state_machine_orchestration,
+        max_seconds: request?.options?.max_seconds,
+      },
+    };
+    // 简单哈希（可替换为现有的哈希工具）
+    const s = JSON.stringify(stable);
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return String(h);
+  }
+
+  /**
+   * 路由并执行（集成稳定化层）
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
     const startTime = Date.now();
     this.logger.debug(`Processing request: ${request.request_id}`);
 
+    // === 稳定化层：统一 Deadline ===
+    const maxSeconds = Number(request?.options?.max_seconds ?? 12);
+    const deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 20_000))); // 默认12s，最大20s
+
+    const requestHash = this.hashRequest(request);
+    const stabilityCtx: StabilityContext = {
+      requestId: request.request_id,
+      userId: request.user_id,
+      tripId: request.trip_id,
+      requestHash,
+      deadline,
+      startTs: startTime,
+    };
+
+    const fallback = new FallbackGuard();
+
     try {
+      // === 稳定化层：统一去重（在所有模式之前） ===
+      if (this.requestDeduplication && !request.options?.dry_run) {
+        const cachedResponse = this.requestDeduplication.checkDuplicate(requestHash);
+        if (cachedResponse) {
+          const dedupedResponse: RouteAndRunResponseDto = {
+            ...cachedResponse,
+            request_id: request.request_id,
+            observability: {
+              ...cachedResponse.observability,
+              latency_ms: Date.now() - startTime,
+            },
+          };
+          this.logger.debug(`Request deduplication: reusing cached result for request ${request.request_id}`);
+          return this.attachObservability(dedupedResponse, {
+            mode_final: 'DEDUP',
+            fallback_used: false,
+            deadline_ms: deadline.totalMs,
+            time_remaining_ms: deadline.remainingMs(),
+          });
+        }
+      }
       // 0. 检查是否是规划请求（需要拦截，重定向到规划工作台）
       // 注意：创建新行程时 trip_id 为 null 是正常的，应该允许通过（自然语言创建行程功能）
       // 如果 trip_id 为空且是规划请求，说明是创建新行程，不应该重定向
@@ -163,14 +239,30 @@ export class AgentService {
         }
       }
 
+      // === 稳定化层：检查 Deadline ===
+      if (deadline.isExpired()) {
+        throw new Error('TIMEOUT:AGENT_DEADLINE_EXPIRED');
+      }
+
       // 1. 从请求中提取路由信号
       const signals = signalsFromRequest(request);
       this.logger.debug(
         `[AgentService] 路由信号提取: taskType=${signals.taskType}, risk=${signals.risk}, complexity=${signals.complexity}, request_id=${request.request_id}`,
       );
 
-      // 1. 基于 Feature Flags 和信号进行策略决策
-      const decision = routePolicy(process.env, request.options, signals);
+      // 2. 基于 Feature Flags 和信号进行策略决策（集成 ModeLock 和 Circuit Breaker）
+      const decision = routePolicy(
+        process.env,
+        request.options,
+        signals,
+        stabilityCtx,
+        this.modeLock,
+        {
+          sm: this.breakerSM,
+          dyn: this.breakerDyn,
+          legacy: this.breakerLegacy,
+        },
+      );
       // 结构化日志（固定化字段，用于打点/聚合）
       // 结构化日志字段（固定化，用于 metrics/聚合）
       // 这些字段在所有请求中都会输出，方便日志聚合和监控
@@ -259,40 +351,131 @@ export class AgentService {
         latency_budget_ms: signals.latencyBudgetMs,
       };
 
-      // 2. 根据决策执行相应路径
-      if (decision.mode === 'CLAUDE_SM' && this.claudeOrchestrator) {
-        this.logger.log(`[AgentService] ✅ 使用 Claude 状态机编排: request_id=${request.request_id}`);
-        return await this.routeAndRunWithClaudeStateMachine(request, startTime, traceInfo);
-      } else if (decision.mode === 'CLAUDE_DYNAMIC' && this.claudeOrchestrator) {
-        this.logger.log(`[AgentService] ✅ 使用 Claude 动态编排: request_id=${request.request_id}`);
-        return await this.routeAndRunWithClaude(request, startTime, traceInfo);
-      } else if ((decision.mode === 'CLAUDE_SM' || decision.mode === 'CLAUDE_DYNAMIC') && !this.claudeOrchestrator) {
-        this.logger.warn(`[AgentService] ⚠️ Claude 编排已启用，但 ClaudeOrchestratorService 未注入，降级到 LEGACY 模式`);
-      }
+      // 3. 根据决策执行相应路径（集成稳定化层：withTimeout + Circuit Breaker + Fallback）
+      const fallbackOrder: Record<OrchestrationMode, OrchestrationMode[]> = {
+        CLAUDE_SM: ['CLAUDE_DYNAMIC', 'LEGACY'],
+        CLAUDE_DYNAMIC: ['LEGACY'],
+        LEGACY: [],
+      };
 
-      // LEGACY 模式或降级路径继续执行
-      // traceInfo 已经在上方创建，不需要再次创建
+      let finalMode: OrchestrationMode = decision.mode;
+      let usedFallback = false;
 
-      // 0. 检查请求去重（如果是短时间内相同的请求，复用之前的结果）
-      if (this.requestDeduplication && !request.options?.dry_run) {
-        const requestHash = this.requestDeduplication.generateRequestHash(request);
-        const cachedResponse = this.requestDeduplication.checkDuplicate(requestHash);
-        
-        if (cachedResponse) {
-          // 更新 request_id 为当前请求的 ID
-          const dedupedResponse: RouteAndRunResponseDto = {
-            ...cachedResponse,
-            request_id: request.request_id,
-            observability: {
-              ...cachedResponse.observability,
-              latency_ms: Date.now() - startTime, // 更新为实际的去重查找时间
-            },
-          };
-          
-          this.logger.debug(`Request deduplication: reusing cached result for request ${request.request_id}`);
-          return dedupedResponse;
+      const execMode = async (mode: OrchestrationMode): Promise<RouteAndRunResponseDto> => {
+        const remaining = deadline.remainingMs();
+        if (remaining <= 0) throw new Error('TIMEOUT:AGENT_DEADLINE');
+
+        if (mode === 'CLAUDE_SM') {
+          if (!this.claudeOrchestrator) throw new Error('CLAUDE_SM_UNAVAILABLE');
+          if (!this.breakerSM.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_SM');
+          const res = await withTimeout(
+            this.routeAndRunWithClaudeStateMachine(request, startTime, traceInfo, deadline),
+            remaining,
+            'CLAUDE_SM'
+          );
+          this.breakerSM.onSuccess();
+          return res;
         }
+
+        if (mode === 'CLAUDE_DYNAMIC') {
+          if (!this.claudeOrchestrator) throw new Error('CLAUDE_DYNAMIC_UNAVAILABLE');
+          if (!this.breakerDyn.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_DYNAMIC');
+          const res = await withTimeout(
+            this.routeAndRunWithClaude(request, startTime, traceInfo, deadline),
+            remaining,
+            'CLAUDE_DYNAMIC'
+          );
+          this.breakerDyn.onSuccess();
+          return res;
+        }
+
+        // LEGACY mode
+        if (!this.breakerLegacy.canPass()) throw new Error('BREAKER_OPEN:LEGACY');
+        const res = await withTimeout(
+          this.routeAndRunLegacy(request, startTime, traceInfo, deadline),
+          remaining,
+          'LEGACY'
+        );
+        this.breakerLegacy.onSuccess();
+        return res;
+      };
+
+      try {
+        const res = await execMode(decision.mode);
+        // 成功：记录 ModeLock
+        this.modeLock.set(stabilityCtx, decision.mode);
+        return this.attachObservability(res, {
+          mode_final: decision.mode,
+          fallback_used: false,
+          deadline_ms: deadline.totalMs,
+          time_remaining_ms: deadline.remainingMs(),
+          breakers: {
+            sm: this.breakerSM.snapshot(),
+            dyn: this.breakerDyn.snapshot(),
+            legacy: this.breakerLegacy.snapshot(),
+          },
+        });
+      } catch (e: any) {
+        // 标记 Circuit Breaker 失败
+        if (decision.mode === 'CLAUDE_SM') this.breakerSM.onFailure(e);
+        else if (decision.mode === 'CLAUDE_DYNAMIC') this.breakerDyn.onFailure(e);
+        else this.breakerLegacy.onFailure(e);
+
+        // === 稳定化层：单次 Fallback ===
+        const canFallback = fallback.tryUse();
+        if (!canFallback || deadline.remainingMs() <= 0) {
+          const nf = normalizeError(e);
+          return this.buildFailureResponse(request, startTime, nf, {
+            mode_final: decision.mode,
+            fallback_used: false,
+            deadline_ms: deadline.totalMs,
+            time_remaining_ms: deadline.remainingMs(),
+          });
+        }
+
+        usedFallback = true;
+
+        // 尝试 fallback 链
+        const chain = fallbackOrder[decision.mode] ?? [];
+        for (const nextMode of chain) {
+          if (deadline.remainingMs() <= 0) break;
+
+          try {
+            finalMode = nextMode;
+            const res = await execMode(nextMode);
+            // 成功：记录 ModeLock
+            this.modeLock.set(stabilityCtx, nextMode);
+            return this.attachObservability(res, {
+              mode_final: nextMode,
+              fallback_used: true,
+              deadline_ms: deadline.totalMs,
+              time_remaining_ms: deadline.remainingMs(),
+              breakers: {
+                sm: this.breakerSM.snapshot(),
+                dyn: this.breakerDyn.snapshot(),
+                legacy: this.breakerLegacy.snapshot(),
+              },
+            });
+          } catch (e2: any) {
+            // 标记 Circuit Breaker 失败
+            if (nextMode === 'CLAUDE_SM') this.breakerSM.onFailure(e2);
+            else if (nextMode === 'CLAUDE_DYNAMIC') this.breakerDyn.onFailure(e2);
+            else this.breakerLegacy.onFailure(e2);
+            continue;
+          }
+        }
+
+        // 所有 fallback 都失败
+        const nf = normalizeError(e);
+        return this.buildFailureResponse(request, startTime, nf, {
+          mode_final: finalMode,
+          fallback_used: usedFallback,
+          deadline_ms: deadline.totalMs,
+          time_remaining_ms: deadline.remainingMs(),
+        });
       }
+
+      // 这部分代码已被稳定化层统一处理，不再需要
       // 1. 创建初始状态
       const initialState = this.stateService.createInitialState(
         request.message,
@@ -325,13 +508,11 @@ export class AgentService {
       // 3. 检查 webbrowse 授权
       if (routeOutput.route === RouteType.SYSTEM2_WEBBROWSE && !request.options?.allow_webbrowse) {
         // 记录 webbrowse_blocked 事件
-        if (this.eventTelemetry) {
-          this.eventTelemetry.recordWebbrowseBlocked(
-            initialState.request_id,
-            'User consent not provided',
-            { route: routeOutput.route, consent_required: routeOutput.consent_required }
-          );
-        }
+        this.eventTelemetry?.recordWebbrowseBlocked(
+          initialState.request_id,
+          'User consent not provided',
+          { route: routeOutput.route, consent_required: routeOutput.consent_required ?? false }
+        );
         
         // 降级到 System2_REASONING
         routeOutput.route = RouteType.SYSTEM2_REASONING;
@@ -339,15 +520,13 @@ export class AgentService {
         routeOutput.reasons = [RouterReason.NO_API];
         routeOutput.consent_required = false;
         
-        if (this.eventTelemetry) {
-          this.eventTelemetry.recordFallbackTriggered(
-            initialState.request_id,
-            RouteType.SYSTEM2_WEBBROWSE,
-            RouteType.SYSTEM2_REASONING,
-            'Webbrowse blocked due to missing consent',
-            { original_route: RouteType.SYSTEM2_WEBBROWSE }
-          );
-        }
+        this.eventTelemetry?.recordFallbackTriggered(
+          initialState.request_id,
+          RouteType.SYSTEM2_WEBBROWSE,
+          RouteType.SYSTEM2_REASONING,
+          'Webbrowse blocked due to missing consent',
+          { original_route: RouteType.SYSTEM2_WEBBROWSE }
+        );
       }
 
       // 4. 根据路由执行
@@ -467,38 +646,43 @@ export class AgentService {
 
       // 提取并记录 Metrics
       const metrics = extractMetricsFromResponse(response);
-      if (metrics.redirect_reason) {
-        MetricsRecorder.recordRedirect(metrics.redirect_reason, metrics.entry_point);
-      }
-      if (metrics.error_type) {
-        MetricsRecorder.recordClarification(metrics.error_type);
-      }
-      if (metrics.decision_log_completeness !== undefined) {
-        MetricsRecorder.recordDecisionLogCompleteness(metrics.decision_log_completeness);
+      if (metrics) {
+        if (metrics.redirect_reason && metrics.entry_point) {
+          MetricsRecorder.recordRedirect(metrics.redirect_reason as any, metrics.entry_point);
+        }
+        if (metrics.error_type) {
+          MetricsRecorder.recordClarification(String(metrics.error_type));
+        }
+        if (metrics.decision_log_completeness !== undefined) {
+          MetricsRecorder.recordDecisionLogCompleteness(Number(metrics.decision_log_completeness));
+        }
       }
 
       // 缓存响应（用于请求去重）
       if (this.requestDeduplication && !request.options?.dry_run) {
-        const requestHash = this.requestDeduplication.generateRequestHash(request);
-        this.requestDeduplication.cacheResponse(requestHash, response);
+        // TypeScript 无法正确推断可选链，使用非空断言
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const dedupService = this.requestDeduplication!;
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const requestHash = dedupService!.generateRequestHash(request);
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        dedupService!.cacheResponse(requestHash, response);
       }
 
       // 记录 agent_complete 事件
-      if (this.eventTelemetry) {
-        this.eventTelemetry.recordAgentComplete(
-          request.request_id,
-          response.result.status,
-          latency,
-          tokensEst,
-          state.observability.cost_est_usd,
-          {
-            route: routeOutput.route,
-            system_mode: response.observability.system_mode,
-            tool_calls: response.observability.tool_calls,
-            browser_steps: response.observability.browser_steps,
-          }
-        );
-      }
+      this.eventTelemetry?.recordAgentComplete(
+        request.request_id,
+        response.result.status,
+        latency,
+        tokensEst ?? 0,
+        state.observability.cost_est_usd ?? 0,
+        {
+          route: routeOutput.route,
+          system_mode: response.observability.system_mode ?? 'SYSTEM2',
+          tool_calls: response.observability.tool_calls ?? 0,
+          browser_steps: response.observability.browser_steps ?? 0,
+        }
+      );
 
       return response;
     } catch (error: any) {
@@ -687,6 +871,7 @@ export class AgentService {
     request: RouteAndRunRequestDto,
     startTime: number,
     traceInfo?: { orchestration: any; timestamp: string },
+    deadline?: { remainingMs: () => number; clamp: (ms: number) => number },
   ): Promise<RouteAndRunResponseDto> {
     this.logger.log(`[AgentService] 使用 Claude 状态机编排: request_id=${request.request_id}`);
 
@@ -702,8 +887,8 @@ export class AgentService {
       conversationHistory: request.conversation_context?.recent_messages,
     };
 
-    // 调用状态机编排
-    const orchestrationResult = await this.claudeOrchestrator.orchestrateWithStateMachine(request, context);
+      // 调用状态机编排（传递 deadline）
+      const orchestrationResult = await this.claudeOrchestrator.orchestrateWithStateMachine(request, context);
 
     // 构建响应
     const latency = Date.now() - startTime;
@@ -713,12 +898,24 @@ export class AgentService {
     const gateResult = orchestrationResult.result?.gate_result?.gate_result;
     const uiState = this.mapOrchestrationStepToUIState(currentStep as OrchestrationStep, gateResult);
     
+      // 检查是否是超时错误（优先级最高）
+      const isTimeout = !orchestrationResult.success && 
+        (orchestrationResult.result?.errorType === ErrorType.TIMEOUT_ERROR ||
+         orchestrationResult.answerText?.includes('超时') ||
+         orchestrationResult.answerText?.includes('timeout') ||
+         orchestrationResult.answerText?.includes('TIMEOUT'));
+      
       // 检查是否需要用户澄清
       const needsUserConfirmation = !orchestrationResult.success && 
+        !isTimeout &&
         orchestrationResult.result?.needsUserConfirmation === true;
-      const resultStatus = needsUserConfirmation 
-        ? 'NEED_MORE_INFO' 
-        : (orchestrationResult.success ? 'OK' : 'FAILED');
+      
+      // 确定状态：超时 > 关键依赖缺失 > 其他失败
+      const resultStatus = isTimeout
+        ? 'TIMEOUT'
+        : (needsUserConfirmation 
+          ? 'NEED_MORE_INFO' 
+          : (orchestrationResult.success ? 'OK' : 'FAILED'));
 
       const response: RouteAndRunResponseDto = {
         request_id: request.request_id,
@@ -735,21 +932,27 @@ export class AgentService {
           },
           ui_hint: {
             mode: 'slow',
-            status: needsUserConfirmation 
-              ? UIStatus.AWAITING_CONFIRMATION 
-              : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED),
-            message: needsUserConfirmation 
-              ? '需要您的确认' 
-              : (orchestrationResult.success ? '处理完成' : '处理失败'),
+            status: isTimeout
+              ? UIStatus.FAILED
+              : (needsUserConfirmation 
+                ? UIStatus.AWAITING_CONFIRMATION 
+                : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED)),
+            message: isTimeout
+              ? '请求超时，请缩小范围或稍后重试。'
+              : (needsUserConfirmation 
+                ? '需要您的确认' 
+                : (orchestrationResult.success ? '处理完成' : '处理失败')),
           },
         },
         // P1 改进：UI 状态映射
         ui_state: uiState,
         result: {
           status: resultStatus,
-          answer_text: needsUserConfirmation 
-            ? (orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText)
-            : orchestrationResult.answerText,
+          answer_text: isTimeout
+            ? '请求超时，请缩小范围或稍后重试。'
+            : (needsUserConfirmation 
+              ? (orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText)
+              : orchestrationResult.answerText),
           payload: {
             timeline: orchestrationResult.result?.itinerary?.days || [],
             dropped_items: [],
@@ -765,6 +968,10 @@ export class AgentService {
                   decision_log: orchestrationResult.result.decision_log,
                 } 
               : undefined,
+            // 超时错误字段
+            ...(isTimeout ? {
+              errorType: ErrorType.TIMEOUT_ERROR,
+            } : {}),
             // 澄清消息相关字段（统一放在 payload 中）
             ...(needsUserConfirmation ? {
               needsUserConfirmation: true,
@@ -809,6 +1016,7 @@ export class AgentService {
     request: RouteAndRunRequestDto,
     startTime: number,
     traceInfo?: { orchestration: any; timestamp: string },
+    deadline?: { remainingMs: () => number; clamp: (ms: number) => number },
   ): Promise<RouteAndRunResponseDto> {
     if (!this.claudeOrchestrator) {
       throw new Error('ClaudeOrchestratorService 未可用');
@@ -824,8 +1032,8 @@ export class AgentService {
         userPreferences: {},
       };
 
-      // 使用 Claude 编排
-      const orchestrationResult = await this.claudeOrchestrator.orchestrate(request, context);
+      // 使用 Claude 编排（传递 deadline）
+      const orchestrationResult = await this.claudeOrchestrator.orchestrate(request, context, deadline);
 
       // 检查是否是 System 1 路径
       const route = orchestrationResult.result?.routingDecision?.route || RouteType.SYSTEM2_REASONING;
@@ -898,15 +1106,25 @@ export class AgentService {
       // System 2 路径：使用编排结果
       const latency = Date.now() - startTime;
       
+      // 检查是否是超时错误（优先级最高）
+      const isTimeout = !orchestrationResult.success && 
+        (orchestrationResult.result?.errorType === ErrorType.TIMEOUT_ERROR ||
+         orchestrationResult.answerText?.includes('超时') ||
+         orchestrationResult.answerText?.includes('timeout') ||
+         orchestrationResult.answerText?.includes('TIMEOUT'));
+      
       // 检查是否是关键依赖缺失（需要用户澄清）
       const needsUserConfirmation = !orchestrationResult.success && 
+        !isTimeout &&
         orchestrationResult.result?.needsUserConfirmation === true;
       const clarificationMessage = orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText;
       
-      // 确定状态：如果是关键依赖缺失，使用 NEED_MORE_INFO；否则根据 success 判断
-      const resultStatus = needsUserConfirmation 
-        ? 'NEED_MORE_INFO' 
-        : (orchestrationResult.success ? 'OK' : 'FAILED');
+      // 确定状态：超时 > 关键依赖缺失 > 其他失败
+      const resultStatus = isTimeout
+        ? 'TIMEOUT'
+        : (needsUserConfirmation 
+          ? 'NEED_MORE_INFO' 
+          : (orchestrationResult.success ? 'OK' : 'FAILED'));
       
       const response: RouteAndRunResponseDto = {
         request_id: request.request_id,
@@ -923,17 +1141,23 @@ export class AgentService {
           },
           ui_hint: {
             mode: isSystem1 ? 'fast' : 'slow',
-            status: needsUserConfirmation 
-              ? UIStatus.AWAITING_CONFIRMATION 
-              : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED),
-            message: needsUserConfirmation 
-              ? '需要您的确认' 
-              : (orchestrationResult.success ? '处理完成' : '处理失败'),
+            status: isTimeout
+              ? UIStatus.FAILED
+              : (needsUserConfirmation 
+                ? UIStatus.AWAITING_CONFIRMATION 
+                : (orchestrationResult.success ? UIStatus.DONE : UIStatus.FAILED)),
+            message: isTimeout
+              ? '请求超时，请缩小范围或稍后重试。'
+              : (needsUserConfirmation 
+                ? '需要您的确认' 
+                : (orchestrationResult.success ? '处理完成' : '处理失败')),
           },
         },
         result: {
           status: resultStatus,
-          answer_text: needsUserConfirmation ? clarificationMessage : orchestrationResult.answerText,
+          answer_text: isTimeout 
+            ? '请求超时，请缩小范围或稍后重试。'
+            : (needsUserConfirmation ? clarificationMessage : orchestrationResult.answerText),
           payload: {
             timeline: [],
             dropped_items: [],
@@ -951,6 +1175,10 @@ export class AgentService {
                   }
                 } 
               : {}),
+            // 超时错误字段
+            ...(isTimeout ? {
+              errorType: ErrorType.TIMEOUT_ERROR,
+            } : {}),
             // 澄清消息相关字段（统一放在 payload 中）
             ...(needsUserConfirmation ? {
               needsUserConfirmation: true,
@@ -1372,6 +1600,270 @@ export class AgentService {
         },
       },
     };
+  }
+
+  /**
+   * LEGACY 模式执行（集成稳定化层）
+   */
+  private async routeAndRunLegacy(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    traceInfo?: { orchestration: any; timestamp: string },
+    deadline?: { remainingMs: () => number },
+  ): Promise<RouteAndRunResponseDto> {
+    // 检查 deadline
+    if (deadline && deadline.remainingMs() <= 0) {
+      throw new Error('TIMEOUT:LEGACY_DEADLINE');
+    }
+
+    // 原有的 LEGACY 逻辑（从 routeAndRun 中提取）
+    // 1. 创建初始状态
+    const initialState = this.stateService.createInitialState(
+      request.message,
+      request.user_id,
+      request.trip_id,
+      request.options
+    );
+
+    // 2. 路由决策
+    const routerStartTime = Date.now();
+    const routeOutput = await this.router.route(
+      request.message,
+      {
+        tripId: request.trip_id,
+        recentMessages: request.conversation_context?.recent_messages,
+        userId: request.user_id,
+      },
+      initialState.request_id
+    );
+    const routerMs = Date.now() - routerStartTime;
+
+    // 更新状态
+    let state = this.stateService.update(initialState.request_id, {
+      observability: {
+        ...initialState.observability,
+        router_ms: routerMs,
+      },
+    });
+
+    // 3. 检查 webbrowse 授权
+    if (routeOutput.route === RouteType.SYSTEM2_WEBBROWSE && !request.options?.allow_webbrowse) {
+      routeOutput.route = RouteType.SYSTEM2_REASONING;
+      routeOutput.confidence = 0.7;
+      routeOutput.reasons = [RouterReason.NO_API];
+      routeOutput.consent_required = false;
+    }
+
+    // 4. 根据路由执行
+    let result: any;
+    let answerText = '';
+
+    if (routeOutput.route.startsWith('SYSTEM1')) {
+      const system1Result = await this.system1Executor.execute(routeOutput.route, state);
+      result = system1Result.result;
+      answerText = system1Result.answerText;
+      state = this.stateService.update(state.request_id, {
+        result: {
+          ...state.result,
+          status: system1Result.success ? 'READY' : 'NEED_MORE_INFO',
+        },
+      });
+    } else {
+      if (this.dagOrchestrator) {
+        state = await this.executeSystem2PlanAndExecute(state, routeOutput.budget, request);
+      } else {
+        this.logger.warn('DAGOrchestratorService 未可用，降级使用 ReAct 循环');
+        state = await this.orchestrator.execute(state, routeOutput.budget);
+      }
+      
+      result = {
+        timeline: state.result.timeline,
+        dropped_items: state.result.dropped_items,
+        candidates: [],
+        evidence: [],
+        robustness: state.compute.robustness,
+      };
+      answerText = this.generateAnswerText(state);
+    }
+
+    // 5. 计算 token 数量
+    const tokensEst = TokenCalculator.estimateTotalTokens(
+      request.message,
+      answerText,
+      {
+        route: routeOutput,
+        result: result,
+        state: {
+          trip: state.trip,
+          memory: state.memory,
+          compute: state.compute,
+          result: state.result,
+        },
+      }
+    );
+
+    // 6. 构建响应
+    const latency = Date.now() - startTime;
+    const response: RouteAndRunResponseDto = {
+      request_id: request.request_id,
+      route: routeOutput,
+      result: {
+        status: this.mapStateStatusToResultStatus(state.result.status),
+        answer_text: answerText,
+        payload: {
+          ...result,
+          ...(state.result.status === 'SUSPENDED' && state.result.suspensionInfo
+            ? { suspensionInfo: state.result.suspensionInfo }
+            : {}),
+        },
+      },
+      explain: {
+        decision_log: state.react.decision_log.map(log => ({
+          request_id: state.request_id,
+          step: 'DONE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: `Action: ${log.chosen_action}, Reason: ${log.reason_code}`,
+          outputs_summary: `执行了 ${log.chosen_action}，策略: ${log.policy_id}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            step_number: log.step,
+            facts: log.facts,
+            policy_id: log.policy_id,
+          },
+        })),
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: routerMs,
+        system_mode: routeOutput.route.startsWith('SYSTEM1') ? 'SYSTEM1' : 'SYSTEM2',
+        tool_calls: state.observability.tool_calls,
+        browser_steps: state.observability.browser_steps,
+        tokens_est: tokensEst,
+        cost_est_usd: state.observability.cost_est_usd,
+        fallback_used: state.observability.fallback_used,
+        trace: traceInfo || {
+          orchestration: {
+            resolved: {
+              mode: 'LEGACY',
+              reason: 'Claude orchestration disabled, using legacy routing',
+              matchedRules: ['legacy_fallback'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+          orchestration_mode: 'LEGACY',
+        },
+      },
+    };
+
+    // 缓存响应（用于请求去重）
+    if (this.requestDeduplication && !request.options?.dry_run) {
+      const requestHash = this.requestDeduplication.generateRequestHash(request);
+      this.requestDeduplication.cacheResponse(requestHash, response);
+    }
+
+    // 记录 agent_complete 事件
+    if (this.eventTelemetry) {
+      this.eventTelemetry.recordAgentComplete(
+        request.request_id,
+        response.result.status,
+        latency,
+        tokensEst,
+        state.observability.cost_est_usd,
+        {
+          route: routeOutput.route,
+          system_mode: response.observability.system_mode,
+          tool_calls: response.observability.tool_calls,
+          browser_steps: response.observability.browser_steps,
+        }
+      );
+    }
+
+    return response;
+  }
+
+  /**
+   * 构建失败响应（标准化错误映射）
+   */
+  private buildFailureResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    nf: { status: string; errorType: string; message: string; isTimeout: boolean },
+    obs: any,
+  ): RouteAndRunResponseDto {
+    return {
+      request_id: request.request_id,
+        route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 0.1,
+        reasons: [RouterReason.MISSING_INFO],
+        required_capabilities: [],
+        consent_required: false,
+        budget: {
+          max_seconds: Math.round((obs.deadline_ms ?? 12000) / 1000),
+          max_steps: 0,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: nf.status === 'TIMEOUT' ? UIStatus.FAILED : UIStatus.FAILED,
+          message: nf.message,
+        },
+      },
+      result: {
+        status: nf.status as any,
+        answer_text: nf.message,
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          needsUserConfirmation: nf.status === 'NEED_CONFIRMATION' || nf.status === 'NEED_MORE_INFO',
+          clarificationMessage: nf.message,
+          errorType: (nf.isTimeout ? ErrorType.TIMEOUT_ERROR : ErrorType.UNKNOWN_ERROR) as ErrorType,
+        },
+      },
+      explain: {
+        decision_log: [],
+      },
+        observability: {
+        latency_ms: Date.now() - startTime,
+        router_ms: 0,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: Boolean(obs.fallback_used),
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: obs.mode_final || 'LEGACY',
+              reason: `Failed with error: ${nf.errorType}`,
+              matchedRules: ['stability_layer_failure'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+          // @ts-ignore - 扩展 trace 以包含稳定化层信息
+          deadline_ms: obs.deadline_ms,
+          time_remaining_ms: obs.time_remaining_ms,
+          mode_final: obs.mode_final,
+        } as any,
+      },
+    };
+  }
+
+  /**
+   * 附加可观测性信息
+   */
+  private attachObservability(resp: RouteAndRunResponseDto, obs: any): RouteAndRunResponseDto {
+    if (!resp) return resp;
+    resp.observability = {
+      ...(resp.observability ?? {}),
+      ...obs,
+    };
+    return resp;
   }
 }
 

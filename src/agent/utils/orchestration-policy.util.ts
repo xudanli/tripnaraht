@@ -3,6 +3,7 @@
 import { OrchestrationOptions } from './resolve-orchestration-mode.util';
 import { RoutingSignals } from './orchestration-signals.util';
 import { resolveOrchestrationMode, OrchestrationMode, ResolveModeResult } from './resolve-orchestration-mode.util';
+import { CircuitBreaker, ModeLock, StabilityContext } from '../services/orchestration-stability.util';
 
 /**
  * 编排策略决策结果
@@ -156,16 +157,28 @@ function applySimpleDynamicRule(
  * 2. recommendations = 仅建议，不影响执行
  * 3. consent = 确定性规则（只在特定条件下触发）
  * 4. SM 边界 = 简单请求不走 SM，除非显式启用
+ * 5. ModeLock 优先级：如果存在锁定模式，优先使用（避免抖动）
+ * 6. Circuit Breaker：如果模式熔断，自动降级到下一级
  * 
  * @param env 环境变量
  * @param options 编排选项
  * @param signals 路由信号
+ * @param stabilityContext 稳定化上下文（可选，用于 ModeLock 和 Circuit Breaker）
+ * @param modeLock ModeLock 实例（可选）
+ * @param breakers Circuit Breaker 实例映射（可选）
  * @returns 策略决策结果（已冻结，不可变）
  */
 export function routePolicy(
   env: NodeJS.ProcessEnv,
   options: OrchestrationOptions | undefined,
   signals: RoutingSignals,
+  stabilityContext?: StabilityContext,
+  modeLock?: ModeLock,
+  breakers?: {
+    sm?: CircuitBreaker;
+    dyn?: CircuitBreaker;
+    legacy?: CircuitBreaker;
+  },
 ): OrchestrationPolicyDecision {
   const matchedRules: string[] = [];
   
@@ -177,6 +190,48 @@ export function routePolicy(
   let finalMode = modeResult.mode;
   let reason = modeResult.reason;
   const recommendations: OrchestrationPolicyDecision['recommendations'] = {};
+
+  // 2.1 ModeLock 优先级：如果存在锁定模式，优先使用（避免抖动）
+  if (stabilityContext && modeLock) {
+    const lockedMode = modeLock.get(stabilityContext);
+    if (lockedMode) {
+      finalMode = lockedMode;
+      reason = `${reason} → ${lockedMode} (ModeLock: 复用上次成功模式，避免抖动)`;
+      matchedRules.push('rule_mode_lock_priority');
+    }
+  }
+
+  // 2.2 Circuit Breaker 检查：如果模式熔断，自动降级
+  if (breakers) {
+    const checkBreaker = (mode: OrchestrationMode): OrchestrationMode | null => {
+      if (mode === 'CLAUDE_SM' && breakers.sm && !breakers.sm.canPass()) {
+        matchedRules.push('rule_breaker_open_claude_sm');
+        return 'CLAUDE_DYNAMIC'; // 降级到 DYNAMIC
+      }
+      if (mode === 'CLAUDE_DYNAMIC' && breakers.dyn && !breakers.dyn.canPass()) {
+        matchedRules.push('rule_breaker_open_claude_dynamic');
+        return 'LEGACY'; // 降级到 LEGACY
+      }
+      if (mode === 'LEGACY' && breakers.legacy && !breakers.legacy.canPass()) {
+        matchedRules.push('rule_breaker_open_legacy');
+        // LEGACY 是最后一级，无法再降级，但可以记录
+        return null;
+      }
+      return null;
+    };
+
+    let breakerAdjustedMode = checkBreaker(finalMode);
+    if (breakerAdjustedMode) {
+      reason = `${reason} → ${breakerAdjustedMode} (Circuit Breaker: ${finalMode} 已熔断，自动降级)`;
+      finalMode = breakerAdjustedMode;
+      // 如果降级后的模式也熔断，继续降级
+      const secondBreakerAdjusted = checkBreaker(finalMode);
+      if (secondBreakerAdjusted) {
+        reason = `${reason} → ${secondBreakerAdjusted} (Circuit Breaker: ${finalMode} 也已熔断，继续降级)`;
+        finalMode = secondBreakerAdjusted;
+      }
+    }
+  }
 
   // 3. 应用规则函数（按优先级顺序）
   if (modeResult.mode === 'CLAUDE_SM' || modeResult.mode === 'CLAUDE_DYNAMIC') {
