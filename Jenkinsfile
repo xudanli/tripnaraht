@@ -21,9 +21,15 @@ pipeline {
 
   // Pipeline 阶段定义
   stages {
-    // 阶段 1: 环境预检查
+    // 阶段 1: 代码检出
+    // 从源代码管理（SCM）系统（如 Git）检出代码到工作空间
+    // 必须在最前面执行，确保后续阶段可以访问代码
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    // 阶段 2: 环境预检查
     // 检查 Docker 和 Docker Compose 是否可用，并检测使用的版本
-    // 注意：此阶段在 Checkout 之前执行，因为只需要检查系统环境，不需要代码
     stage('Precheck') {
       steps {
         sh '''
@@ -50,12 +56,6 @@ pipeline {
           fi
         '''
       }
-    }
-
-    // 阶段 2: 代码检出
-    // 从源代码管理（SCM）系统（如 Git）检出代码到工作空间
-    stage('Checkout') {
-      steps { checkout scm }
     }
 
     // 阶段 3: 从 Jenkins Credentials 写入 .env 文件
