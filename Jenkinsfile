@@ -9,6 +9,7 @@ pipeline {
     // 禁用并发构建，确保同一时间只有一个构建在运行
     // 这对于生产环境部署很重要，避免多个部署同时进行导致冲突
     disableConcurrentBuilds()
+    skipDefaultCheckout(false) 
   }
 
   // 全局环境变量定义
@@ -25,6 +26,7 @@ pipeline {
     // 从源代码管理（SCM）系统（如 Git）检出代码到工作空间
     // 必须在最前面执行，确保后续阶段可以访问代码
     stage('Checkout') {
+      steps { deleteDir() }
       steps { checkout scm }
     }
 
