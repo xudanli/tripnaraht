@@ -123,25 +123,20 @@ pipeline {
           echo "使用命令: ${DOCKER_COMPOSE_CMD}"
           echo "开始构建 Docker 镜像..."
           echo "⏳ 这可能需要几分钟时间，请耐心等待..."
-          # 使用 --progress=plain 确保输出实时显示，避免 Jenkins heartbeat 超时
-          # 后台运行一个定期输出进程，保持 Jenkins heartbeat
-          # 这可以防止 Jenkins 认为构建已挂起而终止构建
-          (
-            while true; do
-              sleep 30
-              echo "[$(date +'%H:%M:%S')] 构建仍在进行中，请稍候..."
-            done
-          ) &
-          HEARTBEAT_PID=$!  # 保存后台进程的 PID
+          # 使用 plain 输出 + keepalive 机制，显著降低 Jenkins 误杀概率
+          # set -euo pipefail: 遇到错误立即退出，未定义变量报错，管道中任何命令失败都视为失败
+          set -euo pipefail
+          export BUILDKIT_PROGRESS=plain
+          
+          # 后台运行 keepalive 进程，每 30 秒输出一次，保持 Jenkins heartbeat
+          ( while true; do echo "[keepalive] $(date -Is)"; sleep 30; done ) & KA_PID=$!
+          # 设置 trap，确保退出时清理 keepalive 进程
+          trap 'kill ${KA_PID} >/dev/null 2>&1 || true' EXIT
+          
           # 执行构建，使用 --progress=plain 确保实时输出
-          if ${DOCKER_COMPOSE_CMD} build --progress=plain; then
-            kill $HEARTBEAT_PID 2>/dev/null || true  # 构建成功，停止心跳进程
-            echo "✅ Docker 镜像构建完成"
-          else
-            kill $HEARTBEAT_PID 2>/dev/null || true  # 构建失败，停止心跳进程
-            echo "❌ Docker 镜像构建失败"
-            exit 1
-          fi
+          ${DOCKER_COMPOSE_CMD} build --progress=plain
+          
+          echo "✅ Docker 镜像构建完成"
         '''
       }
     }
