@@ -202,6 +202,66 @@ export interface DecisionLogEntry {
 }
 
 /**
+ * 🆕 简化版解释（减少认知负荷）
+ */
+export interface SimplifiedExplanation {
+  /** 决策摘要（一句话） */
+  summary: string;
+  
+  /** 关键决策点（最多5个） */
+  key_decisions: Array<{
+    step: string;
+    decision: string;
+    impact: 'HIGH' | 'MEDIUM' | 'LOW';
+  }>;
+  
+  /** 证据数量 */
+  evidence_count: number;
+  
+  /** 是否有详细版本 */
+  has_details: boolean;
+  
+  /** 详细版本链接（前端可以按需加载） */
+  details_url?: string;
+}
+
+/**
+ * 🆕 AI能力展示（信任建立机制）
+ */
+export interface AICapabilityDisplay {
+  /** 本次请求的成功状态 */
+  success: boolean;
+  
+  /** 使用的AI能力 */
+  capabilities_used: Array<{
+    name: string;
+    description: string;
+    status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
+  }>;
+  
+  /** 数据质量指标 */
+  data_quality: {
+    completeness: number; // 0-1，数据完整性
+    freshness: number; // 0-1，数据新鲜度
+    reliability: number; // 0-1，数据可靠性
+  };
+  
+  /** 决策置信度 */
+  confidence: {
+    overall: number; // 0-1，整体置信度
+    gate_evaluation: number; // 0-1，Gate评估置信度
+    plan_generation: number; // 0-1，行程生成置信度
+  };
+  
+  /** 局限性说明（提升信任） */
+  limitations?: Array<{
+    type: 'DATA_MISSING' | 'SERVICE_UNAVAILABLE' | 'UNCERTAINTY' | 'ASSUMPTION';
+    description: string;
+    impact: 'LOW' | 'MEDIUM' | 'HIGH';
+  }>;
+}
+
+/**
  * PlanDiff（计划版本差异）
  * 
  * 用于记录版本之间的变更

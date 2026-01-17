@@ -1386,67 +1386,94 @@ export class ClaudeOrchestratorService {
   }
   
   /**
-   * 构建用户友好的澄清消息
+   * 构建用户友好的澄清消息（优化版：去除技术术语）
    */
   private buildClarificationMessage(error: any): string {
-    const skillName = error.skillName || '未知服务';
+    const skillName = this.translateSkillName(error.skillName || '未知服务');
     const missingServices = error.missingServices || [];
     const solutions = error.solutions || [];
     
     const message = [
-      `无法完成行程规划，因为 ${skillName} 的关键依赖服务不可用。`,
+      `抱歉，暂时无法完成行程规划。`,
       '',
-      '缺失的服务：',
-      ...missingServices.map((service: string) => `- ${service}`),
+      '原因：',
+      `- ${skillName}暂时不可用`,
+      ...(missingServices.length > 0 ? [
+        '',
+        '受影响的功能：',
+        ...missingServices.map((service: string) => `- ${this.translateServiceName(service)}`)
+      ] : []),
       '',
-      '影响：',
-      '- 无法选择适合的路线方向',
-      '- 无法进行安全评估（Should-Exist Gate）',
-      '- 无法生成可执行的行程规划',
-      '',
-      '解决方案：',
+      '您可以：',
       ...solutions.map((solution: string, index: number) => `${index + 1}. ${solution}`),
       '',
-      '如需帮助，请联系系统管理员或提供更具体的行程需求。',
+      '如果问题持续存在，请联系客服或稍后重试。',
     ].join('\n');
     
     return message;
   }
 
   /**
-   * 构建缺少必需参数的澄清消息
+   * 🆕 翻译技能名称（去除技术术语）
+   */
+  private translateSkillName(skillName: string): string {
+    const translations: Record<string, string> = {
+      'transport.search': '交通查询服务',
+      'poi.search': '地点搜索服务',
+      'dem.get.profile': '地形分析服务',
+      'opening_hours.get': '开放时间查询服务',
+      'geo.check.hazard.zones': '安全风险评估服务',
+    };
+    return translations[skillName] || skillName;
+  }
+
+  /**
+   * 🆕 翻译服务名称（去除技术术语）
+   */
+  private translateServiceName(service: string): string {
+    const translations: Record<string, string> = {
+      'transport': '交通信息查询',
+      'poi': '地点信息查询',
+      'dem': '地形数据分析',
+      'opening_hours': '开放时间查询',
+      'hazard_zones': '安全风险评估',
+    };
+    return translations[service] || service;
+  }
+
+  /**
+   * 构建缺少必需参数的澄清消息（优化版：使用用户语言）
    */
   private buildMissingParamClarificationMessage(error: any): string {
     const errorMessage = error?.message || '缺少必需参数';
-    const skillName = error.skillName || '未知服务';
     
     // 尝试从错误消息或 error.missingParams 中提取缺失的参数名
     let missingParams: string[] = [];
     if (error?.missingParams && Array.isArray(error.missingParams)) {
-      missingParams = error.missingParams;
+      missingParams = error.missingParams.map((p: string) => this.translateParamName(p));
     } else {
       // 从错误消息中提取
       if (errorMessage.includes('countryCode')) {
-        missingParams.push('国家代码 (countryCode)');
+        missingParams.push('目的地国家');
       }
       if (errorMessage.includes('tripId')) {
-        missingParams.push('行程 ID (tripId)');
+        missingParams.push('行程ID');
       }
       if (errorMessage.includes('world')) {
-        missingParams.push('世界模型上下文 (world)');
+        missingParams.push('行程上下文信息');
       }
       if (missingParams.length === 0) {
         // 尝试从错误消息中提取参数名
         const match = errorMessage.match(/(\w+)\s*是必需的/);
         if (match) {
-          missingParams.push(match[1]);
+          missingParams.push(this.translateParamName(match[1]));
         } else {
           // 尝试匹配 "缺少必需参数: xxx, yyy" 格式
           const paramMatch = errorMessage.match(/缺少必需参数:\s*(.+)/);
           if (paramMatch) {
-            missingParams = paramMatch[1].split(',').map((p: string) => p.trim());
+            missingParams = paramMatch[1].split(',').map((p: string) => this.translateParamName(p.trim()));
           } else {
-            missingParams.push('必需参数');
+            missingParams.push('必需信息');
           }
         }
       }
@@ -1457,23 +1484,39 @@ export class ClaudeOrchestratorService {
     const solutions = this.extractSolutionsFromError(error);
     
     const message = [
-      `无法完成行程规划，因为缺少必需的信息。`,
+      `需要补充一些信息才能完成行程规划。`,
       '',
-      `缺失项：`,
-      `- ${missingParam || '必需参数'}`,
+      `缺少的信息：`,
+      `- ${missingParam || '必需信息'}`,
       '',
-      `影响：`,
-      `- 无法构建世界模型上下文`,
-      `- 无法进行路线方向选择`,
-      `- 无法生成可执行的行程规划`,
-      '',
-      `解决方案：`,
+      `您可以：`,
       ...solutions.map((solution: string, index: number) => `${index + 1}. ${solution}`),
       '',
-      `请提供更多信息，或联系系统管理员获取帮助。`,
+      `提供这些信息后，我们将继续为您规划行程。`,
     ].join('\n');
     
     return message;
+  }
+
+  /**
+   * 🆕 翻译参数名称（去除技术术语）
+   */
+  private translateParamName(paramName: string): string {
+    const translations: Record<string, string> = {
+      'countryCode': '目的地国家',
+      'tripId': '行程ID',
+      'world': '行程上下文信息',
+      'destination': '目的地',
+      'origin': '出发地',
+      'date_range': '日期范围',
+      'start_date': '开始日期',
+      'days': '行程天数',
+      'mode': '交通方式',
+      'party': '同行人员信息',
+      'constraints': '约束条件',
+      'preferences': '偏好设置',
+    };
+    return translations[paramName] || paramName;
   }
 
   /**

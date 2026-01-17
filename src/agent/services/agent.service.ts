@@ -16,7 +16,7 @@ import { AgentContext } from '../interfaces/claude-orchestration.interface';
 import { resolveOrchestrationMode } from '../utils/resolve-orchestration-mode.util';
 import { signalsFromRequest } from '../utils/orchestration-signals.util';
 import { routePolicy } from '../utils/orchestration-policy.util';
-import { OrchestrationStep, SubAgentType, DecisionLogEntry } from '../interfaces/trip-plan.interface';
+import { OrchestrationStep, SubAgentType, DecisionLogEntry, SimplifiedExplanation, GateResult, AICapabilityDisplay } from '../interfaces/trip-plan.interface';
 import { MetricsRecorder, extractMetricsFromResponse } from '../utils/agent-metrics.util';
 import {
   CircuitBreaker,
@@ -57,17 +57,20 @@ export class AgentService {
   ) {}
 
   /**
-   * 将状态机步骤映射到 UI 状态（P1 改进：UI 状态映射）
+   * 将状态机步骤映射到 UI 状态（增强版：包含时间预期和步骤说明）
    */
   private mapOrchestrationStepToUIState(
     step: OrchestrationStep,
     gateResult?: string,
+    elapsedTime?: number, // 已用时间（毫秒）
   ): {
     phase: OrchestrationStep;
     ui_status: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed';
     progress_percent: number;
     message: string;
     requires_user_action: boolean;
+    estimated_time_remaining_ms?: number; // 🆕 预计剩余时间
+    current_step_detail?: string; // 🆕 当前步骤详细说明
   } {
     const stepProgressMap: Record<OrchestrationStep, number> = {
       INTAKE: 12.5,
@@ -91,6 +94,32 @@ export class AgentService {
       NARRATE: '正在生成说明...',
       DONE: '处理完成',
       FAILED: '处理失败',
+    };
+
+    // 🆕 步骤预计时间（毫秒，基于历史数据或经验值）
+    const stepEstimatedTimeMap: Record<OrchestrationStep, number> = {
+      INTAKE: 2000,      // 2秒
+      RESEARCH: 8000,    // 8秒
+      GATE_EVAL: 5000,   // 5秒
+      PLAN_GEN: 10000,   // 10秒
+      VERIFY: 6000,      // 6秒
+      REPAIR: 4000,      // 4秒（条件执行）
+      NARRATE: 3000,     // 3秒
+      DONE: 0,
+      FAILED: 0,
+    };
+
+    // 🆕 步骤详细说明
+    const stepDetailMap: Record<OrchestrationStep, string> = {
+      INTAKE: '分析您的需求，提取关键信息（目的地、日期、预算等）',
+      RESEARCH: '查询交通、POI、开放时间、DEM地形等数据',
+      GATE_EVAL: '评估路线安全性、可达性和可行性（三人格评审）',
+      PLAN_GEN: '生成详细的行程安排，包括时间、地点、交通方式',
+      VERIFY: '验证时间冲突、换乘时间、开放时间等',
+      REPAIR: '修复发现的问题，优化行程（如需要）',
+      NARRATE: '生成用户友好的行程说明和提示',
+      DONE: '所有步骤已完成',
+      FAILED: '处理过程中出现错误',
     };
 
     let uiStatus: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed' = 'thinking';
@@ -124,13 +153,187 @@ export class AgentService {
         break;
     }
 
+    // 🆕 计算预计剩余时间
+    let estimatedTimeRemaining: number | undefined;
+    if (elapsedTime !== undefined && step !== 'DONE' && step !== 'FAILED') {
+      const currentStepTime = stepEstimatedTimeMap[step];
+      const remainingSteps = this.getRemainingSteps(step);
+      const totalRemainingTime = remainingSteps.reduce(
+        (sum, s) => sum + stepEstimatedTimeMap[s],
+        0
+      );
+      
+      // 如果当前步骤已用时间超过预计时间，使用已用时间
+      const currentStepRemaining = Math.max(0, currentStepTime - elapsedTime);
+      estimatedTimeRemaining = currentStepRemaining + totalRemainingTime;
+    }
+
     return {
       phase: step,
       ui_status: uiStatus,
       progress_percent: stepProgressMap[step] || 0,
       message: stepMessageMap[step] || '处理中...',
       requires_user_action: requiresUserAction,
+      estimated_time_remaining_ms: estimatedTimeRemaining,
+      current_step_detail: stepDetailMap[step],
     };
+  }
+
+  /**
+   * 🆕 获取剩余步骤列表
+   */
+  private getRemainingSteps(currentStep: OrchestrationStep): OrchestrationStep[] {
+    const allSteps: OrchestrationStep[] = [
+      'INTAKE',
+      'RESEARCH',
+      'GATE_EVAL',
+      'PLAN_GEN',
+      'VERIFY',
+      'REPAIR',
+      'NARRATE',
+      'DONE',
+    ];
+
+    const currentIndex = allSteps.indexOf(currentStep);
+    if (currentIndex === -1) {
+      return [];
+    }
+
+    return allSteps.slice(currentIndex + 1);
+  }
+
+  /**
+   * 🆕 生成简化版解释（减少认知负荷）
+   */
+  private generateSimplifiedExplanation(
+    decisionLog: DecisionLogEntry[],
+    gateResult?: GateResult
+  ): SimplifiedExplanation | undefined {
+    if (!decisionLog || decisionLog.length === 0) {
+      return undefined;
+    }
+
+    // 提取关键决策点
+    const keyDecisions: Array<{
+      step: string;
+      decision: string;
+      impact: 'HIGH' | 'MEDIUM' | 'LOW';
+    }> = [];
+
+    // 1. Gate评估结果（最重要）
+    if (gateResult) {
+      keyDecisions.push({
+        step: 'GATE_EVAL',
+        decision: this.translateGateResult(gateResult.gate_result),
+        impact: 'HIGH',
+      });
+    }
+
+    // 2. 提取其他关键决策（只保留高影响决策）
+    const keySteps = ['GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'REPAIR'];
+    for (const entry of decisionLog) {
+      if (keySteps.includes(entry.step)) {
+        keyDecisions.push({
+          step: entry.step,
+          decision: this.simplifyDecisionMessage(entry),
+          impact: this.assessDecisionImpact(entry),
+        });
+      }
+    }
+
+    // 只保留高影响和中影响的决策
+    const filteredDecisions = keyDecisions.filter(
+      d => d.impact === 'HIGH' || d.impact === 'MEDIUM'
+    );
+
+    // 生成摘要
+    const summary = this.generateDecisionSummary(gateResult, filteredDecisions);
+
+    return {
+      summary,
+      key_decisions: filteredDecisions.slice(0, 5), // 最多5个关键决策
+      evidence_count: decisionLog.reduce(
+        (sum, entry) => sum + (entry.evidence_refs?.length || 0),
+        0
+      ),
+      has_details: true, // 详细版本总是可用
+    };
+  }
+
+  /**
+   * 🆕 翻译Gate结果
+   */
+  private translateGateResult(status: string): string {
+    const translations: Record<string, string> = {
+      'ALLOW': '已通过',
+      'BLOCK': '被拒绝',
+      'ADJUST_REQUIRED': '需要调整',
+      'NEED_USER_CONFIRM': '需要您确认',
+    };
+    return translations[status] || status;
+  }
+
+  /**
+   * 🆕 简化决策消息（去除技术术语）
+   */
+  private simplifyDecisionMessage(entry: DecisionLogEntry): string {
+    // 将技术术语转换为用户友好的语言
+    let message = entry.outputs_summary || entry.inputs_summary || '';
+
+    // 替换技术术语
+    message = message.replace(/GATE_EVAL/g, '可行性评估');
+    message = message.replace(/PLAN_GEN/g, '行程生成');
+    message = message.replace(/VERIFY/g, '验证');
+    message = message.replace(/REPAIR/g, '修复');
+    message = message.replace(/INTAKE/g, '需求解析');
+    message = message.replace(/RESEARCH/g, '数据收集');
+    message = message.replace(/NARRATE/g, '说明生成');
+
+    // 简化消息长度
+    if (message.length > 100) {
+      message = message.substring(0, 97) + '...';
+    }
+
+    return message;
+  }
+
+  /**
+   * 🆕 评估决策影响
+   */
+  private assessDecisionImpact(entry: DecisionLogEntry): 'HIGH' | 'MEDIUM' | 'LOW' {
+    // 根据步骤和内容评估影响
+    if (entry.step === 'GATE_EVAL') {
+      return 'HIGH';
+    }
+    if (entry.step === 'PLAN_GEN' || entry.step === 'REPAIR') {
+      return 'HIGH';
+    }
+    if (entry.step === 'VERIFY') {
+      return 'MEDIUM';
+    }
+    return 'LOW';
+  }
+
+  /**
+   * 🆕 生成决策摘要
+   */
+  private generateDecisionSummary(
+    gateResult: GateResult | undefined,
+    keyDecisions: Array<{ step: string; decision: string; impact: string }>
+  ): string {
+    const parts: string[] = [];
+
+    // Gate评估结果
+    if (gateResult) {
+      parts.push(`行程${this.translateGateResult(gateResult.gate_result)}`);
+    }
+
+    // 关键决策数量
+    if (keyDecisions.length > 0) {
+      parts.push(`进行了${keyDecisions.length}项关键检查`);
+    }
+
+    return parts.length > 0 ? parts.join('，') + '。' : '已完成行程规划。';
   }
 
   /**
@@ -893,10 +1096,21 @@ export class AgentService {
     // 构建响应
     const latency = Date.now() - startTime;
     
-    // P1 改进：映射状态机步骤到 UI 状态
+    // P1 改进：映射状态机步骤到 UI 状态（包含时间预期）
     const currentStep = orchestrationResult.result?.state?.current_step || (orchestrationResult.success ? 'DONE' : 'FAILED');
     const gateResult = orchestrationResult.result?.gate_result?.gate_result;
-    const uiState = this.mapOrchestrationStepToUIState(currentStep as OrchestrationStep, gateResult);
+    
+    // 🆕 计算已用时间（从状态机开始时间计算）
+    const stateStartedAt = orchestrationResult.result?.state?.metadata?.started_at;
+    const elapsedTime = stateStartedAt 
+      ? Date.now() - new Date(stateStartedAt).getTime()
+      : latency;
+    
+    const uiState = this.mapOrchestrationStepToUIState(
+      currentStep as OrchestrationStep, 
+      gateResult,
+      elapsedTime
+    );
     
       // 检查是否是超时错误（优先级最高）
       const isTimeout = !orchestrationResult.success && 
@@ -985,6 +1199,17 @@ export class AgentService {
         },
         explain: {
           decision_log: orchestrationResult.decisionLog || [],
+          // 🆕 生成简化版解释（减少认知负荷）
+          simplified_explanation: this.generateSimplifiedExplanation(
+            orchestrationResult.decisionLog || [],
+            orchestrationResult.result?.gate_result
+          ),
+          // 🆕 生成AI能力展示（信任建立机制）
+          ai_capability_display: this.generateAICapabilityDisplay(
+            orchestrationResult,
+            orchestrationResult.result?.gate_result,
+            orchestrationResult.result?.state
+          ),
         },
         observability: {
           latency_ms: latency,
@@ -1088,6 +1313,17 @@ export class AgentService {
           },
           explain: {
             decision_log: orchestrationResult.decisionLog || [],
+            // 🆕 生成简化版解释（减少认知负荷）
+            simplified_explanation: this.generateSimplifiedExplanation(
+              orchestrationResult.decisionLog || [],
+              orchestrationResult.result?.gate_result
+            ),
+            // 🆕 生成AI能力展示（信任建立机制）
+            ai_capability_display: this.generateAICapabilityDisplay(
+              orchestrationResult,
+              orchestrationResult.result?.gate_result,
+              orchestrationResult.result?.state
+            ),
           },
           observability: {
             latency_ms: latency,
@@ -1406,6 +1642,19 @@ export class AgentService {
             error_code: 'MISSING_TRIP_ID',
           },
         }],
+        // 🆕 生成简化版解释（减少认知负荷）
+        simplified_explanation: this.generateSimplifiedExplanation(
+          [{
+            request_id: request.request_id,
+            step: 'INTAKE' as OrchestrationStep,
+            actor: 'Router' as SubAgentType,
+            inputs_summary: `缺少 trip_id: ${request.message}`,
+            outputs_summary: '返回错误提示',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+          }],
+          undefined
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -1493,6 +1742,19 @@ export class AgentService {
             redirect_reason: 'READONLY_MODE_RESTRICTION',
           },
         }],
+        // 🆕 生成简化版解释（减少认知负荷）
+        simplified_explanation: this.generateSimplifiedExplanation(
+          [{
+            request_id: request.request_id,
+            step: 'INTAKE' as OrchestrationStep,
+            actor: 'Router' as SubAgentType,
+            inputs_summary: `只读模式限制: ${request.message}`,
+            outputs_summary: '重定向到规划工作台',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+          }],
+          undefined
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -1578,6 +1840,19 @@ export class AgentService {
             redirect_reason: 'PLANNING_REQUEST_DETECTED',
           },
         }],
+        // 🆕 生成简化版解释（减少认知负荷）
+        simplified_explanation: this.generateSimplifiedExplanation(
+          [{
+            request_id: request.request_id,
+            step: 'INTAKE' as OrchestrationStep,
+            actor: 'Router' as SubAgentType,
+            inputs_summary: `检测到规划请求: ${request.message}`,
+            outputs_summary: '重定向到规划工作台',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+          }],
+          undefined
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -1732,6 +2007,19 @@ export class AgentService {
             policy_id: log.policy_id,
           },
         })),
+        // 🆕 生成简化版解释（减少认知负荷）
+        simplified_explanation: this.generateSimplifiedExplanation(
+          state.react.decision_log.map(log => ({
+            request_id: state.request_id,
+            step: 'DONE' as OrchestrationStep,
+            actor: 'Orchestrator' as SubAgentType,
+            inputs_summary: `Action: ${log.chosen_action}, Reason: ${log.reason_code}`,
+            outputs_summary: `执行了 ${log.chosen_action}，策略: ${log.policy_id}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+          })),
+          undefined
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -1826,6 +2114,8 @@ export class AgentService {
       },
       explain: {
         decision_log: [],
+        // 🆕 生成简化版解释（减少认知负荷）
+        simplified_explanation: undefined, // 失败情况不生成简化版解释
       },
         observability: {
         latency_ms: Date.now() - startTime,
@@ -1864,6 +2154,146 @@ export class AgentService {
       ...obs,
     };
     return resp;
+  }
+
+  /**
+   * 🆕 生成AI能力展示（信任建立机制）
+   */
+  private generateAICapabilityDisplay(
+    orchestrationResult: any,
+    gateResult?: GateResult,
+    state?: any
+  ): AICapabilityDisplay | undefined {
+    if (!orchestrationResult.success && !gateResult) {
+      return undefined;
+    }
+
+    // 提取使用的AI能力
+    const capabilitiesUsed: Array<{
+      name: string;
+      description: string;
+      status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
+    }> = [];
+
+    // 从决策日志中提取使用的技能
+    const decisionLog = orchestrationResult.decisionLog || [];
+    const skillsUsed = new Set<string>();
+    
+    for (const entry of decisionLog) {
+      if (entry.metadata?.tool_calls) {
+        // 从metadata中提取技能名称
+        const toolCalls = entry.metadata.tool_calls;
+        if (Array.isArray(toolCalls)) {
+          toolCalls.forEach((call: any) => {
+            if (call.skill_name) {
+              skillsUsed.add(call.skill_name);
+            }
+          });
+        }
+      }
+    }
+
+    // 添加核心能力
+    if (gateResult) {
+      capabilitiesUsed.push({
+        name: '安全评估',
+        description: '评估路线安全性和可行性',
+        status: gateResult.gate_result === 'ALLOW' ? 'SUCCESS' : 'PARTIAL',
+      });
+    }
+
+    if (state?.itinerary) {
+      capabilitiesUsed.push({
+        name: '行程生成',
+        description: '生成详细的行程安排',
+        status: 'SUCCESS',
+      });
+    }
+
+    if (skillsUsed.has('transport.search')) {
+      capabilitiesUsed.push({
+        name: '交通查询',
+        description: '查询交通班次和路线',
+        status: 'SUCCESS',
+      });
+    }
+
+    if (skillsUsed.has('poi.search')) {
+      capabilitiesUsed.push({
+        name: '地点搜索',
+        description: '搜索和推荐景点',
+        status: 'SUCCESS',
+      });
+    }
+
+    if (skillsUsed.has('dem.get.profile')) {
+      capabilitiesUsed.push({
+        name: '地形分析',
+        description: '分析地形和体力消耗',
+        status: 'SUCCESS',
+      });
+    }
+
+    // 计算数据质量指标
+    const evidenceCount = decisionLog.reduce(
+      (sum: number, entry: DecisionLogEntry) => sum + (entry.evidence_refs?.length || 0),
+      0
+    );
+    const dataCompleteness = evidenceCount > 0 ? Math.min(1, evidenceCount / 10) : 0.5;
+    const dataFreshness = 0.9; // 假设数据新鲜度（实际应从数据时间戳计算）
+    const dataReliability = gateResult?.confidence || 0.8;
+
+    // 计算决策置信度
+    const gateConfidence = gateResult?.confidence || 0.8;
+    const planConfidence = state?.itinerary ? 0.85 : 0.5;
+    const overallConfidence = (gateConfidence + planConfidence) / 2;
+
+    // 识别局限性
+    const limitations: Array<{
+      type: 'DATA_MISSING' | 'SERVICE_UNAVAILABLE' | 'UNCERTAINTY' | 'ASSUMPTION';
+      description: string;
+      impact: 'LOW' | 'MEDIUM' | 'HIGH';
+    }> = [];
+
+    if (dataCompleteness < 0.8) {
+      limitations.push({
+        type: 'DATA_MISSING',
+        description: '部分数据可能不完整',
+        impact: 'MEDIUM',
+      });
+    }
+
+    if (gateResult?.gate_result === 'ADJUST_REQUIRED') {
+      limitations.push({
+        type: 'UNCERTAINTY',
+        description: '行程需要根据实际情况调整',
+        impact: 'MEDIUM',
+      });
+    }
+
+    if (overallConfidence < 0.7) {
+      limitations.push({
+        type: 'UNCERTAINTY',
+        description: '部分决策基于估算，建议人工确认',
+        impact: 'HIGH',
+      });
+    }
+
+    return {
+      success: orchestrationResult.success,
+      capabilities_used: capabilitiesUsed,
+      data_quality: {
+        completeness: dataCompleteness,
+        freshness: dataFreshness,
+        reliability: dataReliability,
+      },
+      confidence: {
+        overall: overallConfidence,
+        gate_evaluation: gateConfidence,
+        plan_generation: planConfidence,
+      },
+      limitations: limitations.length > 0 ? limitations : undefined,
+    };
   }
 }
 

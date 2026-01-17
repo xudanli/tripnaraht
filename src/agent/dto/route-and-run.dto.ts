@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
-import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef } from '../interfaces/trip-plan.interface';
+import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay } from '../interfaces/trip-plan.interface';
 import { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 import { ErrorType } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
@@ -207,6 +207,8 @@ export class RouteAndRunResponseDto {
       progress_percent: 37.5,
       message: '正在评估行程可行性...',
       requires_user_action: false,
+      estimated_time_remaining_ms: 15000,
+      current_step_detail: '评估路线安全性、可达性和可行性（三人格评审）',
     },
   })
   ui_state?: {
@@ -220,6 +222,10 @@ export class RouteAndRunResponseDto {
     message?: string;
     /** 是否需要用户操作 */
     requires_user_action?: boolean;
+    /** 🆕 预计剩余时间（毫秒） */
+    estimated_time_remaining_ms?: number;
+    /** 🆕 当前步骤详细说明 */
+    current_step_detail?: string;
   };
 
   @ApiProperty({ 
@@ -307,10 +313,20 @@ export class RouteAndRunResponseDto {
           policy_id: 'FACTS_FIRST',
         },
       ],
+      simplified_explanation: {
+        summary: '行程已通过，进行了3项关键检查',
+        key_decisions: [
+          { step: 'GATE_EVAL', decision: '已通过', impact: 'HIGH' },
+        ],
+        evidence_count: 5,
+        has_details: true,
+      },
     },
   })
   explain!: {
     decision_log: DecisionLogEntry[];
+    simplified_explanation?: SimplifiedExplanation; // 🆕 简化版解释（减少认知负荷）
+    ai_capability_display?: AICapabilityDisplay; // 🆕 AI能力展示（信任建立机制）
   };
 
   @ApiProperty({ 
