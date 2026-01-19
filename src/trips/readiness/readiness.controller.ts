@@ -1190,6 +1190,10 @@ export class ReadinessController {
         where.OR = [
           { packId: { contains: query.search, mode: 'insensitive' } },
           { displayName: { contains: query.search, mode: 'insensitive' } },
+          { displayNameEN: { contains: query.search, mode: 'insensitive' } },
+          { displayNameCN: { contains: query.search, mode: 'insensitive' } },
+          { regionCN: { contains: query.search, mode: 'insensitive' } },
+          { cityCN: { contains: query.search, mode: 'insensitive' } },
         ];
       }
 
@@ -1204,11 +1208,17 @@ export class ReadinessController {
             packId: true,
             destinationId: true,
             displayName: true,
+            displayNameEN: true,
+            displayNameCN: true,
             version: true,
             lastReviewedAt: true,
             countryCode: true,
             region: true,
+            regionEN: true,
+            regionCN: true,
             city: true,
+            cityEN: true,
+            cityCN: true,
             isActive: true,
             createdAt: true,
             updatedAt: true,

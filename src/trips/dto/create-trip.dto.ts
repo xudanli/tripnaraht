@@ -1,8 +1,19 @@
 // src/trips/dto/create-trip.dto.ts
-import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TripStatus } from './trip-status.dto';
+
+/**
+ * 旅行节奏枚举
+ * 
+ * 用于描述旅行的整体节奏偏好
+ */
+export enum TripPace {
+  RELAXED = 'relaxed',   // 轻松：每天 3 个活动
+  STANDARD = 'standard', // 标准：每天 5 个活动
+  TIGHT = 'tight',       // 紧凑：每天 7 个活动
+}
 
 /**
  * 行动能力标签枚举
@@ -110,4 +121,46 @@ export class CreateTripDto {
   @IsOptional()
   @IsEnum(TripStatus, { message: 'status 必须是有效的行程状态' })
   status?: TripStatus;
+
+  // ========== 新增可选字段 ==========
+
+  @ApiPropertyOptional({
+    description: '旅行节奏',
+    enum: TripPace,
+    example: TripPace.STANDARD,
+    enumName: 'TripPace'
+  })
+  @IsOptional()
+  @IsEnum(TripPace, { message: 'pace 必须是 relaxed、standard 或 tight' })
+  pace?: TripPace;
+
+  @ApiPropertyOptional({
+    description: '兴趣偏好标签数组',
+    type: [String],
+    example: ['food', 'history', 'photography']
+  })
+  @IsOptional()
+  @IsArray({ message: 'preferences 必须是数组' })
+  @IsString({ each: true, message: 'preferences 数组中的每个元素必须是字符串' })
+  preferences?: string[];
+
+  @ApiPropertyOptional({
+    description: '必须去的地点 POI IDs',
+    type: [Number],
+    example: [12345, 67890]
+  })
+  @IsOptional()
+  @IsArray({ message: 'mustPlaces 必须是数组' })
+  @IsInt({ each: true, message: 'mustPlaces 数组中的每个元素必须是整数' })
+  mustPlaces?: number[];
+
+  @ApiPropertyOptional({
+    description: '不想去的地点 POI IDs',
+    type: [Number],
+    example: [11111]
+  })
+  @IsOptional()
+  @IsArray({ message: 'avoidPlaces 必须是数组' })
+  @IsInt({ each: true, message: 'avoidPlaces 数组中的每个元素必须是整数' })
+  avoidPlaces?: number[];
 }

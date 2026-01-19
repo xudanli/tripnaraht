@@ -80,6 +80,7 @@ import { DecisionStatsService } from './services/decision-stats.service';
 import { HeuristicDietService } from './services/heuristic-diet.service';
 import { TripFeedbackService } from './services/trip-feedback.service';
 import { DecisionLogStorageService } from './services/decision-log-storage.service';
+import { DecisionLoggingService } from './services/decision-logging.service';
 import { TripNaraCoreToolService } from './tools/tripnara-core-tool.service';
 import { GraphDataConverterService } from './graph-db/graph-data-converter.service';
 import { PlannerAgentService } from './orchestration/planner-agent.service';
@@ -90,14 +91,23 @@ import { ApprovalService } from './services/approval.service';
 import { AgentResumeService } from './services/agent-resume.service';
 import { ApprovalController } from './controllers/approval.controller';
 import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.scheduler';
+import { DecisionStateManagerService } from './services/decision-state-manager.service';
+import { ThreeLayerExplanationService } from './services/three-layer-explanation.service';
+import { DecisionSupportService } from './services/decision-support.service';
+import { RhythmMatchingService } from './services/rhythm-matching.service';
+import { MultiPersonDecisionService } from './services/multi-person-decision.service';
+import { DataQualityModule } from '../../data-quality/data-quality.module';
+import { DataModelingModule } from '../../data-modeling/data-modeling.module';
 
 @Module({
   imports: [
     TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
     DemModule, // 恢复：DemModule 不是问题
+    forwardRef(() => DataQualityModule), // 数据质量模块（用于信息源标注）- 使用 forwardRef 避免循环依赖
+    DataModelingModule, // 数据建模模块（用于不确定性建模）
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
     // PlacesModuleOrLite, // 暂时禁用，检查依赖错误和依赖链
-    ...(enableRouteDirectionsModule ? [RouteDirectionsModule] : []),
+    ...(enableRouteDirectionsModule ? [forwardRef(() => RouteDirectionsModule)] : []),
     // MemoryModule, // 暂时禁用，测试是否导致阻塞
     // LlmModule, // 暂时禁用，测试是否导致阻塞
     ...(enableContextEngineModule ? [ContextEngineModule] : []),
@@ -156,6 +166,11 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     // HeuristicDietService,
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
+    DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionStateManagerService, // 决策状态管理服务
+    ThreeLayerExplanationService, // 三层解释服务
+    RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）
+    MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
     // E2ECaseStorageService,
     // E2EReplayService,
     // DecisionLogClusteringService,
@@ -214,6 +229,11 @@ import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.schedule
     // HeuristicDietService,
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
+    DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionStateManagerService, // 决策状态管理服务
+    ThreeLayerExplanationService, // 三层解释服务
+    RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）
+    MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
     // E2ECaseStorageService,
     // E2EReplayService,
     // DecisionLogClusteringService,

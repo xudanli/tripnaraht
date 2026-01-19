@@ -136,7 +136,7 @@ pipeline {
           # 执行构建，使用 --progress=plain 确保实时输出
           ${DOCKER_COMPOSE_CMD} build --progress=plain
           
-          echo "✅ Docker 镜像构建完成"
+            echo "✅ Docker 镜像构建完成"
         '''
       }
     }

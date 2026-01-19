@@ -27,6 +27,7 @@ import { GetEvidenceQueryDto, EvidenceListResponseDto } from './dto/evidence.dto
 import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/attention-queue.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 import { DayMetricsResponseDto, TripMetricsResponseDto } from './dto/trip-metrics.dto';
 import { ConflictsResponseDto, ConflictSeverity } from './dto/trip-conflicts.dto';
 import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from './dto/trip-intent.dto';
@@ -38,6 +39,7 @@ import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
 import { TripSuggestionsService } from './services/trip-suggestions.service';
+import { TripInsightService } from './services/trip-insight.service';
 import { 
   SuggestionListResponseDto, 
   SuggestionStatsDto,
@@ -48,9 +50,11 @@ import {
   ApplySuggestionRequestDto,
   ApplySuggestionResponseDto
 } from './dto/suggestions.dto';
+import { TripInsightResponseDto } from './dto/trip-insight.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('trips')
+@Public() // 临时开放测试，生产环境应移除
 @Controller('trips')
 export class TripsController {
   private readonly logger = new Logger(TripsController.name);
@@ -69,6 +73,7 @@ export class TripsController {
     private readonly tripIntentService: TripIntentService,
     private readonly tripOptimizationService: TripOptimizationService,
     private readonly tripSuggestionsService: TripSuggestionsService,
+    private readonly tripInsightService: TripInsightService,
     private readonly prisma: PrismaService
   ) {}
 
@@ -140,12 +145,17 @@ export class TripsController {
         provider: dto.llmProvider,
       });
 
-      // 如果需要澄清，返回澄清问题
+      // 如果需要澄清，返回旅行规划师风格的对话
       this.logger.debug(`Parse result needsClarification: ${parseResult.needsClarification}`);
       if (parseResult.needsClarification) {
-        this.logger.debug(`Returning clarification questions: ${JSON.stringify(parseResult.clarificationQuestions)}`);
+        this.logger.debug(`Returning planner-style clarification: ${parseResult.plannerReply?.substring(0, 100)}...`);
         return successResponse({
           needsClarification: true,
+          // 新增：旅行规划师风格的对话回复
+          plannerReply: parseResult.plannerReply,
+          suggestedQuestions: parseResult.suggestedQuestions,
+          conversationContext: parseResult.conversationContext,
+          // 保留旧字段以保持向后兼容
           clarificationQuestions: parseResult.clarificationQuestions,
           partialParams: parseResult.params,
         });
@@ -314,6 +324,35 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;
+    }
+  }
+
+  @Get(':id/insight')
+  @ApiOperation({
+    summary: '获取行程洞察摘要',
+    description: '获取行程的 AI 洞察摘要，包括行程基本信息、AI 发现的问题/建议、准备度摘要和整体状态。用于前端展示行程健康度和优化建议。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程洞察摘要（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getInsight(@Param('id') id: string) {
+    try {
+      const insight = await this.tripInsightService.getInsight(id);
+      return successResponse(insight);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取行程洞察失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 

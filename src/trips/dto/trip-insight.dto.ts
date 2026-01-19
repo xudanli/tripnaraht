@@ -1,0 +1,142 @@
+// src/trips/dto/trip-insight.dto.ts
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/**
+ * Finding 类型
+ */
+export enum FindingType {
+  WARNING = 'warning',     // 警告
+  SUGGESTION = 'suggestion', // 建议
+  POSITIVE = 'positive',   // 正面反馈
+}
+
+/**
+ * 准备度状态
+ */
+export enum ReadinessStatus {
+  PASS = 'pass',   // 通过
+  WARN = 'warn',   // 警告
+  BLOCK = 'block', // 阻塞
+}
+
+/**
+ * 整体状态
+ */
+export enum OverallStatus {
+  GOOD = 'good',                    // 良好
+  NEEDS_ATTENTION = 'needs_attention', // 需要关注
+  HAS_ISSUES = 'has_issues',        // 有问题
+}
+
+/**
+ * 行程摘要 DTO
+ */
+export class TripSummaryDto {
+  @ApiProperty({ description: '目的地', example: '中国' })
+  destination!: string;
+
+  @ApiProperty({ description: '行程天数', example: 7 })
+  days!: number;
+
+  @ApiProperty({ description: '景点数量', example: 12 })
+  placesCount!: number;
+
+  @ApiProperty({ description: '开始日期', example: '2025-02-01' })
+  startDate!: string;
+
+  @ApiProperty({ description: '结束日期', example: '2025-02-07' })
+  endDate!: string;
+}
+
+/**
+ * AI 发现项 DTO
+ */
+export class FindingDto {
+  @ApiProperty({ 
+    description: '发现类型',
+    enum: FindingType,
+    example: 'warning'
+  })
+  type!: FindingType;
+
+  @ApiProperty({ 
+    description: '前端图标提示',
+    example: 'clock'
+  })
+  icon!: string;
+
+  @ApiProperty({ 
+    description: '标题',
+    example: 'Day 2 安排较紧凑'
+  })
+  title!: string;
+
+  @ApiProperty({ 
+    description: '详细消息',
+    example: '第二天安排了 6 个景点，可能需要更多休息时间'
+  })
+  message!: string;
+
+  @ApiPropertyOptional({ 
+    description: '快捷按钮文案（为空时不显示按钮）',
+    example: '优化 Day 2'
+  })
+  actionLabel?: string | null;
+
+  @ApiPropertyOptional({ 
+    description: '快捷按钮对应的 AI 提示词（为空时不显示按钮）',
+    example: '帮我优化第二天的行程，适当减少景点或调整顺序'
+  })
+  actionPrompt?: string | null;
+}
+
+/**
+ * 准备度摘要 DTO
+ */
+export class ReadinessSummaryDto {
+  @ApiProperty({ 
+    description: '准备度状态',
+    enum: ReadinessStatus,
+    example: 'warn'
+  })
+  status!: ReadinessStatus;
+
+  @ApiProperty({ description: '阻塞项数量', example: 0 })
+  blockers!: number;
+
+  @ApiProperty({ description: '警告项数量', example: 2 })
+  warnings!: number;
+
+  @ApiProperty({ description: '建议项数量', example: 5 })
+  suggestions!: number;
+}
+
+/**
+ * 行程洞察响应 DTO
+ */
+export class TripInsightResponseDto {
+  @ApiProperty({ 
+    description: '行程基本信息',
+    type: TripSummaryDto
+  })
+  tripSummary!: TripSummaryDto;
+
+  @ApiProperty({ 
+    description: 'AI 发现的问题/建议（最多 3-5 条）',
+    type: [FindingDto]
+  })
+  findings!: FindingDto[];
+
+  @ApiProperty({ 
+    description: '准备度摘要',
+    type: ReadinessSummaryDto
+  })
+  readiness!: ReadinessSummaryDto;
+
+  @ApiProperty({ 
+    description: '整体状态',
+    enum: OverallStatus,
+    example: 'needs_attention'
+  })
+  overallStatus!: OverallStatus;
+}

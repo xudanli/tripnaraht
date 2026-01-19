@@ -16,6 +16,9 @@ import { MultiStrategyRouteGeneratorService } from './services/multi-strategy-ro
 import { ProductExplainableOutputBuilderService } from './services/product-explainable-output-builder.service';
 import { AlternativeComparisonService } from './services/alternative-comparison.service';
 import { ScenarioOptimizationService } from './services/scenario-optimization.service';
+import { QueueTimeModelService } from './services/queue-time-model.service';
+import { DynamicTransportTimeService } from './services/dynamic-transport-time.service';
+import { EnhancedRestTimeService } from './services/enhanced-rest-time.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
 
@@ -41,6 +44,9 @@ import { TransportModule } from '../transport/transport.module';
     ProductExplainableOutputBuilderService,
     AlternativeComparisonService,
     ScenarioOptimizationService,
+    QueueTimeModelService,
+    DynamicTransportTimeService,
+    EnhancedRestTimeService,
   ],
   exports: [
     RouteOptimizationService,
@@ -55,6 +61,9 @@ import { TransportModule } from '../transport/transport.module';
     ProductExplainableOutputBuilderService,
     AlternativeComparisonService,
     ScenarioOptimizationService,
+    QueueTimeModelService,
+    DynamicTransportTimeService,
+    EnhancedRestTimeService,
   ],
 })
 export class ItineraryOptimizationModule {}

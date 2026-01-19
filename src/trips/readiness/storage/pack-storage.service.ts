@@ -284,6 +284,27 @@ export class PackStorageService {
   }
 
   /**
+   * 从 LocalizedString 提取中英文字段
+   */
+  private extractLocalizedFields(value: string | { en: string; zh?: string } | undefined): {
+    default: string | undefined;
+    en: string | undefined;
+    cn: string | undefined;
+  } {
+    if (!value) {
+      return { default: undefined, en: undefined, cn: undefined };
+    }
+    if (typeof value === 'string') {
+      return { default: value, en: value, cn: undefined };
+    }
+    return {
+      default: value.en, // 默认使用英文
+      en: value.en,
+      cn: value.zh,
+    };
+  }
+
+  /**
    * 保存 Pack 到数据库
    */
   async savePack(pack: ReadinessPack): Promise<boolean> {
@@ -293,20 +314,26 @@ export class PackStorageService {
         where: { packId: pack.packId },
       });
 
-      // 将 LocalizedString 转换为字符串（用于数据库存储）
-      const displayNameStr = typeof pack.displayName === 'string' 
-        ? pack.displayName 
-        : pack.displayName.en;
+      // 提取中英文字段
+      const displayNameFields = this.extractLocalizedFields(pack.displayName);
+      const regionFields = this.extractLocalizedFields(pack.geo.region as any);
+      const cityFields = this.extractLocalizedFields(pack.geo.city as any);
 
       const packData = {
         packId: pack.packId,
         destinationId: pack.destinationId,
-        displayName: displayNameStr,
+        displayName: displayNameFields.default || '',
+        displayNameEN: displayNameFields.en,
+        displayNameCN: displayNameFields.cn,
         version: pack.version,
         lastReviewedAt: new Date(pack.lastReviewedAt),
         countryCode: pack.geo.countryCode,
-        region: pack.geo.region,
-        city: pack.geo.city,
+        region: regionFields.default,
+        regionEN: regionFields.en,
+        regionCN: regionFields.cn,
+        city: cityFields.default,
+        cityEN: cityFields.en,
+        cityCN: cityFields.cn,
         latitude: pack.geo.lat,
         longitude: pack.geo.lng,
         packData: pack as any, // 存储完整 Pack JSON

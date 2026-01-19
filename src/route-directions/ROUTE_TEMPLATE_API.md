@@ -41,9 +41,29 @@ interface DayPlan {
   theme?: string;                   // 主题（可选）
   maxIntensity?: string;             // 强度上限：LIGHT/MODERATE/INTENSE（可选）
   maxElevationM?: number;           // 最大海拔（米，可选）
-  requiredNodes?: string[];         // 必须节点（Place UUID 或名称，可选）
+  requiredNodes?: string[];         // 必须节点（Place UUID 或名称，可选，向后兼容）
   optionalActivities?: string[];    // 可选活动类型（可选）
+  pois?: DayPlanPoi[];              // 具体的POI列表（可选，用于维护具体的POI信息）
   [key: string]: any;               // 允许其他扩展字段
+}
+```
+
+### DayPlanPoi 接口
+
+```typescript
+interface DayPlanPoi {
+  id?: number;                      // POI ID（可选，如果已关联到数据库中的Place）
+  uuid?: string;                    // POI UUID（可选，如果已关联到数据库中的Place）
+  nameCN: string;                   // POI 中文名称（必填）
+  nameEN?: string;                  // POI 英文名称（可选）
+  category?: string;                // POI 类别（可选）
+  address?: string;                 // POI 地址（可选）
+  rating?: number;                  // POI 评分（可选，0-5）
+  description?: string;             // POI 描述（可选）
+  required?: boolean;               // 是否为必游POI（默认false）
+  order?: number;                   // POI 顺序（用于排序，可选）
+  durationMinutes?: number;         // 预计停留时间（分钟，可选）
+  metadata?: Record<string, any>;   // 其他元数据（可选）
 }
 ```
 

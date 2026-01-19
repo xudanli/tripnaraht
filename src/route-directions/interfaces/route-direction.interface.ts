@@ -156,6 +156,7 @@ export type RoutePhilosophyField = string | import('../../trips/decision/models/
  * 路线方向完整接口
  */
 export interface RouteDirectionData {
+  id?: string | number; // 路线ID（可选，用于数据库记录）
   countryCode: string;
   name: string;
   nameCN: string;
@@ -188,6 +189,36 @@ export interface RouteDirectionData {
 }
 
 /**
+ * 日计划中的POI信息
+ */
+export interface DayPlanPoi {
+  /** POI ID（可选，如果已关联到数据库中的Place） */
+  id?: number;
+  /** POI UUID（可选，如果已关联到数据库中的Place） */
+  uuid?: string;
+  /** POI 中文名称（必填） */
+  nameCN: string;
+  /** POI 英文名称（可选） */
+  nameEN?: string;
+  /** POI 类别（可选） */
+  category?: string;
+  /** POI 地址（可选） */
+  address?: string;
+  /** POI 评分（可选，0-5） */
+  rating?: number;
+  /** POI 描述（可选） */
+  description?: string;
+  /** 是否为必游POI（默认false） */
+  required?: boolean;
+  /** POI 顺序（用于排序，可选） */
+  order?: number;
+  /** 预计停留时间（分钟，可选） */
+  durationMinutes?: number;
+  /** 其他元数据（可选） */
+  metadata?: Record<string, any>;
+}
+
+/**
  * 每日计划接口
  */
 export interface DayPlan {
@@ -195,8 +226,12 @@ export interface DayPlan {
   theme?: string; // 主题
   maxIntensity?: string; // 强度上限（LIGHT/MODERATE/INTENSE）
   maxElevationM?: number; // 最大海拔（米）
-  requiredNodes?: string[]; // 必须节点（Place UUID 或名称）
-  optionalActivities?: string[]; // 可选活动类型
+  /** 必须节点（Place UUID 或名称，向后兼容） */
+  requiredNodes?: string[];
+  /** 可选活动类型 */
+  optionalActivities?: string[];
+  /** 具体的POI列表（新增，用于维护具体的POI信息） */
+  pois?: DayPlanPoi[];
   [key: string]: any; // 允许其他字段
 }
 

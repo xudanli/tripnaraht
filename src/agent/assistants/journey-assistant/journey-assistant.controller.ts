@@ -1,0 +1,236 @@
+// src/agent/assistants/journey-assistant/journey-assistant.controller.ts
+
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { JourneyAssistantService } from './services/journey-assistant.service';
+import { Public } from '../../../auth/decorators/public.decorator';
+import {
+  JourneyChatRequestDto,
+  JourneyBaseRequestDto,
+  HandleEventRequestDto,
+  AdjustScheduleRequestDto,
+  JourneyAssistantResponseDto,
+} from './dto/journey-assistant.dto';
+
+@ApiTags('行程助手智能体')
+@Controller('agent/journey-assistant')
+export class JourneyAssistantController {
+  constructor(private readonly journeyAssistantService: JourneyAssistantService) {}
+
+  /**
+   * 对话
+   */
+  @Public()
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '与行程助手对话', 
+    description: '旅途中与行程助手对话，可查询行程、寻找附近地点、请求导航等' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '对话成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async chat(@Body() dto: JourneyChatRequestDto): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'chat',
+      tripId: dto.tripId,
+      userId: dto.userId,
+      message: dto.message,
+      language: dto.language,
+      context: dto.context ? {
+        currentLocation: dto.context.currentLocation ? {
+          lat: dto.context.currentLocation.lat,
+          lng: dto.context.currentLocation.lng,
+        } : undefined,
+        timezone: dto.context.timezone,
+      } : undefined,
+    });
+  }
+
+  /**
+   * 获取行程状态
+   */
+  @Public()
+  @Get('trips/:tripId/status')
+  @ApiOperation({ 
+    summary: '获取行程状态', 
+    description: '获取当前行程的状态，包括今日安排、进度、预算使用情况等' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async getStatus(
+    @Param('tripId') tripId: string,
+  ): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'get_status',
+      tripId,
+      userId: 'default', // 简化实现
+    });
+  }
+
+  /**
+   * 获取提醒列表
+   */
+  @Public()
+  @Get('trips/:tripId/reminders')
+  @ApiOperation({ 
+    summary: '获取提醒列表', 
+    description: '获取当前行程的所有待办提醒' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async getReminders(
+    @Param('tripId') tripId: string,
+  ): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'get_reminders',
+      tripId,
+      userId: 'default',
+    });
+  }
+
+  /**
+   * 处理突发事件
+   */
+  @Public()
+  @Post('events/handle')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '处理突发事件', 
+    description: '处理航班延误、景点关闭等突发事件，获取应急方案或执行已选方案' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '处理成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async handleEvent(@Body() dto: HandleEventRequestDto): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'handle_event',
+      tripId: dto.tripId,
+      userId: dto.userId,
+      eventId: dto.eventId,
+      selectedOptionId: dto.selectedOptionId,
+      language: dto.language,
+      context: dto.context ? {
+        currentLocation: dto.context.currentLocation ? {
+          lat: dto.context.currentLocation.lat,
+          lng: dto.context.currentLocation.lng,
+        } : undefined,
+        timezone: dto.context.timezone,
+      } : undefined,
+    });
+  }
+
+  /**
+   * 调整行程
+   */
+  @Public()
+  @Post('schedule/adjust')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '调整行程', 
+    description: '调整行程安排，包括改时间、取消活动、替换活动等' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '调整成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async adjustSchedule(@Body() dto: AdjustScheduleRequestDto): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'adjust_schedule',
+      tripId: dto.tripId,
+      userId: dto.userId,
+      adjustmentParams: {
+        itemId: dto.adjustmentParams.itemId,
+        newTime: dto.adjustmentParams.newTime,
+        cancel: dto.adjustmentParams.cancel,
+        replace: dto.adjustmentParams.replace,
+      },
+      language: dto.language,
+      context: dto.context ? {
+        currentLocation: dto.context.currentLocation ? {
+          lat: dto.context.currentLocation.lat,
+          lng: dto.context.currentLocation.lng,
+        } : undefined,
+        timezone: dto.context.timezone,
+      } : undefined,
+    });
+  }
+
+  /**
+   * 紧急求助
+   */
+  @Public()
+  @Post('emergency')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '紧急求助', 
+    description: '紧急情况下获取帮助，包括医院、警察、大使馆等信息' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async emergencyHelp(@Body() dto: JourneyBaseRequestDto): Promise<JourneyAssistantResponseDto> {
+    return await this.journeyAssistantService.handle({
+      action: 'chat',
+      tripId: dto.tripId,
+      userId: dto.userId,
+      message: '紧急求助 SOS',
+      language: dto.language,
+      context: dto.context ? {
+        currentLocation: dto.context.currentLocation ? {
+          lat: dto.context.currentLocation.lat,
+          lng: dto.context.currentLocation.lng,
+        } : undefined,
+        timezone: dto.context.timezone,
+      } : undefined,
+    });
+  }
+
+  /**
+   * 附近搜索
+   */
+  @Public()
+  @Post('nearby')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '附近搜索', 
+    description: '搜索附近的餐厅、景点、医院等' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: '搜索成功',
+    type: JourneyAssistantResponseDto,
+  })
+  async nearbySearch(
+    @Body() dto: JourneyChatRequestDto,
+  ): Promise<JourneyAssistantResponseDto> {
+    const searchMessage = dto.message || '附近有什么好吃的';
+    return await this.journeyAssistantService.handle({
+      action: 'chat',
+      tripId: dto.tripId,
+      userId: dto.userId,
+      message: searchMessage,
+      language: dto.language,
+      context: dto.context ? {
+        currentLocation: dto.context.currentLocation ? {
+          lat: dto.context.currentLocation.lat,
+          lng: dto.context.currentLocation.lng,
+        } : undefined,
+        timezone: dto.context.timezone,
+      } : undefined,
+    });
+  }
+}

@@ -174,14 +174,14 @@ export interface Itinerary {
  * 
  * 必须输出结构化决策日志：检查了什么、用了哪些证据、为什么允许/拒绝/调整
  */
-export type OrchestrationStep = 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED';
+export type OrchestrationStep = 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED' | 'HALLUCINATION_DETECTION';
 
 /**
  * 三人格类型（用于决策日志归因）
  */
 export type GuardianType = 'ABU' | 'DR_DRE' | 'NEPTUNE';
 
-export type SubAgentType = 'Orchestrator' | 'Planner' | 'Gatekeeper' | 'Compliance' | 'LocalInsight' | 'CoreDecision' | 'Narrator';
+export type SubAgentType = 'Orchestrator' | 'Planner' | 'Gatekeeper' | 'Compliance' | 'LocalInsight' | 'CoreDecision' | 'Narrator' | 'HallucinationDetection';
 
 export interface DecisionLogEntry {
   request_id: string;
@@ -341,5 +341,11 @@ export interface OrchestratorState {
     started_at: string;
     last_updated_at: string;
     total_duration_ms?: number;
+    warnings?: Array<{
+      type: string;
+      message: string;
+      items?: any[];
+    }>;
+    [key: string]: any;
   };
 }

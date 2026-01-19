@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
+import { UpdateRouteDirectionDto } from './dto/update-route-direction.dto';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
@@ -71,6 +72,7 @@ export class RouteDirectionsService {
     }
 
     const data: any = {
+      uuid: randomUUID(),
       routeDirection: {
         connect: { id: dto.routeDirectionId },
       },
@@ -265,10 +267,20 @@ export class RouteDirectionsService {
    */
   async updateRouteDirection(
     id: number,
-    data: Partial<CreateRouteDirectionDto>,
+    data: UpdateRouteDirectionDto,
   ): Promise<any> {
+    // 检查路线方向是否存在
+    const existing = await this.prisma.routeDirection.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Route direction with ID ${id} not found`);
+    }
+
     const updateData: Prisma.RouteDirectionUpdateInput = {};
 
+    if (data.countryCode !== undefined) updateData.countryCode = data.countryCode;
     if (data.name !== undefined) updateData.name = data.name;
     if (data.nameCN !== undefined) updateData.nameCN = data.nameCN;
     if (data.nameEN !== undefined) updateData.nameEN = data.nameEN;
@@ -289,6 +301,20 @@ export class RouteDirectionsService {
     if (data.metadata !== undefined)
       updateData.metadata = data.metadata as Prisma.InputJsonValue;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    
+    // 灰度与开关字段
+    if (data.status !== undefined) (updateData as any).status = data.status;
+    if (data.version !== undefined) (updateData as any).version = data.version;
+    if (data.rolloutPercent !== undefined) (updateData as any).rolloutPercent = data.rolloutPercent;
+    if (data.audienceFilter !== undefined)
+      (updateData as any).audienceFilter = data.audienceFilter as Prisma.InputJsonValue;
+    if (data.failureProfile !== undefined)
+      (updateData as any).failureProfile = data.failureProfile as Prisma.InputJsonValue;
+    if (data.narrative !== undefined)
+      (updateData as any).narrative = data.narrative as Prisma.InputJsonValue;
+    if (data.antiPersona !== undefined) (updateData as any).antiPersona = data.antiPersona;
+
+    updateData.updatedAt = new Date();
 
     return this.prisma.routeDirection.update({
       where: { id },

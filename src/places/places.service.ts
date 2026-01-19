@@ -940,6 +940,7 @@ export class PlacesService {
    * @param radius 搜索半径（米，可选）
    * @param category 类别过滤（可选）
    * @param limit 返回数量限制（默认 20）
+   * @param countryCode 国家代码过滤（可选，如 IS、JP、CN）
    * @returns 地点列表
    */
   async search(
@@ -948,7 +949,8 @@ export class PlacesService {
     lng?: number,
     radius?: number,
     category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string
   ) {
     // 构建搜索条件
     const searchCondition = Prisma.sql`
@@ -962,6 +964,11 @@ export class PlacesService {
 
     const categoryFilter = category
       ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+      : Prisma.sql``;
+
+    // 国家代码过滤（根据 metadata->>'countryCode'）
+    const countryFilter = countryCode
+      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
       : Prisma.sql``;
 
     const locationFilter = lat && lng && radius
@@ -989,6 +996,7 @@ export class PlacesService {
       FROM "Place"
       WHERE ${searchCondition}
         ${categoryFilter}
+        ${countryFilter}
         ${locationFilter}
       ${orderBy}
       LIMIT ${limit}
@@ -1004,13 +1012,15 @@ export class PlacesService {
    * @param lat 纬度（可选，用于距离排序）
    * @param lng 经度（可选，用于距离排序）
    * @param limit 返回数量限制（默认 10）
+   * @param countryCode 国家代码过滤（可选，如 IS、JP、CN）
    * @returns 地点名称建议列表
    */
   async autocomplete(
     query: string,
     lat?: number,
     lng?: number,
-    limit: number = 10
+    limit: number = 10,
+    countryCode?: string
   ) {
     const searchCondition = Prisma.sql`
       (
@@ -1018,6 +1028,11 @@ export class PlacesService {
         "nameEN" ILIKE ${`%${query}%`}
       )
     `;
+
+    // 国家代码过滤
+    const countryFilter = countryCode
+      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
+      : Prisma.sql``;
 
     const orderBy = lat && lng
       ? Prisma.sql`ORDER BY ST_Distance(
@@ -1037,6 +1052,7 @@ export class PlacesService {
         id, "nameCN", "nameEN", category, address
       FROM "Place"
       WHERE ${searchCondition}
+        ${countryFilter}
       ${orderBy}
       LIMIT ${limit}
     `;
@@ -1062,6 +1078,7 @@ export class PlacesService {
    * @param radius 搜索半径（米，可选）
    * @param category 类别过滤（可选）
    * @param limit 返回数量限制（默认 20）
+   * @param countryCode 国家代码过滤（可选，如 IS、JP、CN）
    * @returns 搜索结果列表（包含推荐原因）
    */
   async semanticSearch(
@@ -1070,7 +1087,8 @@ export class PlacesService {
     lng?: number,
     radius?: number,
     category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string
   ): Promise<Array<{
     id: number;
     nameCN: string;
@@ -1085,7 +1103,7 @@ export class PlacesService {
   }>> {
     if (!this.vectorSearchService) {
       // 如果向量搜索服务不可用，降级到关键词搜索
-      const results = await this.search(query, lat, lng, radius, category, limit);
+      const results = await this.search(query, lat, lng, radius, category, limit, countryCode);
       return results.map((r) => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -1106,7 +1124,8 @@ export class PlacesService {
       lng,
       radius,
       category,
-      limit
+      limit,
+      countryCode
     );
 
     return results.map((r) => ({
@@ -1439,6 +1458,148 @@ export class PlacesService {
         page,
         limit,
         totalPages,
+      };
+    } catch (error: any) {
+      this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取地点列表（公开接口）
+   * 支持分页、按类别和城市筛选，支持上下切换
+   */
+  async getPlacesList(params: {
+    page?: number;
+    limit?: number;
+    category?: PlaceCategory;
+    cityId?: number;
+    orderBy?: 'id' | 'rating' | 'createdAt' | 'updatedAt';
+    orderDirection?: 'asc' | 'desc';
+  }) {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100);
+    const skip = (page - 1) * limit;
+
+    // 构建查询条件
+    const where: Prisma.PlaceWhereInput = {};
+
+    // 类别筛选
+    if (params.category) {
+      where.category = params.category;
+    }
+
+    // 城市筛选
+    if (params.cityId) {
+      where.cityId = params.cityId;
+    }
+
+    // 构建排序
+    const orderBy: Prisma.PlaceOrderByWithRelationInput = {};
+    const orderField = params.orderBy || 'id';
+    const orderDir = params.orderDirection || 'desc';
+    orderBy[orderField] = orderDir;
+
+    try {
+      // 并行执行 count 和 findMany 查询
+      const [total, places] = await Promise.all([
+        this.prisma.place.count({ where }),
+        this.prisma.place.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy,
+          include: {
+            City: {
+              select: {
+                id: true,
+                name: true,
+                nameCN: true,
+                nameEN: true,
+                countryCode: true,
+                timezone: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      // 批量提取坐标
+      const placeIds = places.map(p => p.id);
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (placeIds.length > 0) {
+        try {
+          const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            locationMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`);
+        }
+      }
+
+      // 转换为响应格式
+      const placeList = places.map(place => {
+        let coords: { lat: number; lng: number } | null = locationMap.get(place.id) || null;
+        
+        if (!coords) {
+          const location = (place as any).location;
+          coords = location ? this.extractCoordinates(location) : null;
+        }
+        
+        const metadata = (place.metadata as any) || {};
+        const physicalMetadata = (place.physicalMetadata as any) || {};
+        const city = place.City;
+
+        return {
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          category: place.category,
+          address: place.address,
+          rating: place.rating,
+          googlePlaceId: place.googlePlaceId,
+          description: (place as any).description,
+          location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+          metadata,
+          physicalMetadata,
+          city: city ? {
+            id: city.id,
+            name: city.name,
+            nameCN: city.nameCN,
+            nameEN: city.nameEN,
+            countryCode: city.countryCode,
+            timezone: city.timezone,
+          } : null,
+          countryCode: city?.countryCode || null,
+          createdAt: place.createdAt,
+          updatedAt: place.updatedAt,
+        };
+      });
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        places: placeList,
+        page,
+        limit,
+        total,
+        totalPages,
+        hasPrev: page > 1,
+        hasNext: page < totalPages,
       };
     } catch (error: any) {
       this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);

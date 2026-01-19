@@ -79,6 +79,7 @@ export class VectorSearchService {
    * @param radius 搜索半径（米，可选）
    * @param category 类别过滤（可选）
    * @param limit 返回数量限制（默认 20）
+   * @param countryCode 国家代码过滤（可选，如 IS、JP、CN）
    * @returns 搜索结果列表
    */
   async hybridSearch(
@@ -87,7 +88,8 @@ export class VectorSearchService {
     lng?: number,
     radius?: number,
     category?: string,
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string
   ): Promise<HybridSearchResult[]> {
     this.logger.debug(`混合搜索: ${query}, limit: ${limit}`);
 
@@ -124,7 +126,7 @@ export class VectorSearchService {
     
     if (embeddingCount === 0) {
       this.logger.warn('[hybridSearch] 数据库中没有 embedding 数据，直接使用关键词搜索');
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, countryCode);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
@@ -146,7 +148,7 @@ export class VectorSearchService {
     if (!this.embeddingService) {
       this.logger.warn('EmbeddingService 不可用，降级到纯关键词搜索');
       // 降级到关键词搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, countryCode);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -630,7 +632,8 @@ export class VectorSearchService {
     radius?: number,
     category?: string,
     city?: string | null, // 允许外部传入 city（可能为 null 表示禁用过滤）
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string // 国家代码过滤
   ): Promise<KeywordSearchResult[]> {
     // 抽取关键词和城市（如果外部未传入 city）
     const extracted = this.extractKeywords(query);
@@ -736,6 +739,11 @@ export class VectorSearchService {
         )`
       : Prisma.sql``;
 
+    // 国家代码过滤
+    const countryFilter = countryCode
+      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
+      : Prisma.sql``;
+
     const distanceSelect = lat && lng
       ? Prisma.sql`, ST_Distance(
           location,
@@ -785,6 +793,7 @@ export class VectorSearchService {
         ${cityFilter}
         ${districtFilter}
         ${locationFilter}
+        ${countryFilter}
       ORDER BY "keywordScore" DESC
       LIMIT ${limit}
     `;

@@ -62,5 +62,9 @@ export interface RouteDirectionExtensions {
     recommendedProviders?: BookingHint[]; // 推荐提供商
   };
   compliance?: ComplianceCapabilities; // 合规能力
+  /** 预计时长（分钟） */
+  estimatedDuration?: number;
+  /** 预计成本 */
+  estimatedCost?: number;
 }
 

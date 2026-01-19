@@ -35,9 +35,8 @@ export class UpdateRouteTemplateDto {
 
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Object)
-  dayPlans?: DayPlan[];
+  // 不使用 ValidateNested，允许灵活的数据结构（包括 pois 字段）
+  dayPlans?: DayPlan[] | any[];
 
   @IsOptional()
   @IsEnum(['RELAX', 'BALANCED', 'CHALLENGE'])

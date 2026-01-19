@@ -134,6 +134,10 @@ export class LlmService {
     params: TripCreationParams;
     needsClarification: boolean;
     clarificationQuestions?: string[];
+    // 新增：旅行规划师风格的响应
+    plannerReply?: string;
+    suggestedQuestions?: string[];
+    conversationContext?: Record<string, any>;
   }> {
     const provider = dto.provider || this.defaultProvider;
     const prompt = this.buildTripCreationPrompt(dto.text);
@@ -149,12 +153,38 @@ export class LlmService {
       // 验证必需字段
       const hasAllRequiredFields = parsed.destination && parsed.startDate && parsed.endDate && parsed.totalBudget;
 
-      // 总是返回澄清问题，让用户确认/选择信息
-      this.logger.debug('Always returning needsClarification: true to let user confirm/select information');
+      // 判断是否需要澄清：
+      // 1. 如果有推断字段，需要澄清确认
+      // 2. 如果缺少必需字段，需要澄清
+      const hasInferredFields = parsed.inferredFields && parsed.inferredFields.length > 0;
+      const shouldClarify = !hasAllRequiredFields || hasInferredFields || parsed.needsClarification;
+
+      if (shouldClarify) {
+        // 使用智能旅行规划师风格生成澄清对话
+        this.logger.debug('Generating planner-style clarification dialog');
+        const clarification = await this.generatePlannerStyleClarification(
+          dto.text,
+          parsed,
+          parsed.inferredFields
+        );
+
       return {
         params: parsed as TripCreationParams,
         needsClarification: true,
-        clarificationQuestions: this.generateClarificationQuestions(parsed, parsed.inferredFields),
+          // 保留旧字段以保持向后兼容
+          clarificationQuestions: clarification.suggestedQuestions || this.generateFallbackQuestions(parsed, parsed.inferredFields),
+          // 新增：旅行规划师风格的响应
+          plannerReply: clarification.reply,
+          suggestedQuestions: clarification.suggestedQuestions,
+          conversationContext: clarification.conversationContext,
+        };
+      }
+
+      // 信息完整，可以直接创建行程
+      this.logger.debug('All required fields present, no clarification needed');
+      return {
+        params: parsed as TripCreationParams,
+        needsClarification: false,
       };
     } catch (error: any) {
       this.logger.error(`Failed to parse natural language: ${error.message}`);
@@ -765,49 +795,101 @@ ${JSON.stringify(schema, null, 2)}
   // ========== Prompt 构建方法 ==========
 
   private buildTripCreationPrompt(text: string): string {
-    return `你是一个智能旅行规划助手。用户说："${text}"
+    // 获取当前日期用于日期推算
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDate = now.toISOString().split('T')[0];
 
-请从用户的自然语言中提取以下信息，并返回 JSON 格式：
-- destination: 目的地国家代码（ISO 3166-1 alpha-2，如 JP、CN、US）
-- startDate: 开始日期（ISO 8601 格式，如 2026-02-08T00:00:00.000Z）
-- endDate: 结束日期（ISO 8601 格式，如 2026-02-15T00:00:00.000Z）
+    return `你是一位经验丰富的旅行规划师，正在帮助用户规划旅行。用户说："${text}"
+
+当前日期：${currentDate}
+
+## 你的任务
+从用户的自然语言中理解他们的旅行需求，并提取关键信息。
+
+## 需要提取的信息
+- destination: 目的地国家代码（ISO 3166-1 alpha-2，如 JP、CN、US、TH、IS）
+- startDate: 开始日期（ISO 8601 格式）
+- endDate: 结束日期（ISO 8601 格式）
 - totalBudget: 总预算（人民币，元）
-- hasChildren: 是否有小孩（布尔值）
-- hasElderly: 是否有老人（布尔值）
-- preferences: 其他偏好（对象，可选）
-- needsClarification: 如果任何关键信息（日期、预算）是推断的，设置为 true
-- inferredFields: 推断的字段列表，如 ["startDate", "totalBudget"]
+- hasChildren: 是否有小孩同行（布尔值）
+- hasElderly: 是否有老人同行（布尔值）
+- preferences: 旅行偏好（对象，包含 style、interests、pace 等）
+- needsClarification: 是否需要进一步确认信息
+- inferredFields: 推断的字段列表
 
-重要规则：
-1. **日期处理**：
-   - 如果用户明确提到日期（包括"2026年春节"、"2024年国庆"、"明年3月"等），必须转换为具体日期
-   - "2026年春节"应转换为 2026 年春节的具体日期（通常为 1 月底或 2 月初）
-   - "X年X月"应转换为该年该月的第一天作为开始日期
-   - 如果用户提到"X天"，根据开始日期计算结束日期
-   - **如果用户明确提到了日期（即使是节假日名称），needsClarification 应设置为 false，inferredFields 不应包含日期字段**
+## 旅行规划专业知识
 
-2. **预算处理**：
-   - 如果用户明确提到预算（如"预算50000"、"5万"），needsClarification 应设置为 false
-   - 如果用户未提到预算，可以推断合理默认值，但必须设置 needsClarification 为 true
+### 目的地识别
+- 日本：JP | 东京、大阪、京都、北海道、冲绳
+- 泰国：TH | 曼谷、清迈、普吉岛、芭提雅
+- 冰岛：IS | 雷克雅未克、黄金圈
+- 新加坡：SG | 圣淘沙、滨海湾
+- 韩国：KR | 首尔、釜山、济州岛
+- 马来西亚：MY | 吉隆坡、槟城、兰卡威
+- 越南：VN | 河内、胡志明市、岘港
+- 欧洲国家：FR（法国）、IT（意大利）、ES（西班牙）、DE（德国）、GB（英国）、CH（瑞士）
 
-3. **旅行者信息**：
-   - 如果用户提到"带娃"、"带孩子"、"有小孩"等，设置 hasChildren 为 true
-   - 如果用户提到"带老人"、"带父母"、"有老人"等，设置 hasElderly 为 true
+### 日期处理
+- "春节"（${currentYear}年或${currentYear + 1}年）：1月底~2月中
+- "国庆"：10月1日~7日
+- "五一"：5月1日~5日
+- "暑假"：7月~8月
+- "寒假"：1月中~2月
+- "樱花季"（日本）：3月下旬~4月中旬
+- "枫叶季"（日本）：11月
+- "极光季"（冰岛/北欧）：9月~3月
 
-4. **推断规则**：
-   - 只有在用户完全没有提到日期或预算时，才应该推断
-   - 如果用户提到了日期（即使是节假日），应该转换为具体日期，不要标记为推断
-   - 如果信息严重不足，某些字段可以留空，但必须确保 destination 不为空
+### 预算参考（人民币/人）
+- 东南亚5天：5000-15000
+- 日本7天：10000-25000
+- 韩国5天：6000-15000
+- 冰岛10天：25000-50000
+- 欧洲10天：20000-40000
+- 亲子游通常预算+30%
+- 老人游建议选择舒适档次
 
-返回的 JSON 格式示例：
+### 旅行风格识别
+- "休闲/度假/放松" → style: "relaxed"
+- "深度游/文化/历史" → style: "cultural"
+- "冒险/户外/运动" → style: "adventure"
+- "美食/逛吃/购物" → style: "foodie"
+- "网红打卡/拍照" → style: "instagram"
+- "亲子游/带娃/带孩子" → hasChildren: true, style: "family"
+- "带父母/带老人/孝顺游" → hasElderly: true, style: "comfortable"
+
+## 规则
+1. **用户明确提到的信息**：不要标记为推断
+   - 用户说"去日本" → destination: "JP", inferredFields 不包含 destination
+   - 用户说"春节去" → 转换为具体日期，inferredFields 不包含日期
+
+2. **需要推断的信息**：标记为推断并设置 needsClarification: true
+   - 用户没提日期 → 推断合理日期，inferredFields 包含 "startDate", "endDate"
+   - 用户没提预算 → 根据目的地推断，inferredFields 包含 "totalBudget"
+
+3. **天数推算**
+   - 用户说"5天" → endDate = startDate + 4天（含首尾）
+   - 用户没说天数但说了日期范围 → 计算天数
+
+4. **保守原则**
+   - 宁可标记需要确认，也不要擅自做重大假设
+   - 目的地是必须的，如果不清楚则 destination 留空
+
+## 输出格式
+返回纯 JSON，示例：
 {
   "destination": "JP",
-  "startDate": "2024-05-01T00:00:00.000Z",
-  "endDate": "2024-05-05T00:00:00.000Z",
+  "startDate": "2026-04-01T00:00:00.000Z",
+  "endDate": "2026-04-07T00:00:00.000Z",
   "totalBudget": 20000,
   "hasChildren": true,
   "hasElderly": false,
-  "preferences": {},
+  "preferences": {
+    "style": "family",
+    "interests": ["亲子", "樱花"],
+    "pace": "relaxed"
+  },
   "needsClarification": false,
   "inferredFields": []
 }`;
@@ -929,40 +1011,198 @@ ${JSON.stringify(error, null, 2)}
     };
   }
 
-  private generateClarificationQuestions(parsed: any, inferredFields?: string[]): string[] {
+  /**
+   * 使用 LLM 生成旅行规划师风格的智能澄清对话
+   * 不再使用硬编码问题，而是根据上下文动态生成自然、专业的对话
+   */
+  private async generatePlannerStyleClarification(
+    userInput: string,
+    parsed: any,
+    inferredFields?: string[]
+  ): Promise<{
+    reply: string;
+    suggestedQuestions?: string[];
+    conversationContext?: Record<string, any>;
+  }> {
+    const prompt = this.buildPlannerClarificationPrompt(userInput, parsed, inferredFields);
+    
+    try {
+      const response = await this.callLlm(this.defaultProvider, prompt, this.getPlannerClarificationSchema());
+      const result = this.extractJSON(response);
+      return {
+        reply: result.reply || '让我来帮您规划这趟旅程吧！',
+        suggestedQuestions: result.suggestedQuestions,
+        conversationContext: result.conversationContext,
+      };
+    } catch (error: any) {
+      this.logger.warn(`LLM clarification failed, using fallback: ${error.message}`);
+      // 降级使用简单的硬编码问题
+      return {
+        reply: this.buildFallbackClarificationReply(parsed, inferredFields),
+        suggestedQuestions: this.generateFallbackQuestions(parsed, inferredFields),
+      };
+    }
+  }
+
+  /**
+   * 构建旅行规划师澄清对话的 prompt
+   */
+  private buildPlannerClarificationPrompt(
+    userInput: string,
+    parsed: any,
+    inferredFields?: string[]
+  ): string {
+    // 构建已知信息摘要
+    const knownInfo: string[] = [];
+    const missingInfo: string[] = [];
+    const inferredInfo: string[] = [];
+
+    if (parsed.destination) {
+      if (inferredFields?.includes('destination')) {
+        inferredInfo.push(`目的地: ${parsed.destination}（推断）`);
+    } else {
+        knownInfo.push(`目的地: ${parsed.destination}`);
+      }
+    } else {
+      missingInfo.push('目的地');
+    }
+
+    if (parsed.startDate && parsed.endDate) {
+      const startDate = parsed.startDate.includes('T') ? parsed.startDate.split('T')[0] : parsed.startDate;
+      const endDate = parsed.endDate.includes('T') ? parsed.endDate.split('T')[0] : parsed.endDate;
+      if (inferredFields?.includes('startDate') || inferredFields?.includes('endDate')) {
+        inferredInfo.push(`日期: ${startDate} ~ ${endDate}（推断）`);
+    } else {
+        knownInfo.push(`日期: ${startDate} ~ ${endDate}`);
+      }
+    } else {
+      missingInfo.push('出行日期');
+    }
+
+    if (parsed.totalBudget) {
+      if (inferredFields?.includes('totalBudget')) {
+        inferredInfo.push(`预算: ¥${parsed.totalBudget}（推断）`);
+    } else {
+        knownInfo.push(`预算: ¥${parsed.totalBudget}`);
+      }
+    } else {
+      missingInfo.push('预算');
+    }
+
+    if (parsed.hasChildren) knownInfo.push('有小孩同行');
+    if (parsed.hasElderly) knownInfo.push('有老人同行');
+
+    return `你是一位专业、热情的旅行规划师。用户刚刚说了他们的旅行想法，你需要以自然、专业的方式与他们对话，帮助他们完善旅行计划。
+
+## 用户原话
+"${userInput}"
+
+## 已提取的信息
+${knownInfo.length > 0 ? `✅ 已确认: ${knownInfo.join('、')}` : '（暂无确认信息）'}
+${inferredInfo.length > 0 ? `🤔 推断值（需确认）: ${inferredInfo.join('、')}` : ''}
+${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
+
+## 你的任务
+作为旅行规划师，生成一段自然、专业的回复，需要：
+
+1. **开场要有温度** - 对用户的旅行想法表示兴趣和认可
+2. **专业引导** - 像真正的旅行顾问一样，用专业知识引导用户
+3. **不要机械地列问题** - 把需要了解的信息融入自然对话中
+4. **给出建议和洞察** - 如果有推断信息，可以解释为什么这样推断，并询问是否正确
+5. **引导而非审问** - 多用"您是更倾向于..."、"通常我会建议..."这样的句式
+
+## 对话风格示例
+❌ 不好: "请告诉我您的出行日期？请告诉我您的预算范围？"
+✅ 好: "带娃去东京，太棒了！东京确实是亲子游的天堂。我注意到您还没提到具体的时间，您是想趁寒假去还是有别的时间安排呢？另外，日本的消费层次很丰富，从经济型到奢华型都有很好的选择，您这趟大概想控制在什么预算范围内呢？"
+
+## 输出格式
+返回 JSON，包含：
+- reply: 你的回复文本（自然的对话，200-400字）
+- suggestedQuestions: 用户可能的回复选项（3-5个简短选项，帮助用户快速回复）
+- conversationContext: 对话上下文信息，包含你对用户需求的理解
+
+注意：reply 必须是流畅的自然语言，不要使用 markdown 格式或列表。`;
+  }
+
+  /**
+   * 获取旅行规划师澄清对话的 Schema
+   */
+  private getPlannerClarificationSchema(): any {
+    return {
+      type: 'object',
+      properties: {
+        reply: {
+          type: 'string',
+          description: '旅行规划师的自然语言回复',
+        },
+        suggestedQuestions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '用户可能的快速回复选项',
+        },
+        conversationContext: {
+          type: 'object',
+          properties: {
+            userIntent: { type: 'string' },
+            travelStyle: { type: 'string' },
+            urgency: { type: 'string' },
+            specialNeeds: { type: 'array', items: { type: 'string' } },
+          },
+          description: '对话上下文',
+        },
+      },
+      required: ['reply'],
+    };
+  }
+
+  /**
+   * 降级方案：生成简单的澄清回复
+   */
+  private buildFallbackClarificationReply(parsed: any, inferredFields?: string[]): string {
+    const parts: string[] = [];
+    
+    if (parsed.destination) {
+      parts.push(`我理解您想去${parsed.destination}旅行`);
+    } else {
+      parts.push('您想去哪里旅行呢');
+    }
+
+    if (!parsed.startDate && !parsed.endDate) {
+      parts.push('什么时候出发比较方便');
+    }
+
+    if (!parsed.totalBudget) {
+      parts.push('您这趟旅行的预算大概是多少');
+    }
+
+    return parts.join('，') + '？我来帮您规划一下！';
+  }
+
+  /**
+   * 降级方案：生成简单的问题列表
+   */
+  private generateFallbackQuestions(parsed: any, inferredFields?: string[]): string[] {
     const questions: string[] = [];
 
-    // 总是询问目的地（如果缺失）
     if (!parsed.destination) {
-      questions.push('请告诉我您想去哪个国家或地区？');
-    } else {
-      // 即使有值，也询问确认
-      questions.push(`您想去 ${parsed.destination} 吗？请确认目的地。`);
+      questions.push('去日本', '去泰国', '去欧洲', '其他目的地');
     }
-
-    // 总是询问日期（让用户确认）
     if (!parsed.startDate || !parsed.endDate) {
-      questions.push('请告诉我您的出行日期？');
-    } else {
-      // 即使有值，也询问确认
-      const startDate = parsed.startDate.includes('T') 
-        ? parsed.startDate.split('T')[0] 
-        : parsed.startDate;
-      const endDate = parsed.endDate.includes('T') 
-        ? parsed.endDate.split('T')[0] 
-        : parsed.endDate;
-      questions.push(`您的出行日期是 ${startDate} 到 ${endDate} 吗？请确认。`);
+      questions.push('这个月', '下个月', '寒假期间', '具体日期待定');
     }
-
-    // 总是询问预算（让用户确认）
     if (!parsed.totalBudget) {
-      questions.push('请告诉我您的预算范围？');
-    } else {
-      // 即使有值，也询问确认
-      questions.push(`您的预算是 ${parsed.totalBudget} 元人民币吗？请确认。`);
+      questions.push('1万以内', '1-2万', '2-5万', '5万以上');
     }
 
-    return questions;
+    return questions.slice(0, 5);
+  }
+
+  /**
+   * @deprecated 使用 generatePlannerStyleClarification 替代
+   */
+  private generateClarificationQuestions(parsed: any, inferredFields?: string[]): string[] {
+    // 保留作为降级方案
+    return this.generateFallbackQuestions(parsed, inferredFields);
   }
 
   /**

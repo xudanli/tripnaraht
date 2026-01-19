@@ -9,8 +9,13 @@ import { RouteDirectionCacheService } from './services/route-direction-cache.ser
 import { RouteDirectionCardService } from './services/route-direction-card.service';
 import { RouteDirectionExplainerService } from './services/route-direction-explainer.service';
 import { PackKPIAcceptanceService } from './services/pack-kpi-acceptance.service';
+import { RouteJudgmentService } from './services/route-judgment.service';
+import { EnhancedRiskAssessmentService } from './services/enhanced-risk-assessment.service';
+import { ResultPresentationService } from './services/result-presentation.service';
 import { CompliancePluginService } from './plugins/compliance-plugin.service';
 import { TransportPluginService } from './plugins/transport-plugin.service';
+import { forwardRef } from '@nestjs/common';
+import { DecisionModule } from '../trips/decision/decision.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { POIModule } from '../poi/poi.module';
 import { MemoryModule } from '../agent/memory/memory.module';
@@ -46,6 +51,7 @@ class MockRedisService {
           return RedisModule;
         })(),
     POIModule,
+    forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     // MemoryModule, // 暂时禁用，测试是否导致阻塞
   ],
   controllers: [RouteDirectionsController],
@@ -62,6 +68,9 @@ class MockRedisService {
     TransportPluginService,
     RouteDirectionExplainerService,
     PackKPIAcceptanceService,
+    RouteJudgmentService,
+    EnhancedRiskAssessmentService,
+    ResultPresentationService,
   ],
   exports: [
     RouteDirectionsService,
@@ -74,6 +83,9 @@ class MockRedisService {
     TransportPluginService,
     RouteDirectionExplainerService,
     PackKPIAcceptanceService,
+    RouteJudgmentService,
+    EnhancedRiskAssessmentService,
+    ResultPresentationService,
   ],
 })
 export class RouteDirectionsModule {}

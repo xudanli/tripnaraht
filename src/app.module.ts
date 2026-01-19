@@ -32,6 +32,12 @@ import { AuthModule } from './auth/auth.module';
 import { ContactModule } from './contact/contact.module';
 import { SkillsModule } from './skills/skills.module';
 import { CitiesModule } from './cities/cities.module';
+import { DataQualityModule } from './data-quality/data-quality.module';
+import { DataPrivacyModule } from './data-privacy/data-privacy.module';
+import { DataPipelineModule } from './data-pipeline/data-pipeline.module';
+import { DataModelingModule } from './data-modeling/data-modeling.module';
+import { DataArchitectureModule } from './data-architecture/data-architecture.module';
+import { ContentStrategyModule } from './content-strategy/content-strategy.module';
 
 @Module({
   imports: [
@@ -48,6 +54,12 @@ import { CitiesModule } from './cities/cities.module';
     AuthModule,
     RedisModule, // Redis 缓存模块
     DataContractsModule, // 数据契约模块（适配器模式）
+    DataQualityModule, // 数据质量模块（五维度框架）
+    DataPrivacyModule, // 数据隐私保护模块
+    DataPipelineModule, // 数据管道模块（采集、处理、应用）
+    DataModelingModule, // 数据建模模块（不确定性建模）
+    DataArchitectureModule, // 数据架构模块（四层架构）
+    ContentStrategyModule, // 内容策略模块（话术规范框架）
     // ✅ 第一批：基础服务模块（已确认正常）
     SystemModule, // 系统状态模块
     ContactModule, // 联系我们模块

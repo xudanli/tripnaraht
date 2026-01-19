@@ -55,6 +55,7 @@ import { ErrorType, inferErrorType, getErrorHandlingStrategy } from '../interfac
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
 import { SKILL_VALIDATION_RULES } from './skill-validation-rules.config';
 import { SkillInputValidatorService } from './skill-input-validator.service';
+import { HallucinationDetectionService } from './hallucination-detection.service';
 
 /**
  * Claude Orchestrator Service
@@ -80,6 +81,7 @@ export class ClaudeOrchestratorService {
     @Optional() private coreDecisionAgent?: ClaudeCoreDecisionAgentService,
     @Optional() private narratorAgent?: ClaudeNarratorAgentService,
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
+    @Optional() private hallucinationDetection?: HallucinationDetectionService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] 已初始化`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -2129,7 +2131,10 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 步骤 7: NARRATE - 产出用户可读解释（不得改硬字段）
       await this.executeNarrateStep(request, context, state, llmProvider);
 
-      // 步骤 8: DONE
+      // 步骤 8: HALLUCINATION_DETECTION - 防幻觉检测（新增）
+      await this.executeHallucinationDetectionStep(request, context, state);
+
+      // 步骤 9: DONE
       state.current_step = 'DONE';
       state.metadata.last_updated_at = new Date().toISOString();
       state.metadata.total_duration_ms = Date.now() - startTime;
@@ -2911,6 +2916,88 @@ ${JSON.stringify(routingDecision, null, 2)}
         step: 'NARRATE',
         error_code: 'NARRATION_ERROR',
         message: error?.message || '叙述生成失败',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * 步骤 8: HALLUCINATION_DETECTION - 防幻觉检测
+   */
+  private async executeHallucinationDetectionStep(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    state: OrchestratorState,
+  ): Promise<void> {
+    if (!this.hallucinationDetection) {
+      this.logger.debug(`[Claude Orchestrator] HallucinationDetectionService 未注入，跳过防幻觉检测`);
+      return;
+    }
+
+    const stepStartTime = Date.now();
+    this.logger.debug(`[Claude Orchestrator] 执行 HALLUCINATION_DETECTION 步骤...`);
+
+    try {
+      // 对narration进行防幻觉检测
+      if (state.narration) {
+        const detectionResult = await this.hallucinationDetection.detectHallucinations(
+          state.narration,
+          context,
+        );
+
+        // 使用清理后的输出
+        if (detectionResult.cleanedOutput) {
+          state.narration = detectionResult.cleanedOutput as any;
+        }
+
+        // 如果有幻觉风险，记录警告
+        if (detectionResult.hallucinationRisks.length > 0) {
+          // 在state中添加warnings字段（如果不存在）
+          if (!state.metadata.warnings) {
+            state.metadata.warnings = [];
+          }
+
+          (state.metadata.warnings as any[]).push({
+            type: 'HALLUCINATION_RISK',
+            message: detectionResult.userNotification.message,
+            items: detectionResult.hallucinationRisks.map(r => ({
+              text: r.text,
+              confidence: r.confidence,
+              action: r.action,
+            })),
+          });
+
+          this.logger.warn(
+            `[Claude Orchestrator] 检测到 ${detectionResult.hallucinationRisks.length} 个幻觉风险`,
+          );
+        }
+
+        // 记录决策日志
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'HALLUCINATION_DETECTION',
+          actor: 'HallucinationDetection',
+          inputs_summary: '检测LLM生成内容中的事实声明',
+          outputs_summary: `检测到 ${detectionResult.statistics.totalClaims} 个声明，${detectionResult.statistics.verifiedClaims} 个已验证，${detectionResult.statistics.hallucinationRisks} 个幻觉风险`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            duration_ms: Date.now() - stepStartTime,
+            statistics: detectionResult.statistics,
+          },
+        });
+      }
+
+      state.metadata.last_updated_at = new Date().toISOString();
+    } catch (error: any) {
+      this.logger.error(
+        `[Claude Orchestrator] HALLUCINATION_DETECTION 步骤失败: ${error?.message}`,
+      );
+      // 防幻觉检测失败不影响整体流程，记录错误但继续
+      state.errors.push({
+        step: 'HALLUCINATION_DETECTION',
+        error_code: 'HALLUCINATION_DETECTION_ERROR',
+        message: error?.message || '防幻觉检测失败',
         timestamp: new Date().toISOString(),
       });
     }

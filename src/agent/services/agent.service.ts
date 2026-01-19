@@ -82,6 +82,7 @@ export class AgentService {
       NARRATE: 87.5,
       DONE: 100.0,
       FAILED: 0,
+      HALLUCINATION_DETECTION: 95.0,
     };
 
     const stepMessageMap: Record<OrchestrationStep, string> = {
@@ -94,6 +95,7 @@ export class AgentService {
       NARRATE: '正在生成说明...',
       DONE: '处理完成',
       FAILED: '处理失败',
+      HALLUCINATION_DETECTION: '正在检测内容真实性...',
     };
 
     // 🆕 步骤预计时间（毫秒，基于历史数据或经验值）
@@ -107,6 +109,7 @@ export class AgentService {
       NARRATE: 3000,     // 3秒
       DONE: 0,
       FAILED: 0,
+      HALLUCINATION_DETECTION: 2000, // 2秒
     };
 
     // 🆕 步骤详细说明
@@ -120,6 +123,7 @@ export class AgentService {
       NARRATE: '生成用户友好的行程说明和提示',
       DONE: '所有步骤已完成',
       FAILED: '处理过程中出现错误',
+      HALLUCINATION_DETECTION: '检测生成内容中的事实声明，确保信息准确性',
     };
 
     let uiStatus: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed' = 'thinking';

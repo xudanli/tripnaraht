@@ -1,4 +1,14 @@
 // src/agent/services/orchestrator.service.ts
+/**
+ * Orchestrator Service (V2.1 增强)
+ * 
+ * System 2 的 ReAct 循环：Plan → Act → Observe → Critic → Repair
+ * 
+ * V2.1 增强：
+ * - 集成 TelemetryService 进行链路追踪
+ * - 集成 AuditLogService 进行审计日志
+ * - 所有工具调用都经过统一的预算和日志管理
+ */
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { RouteType } from '../interfaces/router.interface';
@@ -11,12 +21,9 @@ import { ActionDependencyAnalyzerService } from './action-dependency-analyzer.se
 import { LlmPlanService } from './llm-plan-service';
 import { TripNaraSystemPromptService } from './tripnara-system-prompt.service';
 import { AgentResumeService } from '../../trips/decision/services/agent-resume.service';
+import { TelemetryService } from '../infra/telemetry.service';
+import { AuditLogService } from '../infra/audit-log.service';
 
-/**
- * Orchestrator Service
- * 
- * System 2 的 ReAct 循环：Plan → Act → Observe → Critic → Repair
- */
 @Injectable()
 export class OrchestratorService {
   private readonly logger = new Logger(OrchestratorService.name);
@@ -31,10 +38,16 @@ export class OrchestratorService {
     @Optional() private llmPlan?: LlmPlanService,
     @Optional() private systemPromptService?: TripNaraSystemPromptService,
     @Optional() private agentResumeService?: AgentResumeService,
-  ) {}
+    // V2.1 Infra 层服务
+    @Optional() private telemetry?: TelemetryService,
+    @Optional() private auditLog?: AuditLogService,
+  ) {
+    this.logger.log('🎯 Orchestrator 已初始化 (V2.1)');
+  }
 
   /**
    * 执行 System 2 ReAct 循环
+   * V2.1 增强：集成链路追踪和审计日志
    */
   async execute(
     state: AgentState,
@@ -47,7 +60,35 @@ export class OrchestratorService {
     const startTime = Date.now();
     let currentState = state;
 
-    this.logger.debug(`Starting System2 ReAct loop for request: ${currentState.request_id}`);
+    // V2.1: 开始链路追踪
+    const traceId = this.telemetry?.startTrace(
+      `orchestrator:${currentState.request_id}`,
+      'core_action',
+      { 'request.id': currentState.request_id },
+    ) || currentState.request_id;
+    
+    // V2.1: 设置预算追踪
+    if (this.telemetry && traceId) {
+      const rootSpan = this.telemetry.getTraceDetail(traceId);
+      if (rootSpan) {
+        this.telemetry.setBudget(rootSpan.spanId, {
+          durationMs: budget.max_seconds * 1000,
+          llmTokens: 4000, // 默认 token 预算
+          toolCalls: budget.max_steps,
+        });
+      }
+    }
+
+    this.logger.debug(`Starting System2 ReAct loop for request: ${currentState.request_id} (traceId: ${traceId})`);
+
+    // V2.1: 记录开始审计
+    this.auditLog?.logUserAction({
+      traceId,
+      userId: 'system', // AgentState 没有 user context，使用 system
+      action: 'orchestrator_start',
+      resource: `request:${currentState.request_id}`,
+      params: { budget },
+    });
 
     try {
       // 初始化 ReAct 状态
@@ -267,11 +308,49 @@ export class OrchestratorService {
         },
       });
 
+      // V2.1: 结束链路追踪
+      if (this.telemetry && traceId) {
+        const summary = this.telemetry.endTrace(traceId, 'success');
+        this.logger.debug(`Trace completed: ${summary?.totalDurationMs}ms, tools: ${summary?.totalToolCalls}, SLA: ${summary?.slaBreached ? 'BREACHED' : 'OK'}`);
+      }
+
+      // V2.1: 记录完成审计
+      this.auditLog?.logSystemDecision({
+        traceId,
+        actor: 'orchestrator',
+        decision: 'execute_complete',
+        inputs: { budget, steps: currentState.react.step },
+        output: { status: currentState.result.status },
+        reason: `Completed in ${latency}ms with ${currentState.react.step} steps`,
+      });
+
       this.logger.debug(`System2 ReAct loop completed: ${currentState.result.status}, steps: ${currentState.react.step}`);
 
       return currentState;
     } catch (error: any) {
       this.logger.error(`Orchestrator error: ${error?.message || String(error)}`, error?.stack);
+      
+      // V2.1: 记录异常审计
+      this.auditLog?.logException({
+        traceId,
+        actor: 'orchestrator',
+        action: 'execute',
+        resource: `request:${currentState.request_id}`,
+        error: {
+          code: 'ORCHESTRATOR_ERROR',
+          message: error?.message || String(error),
+          stack: error?.stack,
+        },
+      });
+
+      // V2.1: 结束链路追踪（标记为错误）
+      if (this.telemetry && traceId) {
+        this.telemetry.endTrace(traceId, 'error', {
+          code: 'ORCHESTRATOR_ERROR',
+          message: error?.message || String(error),
+        });
+      }
+
       return this.stateService.update(currentState.request_id, {
         result: {
           ...currentState.result,
@@ -749,6 +828,7 @@ export class OrchestratorService {
 
   /**
    * Act: 执行 Action（带 cache_hit 信息）
+   * V2.1 增强：添加工具调用链路追踪
    */
   private async actWithCacheInfo(
     state: AgentState,
@@ -769,6 +849,16 @@ export class OrchestratorService {
 
     const actStartTime = Date.now();
     let cacheHit = false;
+    
+    // V2.1: 记录工具调用审计
+    this.auditLog?.logUserAction({
+      traceId: state.request_id,
+      userId: 'system',
+      action: 'tool_call',
+      resource: `tool:${action.name}`,
+      params: action.input,
+      sessionId: state.request_id,
+    });
     
     try {
       // 检查缓存（如果 Action 是可缓存的）
@@ -938,6 +1028,8 @@ export class OrchestratorService {
     } catch (error: any) {
       this.logger.error(`Action execution error: ${error?.message || String(error)}`, error?.stack);
       
+      const actLatency = Date.now() - actStartTime;
+      
       // 记录失败事件
       if (this.eventTelemetry) {
         this.eventTelemetry.recordSystem2Step(
@@ -945,10 +1037,23 @@ export class OrchestratorService {
           state.react.step,
           action.name,
           { error: error?.message || String(error) },
-          Date.now() - actStartTime,
+          actLatency,
           { phase: 'act', error: true }
         );
       }
+      
+      // V2.1: 记录工具调用失败审计
+      this.auditLog?.logException({
+        traceId: state.request_id,
+        actor: 'orchestrator',
+        action: `tool:${action.name}`,
+        resource: `request:${state.request_id}`,
+        error: {
+          code: 'TOOL_EXECUTION_ERROR',
+          message: error?.message || String(error),
+          stack: error?.stack,
+        },
+      });
       
       // 标记状态为失败，阻止进入 READY 状态
       const errorState = this.stateService.update(state.request_id, {

@@ -87,6 +87,7 @@ export class DecisionLogMigrator {
       VERIFY: 'verify',
       REPAIR: 'repair',
       NARRATE: 'narrate',
+      HALLUCINATION_DETECTION: 'hallucination_detection',
       DONE: 'done',
       FAILED: 'failed',
     };

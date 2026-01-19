@@ -6,6 +6,9 @@ import { RouterService } from './services/router.service';
 import { AgentStateService } from './services/agent-state.service';
 import { ActionRegistryService } from './services/action-registry.service';
 import { System1ExecutorService } from './services/system1-executor.service';
+import { System1InfoCardService } from './services/system1-info-card.service';
+import { SystemCollaborationService } from './services/system-collaboration.service';
+import { HallucinationDetectionService } from './services/hallucination-detection.service';
 import { OrchestratorService } from './services/orchestrator.service';
 import { CriticService } from './services/critic.service';
 import { EventTelemetryService } from './services/event-telemetry.service';
@@ -68,6 +71,10 @@ import { ClaudeCoreDecisionAgentService } from './services/sub-agents/core-decis
 import { ClaudeNarratorAgentService } from './services/sub-agents/narrator-agent.service';
 import { SkillInputValidatorService } from './services/skill-input-validator.service';
 import { SkillInputSchemaGeneratorService } from './services/skill-input-schema-generator.service';
+import { AssistantsModule } from './assistants/assistants.module';
+import { AgentInfraModule } from './infra/infra.module';
+import { RouteDirectionsModule } from '../route-directions/route-directions.module';
+import { DataModelingModule } from '../data-modeling/data-modeling.module';
 
 /**
  * Agent Module
@@ -90,6 +97,10 @@ import { SkillInputSchemaGeneratorService } from './services/skill-input-schema-
     RagModule, // RAG 模块（用于增强对话）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
     SkillsModule, // Skills 模块（用于 Claude 编排）
+    AssistantsModule, // 智能体助手模块（规划助手、行程助手）
+    AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
+    RouteDirectionsModule, // 路线方向模块（用于信息卡片）
+    DataModelingModule, // 数据建模模块（用于不确定性建模）
   ],
   controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController],
   providers: [
@@ -98,6 +109,9 @@ import { SkillInputSchemaGeneratorService } from './services/skill-input-schema-
     AgentStateService,
     ActionRegistryService,
     System1ExecutorService,
+    System1InfoCardService,
+    SystemCollaborationService,
+    HallucinationDetectionService,
     OrchestratorService,
     CriticService,
     EventTelemetryService,
@@ -122,12 +136,14 @@ import { SkillInputSchemaGeneratorService } from './services/skill-input-schema-
     ClaudeNarratorAgentService, // Narrator Agent（Claude 编排）
     SkillInputValidatorService, // Skill 输入参数验证服务
     SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
+    // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [
     AgentService,
     ActionRegistryService,
     TripNaraSystemPromptService,
     ReactSystemPromptService,
+    AgentInfraModule, // 导出 Infra 模块（LLMExecutor、CoreGateway）
   ],
 })
 export class AgentModule {

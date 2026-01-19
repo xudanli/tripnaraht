@@ -4,6 +4,9 @@ import { Module } from '@nestjs/common';
 import { MemoryService } from './services/memory.service';
 import { UserProfileMapperService } from './services/user-profile-mapper.service';
 import { DecisionParamsInjectorService } from './services/decision-params-injector.service';
+import { PersonaIdentificationService } from './services/persona-identification.service';
+import { PersonaStateManagerService } from './services/persona-state-manager.service';
+import { MultiPersonaManagerService } from './services/multi-persona-manager.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 /**
@@ -17,8 +20,22 @@ import { PrismaModule } from '../../prisma/prisma.module';
  */
 @Module({
   imports: [PrismaModule],
-  providers: [MemoryService, UserProfileMapperService, DecisionParamsInjectorService],
-  exports: [MemoryService, UserProfileMapperService, DecisionParamsInjectorService],
+  providers: [
+    MemoryService,
+    UserProfileMapperService,
+    DecisionParamsInjectorService,
+    PersonaIdentificationService,
+    MultiPersonaManagerService,
+    PersonaStateManagerService,
+  ],
+  exports: [
+    MemoryService,
+    UserProfileMapperService,
+    DecisionParamsInjectorService,
+    PersonaIdentificationService,
+    MultiPersonaManagerService,
+    PersonaStateManagerService,
+  ],
 })
 export class MemoryModule {}
 

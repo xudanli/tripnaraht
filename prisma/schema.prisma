@@ -332,12 +332,18 @@ model ReadinessPack {
   id             String   @id
   packId         String   @unique
   destinationId  String
-  displayName    String
+  displayName    String   // 向后兼容，默认使用英文
+  displayNameEN  String?  @map("display_name_en")
+  displayNameCN  String?  @map("display_name_cn")
   version        String
   lastReviewedAt DateTime
   countryCode    String
-  region         String?
-  city           String?
+  region         String?  // 向后兼容，默认使用英文
+  regionEN       String?  @map("region_en")
+  regionCN       String?  @map("region_cn")
+  city           String?  // 向后兼容，默认使用英文
+  cityEN         String?  @map("city_en")
+  cityCN         String?  @map("city_cn")
   latitude       Float?
   longitude      Float?
   packData       Json
@@ -350,6 +356,8 @@ model ReadinessPack {
   @@index([destinationId])
   @@index([isActive])
   @@index([packId])
+  @@index([displayNameCN])
+  @@index([displayNameEN])
 }
 
 model ReservationTask {
@@ -916,6 +924,17 @@ model DecisionLog {
   evidenceRefs     String[] @map("evidence_refs")
   timestamp        DateTime @default(now())
   metadata         Json?
+  
+  // 新增字段：决策点相关信息
+  availableOptions    Json?     @map("available_options") // 可用选项
+  userChoice          Json?     @map("user_choice") // 用户选择
+  userReasoning       String?   @map("user_reasoning") @db.Text // 用户给出的理由
+  confidenceLevel     Float?    @map("confidence_level") // 用户的信心度
+  systemRecommendation Json?    @map("system_recommendation") // 系统建议
+  alignmentScore      Float?    @map("alignment_score") // 系统建议与用户选择的一致性
+  
+  // 关联的决策结果
+  outcomes            DecisionOutcome[]
 
   @@index([tripId])
   @@index([countryCode])
@@ -927,6 +946,23 @@ model DecisionLog {
   @@index([countryCode, routeDirectionId, decisionSource])
   @@index([decisionStage, decisionSource])
   @@map("decision_logs")
+}
+
+model DecisionOutcome {
+  id                  String   @id @default(uuid()) @db.Uuid
+  decisionId          String   @map("decision_id") @db.Uuid
+  expectedOutcome     Json     @map("expected_outcome")
+  actualOutcome       Json     @map("actual_outcome")
+  deviation           Json
+  userSatisfaction    Float?   @map("user_satisfaction") // 1-10
+  userFeedback        String?  @map("user_feedback") @db.Text
+  learningSignals     Json     @map("learning_signals")
+  createdAt           DateTime @default(now()) @map("created_at")
+  
+  DecisionLog         DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  
+  @@index([decisionId])
+  @@map("decision_outcomes")
 }
 
 // ========== TripNARA Agent Memory System ==========
@@ -1276,4 +1312,39 @@ model HazardZone {
   @@index([countryCode, level])
   @@index([geom], type: Gist)
   @@map("hazard_zones")
+}
+
+// ========== TripNARA Data Privacy System ==========
+
+// 数据同意记录表
+model DataConsent {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  purpose     String   @db.VarChar(50) // HEALTH_RISK_ASSESSMENT, LOCATION_TRACKING, etc.
+  status      String   @default("PENDING") @map("status") @db.VarChar(20) // PENDING, ACTIVE, REVOKED
+  consentText String   @map("consent_text") @db.Text
+  grantedAt   DateTime? @map("granted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userId, purpose, status])
+  @@index([userId])
+  @@index([purpose])
+  @@index([status])
+  @@index([userId, purpose])
+  @@map("data_consents")
+}
+
+// 数据保留策略表
+model DataRetentionPolicy {
+  id            String   @id @default(uuid()) @db.Uuid
+  dataType      String   @unique @map("data_type") @db.VarChar(50) // HEALTH_DATA, LOCATION_DATA, etc.
+  retentionDays Int      @map("retention_days")
+  autoDelete    Boolean  @default(true) @map("auto_delete")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  @@map("data_retention_policies")
 }

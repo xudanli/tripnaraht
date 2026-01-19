@@ -7,11 +7,14 @@ import { NaturePoiService } from './services/nature-poi.service';
 import { NaturePoiMapperService } from './services/nature-poi-mapper.service';
 import { NaraHintService } from './services/nara-hint.service';
 import { RouteDifficultyService } from './services/route-difficulty.service';
+import { UnsplashService } from './services/unsplash.service';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { UpdatePlaceDto } from './dto/update-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { GetPlacesAdminQueryDto, PlaceListAdminResponseDto } from './dto/admin-place.dto';
+import { PlaceListQueryDto, PlaceListResponseDto } from './dto/place-list-query.dto';
+import { BatchPlaceImageRequestDto, BatchPlaceImageResponseDto, CATEGORY_MAP } from './dto/place-image.dto';
 import { PlaceCategory } from '@prisma/client';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
@@ -29,6 +32,7 @@ export class PlacesController {
     private readonly naturePoiMapperService: NaturePoiMapperService,
     private readonly naraHintService: NaraHintService,
     private readonly routeDifficultyService: RouteDifficultyService,
+    private readonly unsplashService: UnsplashService,
   ) {}
 
   @Get('nearby')
@@ -896,14 +900,15 @@ export class PlacesController {
     description:
       '使用向量搜索理解自然语言查询，找到语义相关但不含关键词的地点。\n\n' +
       '**功能特点：**\n' +
-      '- 支持自然语言查询（如"像京都那样的地方"、"适合冥想的安静庭院"）\n' +
+      '- 支持自然语言查询（如"冰岛的瀑布"、"适合拍照的景点"）\n' +
       '- 混合搜索：向量搜索（语义） + 关键词搜索（精确匹配）\n' +
-      '- 显示推荐原因（如"根据评论提到的\'静谧\'和\'日式庭院\'推荐"）\n' +
-      '- 支持按类别筛选和距离排序',
+      '- 显示推荐原因\n' +
+      '- 支持按国家、类别筛选和距离排序',
   })
-  @ApiQuery({ name: 'q', description: '自然语言查询', example: '像京都那样的地方', required: true })
-  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
-  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'q', description: '自然语言查询', example: '瀑布', required: true })
+  @ApiQuery({ name: 'countryCode', description: '国家代码（IS=冰岛，JP=日本，CN=中国）', example: 'IS', required: false })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 64.1466, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: -21.9426, type: Number, required: false })
   @ApiQuery({ name: 'radius', description: '搜索半径（米，可选）', example: 5000, type: Number, required: false })
   @ApiQuery({
     name: 'type',
@@ -919,6 +924,7 @@ export class PlacesController {
   })
   async semanticSearch(
     @Query('q') query: string,
+    @Query('countryCode') countryCode?: string,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('radius') radius?: string,
@@ -941,7 +947,8 @@ export class PlacesController {
         lngNum,
         radiusNum,
         type,
-        limitNum
+        limitNum,
+        countryCode
       );
 
       return successResponse({
@@ -1093,11 +1100,12 @@ export class PlacesController {
   @Get('search')
   @ApiOperation({
     summary: '关键词搜索地点',
-    description: '根据关键词搜索地点，支持中英文名称、地址搜索。支持按类别筛选和距离排序。',
+    description: '根据关键词搜索地点，支持中英文名称、地址搜索。支持按类别筛选、国家过滤和距离排序。',
   })
-  @ApiQuery({ name: 'q', description: '搜索关键词', example: '东京塔', required: true })
-  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
-  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'q', description: '搜索关键词', example: '瀑布', required: true })
+  @ApiQuery({ name: 'countryCode', description: '国家代码（IS=冰岛，JP=日本，CN=中国）', example: 'IS', required: false })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 64.1466, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: -21.9426, type: Number, required: false })
   @ApiQuery({ name: 'radius', description: '搜索半径（米，可选）', example: 5000, type: Number, required: false })
   @ApiQuery({
     name: 'type',
@@ -1113,6 +1121,7 @@ export class PlacesController {
   })
   async searchPlaces(
     @Query('q') query: string,
+    @Query('countryCode') countryCode?: string,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('radius') radius?: string,
@@ -1126,18 +1135,70 @@ export class PlacesController {
     const lngNum = lng ? parseFloat(lng) : undefined;
     const radiusNum = radius ? parseFloat(radius) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : 20;
-    const places = await this.placesService.search(query, latNum, lngNum, radiusNum, type, limitNum);
+    const places = await this.placesService.search(query, latNum, lngNum, radiusNum, type, limitNum, countryCode);
     return successResponse(places);
+  }
+
+  @Get('list')
+  @Public()
+  @ApiOperation({
+    summary: '获取地点列表（支持分页和上下切换）',
+    description: '获取地点列表，支持分页、按类别和城市筛选，支持上下切换。',
+  })
+  @ApiQuery({ name: 'page', description: '页码（从 1 开始）', example: 1, type: Number, required: false })
+  @ApiQuery({ name: 'limit', description: '每页数量（默认 20，最大 100）', example: 20, type: Number, required: false })
+  @ApiQuery({
+    name: 'category',
+    description: '地点类型筛选',
+    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    required: false,
+  })
+  @ApiQuery({ name: 'cityId', description: '城市ID筛选', example: 1, type: Number, required: false })
+  @ApiQuery({
+    name: 'orderBy',
+    description: '排序字段',
+    enum: ['id', 'rating', 'createdAt', 'updatedAt'],
+    example: 'id',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    description: '排序方向',
+    enum: ['asc', 'desc'],
+    example: 'desc',
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回地点列表（包含分页信息）',
+    type: ApiSuccessResponseDto,
+  })
+  async getPlacesList(@Query() query: PlaceListQueryDto) {
+    try {
+      const result = await this.placesService.getPlacesList({
+        page: query.page,
+        limit: query.limit,
+        category: query.category,
+        cityId: query.cityId,
+        orderBy: query.orderBy,
+        orderDirection: query.orderDirection,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `获取地点列表失败: ${error.message}`);
+    }
   }
 
   @Get('autocomplete')
   @ApiOperation({
     summary: '地点名称自动补全',
-    description: '根据输入关键词返回地点名称建议，用于搜索框下拉建议。',
+    description: '根据输入关键词返回地点名称建议，用于搜索框下拉建议。支持按国家过滤。',
   })
-  @ApiQuery({ name: 'q', description: '搜索关键词', example: '东京', required: true })
-  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 35.6762, type: Number, required: false })
-  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: 139.6503, type: Number, required: false })
+  @ApiQuery({ name: 'q', description: '搜索关键词', example: '瀑布', required: true })
+  @ApiQuery({ name: 'countryCode', description: '国家代码（IS=冰岛，JP=日本，CN=中国）', example: 'IS', required: false })
+  @ApiQuery({ name: 'lat', description: '纬度（可选，用于距离排序）', example: 64.1466, type: Number, required: false })
+  @ApiQuery({ name: 'lng', description: '经度（可选，用于距离排序）', example: -21.9426, type: Number, required: false })
   @ApiQuery({ name: 'limit', description: '返回数量限制（默认 10）', example: 10, type: Number, required: false })
   @ApiResponse({
     status: 200,
@@ -1146,6 +1207,7 @@ export class PlacesController {
   })
   async autocompletePlaces(
     @Query('q') query: string,
+    @Query('countryCode') countryCode?: string,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('limit') limit?: string,
@@ -1156,7 +1218,7 @@ export class PlacesController {
     const latNum = lat ? parseFloat(lat) : undefined;
     const lngNum = lng ? parseFloat(lng) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    const suggestions = await this.placesService.autocomplete(query, latNum, lngNum, limitNum);
+    const suggestions = await this.placesService.autocomplete(query, latNum, lngNum, limitNum, countryCode);
     return successResponse(suggestions);
   }
 
@@ -1492,6 +1554,102 @@ export class PlacesController {
     @Body() request: RouteDifficultyRequestDto,
   ) {
     return this.routeDifficultyService.calculateDifficulty(request);
+  }
+
+  // ==================== 图片服务 ====================
+
+  @Post('images/batch')
+  @Public()
+  @ApiOperation({
+    summary: '批量获取地点图片',
+    description: `
+批量从 Unsplash 获取地点的经典照片。
+
+**使用说明**：
+- 每个地点返回一张最相关的高质量照片
+- 优先提供英文名称 (placeNameEn) 以提高匹配度
+- 提供 country 和 category 可以更精准定位
+- 结果会缓存 24 小时
+
+**Unsplash 归属要求**：
+- 使用图片时必须展示 attribution 信息
+- 格式："Photo by {photographerName} on Unsplash"
+- 链接到 photographerUrl 和 unsplashUrl
+
+**限制**：
+- 单次请求最多 20 个地点
+- API 速率限制：50 次/小时
+    `,
+  })
+  @ApiBody({
+    type: BatchPlaceImageRequestDto,
+    examples: {
+      japan_trip: {
+        summary: '日本行程地点',
+        value: {
+          places: [
+            { placeName: '富士山', placeNameEn: 'Mount Fuji', country: 'Japan', category: 'mountain' },
+            { placeName: '浅草寺', placeNameEn: 'Sensoji Temple', country: 'Japan', category: 'temple' },
+            { placeName: '东京塔', placeNameEn: 'Tokyo Tower', country: 'Japan', category: 'landmark' },
+            { placeName: '清水寺', placeNameEn: 'Kiyomizu-dera Temple', country: 'Japan', category: 'temple' },
+          ],
+        },
+      },
+      europe_trip: {
+        summary: '欧洲行程地点',
+        value: {
+          places: [
+            { placeName: '埃菲尔铁塔', placeNameEn: 'Eiffel Tower', country: 'France', category: 'landmark' },
+            { placeName: '卢浮宫', placeNameEn: 'Louvre Museum', country: 'France', category: 'museum' },
+            { placeName: '巴塞罗那圣家堂', placeNameEn: 'Sagrada Familia', country: 'Spain', category: 'landmark' },
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回图片数据',
+    type: BatchPlaceImageResponseDto,
+  })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 429, description: 'API 速率限制' })
+  async getBatchPlaceImages(
+    @Body() request: BatchPlaceImageRequestDto,
+  ): Promise<BatchPlaceImageResponseDto> {
+    this.logger.debug(`[批量图片] 请求 ${request.places.length} 个地点的图片`);
+    
+    const result = await this.unsplashService.getBatchPlaceImages(
+      request.places.map(p => ({
+        placeId: p.placeId,
+        placeName: p.placeName,
+        placeNameEn: p.placeNameEn,
+        country: p.country,
+        // 映射 category: 支持 Prisma 枚举 (ATTRACTION) 和小写格式 (landmark)
+        category: p.category ? (CATEGORY_MAP[p.category] || 'landmark') : undefined,
+      })),
+    );
+
+    this.logger.debug(
+      `[批量图片] 完成: 总计=${result.stats.total}, 成功=${result.stats.found}, ` +
+      `缓存=${result.stats.cached}, 失败=${result.stats.failed}, 耗时=${result.processingTimeMs}ms`
+    );
+
+    return result;
+  }
+
+  @Get('images/cache-stats')
+  @Public()
+  @ApiOperation({
+    summary: '获取图片缓存统计',
+    description: '查看当前图片缓存的状态',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '缓存统计信息',
+  })
+  async getImageCacheStats() {
+    return successResponse(this.unsplashService.getCacheStats());
   }
 }
 

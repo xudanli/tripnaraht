@@ -1,7 +1,7 @@
 // src/trips/trips.service.ts
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
+import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
 import { TripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
@@ -19,6 +19,7 @@ import { TripDraftService } from './services/trip-draft.service';
 import { SaveTripDraftDto, TripDraftResponseDto } from './dto/trip-draft.dto';
 import { EvidenceItemDto, EvidenceListResponseDto, GetEvidenceQueryDto, EvidenceType, EvidenceSeverity } from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
+import { toPlaceResponseDto } from './dto/place-response.dto';
 
 @Injectable()
 export class TripsService {
@@ -102,7 +103,21 @@ export class TripsService {
     // ============================================
     // 使用新的双轴模型 + 木桶效应算法
     // 根据团队中最弱的成员决定整体节奏
-    const pacingConfig = PacingCalculator.calculateShortestStave(dto.travelers);
+    let pacingConfig = PacingCalculator.calculateShortestStave(dto.travelers);
+
+    // 处理节奏配置（如果用户指定了 pace）
+    if (dto.pace) {
+      const paceToActivities: Record<TripPace, number> = {
+        [TripPace.RELAXED]: 3,
+        [TripPace.STANDARD]: 5,
+        [TripPace.TIGHT]: 7,
+      };
+      pacingConfig = {
+        ...pacingConfig,
+        level: dto.pace,
+        maxDailyActivities: paceToActivities[dto.pace],
+      };
+    }
 
     // ============================================
     // 步骤 3: 🧠 策略二：预算切分 (Budget Strategy)
@@ -141,6 +156,23 @@ export class TripsService {
     };
 
     // ============================================
+    // 步骤 3.5: 处理偏好和约束（新增）
+    // ============================================
+    // 将用户的偏好和约束存入 metadata
+    const metadata: Record<string, any> = {};
+    
+    if (dto.preferences && dto.preferences.length > 0) {
+      metadata.preferences = dto.preferences;
+    }
+    
+    if (dto.mustPlaces && dto.mustPlaces.length > 0 || dto.avoidPlaces && dto.avoidPlaces.length > 0) {
+      metadata.constraints = {
+        mustPlaces: dto.mustPlaces || [],
+        avoidPlaces: dto.avoidPlaces || [],
+      };
+    }
+
+    // ============================================
     // 步骤 4: 写入数据库 (使用 Transaction 保证原子性)
     // ============================================
     // 使用事务确保 Trip 和 TripDay 要么全部创建成功，要么全部失败
@@ -156,6 +188,7 @@ export class TripsService {
           status: dto.status || TripStatus.PLANNING, // 使用传入的状态或默认值
           budgetConfig: budgetConfig as any,
           pacingConfig: pacingConfig as any,
+          metadata: Object.keys(metadata).length > 0 ? metadata as any : undefined, // 存储偏好和约束
           updatedAt: new Date(),
         } as any, // Use UncheckedCreateInput to allow direct field assignment
       });
@@ -192,6 +225,12 @@ export class TripsService {
       return {
         ...trip,
         days: tripDays,
+        // 返回处理后的配置（便于前端使用）
+        processedConfig: {
+          pacingConfig: pacingConfig,
+          budgetConfig: budgetConfig,
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        },
       };
     });
   }
@@ -337,10 +376,22 @@ export class TripsService {
               orderBy: { startTime: 'asc' }, // 按时间轴排序 (9点在10点前)
               include: {
                 // 第三层：关联查询 Item 对应的地点详情 (如果有)
+                // P0 必须返回：id, nameCN, nameEN, category, address, rating, metadata(openingHours)
+                // P1 推荐返回：metadata.price, metadata.priceLevel, metadata.tags
+                // P2 可选返回：metadata.phone, metadata.website
                 Place: {
-                  // 使用 include 返回所有字段，包括 nameEN
-                  // 前端需要：name, nameEN, category, location, metadata, physicalMetadata, rating
-                }
+                  select: {
+                    id: true,
+                    nameCN: true,
+                    nameEN: true,
+                    category: true,
+                    address: true,
+                    rating: true,
+                    metadata: true,
+                    description: true,
+                    physicalMetadata: true,
+                  },
+                },
               }
             }
           }
@@ -659,8 +710,21 @@ export class TripsService {
     // 移除内部使用的字段，避免暴露给前端
     const { _count, TripLike, TripCollection, ...tripData } = trip;
 
+    // 转换 Place 数据为规范化格式
+    // P0 必须返回：id, nameCN, nameEN, category, address, rating, metadata.openingHours
+    // P1 推荐返回：metadata.price, metadata.priceLevel, metadata.tags
+    // P2 可选返回：metadata.phone, metadata.website
+    const transformedTripDays = tripData.TripDay?.map((day: any) => ({
+      ...day,
+      ItineraryItem: day.ItineraryItem?.map((item: any) => ({
+        ...item,
+        Place: item.Place ? toPlaceResponseDto(item.Place) : null,
+      })),
+    }));
+
     return {
       ...tripData,
+      TripDay: transformedTripDays,
       // 添加状态字段（优先使用数据库中的状态）
       status: status,
       // 添加点赞和收藏字段

@@ -8,6 +8,8 @@ import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.ser
 import { ItemType } from '../../itinerary-items/dto/create-itinerary-item.dto';
 import { DateTime } from 'luxon';
 import { EnhancedChatService } from '../../rag/services/enhanced-chat.service';
+import { System1InfoCardService } from './system1-info-card.service';
+import { System1Result } from '../interfaces/system1-info-card.interface';
 
 /**
  * System 1 Executor Service
@@ -23,6 +25,7 @@ export class System1ExecutorService {
     private tripsService: TripsService,
     private itineraryItemsService: ItineraryItemsService,
     @Optional() private enhancedChat?: EnhancedChatService,
+    @Optional() private infoCardService?: System1InfoCardService,
   ) {}
 
   /**
@@ -31,18 +34,31 @@ export class System1ExecutorService {
   async execute(
     route: RouteType,
     state: AgentState
-  ): Promise<{
-    success: boolean;
-    result: any;
-    answerText: string;
-  }> {
+  ): Promise<System1Result> {
     const startTime = Date.now();
 
     try {
+      // 检查是否需要生成信息卡片（路线查询）
+      if (this.shouldGenerateInfoCard(state)) {
+        return await this.generateInfoCard(state);
+      }
+
       if (route === RouteType.SYSTEM1_API) {
-        return await this.executeAPI(state);
+        const apiResult = await this.executeAPI(state);
+        return {
+          success: apiResult.success,
+          result: apiResult.result,
+          answerText: apiResult.answerText,
+          cardType: 'API_RESULT',
+        };
       } else if (route === RouteType.SYSTEM1_RAG) {
-        return await this.executeRAG(state);
+        const ragResult = await this.executeRAG(state);
+        return {
+          success: ragResult.success,
+          result: ragResult.result,
+          answerText: ragResult.answerText,
+          cardType: 'RAG_RESULT',
+        };
       } else {
         throw new Error(`Unsupported System1 route: ${route}`);
       }
@@ -52,11 +68,91 @@ export class System1ExecutorService {
         success: false,
         result: null,
         answerText: `处理请求时出错：${error?.message || String(error)}`,
+        cardType: undefined,
       };
     } finally {
       const latency = Date.now() - startTime;
       this.logger.debug(`System1 execution completed in ${latency}ms`);
     }
+  }
+
+  /**
+   * 检查是否应该生成信息卡片
+   */
+  private shouldGenerateInfoCard(state: AgentState): boolean {
+    if (!this.infoCardService) {
+      return false;
+    }
+
+    const input = state.user_input.toLowerCase();
+    // 检测路线查询关键词
+    const routeKeywords = ['路线', 'route', '路线信息', '路线详情', '路线卡片'];
+    return routeKeywords.some(keyword => input.includes(keyword));
+  }
+
+  /**
+   * 生成信息卡片
+   */
+  private async generateInfoCard(state: AgentState): Promise<System1Result> {
+    if (!this.infoCardService) {
+      return {
+        success: false,
+        result: null,
+        answerText: '信息卡片服务不可用',
+        cardType: undefined,
+      };
+    }
+
+    try {
+      // 从用户输入中提取路线ID（简化实现）
+      const routeId = this.extractRouteId(state.user_input);
+      
+      if (!routeId) {
+        return {
+          success: false,
+          result: null,
+          answerText: '未找到路线ID，请提供路线名称或ID',
+          cardType: undefined,
+        };
+      }
+
+      const infoCard = await this.infoCardService.generateInfoCard(routeId, state);
+
+      return {
+        success: true,
+        result: infoCard,
+        answerText: null, // System 1不再返回文本回答
+        cardType: 'INFO_CARD',
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to generate info card: ${error?.message}`, error?.stack);
+      return {
+        success: false,
+        result: null,
+        answerText: `生成信息卡片失败：${error?.message || String(error)}`,
+        cardType: undefined,
+      };
+    }
+  }
+
+  /**
+   * 从用户输入中提取路线ID（简化实现）
+   */
+  private extractRouteId(input: string): string | null {
+    // 简化实现：尝试从输入中提取ID
+    // 实际应该使用NLP或实体识别
+    const idMatch = input.match(/route[_-]?id[:\s]+([a-zA-Z0-9-_]+)/i);
+    if (idMatch) {
+      return idMatch[1];
+    }
+
+    // 尝试提取UUID格式
+    const uuidMatch = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch) {
+      return uuidMatch[0];
+    }
+
+    return null;
   }
 
   /**

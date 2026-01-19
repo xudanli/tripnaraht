@@ -19,6 +19,7 @@ import { RouteDirectionCardService } from './services/route-direction-card.servi
 import { RouteDirectionSelectorService } from './services/route-direction-selector.service';
 import { RouteDirectionExplainerService } from './services/route-direction-explainer.service';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
+import { UpdateRouteDirectionDto } from './dto/update-route-direction.dto';
 import { RouteDirectionCardDto } from './dto/route-direction-card.dto';
 import { RouteDirectionInteractionDto, RouteDirectionInteractionListDto } from './dto/route-direction-interaction.dto';
 import { RouteDirectionExplainer } from './interfaces/route-direction-explainer.interface';
@@ -46,6 +47,7 @@ export class RouteDirectionsController {
     private readonly explainerService: RouteDirectionExplainerService,
   ) {}
 
+  @Public()
   @Post()
   @ApiOperation({ summary: '创建路线方向', description: '创建新的国家级路线方向资产' })
   @ApiBody({ type: CreateRouteDirectionDto })
@@ -63,6 +65,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: '查询路线方向', description: '根据条件查询路线方向列表' })
   @ApiQuery({ name: 'countryCode', required: false, description: '国家代码' })
@@ -141,6 +144,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: '获取路线方向详情', description: '根据 ID 获取路线方向详情' })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
@@ -162,6 +166,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Get('uuid/:uuid')
   @ApiOperation({ summary: '根据 UUID 获取路线方向', description: '根据 UUID 获取路线方向详情' })
   @ApiParam({ name: 'uuid', description: '路线方向 UUID', type: String })
@@ -183,15 +188,16 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Put(':id')
   @ApiOperation({ summary: '更新路线方向', description: '更新路线方向信息' })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
-  @ApiBody({ type: CreateRouteDirectionDto })
+  @ApiBody({ type: UpdateRouteDirectionDto })
   @ApiResponse({ status: 200, description: '成功更新路线方向' })
   @ApiResponse({ status: 404, description: '路线方向不存在' })
   async updateRouteDirection(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: Partial<CreateRouteDirectionDto>,
+    @Body() dto: UpdateRouteDirectionDto,
   ) {
     try {
       const result = await this.routeDirectionsService.updateRouteDirection(id, dto);
@@ -208,6 +214,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Delete(':id')
   @ApiOperation({ summary: '删除路线方向', description: '软删除路线方向（设置 isActive = false）' })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
@@ -226,6 +233,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Post('templates')
   @ApiOperation({ summary: '创建路线模板', description: '创建基于路线方向的行程模板' })
   @ApiBody({ type: CreateRouteTemplateDto })
@@ -269,6 +277,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Put('templates/:id')
   @ApiOperation({ summary: '更新路线模板', description: '更新路线模板信息' })
   @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
@@ -299,6 +308,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Delete('templates/:id')
   @ApiOperation({ summary: '删除路线模板', description: '软删除路线模板（设置 isActive = false）' })
   @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
@@ -359,6 +369,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
   @Get('by-country/:countryCode')
   @ApiOperation({
     summary: '根据国家获取路线方向',

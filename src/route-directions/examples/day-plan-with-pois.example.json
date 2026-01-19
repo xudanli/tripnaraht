@@ -1,0 +1,87 @@
+{
+  "dayPlans": [
+    {
+      "day": 1,
+      "theme": "抵达雷克雅未克",
+      "maxIntensity": "LIGHT",
+      "pois": [
+        {
+          "nameCN": "雷克雅未克大教堂",
+          "nameEN": "Hallgrímskirkja",
+          "category": "ATTRACTION",
+          "address": "Hallgrímstorg 101, 101 Reykjavík, Iceland",
+          "rating": 4.5,
+          "description": "冰岛最大的教堂，是雷克雅未克的地标建筑",
+          "required": true,
+          "order": 1,
+          "durationMinutes": 60
+        },
+        {
+          "id": 12345,
+          "uuid": "550e8400-e29b-41d4-a716-446655440000",
+          "nameCN": "蓝湖温泉",
+          "nameEN": "Blue Lagoon",
+          "category": "ATTRACTION",
+          "required": true,
+          "order": 2,
+          "durationMinutes": 180
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "theme": "黄金圈探索",
+      "maxIntensity": "MODERATE",
+      "pois": [
+        {
+          "nameCN": "盖歇尔间歇泉",
+          "nameEN": "Geysir",
+          "category": "ATTRACTION",
+          "required": true,
+          "order": 1,
+          "durationMinutes": 45
+        },
+        {
+          "nameCN": "黄金瀑布",
+          "nameEN": "Gullfoss",
+          "category": "ATTRACTION",
+          "required": true,
+          "order": 2,
+          "durationMinutes": 60
+        },
+        {
+          "nameCN": "辛格维利尔国家公园",
+          "nameEN": "Thingvellir National Park",
+          "category": "PARK",
+          "required": false,
+          "order": 3,
+          "durationMinutes": 120
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "theme": "南岸瀑布",
+      "maxIntensity": "MODERATE",
+      "pois": [
+        {
+          "uuid": "another-uuid-here",
+          "nameCN": "塞里雅兰瀑布",
+          "nameEN": "Seljalandsfoss",
+          "category": "ATTRACTION",
+          "required": true,
+          "order": 1,
+          "durationMinutes": 30
+        },
+        {
+          "nameCN": "斯科加瀑布",
+          "nameEN": "Skógafoss",
+          "category": "ATTRACTION",
+          "required": true,
+          "order": 2,
+          "durationMinutes": 45
+        }
+      ]
+    }
+  ]
+}

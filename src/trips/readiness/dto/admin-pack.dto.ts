@@ -47,8 +47,14 @@ export class ReadinessPackListItemDto {
   @ApiProperty({ description: '目的地ID' })
   destinationId!: string;
 
-  @ApiProperty({ description: '显示名称' })
+  @ApiProperty({ description: '显示名称（默认）' })
   displayName!: string;
+
+  @ApiPropertyOptional({ description: '显示名称（英文）' })
+  displayNameEN?: string;
+
+  @ApiPropertyOptional({ description: '显示名称（中文）' })
+  displayNameCN?: string;
 
   @ApiProperty({ description: '版本号' })
   version!: string;
@@ -59,11 +65,23 @@ export class ReadinessPackListItemDto {
   @ApiProperty({ description: '国家代码' })
   countryCode!: string;
 
-  @ApiPropertyOptional({ description: '区域' })
+  @ApiPropertyOptional({ description: '区域（默认）' })
   region?: string;
 
-  @ApiPropertyOptional({ description: '城市' })
+  @ApiPropertyOptional({ description: '区域（英文）' })
+  regionEN?: string;
+
+  @ApiPropertyOptional({ description: '区域（中文）' })
+  regionCN?: string;
+
+  @ApiPropertyOptional({ description: '城市（默认）' })
   city?: string;
+
+  @ApiPropertyOptional({ description: '城市（英文）' })
+  cityEN?: string;
+
+  @ApiPropertyOptional({ description: '城市（中文）' })
+  cityCN?: string;
 
   @ApiProperty({ description: '是否激活' })
   isActive!: boolean;

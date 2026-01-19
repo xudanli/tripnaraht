@@ -32,9 +32,9 @@ export class CreateRouteTemplateDto {
   nameEN?: string;
 
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Object)
-  dayPlans!: DayPlan[];
+  // 不使用 ValidateNested，允许灵活的数据结构（包括 pois 字段）
+  // 因为 DayPlan 是接口，且需要支持扩展字段（如 pois）
+  dayPlans!: DayPlan[] | any[];
 
   @IsOptional()
   @IsEnum(['RELAX', 'BALANCED', 'CHALLENGE'])

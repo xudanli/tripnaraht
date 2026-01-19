@@ -1,6 +1,7 @@
 // src/places/places.module.ts
 import { Module } from '@nestjs/common';
 import { PlacesController } from './places.controller';
+import { PlacesV5Controller } from './places-v5.controller';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
 import { AmapPOIService } from './services/amap-poi.service';
@@ -16,12 +17,13 @@ import { EntityResolutionService } from './services/entity-resolution.service';
 import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.service';
 import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
 import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
+import { UnsplashService } from './services/unsplash.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 
 @Module({
   imports: [PrismaModule, HotelsModule],
-  controllers: [PlacesController],
+  controllers: [PlacesController, PlacesV5Controller],
   providers: [
     PlacesService,
     HotelRecommendationService,
@@ -38,6 +40,7 @@ import { HotelsModule } from '../hotels/hotels.module';
     SvalbardPoiFeaturesService,
     IcelandPoiFeaturesService,
     PlaceTrailEnrichmentService,
+    UnsplashService, // 图片服务
   ],
   exports: [
     PlacesService,
@@ -53,6 +56,7 @@ import { HotelsModule } from '../hotels/hotels.module';
     EntityResolutionService,
     SvalbardPoiFeaturesService,
     IcelandPoiFeaturesService,
+    UnsplashService, // 图片服务
   ],
 })
 export class PlacesModule {}

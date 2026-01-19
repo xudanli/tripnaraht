@@ -29,6 +29,12 @@ export interface PacingConfig {
   
   /** 最小体力阈值 (低于此值必须休息，默认 20) */
   min_hp_threshold?: number;
+
+  /** 节奏等级 (用户选择的整体节奏偏好) */
+  level?: 'relaxed' | 'standard' | 'tight';
+
+  /** 每日最大活动数 (基于节奏等级计算: relaxed=3, standard=5, tight=7) */
+  maxDailyActivities?: number;
 }
 
 /**
