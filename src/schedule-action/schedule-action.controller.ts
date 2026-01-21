@@ -20,6 +20,7 @@ import {
   ApplyActionRequestDto,
 } from './dto/apply-action.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('schedule-action')
 @ApiExtraModels(
@@ -33,6 +34,7 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 export class ScheduleActionController {
   constructor(private readonly scheduleActionService: ScheduleActionService) {}
 
+  @Public()
   @Post('apply-action')
   @ApiOperation({
     summary: '应用行程动作',
@@ -116,6 +118,7 @@ export class ScheduleActionController {
     return await this.scheduleActionService.apply(body.schedule, body.action);
   }
 
+  @Public()
   @Post('preview-action')
   @ApiOperation({
     summary: '预览行程动作（dry-run）',

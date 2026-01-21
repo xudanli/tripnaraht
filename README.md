@@ -81,7 +81,17 @@ npm run start
 
 ## API 文档
 
-启动服务后，访问 `http://localhost:3000/api` 查看完整的 Swagger API 文档。
+启动服务后，访问 `http://localhost:3000/api-docs` 查看完整的 Swagger API 文档。
+
+**主要 API 文档**：
+- [Agent 统一入口 API](./docs/AGENT_UNIFIED_ENTRY_API.md) - `POST /agent/route_and_run`
+- [Iterative Deployment API](./docs/API_ITERATIVE_DEPLOYMENT.md) ⭐ - `/api/training/*`（模型训练与迭代部署）
+- [规划工作台提交 API](./docs/API_PLANNING_WORKBENCH_COMMIT.md) - `POST /planning-workbench/plans/:planId/commit`
+
+**Iterative Deployment 快速开始**：
+- [快速开始指南](./docs/ITERATIVE_DEPLOYMENT_QUICK_START.md) - 3 步快速启动
+- [功能验证指南](./docs/ITERATIVE_DEPLOYMENT_VERIFICATION_GUIDE.md) - 详细验证步骤
+- [测试总结](./docs/ITERATIVE_DEPLOYMENT_TEST_SUMMARY.md) - 测试结果和覆盖率
 
 ## 项目结构
 
@@ -375,6 +385,9 @@ POST /decision/langgraph-query
 - [冰岛高地 E2E 测试](./docs/ICELAND_HIGHLANDS_E2E.md) - 完整链路测试
 
 ### API 接口
+- [Agent 统一入口 API](./docs/AGENT_UNIFIED_ENTRY_API.md) - 智能体统一入口接口
+- [Iterative Deployment API](./docs/API_ITERATIVE_DEPLOYMENT.md) ⭐ - 模型训练与迭代部署接口
+- [规划工作台提交 API](./docs/API_PLANNING_WORKBENCH_COMMIT.md) - 规划方案提交接口
 - [API 接口文档 - 前端使用指南](./docs/API-接口文档-前端使用指南.md)
 - [项目结构说明](./docs/项目结构说明.md)
 

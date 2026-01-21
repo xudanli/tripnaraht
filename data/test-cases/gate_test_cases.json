@@ -1,0 +1,52 @@
+[
+  {
+    "id": "gate_001",
+    "component": "GATE",
+    "input": {
+      "user_request": "Plan a trip to Iceland in winter",
+      "origin": null,
+      "destination": "IS",
+      "season": "WINTER"
+    },
+    "metadata": {
+      "country_code": "IS",
+      "risk_level": "HIGH"
+    },
+    "expected_output": {
+      "action": "WARN"
+    }
+  },
+  {
+    "id": "gate_002",
+    "component": "GATE",
+    "input": {
+      "user_request": "Plan a trip to a dangerous area",
+      "origin": null,
+      "destination": "HIGH_RISK_AREA"
+    },
+    "metadata": {
+      "country_code": null,
+      "risk_level": "CRITICAL"
+    },
+    "expected_output": {
+      "action": "REJECT"
+    }
+  },
+  {
+    "id": "gate_003",
+    "component": "GATE",
+    "input": {
+      "user_request": "Plan a safe summer trip to Iceland",
+      "origin": null,
+      "destination": "IS",
+      "season": "SUMMER"
+    },
+    "metadata": {
+      "country_code": "IS",
+      "risk_level": "LOW"
+    },
+    "expected_output": {
+      "action": "ALLOW"
+    }
+  }
+]

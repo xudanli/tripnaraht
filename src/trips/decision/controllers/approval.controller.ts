@@ -5,27 +5,38 @@
  * 提供审批请求的前端 API
  */
 
-import { Controller, Get, Post, Param, Body, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam, ApiBody } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Body, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { ApprovalService } from '../services/approval.service';
 import { AgentResumeService } from '../services/agent-resume.service';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../../common/dto/api-response.dto';
+import { Public } from '../../../auth/decorators/public.decorator';
+import { TrajectoryCollectionService } from '../../../agent/training/services/trajectory-collection.service';
+import { ApprovalStatus } from '@prisma/client';
 
-@ApiTags('approvals')
-@Controller('api/approvals')
+@ApiTags('decision')
+@Controller('approvals')
 export class ApprovalController {
   private readonly logger = new Logger(ApprovalController.name);
 
   constructor(
     private readonly approvalService: ApprovalService,
     private readonly agentResumeService: AgentResumeService,
+    @Optional() private readonly trajectoryCollection?: TrajectoryCollectionService,
   ) {}
 
   /**
    * 获取审批请求详情
    */
+  @Public()
   @Get(':id')
-  @ApiOperation({ summary: '获取审批请求详情' })
+  @ApiOperation({ 
+    summary: '获取审批请求详情',
+    description: '根据审批请求 ID 获取审批请求的详细信息',
+  })
   @ApiParam({ name: 'id', description: '审批请求 ID' })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '审批请求不存在', type: ApiErrorResponseDto })
   async getApproval(@Param('id') id: string) {
     const request = await this.approvalService.checkStatus(id);
     if (!request) {
@@ -37,9 +48,14 @@ export class ApprovalController {
   /**
    * 获取会话的所有待审批请求
    */
+  @Public()
   @Get('thread/:threadId/pending')
-  @ApiOperation({ summary: '获取会话的所有待审批请求' })
+  @ApiOperation({ 
+    summary: '获取会话的所有待审批请求',
+    description: '获取指定会话/线程的所有待审批请求列表',
+  })
   @ApiParam({ name: 'threadId', description: '会话/线程 ID' })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
   async getPendingApprovals(@Param('threadId') threadId: string) {
     return this.approvalService.getPendingApprovalsByThreadId(threadId);
   }
@@ -47,8 +63,12 @@ export class ApprovalController {
   /**
    * 处理审批（批准或拒绝）
    */
+  @Public()
   @Post(':id/decision')
-  @ApiOperation({ summary: '处理审批请求（批准或拒绝）' })
+  @ApiOperation({ 
+    summary: '处理审批请求（批准或拒绝）',
+    description: '处理审批请求，可以批准或拒绝，并可选择是否立即恢复 Agent 执行',
+  })
   @ApiParam({ name: 'id', description: '审批请求 ID' })
   @ApiBody({
     schema: {
@@ -62,6 +82,8 @@ export class ApprovalController {
       required: ['approved'],
     },
   })
+  @ApiResponse({ status: 200, description: '处理成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '审批请求不存在', type: ApiErrorResponseDto })
   async handleDecision(
     @Param('id') id: string,
     @Body() body: {
@@ -77,6 +99,31 @@ export class ApprovalController {
       decisionNote: body.decisionNote,
       userId: body.userId,
     });
+
+    // Iterative Deployment: 更新轨迹的用户审批状态
+    if (this.trajectoryCollection && approvalRequest.agentRunId) {
+      try {
+        // 尝试根据 agentRunId 查找轨迹（agentRunId 通常就是 requestId）
+        const trajectoryResult = await this.trajectoryCollection.findTrajectoryByRequestId(
+          approvalRequest.agentRunId,
+        );
+        if (trajectoryResult.trajectoryId) {
+          const userApproval = body.approved
+            ? ApprovalStatus.APPROVED
+            : ApprovalStatus.REJECTED;
+          await this.trajectoryCollection.updateTrajectoryWithApproval(
+            trajectoryResult.trajectoryId,
+            userApproval,
+          );
+          this.logger.debug(
+            `轨迹审批状态已更新: trajectoryId=${trajectoryResult.trajectoryId}, approval=${userApproval}`,
+          );
+        }
+      } catch (error: any) {
+        // 轨迹更新失败不应该影响审批流程
+        this.logger.warn(`更新轨迹审批状态失败: ${error?.message}`);
+      }
+    }
 
     // 2. 如果用户要求恢复 Agent，则恢复
     const shouldResume = body.resumeAgent !== false; // 默认为 true
@@ -111,6 +158,8 @@ export class ApprovalController {
       },
     },
   })
+  @ApiResponse({ status: 200, description: '取消成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '审批请求不存在', type: ApiErrorResponseDto })
   async cancelApproval(
     @Param('id') id: string,
     @Body() body: { reason?: string } = {},
@@ -125,9 +174,16 @@ export class ApprovalController {
   /**
    * 手动触发 Agent 恢复（用于调试或手动恢复）
    */
+  @Public()
   @Post(':id/resume-agent')
-  @ApiOperation({ summary: '手动触发 Agent 恢复' })
+  @ApiOperation({ 
+    summary: '手动触发 Agent 恢复',
+    description: '手动触发 Agent 恢复执行，用于调试或手动恢复场景',
+  })
   @ApiParam({ name: 'id', description: '审批请求 ID' })
+  @ApiResponse({ status: 200, description: '恢复成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '审批请求不存在', type: ApiErrorResponseDto })
+  @ApiResponse({ status: 400, description: '请求状态无效', type: ApiErrorResponseDto })
   async resumeAgent(@Param('id') id: string) {
     const approvalRequest = await this.approvalService.checkStatus(id);
     if (!approvalRequest) {

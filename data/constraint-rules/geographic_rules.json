@@ -1,0 +1,36 @@
+[
+  {
+    "rule_id": "geo_001",
+    "type": "GEOGRAPHIC",
+    "name": "High-risk destination restriction",
+    "description": "Block trips to high-risk destinations",
+    "condition": {
+      "destination": {
+        "in": ["HIGH_RISK_AREA", "WAR_ZONE", "DANGEROUS_REGION"]
+      }
+    },
+    "severity": "HARD",
+    "sev_level": "SEV-1",
+    "action": "BLOCK",
+    "metadata": {
+      "category": "SAFETY"
+    }
+  },
+  {
+    "rule_id": "geo_002",
+    "type": "GEOGRAPHIC",
+    "name": "Restricted area warning",
+    "description": "Warn about restricted areas",
+    "condition": {
+      "destination": {
+        "in": ["RESTRICTED_AREA"]
+      }
+    },
+    "severity": "SOFT",
+    "sev_level": "SEV-2",
+    "action": "WARN",
+    "metadata": {
+      "category": "SAFETY"
+    }
+  }
+]

@@ -172,10 +172,23 @@ model ItineraryItem {
   tripDayId   String
   note        String?
   trailId     Int?
+
+  // ========== 费用相关字段 ==========
+  estimatedCost Float?                      // 预估费用
+  actualCost    Float?                      // 实际费用
+  currency      String?   @default("CNY")   // 货币类型
+  costCategory  String?                     // 费用分类: ACCOMMODATION, TRANSPORTATION, FOOD, ACTIVITIES, SHOPPING, OTHER
+  costNote      String?                     // 费用备注
+  isPaid        Boolean   @default(false)   // 是否已支付
+  paidBy        String?                     // 支付人ID
+
   Place       Place?       @relation(fields: [placeId], references: [id])
   Trail       Trail?       @relation(fields: [trailId], references: [id])
   TripDay     TripDay      @relation(fields: [tripDayId], references: [id])
   RailSegment RailSegment?
+
+  @@index([costCategory])
+  @@index([isPaid])
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -332,16 +345,16 @@ model ReadinessPack {
   id             String   @id
   packId         String   @unique
   destinationId  String
-  displayName    String   // 向后兼容，默认使用英文
+  displayName    String // 向后兼容，默认使用英文
   displayNameEN  String?  @map("display_name_en")
   displayNameCN  String?  @map("display_name_cn")
   version        String
   lastReviewedAt DateTime
   countryCode    String
-  region         String?  // 向后兼容，默认使用英文
+  region         String? // 向后兼容，默认使用英文
   regionEN       String?  @map("region_en")
   regionCN       String?  @map("region_cn")
-  city           String?  // 向后兼容，默认使用英文
+  city           String? // 向后兼容，默认使用英文
   cityEN         String?  @map("city_en")
   cityCN         String?  @map("city_cn")
   latitude       Float?
@@ -407,14 +420,14 @@ model RouteDirection {
   rolloutPercent    Int?                      @default(100)
   audienceFilter    Json?
 
-  RouteTemplate     RouteTemplate[]
+  RouteTemplate RouteTemplate[]
 
   @@index([status], map: "route_direction_status_idx")
 }
 
 model RouteTemplate {
-  id                    Int            @id @default(autoincrement())
-  uuid                  String         @unique
+  id                    Int      @id @default(autoincrement())
+  uuid                  String   @unique
   routeDirectionId      Int
   durationDays          Int
   name                  String?
@@ -423,11 +436,11 @@ model RouteTemplate {
   dayPlans              Json
   defaultPacePreference String?
   metadata              Json?
-  isActive              Boolean        @default(true)
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  routeDirection        RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+  routeDirection RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
 
   @@index([routeDirectionId])
   @@index([routeDirectionId, durationDays])
@@ -505,18 +518,18 @@ model TrailWaypoint {
 }
 
 model Trip {
-  id               String             @id
-  destination      String
-  startDate        DateTime
-  endDate          DateTime
-  status           String?            @default("PLANNING") // PLANNING, IN_PROGRESS, COMPLETED, CANCELLED
-  budgetConfig     Json?
-  pacingConfig     Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime
-  metadata         Json?
-  RailPassProfile  RailPassProfile?
-  TripCollaborator TripCollaborator[]
+  id                  String                @id
+  destination         String
+  startDate           DateTime
+  endDate             DateTime
+  status              String?               @default("PLANNING") // PLANNING, IN_PROGRESS, COMPLETED, CANCELLED
+  budgetConfig        Json?
+  pacingConfig        Json?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  metadata            Json?
+  RailPassProfile     RailPassProfile?
+  TripCollaborator    TripCollaborator[]
   TripCollection      TripCollection[]
   TripDay             TripDay[]
   TripLike            TripLike[]
@@ -524,7 +537,8 @@ model Trip {
   TripChecklistStatus TripChecklistStatus[]
   TripFindingMark     TripFindingMark[]
   TripPackingListItem TripPackingListItem[]
-  
+  PlanningPlan        PlanningPlan[]
+
   @@index([status])
 }
 
@@ -669,7 +683,7 @@ model EmailVerificationCode {
   code      String   @db.Text
   expiresAt DateTime @map("expires_at")
   used      Boolean  @default(false)
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([email])
   @@index([code])
@@ -924,17 +938,17 @@ model DecisionLog {
   evidenceRefs     String[] @map("evidence_refs")
   timestamp        DateTime @default(now())
   metadata         Json?
-  
+
   // 新增字段：决策点相关信息
-  availableOptions    Json?     @map("available_options") // 可用选项
-  userChoice          Json?     @map("user_choice") // 用户选择
-  userReasoning       String?   @map("user_reasoning") @db.Text // 用户给出的理由
-  confidenceLevel     Float?    @map("confidence_level") // 用户的信心度
-  systemRecommendation Json?    @map("system_recommendation") // 系统建议
-  alignmentScore      Float?    @map("alignment_score") // 系统建议与用户选择的一致性
-  
+  availableOptions     Json?   @map("available_options") // 可用选项
+  userChoice           Json?   @map("user_choice") // 用户选择
+  userReasoning        String? @map("user_reasoning") @db.Text // 用户给出的理由
+  confidenceLevel      Float?  @map("confidence_level") // 用户的信心度
+  systemRecommendation Json?   @map("system_recommendation") // 系统建议
+  alignmentScore       Float?  @map("alignment_score") // 系统建议与用户选择的一致性
+
   // 关联的决策结果
-  outcomes            DecisionOutcome[]
+  outcomes DecisionOutcome[]
 
   @@index([tripId])
   @@index([countryCode])
@@ -949,18 +963,18 @@ model DecisionLog {
 }
 
 model DecisionOutcome {
-  id                  String   @id @default(uuid()) @db.Uuid
-  decisionId          String   @map("decision_id") @db.Uuid
-  expectedOutcome     Json     @map("expected_outcome")
-  actualOutcome       Json     @map("actual_outcome")
-  deviation           Json
-  userSatisfaction    Float?   @map("user_satisfaction") // 1-10
-  userFeedback        String?  @map("user_feedback") @db.Text
-  learningSignals     Json     @map("learning_signals")
-  createdAt           DateTime @default(now()) @map("created_at")
-  
-  DecisionLog         DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
-  
+  id               String   @id @default(uuid()) @db.Uuid
+  decisionId       String   @map("decision_id") @db.Uuid
+  expectedOutcome  Json     @map("expected_outcome")
+  actualOutcome    Json     @map("actual_outcome")
+  deviation        Json
+  userSatisfaction Float?   @map("user_satisfaction") // 1-10
+  userFeedback     String?  @map("user_feedback") @db.Text
+  learningSignals  Json     @map("learning_signals")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  DecisionLog DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
   @@index([decisionId])
   @@map("decision_outcomes")
 }
@@ -1040,20 +1054,20 @@ model TripOutcomeFeedback {
 
 // TripRun: 一次规划会话（用户点击"生成路线"）
 model TripRun {
-  id              String        @id @default(uuid()) @db.Uuid
-  tripId          String?       @map("trip_id") @db.Uuid
-  userId          String?       @map("user_id") @db.Uuid
-  userQuery       String        @map("user_query") @db.Text
-  planningPhase   String        @map("planning_phase") @db.VarChar(50)
-  currentAgent    String?       @map("current_agent") @db.VarChar(50)
-  status          String        @default("IN_PROGRESS") @db.VarChar(20) // IN_PROGRESS, COMPLETED, FAILED
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  completedAt     DateTime?     @map("completed_at")
-  metadata        Json?
-  
-  TripAttempt     TripAttempt[]
-  
+  id            String    @id @default(uuid()) @db.Uuid
+  tripId        String?   @map("trip_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  userQuery     String    @map("user_query") @db.Text
+  planningPhase String    @map("planning_phase") @db.VarChar(50)
+  currentAgent  String?   @map("current_agent") @db.VarChar(50)
+  status        String    @default("IN_PROGRESS") @db.VarChar(20) // IN_PROGRESS, COMPLETED, FAILED
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  completedAt   DateTime? @map("completed_at")
+  metadata      Json?
+
+  TripAttempt TripAttempt[]
+
   @@index([tripId])
   @@index([userId])
   @@index([planningPhase])
@@ -1064,29 +1078,29 @@ model TripRun {
 
 // TripAttempt: 一次候选方案（plan candidate）的迭代
 model TripAttempt {
-  id              String        @id @default(uuid()) @db.Uuid
-  tripRunId       String        @map("trip_run_id") @db.Uuid
-  attemptNumber   Int           @default(1) @map("attempt_number")
-  
+  id            String @id @default(uuid()) @db.Uuid
+  tripRunId     String @map("trip_run_id") @db.Uuid
+  attemptNumber Int    @default(1) @map("attempt_number")
+
   // Scratchpad（工作计划摘要）
-  planOutline     String?       @map("plan_outline") @db.Text // 要做什么
-  openQuestions   String[]      @map("open_questions") // 缺什么信息
-  constraintsAssumed String[]   @map("constraints_assumed") // 假设了哪些约束
-  nextActions     String[]      @map("next_actions") // 下一步要调用哪些 tools / skills
-  failureNotes    String?       @map("failure_notes") @db.Text // 失败原因摘要
-  
+  planOutline        String?  @map("plan_outline") @db.Text // 要做什么
+  openQuestions      String[] @map("open_questions") // 缺什么信息
+  constraintsAssumed String[] @map("constraints_assumed") // 假设了哪些约束
+  nextActions        String[] @map("next_actions") // 下一步要调用哪些 tools / skills
+  failureNotes       String?  @map("failure_notes") @db.Text // 失败原因摘要
+
   // 状态
-  status          String        @default("PENDING") @db.VarChar(20) // PENDING, IN_PROGRESS, COMPLETED, FAILED
-  resultSummary   String?       @map("result_summary") @db.Text
-  artifacts       Json? // 结构化结果引用（文件路径、ID等）
-  
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  completedAt     DateTime?     @map("completed_at")
-  metadata        Json?
-  
-  TripRun         TripRun       @relation(fields: [tripRunId], references: [id], onDelete: Cascade)
-  
+  status        String  @default("PENDING") @db.VarChar(20) // PENDING, IN_PROGRESS, COMPLETED, FAILED
+  resultSummary String? @map("result_summary") @db.Text
+  artifacts     Json? // 结构化结果引用（文件路径、ID等）
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  metadata    Json?
+
+  TripRun TripRun @relation(fields: [tripRunId], references: [id], onDelete: Cascade)
+
   @@unique([tripRunId, attemptNumber]) // 复合唯一键：一个 run 的同一 attemptNumber 只能有一个
   @@index([tripRunId])
   @@index([status])
@@ -1159,12 +1173,12 @@ model LocalInsight {
 
 // 联系消息表
 model ContactMessage {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String?  @map("user_id") @db.VarChar(255) // 可为空，支持匿名提交
-  message   String?  @db.Text
-  status    String   @default("pending") @db.VarChar(50) // pending, read, replied, resolved
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  id        String                @id @default(uuid()) @db.Uuid
+  userId    String?               @map("user_id") @db.VarChar(255) // 可为空，支持匿名提交
+  message   String?               @db.Text
+  status    String                @default("pending") @db.VarChar(50) // pending, read, replied, resolved
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @default(now()) @updatedAt @map("updated_at")
   images    ContactMessageImage[]
 
   @@index([userId])
@@ -1175,13 +1189,13 @@ model ContactMessage {
 
 // 联系消息图片表
 model ContactMessageImage {
-  id               String   @id @default(uuid()) @db.Uuid
-  contactMessageId String   @map("contact_message_id") @db.Uuid
-  filePath         String   @map("file_path") @db.VarChar(500) // 存储路径
-  fileName         String   @map("file_name") @db.VarChar(255) // 原始文件名
-  fileSize         BigInt   @map("file_size") // 文件大小（字节）
-  mimeType         String   @map("mime_type") @db.VarChar(100) // MIME类型
-  createdAt        DateTime @default(now()) @map("created_at")
+  id               String         @id @default(uuid()) @db.Uuid
+  contactMessageId String         @map("contact_message_id") @db.Uuid
+  filePath         String         @map("file_path") @db.VarChar(500) // 存储路径
+  fileName         String         @map("file_name") @db.VarChar(255) // 原始文件名
+  fileSize         BigInt         @map("file_size") // 文件大小（字节）
+  mimeType         String         @map("mime_type") @db.VarChar(100) // MIME类型
+  createdAt        DateTime       @default(now()) @map("created_at")
   contactMessage   ContactMessage @relation(fields: [contactMessageId], references: [id], onDelete: Cascade)
 
   @@index([contactMessageId])
@@ -1190,12 +1204,12 @@ model ContactMessageImage {
 
 // 准备度检查清单状态表
 model TripChecklistStatus {
-  id         String   @id @default(uuid()) @db.Uuid
-  tripId     String   @map("trip_id")
-  findingId  String   @map("finding_id") @db.VarChar(255)
-  checked    Boolean  @default(false)
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  Trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id")
+  findingId String   @map("finding_id") @db.VarChar(255)
+  checked   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at")
+  Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@unique([tripId, findingId])
   @@index([tripId])
@@ -1245,40 +1259,40 @@ model TripPackingListItem {
 // ========== TripNARA HITL (Human-in-the-loop) Approval System ==========
 
 enum ApprovalStatus {
-  PENDING   // 等待用户操作
-  APPROVED  // 用户已同意
-  REJECTED  // 用户已拒绝
-  EXPIRED   // 超时未处理
+  PENDING // 等待用户操作
+  APPROVED // 用户已同意
+  REJECTED // 用户已拒绝
+  EXPIRED // 超时未处理
   CANCELLED // Agent 或用户取消
 }
 
 model ApprovalRequest {
-  id            String         @id @default(uuid()) @db.Uuid
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // 上下文关联
-  threadId      String         @map("thread_id") @db.VarChar(255) // 关联的会话/线程 ID
-  agentRunId    String?        @map("agent_run_id") @db.VarChar(255) // 关联的 Agent 运行 ID (便于追踪是一次思考过程)
-  toolCallId    String?        @map("tool_call_id") @db.VarChar(255) // LLM 调用该工具时的 ID (用于回填结果)
-  
+  threadId   String  @map("thread_id") @db.VarChar(255) // 关联的会话/线程 ID
+  agentRunId String? @map("agent_run_id") @db.VarChar(255) // 关联的 Agent 运行 ID (便于追踪是一次思考过程)
+  toolCallId String? @map("tool_call_id") @db.VarChar(255) // LLM 调用该工具时的 ID (用于回填结果)
+
   // 业务信息
-  skillName     String         @map("skill_name") @db.VarChar(100) // 触发审批的 Skill 名称 (如 'tripnara.decision.requestApproval')
-  summary       String         @db.VarChar(500) // 给用户看的一句话描述 (如 '预订雷克雅未克酒店')
-  description   String?        @db.Text // 详细描述
-  riskLevel     String         @default("medium") @map("risk_level") @db.VarChar(20) // high, medium, low, critical
-  
+  skillName   String  @map("skill_name") @db.VarChar(100) // 触发审批的 Skill 名称 (如 'tripnara.decision.requestApproval')
+  summary     String  @db.VarChar(500) // 给用户看的一句话描述 (如 '预订雷克雅未克酒店')
+  description String? @db.Text // 详细描述
+  riskLevel   String  @default("medium") @map("risk_level") @db.VarChar(20) // high, medium, low, critical
+
   // 核心数据：Agent 想要执行的原始参数
-  payload       Json           // 存具体的 tool arguments (如 { hotelId: "123", price: 5000 })
-  
+  payload Json // 存具体的 tool arguments (如 { hotelId: "123", price: 5000 })
+
   // 状态与结果
-  status        ApprovalStatus @default(PENDING)
-  decisionNote  String?        @map("decision_note") @db.Text // 用户拒绝或同意时的备注 (如 '太贵了')
-  handledAt     DateTime?      @map("handled_at") // 处理时间
-  expiresAt     DateTime?      @map("expires_at") // 过期时间 (可选)
-  
+  status       ApprovalStatus @default(PENDING)
+  decisionNote String?        @map("decision_note") @db.Text // 用户拒绝或同意时的备注 (如 '太贵了')
+  handledAt    DateTime?      @map("handled_at") // 处理时间
+  expiresAt    DateTime?      @map("expires_at") // 过期时间 (可选)
+
   // 元数据（用于扩展）
-  metadata      Json?          // 额外的元数据，如 userPrompt 等
+  metadata Json? // 额外的元数据，如 userPrompt 等
 
   @@index([threadId])
   @@index([status])
@@ -1293,17 +1307,17 @@ model ApprovalRequest {
 
 // 危险区域表（用于存储地理危险区域信息）
 model HazardZone {
-  id            String   @id @default(uuid()) @db.Uuid
-  zoneId        String   @unique @map("zone_id") @db.VarChar(100) // 外部标识符（如 OSM ID 或自定义 ID）
-  countryCode   String   @map("country_code") @db.VarChar(2) // ISO 3166-1 alpha-2
-  type          String   @db.VarChar(20) // 'AVALANCHE' | 'MUDSLIDE' | 'FLOOD' | 'ICE' | 'VOLCANIC' | 'OTHER'
-  level         String   @db.VarChar(20) // 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH'
-  geom          Unsupported("geography")? // PostGIS geography (Point, Polygon, LineString)
-  seasonality   Json? // { highRiskMonths: number[], lowRiskMonths: number[] }
-  description   String?  @db.Text
-  metadata      Json?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id          String                    @id @default(uuid()) @db.Uuid
+  zoneId      String                    @unique @map("zone_id") @db.VarChar(100) // 外部标识符（如 OSM ID 或自定义 ID）
+  countryCode String                    @map("country_code") @db.VarChar(2) // ISO 3166-1 alpha-2
+  type        String                    @db.VarChar(20) // 'AVALANCHE' | 'MUDSLIDE' | 'FLOOD' | 'ICE' | 'VOLCANIC' | 'OTHER'
+  level       String                    @db.VarChar(20) // 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH'
+  geom        Unsupported("geography")? // PostGIS geography (Point, Polygon, LineString)
+  seasonality Json? // { highRiskMonths: number[], lowRiskMonths: number[] }
+  description String?                   @db.Text
+  metadata    Json?
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
 
   @@index([countryCode])
   @@index([type])
@@ -1318,17 +1332,17 @@ model HazardZone {
 
 // 数据同意记录表
 model DataConsent {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  purpose     String   @db.VarChar(50) // HEALTH_RISK_ASSESSMENT, LOCATION_TRACKING, etc.
-  status      String   @default("PENDING") @map("status") @db.VarChar(20) // PENDING, ACTIVE, REVOKED
-  consentText String   @map("consent_text") @db.Text
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  purpose     String    @db.VarChar(50) // HEALTH_RISK_ASSESSMENT, LOCATION_TRACKING, etc.
+  status      String    @default("PENDING") @map("status") @db.VarChar(20) // PENDING, ACTIVE, REVOKED
+  consentText String    @map("consent_text") @db.Text
   grantedAt   DateTime? @map("granted_at")
   revokedAt   DateTime? @map("revoked_at")
   metadata    Json?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
   @@unique([userId, purpose, status])
   @@index([userId])
   @@index([purpose])
@@ -1345,6 +1359,92 @@ model DataRetentionPolicy {
   autoDelete    Boolean  @default(true) @map("auto_delete")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
-  
+
   @@map("data_retention_policies")
+}
+
+// ========== TripNARA Iterative Deployment System ==========
+
+// 已验证轨迹表（用于模型训练）
+model ValidatedTrajectory {
+  id           String  @id @default(uuid()) @db.Uuid
+  trajectoryId String  @unique @map("trajectory_id") @db.VarChar(255)
+  requestId    String  @map("request_id") @db.VarChar(255)
+  tripId       String? @map("trip_id") @db.Uuid
+
+  // 验证结果
+  validationStatus  String   @map("validation_status") @db.VarChar(20) // 'PENDING' | 'VALIDATED' | 'REJECTED'
+  validationScore   Float    @map("validation_score")
+  validationReasons String[] @default([]) @map("validation_reasons")
+
+  // 轨迹内容（JSON）
+  plan             Json // Itinerary
+  decisionTrace    Json @map("decision_trace") // DecisionLogEntry[]
+  researchData     Json @map("research_data")
+  gateResult       Json @map("gate_result") // GateResult
+  complianceResult Json @map("compliance_result") // ComplianceResult
+
+  // Reward信号
+  totalReward   Float @default(0) @map("total_reward")
+  rewardSignals Json  @default("[]") @map("reward_signals") // RewardSignal[]
+
+  // 用户反馈
+  userApproval    String? @map("user_approval") @db.VarChar(20) // 'APPROVED' | 'REJECTED'
+  executionResult Json?   @map("execution_result") // { success: boolean, ... }
+
+  // 元数据
+  modelVersion String   @default("v1.0") @map("model_version") @db.VarChar(50)
+  countryCode  String?  @map("country_code") @db.VarChar(2)
+  timestamp    DateTime @default(now())
+
+  // 训练标志
+  usedForTraining      Boolean @default(false) @map("used_for_training")
+  trainingBatchId      String? @map("training_batch_id") @db.VarChar(255)
+  usedForTrainingCount Int     @default(0) @map("used_for_training_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([validationStatus])
+  @@index([validationScore])
+  @@index([usedForTraining])
+  @@index([countryCode, validationStatus])
+  @@index([requestId])
+  @@index([tripId])
+  @@index([modelVersion])
+  @@index([trainingBatchId])
+  @@map("validated_trajectories")
+}
+
+// ========== TripNARA Planning Workbench System ==========
+
+// 规划方案表（用于规划工作台）
+model PlanningPlan {
+  id            String   @id @default(uuid()) @db.Uuid
+  tripId        String   @map("trip_id") @db.Uuid
+  planVersion   Int      @default(1) @map("plan_version")
+  status        String   @default("DRAFT") @db.VarChar(20) // 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED'
+  
+  // 规划状态（PlanState）
+  planState     Json     @map("plan_state")
+  
+  // UI 输出（UIOutput）
+  uiOutput      Json?    @map("ui_output")
+  
+  // 方案摘要（用于列表展示）
+  summary       Json?    // { itemCount, days, budget, consolidatedDecision, personas }
+  
+  // 元数据
+  createdBy     String?  @map("created_by") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  // 关联的 Trip
+  Trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  
+  @@index([tripId])
+  @@index([tripId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@map("planning_plans")
 }

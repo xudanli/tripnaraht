@@ -5,7 +5,7 @@
  * 提供 RAG 相关的 API 端点
  */
 
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { RagService } from './services/rag.service';
 import { ComplianceFactsAgent } from './services/compliance-facts-agent.service';
@@ -14,6 +14,8 @@ import { LocalInsightService } from './services/local-insight.service';
 import { EnhancedChatService, RouteQuestionContext } from './services/enhanced-chat.service';
 import { DocumentIndexItem } from './interfaces/rag.interface';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('rag')
 @Controller('rag')
@@ -29,7 +31,17 @@ export class RagController {
   /**
    * 检索文档
    */
+  @Public()
   @Get('retrieve')
+  @ApiOperation({
+    summary: '检索文档',
+    description: '从 RAG 知识库中检索相关文档',
+  })
+  @ApiQuery({ name: 'query', description: '查询文本', required: true })
+  @ApiQuery({ name: 'collection', description: '集合名称', required: true })
+  @ApiQuery({ name: 'countryCode', description: '国家代码', required: false })
+  @ApiQuery({ name: 'limit', description: '返回数量限制', required: false, type: Number })
+  @ApiResponse({ status: 200, description: '检索成功', type: ApiSuccessResponseDto })
   async retrieve(
     @Query('query') query: string,
     @Query('collection') collection: string,
@@ -45,9 +57,85 @@ export class RagController {
   }
 
   /**
+   * RAG 搜索（POST 版本，支持更复杂的查询参数）
+   */
+  @Public()
+  @Post('search')
+  @ApiOperation({
+    summary: 'RAG 搜索',
+    description: '从 RAG 知识库中搜索相关文档，支持更复杂的查询参数',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '查询文本' },
+        collection: { type: 'string', description: '集合名称' },
+        countryCode: { type: 'string', description: '国家代码' },
+        tags: { type: 'array', items: { type: 'string' }, description: '标签列表' },
+        limit: { type: 'number', description: '返回数量限制', default: 10 },
+        minScore: { type: 'number', description: '最小相似度分数', default: 0.5 },
+      },
+      required: ['query', 'collection'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '搜索成功', type: ApiSuccessResponseDto })
+  async search(
+    @Body() body: {
+      query: string;
+      collection: string;
+      countryCode?: string;
+      tags?: string[];
+      limit?: number;
+      minScore?: number;
+    },
+  ) {
+    try {
+      const results = await this.ragService.retrieve({
+        query: body.query,
+        collection: body.collection,
+        countryCode: body.countryCode,
+        tags: body.tags,
+        limit: body.limit || 10,
+        minScore: body.minScore || 0.5,
+      });
+      return successResponse(results);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * RAG 统计
+   */
+  @Public()
+  @Get('stats')
+  @ApiOperation({
+    summary: 'RAG 统计',
+    description: '获取 RAG 知识库的统计信息，包括文档数量、集合统计等',
+  })
+  @ApiQuery({ name: 'collection', description: '集合名称（可选，不提供则返回所有集合的统计）', required: false })
+  @ApiResponse({ status: 200, description: '统计成功', type: ApiSuccessResponseDto })
+  async getStats(@Query('collection') collection?: string) {
+    try {
+      const stats = await this.ragService.getStats(collection);
+      return successResponse(stats);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
    * 索引文档
    */
+  @Public()
   @Post('index')
+  @ApiOperation({
+    summary: '索引文档',
+    description: '将文档添加到 RAG 知识库索引',
+  })
+  @ApiBody({ type: Object, description: '文档索引项' })
+  @ApiResponse({ status: 200, description: '索引成功', type: ApiSuccessResponseDto })
   async indexDocument(@Body() item: DocumentIndexItem) {
     const id = await this.ragService.indexDocument(item);
     return { id, success: true };
@@ -56,7 +144,14 @@ export class RagController {
   /**
    * 批量索引文档
    */
+  @Public()
   @Post('index/batch')
+  @ApiOperation({
+    summary: '批量索引文档',
+    description: '批量将文档添加到 RAG 知识库索引',
+  })
+  @ApiBody({ type: [Object], description: '文档索引项数组' })
+  @ApiResponse({ status: 200, description: '批量索引成功', type: ApiSuccessResponseDto })
   async indexDocuments(@Body() items: DocumentIndexItem[]) {
     const ids = await this.ragService.indexDocuments(items);
     return { ids, success: true, count: ids.length };
@@ -65,7 +160,23 @@ export class RagController {
   /**
    * 提取 Rail Pass 规则
    */
+  @Public()
   @Post('compliance/rail-pass')
+  @ApiOperation({
+    summary: '提取 Rail Pass 规则',
+    description: '从文档中提取铁路通票相关的合规规则',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        passType: { type: 'string', description: '通票类型' },
+        countryCode: { type: 'string', description: '国家代码' },
+      },
+      required: ['passType', 'countryCode'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '提取成功', type: ApiSuccessResponseDto })
   async extractRailPassRules(
     @Body() body: { passType: string; countryCode: string }
   ) {
@@ -78,7 +189,23 @@ export class RagController {
   /**
    * 提取 Trail Access 规则
    */
+  @Public()
   @Post('compliance/trail-access')
+  @ApiOperation({
+    summary: '提取 Trail Access 规则',
+    description: '从文档中提取步道访问相关的合规规则',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        trailId: { type: 'string', description: '步道 ID' },
+        countryCode: { type: 'string', description: '国家代码' },
+      },
+      required: ['trailId', 'countryCode'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '提取成功', type: ApiSuccessResponseDto })
   async extractTrailAccessRules(
     @Body() body: { trailId: string; countryCode: string }
   ) {
@@ -92,6 +219,21 @@ export class RagController {
    * 刷新合规规则（手动触发）
    */
   @Post('compliance/refresh')
+  @ApiOperation({
+    summary: '刷新合规规则缓存',
+    description: '手动触发合规规则缓存刷新，用于后台管理系统。会重新从知识库加载最新的合规规则。',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '刷新启动成功',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Compliance rules refresh started' },
+      },
+    },
+  })
   async refreshComplianceRules() {
     await this.complianceFactsAgent.refreshComplianceRules();
     return { success: true, message: 'Compliance rules refresh started' };
@@ -100,15 +242,39 @@ export class RagController {
   /**
    * 生成路线叙事
    */
+  @Public()
   @Get('route-narrative/:routeDirectionId')
+  @ApiOperation({
+    summary: '生成路线叙事',
+    description: '为指定路线生成丰富的叙事内容。可通过 includeLocalInsights 参数选择是否包含当地洞察信息。',
+  })
+  @ApiParam({ name: 'routeDirectionId', description: '路线方向 ID' })
+  @ApiQuery({ name: 'countryCode', description: '国家代码', required: false })
+  @ApiQuery({ name: 'includeLocalInsights', description: '是否包含当地洞察信息', required: false, type: Boolean })
+  @ApiResponse({ status: 200, description: '生成成功', type: ApiSuccessResponseDto })
   async getRouteNarrative(
     @Param('routeDirectionId') routeDirectionId: string,
     @Query('countryCode') countryCode?: string,
+    @Query('includeLocalInsights') includeLocalInsights?: string,
   ) {
-    return this.routeKnowledgeCurator.enrichRouteNarrative(
+    const narrative = await this.routeKnowledgeCurator.enrichRouteNarrative(
       routeDirectionId,
       countryCode
     );
+
+    // 如果需要包含当地洞察，则添加
+    if (includeLocalInsights === 'true' && countryCode) {
+      const insights = await this.localInsightService.getLocalInsight(
+        countryCode,
+        ['travel-guide']
+      );
+      return {
+        narrative,
+        localInsights: insights,
+      };
+    }
+
+    return narrative;
   }
 
   /**
@@ -138,7 +304,16 @@ export class RagController {
   /**
    * 获取当地洞察
    */
+  @Public()
   @Get('local-insight')
+  @ApiOperation({
+    summary: '获取当地洞察',
+    description: '获取指定地区的当地洞察信息',
+  })
+  @ApiQuery({ name: 'countryCode', description: '国家代码', required: true })
+  @ApiQuery({ name: 'tags', description: '标签（逗号分隔或数组）', required: true })
+  @ApiQuery({ name: 'region', description: '地区', required: false })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
   async getLocalInsight(
     @Query('countryCode') countryCode: string,
     @Query('tags') tags: string | string[],
@@ -156,6 +331,39 @@ export class RagController {
    * 刷新当地洞察
    */
   @Post('local-insight/refresh')
+  @ApiOperation({
+    summary: '刷新当地洞察缓存',
+    description: '手动触发指定地区的当地洞察信息缓存刷新，用于后台管理系统。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        countryCode: { type: 'string', description: '国家代码', example: 'IS' },
+        tags: { 
+          type: 'array', 
+          items: { type: 'string' },
+          description: '标签列表',
+          example: ['culture', 'tips', 'etiquette'],
+        },
+        region: { type: 'string', description: '地区（可选）', example: 'Reykjavik' },
+      },
+      required: ['countryCode', 'tags'],
+    },
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '刷新成功',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        refreshedAt: { type: 'string', format: 'date-time' },
+        countryCode: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  })
   async refreshLocalInsight(
     @Body() body: {
       countryCode: string;
@@ -173,7 +381,27 @@ export class RagController {
   /**
    * 回答路线问题（增强对话）
    */
+  @Public()
   @Post('chat/answer-route-question')
+  @ApiOperation({
+    summary: '回答路线问题',
+    description: '使用增强对话功能回答关于路线的问题',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: '问题文本' },
+        routeDirectionId: { type: 'string', description: '路线方向 ID' },
+        countryCode: { type: 'string', description: '国家代码' },
+        segmentId: { type: 'string', description: '路线段 ID' },
+        dayIndex: { type: 'number', description: '天数索引' },
+        tripId: { type: 'string', description: '行程 ID' },
+      },
+      required: ['question'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '回答成功', type: ApiSuccessResponseDto })
   async answerRouteQuestion(
     @Body() body: {
       question: string;
@@ -213,16 +441,6 @@ export class RagController {
     );
   }
 
-  /**
-   * 获取路线叙事内容（增强对话）
-   */
-  @Get('chat/route-narrative/:routeDirectionId')
-  async getRouteNarrativeForChat(
-    @Param('routeDirectionId') routeDirectionId: string,
-    @Query('countryCode') countryCode?: string,
-  ) {
-    return this.enhancedChat.getRouteNarrative(routeDirectionId, countryCode);
-  }
 
   /**
    * 获取目的地深度实用信息（故事3.1）
@@ -314,6 +532,7 @@ export class RagController {
   /**
    * 提取行程相关合规规则（故事3.2）
    */
+  @Public()
   @Post('extract-compliance-rules')
   @ApiOperation({
     summary: '提取行程相关合规规则',
@@ -453,6 +672,145 @@ export class RagController {
         },
       });
     } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 后台管理接口：文档管理 ====================
+
+  /**
+   * 获取文档列表（后台管理）
+   */
+  @Public()
+  @Get('documents')
+  @ApiOperation({
+    summary: '获取文档列表（后台管理）',
+    description: '获取 RAG 知识库中的文档列表，支持分页、筛选等功能',
+  })
+  @ApiQuery({ name: 'collection', required: false, description: '集合名称' })
+  @ApiQuery({ name: 'countryCode', required: false, description: '国家代码' })
+  @ApiQuery({ name: 'tags', required: false, description: '标签（逗号分隔）' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，从1开始', example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number, description: '每页数量', example: 20 })
+  @ApiQuery({ name: 'search', required: false, description: '搜索关键词（标题或内容）' })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getDocuments(
+    @Query('collection') collection?: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('tags') tags?: string,
+    @Query('page') page?: number,
+    @Query('pageSize') pageSize?: number,
+    @Query('search') search?: string,
+  ) {
+    try {
+      const pageNum = page ? parseInt(page.toString()) : 1;
+      const size = pageSize ? parseInt(pageSize.toString()) : 20;
+      const tagArray = tags ? tags.split(',').map(t => t.trim()) : undefined;
+
+      const result = await this.ragService.getDocuments({
+        collection,
+        countryCode,
+        tags: tagArray,
+        search,
+        page: pageNum,
+        pageSize: size,
+      });
+
+      // 截断内容预览
+      const documentsWithPreview = result.documents.map(doc => ({
+        ...doc,
+        contentPreview: doc.content.substring(0, 200) + (doc.content.length > 200 ? '...' : ''),
+      }));
+
+      return successResponse({
+        documents: documentsWithPreview,
+        pagination: result.pagination,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取文档详情（后台管理）
+   */
+  @Public()
+  @Get('documents/:id')
+  @ApiOperation({
+    summary: '获取文档详情（后台管理）',
+    description: '根据文档 ID 获取文档的详细信息',
+  })
+  @ApiParam({ name: 'id', description: '文档 ID' })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getDocument(@Param('id') id: string) {
+    try {
+      const document = await this.ragService.getDocument(id);
+
+      if (!document) {
+        return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
+      }
+
+      return successResponse(document);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 更新文档（后台管理）
+   */
+  @Put('documents/:id')
+  @ApiOperation({
+    summary: '更新文档（后台管理）',
+    description: '更新 RAG 知识库中的文档，如果内容更新会自动重新生成 embedding',
+  })
+  @ApiParam({ name: 'id', description: '文档 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '文档标题' },
+        content: { type: 'string', description: '文档内容' },
+        collection: { type: 'string', description: '集合名称' },
+        countryCode: { type: 'string', description: '国家代码' },
+        tags: { type: 'array', items: { type: 'string' }, description: '标签列表' },
+        source: { type: 'string', description: '文档来源' },
+        metadata: { type: 'object', description: '元数据' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '更新成功', type: ApiSuccessResponseDto })
+  async updateDocument(
+    @Param('id') id: string,
+    @Body() item: Partial<DocumentIndexItem>,
+  ) {
+    try {
+      await this.ragService.updateDocument(id, item);
+      return successResponse({ id, message: '文档更新成功' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 删除文档（后台管理）
+   */
+  @Public()
+  @Delete('documents/:id')
+  @ApiOperation({
+    summary: '删除文档（后台管理）',
+    description: '从 RAG 知识库中删除指定文档',
+  })
+  @ApiParam({ name: 'id', description: '文档 ID' })
+  @ApiResponse({ status: 200, description: '删除成功', type: ApiSuccessResponseDto })
+  async deleteDocument(@Param('id') id: string) {
+    try {
+      await this.ragService.deleteDocument(id);
+      return successResponse({ id, message: '文档删除成功' });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

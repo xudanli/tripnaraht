@@ -12,7 +12,7 @@
  * 架构位置：Agent Infra 层
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { LLMExecutorService } from './llm-executor.service';
 import { CoreGatewayService } from './core-gateway.service';
 import { StateStoreService } from './state-store.service';
@@ -24,7 +24,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
   imports: [
-    LlmModule,
+    forwardRef(() => LlmModule), // 使用 forwardRef 解决循环依赖
     PrismaModule,
   ],
   providers: [

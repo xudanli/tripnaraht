@@ -75,6 +75,8 @@ function applySimpleLegacyFallbackRule(
  * 规则函数：显式启用 Claude 时的简单任务优化
  * 
  * 规则：显式启用 + 简单任务 + 不需要结构化输出 → 使用 DYNAMIC（更快）
+ * 
+ * 例外：如果显式启用了状态机（use_state_machine_orchestration: true），则强制使用状态机
  */
 function applyExplicitClaudeSimpleDynamicRule(
   modeResult: ResolveModeResult,
@@ -82,6 +84,12 @@ function applyExplicitClaudeSimpleDynamicRule(
   signals: RoutingSignals,
 ): { mode: OrchestrationMode; reason: string; rule: string } | null {
   const explicitlyEnabled = options?.use_claude_orchestration === true;
+  const explicitlyStateMachine = options?.use_state_machine_orchestration === true;
+  
+  // 如果显式启用了状态机，不降级
+  if (explicitlyStateMachine) {
+    return null;
+  }
   
   if (
     explicitlyEnabled &&
@@ -129,11 +137,21 @@ function applyComplexStructuredSMRule(
  * 规则函数：简单任务使用动态编排
  * 
  * 规则：SM + 简单任务 + 不需要结构化输出 → 使用 DYNAMIC
+ * 
+ * 例外：如果显式启用了状态机（use_state_machine_orchestration: true），则强制使用状态机
  */
 function applySimpleDynamicRule(
   modeResult: ResolveModeResult,
+  options: OrchestrationOptions | undefined,
   signals: RoutingSignals,
 ): { mode: OrchestrationMode; reason: string; rule: string } | null {
+  const explicitlyStateMachine = options?.use_state_machine_orchestration === true;
+  
+  // 如果显式启用了状态机，不降级
+  if (explicitlyStateMachine) {
+    return null;
+  }
+  
   if (
     modeResult.mode === 'CLAUDE_SM' &&
     signals.complexity === 'SIMPLE' &&
@@ -264,7 +282,7 @@ export function routePolicy(
         }
         // 规则 4: 简单任务使用动态编排
         else {
-          const simpleDynamicResult = applySimpleDynamicRule(modeResult, signals);
+          const simpleDynamicResult = applySimpleDynamicRule(modeResult, options, signals);
           if (simpleDynamicResult) {
             finalMode = simpleDynamicResult.mode;
             reason = simpleDynamicResult.reason;

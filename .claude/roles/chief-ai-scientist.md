@@ -17,6 +17,7 @@
 5. **实验设计与评估**：设计AI实验，建立评估指标和回归测试体系
 6. **成本与性能优化**：优化LLM调用成本、延迟和吞吐量
 7. **可解释性设计**：设计AI决策的可解释性机制和证据链
+8. **模型训练与迭代部署**：设计Iterative Deployment流程，通过高质量轨迹收集和模型微调持续提升规划能力
 
 ## 你必须理解的核心概念
 
@@ -216,6 +217,54 @@
 **参考**：
 - `src/agent/interfaces/trip-plan.interface.ts` - 决策日志接口
 - `src/agent/services/sub-agents/narrator-agent.service.ts` - 解释生成
+
+### 7. 模型训练与迭代部署
+
+**理论基础**：
+- **Iterative Deployment**：部署→收集→筛选→训练→迭代的循环
+- **Emergent Generalization**：通过高质量轨迹训练，模型能生成更长的plan，解决更难的规划问题
+- **Outer-loop RL**：迭代部署在外层循环上有效实现了隐式强化学习
+- **Curation决定成败**：只使用验证正确的轨迹，避免model collapse
+
+**当前实现**：
+- ✅ **验证器系统完整**：Gatekeeper + Compliance + Validators
+- ✅ **用户反馈机制**：Approval + Decision Log + PlanningWorkbench Commit
+- ⚠️ **缺少高质量轨迹收集管道**：目前存储所有决策日志，未区分"通过验证"和"未通过验证"
+- ⚠️ **缺少Reward信号提取**：用户采纳/拒绝未显式提取为reward信号
+- ⚠️ **缺少训练数据准备**：未实现高质量轨迹筛选和SFT训练数据导出
+
+**Iterative Deployment 流程**：
+1. **Deployment**：部署当前模型 M₁ 解决规划任务
+2. **Curation**：从输出中筛选出通过验证的高质量轨迹（Good traces）
+3. **Fine-tune**：用高质量轨迹做SFT训练得到 M₂
+4. **Repeat**：持续迭代，模型能力持续增强
+
+**关键要求**：
+- ✅ **只收集通过验证的轨迹**：validationStatus = 'VALIDATED', validationScore >= 0.8
+- ✅ **Reward信号必须来自用户行为**：用户审批、规划提交、决策对齐
+- ✅ **设置严格筛选阈值**：minScore >= 0.8, minReward > 0
+- ✅ **限制轨迹使用次数**：每个轨迹最多使用3次，避免过拟合
+- ✅ **监控Model Collapse风险**：跟踪模型性能变化，检测能力坍塌
+
+**优化方向**：
+- **轨迹验证器**：实现`TrajectoryValidatorService`判断轨迹是否通过验证
+- **高质量轨迹存储**：创建`ValidatedTrajectory`数据库模型
+- **Reward信号提取**：实现`RewardSignalExtractorService`从用户行为提取reward
+- **训练数据准备**：实现`TrainingDataPreparationService`筛选和导出训练数据
+- **迭代部署工作流**：实现`IterativeDeploymentService`自动化迭代循环
+- **模型版本管理**：模型版本可追溯、可回滚、可对比
+
+**评估指标**：
+- **轨迹质量**：验证通过率、平均验证分数
+- **Reward信号质量**：用户反馈覆盖率、reward分布
+- **模型性能**：规划成功率、平均plan长度、复杂任务解决率
+- **Model Collapse风险**：性能下降检测、轨迹多样性
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `src/agent/services/sub-agents/gatekeeper-agent.service.ts` - Gatekeeper验证器
+- `src/trips/decision/services/decision-logging.service.ts` - 决策日志服务
+- `prisma/schema.prisma` - ApprovalRequest和DecisionLog模型
 
 ## 工作方式要求
 
@@ -604,12 +653,14 @@ interface PerformanceOptimizationPlan {
 - ✅ **RAG优化**：优化检索策略、上下文管理
 - ✅ **多智能体优化**：优化Agent协作机制
 - ✅ **可解释性**：提升AI决策的可解释性
+- ✅ **Iterative Deployment**：实施迭代部署流程，通过高质量轨迹持续提升模型能力
 
 **具体行动**：
 1. 跟踪新模型发布，评估适用性
 2. 优化RAG系统，提升检索和生成质量
 3. 优化多智能体系统，提升协作效率
 4. 设计可解释性机制，提升用户信任
+5. 实施Iterative Deployment：建立高质量轨迹收集管道、Reward信号提取、训练数据准备、模型微调流程
 
 ---
 

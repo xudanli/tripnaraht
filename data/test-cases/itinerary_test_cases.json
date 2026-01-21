@@ -1,0 +1,47 @@
+[
+  {
+    "id": "itinerary_001",
+    "component": "ITINERARY",
+    "input": {
+      "user_request": "Plan a 7-day trip to Iceland",
+      "origin": "Reykjavik",
+      "destination": "Reykjavik",
+      "duration_days": 7
+    },
+    "metadata": {
+      "country_code": "IS",
+      "complexity": "MEDIUM"
+    }
+  },
+  {
+    "id": "itinerary_002",
+    "component": "ITINERARY",
+    "input": {
+      "user_request": "Plan a weekend trip to Reykjavik",
+      "origin": "Reykjavik",
+      "destination": "Reykjavik",
+      "duration_days": 2
+    },
+    "metadata": {
+      "country_code": "IS",
+      "complexity": "LOW"
+    }
+  },
+  {
+    "id": "itinerary_003",
+    "component": "ITINERARY",
+    "input": {
+      "user_request": "Plan a 3-day trip in Iceland",
+      "origin": "Reykjavik",
+      "destination": "Reykjavik",
+      "date_range": {
+        "start_date": "2025-06-01",
+        "end_date": "2025-06-03"
+      }
+    },
+    "metadata": {
+      "country_code": "IS",
+      "complexity": "LOW"
+    }
+  }
+]

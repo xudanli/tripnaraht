@@ -122,6 +122,62 @@ TypeScript 类型定义优先，前后端同构（或至少对齐）。
 - 记录到 `decision_log`
 - 关联 `evidence_refs`
 
+### Iterative Deployment 工程约束
+
+**轨迹收集规范**：
+- ✅ **只在"通过验证"的节点收集轨迹**：
+  - GateResult = ALLOW（不是BLOCK）
+  - 无CRITICAL风险警告
+  - 用户审批 = APPROVED（如果存在）
+  - 执行成功（如果已执行）
+- ✅ **轨迹必须包含完整的决策链**：
+  - 生成的计划（`Itinerary`）
+  - 决策链（`DecisionLogEntry[]`）
+  - 研究数据（`researchData`）
+  - Gate结果（`GateResult`）
+  - Compliance结果（`ComplianceResult`）
+- ✅ **轨迹必须关联证据引用**：`evidence_refs`必须完整
+
+**Reward信号提取规范**：
+- ✅ **Reward信号必须来自"用户行为"**：
+  - 用户审批（`ApprovalRequest.status = 'APPROVED'` → +1.0, 'REJECTED' → -0.5）
+  - 规划工作台提交（`PlanningWorkbenchCommit.success = true` → +0.8）
+  - 决策对齐（`DecisionLog.alignmentScore` → 0-1）
+- ✅ **Reward信号必须可追溯**：关联到具体的用户操作（approvalId, planId, decisionId）
+- ✅ **Reward信号必须可量化**：0-1分数，支持聚合和统计
+
+**训练数据准备规范**：
+- ✅ **训练数据必须经过严格筛选**：
+  - validationStatus = 'VALIDATED'
+  - validationScore >= 0.8
+  - totalReward > 0（用户反馈积极）
+  - 未被用于训练过（或使用次数 < 3）
+- ✅ **训练数据必须标注来源**：
+  - trajectoryId（轨迹ID）
+  - requestId（请求ID）
+  - tripId（行程ID）
+  - timestamp（时间戳）
+- ✅ **训练数据必须标注模型版本**：modelVersion（用于追溯训练数据来源）
+
+**模型版本管理规范**：
+- ✅ **模型版本必须可追溯**：
+  - 版本号（modelVersion）
+  - 训练数据批次（trainingBatchId）
+  - 训练参数（训练配置、超参数）
+- ✅ **模型版本必须可回滚**：保留历史版本，支持回滚到历史版本
+- ✅ **模型版本必须可对比**：性能指标对比（规划成功率、平均plan长度、复杂任务解决率）
+
+**代码实现要求**：
+- ✅ **轨迹验证器**：`TrajectoryValidatorService.validateTrajectory()`必须实现
+- ✅ **轨迹存储**：`ValidatedTrajectory`数据库模型必须实现
+- ✅ **Reward提取**：`RewardSignalExtractorService.extractRewardSignals()`必须实现
+- ✅ **训练数据准备**：`TrainingDataPreparationService.prepareTrainingBatch()`必须实现
+- ✅ **迭代部署**：`IterativeDeploymentService.runIteration()`必须实现
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `src/agent/training/` - 训练相关服务（待实现）
+
 ## 你产出的代码必须包含
 
 ### 类型定义

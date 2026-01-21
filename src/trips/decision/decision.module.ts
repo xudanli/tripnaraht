@@ -98,6 +98,7 @@ import { RhythmMatchingService } from './services/rhythm-matching.service';
 import { MultiPersonDecisionService } from './services/multi-person-decision.service';
 import { DataQualityModule } from '../../data-quality/data-quality.module';
 import { DataModelingModule } from '../../data-modeling/data-modeling.module';
+import { TrainingModule } from '../../agent/training/training.module';
 
 @Module({
   imports: [
@@ -112,13 +113,12 @@ import { DataModelingModule } from '../../data-modeling/data-modeling.module';
     // LlmModule, // 暂时禁用，测试是否导致阻塞
     ...(enableContextEngineModule ? [ContextEngineModule] : []),
     ...(enableSkillsModule ? [forwardRef(() => SkillsModule)] : []),
+    TrainingModule, // Iterative Deployment 训练模块
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
-    // 二分法：暂时禁用 DecisionController（测试是否是 StrategyOrchestratorService 导致阻塞）
-    // DecisionController, // 需要 StrategyOrchestratorService
-    // 二分法：暂时禁用 DecisionStatsController 和 ApprovalController（它们需要已禁用的服务）
-    // DecisionStatsController, // 需要 DecisionStatsService, HeuristicDietService, DecisionLogClusteringService
-    // ApprovalController, // 需要 ApprovalService, AgentResumeService
+    DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
+    DecisionStatsController, // 恢复：决策统计控制器
+    ApprovalController, // 恢复：审批控制器
   ],
   providers: [
     TripDecisionEngineService,
@@ -162,8 +162,8 @@ import { DataModelingModule } from '../../data-modeling/data-modeling.module';
     NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
     // PlanConverterService,
     // 二分法：暂时禁用后半部分非必需服务，测试是否导致阻塞
-    // DecisionStatsService,
-    // HeuristicDietService,
+    DecisionStatsService, // 恢复：DecisionStatsController 需要
+    HeuristicDietService, // 恢复：DecisionStatsController 需要
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
@@ -173,15 +173,15 @@ import { DataModelingModule } from '../../data-modeling/data-modeling.module';
     MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
     // E2ECaseStorageService,
     // E2EReplayService,
-    // DecisionLogClusteringService,
+    DecisionLogClusteringService, // 恢复：DecisionStatsController 需要
     // TripNaraCoreToolService,
     // GraphDataConverterService,
     // PlannerAgentService, // 已测试，不是问题
     // NarratorAgentService, // 已测试，不是问题
     // LangGraphOrchestratorService, // 已测试，不是问题
     ReadinessAgentService, // 必需：SkillsModule 需要它
-    // ApprovalService,
-    // AgentResumeService,
+    ApprovalService, // 恢复：ApprovalController 需要
+    AgentResumeService, // 恢复：ApprovalController 需要
     // ApprovalCleanupScheduler,
   ],
   exports: [
@@ -225,8 +225,8 @@ import { DataModelingModule } from '../../data-modeling/data-modeling.module';
     NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
     // PlanConverterService,
     // 二分法：暂时禁用后半部分非必需服务，测试是否导致阻塞
-    // DecisionStatsService,
-    // HeuristicDietService,
+    DecisionStatsService, // 恢复：DecisionStatsController 需要
+    HeuristicDietService, // 恢复：DecisionStatsController 需要
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
@@ -236,15 +236,15 @@ import { DataModelingModule } from '../../data-modeling/data-modeling.module';
     MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
     // E2ECaseStorageService,
     // E2EReplayService,
-    // DecisionLogClusteringService,
+    DecisionLogClusteringService, // 恢复：DecisionStatsController 需要
     // TripNaraCoreToolService,
     // GraphDataConverterService,
     // PlannerAgentService, // 已测试，不是问题
     // NarratorAgentService, // 已测试，不是问题
     // LangGraphOrchestratorService, // 已测试，不是问题
     ReadinessAgentService, // 必需：SkillsModule 需要它
-    // ApprovalService,
-    // AgentResumeService,
+    ApprovalService, // 恢复：ApprovalController 需要
+    AgentResumeService, // 恢复：ApprovalController 需要
   ],
 })
 export class DecisionModule {}

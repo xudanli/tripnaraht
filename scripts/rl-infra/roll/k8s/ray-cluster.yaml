@@ -1,0 +1,93 @@
+# Ray Cluster Kubernetes Deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: ray-head-service
+  labels:
+    app: ray-head
+spec:
+  type: ClusterIP
+  ports:
+    - port: 10001
+      name: ray-client
+    - port: 8265
+      name: ray-dashboard
+  selector:
+    app: ray-head
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ray-head
+  labels:
+    app: ray-head
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ray-head
+  template:
+    metadata:
+      labels:
+        app: ray-head
+    spec:
+      containers:
+      - name: ray-head
+        image: rayproject/ray:2.8.0
+        command: ["ray", "start", "--head", "--port=10001", "--dashboard-host=0.0.0.0"]
+        ports:
+        - containerPort: 10001
+          name: ray-client
+        - containerPort: 8265
+          name: ray-dashboard
+        env:
+        - name: RAY_ADDRESS
+          value: "ray://localhost:10001"
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        livenessProbe:
+          exec:
+            command: ["ray", "status"]
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command: ["ray", "status"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ray-worker
+  labels:
+    app: ray-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ray-worker
+  template:
+    metadata:
+      labels:
+        app: ray-worker
+    spec:
+      containers:
+      - name: ray-worker
+        image: rayproject/ray:2.8.0
+        command: ["ray", "start", "--address=ray://ray-head-service:10001"]
+        env:
+        - name: RAY_ADDRESS
+          value: "ray://ray-head-service:10001"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"

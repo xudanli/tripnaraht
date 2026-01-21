@@ -90,6 +90,7 @@ export class DecisionLogMigrator {
       HALLUCINATION_DETECTION: 'hallucination_detection',
       DONE: 'done',
       FAILED: 'failed',
+      TIMEOUT: 'timeout',
     };
     return stepMap[step] || step.toLowerCase().replace('_', ' ');
   }

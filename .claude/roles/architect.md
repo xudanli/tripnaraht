@@ -242,11 +242,20 @@
 - **追踪**：Trace 信息（用于回放和调试）
 - **告警**：异常告警
 
+#### Iterative Deployment 训练层（Training Layer）
+- **轨迹收集**：在关键节点收集规划轨迹（PLAN_GEN、用户审批、执行完成）
+- **轨迹验证**：验证轨迹质量，筛选通过验证的高质量轨迹
+- **Reward提取**：从用户行为提取reward信号（审批、提交、决策对齐）
+- **训练数据准备**：筛选高质量轨迹，准备SFT训练数据
+- **模型训练**：执行模型微调（SFT），生成新模型版本
+- **模型部署**：模型版本管理和部署
+
 **参考架构文件位置**：
 - `src/agent/services/agent.service.ts` - 统一入口
 - `src/agent/services/claude-orchestrator.service.ts` - 编排引擎
 - `src/skills/services/skills-registry.service.ts` - Skills 注册表
 - `docs/AGENT_CALL_SEQUENCE.md` - 调用顺序
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 
 ### 2. 关键模块边界与职责
 
@@ -505,7 +514,110 @@
 **参考**：
 - 需要实现 `PlanStateService` 支持版本化（P0 改进项）
 
-### 7. 风险清单与缓解
+### 7. Iterative Deployment 架构
+
+**架构目标**：通过迭代部署持续提升模型规划能力，实现Emergent Generalization
+
+**架构层次**（从下到上）：
+
+#### 轨迹收集层（Trajectory Collection Layer）
+- **职责**：在关键节点收集规划轨迹
+- **收集点**：
+  - PLAN_GEN完成后（计划生成）
+  - 用户审批后（用户采纳/拒绝）
+  - 执行完成后（执行结果验证）
+- **收集内容**：
+  - 生成的计划（`Itinerary`）
+  - 决策链（`DecisionLogEntry[]`）
+  - 研究数据（`researchData`）
+  - Gate结果（`GateResult`）
+  - Compliance结果（`ComplianceResult`）
+- **实现位置**：
+  - `src/agent/services/claude-orchestrator.service.ts` - PLAN_GEN步骤后收集
+  - `src/trips/decision/controllers/approval.controller.ts` - 用户审批后收集
+  - `src/agent/plan-execute/executor.service.ts` - 执行完成后收集
+
+#### 轨迹验证层（Trajectory Validation Layer）
+- **职责**：验证轨迹质量，判断是否"通过验证"
+- **验证标准**：
+  - GateResult = ALLOW（不是BLOCK）
+  - 无CRITICAL风险警告
+  - 用户审批 = APPROVED（如果存在）
+  - 执行成功（如果已执行）
+- **验证服务**：`TrajectoryValidatorService`
+- **输出**：`{ isValid: boolean, score: number, reasons: string[] }`
+- **实现位置**：`src/agent/training/trajectory-validator.service.ts`（待实现）
+
+#### 轨迹存储层（Trajectory Storage Layer）
+- **职责**：存储通过验证的高质量轨迹
+- **数据库模型**：`ValidatedTrajectory`
+- **存储内容**：
+  - 轨迹标识（trajectoryId, requestId, tripId）
+  - 验证结果（validationStatus, validationScore, validationReasons）
+  - 轨迹内容（plan, decisionTrace, researchData）
+  - 元数据（modelVersion, countryCode, timestamp）
+  - 训练标志（usedForTraining, trainingBatchId）
+- **实现位置**：`prisma/schema.prisma`（待实现）
+
+#### Reward提取层（Reward Signal Extraction Layer）
+- **职责**：从用户行为提取reward信号
+- **Reward来源**：
+  - 用户审批（APPROVED = +1.0, REJECTED = -0.5）
+  - 规划工作台提交（PLAN_COMMIT = +0.8）
+  - 决策对齐（DECISION_ALIGNMENT = alignmentScore）
+- **提取服务**：`RewardSignalExtractorService`
+- **输出**：`RewardSignal[]`（type, value, timestamp, metadata）
+- **实现位置**：`src/agent/training/reward-signal-extractor.service.ts`（待实现）
+
+#### 训练数据准备层（Training Data Preparation Layer）
+- **职责**：筛选高质量轨迹，准备SFT训练数据
+- **筛选标准**：
+  - validationStatus = 'VALIDATED'
+  - validationScore >= 0.8
+  - totalReward > 0（用户反馈积极）
+  - 未被用于训练过（或使用次数 < 3）
+- **准备服务**：`TrainingDataPreparationService`
+- **输出**：`TrainingBatch`（trajectories, stats）
+- **实现位置**：`src/agent/training/training-data-preparation.service.ts`（待实现）
+
+#### 模型训练层（Model Training Layer）
+- **职责**：执行模型微调（SFT）
+- **训练数据格式**：
+  - 输入：用户请求 + 研究数据
+  - 输出：生成的计划 + 决策链 + 推理过程
+- **训练服务**：`FineTuneService`
+- **输出**：新模型版本（modelVersion）
+- **实现位置**：`src/agent/training/fine-tune.service.ts`（待实现）
+
+#### 模型部署层（Model Deployment Layer）
+- **职责**：模型版本管理和部署
+- **版本管理**：
+  - 模型版本可追溯（版本号、训练数据批次、训练参数）
+  - 模型版本可回滚（保留历史版本）
+  - 模型版本可对比（性能指标对比）
+- **部署服务**：`ModelDeploymentService`
+- **实现位置**：`src/agent/training/model-deployment.service.ts`（待实现）
+
+**关键约束**：
+- ✅ **轨迹收集必须在"通过验证"之后**：只收集validationStatus = 'VALIDATED'的轨迹
+- ✅ **Reward信号必须来自"用户行为"**：审批、提交、决策对齐
+- ✅ **训练数据必须经过严格筛选**：minScore >= 0.8, minReward > 0
+- ✅ **模型版本必须可追溯、可回滚**：支持版本管理和回滚
+
+**风险与缓解**：
+- **Model Collapse风险**：
+  - **缓解**：只使用验证正确的轨迹，设置严格筛选阈值，限制轨迹使用次数
+- **Reward Function不透明风险**：
+  - **缓解**：通过Gatekeeper硬门控确保安全，通过Compliance确保合规，通过AuditLog记录所有决策
+- **数据质量风险**：
+  - **缓解**：多维度验证（Gate + Compliance + User + Execution），设置严格筛选阈值，定期审查轨迹质量分布
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `src/agent/services/sub-agents/gatekeeper-agent.service.ts` - Gatekeeper验证器
+- `src/trips/decision/services/decision-logging.service.ts` - 决策日志服务
+
+### 8. 风险清单与缓解
 
 #### 技术风险
 

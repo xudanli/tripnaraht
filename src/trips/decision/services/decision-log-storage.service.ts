@@ -100,6 +100,7 @@ export class DecisionLogStorageService {
     routeDirectionId?: string;
     persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
     decisionSource?: 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC';
+    action?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
     decisionStage?: DecisionStage;
     startDate?: Date;
     endDate?: Date;
@@ -121,6 +122,9 @@ export class DecisionLogStorageService {
     }
     if (filters.decisionSource) {
       where.decisionSource = filters.decisionSource;
+    }
+    if (filters.action) {
+      where.action = filters.action;
     }
     if (filters.decisionStage) {
       where.decisionStage = filters.decisionStage;
@@ -227,6 +231,201 @@ export class DecisionLogStorageService {
       this.logger.error(`更新决策日志元数据失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * 分页查询决策日志（后台管理）
+   */
+  async queryLogsPaginated(filters: {
+    tripId?: string;
+    userId?: string; // 通过 tripId 关联查询
+    persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+    decisionSource?: 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC';
+    action?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    startDate?: Date;
+    endDate?: Date;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{
+    items: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    const page = filters.page || 1;
+    const limit = Math.min(filters.limit || 20, 100);
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (filters.tripId) {
+      where.tripId = filters.tripId;
+    }
+    if (filters.persona) {
+      where.persona = filters.persona;
+    }
+    if (filters.decisionSource) {
+      where.decisionSource = filters.decisionSource;
+    }
+    if (filters.action) {
+      where.action = filters.action;
+    }
+    if (filters.startDate || filters.endDate) {
+      where.timestamp = {};
+      if (filters.startDate) {
+        where.timestamp.gte = filters.startDate;
+      }
+      if (filters.endDate) {
+        where.timestamp.lte = filters.endDate;
+      }
+    }
+
+    // 如果提供了 userId，需要通过 Trip 关联查询
+    if (filters.userId) {
+      where.trip = {
+        collaborators: {
+          some: {
+            userId: filters.userId,
+          },
+        },
+      };
+    }
+
+    // 排序
+    const orderBy: any = {};
+    const sortBy = filters.sortBy || 'timestamp';
+    const sortOrder = filters.sortOrder || 'desc';
+    orderBy[sortBy] = sortOrder;
+
+    // 查询总数
+    const total = await this.prisma.decisionLog.count({ where });
+
+    // 查询数据
+    const logs = await this.prisma.decisionLog.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limit,
+    });
+
+    // 转换为响应格式
+    const items = logs.map(log => ({
+      id: log.id,
+      tripId: log.tripId,
+      userId: undefined, // 需要关联查询
+      persona: log.persona,
+      action: log.action,
+      explanation: log.explanation,
+      reasonCodes: log.reasonCodes,
+      decisionSource: log.decisionSource,
+      decisionStage: (log as any).decisionStage || 'FINALIZE',
+      timestamp: log.timestamp.toISOString(),
+      countryCode: log.countryCode,
+      routeDirectionId: log.routeDirectionId,
+      metadata: log.metadata || {},
+    }));
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * 获取决策日志详情（包含完整信息）
+   */
+  async getLogDetailById(logId: string): Promise<any | null> {
+    try {
+      const log = await this.prisma.decisionLog.findUnique({
+        where: { id: logId },
+        include: {
+          outcomes: true,
+        },
+      });
+
+      if (!log) {
+        return null;
+      }
+
+      return {
+        id: log.id,
+        tripId: log.tripId,
+        countryCode: log.countryCode,
+        routeDirectionId: log.routeDirectionId,
+        persona: log.persona,
+        action: log.action,
+        decisionSource: log.decisionSource,
+        decisionStage: (log as any).decisionStage || 'FINALIZE',
+        explanation: log.explanation,
+        reasonCodes: log.reasonCodes,
+        evidenceRefs: log.evidenceRefs,
+        timestamp: log.timestamp.toISOString(),
+        metadata: log.metadata || {},
+        availableOptions: (log as any).availableOptions,
+        userChoice: (log as any).userChoice,
+        userReasoning: (log as any).userReasoning,
+        confidenceLevel: (log as any).confidenceLevel,
+        systemRecommendation: (log as any).systemRecommendation,
+        alignmentScore: (log as any).alignmentScore,
+        outcomes: log.outcomes || [],
+      };
+    } catch (error: any) {
+      this.logger.error(`获取决策日志详情失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 查询原始决策日志（用于导出）
+   */
+  async queryRawLogs(filters: {
+    tripId?: string;
+    persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+    decisionSource?: 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC';
+    action?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<any[]> {
+    const where: any = {};
+
+    if (filters.tripId) {
+      where.tripId = filters.tripId;
+    }
+    if (filters.persona) {
+      where.persona = filters.persona;
+    }
+    if (filters.decisionSource) {
+      where.decisionSource = filters.decisionSource;
+    }
+    if (filters.action) {
+      where.action = filters.action;
+    }
+    if (filters.startDate || filters.endDate) {
+      where.timestamp = {};
+      if (filters.startDate) {
+        where.timestamp.gte = filters.startDate;
+      }
+      if (filters.endDate) {
+        where.timestamp.lte = filters.endDate;
+      }
+    }
+
+    return await this.prisma.decisionLog.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+      take: filters.limit || 10000,
+    });
   }
 }
 

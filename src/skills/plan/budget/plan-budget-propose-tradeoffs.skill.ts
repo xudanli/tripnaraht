@@ -85,7 +85,7 @@ export class PlanBudgetProposeTradeoffsSkill implements Skill<PlanBudgetProposeT
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',

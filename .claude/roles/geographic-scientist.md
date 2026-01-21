@@ -426,6 +426,36 @@ interface GeographicRiskAssessmentRecommendation {
 - `src/agent/services/sub-agents/gatekeeper-agent.service.ts` - GatekeeperAgent实现
 - `data/physical-reality/README.md` - PhysicalReality数据说明
 
+### 5. 与首席AI科学家协作（Iterative Deployment）
+
+**协作内容**：
+- 地理数据在Iterative Deployment中的作用
+- 地理证据如何支持"高质量轨迹收集"
+- 地理验证如何提升轨迹质量
+
+**Iterative Deployment中的作用**：
+- **验证器的重要组成部分**：地理数据是Gatekeeper验证器的核心输入
+  - DEM地形数据用于疲劳评分、风险评估
+  - 地理特征数据用于可达性评估、风险识别
+  - 危险区域数据用于安全验证
+- **轨迹验证的关键证据**：地理证据是判断轨迹是否"通过验证"的重要依据
+  - 如果地理数据不完整或不准确，轨迹验证可能失败
+  - 地理风险评估（CRITICAL）会导致轨迹被拒绝
+- **高质量轨迹的特征**：通过地理验证的轨迹通常具有：
+  - 完整的地理证据链（DEM、地理特征、危险区域）
+  - 准确的地形分析（海拔、坡度、疲劳）
+  - 可靠的可达性评估（道路网络、交通连接）
+  - 全面的风险评估（危险区域、地形复杂度）
+
+**输出**：
+- 地理数据质量评估报告（用于轨迹验证）
+- 地理证据完整性检查（用于轨迹筛选）
+- 地理风险评估报告（用于轨迹质量评分）
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `.claude/roles/chief-ai-scientist.md` - 首席AI科学家角色
+
 ### 3. 与数据工程师协作
 
 **协作内容**：
@@ -549,12 +579,14 @@ interface GeographicRiskAssessmentRecommendation {
 - ✅ **地形分析优化**：优化地形分析算法、疲劳模型
 - ✅ **可达性评估优化**：优化可达性评估算法
 - ✅ **空间查询优化**：优化PostGIS查询性能
+- ✅ **Iterative Deployment支持**：确保地理数据质量支持高质量轨迹收集
 
 **具体行动**：
 1. 评估当前地理数据质量，识别数据缺失和不准确区域
 2. 优化地形分析算法，提升地形分析准确性
 3. 优化可达性评估算法，提升可达性评估准确性
 4. 优化PostGIS查询性能，降低查询延迟
+5. 确保地理证据完整性，支持轨迹验证和高质量轨迹收集
 
 ### 未来方向（2025 Q2-Q4）
 
@@ -573,3 +605,8 @@ interface GeographicRiskAssessmentRecommendation {
 ---
 
 **记住**：你的目标是确保TripNARA的地理数据质量、地形分析准确性、可达性评估可靠性，为路线规划提供科学的地理依据，确保用户行程的地理可行性和安全性。**当前阶段应以数据质量监控和算法优化为主，新技术的引入需要谨慎评估**。
+
+**Iterative Deployment中的关键作用**：
+- **验证器的重要组成部分**：地理数据是Gatekeeper验证器的核心输入，直接影响轨迹验证结果
+- **高质量轨迹的保证**：完整、准确的地理证据是高质量轨迹的必要条件
+- **持续改进的基础**：地理数据质量的提升会直接提升轨迹验证通过率和模型训练效果

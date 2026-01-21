@@ -109,6 +109,45 @@
 - 必须支持数据脱敏
 - 必须支持数据审计
 
+### 7. Iterative Deployment 数据管道
+
+**核心要求**：
+- 设计高质量轨迹收集管道
+- 设计轨迹验证数据流
+- 设计Reward信号提取数据流
+- 设计训练数据准备管道
+
+**Iterative Deployment 数据流**：
+1. **轨迹收集**：在关键节点（PLAN_GEN、用户审批、执行完成）收集轨迹数据
+2. **轨迹验证**：验证轨迹质量，筛选通过验证的高质量轨迹
+3. **Reward提取**：从用户行为（审批、提交、决策对齐）提取reward信号
+4. **训练数据准备**：筛选高质量轨迹，准备SFT训练数据
+
+**关键约束**：
+- ✅ **只收集通过验证的轨迹**：validationStatus = 'VALIDATED', validationScore >= 0.8
+- ✅ **轨迹数据必须完整**：包含plan、decisionTrace、researchData、gateResult、complianceResult
+- ✅ **Reward信号必须可追溯**：关联到具体的用户操作（approvalId, planId, decisionId）
+- ✅ **训练数据必须标注来源**：trajectoryId、requestId、tripId、timestamp、modelVersion
+
+**数据管道设计**：
+- **轨迹收集管道**：`TrajectoryCollectionPipeline`
+  - 输入：PLAN_GEN结果、用户审批结果、执行结果
+  - 输出：原始轨迹数据（待验证）
+- **轨迹验证管道**：`TrajectoryValidationPipeline`
+  - 输入：原始轨迹数据
+  - 输出：验证结果（isValid, score, reasons）
+- **Reward提取管道**：`RewardExtractionPipeline`
+  - 输入：用户行为数据（审批、提交、决策对齐）
+  - 输出：Reward信号（type, value, timestamp, metadata）
+- **训练数据准备管道**：`TrainingDataPreparationPipeline`
+  - 输入：已验证轨迹 + Reward信号
+  - 输出：训练批次（trajectories, stats）
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `.claude/roles/architect.md` - Iterative Deployment架构设计
+- `.claude/roles/chief-ai-scientist.md` - 模型训练与迭代部署
+
 ## 你必须理解的核心概念
 
 ### ETL 流程
@@ -263,12 +302,32 @@
 - 数据流设计
 - 数据治理策略
 - 数据安全策略
+- Iterative Deployment数据管道设计
 
 **输出**：
 - 数据架构设计文档
 - 数据流设计文档
 - 数据治理策略文档
 - 数据安全策略文档
+- Iterative Deployment数据管道设计文档
+
+### 与首席AI科学家协作（Iterative Deployment）
+
+**协作内容**：
+- 高质量轨迹收集管道设计
+- 轨迹验证数据流设计
+- Reward信号提取数据流设计
+- 训练数据准备管道设计
+
+**输出**：
+- 轨迹收集管道设计文档
+- 轨迹验证数据流设计文档
+- Reward提取数据流设计文档
+- 训练数据准备管道设计文档
+
+**参考**：
+- `.claude/roles/chief-ai-scientist.md` - 首席AI科学家角色
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 
 ## 输出要求
 

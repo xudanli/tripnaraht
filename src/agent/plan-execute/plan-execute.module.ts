@@ -12,6 +12,7 @@ import { ReplannerService } from './replanner.service';
 import { ExecutorService } from './executor.service';
 import { ContextAssemblerService } from './context-assembler.service';
 import { LlmModule } from '../../llm/llm.module';
+import { TrainingModule } from '../training/training.module';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -42,6 +43,7 @@ if (!isMcpMode) {
 @Module({
   imports: [
     LlmModule,
+    TrainingModule, // Iterative Deployment 训练模块
     // 只有在非 MCP 模式下才导入 AgentModule
     ...(AgentModuleRef ? [AgentModuleRef] : []),
   ],

@@ -17,6 +17,7 @@ import {
   BlockType,
   BlockProvenance,
   ContextProjection,
+  ApiDocCategory,
 } from '../types/context-package.types';
 import { StateProjection, ProjectionConfig } from '../types/trip-state-projection.types';
 import { TripState } from '../../../trips/decision/shared/trip-state.types';
@@ -37,6 +38,12 @@ export class ContextEngineerService {
    * 缓存 key 格式：`tripId:${tripId}:phase:${phase}:agent:${agent}:topics:${topics.join(',')}`
    */
   private readonly memoryCache = new Map<string, { package: ContextPackage; timestamp: number }>();
+
+  /**
+   * 存储的 Context Package（用于后台管理查询）
+   * key: packageId, value: ContextPackage
+   */
+  private readonly packageStore = new Map<string, ContextPackage>();
   
   /**
    * 缓存 TTL（毫秒），默认 5 分钟
@@ -210,13 +217,22 @@ export class ContextEngineerService {
         blocks.push(...constraintBlocks);
       }
 
-      // 6. 计算 Token 并排序
+      // 6. 获取 API 文档块（如果请求）
+      if (options.includeApiDocs) {
+        const apiDocBlocks = await this.buildApiDocumentationBlocks(
+          options.apiDocCategories || ['ALL'],
+          options.userQuery,
+        );
+        blocks.push(...apiDocBlocks);
+      }
+
+      // 7. 计算 Token 并排序
       const totalTokens = this.estimateTokens(blocks);
       
-      // 7. 按优先级排序并裁剪到预算内
+      // 8. 按优先级排序并裁剪到预算内
       const sortedBlocks = this.sortAndTrimBlocks(blocks, tokenBudget, options.includePrivate || false);
 
-      // 8. 如果需要，进行压缩
+      // 9. 如果需要，进行压缩
       let finalBlocks = sortedBlocks;
       let compressed = false;
       if (this.estimateTokens(sortedBlocks) > tokenBudget) {
@@ -270,7 +286,15 @@ export class ContextEngineerService {
         this.cleanExpiredMemoryCache();
       }
 
-      // 3. 记录监控指标
+      // 3. 存储 Context Package（用于后台管理查询）
+      this.packageStore.set(packageId, contextPackage);
+      // 限制存储大小（最多保留 1000 个）
+      if (this.packageStore.size > 1000) {
+        const oldestKey = Array.from(this.packageStore.keys())[0];
+        this.packageStore.delete(oldestKey);
+      }
+
+      // 4. 记录监控指标
       if (this.metricsService) {
         await this.metricsService.recordMetrics(contextPackage, {
           tripId: options.tripId,
@@ -689,6 +713,350 @@ export class ContextEngineerService {
   }
 
   /**
+   * 构建 API 文档块
+   * 
+   * 根据请求的类别返回相应的 API 文档信息
+   */
+  private async buildApiDocumentationBlocks(
+    categories: ApiDocCategory[],
+    userQuery: string,
+  ): Promise<ContextBlock[]> {
+    const blocks: ContextBlock[] = [];
+    const includeAll = categories.includes('ALL');
+
+    try {
+      // ROLL API 文档
+      if (includeAll || categories.includes('ROLL')) {
+        blocks.push({
+          key: 'API_DOC_ROLL',
+          type: 'API_DOCUMENTATION',
+          text: this.getRollApiSummary(),
+          priority: 40,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:roll',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'ROLL',
+            endpoints: this.getRollEndpoints(),
+          },
+        });
+      }
+
+      // 后台管理 API 文档
+      if (includeAll || categories.includes('ADMIN')) {
+        blocks.push({
+          key: 'API_DOC_ADMIN',
+          type: 'API_DOCUMENTATION',
+          text: this.getAdminApiSummary(),
+          priority: 35,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:admin',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'ADMIN',
+            endpoints: this.getAdminEndpoints(),
+          },
+        });
+      }
+
+      // Context Engine API 文档
+      if (includeAll || categories.includes('CONTEXT')) {
+        blocks.push({
+          key: 'API_DOC_CONTEXT',
+          type: 'API_DOCUMENTATION',
+          text: this.getContextApiSummary(),
+          priority: 45,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:context',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'CONTEXT',
+            endpoints: this.getContextEndpoints(),
+          },
+        });
+      }
+
+      // Training API 文档
+      if (includeAll || categories.includes('TRAINING')) {
+        blocks.push({
+          key: 'API_DOC_TRAINING',
+          type: 'API_DOCUMENTATION',
+          text: this.getTrainingApiSummary(),
+          priority: 30,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:training',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'TRAINING',
+            endpoints: this.getTrainingEndpoints(),
+          },
+        });
+      }
+
+      // Agent API 文档
+      if (includeAll || categories.includes('AGENT')) {
+        blocks.push({
+          key: 'API_DOC_AGENT',
+          type: 'API_DOCUMENTATION',
+          text: this.getAgentApiSummary(),
+          priority: 50,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:agent',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'AGENT',
+            endpoints: this.getAgentEndpoints(),
+          },
+        });
+      }
+
+      // Trips API 文档
+      if (includeAll || categories.includes('TRIPS')) {
+        blocks.push({
+          key: 'API_DOC_TRIPS',
+          type: 'API_DOCUMENTATION',
+          text: this.getTripsApiSummary(),
+          priority: 55,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:trips',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'TRIPS',
+            endpoints: this.getTripsEndpoints(),
+          },
+        });
+      }
+
+      // Decision API 文档
+      if (includeAll || categories.includes('DECISION')) {
+        blocks.push({
+          key: 'API_DOC_DECISION',
+          type: 'API_DOCUMENTATION',
+          text: this.getDecisionApiSummary(),
+          priority: 45,
+          visibility: 'public',
+          provenance: {
+            source: 'computed',
+            identifier: 'api-docs:decision',
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            category: 'DECISION',
+            endpoints: this.getDecisionEndpoints(),
+          },
+        });
+      }
+
+      this.logger.debug(`构建了 ${blocks.length} 个 API 文档块`);
+    } catch (error) {
+      this.logger.warn(`构建 API 文档块失败: ${error}`);
+    }
+
+    return blocks;
+  }
+
+  // ==================== API 文档内容方法 ====================
+
+  private getRollApiSummary(): string {
+    return `ROLL 架构 API:
+- GET /api/training/roll/metrics - 获取 ROLL 监控指标
+- GET /api/training/roll/workers/status - 获取 Workers 状态
+- GET /api/training/roll/health - 健康检查
+- POST /api/training/roll/ab-test/create - 创建 A/B 测试实验
+- POST /api/training/roll/ab-test/analyze - 分析 A/B 测试结果
+- GET /api/training/roll/ab-test/should-use - 检查是否使用 ROLL
+
+Python Bridge Service (localhost:8001):
+- POST /api/actor/generate-trajectory - 生成轨迹
+- POST /api/reward/compute - 计算奖励
+- POST /api/policy/predict - 策略推理
+- POST /api/training/start - 启动训练`;
+  }
+
+  private getRollEndpoints(): any[] {
+    return [
+      { method: 'GET', path: '/api/training/roll/metrics', description: '获取 ROLL 监控指标' },
+      { method: 'GET', path: '/api/training/roll/workers/status', description: '获取 Workers 状态' },
+      { method: 'GET', path: '/api/training/roll/health', description: '健康检查' },
+      { method: 'POST', path: '/api/training/roll/ab-test/create', description: '创建 A/B 测试实验' },
+      { method: 'POST', path: '/api/training/roll/ab-test/analyze', description: '分析 A/B 测试结果' },
+      { method: 'GET', path: '/api/training/roll/ab-test/should-use', description: '检查是否使用 ROLL' },
+    ];
+  }
+
+  private getAdminApiSummary(): string {
+    return `后台管理 API:
+Agent 管理:
+- GET /api/agent/admin/runs/stats - 获取运行统计
+- GET /api/agent/admin/performance - 性能分析
+- GET /api/agent/admin/runs - 运行列表
+- GET /api/agent/admin/runs/:id - 运行详情
+- POST /api/agent/admin/runs/:id/cancel - 取消运行
+- GET /api/agent/admin/attempts - Attempt 列表
+
+Context 管理:
+- GET /api/context/admin/metrics - Context 指标
+- GET /api/context/admin/packages - Package 列表
+- GET /api/context/admin/analytics - 使用分析`;
+  }
+
+  private getAdminEndpoints(): any[] {
+    return [
+      { method: 'GET', path: '/api/agent/admin/runs/stats', description: '获取运行统计' },
+      { method: 'GET', path: '/api/agent/admin/performance', description: '性能分析' },
+      { method: 'GET', path: '/api/agent/admin/runs', description: '运行列表' },
+      { method: 'GET', path: '/api/agent/admin/runs/:id', description: '运行详情' },
+      { method: 'POST', path: '/api/agent/admin/runs/:id/cancel', description: '取消运行' },
+      { method: 'GET', path: '/api/context/admin/metrics', description: 'Context 指标' },
+      { method: 'GET', path: '/api/context/admin/packages', description: 'Package 列表' },
+    ];
+  }
+
+  private getContextApiSummary(): string {
+    return `Context Engine API:
+- POST /api/context/build - 构建 Context Package
+- POST /api/context/compress - 压缩 Context
+- POST /api/context/project-state - 获取项目状态
+- POST /api/context/write-back - 写回数据
+- GET /api/context/metrics - 获取 Context 指标
+
+参数说明:
+- tripId: 行程 ID
+- phase: 规划阶段 (INITIAL_PLANNING, REFINEMENT, FINALIZATION)
+- agent: Agent 类型 (planning-assistant, journey-assistant)
+- tokenBudget: Token 预算 (默认 8000)
+- includeApiDocs: 是否包含 API 文档`;
+  }
+
+  private getContextEndpoints(): any[] {
+    return [
+      { method: 'POST', path: '/api/context/build', description: '构建 Context Package' },
+      { method: 'POST', path: '/api/context/compress', description: '压缩 Context' },
+      { method: 'POST', path: '/api/context/project-state', description: '获取项目状态' },
+      { method: 'POST', path: '/api/context/write-back', description: '写回数据' },
+      { method: 'GET', path: '/api/context/metrics', description: '获取 Context 指标' },
+    ];
+  }
+
+  private getTrainingApiSummary(): string {
+    return `训练相关 API:
+轨迹收集:
+- POST /api/training/trajectories/collect - 收集规划轨迹
+- POST /api/training/trajectories/:id/validate - 验证轨迹质量
+- GET /api/training/trajectories/by-request/:requestId - 按请求ID查找轨迹
+
+批次处理:
+- POST /api/training/batches/prepare - 准备训练批次
+- POST /api/training/batches/:id/export/jsonl - 导出 JSONL 格式
+
+训练任务:
+- POST /api/training/jobs - 创建训练任务
+- POST /api/training/jobs/:id/start - 启动训练
+- GET /api/training/jobs/:id - 获取任务状态`;
+  }
+
+  private getTrainingEndpoints(): any[] {
+    return [
+      { method: 'POST', path: '/api/training/trajectories/collect', description: '收集规划轨迹' },
+      { method: 'POST', path: '/api/training/batches/prepare', description: '准备训练批次' },
+      { method: 'POST', path: '/api/training/jobs', description: '创建训练任务' },
+      { method: 'GET', path: '/api/training/jobs/:id', description: '获取任务状态' },
+    ];
+  }
+
+  private getAgentApiSummary(): string {
+    return `Agent 相关 API:
+核心接口:
+- POST /api/agent/route-and-run - 智能路由和执行
+- POST /api/agent/plan-execute - 规划执行
+- GET /api/agent/status/:runId - 获取执行状态
+
+规划工作台:
+- POST /api/planning-workbench/start - 开始规划会话
+- POST /api/planning-workbench/message - 发送消息
+- GET /api/planning-workbench/session/:id - 获取会话状态`;
+  }
+
+  private getAgentEndpoints(): any[] {
+    return [
+      { method: 'POST', path: '/api/agent/route-and-run', description: '智能路由和执行' },
+      { method: 'POST', path: '/api/agent/plan-execute', description: '规划执行' },
+      { method: 'GET', path: '/api/agent/status/:runId', description: '获取执行状态' },
+      { method: 'POST', path: '/api/planning-workbench/start', description: '开始规划会话' },
+    ];
+  }
+
+  private getTripsApiSummary(): string {
+    return `行程相关 API:
+行程管理:
+- POST /api/trips - 创建行程
+- GET /api/trips/:id - 获取行程详情
+- PUT /api/trips/:id - 更新行程
+- DELETE /api/trips/:id - 删除行程
+- GET /api/trips/user/:userId - 获取用户行程列表
+
+行程天:
+- POST /api/trips/:id/days - 添加行程天
+- GET /api/trips/:id/days - 获取行程天列表
+- PUT /api/trips/:id/days/:dayId - 更新行程天`;
+  }
+
+  private getTripsEndpoints(): any[] {
+    return [
+      { method: 'POST', path: '/api/trips', description: '创建行程' },
+      { method: 'GET', path: '/api/trips/:id', description: '获取行程详情' },
+      { method: 'PUT', path: '/api/trips/:id', description: '更新行程' },
+      { method: 'DELETE', path: '/api/trips/:id', description: '删除行程' },
+      { method: 'GET', path: '/api/trips/user/:userId', description: '获取用户行程列表' },
+    ];
+  }
+
+  private getDecisionApiSummary(): string {
+    return `决策相关 API:
+决策管理:
+- POST /api/decision/create - 创建决策
+- GET /api/decision/:id - 获取决策详情
+- POST /api/decision/:id/approve - 批准决策
+- POST /api/decision/:id/reject - 拒绝决策
+
+审批流程:
+- GET /api/approvals/pending - 获取待审批列表
+- POST /api/approvals/:id/action - 执行审批动作
+
+统计:
+- GET /api/decision-stats/overview - 决策统计概览
+- GET /api/decision-stats/by-type - 按类型统计`;
+  }
+
+  private getDecisionEndpoints(): any[] {
+    return [
+      { method: 'POST', path: '/api/decision/create', description: '创建决策' },
+      { method: 'GET', path: '/api/decision/:id', description: '获取决策详情' },
+      { method: 'POST', path: '/api/decision/:id/approve', description: '批准决策' },
+      { method: 'GET', path: '/api/approvals/pending', description: '获取待审批列表' },
+      { method: 'GET', path: '/api/decision-stats/overview', description: '决策统计概览' },
+    ];
+  }
+
+  /**
    * 估算 Token 数
    */
   private estimateTokens(blocks: ContextBlock[]): number {
@@ -997,5 +1365,72 @@ export class ContextEngineerService {
       this.logger.error(`Failed to write back: ${error}`, error instanceof Error ? error.stack : undefined);
       // 不抛出错误，避免影响主流程
     }
+  }
+
+  /**
+   * 获取 Context Package 列表（用于后台管理）
+   */
+  getPackages(options: {
+    page?: number;
+    limit?: number;
+    tripId?: string;
+    phase?: string;
+    agent?: string;
+    startTime?: string;
+    endTime?: string;
+    search?: string;
+  }): { packages: ContextPackage[]; total: number; page: number; limit: number; totalPages: number } {
+    let packages = Array.from(this.packageStore.values());
+
+    // 过滤
+    if (options.tripId) {
+      packages = packages.filter((p) => p.tripId === options.tripId);
+    }
+    if (options.phase) {
+      packages = packages.filter((p) => p.phase === options.phase);
+    }
+    if (options.agent) {
+      packages = packages.filter((p) => p.agent === options.agent);
+    }
+    if (options.startTime) {
+      packages = packages.filter((p) => p.createdAt >= options.startTime!);
+    }
+    if (options.endTime) {
+      packages = packages.filter((p) => p.createdAt <= options.endTime!);
+    }
+    if (options.search) {
+      const searchLower = options.search.toLowerCase();
+      packages = packages.filter(
+        (p) =>
+          p.userQuery.toLowerCase().includes(searchLower) ||
+          (p.tripId && p.tripId.toLowerCase().includes(searchLower)),
+      );
+    }
+
+    // 按时间倒序排序
+    packages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // 分页
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const total = packages.length;
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+    const paginatedPackages = packages.slice(skip, skip + limit);
+
+    return {
+      packages: paginatedPackages,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  }
+
+  /**
+   * 根据 ID 获取 Context Package（用于后台管理）
+   */
+  getPackageById(packageId: string): ContextPackage | undefined {
+    return this.packageStore.get(packageId);
   }
 }

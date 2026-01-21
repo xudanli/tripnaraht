@@ -1,0 +1,102 @@
+# ROLL Bridge Service Kubernetes Deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: roll-bridge-service
+  labels:
+    app: roll-bridge-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8001
+      targetPort: 8001
+      name: http
+  selector:
+    app: roll-bridge-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: roll-bridge-service
+  labels:
+    app: roll-bridge-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: roll-bridge-service
+  template:
+    metadata:
+      labels:
+        app: roll-bridge-service
+    spec:
+      containers:
+      - name: bridge-service
+        image: roll-bridge-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: RAY_ADDRESS
+          value: "ray://ray-head-service:10001"
+        - name: RAY_NAMESPACE
+          value: "tripnara-rl"
+        - name: ROLL_BRIDGE_PORT
+          value: "8001"
+        - name: ROLL_BRIDGE_HOST
+          value: "0.0.0.0"
+        - name: ROLL_ACTOR_WORKER_NUM
+          value: "2"
+        - name: ROLL_REWARD_WORKER_NUM
+          value: "2"
+        - name: ROLL_POLICY_WORKER_NUM
+          value: "1"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: roll-bridge-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: roll-bridge-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

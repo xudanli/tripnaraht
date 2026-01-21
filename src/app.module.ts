@@ -38,6 +38,7 @@ import { DataPipelineModule } from './data-pipeline/data-pipeline.module';
 import { DataModelingModule } from './data-modeling/data-modeling.module';
 import { DataArchitectureModule } from './data-architecture/data-architecture.module';
 import { ContentStrategyModule } from './content-strategy/content-strategy.module';
+import { ContextEngineModule } from './agent/context-engine/context-engine.module';
 
 @Module({
   imports: [
@@ -82,7 +83,7 @@ import { ContentStrategyModule } from './content-strategy/content-strategy.modul
     // TasksModule, // 定时任务模块
     // VoiceModule, // 语音解析模块
     // VisionModule, // 视觉识别模块（拍照识别 POI）
-    // ScheduleActionModule, // 行程动作执行模块
+    ScheduleActionModule, // 行程动作执行模块
     // TrailsModule, // 徒步路线模块
     // 第六批：行程核心模块（可能有循环依赖）
     TripsModule, // 恢复：已确认问题在 TripsModule 或其依赖链
@@ -90,8 +91,9 @@ import { ContentStrategyModule } from './content-strategy/content-strategy.modul
     RailPassModule, // RailPass 合规与订座决策模块（测试中）
     // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
-    // RagModule, // 暂时禁用，测试是否导致阻塞
+    RagModule, // 恢复：RAG 模块（用于增强对话）
     AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
+    ContextEngineModule, // Context Engine 模块（上下文编译器）
     // SkillsModule, // Skills 模块（能力颗粒层）
   ],
 })

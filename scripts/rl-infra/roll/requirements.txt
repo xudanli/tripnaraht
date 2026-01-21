@@ -1,0 +1,28 @@
+# ROLL 架构依赖
+
+# Ray 核心
+ray[default]>=2.8.0
+
+# ROLL 框架
+# 注意: ROLL 可能需要从源码安装
+# git+https://github.com/alibaba/ROLL.git
+
+# 基础依赖
+numpy>=1.24.0
+pydantic>=2.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# HTTP 客户端（用于测试）
+httpx>=0.24.0
+
+# 监控和指标
+prometheus-client>=0.18.0
+
+# 可选: 训练后端
+# torch>=2.0.0
+# transformers>=4.30.0
+
+# 可选: 推理后端
+# vllm>=0.2.0
+# sglang>=0.1.0

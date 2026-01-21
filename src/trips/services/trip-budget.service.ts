@@ -1,5 +1,5 @@
 // src/trips/services/trip-budget.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
 
@@ -30,9 +30,76 @@ export interface BudgetAlert {
   suggestions: string[];
 }
 
+export interface BudgetConstraint {
+  total: number;
+  currency: string;
+  dailyBudget?: number;
+  categoryLimits?: {
+    accommodation?: number;
+    transportation?: number;
+    food?: number;
+    activities?: number;
+    other?: number;
+  };
+  alertThreshold?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BudgetDetailsItem {
+  id: string;
+  date: string;
+  category: string;
+  itemName: string;
+  amount: number;
+  currency: string;
+  itineraryItemId?: string;
+  evidenceRefs?: string[];
+}
+
+export interface BudgetTrendsResponse {
+  dailySpending: Array<{
+    date: string;
+    budget: number;
+    spent: number;
+    ratio: number;
+  }>;
+  categoryDistribution: {
+    accommodation: number;
+    transportation: number;
+    food: number;
+    activities: number;
+    other: number;
+  };
+  forecast?: {
+    projectedTotal: number;
+    projectedRemaining: number;
+    confidence: number;
+  };
+}
+
+export interface BudgetStatisticsResponse {
+  completionRate: number;
+  overspendRate: number;
+  categoryPercentages: {
+    accommodation: number;
+    transportation: number;
+    food: number;
+    activities: number;
+    other: number;
+  };
+  dailyAverage: number;
+  projectedCompletion: string;
+  riskLevel: 'low' | 'medium' | 'high';
+}
+
 @Injectable()
 export class TripBudgetService {
   private readonly logger = new Logger(TripBudgetService.name);
+  private readonly SUPPORTED_CURRENCIES = ['CNY', 'USD', 'EUR', 'JPY'];
+  private readonly MIN_BUDGET = 100;
+  private readonly MAX_BUDGET = 1000000;
+  private readonly DEFAULT_ALERT_THRESHOLD = 0.8;
 
   constructor(private prisma: PrismaService) {}
 
@@ -339,6 +406,554 @@ export class TripBudgetService {
       },
       recommendations,
     };
+  }
+
+  /**
+   * 设置预算约束
+   * 
+   * @param tripId 行程 ID
+   * @param constraint 预算约束
+   * @returns 预算约束
+   */
+  async setBudgetConstraint(
+    tripId: string,
+    constraint: {
+      total?: number;
+      currency?: string;
+      dailyBudget?: number;
+      categoryLimits?: {
+        accommodation?: number;
+        transportation?: number;
+        food?: number;
+        activities?: number;
+        other?: number;
+      };
+      alertThreshold?: number;
+    }
+  ): Promise<BudgetConstraint> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    // 验证总预算
+    if (constraint.total !== undefined) {
+      if (constraint.total < this.MIN_BUDGET || constraint.total > this.MAX_BUDGET) {
+        throw new BadRequestException(
+          `预算范围必须在 ${this.MIN_BUDGET} - ${this.MAX_BUDGET} ${constraint.currency || 'CNY'} 之间`
+        );
+      }
+    }
+
+    // 验证货币单位
+    const currency = constraint.currency || 'CNY';
+    if (!this.SUPPORTED_CURRENCIES.includes(currency)) {
+      throw new BadRequestException(
+        `不支持的货币单位: ${currency}。支持的货币: ${this.SUPPORTED_CURRENCIES.join(', ')}`
+      );
+    }
+
+    // 计算每日预算
+    const start = DateTime.fromJSDate(trip.startDate);
+    const end = DateTime.fromJSDate(trip.endDate);
+    const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
+    const totalBudget = constraint.total || 0;
+    const dailyBudget = constraint.dailyBudget || (durationDays > 0 ? totalBudget / durationDays : 0);
+
+    // 验证分类预算总和不超过总预算
+    if (constraint.categoryLimits && totalBudget > 0) {
+      const categorySum = Object.values(constraint.categoryLimits).reduce((sum, val) => sum + (val || 0), 0);
+      if (categorySum > totalBudget) {
+        throw new BadRequestException('分类预算总和不能超过总预算');
+      }
+    }
+
+    // 更新预算配置
+    const existingConfig = (trip.budgetConfig as any) || {};
+    const budgetConfig: any = {
+      ...existingConfig,
+      totalBudget: totalBudget || existingConfig.totalBudget || existingConfig.total || 0,
+      total: totalBudget || existingConfig.totalBudget || existingConfig.total || 0,
+      currency: currency || existingConfig.currency || 'CNY',
+      dailyBudget: dailyBudget || existingConfig.dailyBudget,
+      alertThreshold: constraint.alertThreshold ?? existingConfig.alertThreshold ?? this.DEFAULT_ALERT_THRESHOLD,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (constraint.categoryLimits) {
+      budgetConfig.categoryLimits = constraint.categoryLimits;
+    }
+
+    if (!existingConfig.createdAt) {
+      budgetConfig.createdAt = new Date().toISOString();
+    }
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { budgetConfig },
+    });
+
+    return {
+      total: budgetConfig.totalBudget || budgetConfig.total,
+      currency: budgetConfig.currency,
+      dailyBudget: budgetConfig.dailyBudget,
+      categoryLimits: budgetConfig.categoryLimits,
+      alertThreshold: budgetConfig.alertThreshold,
+      createdAt: budgetConfig.createdAt,
+      updatedAt: budgetConfig.updatedAt,
+    };
+  }
+
+  /**
+   * 获取预算约束
+   * 
+   * @param tripId 行程 ID
+   * @returns 预算约束
+   */
+  async getBudgetConstraint(tripId: string): Promise<BudgetConstraint | null> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    const budgetConfig = (trip.budgetConfig as any) || {};
+    if (!budgetConfig.totalBudget && !budgetConfig.total) {
+      return null;
+    }
+
+    return {
+      total: budgetConfig.totalBudget || budgetConfig.total,
+      currency: budgetConfig.currency || 'CNY',
+      dailyBudget: budgetConfig.dailyBudget,
+      categoryLimits: budgetConfig.categoryLimits,
+      alertThreshold: budgetConfig.alertThreshold ?? this.DEFAULT_ALERT_THRESHOLD,
+      createdAt: budgetConfig.createdAt,
+      updatedAt: budgetConfig.updatedAt,
+    };
+  }
+
+  /**
+   * 删除预算约束
+   * 
+   * @param tripId 行程 ID
+   */
+  async deleteBudgetConstraint(tripId: string): Promise<void> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    // 保留历史数据，只清除预算限制
+    const budgetConfig = (trip.budgetConfig as any) || {};
+    const updatedConfig = {
+      ...budgetConfig,
+      totalBudget: null,
+      total: null,
+      dailyBudget: null,
+      categoryLimits: null,
+      deletedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { budgetConfig: updatedConfig },
+    });
+  }
+
+  /**
+   * 获取预算明细
+   * 
+   * @param tripId 行程 ID
+   * @param params 查询参数
+   * @returns 预算明细
+   */
+  async getBudgetDetails(
+    tripId: string,
+    params: {
+      startDate?: string;
+      endDate?: string;
+      category?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{
+    items: BudgetDetailsItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: {
+                Place: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    const budgetConfig = (trip.budgetConfig as any) || {};
+    const currency = budgetConfig.currency || 'CNY';
+    const limit = params.limit || 50;
+    const offset = params.offset || 0;
+
+    // 构建明细项
+    const items: BudgetDetailsItem[] = [];
+
+    for (const day of trip.TripDay) {
+      const dateKey = DateTime.fromJSDate(day.date).toISODate() || '';
+
+      // 日期范围筛选
+      if (params.startDate && dateKey < params.startDate) continue;
+      if (params.endDate && dateKey > params.endDate) continue;
+
+      for (const item of day.ItineraryItem) {
+        const placeMetadata = (item.Place?.metadata as any) || {};
+        const cost = placeMetadata.cost || placeMetadata.price || 0;
+        const category = item.Place?.category || 'other';
+
+        // 分类筛选
+        if (params.category) {
+          const categoryMap: Record<string, string> = {
+            HOTEL: 'accommodation',
+            RESTAURANT: 'food',
+            ATTRACTION: 'activities',
+            TRANSIT_HUB: 'transportation',
+          };
+          if (categoryMap[category] !== params.category && category !== params.category) {
+            continue;
+          }
+        }
+
+        if (cost > 0) {
+          items.push({
+            id: item.id,
+            date: dateKey,
+            category: this.mapCategory(category),
+            itemName: item.Place?.nameCN || item.Place?.nameEN || '未知',
+            amount: cost,
+            currency,
+            itineraryItemId: item.id,
+            evidenceRefs: placeMetadata.evidenceRefs || [],
+          });
+        }
+      }
+    }
+
+    // 排序：按日期倒序
+    items.sort((a, b) => b.date.localeCompare(a.date));
+
+    // 分页
+    const total = items.length;
+    const paginatedItems = items.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * 获取预算趋势
+   * 
+   * @param tripId 行程 ID
+   * @param params 查询参数
+   * @returns 预算趋势
+   */
+  async getBudgetTrends(
+    tripId: string,
+    params: {
+      startDate?: string;
+      endDate?: string;
+      granularity?: 'daily' | 'weekly' | 'monthly';
+    }
+  ): Promise<BudgetTrendsResponse> {
+    const summary = await this.getBudgetSummary(tripId);
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    const granularity = params.granularity || 'daily';
+    const start = params.startDate
+      ? DateTime.fromISO(params.startDate)
+      : DateTime.fromJSDate(trip.startDate);
+    const end = params.endDate
+      ? DateTime.fromISO(params.endDate)
+      : DateTime.fromJSDate(trip.endDate);
+
+    // 生成趋势数据
+    const dailySpending: BudgetTrendsResponse['dailySpending'] = [];
+
+    if (granularity === 'daily') {
+      for (let i = 0; i <= Math.floor(end.diff(start, 'days').days); i++) {
+        const date = start.plus({ days: i });
+        const dateKey = date.toISODate() || '';
+        const spent = summary.dailySpent[dateKey] || 0;
+
+        dailySpending.push({
+          date: dateKey,
+          budget: summary.dailyBudget,
+          spent,
+          ratio: summary.dailyBudget > 0 ? spent / summary.dailyBudget : 0,
+        });
+      }
+    } else {
+      // 周/月粒度（简化实现）
+      const days = Math.floor(end.diff(start, 'days').days) + 1;
+      const periodSize = granularity === 'weekly' ? 7 : 30;
+      const periods = Math.ceil(days / periodSize);
+
+      for (let p = 0; p < periods; p++) {
+        const periodStart = start.plus({ days: p * periodSize });
+        const periodEnd = periodStart.plus({ days: periodSize - 1 });
+        const periodEndActual = periodEnd > end ? end : periodEnd;
+
+        let periodSpent = 0;
+        for (let i = 0; i < periodSize && periodStart.plus({ days: i }) <= periodEndActual; i++) {
+          const date = periodStart.plus({ days: i });
+          const dateKey = date.toISODate() || '';
+          periodSpent += summary.dailySpent[dateKey] || 0;
+        }
+
+        dailySpending.push({
+          date: periodStart.toISODate() || '',
+          budget: summary.dailyBudget * Math.min(periodSize, Math.floor(periodEndActual.diff(periodStart, 'days').days) + 1),
+          spent: periodSpent,
+          ratio: summary.dailyBudget > 0 ? periodSpent / (summary.dailyBudget * Math.min(periodSize, Math.floor(periodEndActual.diff(periodStart, 'days').days) + 1)) : 0,
+        });
+      }
+    }
+
+    // 计算分类分布
+    const totalSpent = Object.values(summary.categoryBreakdown).reduce((a, b) => a + b, 0);
+    const categoryDistribution = {
+      accommodation: totalSpent > 0 ? summary.categoryBreakdown.accommodation / totalSpent : 0,
+      transportation: totalSpent > 0 ? summary.categoryBreakdown.transportation / totalSpent : 0,
+      food: totalSpent > 0 ? summary.categoryBreakdown.food / totalSpent : 0,
+      activities: totalSpent > 0 ? summary.categoryBreakdown.activities / totalSpent : 0,
+      other: totalSpent > 0 ? summary.categoryBreakdown.other / totalSpent : 0,
+    };
+
+    // 预算预测（基于历史趋势）
+    const forecast = this.calculateForecast(summary, dailySpending);
+
+    return {
+      dailySpending,
+      categoryDistribution,
+      forecast,
+    };
+  }
+
+  /**
+   * 获取预算执行统计
+   * 
+   * @param tripId 行程 ID
+   * @returns 预算统计
+   */
+  async getBudgetStatistics(tripId: string): Promise<BudgetStatisticsResponse> {
+    const summary = await this.getBudgetSummary(tripId);
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ${tripId} 不存在`);
+    }
+
+    // 完成度
+    const completionRate = summary.totalBudget > 0 ? summary.totalSpent / summary.totalBudget : 0;
+
+    // 超支率（负数表示节省）
+    const overspendRate = summary.totalBudget > 0
+      ? (summary.totalSpent - summary.totalBudget) / summary.totalBudget
+      : 0;
+
+    // 分类占比
+    const totalSpent = Object.values(summary.categoryBreakdown).reduce((a, b) => a + b, 0);
+    const categoryPercentages = {
+      accommodation: totalSpent > 0 ? summary.categoryBreakdown.accommodation / totalSpent : 0,
+      transportation: totalSpent > 0 ? summary.categoryBreakdown.transportation / totalSpent : 0,
+      food: totalSpent > 0 ? summary.categoryBreakdown.food / totalSpent : 0,
+      activities: totalSpent > 0 ? summary.categoryBreakdown.activities / totalSpent : 0,
+      other: totalSpent > 0 ? summary.categoryBreakdown.other / totalSpent : 0,
+    };
+
+    // 日均支出
+    const start = DateTime.fromJSDate(trip.startDate);
+    const end = DateTime.fromJSDate(trip.endDate);
+    const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
+    const dailyAverage = durationDays > 0 ? summary.totalSpent / durationDays : 0;
+
+    // 预计完成日期（基于当前支出速度）
+    const projectedCompletion = this.calculateProjectedCompletion(
+      summary,
+      start,
+      end,
+      durationDays
+    );
+
+    // 风险等级
+    const riskLevel = this.calculateRiskLevel(completionRate, overspendRate, durationDays);
+
+    return {
+      completionRate,
+      overspendRate,
+      categoryPercentages,
+      dailyAverage,
+      projectedCompletion,
+      riskLevel,
+    };
+  }
+
+  /**
+   * 获取实时预算监控数据
+   * 
+   * @param tripId 行程 ID
+   * @returns 监控数据
+   */
+  async getBudgetMonitor(tripId: string): Promise<{
+    currentSpent: number;
+    remaining: number;
+    dailySpent: Record<string, number>;
+    alerts: BudgetAlert[];
+    lastUpdated: string;
+  }> {
+    const summary = await this.getBudgetSummary(tripId);
+    const alerts: BudgetAlert[] = [];
+
+    // 检查预警
+    const alertThreshold = 0.8; // 默认阈值
+    const ratio = summary.totalBudget > 0 ? summary.totalSpent / summary.totalBudget : 0;
+
+    if (ratio > 1.0) {
+      alerts.push({
+        type: 'OVERSPEND',
+        message: `预算已超支 ${((ratio - 1) * 100).toFixed(1)}%`,
+        severity: 'error',
+        suggestions: ['减少后续活动', '选择更便宜的替代方案'],
+      });
+    } else if (ratio > alertThreshold) {
+      alerts.push({
+        type: 'APPROACHING_LIMIT',
+        message: `预算使用率已达 ${(ratio * 100).toFixed(1)}%`,
+        severity: 'warning',
+        suggestions: ['注意控制后续消费'],
+      });
+    }
+
+    return {
+      currentSpent: summary.totalSpent,
+      remaining: summary.remaining,
+      dailySpent: summary.dailySpent,
+      alerts,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * 辅助方法：映射分类
+   */
+  private mapCategory(category: string): string {
+    const categoryMap: Record<string, string> = {
+      HOTEL: 'accommodation',
+      RESTAURANT: 'food',
+      ATTRACTION: 'activities',
+      TRANSIT_HUB: 'transportation',
+    };
+    return categoryMap[category] || 'other';
+  }
+
+  /**
+   * 辅助方法：计算预算预测
+   */
+  private calculateForecast(
+    summary: BudgetSummary,
+    dailySpending: Array<{ date: string; budget: number; spent: number; ratio: number }>
+  ): BudgetTrendsResponse['forecast'] | undefined {
+    if (dailySpending.length < 2) {
+      return undefined;
+    }
+
+    // 计算平均每日支出
+    const avgDailySpent = dailySpending.reduce((sum, day) => sum + day.spent, 0) / dailySpending.length;
+    const remainingDays = Math.max(0, Math.ceil(summary.remaining / avgDailySpent));
+    const projectedTotal = summary.totalSpent + (avgDailySpent * remainingDays);
+    const projectedRemaining = summary.totalBudget - projectedTotal;
+
+    // 置信度（基于数据点数量）
+    const confidence = Math.min(1.0, dailySpending.length / 7);
+
+    return {
+      projectedTotal,
+      projectedRemaining,
+      confidence,
+    };
+  }
+
+  /**
+   * 辅助方法：计算预计完成日期
+   */
+  private calculateProjectedCompletion(
+    summary: BudgetSummary,
+    start: DateTime,
+    end: DateTime,
+    durationDays: number
+  ): string {
+    if (summary.totalSpent <= 0 || summary.dailyBudget <= 0) {
+      return end.toISODate() || '';
+    }
+
+    const avgDailySpent = summary.totalSpent / durationDays;
+    if (avgDailySpent <= 0) {
+      return end.toISODate() || '';
+    }
+
+    const remainingDays = Math.ceil(summary.remaining / avgDailySpent);
+    const projectedDate = DateTime.now().plus({ days: remainingDays });
+
+    // 不超过行程结束日期
+    return projectedDate > end ? end.toISODate() || '' : projectedDate.toISODate() || '';
+  }
+
+  /**
+   * 辅助方法：计算风险等级
+   */
+  private calculateRiskLevel(
+    completionRate: number,
+    overspendRate: number,
+    durationDays: number
+  ): 'low' | 'medium' | 'high' {
+    if (overspendRate > 0.1 || completionRate > 1.0) {
+      return 'high';
+    }
+    if (overspendRate > 0.05 || completionRate > 0.9) {
+      return 'medium';
+    }
+    return 'low';
   }
 }
 

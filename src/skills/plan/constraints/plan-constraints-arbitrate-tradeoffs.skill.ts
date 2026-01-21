@@ -77,7 +77,7 @@ export class PlanConstraintsArbitrateTradeoffsSkill implements Skill<PlanConstra
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',

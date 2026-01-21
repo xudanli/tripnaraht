@@ -388,4 +388,129 @@ export class ContextMetricsService {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, limit);
   }
+
+  /**
+   * 获取所有指标记录（用于后台管理）
+   */
+  getAllMetrics(
+    options: {
+      tripId?: string;
+      phase?: string;
+      agent?: string;
+      startTime?: string;
+      endTime?: string;
+    } = {},
+  ): ContextMetricsRecord[] {
+    // 获取所有记录（从所有 key 中）
+    let allRecords: ContextMetricsRecord[] = [];
+    for (const records of this.metricsStore.values()) {
+      allRecords.push(...records);
+    }
+
+    // 过滤记录
+    if (options.tripId) {
+      allRecords = allRecords.filter((r) => r.tripId === options.tripId);
+    }
+    if (options.phase) {
+      allRecords = allRecords.filter((r) => r.phase === options.phase);
+    }
+    if (options.agent) {
+      allRecords = allRecords.filter((r) => r.agent === options.agent);
+    }
+    if (options.startTime) {
+      allRecords = allRecords.filter((r) => r.timestamp >= options.startTime!);
+    }
+    if (options.endTime) {
+      allRecords = allRecords.filter((r) => r.timestamp <= options.endTime!);
+    }
+
+    // 按时间倒序排序
+    return allRecords.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+  }
+
+  /**
+   * 按 Agent 分类统计
+   */
+  getStatsByAgent(
+    options: {
+      startTime?: string;
+      endTime?: string;
+    } = {},
+  ): Record<string, { count: number; avgTokens: number; avgBuildTimeMs: number; cacheHitRate: number }> {
+    const records = this.getAllMetrics(options);
+    const stats: Record<string, { count: number; tokens: number[]; buildTimes: number[]; cacheHits: number }> = {};
+
+    for (const record of records) {
+      if (!stats[record.agent]) {
+        stats[record.agent] = {
+          count: 0,
+          tokens: [],
+          buildTimes: [],
+          cacheHits: 0,
+        };
+      }
+      stats[record.agent].count++;
+      stats[record.agent].tokens.push(record.tokens.total);
+      stats[record.agent].buildTimes.push(record.performance.buildTimeMs);
+      if (record.performance.cacheHit) {
+        stats[record.agent].cacheHits++;
+      }
+    }
+
+    const result: Record<string, { count: number; avgTokens: number; avgBuildTimeMs: number; cacheHitRate: number }> = {};
+    for (const [agent, data] of Object.entries(stats)) {
+      result[agent] = {
+        count: data.count,
+        avgTokens: Math.round(data.tokens.reduce((sum, t) => sum + t, 0) / data.tokens.length),
+        avgBuildTimeMs: Math.round(data.buildTimes.reduce((sum, t) => sum + t, 0) / data.buildTimes.length),
+        cacheHitRate: data.cacheHits / data.count,
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * 按 Phase 分类统计
+   */
+  getStatsByPhase(
+    options: {
+      startTime?: string;
+      endTime?: string;
+    } = {},
+  ): Record<string, { count: number; avgTokens: number; avgBuildTimeMs: number; cacheHitRate: number }> {
+    const records = this.getAllMetrics(options);
+    const stats: Record<string, { count: number; tokens: number[]; buildTimes: number[]; cacheHits: number }> = {};
+
+    for (const record of records) {
+      if (!stats[record.phase]) {
+        stats[record.phase] = {
+          count: 0,
+          tokens: [],
+          buildTimes: [],
+          cacheHits: 0,
+        };
+      }
+      stats[record.phase].count++;
+      stats[record.phase].tokens.push(record.tokens.total);
+      stats[record.phase].buildTimes.push(record.performance.buildTimeMs);
+      if (record.performance.cacheHit) {
+        stats[record.phase].cacheHits++;
+      }
+    }
+
+    const result: Record<string, { count: number; avgTokens: number; avgBuildTimeMs: number; cacheHitRate: number }> = {};
+    for (const [phase, data] of Object.entries(stats)) {
+      result[phase] = {
+        count: data.count,
+        avgTokens: Math.round(data.tokens.reduce((sum, t) => sum + t, 0) / data.tokens.length),
+        avgBuildTimeMs: Math.round(data.buildTimes.reduce((sum, t) => sum + t, 0) / data.buildTimes.length),
+        cacheHitRate: data.cacheHits / data.count,
+      };
+    }
+
+    return result;
+  }
 }

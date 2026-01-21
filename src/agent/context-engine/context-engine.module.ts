@@ -9,6 +9,7 @@ import { Module, Global, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ContextEngineerService } from './services/context-engineer.service';
 import { ContextMetricsService } from './services/context-metrics.service';
+import { ContextController } from './context.controller';
 import { SkillsModule } from '../../skills/skills.module';
 import { RedisModule } from '../../redis/redis.module';
 
@@ -19,6 +20,7 @@ import { RedisModule } from '../../redis/redis.module';
     forwardRef(() => SkillsModule), // 使用 forwardRef 避免循环依赖
     RedisModule, // 提供 RedisService（用于持久化缓存）
   ],
+  controllers: [ContextController],
   providers: [
     ContextEngineerService,
     ContextMetricsService,

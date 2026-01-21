@@ -19,6 +19,8 @@ import { AgentStateService } from '../services/agent-state.service';
 import { PlanTask, OrchestrationResult, ContextSummary, ExecutionResult } from './types';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { LlmService } from '../../llm/services/llm.service';
+import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
+import { RLIntegrationService } from '../training/services/rl-integration.service';
 
 @Injectable()
 export class DAGOrchestratorService {
@@ -41,6 +43,8 @@ export class DAGOrchestratorService {
     private readonly contextAssembler: ContextAssemblerService,
     @Optional() private readonly agentStateService?: AgentStateService,
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly trajectoryCollection?: TrajectoryCollectionService,
+    @Optional() private readonly rlIntegration?: RLIntegrationService,
   ) {}
 
   /**
@@ -254,6 +258,36 @@ export class DAGOrchestratorService {
       // 4. 生成最终摘要
       const summary = this.generateFinalSummary(tasks, memory);
 
+      // Iterative Deployment: 更新轨迹的执行结果（如果存在 requestId）
+      if (this.trajectoryCollection && this.executionContext.requestId) {
+        try {
+          const trajectoryResult = await this.trajectoryCollection.findTrajectoryByRequestId(
+            this.executionContext.requestId,
+          );
+          if (trajectoryResult.trajectoryId) {
+            const executionResult = {
+              success: true,
+              metadata: {
+                status: 'done',
+                completedTasks: tasks.filter(t => t.status === 'completed').length,
+                totalTasks: tasks.length,
+                summary,
+              },
+            };
+            await this.trajectoryCollection.updateTrajectoryWithExecution(
+              trajectoryResult.trajectoryId,
+              executionResult,
+            );
+            this.logger.debug(
+              `轨迹执行结果已更新: trajectoryId=${trajectoryResult.trajectoryId}, success=true`,
+            );
+          }
+        } catch (error: any) {
+          // 轨迹更新失败不应该影响执行流程
+          this.logger.warn(`更新轨迹执行结果失败: ${error?.message}`);
+        }
+      }
+
       return {
         status: 'done',
         plan: tasks,
@@ -262,6 +296,35 @@ export class DAGOrchestratorService {
       };
     } catch (error: any) {
       this.logger.error(`[DAG] 编排失败: ${error.message}`, error.stack);
+
+      // Iterative Deployment: 更新轨迹的执行结果（执行失败）
+      if (this.trajectoryCollection && this.executionContext.requestId) {
+        try {
+          const trajectoryResult = await this.trajectoryCollection.findTrajectoryByRequestId(
+            this.executionContext.requestId,
+          );
+          if (trajectoryResult.trajectoryId) {
+            const executionResult = {
+              success: false,
+              error: error.message,
+              metadata: {
+                status: 'failed',
+              },
+            };
+            await this.trajectoryCollection.updateTrajectoryWithExecution(
+              trajectoryResult.trajectoryId,
+              executionResult,
+            );
+            this.logger.debug(
+              `轨迹执行结果已更新: trajectoryId=${trajectoryResult.trajectoryId}, success=false`,
+            );
+          }
+        } catch (trajError: any) {
+          // 轨迹更新失败不应该影响错误处理
+          this.logger.warn(`更新轨迹执行结果失败: ${trajError?.message}`);
+        }
+      }
+
       return {
         status: 'failed',
         plan: [],
@@ -304,6 +367,43 @@ export class DAGOrchestratorService {
     memory: Record<string, any>,
     globalContext: string,
   ): Promise<any> {
+    const startTime = Date.now();
+    const requestId = this.executionContext.requestId || task.id;
+
+    // 0. RL前置检查（如果启用）
+    if (this.rlIntegration?.isEnabled()) {
+      try {
+        const preDecision = await this.rlIntegration.preDecision({
+          requestId,
+          tripId: this.executionContext.tripId || undefined,
+          userRequest: task.description,
+          action: task.toolCategory || task.id,
+          params: {},
+          state: memory,
+        });
+
+        if (!preDecision.allowed) {
+          this.logger.warn(
+            `[DAG] RL预检查拒绝任务: task=${task.id}, action=${preDecision.action}, reason=${preDecision.reasoning}`,
+          );
+          // 返回拒绝结果
+          return {
+            success: false,
+            error: `RL pre-check rejected: ${preDecision.reasoning}`,
+            rl_action: preDecision.action,
+            rl_confidence: preDecision.confidence,
+          };
+        }
+
+        // 记录警告
+        if (preDecision.warnings && preDecision.warnings.length > 0) {
+          this.logger.warn(`[DAG] RL预检查警告: ${preDecision.warnings.join(', ')}`);
+        }
+      } catch (error: any) {
+        this.logger.warn(`[DAG] RL预检查失败，继续执行: ${error?.message}`);
+      }
+    }
+
     // 1. 解析变量引用 (Variable Reference Resolution)
     // 例如: "Book seat for ${task_1.flightNumber}" → "Book seat for IC123"
     const resolvedDescription = this.resolveVariableReferences(task.description, memory, task.dependencies);
@@ -322,7 +422,7 @@ export class DAGOrchestratorService {
     };
 
     // 5. 执行任务（传递执行上下文，包括 tripId）
-    return this.executor.executeStep(enrichedTask, memory, {
+    const result = await this.executor.executeStep(enrichedTask, memory, {
       context: enrichedContext,
       globalContext: globalContext,
       tripId: this.executionContext.tripId,
@@ -330,6 +430,27 @@ export class DAGOrchestratorService {
       requestId: this.executionContext.requestId,
       trip: this.executionContext.tripId ? { trip_id: this.executionContext.tripId } : undefined,
     });
+
+    // 6. RL后置处理（如果启用）
+    if (this.rlIntegration?.isEnabled()) {
+      try {
+        const duration_ms = Date.now() - startTime;
+        await this.rlIntegration.postDecision({
+          requestId,
+          tripId: this.executionContext.tripId || undefined,
+          action: task.toolCategory || task.id,
+          params: {},
+          result,
+          success: !result?.error,
+          duration_ms,
+          state: memory,
+        });
+      } catch (error: any) {
+        this.logger.warn(`[DAG] RL后置处理失败: ${error?.message}`);
+      }
+    }
+
+    return result;
   }
 
   /**

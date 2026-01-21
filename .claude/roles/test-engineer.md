@@ -101,6 +101,50 @@
 - `Jenkinsfile` - Jenkins 配置文件
 - `jest.config.js` - Jest 配置文件
 
+### 6. Iterative Deployment 测试
+
+**核心要求**：
+- 设计轨迹收集测试策略
+- 设计轨迹验证测试策略
+- 设计Reward信号提取测试策略
+- 设计训练数据准备测试策略
+- 设计模型训练流程测试策略
+
+**Iterative Deployment 测试场景**：
+1. **轨迹收集测试**：
+   - 测试轨迹收集时机（PLAN_GEN、用户审批、执行完成）
+   - 测试轨迹数据完整性（plan、decisionTrace、researchData、gateResult、complianceResult）
+   - 测试轨迹数据格式正确性
+2. **轨迹验证测试**：
+   - 测试轨迹验证逻辑（GateResult = ALLOW、无CRITICAL风险、用户审批 = APPROVED、执行成功）
+   - 测试验证分数计算（0-1范围）
+   - 测试验证结果准确性
+3. **Reward信号提取测试**：
+   - 测试用户审批reward提取（APPROVED = +1.0, REJECTED = -0.5）
+   - 测试规划工作台提交reward提取（PLAN_COMMIT = +0.8）
+   - 测试决策对齐reward提取（DECISION_ALIGNMENT = alignmentScore）
+   - 测试reward信号可追溯性
+4. **训练数据准备测试**：
+   - 测试高质量轨迹筛选（validationStatus = 'VALIDATED', validationScore >= 0.8, totalReward > 0）
+   - 测试轨迹使用次数限制（最多使用3次）
+   - 测试训练批次生成（trajectories, stats）
+5. **模型训练流程测试**：
+   - 测试迭代部署循环（Deployment → Curation → Fine-tune → Repeat）
+   - 测试模型版本管理（可追溯、可回滚、可对比）
+   - 测试Model Collapse检测
+
+**关键测试指标**：
+- **轨迹收集覆盖率**：关键节点轨迹收集覆盖率 > 95%
+- **轨迹验证准确率**：轨迹验证准确率 > 98%
+- **Reward信号完整性**：Reward信号提取完整性 > 95%
+- **训练数据质量**：训练数据筛选准确率 > 98%
+- **模型性能**：模型训练后性能提升 > 5%
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `.claude/roles/architect.md` - Iterative Deployment架构设计
+- `.claude/roles/chief-ai-scientist.md` - 模型训练与迭代部署
+
 ## 你必须理解的核心概念
 
 ### 测试金字塔
@@ -243,6 +287,28 @@
 - 算法测试用例
 - 测试报告
 - 性能测试报告
+
+### 与首席AI科学家协作（Iterative Deployment）
+
+**协作内容**：
+- Iterative Deployment测试策略设计
+- 轨迹收集测试用例设计
+- 轨迹验证测试用例设计
+- Reward信号提取测试用例设计
+- 训练数据准备测试用例设计
+- 模型训练流程测试用例设计
+
+**输出**：
+- Iterative Deployment测试计划
+- 轨迹收集测试用例
+- 轨迹验证测试用例
+- Reward提取测试用例
+- 训练数据准备测试用例
+- 模型训练流程测试用例
+
+**参考**：
+- `.claude/roles/chief-ai-scientist.md` - 首席AI科学家角色
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 
 ### 与全局工程系统协作
 

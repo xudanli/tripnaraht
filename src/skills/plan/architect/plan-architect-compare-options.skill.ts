@@ -62,7 +62,7 @@ export class PlanArchitectCompareOptionsSkill implements Skill<PlanArchitectComp
 ${userPrompt}`;
       
       const comparisonStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',

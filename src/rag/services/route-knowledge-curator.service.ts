@@ -58,10 +58,25 @@ export class RouteKnowledgeCurator {
     this.logger.debug(`生成路线叙事: routeDirectionId=${routeDirectionId}`);
 
     try {
-      // 1. 获取 RouteDirection 信息
+      // 1. 验证并解析 routeDirectionId
+      const parsedId = parseInt(routeDirectionId, 10);
+      if (isNaN(parsedId)) {
+        this.logger.warn(`无效的 routeDirectionId: ${routeDirectionId}，将返回基础叙事`);
+        // 对于非数字 ID，返回占位叙事
+        return {
+          routeDirectionId,
+          philosophyExplanation: `路线 ${routeDirectionId} 的详细信息暂不可用。`,
+          whyThisRoute: ['这条路线正在完善中'],
+          whatToExpect: ['请稍后再试获取详细信息'],
+          commonMistakes: [],
+          evidenceSnippets: [],
+        };
+      }
+
+      // 2. 获取 RouteDirection 信息
       // @ts-ignore - Prisma client will be generated after migration
       const routeDirection = await this.prisma.routeDirection.findUnique({
-        where: { id: parseInt(routeDirectionId) },
+        where: { id: parsedId },
       });
 
       if (!routeDirection) {

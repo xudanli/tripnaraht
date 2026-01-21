@@ -1,6 +1,6 @@
 // src/agent/training/services/trajectory-collection.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApprovalStatus } from '@prisma/client';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../interfaces/trajectory.interface';
 import { TrajectoryValidatorService } from './trajectory-validator.service';
 import { RewardSignalExtractorService } from './reward-signal-extractor.service';
+import { RollTrajectoryAdapterService } from './roll-trajectory-adapter.service';
 import { GateResult } from '../../interfaces/trip-plan.interface';
 import { RewardSignal } from '../interfaces/trajectory.interface';
 
@@ -26,6 +27,7 @@ export class TrajectoryCollectionService {
     private readonly prisma: PrismaService,
     private readonly validator: TrajectoryValidatorService,
     private readonly rewardExtractor: RewardSignalExtractorService,
+    @Optional() private readonly rollTrajectoryAdapter?: RollTrajectoryAdapterService,
   ) {}
 
   /**

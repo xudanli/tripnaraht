@@ -67,7 +67,9 @@ export type BlockType =
   | 'TOOL_OUTPUT'        // 工具输出摘要
   | 'USER_PROFILE'       // 用户画像
   | 'CONSTRAINTS'        // 约束条件
-  | 'METADATA';          // 元数据
+  | 'METADATA'           // 元数据
+  | 'API_DOCUMENTATION'  // API 接口文档
+  | 'SYSTEM_CAPABILITY'; // 系统能力说明
 
 /**
  * Block 来源信息
@@ -179,7 +181,26 @@ export interface ContextPackageOptions {
   
   /** 需要排除的主题块（可选） */
   excludeTopics?: string[];
+  
+  /** 是否包含 API 文档（默认 false） */
+  includeApiDocs?: boolean;
+  
+  /** 需要的 API 文档类别（可选） */
+  apiDocCategories?: ApiDocCategory[];
 }
+
+/**
+ * API 文档类别
+ */
+export type ApiDocCategory =
+  | 'ROLL'              // ROLL 架构 API
+  | 'ADMIN'             // 后台管理 API
+  | 'CONTEXT'           // Context Engine API
+  | 'TRAINING'          // 训练相关 API
+  | 'AGENT'             // Agent 相关 API
+  | 'TRIPS'             // 行程相关 API
+  | 'DECISION'          // 决策相关 API
+  | 'ALL';              // 所有 API
 
 /**
  * Context Package 投影（用于 LangGraph State）

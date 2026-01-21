@@ -92,6 +92,42 @@
 - 必须记录备份日志
 - 必须测试恢复流程
 
+### 6. Iterative Deployment 数据库设计
+
+**核心要求**：
+- 设计`ValidatedTrajectory`数据库模型
+- 优化轨迹存储查询性能
+- 设计轨迹数据索引策略
+- 设计模型版本管理数据模型
+
+**ValidatedTrajectory 数据库模型**：
+- **轨迹标识**：trajectoryId（唯一）、requestId、tripId
+- **验证结果**：validationStatus、validationScore、validationReasons
+- **轨迹内容**：plan（JSON）、decisionTrace（JSON）、researchData（JSON）、gateResult（JSON）、complianceResult（JSON）
+- **元数据**：modelVersion、countryCode、timestamp
+- **训练标志**：usedForTraining、trainingBatchId、usedForTrainingCount
+
+**索引策略**：
+- **主键索引**：trajectoryId（唯一）
+- **查询索引**：validationStatus、validationScore、usedForTraining、countryCode
+- **时间索引**：timestamp（用于时间范围查询）
+- **组合索引**：countryCode + validationStatus（用于筛选高质量轨迹）
+
+**查询优化**：
+- **高质量轨迹查询**：WHERE validationStatus = 'VALIDATED' AND validationScore >= 0.8 AND usedForTraining = false
+- **Reward聚合查询**：JOIN RewardSignal表，按trajectoryId聚合
+- **训练批次查询**：WHERE trainingBatchId = ? ORDER BY validationScore DESC
+
+**数据一致性**：
+- **外键约束**：trajectoryId关联到DecisionLog、ApprovalRequest
+- **检查约束**：validationScore范围（0-1）、validationStatus枚举值
+- **唯一约束**：trajectoryId唯一
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `.claude/roles/architect.md` - Iterative Deployment架构设计（轨迹存储层）
+- `prisma/schema.prisma` - Prisma Schema定义
+
 ## 你必须理解的核心概念
 
 ### Prisma Schema
@@ -225,12 +261,32 @@
 - 数据流设计
 - 数据一致性策略
 - 数据备份与恢复策略
+- Iterative Deployment数据库设计
 
 **输出**：
 - 数据库架构图
 - 数据流图
 - 数据一致性策略文档
 - 数据备份与恢复策略文档
+- ValidatedTrajectory数据库模型设计
+
+### 与首席AI科学家协作（Iterative Deployment）
+
+**协作内容**：
+- ValidatedTrajectory数据库模型设计
+- 轨迹存储查询性能优化
+- 训练数据准备查询优化
+- 模型版本管理数据模型设计
+
+**输出**：
+- ValidatedTrajectory Prisma Schema
+- 轨迹存储索引优化方案
+- 训练数据查询优化方案
+- 模型版本管理数据模型设计
+
+**参考**：
+- `.claude/roles/chief-ai-scientist.md` - 首席AI科学家角色
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 
 ### 与智能体工程师协作
 

@@ -86,7 +86,7 @@ export class PlanTransitSuggestModesSkill implements Skill<PlanTransitSuggestMod
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',

@@ -97,4 +97,178 @@ export class SystemService {
     if (googleKey) return 'google';
     return 'mock';
   }
+
+  /**
+   * 获取系统指标（管理接口）
+   */
+  async getAdminMetrics() {
+    // TODO: 实现真实的系统指标收集
+    // 这里返回模拟数据，实际应该从监控系统获取
+    return {
+      system: {
+        cpuUsage: 0,
+        memoryUsage: 0,
+        diskUsage: 0,
+        uptime: process.uptime(),
+      },
+      api: {
+        totalRequests: 0,
+        requestsPerSecond: 0,
+        avgResponseTime: 0,
+        p95ResponseTime: 0,
+        p99ResponseTime: 0,
+        errorRate: 0,
+        successRate: 1,
+      },
+      database: {
+        connectionPoolSize: 0,
+        activeConnections: 0,
+        idleConnections: 0,
+        queryCount: 0,
+        avgQueryTime: 0,
+        slowQueries: 0,
+      },
+      cache: {
+        hitRate: 0,
+        missRate: 0,
+        totalKeys: 0,
+        memoryUsage: 0,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * 获取性能指标（管理接口）
+   */
+  async getAdminPerformance(options?: {
+    startTime?: Date;
+    endTime?: Date;
+    granularity?: 'hour' | 'day';
+  }) {
+    // TODO: 实现真实的性能指标收集
+    return {
+      timeSeries: [],
+      summary: {
+        peakRequestsPerSecond: 0,
+        peakResponseTime: 0,
+        peakErrorRate: 0,
+      },
+    };
+  }
+
+  /**
+   * 获取错误日志统计（管理接口）
+   */
+  async getAdminErrors(options?: {
+    startTime?: Date;
+    endTime?: Date;
+    level?: 'error' | 'warn';
+  }) {
+    // TODO: 实现真实的错误日志统计
+    return {
+      summary: {
+        totalErrors: 0,
+        errorRate: 0,
+        uniqueErrors: 0,
+      },
+      byType: {},
+      topErrors: [],
+      trends: {
+        errorsByHour: [],
+      },
+    };
+  }
+
+  /**
+   * 获取请求统计（管理接口）
+   */
+  async getAdminRequests(options?: {
+    startTime?: Date;
+    endTime?: Date;
+    granularity?: 'hour' | 'day';
+  }) {
+    // TODO: 实现真实的请求统计
+    // 实际应该从请求日志或监控系统获取
+    return {
+      summary: {
+        totalRequests: 0,
+        requestsPerSecond: 0,
+        uniqueUsers: 0,
+        uniqueIPs: 0,
+      },
+      byEndpoint: [],
+      byMethod: {
+        GET: 0,
+        POST: 0,
+        PUT: 0,
+        DELETE: 0,
+        PATCH: 0,
+      },
+      byStatus: {
+        '2xx': 0,
+        '3xx': 0,
+        '4xx': 0,
+        '5xx': 0,
+      },
+      timeSeries: [],
+    };
+  }
+
+  /**
+   * 获取数据库状态（管理接口）
+   */
+  async getAdminDatabase() {
+    // TODO: 实现真实的数据库状态查询
+    // 实际应该从 Prisma 连接池获取状态
+    return {
+      connectionPool: {
+        size: 0,
+        active: 0,
+        idle: 0,
+        waiting: 0,
+      },
+      queries: {
+        total: 0,
+        avgTime: 0,
+        slowQueries: 0,
+        slowQueryThreshold: 1000, // ms
+      },
+      tables: {
+        total: 0,
+        largest: [],
+      },
+      health: {
+        status: 'healthy',
+        lastCheck: new Date().toISOString(),
+      },
+    };
+  }
+
+  /**
+   * 获取缓存状态（管理接口）
+   */
+  async getAdminCache() {
+    // TODO: 实现真实的缓存状态查询
+    // 实际应该从 Redis 或其他缓存系统获取状态
+    return {
+      status: 'connected',
+      hitRate: 0,
+      missRate: 0,
+      totalKeys: 0,
+      memoryUsage: {
+        used: 0,
+        max: 0,
+        percentage: 0,
+      },
+      operations: {
+        hits: 0,
+        misses: 0,
+        sets: 0,
+        deletes: 0,
+      },
+      topKeys: [],
+      evictions: 0,
+    };
+  }
 }

@@ -56,11 +56,15 @@ import { PlanExecuteModule } from './plan-execute/plan-execute.module';
 import { ClaudeOrchestratorService } from './services/claude-orchestrator.service';
 import { PersonaShellService } from './services/persona-shell.service';
 import { PlanningWorkbenchAgentService } from './services/planning-workbench-agent.service';
+import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { ExecutionAgentService } from './services/execution-agent.service';
 import { TripDetailAgentService } from './services/trip-detail-agent.service';
 import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
+import { AgentAdminController } from './agent-admin.controller';
+import { AgentRunAdminService } from './services/agent-run-admin.service';
+import { TripRunManagerService } from './services/trip-run-manager.service';
 import { SkillsModule } from '../skills/skills.module';
 // 子 Agent 服务（Claude 编排）
 import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
@@ -75,6 +79,8 @@ import { AssistantsModule } from './assistants/assistants.module';
 import { AgentInfraModule } from './infra/infra.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { DataModelingModule } from '../data-modeling/data-modeling.module';
+import { PrismaModule } from '../prisma/prisma.module';
+import { TrainingModule } from './training/training.module';
 
 /**
  * Agent Module
@@ -101,8 +107,10 @@ import { DataModelingModule } from '../data-modeling/data-modeling.module';
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
+    PrismaModule, // Prisma 模块（用于数据库访问）
+    TrainingModule, // Iterative Deployment 训练模块
   ],
-  controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController],
+  controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
   providers: [
     AgentService,
     RouterService,
@@ -125,6 +133,7 @@ import { DataModelingModule } from '../data-modeling/data-modeling.module';
     ClaudeOrchestratorService, // Claude 编排服务
     PersonaShellService, // 人格外壳服务
     PlanningWorkbenchAgentService, // 规划工作台 Agent
+    PlanningWorkbenchAdminService, // 规划工作台管理服务（后台管理）
     ExecutionAgentService, // 执行阶段 Agent
     TripDetailAgentService, // 行程详情页 Agent
     // Claude 编排子 Agent
@@ -136,6 +145,8 @@ import { DataModelingModule } from '../data-modeling/data-modeling.module';
     ClaudeNarratorAgentService, // Narrator Agent（Claude 编排）
     SkillInputValidatorService, // Skill 输入参数验证服务
     SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
+    AgentRunAdminService, // Agent 运行管理服务（后台管理）
+    TripRunManagerService, // TripRun 和 TripAttempt 管理服务
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [

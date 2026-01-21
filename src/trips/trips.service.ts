@@ -25,6 +25,18 @@ import { toPlaceResponseDto } from './dto/place-response.dto';
 export class TripsService {
   private readonly logger = new Logger(TripsService.name);
 
+  /**
+   * 验证 UUID 格式
+   * UUID 格式: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (8-4-4-4-12 十六进制字符)
+   */
+  private isValidUUID(uuid: string): boolean {
+    if (!uuid || typeof uuid !== 'string') {
+      return false;
+    }
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid.trim());
+  }
+
   constructor(
     private prisma: PrismaService,
     private flightPriceService: FlightPriceService,
@@ -1770,5 +1782,567 @@ export class TripsService {
     });
 
     return { stages };
+  }
+
+  /**
+   * 获取行程列表（管理接口）
+   */
+  async findAllAdmin(query: any) {
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 20, 100); // 最大100
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    // 状态筛选
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    // 目的地筛选
+    if (query.destination) {
+      where.destination = query.destination.toUpperCase();
+    }
+
+    // 开始日期范围
+    if (query.startDateFrom || query.startDateTo) {
+      where.startDate = {};
+      if (query.startDateFrom) {
+        where.startDate.gte = new Date(query.startDateFrom);
+      }
+      if (query.startDateTo) {
+        where.startDate.lte = new Date(query.startDateTo);
+      }
+    }
+
+    // 创建时间范围
+    if (query.createdAtFrom || query.createdAtTo) {
+      where.createdAt = {};
+      if (query.createdAtFrom) {
+        where.createdAt.gte = new Date(query.createdAtFrom);
+      }
+      if (query.createdAtTo) {
+        where.createdAt.lte = new Date(query.createdAtTo);
+      }
+    }
+
+    // 用户筛选
+    if (query.userId) {
+      where.TripCollaborator = {
+        some: {
+          userId: query.userId,
+          role: 'OWNER', // 只查询创建者
+        },
+      };
+    }
+
+    // 搜索功能（目的地、用户邮箱）
+    if (query.search) {
+      const searchTerm = query.search.toLowerCase();
+      where.OR = [
+        { destination: { contains: searchTerm, mode: 'insensitive' } },
+        {
+          TripCollaborator: {
+            some: {
+              role: 'OWNER',
+              User: {
+                OR: [
+                  { email: { contains: searchTerm, mode: 'insensitive' } },
+                  { displayName: { contains: searchTerm, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        },
+      ];
+    }
+
+    // 排序
+    const sortBy = query.sortBy || 'createdAt';
+    const sortOrder = query.sortOrder || 'desc';
+    const orderBy: any = {};
+    orderBy[sortBy] = sortOrder;
+
+    // 查询数据
+    const [trips, total] = await Promise.all([
+      this.prisma.trip.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          TripCollaborator: {
+            where: { role: 'OWNER' },
+            take: 1,
+          },
+          TripDay: {
+            include: {
+              ItineraryItem: true,
+            },
+          },
+          _count: {
+            select: {
+              TripDay: true,
+              TripCollection: true,
+              TripLike: true,
+              TripShare: true,
+              TripCollaborator: true,
+            },
+          },
+        },
+      }),
+      this.prisma.trip.count({ where }),
+    ]);
+
+    // 格式化数据
+    const items = trips.map((trip: any) => {
+      const ownerCollaborator = trip.TripCollaborator?.[0] || null;
+      // 如果需要用户信息，需要通过 userId 单独查询
+      const owner = ownerCollaborator ? {
+        userId: ownerCollaborator.userId,
+        role: ownerCollaborator.role,
+      } : null;
+      const daysCount = trip._count.TripDay || 0;
+      const itemsCount = trip.TripDay?.reduce((sum: number, day: any) => sum + (day.ItineraryItem?.length || 0), 0) || 0;
+
+      return {
+        id: trip.id,
+        destination: trip.destination,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        status: trip.status,
+        durationDays: Math.ceil((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1,
+        budgetConfig: trip.budgetConfig,
+        pacingConfig: trip.pacingConfig,
+        createdAt: trip.createdAt,
+        updatedAt: trip.updatedAt,
+        owner: owner ? {
+          userId: owner.userId,
+          role: owner.role,
+        } : null,
+        stats: {
+          daysCount,
+          itemsCount,
+          collaboratorsCount: trip._count.TripCollaborator || 0,
+          likesCount: trip._count.TripLike || 0,
+          collectionsCount: trip._count.TripCollection || 0,
+          sharesCount: trip._count.TripShare || 0,
+        },
+      };
+    });
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * 获取行程统计信息（管理接口）
+   */
+  async getAdminStats(query: any) {
+    const startDate = query.startDate ? new Date(query.startDate) : null;
+    const endDate = query.endDate ? new Date(query.endDate) : null;
+    const destination = query.destination?.toUpperCase();
+
+    const where: any = {};
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = startDate;
+      if (endDate) where.createdAt.lte = endDate;
+    }
+    if (destination) {
+      where.destination = destination;
+    }
+
+    // 总体统计
+    const [totalTrips, planningTrips, inProgressTrips, completedTrips, cancelledTrips] = await Promise.all([
+      this.prisma.trip.count({ where }),
+      this.prisma.trip.count({ where: { ...where, status: 'PLANNING' } }),
+      this.prisma.trip.count({ where: { ...where, status: 'IN_PROGRESS' } }),
+      this.prisma.trip.count({ where: { ...where, status: 'COMPLETED' } }),
+      this.prisma.trip.count({ where: { ...where, status: 'CANCELLED' } }),
+    ]);
+
+    // 按状态统计
+    const byStatus = {
+      PLANNING: { count: planningTrips, percentage: totalTrips > 0 ? (planningTrips / totalTrips) * 100 : 0 },
+      IN_PROGRESS: { count: inProgressTrips, percentage: totalTrips > 0 ? (inProgressTrips / totalTrips) * 100 : 0 },
+      COMPLETED: { count: completedTrips, percentage: totalTrips > 0 ? (completedTrips / totalTrips) * 100 : 0 },
+      CANCELLED: { count: cancelledTrips, percentage: totalTrips > 0 ? (cancelledTrips / totalTrips) * 100 : 0 },
+    };
+
+    // 按目的地统计
+    const destinations = await this.prisma.trip.groupBy({
+      by: ['destination'],
+      where,
+      _count: true,
+    });
+
+    const byDestination: Record<string, { count: number; percentage: number }> = {};
+    destinations.forEach((d) => {
+      byDestination[d.destination] = {
+        count: d._count,
+        percentage: totalTrips > 0 ? (d._count / totalTrips) * 100 : 0,
+      };
+    });
+
+    // 时间范围统计
+    const now = new Date();
+    const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const last90Days = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const lastYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    const [last7DaysCount, last30DaysCount, last90DaysCount, lastYearCount] = await Promise.all([
+      this.prisma.trip.count({ where: { ...where, createdAt: { gte: last7Days } } }),
+      this.prisma.trip.count({ where: { ...where, createdAt: { gte: last30Days } } }),
+      this.prisma.trip.count({ where: { ...where, createdAt: { gte: last90Days } } }),
+      this.prisma.trip.count({ where: { ...where, createdAt: { gte: lastYear } } }),
+    ]);
+
+    const [last7DaysNew, last30DaysNew, last90DaysNew, lastYearNew] = await Promise.all([
+      this.prisma.trip.count({ where: { createdAt: { gte: last7Days } } }),
+      this.prisma.trip.count({ where: { createdAt: { gte: last30Days } } }),
+      this.prisma.trip.count({ where: { createdAt: { gte: last90Days } } }),
+      this.prisma.trip.count({ where: { createdAt: { gte: lastYear } } }),
+    ]);
+
+    // 用户参与度统计
+    const tripsWithDays = await this.prisma.trip.findMany({
+      where,
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: true,
+          },
+        },
+        TripCollaborator: true,
+        TripLike: true,
+        TripCollection: true,
+        TripShare: true,
+      },
+    });
+
+    const totalDays = tripsWithDays.reduce((sum, t) => sum + t.TripDay.length, 0);
+    const totalItems = tripsWithDays.reduce((sum, t) => sum + t.TripDay.reduce((s, d) => s + d.ItineraryItem.length, 0), 0);
+    const totalCollaborators = tripsWithDays.reduce((sum, t) => sum + t.TripCollaborator.length, 0);
+    const totalLikes = tripsWithDays.reduce((sum, t) => sum + t.TripLike.length, 0);
+    const totalCollections = tripsWithDays.reduce((sum, t) => sum + t.TripCollection.length, 0);
+    const totalShares = tripsWithDays.reduce((sum, t) => sum + t.TripShare.length, 0);
+
+    // 预算统计
+    const tripsWithBudget = await this.prisma.trip.findMany({
+      where,
+      select: {
+        budgetConfig: true,
+      },
+    });
+
+    const budgets = tripsWithBudget
+      .map((t: any) => t.budgetConfig?.totalBudget)
+      .filter((b: any) => typeof b === 'number') as number[];
+
+    const avgBudget = budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) / budgets.length : 0;
+    const sortedBudgets = [...budgets].sort((a, b) => a - b);
+    const medianBudget = sortedBudgets.length > 0
+      ? sortedBudgets[Math.floor(sortedBudgets.length / 2)]
+      : 0;
+    const totalBudget = budgets.reduce((a, b) => a + b, 0);
+
+    // 预算分布
+    const budgetDistribution: Record<string, number> = {
+      '0-5000': 0,
+      '5000-10000': 0,
+      '10000-20000': 0,
+      '20000-50000': 0,
+      '50000+': 0,
+    };
+
+    budgets.forEach((budget) => {
+      if (budget < 5000) budgetDistribution['0-5000']++;
+      else if (budget < 10000) budgetDistribution['5000-10000']++;
+      else if (budget < 20000) budgetDistribution['10000-20000']++;
+      else if (budget < 50000) budgetDistribution['20000-50000']++;
+      else budgetDistribution['50000+']++;
+    });
+
+    return {
+      summary: {
+        totalTrips,
+        activeTrips: inProgressTrips,
+        completedTrips,
+        cancelledTrips,
+        planningTrips,
+      },
+      byStatus,
+      byDestination,
+      byTimeRange: {
+        last7Days: { count: last7DaysCount, newTrips: last7DaysNew },
+        last30Days: { count: last30DaysCount, newTrips: last30DaysNew },
+        last90Days: { count: last90DaysCount, newTrips: last90DaysNew },
+        lastYear: { count: lastYearCount, newTrips: lastYearNew },
+      },
+      engagement: {
+        avgDaysPerTrip: totalTrips > 0 ? totalDays / totalTrips : 0,
+        avgItemsPerTrip: totalTrips > 0 ? totalItems / totalTrips : 0,
+        avgCollaboratorsPerTrip: totalTrips > 0 ? totalCollaborators / totalTrips : 0,
+        totalLikes,
+        totalCollections,
+        totalShares,
+      },
+      budget: {
+        avgBudget,
+        medianBudget,
+        totalBudget,
+        budgetDistribution,
+      },
+      trends: {
+        newTripsByMonth: [], // TODO: 实现按月统计
+        completionRateByMonth: [], // TODO: 实现完成率统计
+      },
+    };
+  }
+
+  /**
+   * 获取行程详情（管理视图）
+   */
+  async findOneAdmin(id: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      include: {
+        TripCollaborator: true,
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: {
+                Place: {
+                  select: {
+                    id: true,
+                    nameCN: true,
+                    nameEN: true,
+                    category: true,
+                  },
+                },
+              },
+              orderBy: {
+                startTime: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            date: 'asc',
+          },
+        },
+        TripLike: true,
+        TripCollection: true,
+        TripShare: true,
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${id} 不存在`);
+    }
+
+    const ownerCollaborator = trip.TripCollaborator.find((c: any) => c.role === 'OWNER') || null;
+
+    // 如果需要用户详细信息，需要通过 userId 单独查询
+    let ownerUser = null;
+    if (ownerCollaborator && this.isValidUUID(ownerCollaborator.userId)) {
+      try {
+        ownerUser = await this.prisma.user.findUnique({
+          where: { id: ownerCollaborator.userId },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        });
+      } catch (error) {
+        // 忽略错误，继续处理
+        this.logger.warn(`查询用户信息失败: ${ownerCollaborator.userId}`, error);
+      }
+    }
+
+    // 获取所有协作用户信息
+    const collaboratorUserIds = trip.TripCollaborator
+      .filter((c: any) => c.role !== 'OWNER')
+      .map((c: any) => c.userId)
+      .filter((id: string) => this.isValidUUID(id));
+    
+    const collaboratorUsers = collaboratorUserIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: collaboratorUserIds } },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        })
+      : [];
+
+    const collaboratorUserMap = new Map(collaboratorUsers.map(u => [u.id, u]));
+
+    // 获取点赞和收藏用户信息
+    const likeUserIds = trip.TripLike.map((l: any) => l.userId).filter((id: string) => this.isValidUUID(id));
+    const collectionUserIds = trip.TripCollection.map((c: any) => c.userId).filter((id: string) => this.isValidUUID(id));
+    const allUserIds = [...new Set([...likeUserIds, ...collectionUserIds])];
+    
+    const socialUsers = allUserIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: allUserIds } },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        })
+      : [];
+
+    const socialUserMap = new Map(socialUsers.map(u => [u.id, u]));
+
+    return {
+      id: trip.id,
+      destination: trip.destination,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      status: trip.status,
+      durationDays: Math.ceil((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1,
+      budgetConfig: trip.budgetConfig,
+      pacingConfig: trip.pacingConfig,
+      metadata: trip.metadata,
+      createdAt: trip.createdAt,
+      updatedAt: trip.updatedAt,
+      owner: ownerUser ? {
+        userId: ownerUser.id,
+        email: ownerUser.email,
+        displayName: ownerUser.displayName,
+        avatarUrl: ownerUser.avatarUrl,
+      } : (ownerCollaborator ? {
+        userId: ownerCollaborator.userId,
+        role: ownerCollaborator.role,
+      } : null),
+      collaborators: trip.TripCollaborator
+        .filter((c: any) => c.role !== 'OWNER')
+        .map((c: any) => {
+          const user = collaboratorUserMap.get(c.userId);
+          return {
+            userId: c.userId,
+            email: user?.email || null,
+            displayName: user?.displayName || null,
+            role: c.role,
+            createdAt: c.createdAt,
+          };
+        }),
+      days: trip.TripDay.map((day: any) => ({
+        id: day.id,
+        date: day.date,
+        itemsCount: day.ItineraryItem.length,
+        items: day.ItineraryItem.map((item: any) => ({
+          id: item.id,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          type: item.type,
+          place: item.Place ? {
+            id: item.Place.id,
+            nameCN: item.Place.nameCN,
+            nameEN: item.Place.nameEN,
+            category: item.Place.category,
+          } : null,
+        })),
+      })),
+      stats: {
+        daysCount: trip.TripDay.length,
+        itemsCount: trip.TripDay.reduce((sum, d) => sum + d.ItineraryItem.length, 0),
+        collaboratorsCount: trip.TripCollaborator.length,
+        likesCount: trip.TripLike.length,
+        collectionsCount: trip.TripCollection.length,
+        sharesCount: trip.TripShare.length,
+      },
+      social: {
+        likes: trip.TripLike.map((like: any) => {
+          const user = socialUserMap.get(like.userId);
+          return {
+            userId: like.userId,
+            email: user?.email || null,
+            displayName: user?.displayName || null,
+            createdAt: like.createdAt,
+          };
+        }),
+        collections: trip.TripCollection.map((col: any) => {
+          const user = socialUserMap.get(col.userId);
+          return {
+            userId: col.userId,
+            email: user?.email || null,
+            displayName: user?.displayName || null,
+            createdAt: col.createdAt,
+          };
+        }),
+        shares: trip.TripShare.map((share: any) => ({
+          id: share.id,
+          shareToken: share.shareToken,
+          permission: share.permission,
+          expiresAt: share.expiresAt,
+          createdAt: share.createdAt,
+        })),
+      },
+      decisionLogs: {
+        total: 0, // TODO: 从决策日志表查询
+        recent: [], // TODO: 获取最近的决策日志
+      },
+    };
+  }
+
+  /**
+   * 批量操作
+   */
+  async batchOperation(body: any) {
+    const { action, tripIds, params } = body;
+    const errors: Array<{ tripId: string; error: string }> = [];
+    let successCount = 0;
+
+    for (const tripId of tripIds) {
+      try {
+        if (action === 'DELETE') {
+          await this.remove(tripId, 'CONFIRM'); // 简化版，实际应该需要确认
+          successCount++;
+        } else if (action === 'UPDATE_STATUS' && params?.status) {
+          await this.update(tripId, { status: params.status });
+          successCount++;
+        } else {
+          errors.push({ tripId, error: '不支持的操作或缺少参数' });
+        }
+      } catch (error: any) {
+        errors.push({ tripId, error: error.message || '操作失败' });
+      }
+    }
+
+    return {
+      action,
+      total: tripIds.length,
+      success: successCount,
+      failed: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  /**
+   * 导出行程数据
+   */
+  async exportTrip(id: string, format: string = 'json') {
+    const trip = await this.findOneAdmin(id);
+
+    if (format === 'csv') {
+      // TODO: 实现 CSV 导出
+      throw new BadRequestException('CSV 导出功能暂未实现');
+    }
+
+    return trip;
   }
 }

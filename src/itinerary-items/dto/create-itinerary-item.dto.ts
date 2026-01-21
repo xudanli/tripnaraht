@@ -1,6 +1,8 @@
 // src/itinerary-items/dto/create-itinerary-item.dto.ts
-import { IsString, IsInt, IsOptional, IsEnum, IsDateString, IsNotEmpty } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsEnum, IsDateString, IsNotEmpty, IsBoolean, IsArray, IsNumber, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ValidationCode } from '../interfaces/validation.interface';
+import { CostCategory } from './item-cost.dto';
 
 /**
  * 行程项类型枚举
@@ -81,4 +83,88 @@ export class CreateItineraryItemDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  // ========== 费用相关字段 ==========
+
+  @ApiPropertyOptional({
+    description: '预估费用',
+    example: 150,
+    minimum: 0
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  estimatedCost?: number;
+
+  @ApiPropertyOptional({
+    description: '实际费用',
+    example: 165,
+    minimum: 0
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  actualCost?: number;
+
+  @ApiPropertyOptional({
+    description: '货币类型',
+    example: 'CNY',
+    default: 'CNY'
+  })
+  @IsString()
+  @IsOptional()
+  currency?: string;
+
+  @ApiPropertyOptional({
+    description: '费用分类',
+    enum: CostCategory,
+    example: CostCategory.ACTIVITIES
+  })
+  @IsEnum(CostCategory)
+  @IsOptional()
+  costCategory?: CostCategory;
+
+  @ApiPropertyOptional({
+    description: '费用备注',
+    example: '门票+缆车'
+  })
+  @IsString()
+  @IsOptional()
+  costNote?: string;
+
+  @ApiPropertyOptional({
+    description: '是否已支付',
+    default: false
+  })
+  @IsBoolean()
+  @IsOptional()
+  isPaid?: boolean;
+
+  @ApiPropertyOptional({
+    description: '支付人ID'
+  })
+  @IsString()
+  @IsOptional()
+  paidBy?: string;
+
+  // ========== 校验控制字段 ==========
+
+  @ApiPropertyOptional({
+    description: '强制创建，忽略 WARNING 级别校验。设置为 true 时，即使存在交通时间不足等警告也会创建成功',
+    example: false,
+    default: false
+  })
+  @IsBoolean()
+  @IsOptional()
+  forceCreate?: boolean;
+
+  @ApiPropertyOptional({
+    description: '忽略的警告类型列表。只有列出的警告类型会被忽略，其他警告仍需确认',
+    enum: ValidationCode,
+    isArray: true,
+    example: ['INSUFFICIENT_TRAVEL_TIME', 'SHORT_BUFFER']
+  })
+  @IsArray()
+  @IsOptional()
+  ignoreWarnings?: ValidationCode[];
 }

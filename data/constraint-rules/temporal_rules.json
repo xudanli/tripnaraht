@@ -1,0 +1,39 @@
+[
+  {
+    "rule_id": "temp_001",
+    "type": "TEMPORAL",
+    "name": "Winter season warning",
+    "description": "Warn about winter travel risks in Iceland",
+    "condition": {
+      "season": {
+        "eq": "WINTER"
+      },
+      "destination": {
+        "eq": "IS"
+      }
+    },
+    "severity": "SOFT",
+    "sev_level": "SEV-2",
+    "action": "WARN",
+    "metadata": {
+      "category": "SAFETY"
+    }
+  },
+  {
+    "rule_id": "temp_002",
+    "type": "TEMPORAL",
+    "name": "Extreme weather warning",
+    "description": "Warn about extreme weather conditions",
+    "condition": {
+      "weather_condition": {
+        "in": ["EXTREME_COLD", "BLIZZARD", "STORM"]
+      }
+    },
+    "severity": "SOFT",
+    "sev_level": "SEV-2",
+    "action": "WARN",
+    "metadata": {
+      "category": "SAFETY"
+    }
+  }
+]

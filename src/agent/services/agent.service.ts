@@ -10,6 +10,7 @@ import { DAGOrchestratorService } from '../plan-execute/orchestrator.service';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
+import { TripRunManagerService } from './trip-run-manager.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
@@ -54,6 +55,7 @@ export class AgentService {
     @Optional() private claudeOrchestrator?: ClaudeOrchestratorService,
     private eventTelemetry?: EventTelemetryService,
     private requestDeduplication?: RequestDeduplicationService,
+    @Optional() private tripRunManager?: TripRunManagerService,
   ) {}
 
   /**
@@ -82,6 +84,7 @@ export class AgentService {
       NARRATE: 87.5,
       DONE: 100.0,
       FAILED: 0,
+      TIMEOUT: 0,
       HALLUCINATION_DETECTION: 95.0,
     };
 
@@ -95,6 +98,7 @@ export class AgentService {
       NARRATE: '正在生成说明...',
       DONE: '处理完成',
       FAILED: '处理失败',
+      TIMEOUT: '请求超时',
       HALLUCINATION_DETECTION: '正在检测内容真实性...',
     };
 
@@ -109,6 +113,7 @@ export class AgentService {
       NARRATE: 3000,     // 3秒
       DONE: 0,
       FAILED: 0,
+      TIMEOUT: 0,
       HALLUCINATION_DETECTION: 2000, // 2秒
     };
 
@@ -123,6 +128,7 @@ export class AgentService {
       NARRATE: '生成用户友好的行程说明和提示',
       DONE: '所有步骤已完成',
       FAILED: '处理过程中出现错误',
+      TIMEOUT: '请求超时，请缩小范围或稍后重试',
       HALLUCINATION_DETECTION: '检测生成内容中的事实声明，确保信息准确性',
     };
 
@@ -153,13 +159,17 @@ export class AgentService {
         uiStatus = 'done';
         break;
       case 'FAILED':
+      case 'TIMEOUT':
         uiStatus = 'failed';
+        break;
+      case 'HALLUCINATION_DETECTION':
+        uiStatus = 'verifying';
         break;
     }
 
     // 🆕 计算预计剩余时间
     let estimatedTimeRemaining: number | undefined;
-    if (elapsedTime !== undefined && step !== 'DONE' && step !== 'FAILED') {
+    if (elapsedTime !== undefined && step !== 'DONE' && step !== 'FAILED' && step !== 'TIMEOUT') {
       const currentStepTime = stepEstimatedTimeMap[step];
       const remainingSteps = this.getRemainingSteps(step);
       const totalRemainingTime = remainingSteps.reduce(
@@ -369,6 +379,39 @@ export class AgentService {
     const startTime = Date.now();
     this.logger.debug(`Processing request: ${request.request_id}`);
 
+    // === 创建 TripRun 记录 ===
+    let tripRunId: string | null = null;
+    if (this.tripRunManager && !request.options?.dry_run) {
+      try {
+        // 判断规划阶段
+        const isPlanningReq = this.isPlanningRequest(request);
+        const planningPhase = isPlanningReq ? 'PLANNING' : 'EXECUTION';
+        
+        // 判断当前 Agent（根据路由决策）
+        const signals = signalsFromRequest(request);
+        const currentAgent = signals.taskType === 'TRIP_PLANNING' ? 'PlanningAgent' : 'ExecutionAgent';
+        
+        tripRunId = await this.tripRunManager.createTripRun({
+          tripId: request.trip_id || null,
+          userId: request.user_id || null,
+          userQuery: request.message,
+          planningPhase,
+          currentAgent,
+          metadata: {
+            request_id: request.request_id,
+            entry_point: request.options?.entry_point,
+            max_seconds: request.options?.max_seconds,
+          },
+        });
+        if (tripRunId) {
+          this.logger.debug(`Created TripRun: ${tripRunId} for request ${request.request_id}`);
+        }
+      } catch (error: any) {
+        this.logger.warn(`Failed to create TripRun: ${error.message}`);
+        // 不阻塞主流程
+      }
+    }
+
     // === 稳定化层：统一 Deadline ===
     const maxSeconds = Number(request?.options?.max_seconds ?? 12);
     const deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 20_000))); // 默认12s，最大20s
@@ -470,6 +513,11 @@ export class AgentService {
           legacy: this.breakerLegacy,
         },
       );
+      
+      // 调试日志：记录路由决策
+      this.logger.log(`[AgentService] 路由决策: mode=${decision.mode}, reason=${decision.reason}`);
+      this.logger.log(`[AgentService] 匹配规则: ${decision.matchedRules.join(', ')}`);
+      this.logger.log(`[AgentService] 熔断器状态: SM=${this.breakerSM.canPass()}, Dynamic=${this.breakerDyn.canPass()}, Legacy=${this.breakerLegacy.canPass()}`);
       // 结构化日志（固定化字段，用于打点/聚合）
       // 结构化日志字段（固定化，用于 metrics/聚合）
       // 这些字段在所有请求中都会输出，方便日志聚合和监控
@@ -611,6 +659,20 @@ export class AgentService {
         const res = await execMode(decision.mode);
         // 成功：记录 ModeLock
         this.modeLock.set(stabilityCtx, decision.mode);
+        
+        // === 更新 TripRun 为 COMPLETED ===
+        if (tripRunId && this.tripRunManager) {
+          try {
+            await this.tripRunManager.completeTripRun(tripRunId, {
+              mode_final: decision.mode,
+              fallback_used: false,
+              latency_ms: Date.now() - startTime,
+            });
+          } catch (error: any) {
+            this.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
+          }
+        }
+        
         return this.attachObservability(res, {
           mode_final: decision.mode,
           fallback_used: false,
@@ -632,12 +694,32 @@ export class AgentService {
         const canFallback = fallback.tryUse();
         if (!canFallback || deadline.remainingMs() <= 0) {
           const nf = normalizeError(e);
+          
+          // === 更新 TripRun 为 FAILED ===
+          if (tripRunId && this.tripRunManager) {
+            try {
+              await this.tripRunManager.failTripRun(tripRunId, e, {
+                mode_final: decision.mode,
+                fallback_used: false,
+                latency_ms: Date.now() - startTime,
+              });
+            } catch (error: any) {
+              this.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
+            }
+          }
+          
+          // 🆕 尝试从错误中提取部分决策日志（如果是状态机超时）
+          let partialDecisionLog: DecisionLogEntry[] | undefined;
+          if (decision.mode === 'CLAUDE_SM' && e?.message?.startsWith('TIMEOUT:CLAUDE_SM')) {
+            this.logger.warn(`[AgentService] 状态机超时，无法提取部分结果（需要状态机内部处理）`);
+          }
+          
           return this.buildFailureResponse(request, startTime, nf, {
             mode_final: decision.mode,
             fallback_used: false,
             deadline_ms: deadline.totalMs,
             time_remaining_ms: deadline.remainingMs(),
-          });
+          }, partialDecisionLog);
         }
 
         usedFallback = true;
@@ -652,6 +734,20 @@ export class AgentService {
             const res = await execMode(nextMode);
             // 成功：记录 ModeLock
             this.modeLock.set(stabilityCtx, nextMode);
+            
+            // === 更新 TripRun 为 COMPLETED ===
+            if (tripRunId && this.tripRunManager) {
+              try {
+                await this.tripRunManager.completeTripRun(tripRunId, {
+                  mode_final: nextMode,
+                  fallback_used: true,
+                  latency_ms: Date.now() - startTime,
+                });
+              } catch (error: any) {
+                this.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
+              }
+            }
+            
             return this.attachObservability(res, {
               mode_final: nextMode,
               fallback_used: true,
@@ -674,12 +770,32 @@ export class AgentService {
 
         // 所有 fallback 都失败
         const nf = normalizeError(e);
+        
+        // === 更新 TripRun 为 FAILED ===
+        if (tripRunId && this.tripRunManager) {
+          try {
+            await this.tripRunManager.failTripRun(tripRunId, e, {
+              mode_final: finalMode,
+              fallback_used: usedFallback,
+              latency_ms: Date.now() - startTime,
+            });
+          } catch (error: any) {
+            this.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
+          }
+        }
+        
+        // 🆕 尝试提取部分决策日志
+        let partialDecisionLog: DecisionLogEntry[] | undefined;
+        if (finalMode === 'CLAUDE_SM' && e?.message?.startsWith('TIMEOUT:CLAUDE_SM')) {
+          this.logger.warn(`[AgentService] 状态机超时，无法提取部分结果`);
+        }
+        
         return this.buildFailureResponse(request, startTime, nf, {
           mode_final: finalMode,
           fallback_used: usedFallback,
           deadline_ms: deadline.totalMs,
           time_remaining_ms: deadline.remainingMs(),
-        });
+        }, partialDecisionLog);
       }
 
       // 这部分代码已被稳定化层统一处理，不再需要
@@ -894,6 +1010,19 @@ export class AgentService {
       return response;
     } catch (error: any) {
       this.logger.error(`Agent service error: ${error?.message || String(error)}`, error?.stack);
+      
+      // === 更新 TripRun 为 FAILED（最外层 catch） ===
+      if (tripRunId && this.tripRunManager) {
+        try {
+          await this.tripRunManager.failTripRun(tripRunId, error, {
+            error_type: 'unhandled_exception',
+            caught_at: 'routeAndRun_outer_catch',
+          });
+        } catch (updateError: any) {
+          this.logger.warn(`Failed to update TripRun to FAILED in outer catch: ${updateError.message}`);
+        }
+      }
+      
       throw error;
     }
   }
@@ -1095,7 +1224,14 @@ export class AgentService {
     };
 
       // 调用状态机编排（传递 deadline）
-      const orchestrationResult = await this.claudeOrchestrator.orchestrateWithStateMachine(request, context);
+      this.logger.log(`[AgentService] 调用状态机编排: request_id=${request.request_id}, deadline=${deadline?.remainingMs() || 'N/A'}ms`);
+      const orchestrationResult = await this.claudeOrchestrator.orchestrateWithStateMachine(request, context, deadline);
+      
+      // 调试日志：记录状态机执行结果
+      this.logger.log(`[AgentService] 状态机执行完成: success=${orchestrationResult.success}, decisionLog.length=${orchestrationResult.decisionLog?.length || 0}`);
+      if (orchestrationResult.result?.state) {
+        this.logger.log(`[AgentService] 状态机状态: current_step=${orchestrationResult.result.state.current_step}, decision_log.length=${orchestrationResult.result.state.decision_log?.length || 0}`);
+      }
 
     // 构建响应
     const latency = Date.now() - startTime;
@@ -1110,15 +1246,16 @@ export class AgentService {
       ? Date.now() - new Date(stateStartedAt).getTime()
       : latency;
     
-    const uiState = this.mapOrchestrationStepToUIState(
-      currentStep as OrchestrationStep, 
-      gateResult,
-      elapsedTime
-    );
+      const uiState = this.mapOrchestrationStepToUIState(
+        currentStep as OrchestrationStep, 
+        gateResult,
+        elapsedTime
+      );
     
       // 检查是否是超时错误（优先级最高）
       const isTimeout = !orchestrationResult.success && 
         (orchestrationResult.result?.errorType === ErrorType.TIMEOUT_ERROR ||
+         orchestrationResult.result?.state?.current_step === 'TIMEOUT' ||
          orchestrationResult.answerText?.includes('超时') ||
          orchestrationResult.answerText?.includes('timeout') ||
          orchestrationResult.answerText?.includes('TIMEOUT'));
@@ -2082,6 +2219,7 @@ export class AgentService {
     startTime: number,
     nf: { status: string; errorType: string; message: string; isTimeout: boolean },
     obs: any,
+    partialDecisionLog?: DecisionLogEntry[], // 🆕 部分决策日志（超时等情况）
   ): RouteAndRunResponseDto {
     return {
       request_id: request.request_id,
@@ -2117,7 +2255,7 @@ export class AgentService {
         },
       },
       explain: {
-        decision_log: [],
+        decision_log: partialDecisionLog || [], // 🆕 使用部分决策日志（如果有）
         // 🆕 生成简化版解释（减少认知负荷）
         simplified_explanation: undefined, // 失败情况不生成简化版解释
       },

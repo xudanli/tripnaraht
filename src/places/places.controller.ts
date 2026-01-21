@@ -35,6 +35,7 @@ export class PlacesController {
     private readonly unsplashService: UnsplashService,
   ) {}
 
+  @Public()
   @Get('nearby')
   @ApiOperation({ 
     summary: '查找附近的地点',
@@ -72,6 +73,7 @@ export class PlacesController {
     }
   }
 
+  @Public()
   @Get('nearby/restaurants')
   @ApiOperation({ 
     summary: '查找附近的餐厅',
@@ -650,6 +652,7 @@ export class PlacesController {
     );
   }
 
+  @Public()
   @Get('nature-poi/nearby')
   @ApiOperation({
     summary: '查找附近的自然 POI',
@@ -894,6 +897,7 @@ export class PlacesController {
     return successResponse(places);
   }
 
+  @Public()
   @Get('search/semantic')
   @ApiOperation({
     summary: '语义地点搜索',
@@ -1097,6 +1101,7 @@ export class PlacesController {
     }
   }
 
+  @Public()
   @Get('search')
   @ApiOperation({
     summary: '关键词搜索地点',
@@ -1139,8 +1144,8 @@ export class PlacesController {
     return successResponse(places);
   }
 
-  @Get('list')
   @Public()
+  @Get('list')
   @ApiOperation({
     summary: '获取地点列表（支持分页和上下切换）',
     description: '获取地点列表，支持分页、按类别和城市筛选，支持上下切换。',
@@ -1190,6 +1195,7 @@ export class PlacesController {
     }
   }
 
+  @Public()
   @Get('autocomplete')
   @ApiOperation({
     summary: '地点名称自动补全',
@@ -1222,6 +1228,7 @@ export class PlacesController {
     return successResponse(suggestions);
   }
 
+  @Public()
   @Get('recommendations')
   @ApiOperation({
     summary: '获取地点推荐（功能待实现）',
@@ -1401,6 +1408,7 @@ export class PlacesController {
     }
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({
     summary: '获取地点详情',

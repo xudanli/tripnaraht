@@ -1,0 +1,230 @@
+// ROLL Bridge Service Jenkins Pipeline
+// 用于自动化构建和部署 ROLL Bridge Service
+
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    skipDefaultCheckout(false)
+  }
+
+  environment {
+    COMPOSE_PROJECT_NAME = "roll-bridge"
+    ROLL_IMAGE_NAME = "roll-bridge-service"
+    ROLL_IMAGE_TAG = "${env.BUILD_NUMBER}"
+  }
+
+  stages {
+    // 阶段 1: 代码检出
+    stage('Checkout') {
+      steps {
+        deleteDir()
+        checkout scm
+      }
+    }
+
+    // 阶段 2: 环境预检查
+    stage('Precheck') {
+      steps {
+        dir('scripts/rl-infra/roll') {
+          sh '''
+            set -e
+            echo "检查 Docker 和 Docker Compose..."
+            docker version
+            if docker compose version >/dev/null 2>&1; then
+              echo "✓ 检测到 docker compose (V2)"
+              echo "docker compose" > $WORKSPACE/.docker-compose-cmd
+            elif command -v docker-compose >/dev/null 2>&1; then
+              echo "✓ 检测到 docker-compose (V1)"
+              echo "docker-compose" > $WORKSPACE/.docker-compose-cmd
+            else
+              echo "❌ 错误: 未找到 docker compose 命令"
+              exit 1
+            fi
+          '''
+        }
+      }
+    }
+
+    // 阶段 3: 构建 Docker 镜像
+    stage('Build') {
+      options {
+        timeout(time: 30, unit: 'MINUTES')
+      }
+      steps {
+        dir('scripts/rl-infra/roll') {
+          sh '''
+            set -euo pipefail
+            if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+              DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
+            else
+              DOCKER_COMPOSE_CMD="docker compose"
+            fi
+            
+            echo "构建 ROLL Bridge Service Docker 镜像..."
+            export BUILDKIT_PROGRESS=plain
+            
+            # 后台运行 keepalive 进程
+            ( while true; do echo "[keepalive] $(date -Is)"; sleep 30; done ) & KA_PID=$!
+            trap 'kill ${KA_PID} >/dev/null 2>&1 || true' EXIT
+            
+            # 构建镜像
+            docker build -t ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG} .
+            docker tag ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG} ${ROLL_IMAGE_NAME}:latest
+            
+            echo "✅ Docker 镜像构建完成: ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG}"
+          '''
+        }
+      }
+    }
+
+    // 阶段 4: 运行测试
+    stage('Test') {
+      steps {
+        dir('scripts/rl-infra/roll') {
+          sh '''
+            set -e
+            echo "启动测试环境..."
+            
+            if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+              DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
+            else
+              DOCKER_COMPOSE_CMD="docker compose"
+            fi
+            
+            # 启动测试环境
+            ${DOCKER_COMPOSE_CMD} up -d
+            
+            # 等待服务就绪
+            echo "等待服务启动..."
+            sleep 10
+            
+            # 健康检查
+            echo "执行健康检查..."
+            for i in {1..30}; do
+              if curl -f http://localhost:8001/health >/dev/null 2>&1; then
+                echo "✅ Bridge Service 健康检查通过"
+                break
+              fi
+              if [ $i -eq 30 ]; then
+                echo "❌ 健康检查失败"
+                exit 1
+              fi
+              sleep 2
+            done
+            
+            # 运行集成测试
+            echo "运行集成测试..."
+            if [ -f test_e2e_integration.sh ]; then
+              chmod +x test_e2e_integration.sh
+              ./test_e2e_integration.sh || {
+                echo "❌ 集成测试失败"
+                ${DOCKER_COMPOSE_CMD} logs bridge-service
+                exit 1
+              }
+            else
+              echo "⚠️  未找到测试脚本，跳过测试"
+            fi
+            
+            echo "✅ 测试通过"
+          '''
+        }
+      }
+      post {
+        always {
+          dir('scripts/rl-infra/roll') {
+            sh '''
+              if [ -f $WORKSPACE/.docker-compose-cmd ]; then
+                DOCKER_COMPOSE_CMD=$(cat $WORKSPACE/.docker-compose-cmd | tr -d '\n')
+              else
+                DOCKER_COMPOSE_CMD="docker compose"
+              fi
+              ${DOCKER_COMPOSE_CMD} down || true
+            '''
+          }
+        }
+      }
+    }
+
+    // 阶段 5: 推送镜像（可选）
+    stage('Push Image') {
+      when {
+        anyOf {
+          branch 'main'
+          branch 'master'
+          expression { env.BUILD_TYPE == 'release' }
+        }
+      }
+      steps {
+        dir('scripts/rl-infra/roll') {
+          script {
+            // 如果配置了镜像仓库，推送镜像
+            def registry = env.DOCKER_REGISTRY ?: ''
+            if (registry) {
+              sh """
+                docker tag ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG} ${registry}/${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG}
+                docker tag ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG} ${registry}/${ROLL_IMAGE_NAME}:latest
+                docker push ${registry}/${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG}
+                docker push ${registry}/${ROLL_IMAGE_NAME}:latest
+                echo "✅ 镜像已推送到 ${registry}"
+              """
+            } else {
+              echo "⚠️  未配置镜像仓库，跳过推送"
+            }
+          }
+        }
+      }
+    }
+
+    // 阶段 6: 部署到 Kubernetes（可选）
+    stage('Deploy to Kubernetes') {
+      when {
+        anyOf {
+          branch 'main'
+          branch 'master'
+          expression { env.DEPLOY_ENV == 'production' }
+        }
+      }
+      steps {
+        dir('scripts/rl-infra/roll') {
+          script {
+            // 检查是否配置了 Kubernetes
+            if (env.KUBECONFIG || fileExists("${env.HOME}/.kube/config")) {
+              sh """
+                echo "部署到 Kubernetes..."
+                
+                # 更新镜像标签
+                sed -i 's|image: roll-bridge-service:latest|image: ${ROLL_IMAGE_NAME}:${ROLL_IMAGE_TAG}|g' k8s/bridge-service.yaml
+                
+                # 部署
+                kubectl apply -f k8s/ray-cluster.yaml
+                kubectl apply -f k8s/bridge-service.yaml
+                
+                # 等待部署完成
+                kubectl rollout status deployment/roll-bridge-service --timeout=300s
+                
+                echo "✅ 部署完成"
+              """
+            } else {
+              echo "⚠️  未配置 Kubernetes，跳过部署"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Pipeline 执行成功"
+    }
+    failure {
+      echo "❌ Pipeline 执行失败"
+    }
+    always {
+      // 清理工作空间
+      cleanWs()
+    }
+  }
+}

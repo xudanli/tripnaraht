@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Ray Head Node
+  ray-head:
+    image: rayproject/ray:2.8.0
+    container_name: roll-ray-head
+    command: ray start --head --port=10001 --dashboard-host=0.0.0.0
+    ports:
+      - "10001:10001"  # Ray client port
+      - "8265:8265"     # Ray Dashboard
+    environment:
+      - RAY_ADDRESS=ray://localhost:10001
+    volumes:
+      - ray-data:/tmp/ray
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - roll-network
+
+  # Ray Worker Node (可选，用于扩展)
+  ray-worker:
+    image: rayproject/ray:2.8.0
+    container_name: roll-ray-worker
+    command: ray start --address=ray://ray-head:10001
+    depends_on:
+      ray-head:
+        condition: service_healthy
+    environment:
+      - RAY_ADDRESS=ray://ray-head:10001
+    volumes:
+      - ray-data:/tmp/ray
+    networks:
+      - roll-network
+    deploy:
+      replicas: 0  # 默认不启动，需要时手动扩展
+
+  # ROLL Bridge Service
+  bridge-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: roll-bridge-service
+    ports:
+      - "${ROLL_BRIDGE_PORT:-8001}:8001"
+    environment:
+      - RAY_ADDRESS=ray://ray-head:10001
+      - RAY_NAMESPACE=${RAY_NAMESPACE:-tripnara-rl}
+      - ROLL_BRIDGE_PORT=8001
+      - ROLL_BRIDGE_HOST=0.0.0.0
+      - ROLL_ACTOR_WORKER_NUM=${ROLL_ACTOR_WORKER_NUM:-2}
+      - ROLL_REWARD_WORKER_NUM=${ROLL_REWARD_WORKER_NUM:-2}
+      - ROLL_POLICY_WORKER_NUM=${ROLL_POLICY_WORKER_NUM:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      ray-head:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - roll-network
+    restart: unless-stopped
+
+volumes:
+  ray-data:
+    driver: local
+
+networks:
+  roll-network:
+    driver: bridge

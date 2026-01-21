@@ -56,6 +56,7 @@ import { ClarificationQuestion } from '../interfaces/clarification.interface';
 import { SKILL_VALIDATION_RULES } from './skill-validation-rules.config';
 import { SkillInputValidatorService } from './skill-input-validator.service';
 import { HallucinationDetectionService } from './hallucination-detection.service';
+import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
 
 /**
  * Claude Orchestrator Service
@@ -82,6 +83,7 @@ export class ClaudeOrchestratorService {
     @Optional() private narratorAgent?: ClaudeNarratorAgentService,
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
     @Optional() private hallucinationDetection?: HallucinationDetectionService,
+    @Optional() private trajectoryCollection?: TrajectoryCollectionService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] 已初始化`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -2074,9 +2076,11 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): Promise<OrchestrationResult> {
     const startTime = Date.now();
     this.logger.log(`[Claude Orchestrator] 开始状态机编排: request_id=${request.request_id}`);
+    this.logger.log(`[Claude Orchestrator] Deadline: ${deadline?.remainingMs() || 'N/A'}ms`);
 
     // 获取 LLM 提供商
     const llmProvider = this.getLlmProvider(request);
+    this.logger.log(`[Claude Orchestrator] LLM Provider: ${llmProvider}`);
 
     // 初始化状态
     const state: OrchestratorState = {
@@ -2143,13 +2147,45 @@ ${JSON.stringify(routingDecision, null, 2)}
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] 状态机编排失败: ${error?.message}`, error?.stack);
       
-      state.current_step = 'FAILED';
-      state.errors.push({
-        step: state.current_step,
-        error_code: 'ORCHESTRATION_ERROR',
-        message: error?.message || '未知错误',
-        timestamp: new Date().toISOString(),
-      });
+      // 🆕 检查是否是超时错误
+      const isTimeout = error?.message?.startsWith('TIMEOUT:') || 
+                        error?.code === 'ECONNABORTED' ||
+                        deadline?.remainingMs() <= 0;
+      
+      if (isTimeout) {
+        this.logger.warn(`[Claude Orchestrator] 状态机执行超时，当前步骤: ${state.current_step}, 已执行步骤数: ${state.decision_log.length}`);
+        state.current_step = 'TIMEOUT';
+        state.errors.push({
+          step: state.current_step,
+          error_code: 'TIMEOUT',
+          message: `执行超时，已执行到步骤: ${state.current_step}`,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // 🆕 记录超时时的决策日志
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'TIMEOUT' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: `状态机执行超时`,
+          outputs_summary: `已执行步骤: ${state.decision_log.map(log => log.step).join(' → ')}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            duration_ms: Date.now() - startTime,
+            timeout: true,
+            executed_steps: state.decision_log.map(log => log.step),
+          },
+        });
+      } else {
+        state.current_step = 'FAILED';
+        state.errors.push({
+          step: state.current_step,
+          error_code: 'ORCHESTRATION_ERROR',
+          message: error?.message || '未知错误',
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       return this.buildErrorResult(state, error, startTime);
     }
@@ -2693,6 +2729,62 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // Iterative Deployment: 收集轨迹（PLAN_GEN 完成后）
+      if (this.trajectoryCollection && state.itinerary && state.gate_result) {
+        try {
+          const context = request as any; // 获取 context
+          const tripId = context.trip_id || undefined;
+          const countryCode = state.trip_plan_request?.destination 
+            ? (typeof state.trip_plan_request.destination === 'string' 
+                ? undefined 
+                : undefined) // TODO: 从 destination 提取 countryCode
+            : undefined;
+
+          // 如果没有 compliance_result，生成一个默认的（从 gate_result 推导）
+          let complianceResult = state.compliance_result;
+          if (!complianceResult && this.complianceAgent && state.itinerary) {
+            try {
+              complianceResult = await this.complianceAgent.checkCompliance(
+                state.itinerary,
+                state.gate_result,
+                state,
+              );
+            } catch (error: any) {
+              this.logger.warn(`[Claude Orchestrator] Compliance 检查失败，使用默认值: ${error?.message}`);
+              // 使用默认的 compliance result
+              complianceResult = {
+                risk_warnings: [],
+                disclaimers: [],
+                required_confirmations: [],
+              };
+            }
+          } else if (!complianceResult) {
+            // 如果没有 complianceAgent，使用默认值
+            complianceResult = {
+              risk_warnings: [],
+              disclaimers: [],
+              required_confirmations: [],
+            };
+          }
+
+          await this.trajectoryCollection.collectTrajectory({
+            requestId: state.request_id,
+            tripId,
+            plan: state.itinerary,
+            decisionTrace: state.decision_log,
+            researchData: state.research_data || {},
+            gateResult: state.gate_result,
+            complianceResult: complianceResult as any,
+            modelVersion: 'v1.0', // TODO: 从配置或上下文获取
+            countryCode,
+          });
+          this.logger.debug(`[Claude Orchestrator] 轨迹已收集: requestId=${state.request_id}`);
+        } catch (error: any) {
+          // 轨迹收集失败不应该影响主流程
+          this.logger.warn(`[Claude Orchestrator] 轨迹收集失败: ${error?.message}`);
+        }
+      }
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] PLAN_GEN 步骤失败: ${error?.message}`);
       throw error;
@@ -3206,6 +3298,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         ? `已为您生成 ${state.itinerary.days.length} 天的行程安排。`
         : '处理完成。');
 
+    this.logger.log(`[Claude Orchestrator] 构建成功结果: decision_log.length=${state.decision_log.length}, current_step=${state.current_step}`);
+
     return {
       success: !hasClarificationQuestions, // 如果有澄清问题，success 为 false（需要用户输入）
       result: {
@@ -3300,20 +3394,32 @@ ${JSON.stringify(routingDecision, null, 2)}
     error: any,
     startTime: number,
   ): OrchestrationResult {
+    // 🆕 检查是否是超时错误
+    const isTimeout = error?.message?.startsWith('TIMEOUT:') || 
+                      error?.code === 'ECONNABORTED' ||
+                      state.current_step === 'TIMEOUT';
+    
+    const answerText = isTimeout
+      ? `请求超时，已执行到步骤: ${state.current_step}。请缩小范围或稍后重试。`
+      : `处理过程中出现错误：${error?.message || '未知错误'}`;
+    
+    this.logger.log(`[Claude Orchestrator] 构建错误结果: current_step=${state.current_step}, decision_log.length=${state.decision_log.length}, isTimeout=${isTimeout}`);
+    
     return {
       success: false,
       result: {
         state,
         errors: state.errors,
+        errorType: isTimeout ? 'TIMEOUT_ERROR' as any : undefined,
       },
-      answerText: `处理过程中出现错误：${error?.message || '未知错误'}`,
+      answerText,
       stepsExecuted: state.decision_log.map(log => ({
         stepId: log.step,
-        success: log.step !== 'FAILED',
+        success: log.step !== 'FAILED' && log.step !== 'TIMEOUT',
         duration: log.metadata?.duration_ms || 0,
       })),
       totalDuration: Date.now() - startTime,
-      decisionLog: state.decision_log,
+      decisionLog: state.decision_log, // 🆕 确保决策日志被包含
     };
   }
 

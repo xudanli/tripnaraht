@@ -74,7 +74,7 @@ Plan B 类型：
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',

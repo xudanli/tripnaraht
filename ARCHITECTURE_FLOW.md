@@ -134,6 +134,26 @@ RouteDirection (路线人格母本)
 │                   数据层 (PostgreSQL)                       │
 │  Trip → TripDay → ItineraryItem → Place                    │
 │  RouteDirection → RouteTemplate                            │
+│  DecisionLog → ApprovalRequest                             │
+│  ValidatedTrajectory (Iterative Deployment) ⭐             │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│        Iterative Deployment 训练层 (Training Layer) ⭐      │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ 1. 轨迹收集 (TrajectoryCollectionPipeline)            │  │
+│  │    └─ PLAN_GEN完成后、用户审批后、执行完成后收集轨迹    │  │
+│  │ 2. 轨迹验证 (TrajectoryValidationPipeline)            │  │
+│  │    └─ 验证轨迹质量，筛选通过验证的高质量轨迹            │  │
+│  │ 3. Reward提取 (RewardExtractionPipeline)              │  │
+│  │    └─ 从用户行为提取reward信号                         │  │
+│  │ 4. 训练数据准备 (TrainingDataPreparationPipeline)     │  │
+│  │    └─ 筛选高质量轨迹，准备SFT训练数据                  │  │
+│  │ 5. 模型训练 (FineTuneService)                          │  │
+│  │    └─ 执行模型微调，生成新模型版本                     │  │
+│  │ 6. 模型部署 (ModelDeploymentService)                  │  │
+│  │    └─ 模型版本管理和部署                               │  │
+│  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -299,3 +319,72 @@ AgentModule
 - `README.md`: 项目总览
 - `src/agent/README.md`: Agent模块文档
 - `src/trips/decision/README.md`: 决策系统文档
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md`: Iterative Deployment应用分析 ⭐
+
+---
+
+## 🔄 Iterative Deployment 流程（新增）
+
+### Iterative Deployment 循环
+
+```
+部署模型 M₁
+    ↓
+收集规划轨迹（PLAN_GEN、用户审批、执行完成）
+    ↓
+验证轨迹质量（GateResult = ALLOW、无CRITICAL风险、用户审批 = APPROVED）
+    ↓
+筛选高质量轨迹（validationScore >= 0.8, totalReward > 0）
+    ↓
+提取Reward信号（用户审批、规划提交、决策对齐）
+    ↓
+准备训练数据（筛选、标注、导出SFT格式）
+    ↓
+模型微调（Fine-tune M₁ → M₂）
+    ↓
+部署模型 M₂
+    ↓
+重复循环（持续迭代）
+```
+
+### 轨迹收集点
+
+```
+CLAUDE_SM 状态机流程
+    ↓
+PLAN_GEN 步骤完成
+    ├─ 收集轨迹：plan、decisionTrace、researchData、gateResult
+    └─ 存储到 ValidatedTrajectory（待验证）
+    ↓
+用户审批（ApprovalRequest）
+    ├─ 收集轨迹：用户审批结果（APPROVED/REJECTED）
+    └─ 更新轨迹：添加userApproval字段
+    ↓
+执行完成（ExecutorService）
+    ├─ 收集轨迹：执行结果（success/failed）
+    └─ 更新轨迹：添加executionResult字段
+    ↓
+轨迹验证（TrajectoryValidatorService）
+    ├─ 验证轨迹质量
+    └─ 标记为 VALIDATED（如果通过验证）
+```
+
+### Reward信号提取
+
+```
+用户行为
+    ├─ 用户审批 APPROVED → +1.0
+    ├─ 用户审批 REJECTED → -0.5
+    ├─ 规划工作台提交 → +0.8
+    └─ 决策对齐（alignmentScore）→ 0-1
+    ↓
+RewardSignalExtractorService
+    └─ 提取reward信号，关联到trajectoryId
+    ↓
+更新轨迹reward
+    └─ 计算totalReward，用于训练数据筛选
+```
+
+**参考**：
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
+- `.claude/roles/architect.md` - Iterative Deployment架构设计

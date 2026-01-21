@@ -145,15 +145,19 @@ export class RagService {
    * 索引文档（添加文档到索引库）
    */
   async indexDocument(item: DocumentIndexItem): Promise<string> {
-    this.logger.debug(`索引文档: collection=${item.collection}, title="${item.title.substring(0, 50)}..."`);
+    this.logger.debug(`索引文档: collection=${item.collection}, title="${item.title?.substring(0, 50) || 'untitled'}..."`);
 
     try {
       // 1. 生成 embedding
-      const textToEmbed = `${item.title}\n\n${item.content}`;
+      const textToEmbed = `${item.title || ''}\n\n${item.content}`;
       const embedding = await this.embeddingService.generateEmbedding(textToEmbed);
 
-      // 2. 保存到数据库
-      // 注意：由于 Prisma 不支持直接插入 vector 类型，我们需要使用原始 SQL
+      // 2. 将 embedding 数组转换为 PostgreSQL vector 格式字符串
+      // 格式: '[0.1, 0.2, 0.3, ...]'
+      const embeddingStr = `[${embedding.join(',')}]`;
+
+      // 3. 保存到数据库
+      // 注意：使用字符串格式传递 vector，避免类型推断问题
       const result = await this.prisma.$queryRaw<Array<{ id: string }>>`
         INSERT INTO "document_index" (
           id, collection, title, content, embedding, source, "country_code", tags, metadata, "created_at", "updated_at"
@@ -161,9 +165,9 @@ export class RagService {
         VALUES (
           gen_random_uuid(),
           ${item.collection},
-          ${item.title},
+          ${item.title || 'Untitled'},
           ${item.content},
-          ${embedding}::vector,
+          ${embeddingStr}::vector,
           ${item.source || null},
           ${item.countryCode || null},
           ${item.tags || []}::text[],
@@ -234,12 +238,15 @@ export class RagService {
 
     // 使用原始 SQL 更新（因为 embedding 字段）
     if (updateData.embedding) {
+      // 将 embedding 数组转换为 PostgreSQL vector 格式字符串
+      const embeddingStr = `[${updateData.embedding.join(',')}]`;
+      
       await this.prisma.$executeRaw`
         UPDATE "document_index"
         SET 
           title = COALESCE(${updateData.title}, title),
           content = COALESCE(${updateData.content}, content),
-          embedding = ${updateData.embedding}::vector,
+          embedding = ${embeddingStr}::vector,
           source = COALESCE(${updateData.source}, source),
           "country_code" = COALESCE(${updateData.countryCode}, "country_code"),
           tags = COALESCE(${updateData.tags}::text[], tags),
@@ -252,6 +259,189 @@ export class RagService {
         where: { id },
         data: updateData,
       });
+    }
+  }
+
+  /**
+   * 获取文档列表（后台管理）
+   */
+  async getDocuments(params: {
+    collection?: string;
+    countryCode?: string;
+    tags?: string[];
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{
+    documents: Array<{
+      id: string;
+      collection: string;
+      title: string;
+      content: string;
+      source: string | null;
+      countryCode: string | null;
+      tags: string[];
+      metadata: any;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    const { collection, countryCode, tags, search, page = 1, pageSize = 20 } = params;
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+    if (collection) where.collection = collection;
+    if (countryCode) where.countryCode = countryCode;
+    if (tags && tags.length > 0) {
+      where.tags = { hasSome: tags };
+    }
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { content: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [documents, total] = await Promise.all([
+      this.prisma.documentIndex.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          collection: true,
+          title: true,
+          content: true,
+          source: true,
+          countryCode: true,
+          tags: true,
+          metadata: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.documentIndex.count({ where }),
+    ]);
+
+    return {
+      documents,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  /**
+   * 获取文档详情（后台管理）
+   */
+  async getDocument(id: string): Promise<{
+    id: string;
+    collection: string;
+    title: string;
+    content: string;
+    source: string | null;
+    countryCode: string | null;
+    tags: string[];
+    metadata: any;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    return this.prisma.documentIndex.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        collection: true,
+        title: true,
+        content: true,
+        source: true,
+        countryCode: true,
+        tags: true,
+        metadata: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  /**
+   * 获取 RAG 统计信息
+   */
+  async getStats(collection?: string): Promise<{
+    totalDocuments: number;
+    collections: Array<{
+      name: string;
+      count: number;
+      countries: string[];
+    }>;
+    byCollection?: {
+      name: string;
+      count: number;
+      countries: string[];
+      tags: string[];
+    };
+  }> {
+    try {
+      // 获取总文档数
+      const totalCount = await this.prisma.documentIndex.count({
+        where: collection ? { collection } : undefined,
+      });
+
+      // 获取集合统计
+      const collectionStats = await this.prisma.$queryRaw<Array<{
+        collection: string;
+        count: bigint;
+        countries: string[];
+        tags: string[];
+      }>>`
+        SELECT 
+          d.collection,
+          COUNT(*)::bigint as count,
+          ARRAY_AGG(DISTINCT d."country_code") FILTER (WHERE d."country_code" IS NOT NULL) as countries,
+          (
+            SELECT ARRAY_AGG(DISTINCT t.tag)
+            FROM "document_index" d2, LATERAL unnest(d2.tags) AS t(tag)
+            WHERE d2.collection = d.collection
+          ) as tags
+        FROM "document_index" d
+        ${collection ? Prisma.sql`WHERE d.collection = ${collection}` : Prisma.empty}
+        GROUP BY d.collection
+        ORDER BY d.collection
+      `;
+
+      const collections = collectionStats.map((stat) => ({
+        name: stat.collection,
+        count: Number(stat.count),
+        countries: stat.countries || [],
+        tags: stat.tags || [],
+      }));
+
+      const result: any = {
+        totalDocuments: totalCount,
+        collections,
+      };
+
+      // 如果指定了集合，返回该集合的详细信息
+      if (collection) {
+        const collectionInfo = collections.find((c) => c.name === collection);
+        if (collectionInfo) {
+          result.byCollection = collectionInfo;
+        }
+      }
+
+      return result;
+    } catch (error: any) {
+      this.logger.error(`获取 RAG 统计失败: ${error.message}`, error.stack);
+      throw error;
     }
   }
 }

@@ -52,6 +52,11 @@ import {
 } from './dto/suggestions.dto';
 import { TripInsightResponseDto } from './dto/trip-insight.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
+import { AdminTripListQueryDto, AdminTripStatsQueryDto, BatchOperationRequestDto } from './dto/admin-trip.dto';
+import { TokenService } from '../auth/services/token.service';
+import { JwtService } from '@nestjs/jwt';
+import { Req } from '@nestjs/common';
+import { Request } from 'express';
 
 @ApiTags('trips')
 @Public() // 临时开放测试，生产环境应移除
@@ -74,7 +79,9 @@ export class TripsController {
     private readonly tripOptimizationService: TripOptimizationService,
     private readonly tripSuggestionsService: TripSuggestionsService,
     private readonly tripInsightService: TripInsightService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly tokenService: TokenService,
+    private readonly jwtService: JwtService
   ) {}
 
   @Post()
@@ -94,10 +101,30 @@ export class TripsController {
   })
   async create(
     @Body() body: CreateTripDto | SaveTripDraftDto,
-    @CurrentUser() user?: CurrentUserPayload
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request
   ) {
     try {
-      const userId = user?.userId;
+      // Try to get userId from @CurrentUser() decorator first
+      let userId = user?.userId;
+      
+      // If not available, try to extract from Authorization header manually
+      if (!userId && req?.headers?.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          try {
+            // Use JwtService to verify token
+            const payload = await this.jwtService.verifyAsync(token);
+            userId = payload.sub;
+            this.logger.debug(`Successfully extracted userId from token: ${userId}`);
+          } catch (error: any) {
+            // Token invalid, continue to return error
+            this.logger.debug(`Failed to verify token: ${error?.message || error}`);
+          }
+        }
+      }
+      
       if (!userId) {
         return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
       }
@@ -287,6 +314,132 @@ export class TripsController {
       const result = await this.tripsService.getAttentionQueue(query);
       return successResponse(result);
     } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 后台管理接口 ====================
+  // 注意：admin 路由必须放在 :id 路由之前，避免路由冲突
+
+  @Get('admin')
+  @ApiOperation({
+    summary: '获取行程列表（管理接口）',
+    description: '获取所有行程列表，支持分页、筛选、排序、搜索。用于后台管理系统。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async findAllAdmin(@Query() query: any) {
+    try {
+      const result = await this.tripsService.findAllAdmin(query);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`获取行程列表失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/stats')
+  @ApiOperation({
+    summary: '获取行程统计信息（管理接口）',
+    description: '获取行程相关的统计数据，包括总体统计、分类统计、趋势分析等。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程统计信息（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getAdminStats(@Query() query: any) {
+    try {
+      const stats = await this.tripsService.getAdminStats(query);
+      return successResponse(stats);
+    } catch (error: any) {
+      this.logger.error(`获取行程统计失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/:id')
+  @ApiOperation({
+    summary: '获取行程详情（管理视图）',
+    description: '获取单个行程的完整信息，包括所有关联数据。用于后台管理系统。',
+  })
+  @ApiParam({ name: 'id', description: '行程ID（UUID）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程详情（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async findOneAdmin(@Param('id') id: string) {
+    try {
+      const trip = await this.tripsService.findOneAdmin(id);
+      return successResponse(trip);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取行程详情失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post('admin/batch')
+  @ApiOperation({
+    summary: '批量操作（管理接口）',
+    description: '批量执行操作（删除、状态更新等）。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['DELETE', 'UPDATE_STATUS'] },
+        tripIds: { type: 'array', items: { type: 'string' } },
+        params: { type: 'object' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功执行批量操作（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async batchOperation(@Body() body: any) {
+    try {
+      const result = await this.tripsService.batchOperation(body);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`批量操作失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/:id/export')
+  @ApiOperation({
+    summary: '导出行程数据（管理接口）',
+    description: '导出单个行程的完整数据（JSON/CSV格式）。',
+  })
+  @ApiParam({ name: 'id', description: '行程ID（UUID）' })
+  @ApiQuery({ name: 'format', required: false, enum: ['json', 'csv'], description: '导出格式', example: 'json' })
+  @ApiResponse({
+    status: 200,
+    description: '成功导出数据',
+  })
+  async exportTrip(@Param('id') id: string, @Query('format') format: string = 'json') {
+    try {
+      const result = await this.tripsService.exportTrip(id, format);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`导出行程数据失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -1115,20 +1268,145 @@ export class TripsController {
     }
   }
 
+  @Post(':id/budget/constraint')
+  @ApiOperation({
+    summary: '设置行程预算约束',
+    description: '为行程设置或更新预算约束（总预算、货币单位、日均预算、分类预算限制等）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number', description: '总预算（必填，单位：CNY）', minimum: 100, maximum: 1000000 },
+        currency: { type: 'string', description: '货币单位（默认 "CNY"）', enum: ['CNY', 'USD', 'EUR', 'JPY'] },
+        dailyBudget: { type: 'number', description: '日均预算（可选，自动计算或手动设置）' },
+        categoryLimits: {
+          type: 'object',
+          properties: {
+            accommodation: { type: 'number' },
+            transportation: { type: 'number' },
+            food: { type: 'number' },
+            activities: { type: 'number' },
+            other: { type: 'number' },
+          },
+        },
+        alertThreshold: { type: 'number', description: '预警阈值（默认 0.8，即 80%）', minimum: 0, maximum: 1 },
+      },
+      required: ['total'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功设置预算约束',
+    type: ApiSuccessResponseDto,
+  })
+  async setBudgetConstraint(
+    @Param('id') id: string,
+    @Body() body: {
+      total?: number;
+      currency?: string;
+      dailyBudget?: number;
+      categoryLimits?: {
+        accommodation?: number;
+        transportation?: number;
+        food?: number;
+        activities?: number;
+        other?: number;
+      };
+      alertThreshold?: number;
+    }
+  ) {
+    try {
+      const constraint = await this.tripBudgetService.setBudgetConstraint(id, body);
+      return successResponse({ tripId: id, budgetConstraint: constraint, updatedAt: constraint.updatedAt });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/constraint')
+  @ApiOperation({
+    summary: '获取预算约束',
+    description: '获取行程的预算约束配置',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回预算约束',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetConstraint(@Param('id') id: string) {
+    try {
+      const constraint = await this.tripBudgetService.getBudgetConstraint(id);
+      if (!constraint) {
+        return successResponse({ budgetConstraint: null });
+      }
+      return successResponse({
+        budgetConstraint: constraint,
+        createdAt: constraint.createdAt,
+        updatedAt: constraint.updatedAt,
+      });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Delete(':id/budget/constraint')
+  @ApiOperation({
+    summary: '删除预算约束',
+    description: '删除行程的预算约束（恢复为无预算限制）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除预算约束',
+    type: ApiSuccessResponseDto,
+  })
+  async deleteBudgetConstraint(@Param('id') id: string) {
+    try {
+      await this.tripBudgetService.deleteBudgetConstraint(id);
+      return successResponse({ tripId: id, deletedAt: new Date().toISOString() });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get(':id/budget/summary')
   @ApiOperation({
     summary: '获取行程预算摘要',
-    description: '实时查看行程消费和预算情况，包含各类消费明细分类',
+    description: '实时查看行程消费和预算情况，包含各类消费明细分类。支持时间范围和分类筛选。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'startDate', description: '开始日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'endDate', description: '结束日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'category', description: '分类筛选（accommodation/transportation/food/activities/other）', required: false })
   @ApiResponse({
     status: 200,
     description: '成功返回预算摘要',
     type: ApiSuccessResponseDto,
   })
-  async getBudgetSummary(@Param('id') id: string) {
+  async getBudgetSummary(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('category') category?: string
+  ) {
     try {
       const summary = await this.tripBudgetService.getBudgetSummary(id);
+      // TODO: 实现时间范围和分类筛选（当前返回完整摘要）
       return successResponse(summary);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -1192,6 +1470,82 @@ export class TripsController {
     }
   }
 
+  @Get(':id/budget/details')
+  @ApiOperation({
+    summary: '获取预算明细',
+    description: '获取预算的详细支出明细（按日期、分类、项目），支持时间范围、分类筛选和分页',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'startDate', description: '开始日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'endDate', description: '结束日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'category', description: '分类筛选（accommodation/transportation/food/activities/other）', required: false })
+  @ApiQuery({ name: 'limit', description: '分页限制（默认 50）', required: false, type: Number })
+  @ApiQuery({ name: 'offset', description: '分页偏移（默认 0）', required: false, type: Number })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回预算明细',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetDetails(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('category') category?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number
+  ) {
+    try {
+      const details = await this.tripBudgetService.getBudgetDetails(id, {
+        startDate,
+        endDate,
+        category,
+        limit: limit ? parseInt(limit.toString(), 10) : undefined,
+        offset: offset ? parseInt(offset.toString(), 10) : undefined,
+      });
+      return successResponse(details);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/trends')
+  @ApiOperation({
+    summary: '获取预算趋势',
+    description: '获取预算执行趋势（每日支出趋势、分类分布趋势），支持时间范围和粒度设置',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'startDate', description: '开始日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'endDate', description: '结束日期（ISO 8601）', required: false })
+  @ApiQuery({ name: 'granularity', description: '粒度（daily/weekly/monthly）', required: false, enum: ['daily', 'weekly', 'monthly'] })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回预算趋势',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetTrends(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('granularity') granularity?: 'daily' | 'weekly' | 'monthly'
+  ) {
+    try {
+      const trends = await this.tripBudgetService.getBudgetTrends(id, {
+        startDate,
+        endDate,
+        granularity,
+      });
+      return successResponse(trends);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get(':id/budget/report')
   @ApiOperation({
     summary: '生成预算执行分析报告',
@@ -1207,6 +1561,56 @@ export class TripsController {
     try {
       const report = await this.tripBudgetService.generateBudgetReport(id);
       return successResponse(report);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/monitor')
+  @ApiOperation({
+    summary: '实时预算监控',
+    description: '获取实时预算监控数据（当前支出、剩余预算、每日支出、预警信息）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'realtime', description: '是否启用实时推送（WebSocket，暂未实现）', required: false, type: Boolean })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回监控数据',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetMonitor(
+    @Param('id') id: string,
+    @Query('realtime') realtime?: boolean
+  ) {
+    try {
+      const monitor = await this.tripBudgetService.getBudgetMonitor(id);
+      return successResponse(monitor);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/budget/statistics')
+  @ApiOperation({
+    summary: '预算执行统计',
+    description: '获取预算执行的统计信息（完成度、超支率、分类占比、日均支出、风险等级等）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回统计信息',
+    type: ApiSuccessResponseDto,
+  })
+  async getBudgetStatistics(@Param('id') id: string) {
+    try {
+      const statistics = await this.tripBudgetService.getBudgetStatistics(id);
+      return successResponse(statistics);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);

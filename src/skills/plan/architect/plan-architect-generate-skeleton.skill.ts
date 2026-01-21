@@ -80,9 +80,9 @@ export class PlanArchitectGenerateSkeletonSkill implements Skill<PlanArchitectGe
 
 ${userPrompt}`;
       
-      // 添加超时处理（30秒）
+      // 使用 Claude (Anthropic) API，超时时间根据行程天数动态调整
       const llmCallPromise = this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        LlmProvider.ANTHROPIC,
         fullPrompt,
         {
           type: 'object',
@@ -158,17 +158,25 @@ ${userPrompt}`;
         },
       );
 
+      // 增加超时时间到 60 秒（对于复杂行程方案）
+      const timeoutMs = input.context.days > 7 ? 90000 : 60000; // 长行程 90 秒，短行程 60 秒
       const timeoutPromise = new Promise<string>((_, reject) => {
         setTimeout(() => {
-          reject(new Error('LLM 调用超时（30秒）'));
-        }, 30000);
+          reject(new Error(`LLM 调用超时（${timeoutMs / 1000}秒）`));
+        }, timeoutMs);
       });
 
       let skeletonSetStr: string;
       try {
         skeletonSetStr = await Promise.race([llmCallPromise, timeoutPromise]);
       } catch (error: any) {
-        this.logger.error(`LLM 调用失败: ${error.message}`);
+        // 区分超时错误和其他错误
+        const isTimeout = error.message?.includes('超时') || error.message?.includes('timeout');
+        if (isTimeout) {
+          this.logger.warn(`LLM 调用超时，使用默认方案: ${error.message}`);
+        } else {
+          this.logger.error(`LLM 调用失败，使用默认方案: ${error.message}`);
+        }
         // 返回默认骨架方案
         return this.getDefaultSkeletonSet(input.context);
       }

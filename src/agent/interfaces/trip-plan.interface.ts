@@ -174,7 +174,7 @@ export interface Itinerary {
  * 
  * 必须输出结构化决策日志：检查了什么、用了哪些证据、为什么允许/拒绝/调整
  */
-export type OrchestrationStep = 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED' | 'HALLUCINATION_DETECTION';
+export type OrchestrationStep = 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED' | 'TIMEOUT' | 'HALLUCINATION_DETECTION';
 
 /**
  * 三人格类型（用于决策日志归因）
@@ -301,6 +301,16 @@ export interface OrchestratorState {
   clarification_questions?: ClarificationQuestion[]; // 结构化澄清问题（P1 改进）
   research_data?: Record<string, any>; // Skills 返回的硬数据
   gate_result?: GateResult;
+  compliance_result?: {
+    risk_warnings: Array<{
+      level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+      category: 'SAFETY' | 'LEGAL' | 'HEALTH' | 'FINANCIAL' | 'LOGISTICS';
+      message: string;
+      requires_user_confirmation: boolean;
+    }>;
+    disclaimers: string[];
+    required_confirmations: string[];
+  }; // Compliance 检查结果
   itinerary?: Itinerary;
   alternatives?: {
     alternative_pois: Array<{

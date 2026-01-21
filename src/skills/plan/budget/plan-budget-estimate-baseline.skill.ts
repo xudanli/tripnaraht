@@ -70,44 +70,57 @@ confidence: 估算的置信度（low/medium/high）
 
 ${userPrompt}`;
       
-      const budgetBreakdownStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
-        fullPrompt,
-        {
-          type: 'object',
-          properties: {
-            categories: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  category: {
-                    type: 'string',
-                    enum: ['transportation', 'accommodation', 'food', 'tickets', 'experiences', 'buffer'],
+      try {
+        const budgetBreakdownStr = await this.llmService.callLlmWithSchema(
+          LlmProvider.ANTHROPIC,
+          fullPrompt,
+          {
+            type: 'object',
+            properties: {
+              categories: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    category: {
+                      type: 'string',
+                      enum: ['transportation', 'accommodation', 'food', 'tickets', 'experiences', 'buffer'],
+                    },
+                    min: { type: 'number' },
+                    max: { type: 'number' },
+                    estimated: { type: 'number' },
+                    assumptions: { type: 'array', items: { type: 'string' } },
                   },
-                  min: { type: 'number' },
-                  max: { type: 'number' },
-                  estimated: { type: 'number' },
-                  assumptions: { type: 'array', items: { type: 'string' } },
+                  required: ['category', 'min', 'max', 'estimated', 'assumptions'],
                 },
-                required: ['category', 'min', 'max', 'estimated', 'assumptions'],
               },
+              confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
+              assumptions: { type: 'array', items: { type: 'string' } },
             },
-            confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
-            assumptions: { type: 'array', items: { type: 'string' } },
+            required: ['categories', 'confidence', 'assumptions'],
           },
-          required: ['categories', 'confidence', 'assumptions'],
-        },
-      );
+        );
 
-      const budgetBreakdown = JSON.parse(budgetBreakdownStr) as BudgetBreakdown;
+        const budgetBreakdown = JSON.parse(budgetBreakdownStr) as BudgetBreakdown;
 
-      return {
-        budgetBreakdown,
-      };
+        return {
+          budgetBreakdown,
+        };
+      } catch (llmError: any) {
+        // LLM 调用失败，返回默认预算拆分
+        const isTimeout = llmError.message?.includes('超时') || llmError.message?.includes('timeout');
+        if (isTimeout) {
+          this.logger.warn(`预算估算超时，使用默认预算拆分: ${llmError.message}`);
+        } else {
+          this.logger.warn(`预算估算失败，使用默认预算拆分: ${llmError.message}`);
+        }
+        
+        return this.getDefaultBudgetBreakdown(input.planState, input.destination);
+      }
     } catch (error: any) {
       this.logger.error(`估算预算失败: ${error.message}`, error.stack);
-      throw error;
+      // 返回默认预算拆分，不抛出异常
+      return this.getDefaultBudgetBreakdown(input.planState, input.destination);
     }
   }
 
@@ -139,5 +152,67 @@ ${userPrompt}`;
     parts.push(`每个类别提供 min/max/estimated 和 assumptions`);
     
     return parts.join('\n');
+  }
+
+  /**
+   * 获取默认预算拆分（当 LLM 调用失败时使用）
+   */
+  private getDefaultBudgetBreakdown(planState: PlanState, destination: any): PlanBudgetEstimateBaselineOutput {
+    const days = planState.constraints.time.days;
+    const totalBudget = planState.constraints.budget?.total || 20000; // 默认 2 万
+    
+    // 简单的默认预算拆分（基于天数）
+    const perDayBudget = totalBudget / days;
+    
+    return {
+      budgetBreakdown: {
+        categories: [
+          {
+            category: 'transportation',
+            min: perDayBudget * 0.15 * days,
+            max: perDayBudget * 0.25 * days,
+            estimated: perDayBudget * 0.20 * days,
+            assumptions: ['基于默认交通方式估算'],
+          },
+          {
+            category: 'accommodation',
+            min: perDayBudget * 0.25 * days,
+            max: perDayBudget * 0.40 * days,
+            estimated: perDayBudget * 0.30 * days,
+            assumptions: ['基于中等档位住宿估算'],
+          },
+          {
+            category: 'food',
+            min: perDayBudget * 0.20 * days,
+            max: perDayBudget * 0.30 * days,
+            estimated: perDayBudget * 0.25 * days,
+            assumptions: ['基于目的地消费水平估算'],
+          },
+          {
+            category: 'tickets',
+            min: perDayBudget * 0.10 * days,
+            max: perDayBudget * 0.20 * days,
+            estimated: perDayBudget * 0.15 * days,
+            assumptions: ['基于景点门票估算'],
+          },
+          {
+            category: 'experiences',
+            min: perDayBudget * 0.05 * days,
+            max: perDayBudget * 0.15 * days,
+            estimated: perDayBudget * 0.10 * days,
+            assumptions: ['基于可选体验项目估算'],
+          },
+          {
+            category: 'buffer',
+            min: totalBudget * 0.10,
+            max: totalBudget * 0.15,
+            estimated: totalBudget * 0.12,
+            assumptions: ['应急和意外支出'],
+          },
+        ],
+        confidence: 'low',
+        assumptions: ['LLM 调用失败，使用默认预算拆分'],
+      },
+    };
   }
 }

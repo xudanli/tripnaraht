@@ -17,6 +17,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { DemModule } from '../trips/dem/dem.module';
 import { LlmModule } from '../llm/llm.module';
 import { TransportModule } from '../transport/transport.module';
+import { DataContractsModule } from '../data-contracts/data-contracts.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -79,6 +80,9 @@ import { TransportSearchSkill } from './transport/transport-search.skill';
 // Places Skills
 import { PoiSearchSkill } from './places/poi-search.skill';
 import { OpeningHoursGetSkill } from './places/opening-hours-get.skill';
+
+// Weather Skills
+import { WeatherSearchSkill } from './weather/weather-search.skill';
 
 // Itinerary Skills
 import { ItineraryGenerateSkill } from './itinerary/itinerary-generate.skill';
@@ -211,6 +215,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     TransportModule, // 导入 TransportModule 以支持 TransportSearchSkill 使用 TransportRoutingService
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
     LlmModule, // 导入 LlmModule 以支持规划技能使用 LlmService
+    DataContractsModule, // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
@@ -352,6 +357,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     PoiSearchSkill,
     OpeningHoursGetSkill,
     
+    // Weather Skills
+    WeatherSearchSkill,
+    
     // Itinerary Skills
     ItineraryGenerateSkill,
     ItineraryVerifySkill,
@@ -454,6 +462,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     PoiSearchSkill,
     OpeningHoursGetSkill,
     
+    // Weather Skills
+    WeatherSearchSkill,
+    
     // Itinerary Skills
     ItineraryGenerateSkill,
     ItineraryVerifySkill,
@@ -534,6 +545,7 @@ export class SkillsModule {
     @Optional() private readonly transportSearchSkill?: TransportSearchSkill,
     @Optional() private readonly poiSearchSkill?: PoiSearchSkill,
     @Optional() private readonly openingHoursGetSkill?: OpeningHoursGetSkill,
+    @Optional() private readonly weatherSearchSkill?: WeatherSearchSkill,
     @Optional() private readonly itineraryGenerateSkill?: ItineraryGenerateSkill,
     @Optional() private readonly itineraryVerifySkill?: ItineraryVerifySkill,
     @Optional() private readonly repairApplySkill?: RepairApplySkill,
@@ -596,6 +608,12 @@ export class SkillsModule {
     if (this.openingHoursGetSkill) {
       this.skillsRegistry.registerSkill(this.openingHoursGetSkill);
       this.logger.debug('Registered OpeningHoursGetSkill');
+    }
+    
+    // 手动注册新 Weather Skills
+    if (this.weatherSearchSkill) {
+      this.skillsRegistry.registerSkill(this.weatherSearchSkill);
+      this.logger.debug('Registered WeatherSearchSkill');
     }
     
     // 手动注册新 Itinerary Skills
