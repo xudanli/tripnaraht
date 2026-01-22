@@ -157,13 +157,446 @@ export class RagController {
   @Post('index/batch')
   @ApiOperation({
     summary: '批量索引文档',
-    description: '批量将文档添加到 RAG 知识库索引',
+    description: '批量将文档添加到 RAG 知识库索引。支持两种格式：1) DocumentIndexItem数组；2) 路线JSON对象（会自动转换为文档）',
   })
-  @ApiBody({ type: [Object], description: '文档索引项数组' })
+  @ApiBody({ 
+    schema: {
+      oneOf: [
+        {
+          type: 'array',
+          items: { type: 'object' },
+          description: '文档索引项数组'
+        },
+        {
+          type: 'object',
+          description: '路线JSON对象（包含route字段）'
+        }
+      ]
+    }
+  })
   @ApiResponse({ status: 200, description: '批量索引成功', type: ApiSuccessResponseDto })
-  async indexDocuments(@Body() items: DocumentIndexItem[]) {
+  async indexDocuments(@Body() body: DocumentIndexItem[] | any) {
+    // 处理路线JSON格式：如果body是对象且包含route字段，则转换为文档数组
+    let items: DocumentIndexItem[];
+    
+    if (!Array.isArray(body)) {
+      // 检查是否是路线JSON格式
+      if (body && typeof body === 'object' && body.route) {
+        items = this.convertRouteToDocuments(body);
+      } else {
+        // 如果不是数组也不是路线格式，尝试将其包装为数组
+        items = Array.isArray(body) ? body : [body];
+      }
+    } else {
+      items = body;
+    }
+
+    // 验证items是数组且不为空
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('请求体必须是DocumentIndexItem数组或路线JSON对象');
+    }
+
     const ids = await this.ragService.indexDocuments(items);
     return { ids, success: true, count: ids.length };
+  }
+
+  /**
+   * 将路线JSON转换为文档索引项数组
+   */
+  private convertRouteToDocuments(routeData: any): DocumentIndexItem[] {
+    const documents: DocumentIndexItem[] = [];
+    const { route, metadata, data_provenance } = routeData;
+
+    if (!route) {
+      return documents;
+    }
+
+    const routeId = route.route_id || 'unknown';
+    const routeName = route.route_name || route.route_name_en || 'Unknown Route';
+    const countryCode = this.extractCountryCode(route);
+
+    // 1. 主路线文档（概述）
+    documents.push({
+      collection: 'travel_guides',
+      title: `${routeName} - 路线概述`,
+      content: this.formatRouteOverview(route),
+      countryCode,
+      tags: ['route', 'overview', route.route_type || 'self-drive'],
+      source: `route:${routeId}`,
+      metadata: {
+        routeId,
+        routeType: route.route_type,
+        durationDays: route.duration_days,
+        difficultyLevel: route.difficulty_level,
+        ...metadata,
+      },
+    });
+
+    // 2. 关键站点文档
+    if (route.key_stops && Array.isArray(route.key_stops)) {
+      route.key_stops.forEach((stop: any, index: number) => {
+        documents.push({
+          collection: 'travel_guides',
+          title: `${routeName} - ${stop.name || stop.name_en || `站点${index + 1}`}`,
+          content: this.formatStopContent(stop, route),
+          countryCode,
+          tags: ['route', 'stop', 'poi', stop.type || 'attraction'],
+          source: `route:${routeId}:stop:${stop.stop_id || index}`,
+          metadata: {
+            routeId,
+            stopId: stop.stop_id,
+            stopIndex: index,
+            coordinates: stop.coordinates,
+            ...stop,
+          },
+        });
+      });
+    }
+
+    // 3. 风险评估文档
+    if (route.risk_assessment) {
+      documents.push({
+        collection: 'travel_guides',
+        title: `${routeName} - 风险评估与安全提示`,
+        content: this.formatRiskAssessment(route.risk_assessment, route),
+        countryCode,
+        tags: ['route', 'safety', 'risk-assessment'],
+        source: `route:${routeId}:risk`,
+        metadata: {
+          routeId,
+          riskLevel: route.risk_assessment.overall_risk_level,
+          riskScore: route.risk_assessment.risk_score,
+        },
+      });
+    }
+
+    // 4. 季节性变化文档
+    if (route.seasonal_variations) {
+      Object.entries(route.seasonal_variations).forEach(([season, data]: [string, any]) => {
+        documents.push({
+          collection: 'travel_guides',
+          title: `${routeName} - ${season === 'summer' ? '夏季' : season === 'winter' ? '冬季' : season === 'spring' ? '春季' : season === 'autumn' ? '秋季' : season}旅行指南`,
+          content: this.formatSeasonalInfo(season, data, route),
+          countryCode,
+          tags: ['route', 'seasonal', season],
+          source: `route:${routeId}:season:${season}`,
+          metadata: {
+            routeId,
+            season,
+            months: data.months,
+          },
+        });
+      });
+    }
+
+    // 5. 决策支持文档
+    if (route.decision_support_summary) {
+      documents.push({
+        collection: 'travel_guides',
+        title: `${routeName} - 决策支持信息`,
+        content: this.formatDecisionSupport(route.decision_support_summary, route),
+        countryCode,
+        tags: ['route', 'decision-support', 'planning'],
+        source: `route:${routeId}:decision`,
+        metadata: {
+          routeId,
+        },
+      });
+    }
+
+    return documents;
+  }
+
+  /**
+   * 提取国家代码
+   */
+  private extractCountryCode(route: any): string | undefined {
+    // 从start_point或end_point提取
+    if (route.start_point?.coordinates) {
+      // 根据坐标推断（简化处理，实际应该使用地理编码）
+      // 这里假设如果提供了坐标，可以从metadata或其他字段获取
+    }
+    
+    // 从route_id推断（如iceland_golden_circle_001 -> IS）
+    if (route.route_id) {
+      const routeIdLower = route.route_id.toLowerCase();
+      if (routeIdLower.includes('iceland')) return 'IS';
+      if (routeIdLower.includes('japan')) return 'JP';
+      if (routeIdLower.includes('switzerland')) return 'CH';
+      // 可以添加更多映射
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 格式化路线概述
+   */
+  private formatRouteOverview(route: any): string {
+    const parts: string[] = [];
+
+    parts.push(`路线名称：${route.route_name || route.route_name_en || '未知路线'}`);
+    if (route.route_name_en && route.route_name !== route.route_name_en) {
+      parts.push(`英文名称：${route.route_name_en}`);
+    }
+
+    if (route.duration_days) {
+      parts.push(`行程天数：${route.duration_days}天`);
+    }
+    if (route.total_distance_km) {
+      parts.push(`总距离：${route.total_distance_km}公里`);
+    }
+    if (route.difficulty_level) {
+      parts.push(`难度等级：${route.difficulty_level}`);
+    }
+    if (route.best_seasons && Array.isArray(route.best_seasons)) {
+      parts.push(`最佳季节：${route.best_seasons.join('、')}`);
+    }
+    if (route.avoid_seasons && Array.isArray(route.avoid_seasons)) {
+      parts.push(`避免季节：${route.avoid_seasons.join('、')}`);
+    }
+
+    if (route.rhythm_pattern) {
+      parts.push(`节奏模式：${route.rhythm_pattern}`);
+    }
+
+    if (route.start_point) {
+      parts.push(`起点：${route.start_point.name || route.start_point.name_en || '未知'}`);
+    }
+    if (route.end_point) {
+      parts.push(`终点：${route.end_point.name || route.end_point.name_en || '未知'}`);
+    }
+
+    if (route.route_characteristics) {
+      const rc = route.route_characteristics;
+      if (rc.road_quality) {
+        parts.push(`路况：${rc.road_quality.surface_type || '未知'}，${rc.road_quality.condition || '未知'}`);
+        if (rc.road_quality.paved_percentage) {
+          parts.push(`铺装路面比例：${rc.road_quality.paved_percentage}%`);
+        }
+      }
+    }
+
+    if (route.user_feedback_summary) {
+      const ufs = route.user_feedback_summary;
+      if (ufs.average_rating) {
+        parts.push(`用户评分：${ufs.average_rating}/5.0（基于${ufs.total_reviews || 0}条评价）`);
+      }
+      if (ufs.common_praises && Array.isArray(ufs.common_praises)) {
+        parts.push(`用户好评：${ufs.common_praises.join('、')}`);
+      }
+      if (ufs.tips_from_users && Array.isArray(ufs.tips_from_users)) {
+        parts.push(`用户建议：${ufs.tips_from_users.join('；')}`);
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * 格式化站点内容
+   */
+  private formatStopContent(stop: any, route: any): string {
+    const parts: string[] = [];
+
+    parts.push(`站点名称：${stop.name || stop.name_en || '未知站点'}`);
+    if (stop.name_en && stop.name !== stop.name_en) {
+      parts.push(`英文名称：${stop.name_en}`);
+    }
+
+    if (stop.type) {
+      parts.push(`类型：${stop.type}`);
+    }
+
+    if (stop.recommended_time_minutes) {
+      parts.push(`建议游览时间：${stop.recommended_time_minutes}分钟`);
+    }
+
+    if (stop.highlights && Array.isArray(stop.highlights)) {
+      parts.push(`亮点：\n${stop.highlights.map((h: string) => `- ${h}`).join('\n')}`);
+    }
+
+    if (stop.safety_warnings && Array.isArray(stop.safety_warnings)) {
+      parts.push(`安全提示：\n${stop.safety_warnings.map((w: string) => `⚠️ ${w}`).join('\n')}`);
+    }
+
+    if (stop.accessibility) {
+      const acc = stop.accessibility;
+      if (acc.wheelchair_friendly) {
+        parts.push(`无障碍设施：${acc.wheelchair_friendly}`);
+      }
+      if (acc.parking) {
+        parts.push(`停车：${acc.parking}`);
+      }
+      if (acc.facilities && Array.isArray(acc.facilities)) {
+        parts.push(`设施：${acc.facilities.join('、')}`);
+      }
+    }
+
+    if (stop.fees) {
+      const fees = stop.fees;
+      const feeParts: string[] = [];
+      if (fees.admission) {
+        feeParts.push(`门票：${fees.admission}`);
+      }
+      if (fees.parking) {
+        feeParts.push(`停车费：${fees.parking}`);
+      }
+      if (fees.parking_isk) {
+        feeParts.push(`停车费：${fees.parking_isk} ISK${fees.parking_usd ? ` (约${fees.parking_usd} USD)` : ''}`);
+      }
+      if (fees.admission_isk) {
+        feeParts.push(`门票：${fees.admission_isk} ISK${fees.admission_usd ? ` (约${fees.admission_usd} USD)` : ''}`);
+      }
+      if (feeParts.length > 0) {
+        parts.push(`费用：${feeParts.join('；')}`);
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * 格式化风险评估
+   */
+  private formatRiskAssessment(risk: any, route: any): string {
+    const parts: string[] = [];
+
+    parts.push(`总体风险等级：${risk.overall_risk_level || '未知'}`);
+    if (risk.risk_score !== undefined) {
+      parts.push(`风险评分：${risk.risk_score}`);
+    }
+
+    if (risk.risk_breakdown) {
+      parts.push('\n风险分解：');
+      Object.entries(risk.risk_breakdown).forEach(([key, value]: [string, any]) => {
+        const riskName = {
+          weather_risk: '天气风险',
+          terrain_risk: '地形风险',
+          accessibility_risk: '可达性风险',
+          health_risk: '健康风险',
+          navigation_risk: '导航风险',
+          service_risk: '服务风险',
+        }[key] || key;
+
+        parts.push(`\n${riskName}：`);
+        parts.push(`- 严重程度：${value.severity || '未知'}`);
+        parts.push(`- 评分：${value.score || '未知'}`);
+        if (value.description) {
+          parts.push(`- 描述：${value.description}`);
+        }
+        if (value.mitigation && Array.isArray(value.mitigation)) {
+          parts.push(`- 缓解措施：\n${value.mitigation.map((m: string) => `  • ${m}`).join('\n')}`);
+        }
+      });
+    }
+
+    if (risk.critical_safety_notes && Array.isArray(risk.critical_safety_notes)) {
+      parts.push('\n关键安全提示：');
+      risk.critical_safety_notes.forEach((note: string) => {
+        parts.push(`⚠️ ${note}`);
+      });
+    }
+
+    if (risk.emergency_contacts && Array.isArray(risk.emergency_contacts)) {
+      parts.push('\n紧急联系方式：');
+      risk.emergency_contacts.forEach((contact: any) => {
+        parts.push(`- ${contact.service}：${contact.number}`);
+      });
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * 格式化季节性信息
+   */
+  private formatSeasonalInfo(season: string, data: any, route: any): string {
+    const seasonName = {
+      summer: '夏季',
+      winter: '冬季',
+      spring: '春季',
+      autumn: '秋季',
+    }[season] || season;
+
+    const parts: string[] = [];
+
+    parts.push(`${seasonName}旅行指南（${route.route_name || route.route_name_en || '未知路线'}）`);
+
+    if (data.months && Array.isArray(data.months)) {
+      parts.push(`月份：${data.months.join('、')}`);
+    }
+
+    if (data.characteristics) {
+      const chars = data.characteristics;
+      if (chars.daylight_hours) {
+        parts.push(`日照时长：${chars.daylight_hours}`);
+      }
+      if (chars.temperature_celsius) {
+        parts.push(`温度：${chars.temperature_celsius}°C`);
+      }
+      if (chars.weather) {
+        parts.push(`天气：${chars.weather}`);
+      }
+      if (chars.road_conditions) {
+        parts.push(`路况：${chars.road_conditions}`);
+      }
+      if (chars.tourist_volume) {
+        parts.push(`游客量：${chars.tourist_volume}`);
+      }
+    }
+
+    if (data.pros && Array.isArray(data.pros)) {
+      parts.push(`\n优点：\n${data.pros.map((p: string) => `✓ ${p}`).join('\n')}`);
+    }
+
+    if (data.cons && Array.isArray(data.cons)) {
+      parts.push(`\n缺点：\n${data.cons.map((c: string) => `✗ ${c}`).join('\n')}`);
+    }
+
+    if (data.recommendation) {
+      parts.push(`\n推荐：${data.recommendation}`);
+    }
+
+    if (data.special_requirements && Array.isArray(data.special_requirements)) {
+      parts.push(`\n特殊要求：\n${data.special_requirements.map((r: string) => `• ${r}`).join('\n')}`);
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * 格式化决策支持信息
+   */
+  private formatDecisionSupport(decision: any, route: any): string {
+    const parts: string[] = [];
+
+    if (decision.should_you_go) {
+      parts.push(`是否适合：${decision.should_you_go}`);
+    }
+
+    if (decision.ideal_for && Array.isArray(decision.ideal_for)) {
+      parts.push(`\n适合人群：\n${decision.ideal_for.map((item: string) => `✓ ${item}`).join('\n')}`);
+    }
+
+    if (decision.not_ideal_for && Array.isArray(decision.not_ideal_for)) {
+      parts.push(`\n不适合人群：\n${decision.not_ideal_for.map((item: string) => `✗ ${item}`).join('\n')}`);
+    }
+
+    if (decision.key_decision_questions && Array.isArray(decision.key_decision_questions)) {
+      parts.push(`\n关键决策问题：`);
+      decision.key_decision_questions.forEach((q: any) => {
+        parts.push(`\n问题：${q.question}`);
+        if (q.if_yes) {
+          parts.push(`如果"是"：${q.if_yes}`);
+        }
+        if (q.if_no) {
+          parts.push(`如果"否"：${q.if_no}`);
+        }
+      });
+    }
+
+    return parts.join('\n');
   }
 
   /**
