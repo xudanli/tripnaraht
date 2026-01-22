@@ -20,6 +20,8 @@ import { LlmExtractionService } from './services/llm-extraction.service';
 import { RouteKnowledgeCurator } from './services/route-knowledge-curator.service';
 import { LocalInsightService } from './services/local-insight.service';
 import { EnhancedChatService } from './services/enhanced-chat.service';
+import { RAGEvaluationService } from './services/rag-evaluation.service';
+import { RAGQueryCollectorService } from './services/rag-query-collector.service';
 import { RagController } from './rag.controller';
 
 @Module({
@@ -37,6 +39,8 @@ import { RagController } from './rag.controller';
     RouteKnowledgeCurator,
     LocalInsightService,
     EnhancedChatService,
+    RAGEvaluationService,
+    RAGQueryCollectorService,
   ],
   exports: [
     RagService,
@@ -44,6 +48,8 @@ import { RagController } from './rag.controller';
     RouteKnowledgeCurator,
     LocalInsightService,
     EnhancedChatService,
+    RAGEvaluationService,
+    RAGQueryCollectorService,
   ],
 })
 export class RagModule {}

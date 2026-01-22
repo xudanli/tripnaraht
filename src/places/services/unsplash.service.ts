@@ -1,6 +1,6 @@
 // src/places/services/unsplash.service.ts
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -90,8 +90,8 @@ export class UnsplashService implements OnModuleInit {
   private readonly MAX_REQUESTS_PER_HOUR = 50; // Unsplash 免费版限制
   private lastResetTime = Date.now();
 
-  constructor(private readonly configService: ConfigService) {
-    this.accessKey = this.configService.get<string>('UNSPLASH_ACCESS_KEY') || '';
+  constructor(@Optional() private readonly configService?: ConfigService) {
+    this.accessKey = this.configService?.get<string>('UNSPLASH_ACCESS_KEY') || '';
   }
 
   onModuleInit() {

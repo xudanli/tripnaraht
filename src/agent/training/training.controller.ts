@@ -12,7 +12,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { TrajectoryCollectionService } from './services/trajectory-collection.service';
 import { TrajectoryValidatorService } from './services/trajectory-validator.service';
 import { TrainingDataPreparationService } from './services/training-data-preparation.service';
@@ -48,6 +48,8 @@ import { DiagnosticLabelSystemService } from './services/diagnostic-label-system
 import { QualityScorerService } from './services/quality-scorer.service';
 import { RollMonitoringService } from './services/roll-monitoring.service';
 import { RollABTestService } from './services/roll-ab-test.service';
+import { IterativeDeploymentWorkflowService } from './services/iterative-deployment-workflow.service';
+import { ModelABTestService } from './services/model-ab-test.service';
 import {
   CollectTrajectoryDto,
   ValidateTrajectoryDto,
@@ -122,6 +124,8 @@ export class TrainingController {
     private readonly qualityAnalyzer: TrainingQualityAnalyzerService,
     @Optional() private readonly rollMonitoring?: RollMonitoringService,
     @Optional() private readonly rollABTest?: RollABTestService,
+    @Optional() private readonly iterativeDeploymentWorkflow?: IterativeDeploymentWorkflowService,
+    @Optional() private readonly modelABTest?: ModelABTestService,
   ) {
     if (this.rollMonitoring) {
       this.logger.log('[TrainingController] ROLL 监控已启用');
@@ -2794,6 +2798,279 @@ export class TrainingController {
    * ROLL A/B 测试：检查用户是否应使用 ROLL
    */
   @Get('roll/ab-test/should-use')
+  @ApiOperation({ summary: '检查是否应该使用 ROLL' })
+  async shouldUseRoll(
+    @Query('experimentId') experimentId: string,
+    @Query('requestId') requestId: string,
+    @Query('userId') userId?: string,
+  ): Promise<{ success: boolean; data: { shouldUse: boolean; reason: string } }> {
+    if (!this.rollABTest) {
+      return {
+        success: true,
+        data: { shouldUse: false, reason: 'ROLL AB Test service not available' },
+      };
+    }
+
+    try {
+      const result = await this.rollABTest.shouldUseRoll(experimentId, requestId, userId);
+      return {
+        success: true,
+        data: { shouldUse: result.useRoll, reason: result.useRoll ? 'Assigned to ROLL variant' : 'Assigned to control' },
+      };
+    } catch (error: any) {
+      this.logger.error(`[TrainingController] 检查 ROLL 使用失败: ${error?.message}`);
+      return {
+        success: false,
+        data: { shouldUse: false, reason: error?.message || 'Unknown error' },
+      };
+    }
+  }
+
+  // ==================== 迭代部署工作流 ====================
+
+  /**
+   * 执行迭代部署工作流
+   */
+  @Post('workflows/execute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '执行迭代部署工作流' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        minScore: { type: 'number', description: '最小验证分数', default: 0.8 },
+        minReward: { type: 'number', description: '最小 reward', default: 0 },
+        batchSize: { type: 'number', description: '批次大小', default: 1000 },
+        modelConfig: { type: 'object', description: '模型配置' },
+        trainingConfig: { type: 'object', description: '训练配置' },
+        autoDeploy: { type: 'boolean', description: '是否自动部署', default: false },
+      },
+    },
+  })
+  async executeWorkflow(
+    @Body() dto: {
+      minScore?: number;
+      minReward?: number;
+      batchSize?: number;
+      modelConfig?: any;
+      trainingConfig?: any;
+      autoDeploy?: boolean;
+    },
+  ): Promise<{ success: boolean; data: any }> {
+    if (!this.iterativeDeploymentWorkflow) {
+      return {
+        success: false,
+        data: { message: 'Iterative deployment workflow service not available' },
+      };
+    }
+
+    try {
+      const result = await this.iterativeDeploymentWorkflow.executeWorkflow(dto);
+      return {
+        success: result.status === 'SUCCESS',
+        data: result,
+      };
+    } catch (error: any) {
+      this.logger.error(`[TrainingController] 执行工作流失败: ${error?.message}`, error?.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取工作流状态
+   */
+  @Get('workflows/:workflowId')
+  @ApiOperation({ summary: '获取工作流状态' })
+  @ApiParam({ name: 'workflowId', description: '工作流 ID' })
+  async getWorkflowStatus(
+    @Param('workflowId') workflowId: string,
+  ): Promise<{ success: boolean; data: any }> {
+    if (!this.iterativeDeploymentWorkflow) {
+      return {
+        success: false,
+        data: { message: 'Iterative deployment workflow service not available' },
+      };
+    }
+
+    try {
+      const status = await this.iterativeDeploymentWorkflow.getWorkflowStatus(workflowId);
+      return {
+        success: true,
+        data: status,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `[TrainingController] 获取工作流状态失败: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
+
+  // ==================== 模型版本 A/B 测试 ====================
+
+  /**
+   * 创建模型版本对比实验
+   */
+  @Post('models/ab-test/create')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '创建模型版本对比实验' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '实验名称' },
+        description: { type: 'string', description: '实验描述' },
+        controlVersion: { type: 'string', description: '对照组版本' },
+        treatmentVersion: { type: 'string', description: '实验组版本' },
+        trafficSplit: {
+          type: 'object',
+          properties: {
+            control: { type: 'number', description: '对照组流量百分比' },
+            treatment: { type: 'number', description: '实验组流量百分比' },
+          },
+        },
+        successMetrics: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '成功指标',
+        },
+        minSampleSize: { type: 'number', description: '最小样本量' },
+        durationDays: { type: 'number', description: '实验持续时间（天）' },
+      },
+      required: ['name', 'description', 'controlVersion', 'treatmentVersion', 'successMetrics'],
+    },
+  })
+  async createModelVersionExperiment(
+    @Body() dto: {
+      name: string;
+      description: string;
+      controlVersion: string;
+      treatmentVersion: string;
+      trafficSplit?: { control: number; treatment: number };
+      successMetrics: string[];
+      minSampleSize?: number;
+      durationDays?: number;
+    },
+  ): Promise<{ success: boolean; data: any }> {
+    if (!this.modelABTest) {
+      return {
+        success: false,
+        data: { message: 'Model AB Test service not available' },
+      };
+    }
+
+    try {
+      const result = await this.modelABTest.createModelVersionExperiment(dto);
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `[TrainingController] 创建模型版本实验失败: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * 分析模型版本对比结果
+   */
+  @Post('models/ab-test/analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '分析模型版本对比结果' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        experimentId: { type: 'string', description: '实验 ID' },
+        controlVersion: { type: 'string', description: '对照组版本' },
+        treatmentVersion: { type: 'string', description: '实验组版本' },
+      },
+      required: ['experimentId', 'controlVersion', 'treatmentVersion'],
+    },
+  })
+  async analyzeModelVersionComparison(
+    @Body() dto: {
+      experimentId: string;
+      controlVersion: string;
+      treatmentVersion: string;
+    },
+  ): Promise<{ success: boolean; data: any }> {
+    if (!this.modelABTest) {
+      return {
+        success: false,
+        data: { message: 'Model AB Test service not available' },
+      };
+    }
+
+    try {
+      const result = await this.modelABTest.analyzeModelVersionComparison(
+        dto.experimentId,
+        dto.controlVersion,
+        dto.treatmentVersion,
+      );
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `[TrainingController] 分析模型版本对比失败: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * 推广模型版本
+   */
+  @Post('models/ab-test/promote')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '推广模型版本（如果 A/B 测试通过）' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        experimentId: { type: 'string', description: '实验 ID' },
+        treatmentVersion: { type: 'string', description: '要推广的版本' },
+      },
+      required: ['experimentId', 'treatmentVersion'],
+    },
+  })
+  async promoteModelVersion(
+    @Body() dto: {
+      experimentId: string;
+      treatmentVersion: string;
+    },
+  ): Promise<{ success: boolean; data: any }> {
+    if (!this.modelABTest) {
+      return {
+        success: false,
+        data: { message: 'Model AB Test service not available' },
+      };
+    }
+
+    try {
+      await this.modelABTest.promoteModelVersion(dto.experimentId, dto.treatmentVersion);
+      return {
+        success: true,
+        data: {
+          message: '模型版本已推广',
+          productionVersion: dto.treatmentVersion,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `[TrainingController] 推广模型版本失败: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
   @ApiOperation({ 
     summary: '检查是否应使用 ROLL Workers',
     description: '根据实验分配判断指定请求/用户是否应该使用 ROLL Workers',

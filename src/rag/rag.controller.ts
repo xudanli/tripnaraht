@@ -13,6 +13,8 @@ import { RouteKnowledgeCurator } from './services/route-knowledge-curator.servic
 import { LocalInsightService } from './services/local-insight.service';
 import { EnhancedChatService, RouteQuestionContext } from './services/enhanced-chat.service';
 import { DocumentIndexItem } from './interfaces/rag.interface';
+import { RAGEvaluationService } from './services/rag-evaluation.service';
+import { RAGQueryCollectorService } from './services/rag-query-collector.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -26,6 +28,8 @@ export class RagController {
     private readonly routeKnowledgeCurator: RouteKnowledgeCurator,
     private readonly localInsightService: LocalInsightService,
     private readonly enhancedChat: EnhancedChatService,
+    private readonly ragEvaluation: RAGEvaluationService,
+    private readonly ragQueryCollector: RAGQueryCollectorService,
   ) {}
 
   /**
@@ -48,12 +52,17 @@ export class RagController {
     @Query('countryCode') countryCode?: string,
     @Query('limit') limit?: number,
   ) {
-    return this.ragService.retrieve({
-      query,
-      collection,
-      countryCode,
-      limit: limit ? parseInt(limit.toString()) : 10,
-    });
+    try {
+      const results = await this.ragService.retrieve({
+        query,
+        collection,
+        countryCode,
+        limit: limit ? parseInt(limit.toString()) : 10,
+      });
+      return successResponse(results);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
   }
 
   /**
@@ -759,6 +768,7 @@ export class RagController {
   /**
    * 更新文档（后台管理）
    */
+  @Public()
   @Put('documents/:id')
   @ApiOperation({
     summary: '更新文档（后台管理）',
@@ -811,6 +821,386 @@ export class RagController {
       if (error.code === 'P2025') {
         return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
       }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== RAG 检索质量评估 ====================
+
+  /**
+   * 评估单次检索质量
+   */
+  @Public()
+  @Post('evaluation/evaluate')
+  @ApiOperation({
+    summary: '评估单次检索质量',
+    description: '评估 RAG 检索的质量，返回 Recall@K、MRR、NDCG 等指标',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '查询文本' },
+        params: {
+          type: 'object',
+          description: '检索参数',
+          properties: {
+            query: { type: 'string' },
+            collection: { type: 'string' },
+            countryCode: { type: 'string' },
+            tags: { type: 'array', items: { type: 'string' } },
+            limit: { type: 'number' },
+            minScore: { type: 'number' },
+          },
+        },
+        groundTruthDocumentIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '正确答案文档 ID 列表',
+        },
+      },
+      required: ['query', 'params', 'groundTruthDocumentIds'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '评估成功', type: ApiSuccessResponseDto })
+  async evaluateRetrieval(
+    @Body() body: {
+      query: string;
+      params: {
+        query: string;
+        collection: string;
+        countryCode?: string;
+        tags?: string[];
+        limit?: number;
+        minScore?: number;
+      };
+      groundTruthDocumentIds: string[];
+    },
+  ) {
+    try {
+      const result = await this.ragEvaluation.evaluateRetrieval(
+        body.query,
+        body.params,
+        body.groundTruthDocumentIds,
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 批量评估检索质量
+   */
+  @Public()
+  @Post('evaluation/evaluate-batch')
+  @ApiOperation({
+    summary: '批量评估检索质量',
+    description: '批量评估多个查询的检索质量',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        testCases: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              params: { type: 'object' },
+              groundTruthDocumentIds: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+      required: ['testCases'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '批量评估成功', type: ApiSuccessResponseDto })
+  async evaluateBatch(
+    @Body() body: {
+      testCases: Array<{
+        query: string;
+        params: any;
+        groundTruthDocumentIds: string[];
+      }>;
+    },
+  ) {
+    try {
+      const result = await this.ragEvaluation.evaluateBatch(body.testCases);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== query-document 对收集 ====================
+
+  /**
+   * 收集 query-document 对
+   */
+  @Public()
+  @Post('query-pairs/collect')
+  @ApiOperation({
+    summary: '收集 query-document 对',
+    description: '收集用户查询和正确答案文档的配对，用于 RAG 评估和微调',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '查询文本' },
+        correctDocumentIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '正确答案文档 ID 列表',
+        },
+        metadata: {
+          type: 'object',
+          description: '元数据',
+          properties: {
+            source: { type: 'string' },
+            userId: { type: 'string' },
+            sessionId: { type: 'string' },
+            collection: { type: 'string' },
+            countryCode: { type: 'string' },
+            tags: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+      required: ['query', 'correctDocumentIds'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '收集成功', type: ApiSuccessResponseDto })
+  async collectQueryDocumentPair(
+    @Body() body: {
+      query: string;
+      correctDocumentIds: string[];
+      metadata?: {
+        source?: string;
+        userId?: string;
+        sessionId?: string;
+        collection?: string;
+        countryCode?: string;
+        tags?: string[];
+      };
+    },
+  ) {
+    try {
+      const pairId = await this.ragQueryCollector.collectQueryDocumentPair(
+        body.query,
+        body.correctDocumentIds,
+        body.metadata,
+      );
+      return successResponse({
+        pairId,
+        message: 'query-document 对已收集',
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 从用户查询自动收集
+   */
+  @Public()
+  @Post('query-pairs/collect-from-query')
+  @ApiOperation({
+    summary: '从用户查询自动收集 query-document 对',
+    description: '基于检索结果和用户反馈自动收集 query-document 对',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '查询文本' },
+        retrievedResults: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              score: { type: 'number' },
+            },
+          },
+          description: '检索结果',
+        },
+        userFeedback: {
+          type: 'object',
+          properties: {
+            clickedDocumentIds: { type: 'array', items: { type: 'string' } },
+            relevantDocumentIds: { type: 'array', items: { type: 'string' } },
+            irrelevantDocumentIds: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+      required: ['query', 'retrievedResults'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '收集成功', type: ApiSuccessResponseDto })
+  async collectFromUserQuery(
+    @Body() body: {
+      query: string;
+      retrievedResults: Array<{ id: string; score: number }>;
+      userFeedback?: {
+        clickedDocumentIds?: string[];
+        relevantDocumentIds?: string[];
+        irrelevantDocumentIds?: string[];
+      };
+    },
+  ) {
+    try {
+      const pairId = await this.ragQueryCollector.collectFromUserQuery(
+        body.query,
+        body.retrievedResults,
+        body.userFeedback,
+      );
+
+      if (!pairId) {
+        return successResponse({
+          message: '没有收集到 query-document 对（可能没有正确答案）',
+        });
+      }
+
+      return successResponse({
+        pairId,
+        message: 'query-document 对已收集',
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 批量收集 query-document 对
+   */
+  @Public()
+  @Post('query-pairs/collect-batch')
+  @ApiOperation({
+    summary: '批量收集 query-document 对',
+    description: '批量收集多个 query-document 对',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pairs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              correctDocumentIds: { type: 'array', items: { type: 'string' } },
+              metadata: { type: 'object' },
+            },
+          },
+        },
+      },
+      required: ['pairs'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '批量收集成功', type: ApiSuccessResponseDto })
+  async collectBatch(
+    @Body() body: {
+      pairs: Array<{
+        query: string;
+        correctDocumentIds: string[];
+        metadata?: any;
+      }>;
+    },
+  ) {
+    try {
+      const pairIds = await this.ragQueryCollector.collectBatch(body.pairs);
+      return successResponse({
+        pairIds,
+        successCount: pairIds.length,
+        totalCount: body.pairs.length,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取收集的 query-document 对
+   */
+  @Public()
+  @Get('query-pairs')
+  @ApiOperation({
+    summary: '获取收集的 query-document 对',
+    description: '获取已收集的 query-document 对列表',
+  })
+  @ApiQuery({ name: 'source', required: false, description: '来源过滤' })
+  @ApiQuery({ name: 'collection', required: false, description: '集合过滤' })
+  @ApiQuery({ name: 'countryCode', required: false, description: '国家代码过滤' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '返回数量限制' })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getQueryPairs(
+    @Query('source') source?: string,
+    @Query('collection') collection?: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('limit') limit?: number,
+  ) {
+    try {
+      const pairs = await this.ragQueryCollector.getCollectedPairs({
+        source,
+        collection,
+        countryCode,
+        limit: limit ? parseInt(limit.toString()) : undefined,
+      });
+      return successResponse({
+        pairs,
+        total: pairs.length,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 导出为评估数据集格式
+   */
+  @Public()
+  @Post('query-pairs/export-for-evaluation')
+  @ApiOperation({
+    summary: '导出为评估数据集格式',
+    description: '将 query-document 对导出为评估数据集格式',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pairs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              correctDocumentIds: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+      required: ['pairs'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '导出成功', type: ApiSuccessResponseDto })
+  async exportForEvaluation(
+    @Body() body: {
+      pairs: Array<{
+        query: string;
+        correctDocumentIds: string[];
+      }>;
+    },
+  ) {
+    try {
+      const evaluationDataset = await this.ragQueryCollector.exportForEvaluation(body.pairs);
+      return successResponse({
+        evaluationDataset,
+      });
+    } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

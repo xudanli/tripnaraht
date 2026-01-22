@@ -12,6 +12,7 @@ export interface RetryOptions {
   factor?: number; // 指数因子，默认 2
   jitter?: boolean; // 是否添加随机抖动，默认 true
   retryableErrors?: string[]; // 可重试的错误代码/消息，默认包含常见网络错误
+  retryCondition?: (error: any) => boolean; // 自定义重试条件函数
 }
 
 const DEFAULT_RETRYABLE_ERRORS = [
@@ -39,6 +40,7 @@ export async function retryWithBackoff<T>(
     factor = 2,
     jitter = true,
     retryableErrors = DEFAULT_RETRYABLE_ERRORS,
+    retryCondition,
   } = options;
 
   let lastError: any;
@@ -54,14 +56,20 @@ export async function retryWithBackoff<T>(
         throw error;
       }
       
-      // 检查是否是可重试的错误
-      const errorMessage = error?.message || String(error);
-      const errorCode = error?.code || '';
-      const isRetryable = retryableErrors.some(
-        retryableError =>
-          errorMessage.includes(retryableError) ||
-          errorCode.includes(retryableError)
-      );
+      // 优先使用自定义重试条件
+      let isRetryable = false;
+      if (retryCondition) {
+        isRetryable = retryCondition(error);
+      } else {
+        // 检查是否是可重试的错误
+        const errorMessage = error?.message || String(error);
+        const errorCode = error?.code || '';
+        isRetryable = retryableErrors.some(
+          retryableError =>
+            errorMessage.includes(retryableError) ||
+            errorCode.includes(retryableError)
+        );
+      }
       
       if (!isRetryable) {
         // 如果不是可重试的错误，直接抛出

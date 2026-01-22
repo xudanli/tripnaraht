@@ -1,0 +1,110 @@
+{
+  "routes": [
+    {
+      "name": "golden_circle",
+      "nameCN": "黄金圈",
+      "nameEN": "Golden Circle",
+      "description": "300公里闭环，当天往返雷克雅未克",
+      "tags": ["classic", "day-trip", "easy"],
+      "regions": ["IS_GOLDEN_CIRCLE"],
+      "entryHubs": ["IS_REYKJAVIK"],
+      "seasonality": {
+        "bestMonths": [5, 6, 7, 8, 9]
+      },
+      "constraints": {
+        "difficulty": "easy",
+        "season": "all_year",
+        "duration": "1_day"
+      },
+      "signaturePoiNames": ["Þingvellir National Park", "Gullfoss", "Geysir"]
+    },
+    {
+      "name": "ring_road",
+      "nameCN": "1号公路环岛",
+      "nameEN": "Ring Road",
+      "description": "环绕冰岛一周的主干道，约 1332 公里",
+      "tags": ["classic", "road-trip", "scenic"],
+      "regions": ["IS_SOUTH_COAST", "IS_VIK", "IS_HOFN", "IS_EGILSSTADIR", "IS_AKUREYRI"],
+      "entryHubs": ["IS_REYKJAVIK", "IS_KEFLAVIK_AIRPORT"],
+      "seasonality": {
+        "bestMonths": [5, 6, 7, 8, 9]
+      },
+      "constraints": {
+        "difficulty": "medium",
+        "season": "all_year",
+        "duration": "7_to_10_days"
+      },
+      "riskProfile": {
+        "roadClosure": true,
+        "weatherWindow": true,
+        "weatherWindowMonths": [12, 1, 2]
+      },
+      "signaturePoiNames": ["Gullfoss", "Jökulsárlón", "Reynisfjara", "Skógafoss", "Seljalandsfoss"]
+    },
+    {
+      "name": "diamond_circle",
+      "nameCN": "钻石圈",
+      "nameEN": "Diamond Circle",
+      "description": "北部的"黄金圈"，针对去北部深度游的用户",
+      "tags": ["north", "advanced", "scenic"],
+      "regions": ["IS_AKUREYRI", "IS_HUSAVIK"],
+      "entryHubs": ["IS_AKUREYRI"],
+      "seasonality": {
+        "bestMonths": [6, 7, 8]
+      },
+      "constraints": {
+        "difficulty": "medium",
+        "season": "summer_only",
+        "duration": "2_to_3_days"
+      },
+      "signaturePoiNames": ["Goðafoss", "Lake Mývatn", "Dettifoss", "Ásbyrgi", "Húsavík"]
+    },
+    {
+      "name": "arctic_coast_way",
+      "nameCN": "北极海岸之路",
+      "nameEN": "Arctic Coast Way",
+      "description": "2019年新开通的官方路线，主打"远离人群"和"北极圈"。沿着北部海岸线行驶，全长 900 公里，经过 21 个渔村",
+      "tags": ["off-the-beaten-path", "arctic", "remote"],
+      "regions": ["IS_AKUREYRI", "IS_HUSAVIK"],
+      "entryHubs": ["IS_AKUREYRI"],
+      "seasonality": {
+        "bestMonths": [6, 7, 8]
+      },
+      "constraints": {
+        "difficulty": "hard",
+        "season": "summer_only",
+        "duration": "5_to_7_days",
+        "vehicle": "4x4_recommended"
+      },
+      "riskProfile": {
+        "roadClosure": true,
+        "weatherWindow": true
+      },
+      "signaturePoiNames": []
+    },
+    {
+      "name": "westfjords_way",
+      "nameCN": "西峡湾之路",
+      "nameEN": "Westfjords Way",
+      "description": "终极探险路线",
+      "tags": ["adventure", "remote", "extreme"],
+      "regions": [],
+      "entryHubs": ["IS_REYKJAVIK"],
+      "seasonality": {
+        "bestMonths": [6, 7, 8],
+        "avoidMonths": [12, 1, 2, 3, 4, 5, 9, 10, 11]
+      },
+      "constraints": {
+        "difficulty": "hard",
+        "season": "summer_only",
+        "duration": "3_to_5_days",
+        "vehicle": "4x4_recommended"
+      },
+      "riskProfile": {
+        "roadClosure": true,
+        "weatherWindow": true
+      },
+      "signaturePoiNames": ["Dynjandi", "Rauðasandur", "Látrabjarg"]
+    }
+  ]
+}

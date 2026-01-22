@@ -965,6 +965,7 @@ export class PlacesController {
     }
   }
 
+  @Public()
   @Post('search/batch')
   @ApiOperation({
     summary: '批量自然语言搜索POI',

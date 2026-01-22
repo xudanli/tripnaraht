@@ -7,6 +7,7 @@ import {
   ModelRegistryEntry,
   TrainingMetrics,
 } from '../interfaces/training-platform.interface';
+import { MLflowClientService } from './mlflow-client.service';
 
 /**
  * ModelRegistryService
@@ -30,7 +31,10 @@ export class ModelRegistryService {
   private currentProductionVersion: string | null = null;
   private currentStagingVersion: string | null = null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly mlflowClient: MLflowClientService,
+  ) {
     // 从环境变量获取MLflow配置
     this.mlflowTrackingUri =
       this.configService.get<string>('MLFLOW_TRACKING_URI') ||
@@ -324,57 +328,167 @@ export class ModelRegistryService {
   }
 
   /**
-   * 注册模型到MLflow（实际实现应该调用MLflow API）
+   * 注册模型到MLflow
    */
   private async registerToMLflow(
     modelVersion: ModelVersion,
     evalMetrics?: Record<string, number>,
   ): Promise<string> {
-    // TODO: 实际实现应该调用MLflow Python API或REST API
-    // 这里返回一个模拟的URI
-    const modelUri = `models:/${this.mlflowModelName}/${modelVersion.version}`;
-    
-    this.logger.debug(
-      `[ModelRegistry] 注册到MLflow: modelUri=${modelUri}`,
-    );
+    try {
+      // 检查 MLflow 服务是否可用
+      const isAvailable = await this.mlflowClient.healthCheck();
+      if (!isAvailable) {
+        this.logger.warn(
+          `[ModelRegistry] MLflow 服务不可用，使用模拟模式: modelVersion=${modelVersion.version}`,
+        );
+        return `models:/${this.mlflowModelName}/${modelVersion.version}`;
+      }
 
-    // 实际实现示例：
-    // const mlflow = require('mlflow');
-    // mlflow.set_tracking_uri(this.mlflowTrackingUri);
-    // const client = mlflow.tracking.MlflowClient();
-    // const modelVersion = client.create_model_version(
-    //   name=this.mlflowModelName,
-    //   source=modelVersion.model_path,
-    //   run_id=modelVersion.mlflow_run_id,
-    // );
+      // 准备标签
+      const tags: Record<string, string> = {
+        model_version: modelVersion.version,
+        dataset_version: modelVersion.dataset_version || 'unknown',
+        training_config: JSON.stringify(modelVersion.training_config),
+        model_config: JSON.stringify(modelVersion.model_config),
+      };
 
-    return modelUri;
+      if (evalMetrics) {
+        tags.eval_metrics = JSON.stringify(evalMetrics);
+      }
+
+      // 创建模型版本
+      const result = await this.mlflowClient.createModelVersion(
+        this.mlflowModelName,
+        modelVersion.model_path,
+        modelVersion.mlflow_run_id,
+        tags,
+      );
+
+      const modelUri = `models:/${this.mlflowModelName}/${result.model_version.version}`;
+      
+      this.logger.log(
+        `[ModelRegistry] 注册到MLflow成功: modelUri=${modelUri}, version=${result.model_version.version}`,
+      );
+
+      return modelUri;
+    } catch (error: any) {
+      this.logger.error(
+        `[ModelRegistry] 注册到MLflow失败: modelVersion=${modelVersion.version}, error=${error?.message}`,
+      );
+      // 降级：返回模拟 URI
+      return `models:/${this.mlflowModelName}/${modelVersion.version}`;
+    }
   }
 
   /**
    * 从MLflow获取模型版本
    */
   private async getFromMLflow(version: string): Promise<ModelRegistryEntry | null> {
-    // TODO: 实际实现应该调用MLflow API
-    return null;
+    try {
+      const result = await this.mlflowClient.getModelVersion(this.mlflowModelName, version);
+      
+      if (!result?.model_version) {
+        return null;
+      }
+
+      const mv = result.model_version;
+      
+      // 解析标签
+      const tags: Record<string, string> = {};
+      if (mv.tags) {
+        for (const tag of mv.tags) {
+          tags[tag.key] = tag.value;
+        }
+      }
+
+      // 解析训练配置和模型配置
+      let trainingConfig = {};
+      let modelConfig = {};
+      let evalMetrics: Record<string, number> | undefined;
+
+      try {
+        if (tags.training_config) {
+          trainingConfig = JSON.parse(tags.training_config);
+        }
+        if (tags.model_config) {
+          modelConfig = JSON.parse(tags.model_config);
+        }
+        if (tags.eval_metrics) {
+          evalMetrics = JSON.parse(tags.eval_metrics);
+        }
+      } catch (parseError: any) {
+        this.logger.warn(`[ModelRegistry] 解析标签失败: ${parseError?.message}`);
+      }
+
+      const entry: ModelRegistryEntry = {
+        version: mv.version,
+        model_path: mv.source,
+        mlflow_model_uri: `models:/${this.mlflowModelName}/${mv.version}`,
+        training_metrics: {} as TrainingMetrics, // MLflow 不直接存储训练指标，需要从 run_id 获取
+        eval_metrics: evalMetrics,
+        training_config: trainingConfig as any,
+        model_config: modelConfig as any,
+        dataset_version: tags.dataset_version || 'unknown',
+        created_at: new Date(mv.creation_timestamp).toISOString(),
+        is_production: mv.current_stage === 'Production',
+        is_staging: mv.current_stage === 'Staging',
+      };
+
+      return entry;
+    } catch (error: any) {
+      this.logger.warn(
+        `[ModelRegistry] 从MLflow获取模型版本失败: version=${version}, error=${error?.message}`,
+      );
+      return null;
+    }
   }
 
   /**
    * 从MLflow列出所有版本
    */
   private async listFromMLflow(): Promise<ModelRegistryEntry[]> {
-    // TODO: 实际实现应该调用MLflow API
-    return [];
+    try {
+      const result = await this.mlflowClient.listModelVersions(this.mlflowModelName, 100);
+      
+      const entries: ModelRegistryEntry[] = [];
+      
+      for (const mv of result.model_versions) {
+        const entry = await this.getFromMLflow(mv.version);
+        if (entry) {
+          entries.push(entry);
+        }
+      }
+
+      return entries;
+    } catch (error: any) {
+      this.logger.warn(
+        `[ModelRegistry] 从MLflow列出版本失败: error=${error?.message}`,
+      );
+      return [];
+    }
   }
 
   /**
    * 在MLflow中设置生产版本
    */
   private async setProductionVersionInMLflow(version: string): Promise<void> {
-    // TODO: 实际实现应该调用MLflow API
-    this.logger.debug(
-      `[ModelRegistry] 在MLflow中设置生产版本: version=${version}`,
-    );
+    try {
+      await this.mlflowClient.transitionModelVersionStage(
+        this.mlflowModelName,
+        version,
+        'Production',
+        true, // 归档其他生产版本
+      );
+
+      this.logger.log(
+        `[ModelRegistry] 在MLflow中设置生产版本成功: version=${version}`,
+      );
+    } catch (error: any) {
+      this.logger.warn(
+        `[ModelRegistry] 在MLflow中设置生产版本失败: version=${version}, error=${error?.message}`,
+      );
+      // 不抛出错误，允许继续执行
+    }
   }
 
   /**

@@ -22,11 +22,11 @@ export function createOpenAIHttp(
     process.env.all_proxy;
 
   if (proxyUrl && logger) {
-    logger.debug(`Using proxy: ${proxyUrl}`);
+    logger.log(`[OpenAI HTTP Factory] 使用代理: ${proxyUrl}`);
   } else if (!proxyUrl && logger) {
     // 仅在需要时输出警告（例如在需要访问外网但可能被墙的环境）
     // 如果应用能正常访问 OpenAI API，可以忽略此警告
-    logger.debug('No proxy environment variable found. If you need to access external APIs through a proxy, set HTTPS_PROXY or ALL_PROXY.');
+    logger.warn('[OpenAI HTTP Factory] 未找到代理环境变量。如果需要通过代理访问外部 API，请设置 HTTPS_PROXY 或 ALL_PROXY。');
   }
 
   // 处理 baseURL

@@ -59,9 +59,12 @@ import { RollCacheService } from './services/roll-cache.service';
 import { RollBatchProcessorService } from './services/roll-batch-processor.service';
 import { RollTracingService } from './services/roll-tracing.service';
 import { RollABTestService } from './services/roll-ab-test.service';
+import { IterativeDeploymentWorkflowService } from './services/iterative-deployment-workflow.service';
+import { ModelABTestService } from './services/model-ab-test.service';
 import { ConfigModule } from '@nestjs/config';
 import { TrainingController } from './training.controller';
 import { LlmModule } from '../../llm/llm.module';
+import { MLflowClientService } from './services/mlflow-client.service';
 
 /**
  * TrainingModule
@@ -72,6 +75,7 @@ import { LlmModule } from '../../llm/llm.module';
   imports: [PrismaModule, ConfigModule, LlmModule],
   controllers: [TrainingController],
   providers: [
+    MLflowClientService,
     TrajectoryValidatorService,
     TrajectoryCollectionService,
     RewardSignalExtractorService,
@@ -129,6 +133,8 @@ import { LlmModule } from '../../llm/llm.module';
     RollBatchProcessorService,
     RollTracingService,
     RollABTestService,
+    IterativeDeploymentWorkflowService,
+    ModelABTestService,
   ],
   exports: [
     TrajectoryValidatorService,
@@ -188,6 +194,8 @@ import { LlmModule } from '../../llm/llm.module';
     RollBatchProcessorService,
     RollTracingService,
     RollABTestService,
+    IterativeDeploymentWorkflowService,
+    ModelABTestService,
   ],
 })
 export class TrainingModule {}

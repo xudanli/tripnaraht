@@ -1,6 +1,6 @@
 // src/agent/training/services/training-pipeline.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -34,14 +34,14 @@ export class TrainingPipelineService {
   private readonly jobs: Map<string, TrainingJob> = new Map();
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-    private readonly dataPrepService: TrainingDataPreparationService,
-    private readonly versionManager: DatasetVersionManagerService,
+    @Optional() private readonly prisma: PrismaService,
+    @Optional() private readonly configService: ConfigService,
+    @Optional() private readonly dataPrepService: TrainingDataPreparationService,
+    @Optional() private readonly versionManager: DatasetVersionManagerService,
   ) {
     // 从环境变量获取Python训练服务URL
     this.trainingServiceUrl =
-      this.configService.get<string>('TRAINING_SERVICE_URL') ||
+      this.configService?.get<string>('TRAINING_SERVICE_URL') ||
       'http://localhost:8001';
   }
 
