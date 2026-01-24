@@ -1,0 +1,578 @@
+[
+  {
+    "attraction_id": "attr_017",
+    "name": "蓝湖温泉",
+    "name_en": "Blue Lagoon",
+    "name_is": "Bláa lónið",
+    "category": "geothermal",
+    "sub_categories": ["温泉", "疗养", "地热"],
+    "coordinates": [63.8804, -22.4495],
+    "elevation_m": 20,
+    "region": "Reykjanes Peninsula",
+    "overview": {
+      "short_description": "冰岛最著名的地热温泉，富含矿物质的蓝色温泉水",
+      "long_description": "蓝湖是冰岛最著名的旅游景点之一，位于雷克雅未克和凯夫拉维克国际机场之间的火山熔岩原上。温泉水富含硅、硫等矿物质，呈现出独特的乳蓝色。水温常年保持在37-40°C，具有疗养和护肤功效。"
+    },
+    "highlights": [
+      "乳蓝色地热温泉",
+      "硅泥面膜体验",
+      "蒸汽浴和桑拿",
+      "火山熔岩景观",
+      "高端SPA设施"
+    ],
+    "activities": [
+      {
+        "name": "温泉浸泡",
+        "duration_hours": 2,
+        "difficulty": "easy",
+        "cost_range": "7000-15000 ISK"
+      },
+      {
+        "name": "SPA疗程",
+        "duration_hours": 1,
+        "difficulty": "easy",
+        "cost_range": "20000-50000 ISK"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年开放，建议预订",
+      "opening_hours": "08:00-22:00（夏季延长至24:00）",
+      "entry_fee": "7000-15000 ISK（需提前预订）",
+      "accessibility": "excellent",
+      "facilities": ["更衣室", "淋浴", "餐厅", "商店", "储物柜"]
+    },
+    "user_ratings": {
+      "overall": 4.3,
+      "景色": 4.8,
+      "体验": 4.5,
+      "性价比": 3.5,
+      "accessibility": 5.0,
+      "sample_size": 25000,
+      "satisfaction_rate": 0.86
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": true
+    }
+  },
+  {
+    "attraction_id": "attr_018",
+    "name": "米湖自然温泉",
+    "name_en": "Mývatn Nature Baths",
+    "name_is": "Jarðböðin við Mývatn",
+    "category": "geothermal",
+    "sub_categories": ["温泉", "自然", "地热"],
+    "coordinates": [65.6373, -16.8502],
+    "elevation_m": 300,
+    "region": "North Iceland",
+    "overview": {
+      "short_description": "北部的天然地热温泉，更原始更安静的蓝湖替代",
+      "long_description": "米湖自然温泉是北部最著名的地热温泉，被称为'北部的蓝湖'。相比蓝湖更加原始和安静，人少景美，性价比更高。温泉水富含矿物质，周围是米湖火山区的壮丽景观。"
+    },
+    "highlights": [
+      "天然地热温泉",
+      "火山景观环绕",
+      "人少安静",
+      "矿物质温泉水",
+      "性价比高"
+    ],
+    "activities": [
+      {
+        "name": "温泉浸泡",
+        "duration_hours": 2,
+        "difficulty": "easy",
+        "cost_range": "4500-5500 ISK"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年开放，冬季可看极光",
+      "opening_hours": "09:00-24:00",
+      "entry_fee": "4500-5500 ISK",
+      "accessibility": "good",
+      "facilities": ["更衣室", "淋浴", "小吃店", "储物柜"]
+    },
+    "user_ratings": {
+      "overall": 4.7,
+      "景色": 4.8,
+      "体验": 4.7,
+      "性价比": 4.8,
+      "accessibility": 4.0,
+      "sample_size": 8000,
+      "satisfaction_rate": 0.94
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_019",
+    "name": "维克镇",
+    "name_en": "Vík í Mýrdal",
+    "name_is": "Vík",
+    "category": "cultural",
+    "sub_categories": ["小镇", "文化", "住宿点"],
+    "coordinates": [63.4186, -19.0059],
+    "elevation_m": 6,
+    "region": "South Coast",
+    "overview": {
+      "short_description": "冰岛最南端的小镇，南海岸的重要补给和住宿点",
+      "long_description": "维克镇是冰岛最南端的小镇，也是南海岸环线的重要停靠点。小镇人口约300人，但因其地理位置成为游客的重要补给和住宿点。镇上的红顶白墙教堂是标志性建筑，附近有著名的黑沙滩。"
+    },
+    "highlights": [
+      "红顶教堂（Víkurkirkja）",
+      "小镇全景",
+      "毛衣商店",
+      "补给和住宿",
+      "Reynisfjara黑沙滩入口"
+    ],
+    "activities": [
+      {
+        "name": "参观红顶教堂",
+        "duration_hours": 0.5,
+        "difficulty": "easy",
+        "cost_range": "免费"
+      },
+      {
+        "name": "小镇闲逛购物",
+        "duration_hours": 1,
+        "difficulty": "easy",
+        "cost_range": "0-5000 ISK"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年",
+      "opening_hours": "全天开放",
+      "entry_fee": "免费",
+      "accessibility": "excellent",
+      "facilities": ["超市", "加油站", "餐厅", "住宿", "游客中心"]
+    },
+    "user_ratings": {
+      "overall": 4.2,
+      "景色": 4.5,
+      "体验": 4.0,
+      "性价比": 4.3,
+      "accessibility": 5.0,
+      "sample_size": 3500,
+      "satisfaction_rate": 0.84
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_020",
+    "name": "斯瓦蒂瀑布",
+    "name_en": "Svartifoss",
+    "name_is": "Svartifoss",
+    "category": "waterfall",
+    "sub_categories": ["瀑布", "徒步", "地质"],
+    "coordinates": [64.0275, -16.9753],
+    "elevation_m": 70,
+    "region": "Southeast",
+    "overview": {
+      "short_description": "黑瀑布，被六角形玄武岩柱环绕的独特瀑布",
+      "long_description": "斯瓦蒂瀑布位于Skaftafell国家公园内，是冰岛最独特的瀑布之一。瀑布被深黑色的六角形玄武岩柱环绕，形成天然的管风琴状岩壁。这种地质结构启发了雷克雅未克哈尔格林姆教堂的设计。"
+    },
+    "highlights": [
+      "六角形玄武岩柱",
+      "独特的地质景观",
+      "徒步步道",
+      "管风琴状岩壁",
+      "冰岛设计灵感来源"
+    ],
+    "activities": [
+      {
+        "name": "徒步前往瀑布",
+        "duration_hours": 1.5,
+        "difficulty": "moderate",
+        "cost_range": "免费"
+      }
+    ],
+    "visit_info": {
+      "best_time": "5月-9月",
+      "opening_hours": "全天开放",
+      "entry_fee": "免费（需国家公园停车费）",
+      "accessibility": "moderate",
+      "facilities": ["停车场", "步道", "指示牌"]
+    },
+    "user_ratings": {
+      "overall": 4.6,
+      "景色": 4.8,
+      "体验": 4.5,
+      "性价比": 5.0,
+      "accessibility": 3.5,
+      "sample_size": 5500,
+      "satisfaction_rate": 0.92
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": true,
+      "seasonal": true,
+      "beginner_friendly": false,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_021",
+    "name": "赫伦瀑布群",
+    "name_en": "Hraunfossar",
+    "name_is": "Hraunfossar",
+    "category": "waterfall",
+    "sub_categories": ["瀑布", "熔岩", "自然"],
+    "coordinates": [64.7028, -20.9789],
+    "elevation_m": 45,
+    "region": "West Iceland",
+    "overview": {
+      "short_description": "熔岩瀑布，无数细流从熔岩缝隙中涌出形成瀑布群",
+      "long_description": "赫伦瀑布是冰岛最独特的瀑布之一，由无数细小的溪流组成，从900米宽的熔岩原边缘渗出，形成壮观的瀑布群。水流清澈碧蓝，与黑色熔岩形成鲜明对比。"
+    },
+    "highlights": [
+      "900米宽的瀑布群",
+      "熔岩与水流的对比",
+      "碧蓝清澈的水流",
+      "木质观景平台",
+      "附近的Barnafoss瀑布"
+    ],
+    "activities": [
+      {
+        "name": "观景平台观赏",
+        "duration_hours": 0.5,
+        "difficulty": "easy",
+        "cost_range": "免费"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年",
+      "opening_hours": "全天开放",
+      "entry_fee": "免费",
+      "accessibility": "excellent",
+      "facilities": ["停车场", "观景平台", "步道", "卫生间"]
+    },
+    "user_ratings": {
+      "overall": 4.5,
+      "景色": 4.7,
+      "体验": 4.4,
+      "性价比": 5.0,
+      "accessibility": 4.8,
+      "sample_size": 4200,
+      "satisfaction_rate": 0.90
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_022",
+    "name": "德蒂瀑布",
+    "name_en": "Dettifoss",
+    "name_is": "Dettifoss",
+    "category": "waterfall",
+    "sub_categories": ["瀑布", "峡谷", "极限"],
+    "coordinates": [65.8144, -16.3822],
+    "elevation_m": 150,
+    "region": "North Iceland",
+    "overview": {
+      "short_description": "欧洲水量最大的瀑布，震撼人心的自然力量",
+      "long_description": "德蒂瀑布是欧洲水量最大、最壮观的瀑布之一，宽100米，高44米，平均流量193立方米/秒。瀑布位于Jökulsá á Fjöllum冰川河上，水流从玄武岩峡谷中咆哮而下，水雾弥漫，地面震动，气势磅礴。电影《普罗米修斯》的开场即在此拍摄。"
+    },
+    "highlights": [
+      "欧洲水量最大瀑布",
+      "震撼的水流和水雾",
+      "玄武岩峡谷",
+      "《普罗米修斯》取景地",
+      "原始荒野景观"
+    ],
+    "activities": [
+      {
+        "name": "东岸观景（较近）",
+        "duration_hours": 1,
+        "difficulty": "easy",
+        "cost_range": "免费"
+      },
+      {
+        "name": "西岸观景（更壮观）",
+        "duration_hours": 1.5,
+        "difficulty": "moderate",
+        "cost_range": "免费"
+      }
+    ],
+    "visit_info": {
+      "best_time": "6月-8月",
+      "opening_hours": "全天开放（冬季道路封闭）",
+      "entry_fee": "免费",
+      "accessibility": "moderate",
+      "facilities": ["停车场", "步道", "观景台"]
+    },
+    "user_ratings": {
+      "overall": 4.8,
+      "景色": 5.0,
+      "体验": 4.8,
+      "性价比": 5.0,
+      "accessibility": 3.5,
+      "sample_size": 6800,
+      "satisfaction_rate": 0.96
+    },
+    "decision_relevance": {
+      "must_see": true,
+      "photo_worthy": true,
+      "weather_dependent": true,
+      "seasonal": true,
+      "beginner_friendly": false,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_023",
+    "name": "众神瀑布",
+    "name_en": "Goðafoss",
+    "name_is": "Goðafoss",
+    "category": "waterfall",
+    "sub_categories": ["瀑布", "历史", "文化"],
+    "coordinates": [65.6830, -17.5500],
+    "elevation_m": 90,
+    "region": "North Iceland",
+    "overview": {
+      "short_description": "众神瀑布，冰岛基督教化的象征",
+      "long_description": "众神瀑布是冰岛最具历史意义的瀑布之一，宽30米，高12米。公元1000年，冰岛接受基督教时，酋长Þorgeir将异教神像投入瀑布，因此得名'众神瀑布'。瀑布呈完美的半圆形，水流分为两股，景色优美。"
+    },
+    "highlights": [
+      "半圆形瀑布",
+      "双股水流",
+      "历史文化意义",
+      "环岛1号公路旁",
+      "易于到达"
+    ],
+    "activities": [
+      {
+        "name": "观景台观赏",
+        "duration_hours": 0.5,
+        "difficulty": "easy",
+        "cost_range": "免费"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年",
+      "opening_hours": "全天开放",
+      "entry_fee": "免费",
+      "accessibility": "excellent",
+      "facilities": ["停车场", "观景台", "卫生间", "小卖部"]
+    },
+    "user_ratings": {
+      "overall": 4.6,
+      "景色": 4.7,
+      "体验": 4.5,
+      "性价比": 5.0,
+      "accessibility": 5.0,
+      "sample_size": 7200,
+      "satisfaction_rate": 0.92
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_024",
+    "name": "阿克雷里",
+    "name_en": "Akureyri",
+    "name_is": "Akureyri",
+    "category": "cultural",
+    "sub_categories": ["城市", "文化", "购物"],
+    "coordinates": [65.6839, -18.1077],
+    "elevation_m": 5,
+    "region": "North Iceland",
+    "overview": {
+      "short_description": "冰岛北部首府，文化和商业中心",
+      "long_description": "阿克雷里是冰岛第二大城市和北部首府，人口约1.9万。城市位于峡湾深处，三面环山，气候相对温和。是北部的文化、教育和商业中心，也是探索北部景点的重要基地。"
+    },
+    "highlights": [
+      "阿克雷里教堂（Akureyrarkirkja）",
+      "植物园（世界最北植物园）",
+      "市中心购物街",
+      "滑雪场（冬季）",
+      "观鲸游船"
+    ],
+    "activities": [
+      {
+        "name": "城市观光",
+        "duration_hours": 3,
+        "difficulty": "easy",
+        "cost_range": "免费"
+      },
+      {
+        "name": "观鲸游船",
+        "duration_hours": 3,
+        "difficulty": "easy",
+        "cost_range": "10000-13000 ISK"
+      }
+    ],
+    "visit_info": {
+      "best_time": "全年",
+      "opening_hours": "全天",
+      "entry_fee": "免费",
+      "accessibility": "excellent",
+      "facilities": ["酒店", "餐厅", "超市", "医院", "机场"]
+    },
+    "user_ratings": {
+      "overall": 4.3,
+      "景色": 4.2,
+      "体验": 4.3,
+      "性价比": 4.4,
+      "accessibility": 5.0,
+      "sample_size": 4500,
+      "satisfaction_rate": 0.86
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": false,
+      "weather_dependent": false,
+      "seasonal": false,
+      "beginner_friendly": true,
+      "requires_booking": false
+    }
+  },
+  {
+    "attraction_id": "attr_025",
+    "name": "埃亚菲亚德拉冰盖",
+    "name_en": "Eyjafjallajökull",
+    "name_is": "Eyjafjallajökull",
+    "category": "glacier",
+    "sub_categories": ["冰川", "火山", "极限"],
+    "coordinates": [63.6314, -19.6083],
+    "elevation_m": 1651,
+    "region": "South Coast",
+    "overview": {
+      "short_description": "2010年喷发的冰盖火山，影响欧洲航空的著名火山",
+      "long_description": "埃亚菲亚德拉冰盖是一座冰盖火山，海拔1651米。2010年4月的喷发导致大量火山灰进入大气层，迫使欧洲航空停运数日，全球闻名。现在火山活动已停止，但仍可参加冰川徒步和超级吉普游览。"
+    },
+    "highlights": [
+      "2010年喷发火山口",
+      "冰川徒步",
+      "超级吉普游览",
+      "壮观的冰川景观",
+      "历史意义"
+    ],
+    "activities": [
+      {
+        "name": "超级吉普游览",
+        "duration_hours": 4,
+        "difficulty": "moderate",
+        "cost_range": "20000-25000 ISK"
+      },
+      {
+        "name": "冰川徒步",
+        "duration_hours": 3,
+        "difficulty": "hard",
+        "cost_range": "15000-20000 ISK"
+      }
+    ],
+    "visit_info": {
+      "best_time": "6月-9月",
+      "opening_hours": "需跟团",
+      "entry_fee": "15000-25000 ISK（含向导）",
+      "accessibility": "poor",
+      "facilities": ["停车场（远处）"]
+    },
+    "user_ratings": {
+      "overall": 4.4,
+      "景色": 4.7,
+      "体验": 4.5,
+      "性价比": 3.8,
+      "accessibility": 2.5,
+      "sample_size": 2800,
+      "satisfaction_rate": 0.88
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": true,
+      "seasonal": true,
+      "beginner_friendly": false,
+      "requires_booking": true
+    }
+  },
+  {
+    "attraction_id": "attr_026",
+    "name": "斯奈菲尔冰川国家公园",
+    "name_en": "Snæfellsjökull National Park",
+    "name_is": "Snæfellsjökull þjóðgarður",
+    "category": "national_park",
+    "sub_categories": ["国家公园", "冰川", "火山"],
+    "coordinates": [64.8067, -23.7764],
+    "elevation_m": 1446,
+    "region": "Snæfellsnes",
+    "overview": {
+      "short_description": "斯奈山半岛的核心，神秘的冰川火山国家公园",
+      "long_description": "斯奈菲尔冰川国家公园以中心的斯奈菲尔火山冰川命名，海拔1446米。这座火山在晴朗的日子里从雷克雅未克也可看到。儒勒·凡尔纳的《地心游记》中，探险队就是从这里进入地心。公园包含熔岩原、海岸线、鸟类栖息地等多样景观。"
+    },
+    "highlights": [
+      "斯奈菲尔火山冰川",
+      "《地心游记》取景地",
+      "多样的地质景观",
+      "海岸线和鸟类",
+      "极光观测点"
+    ],
+    "activities": [
+      {
+        "name": "冰川徒步",
+        "duration_hours": 4,
+        "difficulty": "hard",
+        "cost_range": "15000-20000 ISK"
+      },
+      {
+        "name": "公园徒步",
+        "duration_hours": 2,
+        "difficulty": "moderate",
+        "cost_range": "免费"
+      }
+    ],
+    "visit_info": {
+      "best_time": "6月-9月",
+      "opening_hours": "全天开放",
+      "entry_fee": "免费",
+      "accessibility": "moderate",
+      "facilities": ["游客中心", "停车场", "步道"]
+    },
+    "user_ratings": {
+      "overall": 4.7,
+      "景色": 4.9,
+      "体验": 4.6,
+      "性价比": 5.0,
+      "accessibility": 3.5,
+      "sample_size": 5200,
+      "satisfaction_rate": 0.94
+    },
+    "decision_relevance": {
+      "must_see": false,
+      "photo_worthy": true,
+      "weather_dependent": true,
+      "seasonal": true,
+      "beginner_friendly": false,
+      "requires_booking": false
+    }
+  }
+]
