@@ -1,6 +1,6 @@
 // @ts-nocheck
 // src/route-directions/route-directions.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -489,6 +489,204 @@ export class RouteDirectionsService {
         updatedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * 向路线模板的指定日期添加 POI
+   */
+  async addPoiToTemplate(
+    templateId: number,
+    dto: { day: number; poiId: number; required?: boolean; order?: number; durationMinutes?: number },
+  ): Promise<any> {
+    // 1. 检查模板是否存在
+    const template = await this.prisma.routeTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException(`Route template with ID ${templateId} not found`);
+    }
+
+    // 2. 检查 POI 是否存在
+    const place = await this.prisma.place.findUnique({
+      where: { id: dto.poiId },
+      select: {
+        id: true,
+        uuid: true,
+        nameCN: true,
+        nameEN: true,
+        category: true,
+        address: true,
+        rating: true,
+        description: true,
+      },
+    });
+
+    if (!place) {
+      throw new NotFoundException(`Place with ID ${dto.poiId} not found`);
+    }
+
+    // 3. 解析 dayPlans
+    const dayPlans = (template.dayPlans as any[]) || [];
+    const dayPlan = dayPlans.find((dp: any) => dp.day === dto.day);
+
+    if (!dayPlan) {
+      throw new NotFoundException(`Day ${dto.day} not found in route template`);
+    }
+
+    // 4. 检查 POI 是否已存在
+    const existingPois = dayPlan.pois || [];
+    const existingPoi = existingPois.find(
+      (p: any) => p.id === dto.poiId || p.uuid === place.uuid,
+    );
+
+    if (existingPoi) {
+      throw new BadRequestException(
+        `POI ${place.nameCN} (ID: ${dto.poiId}) already exists in day ${dto.day}`,
+      );
+    }
+
+    // 5. 添加 POI
+    const newPoi: any = {
+      id: place.id,
+      uuid: place.uuid,
+      nameCN: place.nameCN,
+      nameEN: place.nameEN || undefined,
+      category: place.category,
+      required: dto.required || false,
+      order: dto.order || existingPois.length + 1,
+    };
+
+    if (place.address) newPoi.address = place.address;
+    if (place.rating) newPoi.rating = place.rating;
+    if (place.description) newPoi.description = place.description;
+    if (dto.durationMinutes) newPoi.durationMinutes = dto.durationMinutes;
+
+    existingPois.push(newPoi);
+
+    // 6. 更新 dayPlan
+    dayPlan.pois = existingPois;
+
+    // 7. 更新模板
+    const updatedTemplate = await this.prisma.routeTemplate.update({
+      where: { id: templateId },
+      data: {
+        dayPlans: dayPlans as any,
+        updatedAt: new Date(),
+      },
+      include: {
+        routeDirection: true,
+      },
+    });
+
+    // 8. 更新 RouteDirection 的 signaturePois.examples
+    const routeDirection = await this.prisma.routeDirection.findUnique({
+      where: { id: template.routeDirectionId },
+      select: { signaturePois: true },
+    });
+
+    if (routeDirection) {
+      const currentSigPois = (routeDirection.signaturePois as any) || {};
+      const existingExamples = currentSigPois.examples || [];
+      if (!existingExamples.includes(place.id)) {
+        const allExamples = [...existingExamples, place.id];
+        await this.prisma.routeDirection.update({
+          where: { id: template.routeDirectionId },
+          data: {
+            signaturePois: {
+              ...currentSigPois,
+              examples: allExamples,
+            } as any,
+          },
+        });
+      }
+    }
+
+    return updatedTemplate;
+  }
+
+  /**
+   * 从路线模板的指定日期移除 POI
+   */
+  async removePoiFromTemplate(
+    templateId: number,
+    dto: { day: number; poiId?: number; poiUuid?: string; index?: number },
+  ): Promise<any> {
+    // 1. 检查模板是否存在
+    const template = await this.prisma.routeTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException(`Route template with ID ${templateId} not found`);
+    }
+
+    // 2. 解析 dayPlans
+    const dayPlans = (template.dayPlans as any[]) || [];
+    const dayPlan = dayPlans.find((dp: any) => dp.day === dto.day);
+
+    if (!dayPlan) {
+      throw new NotFoundException(`Day ${dto.day} not found in route template`);
+    }
+
+    // 3. 查找要移除的 POI
+    const existingPois = dayPlan.pois || [];
+    let poiToRemove: any = null;
+    let removeIndex = -1;
+
+    if (dto.index !== undefined) {
+      // 通过索引移除
+      if (dto.index < 0 || dto.index >= existingPois.length) {
+        throw new BadRequestException(
+          `Index ${dto.index} is out of range. Day ${dto.day} has ${existingPois.length} POIs.`,
+        );
+      }
+      removeIndex = dto.index;
+      poiToRemove = existingPois[removeIndex];
+    } else if (dto.poiId) {
+      // 通过 ID 移除
+      removeIndex = existingPois.findIndex((p: any) => p.id === dto.poiId);
+      if (removeIndex === -1) {
+        throw new NotFoundException(
+          `POI with ID ${dto.poiId} not found in day ${dto.day}`,
+        );
+      }
+      poiToRemove = existingPois[removeIndex];
+    } else if (dto.poiUuid) {
+      // 通过 UUID 移除
+      removeIndex = existingPois.findIndex((p: any) => p.uuid === dto.poiUuid);
+      if (removeIndex === -1) {
+        throw new NotFoundException(
+          `POI with UUID ${dto.poiUuid} not found in day ${dto.day}`,
+        );
+      }
+      poiToRemove = existingPois[removeIndex];
+    } else {
+      throw new BadRequestException('Please provide poiId, poiUuid, or index');
+    }
+
+    // 4. 移除 POI
+    const updatedPois = existingPois.filter((_: any, idx: number) => idx !== removeIndex);
+
+    // 5. 更新 dayPlan
+    dayPlan.pois = updatedPois.length > 0 ? updatedPois : undefined;
+
+    // 6. 更新模板
+    const updatedTemplate = await this.prisma.routeTemplate.update({
+      where: { id: templateId },
+      data: {
+        dayPlans: dayPlans as any,
+        updatedAt: new Date(),
+      },
+      include: {
+        routeDirection: true,
+      },
+    });
+
+    return {
+      template: updatedTemplate,
+      removedPoi: poiToRemove,
+    };
   }
 
   /**

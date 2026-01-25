@@ -21,11 +21,13 @@ import { UnsplashService } from './services/unsplash.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 import { RagModule } from '../rag/rag.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
     PrismaModule, 
     HotelsModule,
+    UploadModule, // 导入上传模块以使用 UploadService
     forwardRef(() => RagModule), // 导入RAG模块以使用EmbeddingCacheService（使用forwardRef避免循环依赖）
   ],
   controllers: [PlacesController, PlacesV5Controller],

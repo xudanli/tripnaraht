@@ -75,7 +75,7 @@ export class ChunkRetrievalService {
       type,
       category,
       fileId,
-      useHybridSearch = true, // 默认启用混合检索
+      useHybridSearch = true, // 默认启用混合检索（推荐，对中文查询更有效）
       denseWeight = 0.7,
       sparseWeight = 0.3,
       useReranking = false, // 默认不启用重排序（因为会增加延迟）
@@ -265,6 +265,20 @@ export class ChunkRetrievalService {
 
     // 1. 生成查询的 embedding
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    
+    // 检查是否为零向量（embedding生成失败时的降级策略）
+    const isZeroVector = queryEmbedding.every(v => v === 0);
+    if (isZeroVector) {
+      this.logger.warn(
+        `⚠️ Dense检索: 查询embedding是零向量，可能API调用失败。查询: "${query.substring(0, 50)}..."`
+      );
+      // 返回空结果，让调用方知道embedding生成失败
+      return [];
+    }
+    
+    this.logger.debug(
+      `Dense检索: 查询embedding生成成功，维度=${queryEmbedding.length}, 非零值=${queryEmbedding.filter(v => v !== 0).length}`
+    );
 
     // 2. 构建查询条件
     const conditions: string[] = [];
@@ -362,12 +376,14 @@ export class ChunkRetrievalService {
       limit
     );
 
-    // 注意：RRF hybridScore 范围很小（约 0.01-0.03），不应使用 credibilityMin 过滤
+    // 注意：RRF hybridScore 范围很小（约 0.001-0.05），不应使用常规similarity阈值过滤
     // credibilityMin 已在 SQL 查询中用于过滤 credibility_score
-    // 这里只需要过滤掉 hybridScore 为 0 或负数的结果
+    // Hybrid Search使用更宽松的阈值，只过滤掉明显无意义的结果
     const filteredResults = mergedResults.filter((r) => {
       const score = r.hybridScore || r.similarity || 0;
-      return score > 0;
+      const credibility = r.credibilityScore || 0;
+      // Hybrid Search: 只要分数>0且credibility满足要求即可
+      return score > 0 && credibility >= (params.credibilityMin || 0);
     });
 
     this.logger.debug(
@@ -632,10 +648,20 @@ export class ChunkRetrievalService {
     });
 
     // 格式化结果 - 注意：credibilityMin 用于过滤 credibility_score，不是 similarity
-    // similarity 的阈值应该更低（如 0.1-0.3），因为向量相似度分布与 credibility 不同
-    const similarityThreshold = 0.1; // 向量相似度最低阈值
+    // similarity 的阈值应该更低，因为向量相似度分布与 credibility 不同
+    // 对于中文查询，向量相似度可能较低，需要大幅降低阈值
+    // 使用动态阈值：如果credibilityMin很低（如0.0），则几乎不过滤similarity
+    // 对于诊断模式（credibilityMin=0.0），完全移除similarity阈值，只依赖排序
+    const similarityThreshold = credibilityMin <= 0.0 ? 0 : 0.01; // 诊断模式：完全不过滤similarity
     const formattedResults = results
-      .filter((r) => r.similarity >= similarityThreshold && r.credibility_score >= credibilityMin)
+      .filter((r) => {
+        const similarity = parseFloat(String(r.similarity));
+        const credibility = parseFloat(String(r.credibility_score));
+        // 对于相似度，使用动态阈值（诊断模式时完全不过滤）
+        // 对于credibility，使用传入的阈值
+        const similarityPass = similarityThreshold === 0 ? true : similarity >= similarityThreshold;
+        return similarityPass && credibility >= credibilityMin;
+      })
       .map((r) => ({
         id: r.id,
         chunkId: r.chunk_id,
@@ -649,7 +675,23 @@ export class ChunkRetrievalService {
         sourceFile: fileMap.get(r.file_id),
       }));
 
-    this.logger.debug(`检索完成: 找到 ${formattedResults.length} 个相关文档`);
+    // 详细日志：记录过滤前后的结果数
+    const beforeFilter = results.length;
+    const afterFilter = formattedResults.length;
+    this.logger.debug(
+      `检索完成: 原始结果=${beforeFilter}, 过滤后=${afterFilter}, ` +
+      `阈值=${similarityThreshold}, credibilityMin=${credibilityMin}`
+    );
+    
+    // 如果过滤后结果为空但原始结果不为空，记录警告
+    if (beforeFilter > 0 && afterFilter === 0) {
+      const maxSim = Math.max(...results.map(r => parseFloat(String(r.similarity))));
+      const minSim = Math.min(...results.map(r => parseFloat(String(r.similarity))));
+      this.logger.warn(
+        `⚠️ 所有结果被过滤: 最高相似度=${maxSim.toFixed(4)}, ` +
+        `最低相似度=${minSim.toFixed(4)}, 阈值=${similarityThreshold}`
+      );
+    }
 
     return formattedResults;
   }

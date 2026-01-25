@@ -71,3 +71,4 @@ data/backups/*.sql
 
 # Documentation (not pushed to git)
 docs/
+.env.backup

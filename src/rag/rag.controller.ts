@@ -1840,7 +1840,7 @@ export class RagController {
         type: { type: 'string', description: '文档类型' },
         category: { type: 'string', description: '文件分类' },
         fileId: { type: 'string', description: '文件ID' },
-        useHybridSearch: { type: 'boolean', description: '是否使用混合检索（默认true）', default: true },
+        useHybridSearch: { type: 'boolean', description: '是否使用混合检索（默认true，推荐启用，对中文查询更有效）', default: true },
         denseWeight: { type: 'number', description: 'Dense检索权重（默认0.7）', default: 0.7 },
         sparseWeight: { type: 'number', description: 'Sparse检索权重（默认0.3）', default: 0.3 },
         useReranking: { type: 'boolean', description: '是否使用重排序（默认false，会增加延迟但提升准确率）', default: false },

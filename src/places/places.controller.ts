@@ -14,11 +14,13 @@ import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { GetPlacesAdminQueryDto, PlaceListAdminResponseDto } from './dto/admin-place.dto';
 import { PlaceListQueryDto, PlaceListResponseDto } from './dto/place-list-query.dto';
-import { BatchPlaceImageRequestDto, BatchPlaceImageResponseDto, CATEGORY_MAP } from './dto/place-image.dto';
+import { BatchPlaceImageRequestDto, BatchPlaceImageResponseDto, CATEGORY_MAP, SavePlaceImageRequestDto, SavePlaceImageResponseDto } from './dto/place-image.dto';
 import { PlaceCategory } from '@prisma/client';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { PrismaService } from '../prisma/prisma.service';
+import { UploadService } from '../upload/upload.service';
 
 @ApiTags('places')
 @Controller('places')
@@ -33,6 +35,8 @@ export class PlacesController {
     private readonly naraHintService: NaraHintService,
     private readonly routeDifficultyService: RouteDifficultyService,
     private readonly unsplashService: UnsplashService,
+    private readonly prisma: PrismaService,
+    private readonly uploadService: UploadService,
   ) {}
 
   @Public()
@@ -1659,6 +1663,178 @@ export class PlacesController {
   })
   async getImageCacheStats() {
     return successResponse(this.unsplashService.getCacheStats());
+  }
+
+  @Post('images/save')
+  @Public()
+  @ApiOperation({
+    summary: '保存 Unsplash 图片到数据库',
+    description: `
+将 Unsplash 图片保存到指定地点的 metadata.images 中。
+
+**使用场景**：
+- 从批量图片接口获取图片后，需要持久化保存到数据库
+- 图片会保存到 Place.metadata.images 数组中
+- 格式与上传接口保持一致，便于统一管理
+
+**图片格式**：
+- url: 使用 regular 尺寸（1080px 宽）作为主 URL
+- source: 'unsplash'
+- caption: 使用图片的 description 或 altDescription
+- attribution: 保存 Unsplash 归属信息（必须展示）
+
+**主图设置**：
+- 如果地点没有其他图片，自动设为主图
+- 如果已有图片，默认不设为主图（可通过 isPrimary 参数控制）
+    `,
+  })
+  @ApiBody({
+    type: SavePlaceImageRequestDto,
+    examples: {
+      save_image: {
+        summary: '保存图片示例',
+        value: {
+          placeId: 123,
+          photo: {
+            id: 'abc123',
+            width: 4000,
+            height: 3000,
+            color: '#4A90D9',
+            blurHash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.',
+            description: 'Beautiful mountain view',
+            altDescription: 'Mount Fuji at sunset',
+            urls: {
+              raw: 'https://images.unsplash.com/photo-xxx?raw',
+              full: 'https://images.unsplash.com/photo-xxx?full',
+              regular: 'https://images.unsplash.com/photo-xxx?w=1080',
+              small: 'https://images.unsplash.com/photo-xxx?w=400',
+              thumb: 'https://images.unsplash.com/photo-xxx?w=200',
+            },
+            user: {
+              name: 'John Doe',
+              username: 'johndoe',
+              link: 'https://unsplash.com/@johndoe',
+            },
+            attribution: {
+              photographerName: 'John Doe',
+              photographerUrl: 'https://unsplash.com/@johndoe',
+              unsplashUrl: 'https://unsplash.com/photos/abc123',
+            },
+          },
+          isPrimary: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功保存图片',
+    type: SavePlaceImageResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  async savePlaceImage(
+    @Body() request: SavePlaceImageRequestDto,
+  ): Promise<SavePlaceImageResponseDto> {
+    // 检查地点是否存在
+    const place = await this.prisma.place.findUnique({
+      where: { id: request.placeId },
+    });
+
+    if (!place) {
+      throw new NotFoundException(`地点不存在: ID ${request.placeId}`);
+    }
+
+    // 检查 OSS 是否可用
+    if (!this.uploadService.isAvailable()) {
+      throw new BadRequestException('OSS 未配置，无法保存图片到 OSS');
+    }
+
+    // 获取当前 metadata
+    const currentMetadata = (place.metadata as any) || {};
+    const existingImages = currentMetadata.images || [];
+
+    // 从 Unsplash 下载图片并上传到 OSS
+    this.logger.log(
+      `[保存图片] 开始下载并上传图片到 OSS: 地点 ID=${request.placeId}, Unsplash ID=${request.photo.id}`
+    );
+
+    let ossResult;
+    try {
+      // 使用 regular 尺寸（1080px）作为主图
+      ossResult = await this.uploadService.uploadImageFromUrl(
+        request.photo.urls.regular,
+        `places/${request.placeId}`,
+        `unsplash-${request.photo.id}.jpg`,
+      );
+    } catch (error: any) {
+      this.logger.error(`[保存图片] OSS 上传失败: ${error.message}`);
+      throw new BadRequestException(`图片上传到 OSS 失败: ${error.message}`);
+    }
+
+    // 构建图片数据（格式与上传接口保持一致）
+    const newImage = {
+      url: ossResult.url, // 使用 OSS URL
+      key: ossResult.key, // 保存 OSS key，便于后续删除
+      caption: request.photo.description || request.photo.altDescription || '',
+      source: 'unsplash',
+      isPrimary: existingImages.length === 0 || request.isPrimary === true,
+      savedAt: new Date().toISOString(),
+      // 保存 Unsplash 特有信息
+      unsplash: {
+        id: request.photo.id,
+        width: request.photo.width,
+        height: request.photo.height,
+        color: request.photo.color,
+        blurHash: request.photo.blurHash,
+        originalUrl: request.photo.urls.regular, // 保存原始 Unsplash URL（备用）
+        urls: request.photo.urls, // 保存所有尺寸的 URL（用于参考）
+        attribution: request.photo.attribution, // 必须保存归属信息
+        photographer: {
+          name: request.photo.user.name,
+          username: request.photo.user.username,
+          link: request.photo.user.link,
+        },
+      },
+    };
+
+    // 如果设为新的主图，取消其他图片的主图状态
+    if (newImage.isPrimary && existingImages.length > 0) {
+      existingImages.forEach((img: any) => {
+        img.isPrimary = false;
+      });
+    }
+
+    // 更新 metadata
+    const updatedMetadata = {
+      ...currentMetadata,
+      images: [...existingImages, newImage],
+    };
+
+    // 保存到数据库
+    await this.prisma.place.update({
+      where: { id: request.placeId },
+      data: { metadata: updatedMetadata },
+    });
+
+    this.logger.log(
+      `[保存图片] 完成: 地点 ID=${request.placeId}, OSS Key=${ossResult.key}, 总图片数=${updatedMetadata.images.length}`
+    );
+
+    return {
+      success: true,
+      placeId: request.placeId,
+      placeName: place.nameCN,
+      savedImage: {
+        url: newImage.url,
+        caption: newImage.caption,
+        source: newImage.source,
+        isPrimary: newImage.isPrimary,
+        savedAt: newImage.savedAt,
+        attribution: request.photo.attribution,
+      },
+      totalImages: updatedMetadata.images.length,
+    };
   }
 }
 

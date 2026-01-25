@@ -59,6 +59,9 @@ export class RagService {
 
       // 3. 向量相似度搜索（使用 pgvector）
       // 注意：这里需要先确保 DocumentIndex 表有 embedding 字段和索引
+      // 将 embedding 数组转换为 PostgreSQL vector 格式字符串
+      const queryEmbeddingStr = `[${queryEmbedding.join(',')}]`;
+      
       let whereClause = Prisma.sql`WHERE collection = ${collection} AND embedding IS NOT NULL`;
       
       if (countryCode) {
@@ -83,10 +86,10 @@ export class RagService {
           content,
           source,
           metadata,
-          1 - (embedding <=> ${queryEmbedding}::vector) as score
+          1 - (embedding <=> ${queryEmbeddingStr}::vector) as score
         FROM "document_index"
         ${whereClause}
-        ORDER BY embedding <=> ${queryEmbedding}::vector
+        ORDER BY embedding <=> ${queryEmbeddingStr}::vector
         LIMIT ${limit}
       `;
 

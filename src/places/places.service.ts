@@ -1225,7 +1225,36 @@ export class PlacesService {
     if (dto.category !== undefined) updateData.category = dto.category;
     if (dto.address !== undefined) updateData.address = dto.address;
     if (dto.cityId !== undefined) updateData.cityId = dto.cityId;
-    if (dto.googlePlaceId !== undefined) updateData.googlePlaceId = dto.googlePlaceId;
+    
+    // 检查 googlePlaceId 唯一性约束
+    if (dto.googlePlaceId !== undefined) {
+      // 将空字符串转换为 null（数据库唯一约束只适用于非 null 值）
+      const normalizedGooglePlaceId = dto.googlePlaceId?.trim() || null;
+      
+      // 如果新值不为空，检查是否已被其他地点使用
+      if (normalizedGooglePlaceId) {
+        const existingPlace = await this.prisma.place.findFirst({
+          where: {
+            googlePlaceId: normalizedGooglePlaceId,
+            id: { not: id }, // 排除当前地点
+          },
+        });
+        
+        if (existingPlace) {
+          throw new BadRequestException(
+            `Google Place ID "${normalizedGooglePlaceId}" 已被地点 ID ${existingPlace.id} (${existingPlace.nameCN}) 使用`
+          );
+        }
+      }
+      
+      // 如果当前地点已经有相同的 googlePlaceId，不需要更新（避免不必要的数据库操作）
+      if (place.googlePlaceId === normalizedGooglePlaceId) {
+        // 跳过更新，保持原值
+      } else {
+        updateData.googlePlaceId = normalizedGooglePlaceId;
+      }
+    }
+    
     if (dto.rating !== undefined) updateData.rating = dto.rating;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.metadata !== undefined) updateData.metadata = dto.metadata;

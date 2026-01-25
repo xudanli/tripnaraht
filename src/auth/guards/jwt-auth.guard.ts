@@ -1,5 +1,5 @@
 // src/auth/guards/jwt-auth.guard.ts
-import { Injectable, ExecutionContext } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -61,7 +61,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     // For protected routes, use default behavior (throw error if invalid)
     if (err || !user) {
-      throw err || new Error('Unauthorized');
+      // Throw UnauthorizedException instead of generic Error
+      // This ensures proper HTTP 401 status code instead of 500
+      if (err) {
+        // If err is already an HttpException, re-throw it
+        if (err instanceof UnauthorizedException) {
+          throw err;
+        }
+        // Otherwise, wrap it in UnauthorizedException
+        throw new UnauthorizedException(err.message || 'Unauthorized');
+      }
+      throw new UnauthorizedException('Unauthorized');
     }
     return user;
   }

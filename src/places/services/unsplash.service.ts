@@ -2,6 +2,9 @@
 
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import axios, { AxiosInstance } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import * as https from 'https';
 
 /**
  * Unsplash 图片数据
@@ -80,6 +83,7 @@ export class UnsplashService implements OnModuleInit {
   private readonly logger = new Logger(UnsplashService.name);
   private accessKey: string;
   private readonly baseUrl = 'https://api.unsplash.com';
+  private httpClient: AxiosInstance | null = null;
   
   // 内存缓存（生产环境应使用 Redis）
   private cache: Map<string, { photo: UnsplashPhoto; timestamp: number }> = new Map();
@@ -92,6 +96,61 @@ export class UnsplashService implements OnModuleInit {
 
   constructor(@Optional() private readonly configService?: ConfigService) {
     this.accessKey = this.configService?.get<string>('UNSPLASH_ACCESS_KEY') || '';
+    this.initHttpClient();
+  }
+
+  /**
+   * 初始化 HTTP 客户端（支持代理）
+   */
+  private initHttpClient() {
+    // 检查代理环境变量
+    const proxyUrl =
+      process.env.HTTPS_PROXY ||
+      process.env.https_proxy ||
+      process.env.ALL_PROXY ||
+      process.env.all_proxy;
+
+    // 创建 HTTPS Agent
+    let httpsAgent: https.Agent | HttpsProxyAgent<string>;
+    if (proxyUrl) {
+      try {
+        httpsAgent = new HttpsProxyAgent<string>(proxyUrl);
+        this.logger.debug(`Unsplash HTTP 客户端已初始化（使用代理: ${proxyUrl})`);
+      } catch (error: any) {
+        this.logger.warn(`代理配置失败，使用直接连接: ${error.message}`);
+        httpsAgent = new https.Agent({
+          keepAlive: true,
+          family: 4, // 强制 IPv4
+          rejectUnauthorized: true,
+        });
+      }
+    } else {
+      httpsAgent = new https.Agent({
+        keepAlive: true,
+        family: 4, // 强制 IPv4
+        rejectUnauthorized: true,
+      });
+    }
+
+    this.httpClient = axios.create({
+      baseURL: this.baseUrl,
+      timeout: 20000, // 20秒超时（增加超时时间）
+      httpsAgent,
+      proxy: false, // 禁用 axios 的代理（使用 httpsAgent 处理）
+      headers: {
+        'Accept-Version': 'v1',
+      },
+      // 添加请求拦截器，确保 Authorization header 正确设置
+      validateStatus: (status) => status < 500, // 允许 4xx 状态码，在业务逻辑中处理
+    });
+
+    // 添加请求拦截器，确保每次请求都包含 Authorization
+    this.httpClient.interceptors.request.use((config) => {
+      if (this.accessKey && !config.headers['Authorization']) {
+        config.headers['Authorization'] = `Client-ID ${this.accessKey}`;
+      }
+      return config;
+    });
   }
 
   onModuleInit() {
@@ -212,13 +271,33 @@ export class UnsplashService implements OnModuleInit {
         };
       }
     } catch (error: any) {
-      this.logger.error(`获取图片失败 [${place.placeName}]: ${error.message}`);
+      const errorMessage = error.message || '未知错误';
+      const errorCode = error.code || (error.isAxiosError ? 'AXIOS_ERROR' : '');
+      const errorDetails = errorCode ? ` (${errorCode})` : '';
+      const statusInfo = error.response?.status ? ` [HTTP ${error.response.status}]` : '';
+      
+      this.logger.error(
+        `获取图片失败 [${place.placeName}]: ${errorMessage}${errorDetails}${statusInfo}`
+      );
+      
+      // 提供更友好的错误消息
+      let userFriendlyError = errorMessage;
+      if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNRESET') || errorMessage.includes('ENOTFOUND')) {
+        userFriendlyError = '网络连接失败，请检查网络连接或稍后重试';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('超时') || errorCode === 'ECONNABORTED') {
+        userFriendlyError = '请求超时，请稍后重试';
+      } else if (error.response?.status === 401) {
+        userFriendlyError = 'Unsplash API Key 无效';
+      } else if (error.response?.status === 403) {
+        userFriendlyError = 'Unsplash API 速率限制，请稍后重试';
+      }
+      
       return {
         placeId: place.placeId,
         placeName: place.placeName,
         photo: null,
         cached: false,
-        error: error.message,
+        error: userFriendlyError,
       };
     }
   }
@@ -227,66 +306,244 @@ export class UnsplashService implements OnModuleInit {
    * 搜索 Unsplash 图片
    */
   private async searchPhoto(place: PlaceImageRequest): Promise<UnsplashPhoto | null> {
-    // 构建搜索查询
-    const query = this.buildSearchQuery(place);
+    // 先尝试完整查询
+    let query = this.buildSearchQuery(place, false);
+    let result = await this.trySearch(query, place);
     
-    const url = new URL(`${this.baseUrl}/search/photos`);
-    url.searchParams.set('query', query);
-    url.searchParams.set('per_page', '1');          // 只取最佳匹配
-    url.searchParams.set('orientation', 'landscape'); // 横向图片更适合展示
-    url.searchParams.set('order_by', 'relevant');   // 按相关性排序
+    // 如果完整查询失败，尝试简化查询（只用地名和国家）
+    if (!result) {
+      this.logger.debug(`[Unsplash] 完整查询无结果，尝试简化查询: ${place.placeName}`);
+      query = this.buildSearchQuery(place, true);
+      result = await this.trySearch(query, place);
+    }
     
+    return result;
+  }
+
+  /**
+   * 执行实际的搜索请求
+   */
+  private async trySearch(query: string, place: PlaceImageRequest): Promise<UnsplashPhoto | null> {
     this.logger.debug(`[Unsplash] 搜索: ${query}`);
     
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Client-ID ${this.accessKey}`,
-        'Accept-Version': 'v1',
-      },
-    });
+    // 确保 httpClient 已初始化
+    if (!this.httpClient) {
+      this.initHttpClient();
+    }
+    
+    // 重试配置
+    const maxRetries = 3;
+    const timeoutMs = 20000; // 20秒超时（增加超时时间）
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Unsplash API Key 无效');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // 使用 axios 请求（支持代理和更好的超时控制）
+        const response = await this.httpClient!.get('/search/photos', {
+          params: {
+            query: query,
+            per_page: 1,
+            orientation: 'landscape',
+            order_by: 'relevant',
+          },
+          headers: {
+            'Authorization': `Client-ID ${this.accessKey}`,
+          },
+          timeout: timeoutMs,
+        });
+
+        if (response.status !== 200) {
+          if (response.status === 401) {
+            throw new Error('Unsplash API Key 无效');
+          }
+          if (response.status === 403) {
+            throw new Error('Unsplash API 速率限制');
+          }
+          throw new Error(`Unsplash API 错误: ${response.status}`);
+        }
+
+        const data = response.data as { results?: any[]; total?: number };
+        
+        if (!data.results || data.results.length === 0) {
+          return null;
+        }
+
+        const rawPhoto = data.results[0];
+        
+        // 转换为标准格式
+        return this.transformPhoto(rawPhoto);
+      } catch (error: any) {
+        lastError = error;
+        
+        // 记录详细错误信息（用于调试）
+        const errorInfo = {
+          message: error.message || '未知错误',
+          code: error.code || '无',
+          status: error.response?.status || '无',
+          statusText: error.response?.statusText || '无',
+          isAxiosError: error.isAxiosError || false,
+        };
+        this.logger.debug(
+          `[Unsplash] 请求错误详情 (尝试 ${attempt}/${maxRetries}): ${JSON.stringify(errorInfo)}`
+        );
+        
+        // 判断是否应该重试
+        const isRetryable = 
+          error.message?.includes('fetch failed') ||
+          error.message?.includes('timeout') ||
+          error.message?.includes('超时') ||
+          error.message?.includes('ECONNABORTED') ||
+          error.message?.includes('ECONNRESET') ||
+          error.message?.includes('ENOTFOUND') ||
+          error.message?.includes('ETIMEDOUT') ||
+          error.message?.includes('ECONNREFUSED') ||
+          error.code === 'ECONNABORTED' ||
+          error.code === 'ECONNRESET' ||
+          error.code === 'ENOTFOUND' ||
+          error.code === 'ETIMEDOUT' ||
+          error.code === 'ECONNREFUSED' ||
+          (error.isAxiosError && error.code === 'ECONNABORTED') || // axios timeout
+          (error.isAxiosError && error.message?.includes('timeout'));
+
+        // 如果是代理连接失败或超时，尝试重新初始化客户端（使用直接连接）
+        const isProxyOrTimeoutIssue = 
+          (error.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) ||
+          (error.code === 'ECONNABORTED' && error.isAxiosError) || // axios timeout
+          (error.message?.includes('timeout') && attempt === 1);
+        
+        if (isProxyOrTimeoutIssue && attempt === 1) {
+          this.logger.warn(`Unsplash 连接问题（${error.code || error.message}），尝试切换到直接连接`);
+          // 临时禁用代理环境变量，重新初始化
+          const originalProxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY || process.env.all_proxy;
+          if (originalProxy) {
+            delete process.env.HTTPS_PROXY;
+            delete process.env.https_proxy;
+            delete process.env.ALL_PROXY;
+            delete process.env.all_proxy;
+            this.initHttpClient();
+            // 恢复环境变量（不影响其他服务）
+            if (originalProxy) {
+              process.env.HTTPS_PROXY = originalProxy;
+            }
+          }
+        }
+
+        if (!isRetryable || attempt === maxRetries) {
+          // 不可重试的错误或已达到最大重试次数
+          throw error;
+        }
+
+        // 指数退避重试
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        this.logger.warn(
+          `[Unsplash] 请求失败 (尝试 ${attempt}/${maxRetries}): ${error.message}，${backoffMs}ms 后重试`
+        );
+        await this.delay(backoffMs);
       }
-      if (response.status === 403) {
-        throw new Error('Unsplash API 速率限制');
-      }
-      throw new Error(`Unsplash API 错误: ${response.status}`);
     }
 
-    const data = await response.json() as { results?: any[]; total?: number };
-    
-    if (!data.results || data.results.length === 0) {
-      return null;
-    }
+    // 理论上不会到达这里，但 TypeScript 需要
+    throw lastError || new Error('未知错误');
+  }
 
-    const rawPhoto = data.results[0];
+  /**
+   * 规范化地名（去除特殊字符，保留基本字母和空格）
+   */
+  private normalizePlaceName(name: string): string {
+    // 将特殊字符转换为 ASCII 等价字符
+    const replacements: Record<string, string> = {
+      'ý': 'y', 'Ý': 'Y',
+      'á': 'a', 'Á': 'A',
+      'é': 'e', 'É': 'E',
+      'í': 'i', 'Í': 'I',
+      'ó': 'o', 'Ó': 'O',
+      'ú': 'u', 'Ú': 'U',
+      'ð': 'd', 'Ð': 'D',
+      'þ': 'th', 'Þ': 'Th',
+      'ö': 'o', 'Ö': 'O',
+      'ä': 'a', 'Ä': 'A',
+      'ü': 'u', 'Ü': 'U',
+    };
     
-    // 转换为标准格式
-    return this.transformPhoto(rawPhoto);
+    let normalized = name;
+    for (const [special, replacement] of Object.entries(replacements)) {
+      normalized = normalized.replace(new RegExp(special, 'g'), replacement);
+    }
+    
+    // 移除多余空格
+    return normalized.trim().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * 国家代码转换为完整国家名
+   */
+  private getCountryName(countryCode: string): string {
+    const countryMap: Record<string, string> = {
+      'IS': 'Iceland',
+      'US': 'United States',
+      'GB': 'United Kingdom',
+      'FR': 'France',
+      'DE': 'Germany',
+      'IT': 'Italy',
+      'ES': 'Spain',
+      'CN': 'China',
+      'JP': 'Japan',
+      'KR': 'South Korea',
+      'AU': 'Australia',
+      'CA': 'Canada',
+      'MX': 'Mexico',
+      'BR': 'Brazil',
+      'IN': 'India',
+      'TH': 'Thailand',
+      'VN': 'Vietnam',
+      'ID': 'Indonesia',
+      'MY': 'Malaysia',
+      'SG': 'Singapore',
+      'PH': 'Philippines',
+    };
+    
+    return countryMap[countryCode.toUpperCase()] || countryCode;
   }
 
   /**
    * 构建搜索查询
    */
-  private buildSearchQuery(place: PlaceImageRequest): string {
+  private buildSearchQuery(place: PlaceImageRequest, simplified: boolean = false): string {
     const parts: string[] = [];
     
-    // 优先使用英文名称
+    // 优先使用英文名称，并规范化
+    let placeName = '';
     if (place.placeNameEn) {
-      parts.push(place.placeNameEn);
+      placeName = this.normalizePlaceName(place.placeNameEn);
     } else {
-      parts.push(place.placeName);
+      placeName = this.normalizePlaceName(place.placeName);
+    }
+    
+    // 如果简化模式，只使用地名的核心部分（去除描述性词汇）
+    if (simplified) {
+      // 移除常见的描述性词汇
+      const descriptiveWords = ['nature baths', 'nature bath', 'baths', 'bath', 'hot spring', 'hot springs'];
+      let simplifiedName = placeName.toLowerCase();
+      for (const word of descriptiveWords) {
+        simplifiedName = simplifiedName.replace(new RegExp(`\\b${word}\\b`, 'gi'), '').trim();
+      }
+      parts.push(simplifiedName || placeName);
+    } else {
+      parts.push(placeName);
     }
     
     // 添加国家（帮助定位）
     if (place.country) {
-      parts.push(place.country);
+      const countryName = this.getCountryName(place.country);
+      if (countryName !== place.country) {
+        parts.push(countryName);
+      } else {
+        parts.push(place.country);
+      }
     }
     
-    // 根据类别添加关键词
-    if (place.category) {
+    // 根据类别添加关键词（仅在非简化模式下）
+    if (!simplified && place.category) {
       const categoryKeywords: Record<string, string> = {
         landmark: 'landmark travel',
         nature: 'nature landscape scenic',

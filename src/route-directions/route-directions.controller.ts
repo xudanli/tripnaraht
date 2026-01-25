@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Logger,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { RouteDirectionsService } from './route-directions.service';
@@ -28,6 +29,8 @@ import { ScoreBreakdown } from './interfaces/route-direction-explanation.interfa
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
+import { AddPoiToTemplateDto } from './dto/add-poi-to-template.dto';
+import { RemovePoiFromTemplateDto } from './dto/remove-poi-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { QueryRouteTemplateDto } from './dto/query-route-template.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
@@ -330,6 +333,90 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to delete route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Post('templates/:id/pois')
+  @ApiOperation({ 
+    summary: '向路线模板添加 POI', 
+    description: '向指定路线的指定日期添加 POI。POI 会自动添加到 dayPlans[day].pois 数组中，并更新 RouteDirection 的 signaturePois.examples' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ type: AddPoiToTemplateDto })
+  @ApiResponse({ status: 200, description: '成功添加 POI' })
+  @ApiResponse({ status: 404, description: '路线模板或 POI 不存在' })
+  @ApiResponse({ status: 400, description: 'POI 已存在或参数错误' })
+  async addPoiToTemplate(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: AddPoiToTemplateDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.addPoiToTemplate(templateId, dto);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          error.message,
+          { statusCode: 400 }
+        );
+      }
+      this.logger.error('Failed to add POI to template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to add POI to template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Delete('templates/:id/pois')
+  @ApiOperation({ 
+    summary: '从路线模板移除 POI', 
+    description: '从指定路线的指定日期移除 POI。可以通过 poiId、poiUuid 或 index 指定要移除的 POI' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ type: RemovePoiFromTemplateDto })
+  @ApiResponse({ status: 200, description: '成功移除 POI' })
+  @ApiResponse({ status: 404, description: '路线模板或 POI 不存在' })
+  @ApiResponse({ status: 400, description: '参数错误' })
+  async removePoiFromTemplate(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: RemovePoiFromTemplateDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.removePoiFromTemplate(templateId, dto);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          error.message,
+          { statusCode: 400 }
+        );
+      }
+      this.logger.error('Failed to remove POI from template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to remove POI from template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }

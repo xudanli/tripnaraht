@@ -50,11 +50,22 @@ export class LoggingInterceptor implements NestInterceptor {
           }
         },
         error: (error) => {
-          const statusCode = response.statusCode || 500;
-          const duration = Date.now() - start;
-          const logMessage = `${method} ${originalUrl} ${statusCode} ${duration}ms [ERROR]`;
-          console.error(`[HTTP-Interceptor] ${logMessage}`, error?.message);
-          this.logger.error(`[Interceptor] ${logMessage}`, error?.stack);
+          // 等待响应完成后再记录，确保状态码已设置
+          // 对于异常，状态码会在异常过滤器中设置
+          const logError = () => {
+            const statusCode = response.statusCode || (error?.status || 500);
+            const duration = Date.now() - start;
+            const logMessage = `${method} ${originalUrl} ${statusCode} ${duration}ms [ERROR]`;
+            console.error(`[HTTP-Interceptor] ${logMessage}`, error?.message);
+            this.logger.error(`[Interceptor] ${logMessage}`, error?.stack);
+          };
+          
+          // 如果响应已完成，立即记录；否则等待 finish 事件
+          if (response.writableFinished || response.headersSent) {
+            logError();
+          } else {
+            response.once('finish', logError);
+          }
         },
       }),
     );

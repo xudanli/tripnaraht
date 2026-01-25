@@ -89,6 +89,169 @@ interface DayPlanPoi {
 
 ## API 接口
 
+### POI 管理接口
+
+#### 1. 向路线模板添加 POI
+
+**接口**: `POST /route-directions/templates/:id/pois`
+
+**描述**: 向指定路线的指定日期添加 POI。POI 会自动添加到 `dayPlans[day].pois` 数组中，并更新 `RouteDirection` 的 `signaturePois.examples`。
+
+**路径参数**:
+- `id` (number): 路线模板 ID
+
+**请求体**:
+```json
+{
+  "day": 1,                    // 第几天（从 1 开始）
+  "poiId": 12345,              // POI ID（Place 表的 id）
+  "required": false,           // 是否为必游 POI（可选，默认 false）
+  "order": 1,                  // POI 顺序（可选，用于排序）
+  "durationMinutes": 120       // 预计停留时间（分钟，可选）
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "uuid": "xxx",
+    "routeDirectionId": 1,
+    "durationDays": 7,
+    "dayPlans": [
+      {
+        "day": 1,
+        "pois": [
+          {
+            "id": 12345,
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "nameCN": "蓝湖温泉",
+            "nameEN": "Blue Lagoon",
+            "category": "ATTRACTION",
+            "required": false,
+            "order": 1,
+            "durationMinutes": 120
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**错误响应**:
+- `404`: 路线模板或 POI 不存在
+- `400`: POI 已存在或参数错误
+
+**使用示例**:
+```bash
+curl -X POST http://localhost:3000/route-directions/templates/1/pois \
+  -H "Content-Type: application/json" \
+  -d '{
+    "day": 1,
+    "poiId": 12345,
+    "required": true,
+    "order": 1,
+    "durationMinutes": 180
+  }'
+```
+
+#### 2. 从路线模板移除 POI
+
+**接口**: `DELETE /route-directions/templates/:id/pois`
+
+**描述**: 从指定路线的指定日期移除 POI。可以通过 `poiId`、`poiUuid` 或 `index` 指定要移除的 POI。
+
+**路径参数**:
+- `id` (number): 路线模板 ID
+
+**请求体**:
+```json
+{
+  "day": 1,                    // 第几天（从 1 开始）
+  "poiId": 12345               // 方式1: 通过 POI ID 移除
+}
+```
+
+或者：
+
+```json
+{
+  "day": 1,
+  "poiUuid": "550e8400-e29b-41d4-a716-446655440000"  // 方式2: 通过 POI UUID 移除
+}
+```
+
+或者：
+
+```json
+{
+  "day": 1,
+  "index": 0                    // 方式3: 通过索引移除（从 0 开始）
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "template": {
+      "id": 1,
+      "dayPlans": [
+        {
+          "day": 1,
+          "pois": []  // POI 已被移除
+        }
+      ]
+    },
+    "removedPoi": {
+      "id": 12345,
+      "uuid": "550e8400-e29b-41d4-a716-446655440000",
+      "nameCN": "蓝湖温泉",
+      "nameEN": "Blue Lagoon"
+    }
+  }
+}
+```
+
+**错误响应**:
+- `404`: 路线模板或 POI 不存在
+- `400`: 参数错误（必须提供 poiId、poiUuid 或 index 之一）
+
+**使用示例**:
+```bash
+# 通过 ID 移除
+curl -X DELETE http://localhost:3000/route-directions/templates/1/pois \
+  -H "Content-Type: application/json" \
+  -d '{
+    "day": 1,
+    "poiId": 12345
+  }'
+
+# 通过 UUID 移除
+curl -X DELETE http://localhost:3000/route-directions/templates/1/pois \
+  -H "Content-Type: application/json" \
+  -d '{
+    "day": 1,
+    "poiUuid": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+
+# 通过索引移除
+curl -X DELETE http://localhost:3000/route-directions/templates/1/pois \
+  -H "Content-Type: application/json" \
+  -d '{
+    "day": 1,
+    "index": 0
+  }'
+```
+
+---
+
+## API 接口
+
 ### 1. 创建路线模板
 
 创建基于路线方向的行程模板。
