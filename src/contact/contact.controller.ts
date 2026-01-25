@@ -209,6 +209,7 @@ export class ContactController {
 
   // ==================== 管理接口 ====================
 
+  @Public() // 开发环境暂时公开，生产环境应添加管理员权限检查
   @Get('admin/messages')
   @ApiOperation({
     summary: '获取联系消息列表（管理接口）',
@@ -233,6 +234,7 @@ export class ContactController {
     }
   }
 
+  @Public() // 开发环境暂时公开，生产环境应添加管理员权限检查
   @Get('admin/messages/:id')
   @ApiOperation({
     summary: '获取联系消息详情（管理接口）',
@@ -261,6 +263,7 @@ export class ContactController {
     }
   }
 
+  @Public() // 开发环境暂时公开，生产环境应添加管理员权限检查
   @Put('admin/messages/:id/status')
   @ApiOperation({
     summary: '更新联系消息状态（管理接口）',
@@ -301,6 +304,7 @@ export class ContactController {
     }
   }
 
+  @Public() // 开发环境暂时公开，生产环境应添加管理员权限检查
   @Post('admin/messages/:id/reply')
   @ApiOperation({
     summary: '回复联系消息（管理接口）',

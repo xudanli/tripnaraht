@@ -1,6 +1,6 @@
 // src/agent/training/services/mlflow-client.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
@@ -17,9 +17,10 @@ export class MLflowClientService {
   private readonly mlflowTrackingUri: string;
   private readonly httpClient: AxiosInstance;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(@Optional() private readonly configService?: ConfigService) {
     this.mlflowTrackingUri =
-      this.configService.get<string>('MLFLOW_TRACKING_URI') ||
+      this.configService?.get<string>('MLFLOW_TRACKING_URI') ||
+      process.env.MLFLOW_TRACKING_URI ||
       'http://localhost:5000';
     
     // 创建 HTTP 客户端

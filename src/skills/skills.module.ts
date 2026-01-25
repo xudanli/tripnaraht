@@ -84,6 +84,9 @@ import { OpeningHoursGetSkill } from './places/opening-hours-get.skill';
 // Weather Skills
 import { WeatherSearchSkill } from './weather/weather-search.skill';
 
+// Web Skills
+import { WebBrowseSkill } from './web/web-browse.skill';
+
 // Itinerary Skills
 import { ItineraryGenerateSkill } from './itinerary/itinerary-generate.skill';
 import { ItineraryVerifySkill } from './itinerary/itinerary-verify.skill';
@@ -201,21 +204,22 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
 @Module({
   imports: [
     // 先导入 PlacesEmbeddingModule，确保 EmbeddingService 在 ToolsSelectSkill 之前可用
-    ...(enablePlacesEmbeddingModule ? [PlacesEmbeddingModule] : []), // 只提供 EmbeddingService（用于 Tool RAG Embedding），默认启用，不阻塞启动
-    ...(enablePlacesModule ? [PlacesModule] : []), // 完整的 PlacesModule（包含所有服务），默认禁用（导致启动阻塞）
-    // DEM 模块（独立模块，不形成循环依赖）
-    DemModule, // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要）
+    // 使用 forwardRef 避免循环依赖（PlacesEmbeddingModule -> LlmModule -> AgentInfraModule -> LlmModule）
+    ...(enablePlacesEmbeddingModule ? [forwardRef(() => PlacesEmbeddingModule)] : []), // 只提供 EmbeddingService（用于 Tool RAG Embedding），默认启用，不阻塞启动
+    ...(enablePlacesModule ? [forwardRef(() => PlacesModule)] : []), // 完整的 PlacesModule（包含所有服务），默认禁用（导致启动阻塞）
+    // DEM 模块（独立模块，不形成循环依赖） - 使用 forwardRef 以防万一
+    forwardRef(() => DemModule), // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要）
     // 其他模块
     ...(enableDecisionSkills ? [forwardRef(() => DecisionModule)] : []), // 使用 forwardRef 避免与 DecisionModule 的循环依赖
     // 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true
-    ...(process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true' ? [RouteDirectionsModule] : []),
+    ...(process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true' ? [forwardRef(() => RouteDirectionsModule)] : []),
     ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []), // 使用 forwardRef 避免与 ReadinessModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> SkillsModule -> ReadinessModule）
     ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
-    TransportModule, // 导入 TransportModule 以支持 TransportSearchSkill 使用 TransportRoutingService
+    forwardRef(() => TransportModule), // 导入 TransportModule 以支持 TransportSearchSkill 使用 TransportRoutingService
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
-    LlmModule, // 导入 LlmModule 以支持规划技能使用 LlmService
-    DataContractsModule, // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
+    forwardRef(() => LlmModule), // 导入 LlmModule 以支持规划技能使用 LlmService
+    forwardRef(() => DataContractsModule), // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
@@ -359,7 +363,10 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     
     // Weather Skills
     WeatherSearchSkill,
-    
+
+    // Web Skills
+    WebBrowseSkill,
+
     // Itinerary Skills
     ItineraryGenerateSkill,
     ItineraryVerifySkill,
@@ -464,7 +471,10 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     
     // Weather Skills
     WeatherSearchSkill,
-    
+
+    // Web Skills
+    WebBrowseSkill,
+
     // Itinerary Skills
     ItineraryGenerateSkill,
     ItineraryVerifySkill,
@@ -546,6 +556,7 @@ export class SkillsModule {
     @Optional() private readonly poiSearchSkill?: PoiSearchSkill,
     @Optional() private readonly openingHoursGetSkill?: OpeningHoursGetSkill,
     @Optional() private readonly weatherSearchSkill?: WeatherSearchSkill,
+    @Optional() private readonly webBrowseSkill?: WebBrowseSkill,
     @Optional() private readonly itineraryGenerateSkill?: ItineraryGenerateSkill,
     @Optional() private readonly itineraryVerifySkill?: ItineraryVerifySkill,
     @Optional() private readonly repairApplySkill?: RepairApplySkill,
@@ -615,7 +626,13 @@ export class SkillsModule {
       this.skillsRegistry.registerSkill(this.weatherSearchSkill);
       this.logger.debug('Registered WeatherSearchSkill');
     }
-    
+
+    // 手动注册新 Web Skills
+    if (this.webBrowseSkill) {
+      this.skillsRegistry.registerSkill(this.webBrowseSkill);
+      this.logger.debug('Registered WebBrowseSkill');
+    }
+
     // 手动注册新 Itinerary Skills
     if (this.itineraryGenerateSkill) {
       this.skillsRegistry.registerSkill(this.itineraryGenerateSkill);

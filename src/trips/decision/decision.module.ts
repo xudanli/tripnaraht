@@ -96,16 +96,28 @@ import { ThreeLayerExplanationService } from './services/three-layer-explanation
 import { DecisionSupportService } from './services/decision-support.service';
 import { RhythmMatchingService } from './services/rhythm-matching.service';
 import { MultiPersonDecisionService } from './services/multi-person-decision.service';
-import { DataQualityModule } from '../../data-quality/data-quality.module';
-import { DataModelingModule } from '../../data-modeling/data-modeling.module';
 import { TrainingModule } from '../../agent/training/training.module';
+
+// 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
+let DataQualityModule: any;
+let DataModelingModule: any;
+try {
+  DataQualityModule = require('../../data-quality/data-quality.module').DataQualityModule;
+} catch {
+  DataQualityModule = null;
+}
+try {
+  DataModelingModule = require('../../data-modeling/data-modeling.module').DataModelingModule;
+} catch {
+  DataModelingModule = null;
+}
 
 @Module({
   imports: [
     TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
     DemModule, // 恢复：DemModule 不是问题
-    forwardRef(() => DataQualityModule), // 数据质量模块（用于信息源标注）- 使用 forwardRef 避免循环依赖
-    DataModelingModule, // 数据建模模块（用于不确定性建模）
+    ...(DataQualityModule ? [forwardRef(() => DataQualityModule)] : []), // 数据质量模块（用于信息源标注）
+    ...(DataModelingModule ? [DataModelingModule] : []), // 数据建模模块（用于不确定性建模）
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
     // PlacesModuleOrLite, // 暂时禁用，检查依赖错误和依赖链
     ...(enableRouteDirectionsModule ? [forwardRef(() => RouteDirectionsModule)] : []),

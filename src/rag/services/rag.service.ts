@@ -2,7 +2,12 @@
 /**
  * RAG 服务（通用检索服务）
  * 
+ * ⚠️ 注意：此服务基于 DocumentIndex 表（旧系统）
+ * ✅ 推荐使用 ChunkRetrievalService（基于 Chunk 表，支持 Hybrid Search）
+ * 
  * 提供文档索引、向量检索、相似度搜索等功能
+ * 
+ * @deprecated 新代码应使用 ChunkRetrievalService
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -18,10 +23,17 @@ export class RagService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
-  ) {}
+  ) {
+    this.logger.warn('⚠️ RagService 使用 DocumentIndex 表（旧系统），建议迁移到 ChunkRetrievalService');
+  }
 
   /**
    * 检索相关文档
+   * 
+   * ⚠️ 基于 DocumentIndex 表（旧系统）
+   * ✅ 推荐使用 ChunkRetrievalService.retrieve()（支持 Hybrid Search）
+   * 
+   * @deprecated 新代码应使用 ChunkRetrievalService
    */
   async retrieve(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
     const { query, collection, limit = 10, countryCode, tags, minScore = 0.5 } = params;

@@ -1,5 +1,5 @@
 // src/places/places.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PlacesController } from './places.controller';
 import { PlacesV5Controller } from './places-v5.controller';
 import { PlacesService } from './places.service';
@@ -20,9 +20,14 @@ import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.s
 import { UnsplashService } from './services/unsplash.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
+import { RagModule } from '../rag/rag.module';
 
 @Module({
-  imports: [PrismaModule, HotelsModule],
+  imports: [
+    PrismaModule, 
+    HotelsModule,
+    forwardRef(() => RagModule), // 导入RAG模块以使用EmbeddingCacheService（使用forwardRef避免循环依赖）
+  ],
   controllers: [PlacesController, PlacesV5Controller],
   providers: [
     PlacesService,

@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [postgis]
+  extensions = [postgis, pgvector(map: "vector")]
 }
 
 model City {
@@ -919,6 +919,7 @@ enum PlaceCategory {
   SHOPPING
   HOTEL
   TRANSIT_HUB
+  HOSPITAL
 }
 
 // ========== TripNARA Decision Log System ==========
@@ -1111,7 +1112,101 @@ model TripAttempt {
 
 // ========== TripNARA RAG System ==========
 
-// 文档索引表（用于存储 Rail Pass 条款、游记、攻略等）
+// ===== 知识库文件表 =====
+model KnowledgeFile {
+  id        String   @id @default(uuid()) @db.Uuid
+  filename  String   @unique @db.VarChar(255)
+  filepath  String   @db.VarChar(500)
+  category  String   @db.VarChar(50) // practical_guides, decision_support, safety, etc.
+  version   String   @db.VarChar(20)
+  language  String   @default("zh-CN") @db.VarChar(10)
+
+  credibilityScore Float   @map("credibility_score")
+  dataSources      String[] @map("data_sources")
+  lastUpdated      DateTime @map("last_updated")
+
+  chunks    Chunk[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([filename])
+  @@map("knowledge_files")
+}
+
+// ===== 文档分块表 =====
+model Chunk {
+  id       String @id @default(uuid()) @db.Uuid
+  chunkId  String @unique @map("chunk_id") @db.VarChar(255) // rhythm_pattern_relaxed_001
+
+  content  String @db.Text
+
+  // pgvector 向量字段 (1536维度 - OpenAI text-embedding-3-small)
+  embedding Unsupported("vector(1536)")?
+
+  // 元数据
+  type            String  @db.VarChar(50) // rhythm_pattern, legal_rule, operational_guide, etc.
+  section         String? @db.VarChar(100)
+  credibilityScore Float  @map("credibility_score")
+  keywords        String[]
+
+  // 关联
+  fileId          String @map("file_id") @db.Uuid
+  file            KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // 附加元数据（JSON）
+  metadata        Json?
+
+  tokenCount      Int? @map("token_count")
+
+  // RAG 架构扩展字段
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+  category       String?   // RULES, POI_HOURS, POI_INFO, GATE, WEATHER, GENERAL
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([credibilityScore])
+  @@index([fileId])
+  @@index([category])
+  @@index([lastVerifiedAt])
+  @@index([category, lastVerifiedAt(sort: Desc)])
+  @@map("chunks")
+}
+
+// ===== 关键词索引表（辅助检索）=====
+model KeywordIndex {
+  id       String   @id @default(uuid()) @db.Uuid
+  keyword  String   @unique @db.VarChar(100)
+  files    String[] // 相关文件列表
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("keyword_indices")
+}
+
+// ===== 查询历史表（用于分析和优化）=====
+model QueryHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  query           String   @db.Text
+  retrievedChunks Json     @map("retrieved_chunks") // chunk IDs
+  answer          String?  @db.Text
+
+  avgCredibility  Float?   @map("avg_credibility")
+  executionTimeMs Int      @map("execution_time_ms")
+
+  userId          String?  @map("user_id") @db.Uuid // 可选：关联用户
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("query_history")
+}
+
+// ===== 文档索引表（已废弃，保留用于兼容性，新数据使用 Chunk 表）=====
 model DocumentIndex {
   id          String                 @id @default(uuid()) @db.Uuid
   collection  String                 @db.VarChar(50) // 'rail_pass_rules' | 'travel_guides' | 'local_insights'
@@ -1421,7 +1516,7 @@ model ValidatedTrajectory {
 // 规划方案表（用于规划工作台）
 model PlanningPlan {
   id            String   @id @default(uuid()) @db.Uuid
-  tripId        String   @map("trip_id") @db.Uuid
+  tripId        String   @map("trip_id")
   planVersion   Int      @default(1) @map("plan_version")
   status        String   @default("DRAFT") @db.VarChar(20) // 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED'
   
@@ -1447,4 +1542,47 @@ model PlanningPlan {
   @@index([status])
   @@index([createdAt])
   @@map("planning_plans")
+}
+
+// ========================================
+// RAG Architecture Models - Decision Priority
+// ========================================
+
+// RagDecisionLog Model - RAG 决策日志（用于 Gate 决策追踪）
+model RagDecisionLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId       String   @map("request_id")
+  step            String   // INTAKE, RESEARCH, GATE_EVAL, PLAN_GEN, VERIFY, REPAIR, NARRATE, DONE, FAILED
+  actor           String   // Orchestrator, Planner, Gatekeeper, Compliance, LocalInsight, CoreDecision, Narrator
+  timestamp       DateTime @db.Timestamptz
+  inputsSummary   Json     @map("inputs_summary") @default("{}")
+  outputsSummary  Json     @map("outputs_summary") @default("{}")
+  evidenceRefs    Json     @map("evidence_refs") @default("[]")
+  retrievalTrace  Json?    @map("retrieval_trace")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([requestId], name: "idx_rag_decision_logs_request_id")
+  @@index([step], name: "idx_rag_decision_logs_step")
+  @@index([actor], name: "idx_rag_decision_logs_actor")
+  @@index([timestamp(sort: Desc)], name: "idx_rag_decision_logs_timestamp")
+  @@map("rag_decision_logs")
+}
+
+// RagKnowledgeGap Model - RAG 知识缺口记录
+model RagKnowledgeGap {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query            String
+  category         String    // RULES, GATE, POI, SPATIAL, GENERAL
+  timestamp        DateTime  @db.Timestamptz
+  attemptedMethods Json      @map("attempted_methods") @default("[]")
+  source           String?
+  needsIndex       Boolean   @map("needs_index") @default(true)
+  indexedAt        DateTime? @map("indexed_at") @db.Timestamptz
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([category], name: "idx_rag_knowledge_gaps_category")
+  @@index([timestamp(sort: Desc)], name: "idx_rag_knowledge_gaps_timestamp")
+  @@map("rag_knowledge_gaps")
 }

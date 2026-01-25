@@ -1,0 +1,79 @@
+// Prisma Schema Extensions for RAG Architecture
+// 添加到 schema.prisma 文件中
+
+// ========================================
+// 1. DecisionLog Model - Gate 决策日志
+// ========================================
+
+model DecisionLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId       String   @map("request_id")
+  step            String   // INTAKE, RESEARCH, GATE_EVAL, PLAN_GEN, VERIFY, REPAIR, NARRATE, DONE, FAILED
+  actor           String   // Orchestrator, Planner, Gatekeeper, Compliance, LocalInsight, CoreDecision, Narrator
+  timestamp       DateTime @db.Timestamptz
+  inputsSummary   Json     @map("inputs_summary") @default("{}")
+  outputsSummary  Json     @map("outputs_summary") @default("{}")
+  evidenceRefs    Json     @map("evidence_refs") @default("[]")
+  retrievalTrace  Json?    @map("retrieval_trace")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([requestId], name: "idx_decision_logs_request_id")
+  @@index([step], name: "idx_decision_logs_step")
+  @@index([actor], name: "idx_decision_logs_actor")
+  @@index([timestamp(sort: Desc)], name: "idx_decision_logs_timestamp")
+  @@map("decision_logs")
+}
+
+// ========================================
+// 2. KnowledgeGap Model - 知识缺口记录
+// ========================================
+
+model KnowledgeGap {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query            String
+  category         String    // RULES, GATE, POI, SPATIAL, GENERAL
+  timestamp        DateTime  @db.Timestamptz
+  attemptedMethods Json      @map("attempted_methods") @default("[]")
+  source           String?
+  needsIndex       Boolean   @map("needs_index") @default(true)
+  indexedAt        DateTime? @map("indexed_at") @db.Timestamptz
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([category], name: "idx_knowledge_gaps_category")
+  @@index([timestamp(sort: Desc)], name: "idx_knowledge_gaps_timestamp")
+  @@map("knowledge_gaps")
+}
+
+// ========================================
+// 3. Chunk Model 扩展 - 添加新鲜度字段
+// ========================================
+
+// 在现有 Chunk model 中添加以下字段:
+
+// model Chunk {
+//   // ... 现有字段
+//
+//   lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
+//   category       String?   // RULES, POI_HOURS, POI_INFO, GATE, WEATHER, GENERAL
+//
+//   @@index([category], name: "idx_chunks_category")
+//   @@index([lastVerifiedAt], name: "idx_chunks_last_verified")
+//   @@index([category, lastVerifiedAt(sort: Desc)], name: "idx_chunks_category_last_verified")
+// }
+
+// ========================================
+// 使用示例
+// ========================================
+
+// 1. 更新 schema.prisma:
+//    将上述模型定义复制到 schema.prisma 文件中
+
+// 2. 生成 Prisma Client:
+//    npx prisma generate
+
+// 3. 在代码中使用:
+//    await prisma.decisionLog.create({ data: { ... } });
+//    await prisma.knowledgeGap.findMany({ where: { needsIndex: true } });
+//    await prisma.chunk.findMany({ where: { category: 'RULES' } });

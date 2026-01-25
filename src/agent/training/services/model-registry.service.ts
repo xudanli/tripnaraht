@@ -37,11 +37,15 @@ export class ModelRegistryService {
   ) {
     // 从环境变量获取MLflow配置
     this.mlflowTrackingUri =
-      this.configService.get<string>('MLFLOW_TRACKING_URI') ||
+      this.configService?.get<string>('MLFLOW_TRACKING_URI') ||
+      process.env.MLFLOW_TRACKING_URI ||
       'http://localhost:5000';
     this.mlflowModelName =
-      this.configService.get<string>('MLFLOW_MODEL_NAME') ||
+      this.configService?.get<string>('MLFLOW_MODEL_NAME') ||
+      process.env.MLFLOW_MODEL_NAME ||
       'tripnara-policy-model';
+
+    this.logger.log(`[ModelRegistry] MLflow URI: ${this.mlflowTrackingUri}, Model: ${this.mlflowModelName}`);
   }
 
   /**

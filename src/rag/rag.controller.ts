@@ -8,6 +8,7 @@
 import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { RagService } from './services/rag.service';
+import { ChunkRetrievalService } from './services/chunk-retrieval.service';
 import { ComplianceFactsAgent } from './services/compliance-facts-agent.service';
 import { RouteKnowledgeCurator } from './services/route-knowledge-curator.service';
 import { LocalInsightService } from './services/local-insight.service';
@@ -15,6 +16,10 @@ import { EnhancedChatService, RouteQuestionContext } from './services/enhanced-c
 import { DocumentIndexItem } from './interfaces/rag.interface';
 import { RAGEvaluationService } from './services/rag-evaluation.service';
 import { RAGQueryCollectorService } from './services/rag-query-collector.service';
+import { EmbeddingCacheService } from './services/embedding-cache.service';
+import { RAGMonitoringService } from './services/rag-monitoring.service';
+import { RagTestsetService, RagEvalTestset } from './services/rag-testset.service';
+import { IndexingService } from '../knowledge-base/services/indexing.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -24,12 +29,17 @@ import { Public } from '../auth/decorators/public.decorator';
 export class RagController {
   constructor(
     private readonly ragService: RagService,
+    private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly complianceFactsAgent: ComplianceFactsAgent,
     private readonly routeKnowledgeCurator: RouteKnowledgeCurator,
     private readonly localInsightService: LocalInsightService,
     private readonly enhancedChat: EnhancedChatService,
     private readonly ragEvaluation: RAGEvaluationService,
     private readonly ragQueryCollector: RAGQueryCollectorService,
+    private readonly embeddingCacheService: EmbeddingCacheService,
+    private readonly ragMonitoringService: RAGMonitoringService,
+    private readonly ragTestsetService: RagTestsetService,
+    private readonly indexingService: IndexingService,
   ) {}
 
   /**
@@ -660,6 +670,7 @@ export class RagController {
   /**
    * 刷新合规规则（手动触发）
    */
+  @Public()
   @Post('compliance/refresh')
   @ApiOperation({
     summary: '刷新合规规则缓存',
@@ -1368,6 +1379,178 @@ export class RagController {
     }
   }
 
+  /**
+   * 评估 Chunk 检索质量（新系统：Chunk 表）
+   */
+  @Public()
+  @Post('evaluation/chunks/evaluate')
+  @ApiOperation({
+    summary: '评估 Chunk 检索质量',
+    description: '评估新知识库系统（Chunk 表）的检索质量，返回 Recall@K、MRR、NDCG 等指标',
+  })
+  @ApiResponse({ status: 200, description: '评估成功', type: ApiSuccessResponseDto })
+  async evaluateChunkRetrieval(
+    @Body() body: {
+      query: string;
+      params: any;
+      groundTruthChunkIds: string[];
+    },
+  ) {
+    try {
+      const result = await this.ragEvaluation.evaluateChunkRetrieval(
+        body.query,
+        body.params,
+        body.groundTruthChunkIds,
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 批量评估 Chunk 检索质量
+   */
+  @Public()
+  @Post('evaluation/chunks/evaluate-batch')
+  @ApiOperation({
+    summary: '批量评估 Chunk 检索质量',
+    description: '批量评估多个查询在 Chunk 检索链路下的质量指标',
+  })
+  @ApiResponse({ status: 200, description: '批量评估成功', type: ApiSuccessResponseDto })
+  async evaluateChunkBatch(
+    @Body() body: {
+      testCases: Array<{
+        query: string;
+        params: any;
+        groundTruthChunkIds: string[];
+      }>;
+    },
+  ) {
+    try {
+      const result = await this.ragEvaluation.evaluateChunkBatch(body.testCases);
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 测试集（文件） ====================
+
+  @Public()
+  @Get('evaluation/testset')
+  @ApiOperation({
+    summary: '获取 RAG 评估测试集（文件）',
+    description: '读取 e2e-cases/rag-eval-testset.json（可由环境变量 RAG_EVAL_TESTSET_PATH 覆盖）',
+  })
+  async getEvalTestset() {
+    try {
+      const testset = await this.ragTestsetService.load();
+      return successResponse(testset);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Put('evaluation/testset')
+  @ApiOperation({
+    summary: '保存 RAG 评估测试集（文件）',
+    description: '写入 e2e-cases/rag-eval-testset.json',
+  })
+  async saveEvalTestset(@Body() body: RagEvalTestset) {
+    try {
+      await this.ragTestsetService.save(body);
+      return successResponse({ message: 'testset saved' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('evaluation/testset/run')
+  @ApiOperation({
+    summary: '运行测试集评估（Chunk 链路）',
+    description:
+      '读取测试集并对每个 case 运行 ChunkRetrieval 评估，支持配置 Hybrid/Rerank/Expansion 参数',
+  })
+  async runEvalTestset(
+    @Body()
+    body: {
+      params?: any;
+      limit?: number;
+    },
+  ) {
+    try {
+      const testset = await this.ragTestsetService.load();
+      const defaultParams = body.params || {};
+      const limit = body.limit || 10;
+
+      const cases = testset.testCases.map((tc) => ({
+        query: tc.query,
+        params: { query: tc.query, limit, ...defaultParams },
+        groundTruthChunkIds: tc.groundTruthChunkIds,
+      }));
+
+      const result = await this.ragEvaluation.evaluateChunkBatch(cases);
+      return successResponse({
+        testset: { name: testset.name, version: testset.version, updatedAt: testset.updatedAt },
+        result,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 查找与查询相关的 chunks（帮助填充 groundTruthChunkIds）
+   */
+  @Public()
+  @Get('evaluation/testset/find-chunks')
+  @ApiOperation({
+    summary: '查找相关 chunks',
+    description: '根据查询文本查找相关的 chunks，用于帮助填充测试集的 groundTruthChunkIds',
+  })
+  @ApiQuery({ name: 'query', description: '查询文本', required: true })
+  @ApiQuery({ name: 'limit', description: '返回数量限制', required: false, type: Number })
+  async findRelevantChunks(
+    @Query('query') query: string,
+    @Query('limit') limit?: number,
+  ) {
+    try {
+      const chunks = await this.ragTestsetService.findRelevantChunks(query, limit || 10);
+      return successResponse({
+        query,
+        chunks,
+        count: chunks.length,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 列出所有 chunks（用于浏览）
+   */
+  @Public()
+  @Get('evaluation/testset/list-chunks')
+  @ApiOperation({
+    summary: '列出所有 chunks',
+    description: '列出数据库中的所有 chunks，用于浏览和选择 groundTruthChunkIds',
+  })
+  @ApiQuery({ name: 'limit', description: '返回数量限制', required: false, type: Number })
+  async listAllChunks(@Query('limit') limit?: number) {
+    try {
+      const chunks = await this.ragTestsetService.listAllChunks(limit || 100);
+      return successResponse({
+        chunks,
+        count: chunks.length,
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   // ==================== query-document 对收集 ====================
 
   /**
@@ -1633,6 +1816,268 @@ export class RagController {
       return successResponse({
         evaluationDataset,
       });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 从 Chunk 表检索文档（新知识库系统，支持 Hybrid Search）
+   */
+  @Public()
+  @Post('chunks/retrieve')
+  @ApiOperation({
+    summary: '从 Chunk 表检索文档（支持 Hybrid Search）',
+    description: '使用新的知识库系统（KnowledgeFile + Chunk）检索文档，默认启用混合检索（Dense + Sparse）',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '查询文本' },
+        limit: { type: 'number', description: '返回数量限制', default: 10 },
+        credibilityMin: { type: 'number', description: '最小可信度', default: 0.5 },
+        type: { type: 'string', description: '文档类型' },
+        category: { type: 'string', description: '文件分类' },
+        fileId: { type: 'string', description: '文件ID' },
+        useHybridSearch: { type: 'boolean', description: '是否使用混合检索（默认true）', default: true },
+        denseWeight: { type: 'number', description: 'Dense检索权重（默认0.7）', default: 0.7 },
+        sparseWeight: { type: 'number', description: 'Sparse检索权重（默认0.3）', default: 0.3 },
+        useReranking: { type: 'boolean', description: '是否使用重排序（默认false，会增加延迟但提升准确率）', default: false },
+        rerankTopK: { type: 'number', description: '重排序的Top-K数量（默认20）', default: 20 },
+        useQueryExpansion: { type: 'boolean', description: '是否使用查询扩展（默认false，会增加延迟和成本但提升召回率）', default: false },
+        maxQueryVariants: { type: 'number', description: '最大查询变体数量（默认3）', default: 3 },
+      },
+      required: ['query'],
+    },
+  })
+  @ApiResponse({ status: 200, description: '检索成功', type: ApiSuccessResponseDto })
+  async retrieveChunks(@Body() body: {
+    query: string;
+    limit?: number;
+    credibilityMin?: number;
+    type?: string;
+    category?: string;
+    fileId?: string;
+    useHybridSearch?: boolean;
+    denseWeight?: number;
+    sparseWeight?: number;
+    useReranking?: boolean;
+    rerankTopK?: number;
+    useQueryExpansion?: boolean;
+    maxQueryVariants?: number;
+  }) {
+    try {
+      const results = await this.chunkRetrieval.retrieve({
+        query: body.query,
+        limit: body.limit || 10,
+        credibilityMin: body.credibilityMin || 0.5,
+        type: body.type,
+        category: body.category,
+        fileId: body.fileId,
+        useHybridSearch: body.useHybridSearch !== false, // 默认true
+        denseWeight: body.denseWeight || 0.7,
+        sparseWeight: body.sparseWeight || 0.3,
+        useReranking: body.useReranking === true, // 默认false
+        rerankTopK: body.rerankTopK || 20,
+        useQueryExpansion: body.useQueryExpansion === true, // 默认false
+        maxQueryVariants: body.maxQueryVariants || 3,
+      });
+      return successResponse(results);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 重建知识库索引
+   */
+  @Public()
+  @Post('knowledge-base/rebuild-index')
+  @ApiOperation({
+    summary: '重建知识库索引',
+    description: '清空并重新索引所有知识库文件',
+  })
+  @ApiResponse({ status: 200, description: '索引重建成功', type: ApiSuccessResponseDto })
+  async rebuildKnowledgeBaseIndex() {
+    try {
+      await this.indexingService.rebuildIndex();
+      return successResponse({ message: '知识库索引重建完成' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 清空知识库索引
+   */
+  @Public()
+  @Post('knowledge-base/clear-index')
+  @ApiOperation({
+    summary: '清空知识库索引',
+    description: '清空所有知识库文件和分块',
+  })
+  @ApiResponse({ status: 200, description: '索引清空成功', type: ApiSuccessResponseDto })
+  async clearKnowledgeBaseIndex() {
+    try {
+      await this.indexingService.clearIndex();
+      return successResponse({ message: '知识库索引已清空' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== Embedding 缓存管理 ====================
+
+  /**
+   * 获取 Embedding 缓存统计
+   */
+  @Public()
+  @Get('cache/stats')
+  @ApiOperation({
+    summary: '获取 Embedding 缓存统计',
+    description: '返回缓存命中率、延迟等统计信息',
+  })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getCacheStats() {
+    try {
+      const stats = this.embeddingCacheService.getStats();
+      return successResponse(stats);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 重置缓存统计
+   */
+  @Public()
+  @Post('cache/reset-stats')
+  @ApiOperation({
+    summary: '重置缓存统计',
+    description: '重置缓存命中率等统计信息',
+  })
+  @ApiResponse({ status: 200, description: '重置成功', type: ApiSuccessResponseDto })
+  async resetCacheStats() {
+    try {
+      this.embeddingCacheService.resetStats();
+      return successResponse({ message: '缓存统计已重置' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 清空 Embedding 缓存
+   */
+  @Public()
+  @Post('cache/clear')
+  @ApiOperation({
+    summary: '清空 Embedding 缓存',
+    description: '清空所有缓存的 embedding（注意：Redis缓存需要手动清空）',
+  })
+  @ApiResponse({ status: 200, description: '清空成功', type: ApiSuccessResponseDto })
+  async clearCache() {
+    try {
+      await this.embeddingCacheService.clear();
+      return successResponse({ message: 'Embedding缓存已清空（内存缓存），Redis缓存需要手动清空' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== RAG 监控 ====================
+
+  /**
+   * 获取 RAG 监控指标
+   */
+  @Public()
+  @Get('monitoring/metrics')
+  @ApiOperation({
+    summary: '获取 RAG 监控指标',
+    description: '返回性能、质量、成本、缓存等监控指标',
+  })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getMonitoringMetrics() {
+    try {
+      const metrics = this.ragMonitoringService.getAllMetrics();
+      return successResponse(metrics);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取性能指标
+   */
+  @Public()
+  @Get('monitoring/performance')
+  @ApiOperation({
+    summary: '获取性能指标',
+    description: '返回检索延迟、吞吐量、错误率等性能指标',
+  })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getPerformanceMetrics() {
+    try {
+      const metrics = this.ragMonitoringService.getPerformanceMetrics();
+      return successResponse(metrics);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取质量指标
+   */
+  @Public()
+  @Get('monitoring/quality')
+  @ApiOperation({
+    summary: '获取质量指标',
+    description: '返回 Recall@K、MRR、NDCG 等质量指标（需要有 Ground Truth 数据）',
+  })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getQualityMetrics() {
+    try {
+      const metrics = this.ragMonitoringService.getQualityMetrics();
+      return successResponse(metrics);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取成本指标
+   */
+  @Public()
+  @Get('monitoring/cost')
+  @ApiOperation({
+    summary: '获取成本指标',
+    description: '返回 Embedding 和 LLM API 调用成本',
+  })
+  @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
+  async getCostMetrics() {
+    try {
+      const metrics = this.ragMonitoringService.getCostMetrics();
+      return successResponse(metrics);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 重置监控指标
+   */
+  @Public()
+  @Post('monitoring/reset')
+  @ApiOperation({
+    summary: '重置监控指标',
+    description: '清空所有监控指标数据',
+  })
+  @ApiResponse({ status: 200, description: '重置成功', type: ApiSuccessResponseDto })
+  async resetMonitoringMetrics() {
+    try {
+      this.ragMonitoringService.resetMetrics();
+      return successResponse({ message: '监控指标已重置' });
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
