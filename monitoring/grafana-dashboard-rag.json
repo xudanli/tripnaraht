@@ -1,0 +1,234 @@
+{
+  "dashboard": {
+    "title": "TripNARA RAG Monitoring",
+    "tags": ["rag", "cache", "api", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "type": "graph",
+        "title": "Cache Hit Rate",
+        "targets": [
+          {
+            "expr": "rate(rag_cache_hits_total[5m]) / (rate(rag_cache_hits_total[5m]) + rate(rag_cache_misses_total[5m]))",
+            "legendFormat": "{{cache_type}} hit rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "type": "graph",
+        "title": "Cache Operations Rate",
+        "targets": [
+          {
+            "expr": "rate(rag_cache_hits_total[5m])",
+            "legendFormat": "{{cache_type}} hits/s",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(rag_cache_misses_total[5m])",
+            "legendFormat": "{{cache_type}} misses/s",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "type": "graph",
+        "title": "Cache Size",
+        "targets": [
+          {
+            "expr": "rag_cache_size",
+            "legendFormat": "{{cache_type}} size",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "type": "graph",
+        "title": "Cache Operation Duration (P95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(rag_cache_operation_duration_ms_bucket[5m]))",
+            "legendFormat": "{{cache_type}} {{operation}} p95",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "type": "graph",
+        "title": "Retry Success Rate",
+        "targets": [
+          {
+            "expr": "rate(rag_retry_success_total[5m]) / (rate(rag_retry_success_total[5m]) + rate(rag_retry_failure_total[5m]))",
+            "legendFormat": "{{retry_type}} success rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "type": "graph",
+        "title": "Average Retry Attempts",
+        "targets": [
+          {
+            "expr": "rate(rag_retry_attempts_total[5m]) / (rate(rag_retry_success_total[5m]) + rate(rag_retry_failure_total[5m]))",
+            "legendFormat": "{{retry_type}} avg attempts",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "type": "graph",
+        "title": "Parallel Task Success Rate",
+        "targets": [
+          {
+            "expr": "rate(rag_parallel_task_success_total[5m]) / (rate(rag_parallel_task_success_total[5m]) + rate(rag_parallel_task_failure_total[5m]))",
+            "legendFormat": "Success rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "type": "graph",
+        "title": "Current Parallel Concurrency",
+        "targets": [
+          {
+            "expr": "rag_parallel_concurrency",
+            "legendFormat": "Active tasks",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+        "type": "graph",
+        "title": "API Call Duration (P50/P95/P99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(rag_api_call_duration_ms_bucket[5m]))",
+            "legendFormat": "{{api_type}} p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(rag_api_call_duration_ms_bucket[5m]))",
+            "legendFormat": "{{api_type}} p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(rag_api_call_duration_ms_bucket[5m]))",
+            "legendFormat": "{{api_type}} p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+        "type": "graph",
+        "title": "API Error Rate",
+        "targets": [
+          {
+            "expr": "rate(rag_api_errors_total[5m]) / rate(rag_api_calls_total[5m])",
+            "legendFormat": "{{api_type}} error rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 11,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+        "type": "graph",
+        "title": "RAG Query Rate by Category",
+        "targets": [
+          {
+            "expr": "rate(rag_query_total[5m])",
+            "legendFormat": "{{category}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+        "type": "graph",
+        "title": "RAG Fallback Level Distribution",
+        "targets": [
+          {
+            "expr": "rate(rag_fallback_level_total[5m])",
+            "legendFormat": "{{level}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+        "type": "graph",
+        "title": "RAG Query Duration (P50/P95/P99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(rag_query_duration_ms_bucket[5m]))",
+            "legendFormat": "{{category}} p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(rag_query_duration_ms_bucket[5m]))",
+            "legendFormat": "{{category}} p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(rag_query_duration_ms_bucket[5m]))",
+            "legendFormat": "{{category}} p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms" },
+          { "format": "short" }
+        ]
+      }
+    ]
+  }
+}

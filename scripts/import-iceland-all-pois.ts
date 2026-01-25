@@ -242,7 +242,6 @@ async function main() {
           nameCN: '雷克雅未克',
           countryCode: 'IS',
           timezone: 'Atlantic/Reykjavik',
-          updatedAt: new Date(),
         },
       });
       console.log(`  ✅ 创建城市: ${reykjavikCity.nameCN} (ID: ${reykjavikCity.id})`);

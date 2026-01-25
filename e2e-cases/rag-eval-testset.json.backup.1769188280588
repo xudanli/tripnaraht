@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "iceland-kb-smoke",
+  "description": "Seed testset for Chunk retrieval evaluation. Replace groundTruthChunkIds with real chunk UUIDs from your DB.",
+  "createdAt": "2026-01-23T00:00:00.000Z",
+  "updatedAt": "2026-01-23T17:07:39.010Z",
+  "testCases": [
+    {
+      "id": "is-car-insurance-001",
+      "query": "冰岛租车保险怎么选？有哪些必买的险种？",
+      "groundTruthChunkIds": [],
+      "tags": [
+        "iceland",
+        "car-rental",
+        "insurance"
+      ],
+      "notes": "Fill groundTruthChunkIds with chunk UUIDs that contain the correct answer."
+    },
+    {
+      "id": "is-f-road-001",
+      "query": "冰岛F路什么时候开放？需要什么车型？",
+      "groundTruthChunkIds": [],
+      "tags": [
+        "iceland",
+        "f-road"
+      ],
+      "notes": "Fill groundTruthChunkIds with chunk UUIDs that contain the correct answer."
+    }
+  ]
+}

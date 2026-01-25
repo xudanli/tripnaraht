@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "iceland-kb-smoke",
+  "description": "Seed testset for Chunk retrieval evaluation. Replace groundTruthChunkIds with real chunk UUIDs from your DB.",
+  "createdAt": "2026-01-23T00:00:00.000Z",
+  "updatedAt": "2026-01-23T17:32:31.522Z",
+  "testCases": [
+    {
+      "id": "is-car-insurance-001",
+      "query": "冰岛租车保险怎么选？有哪些必买的险种？",
+      "groundTruthChunkIds": [],
+      "tags": [
+        "iceland",
+        "car-rental",
+        "insurance"
+      ],
+      "notes": "需要添加租车保险相关的知识库数据后才能填充 groundTruthChunkIds"
+    },
+    {
+      "id": "is-f-road-001",
+      "query": "冰岛F路什么时候开放？需要什么车型？",
+      "groundTruthChunkIds": [],
+      "tags": [
+        "iceland",
+        "f-road"
+      ],
+      "notes": "需要添加F路相关的知识库数据后才能填充 groundTruthChunkIds"
+    },
+    {
+      "id": "is-ring-road-001",
+      "query": "冰岛环岛路线推荐",
+      "groundTruthChunkIds": [
+        "6d452c31-48cb-4e47-9fff-9445ce6d4717",
+        "5857504e-88c0-4fc9-b0a0-d6785814ffde"
+      ],
+      "tags": [
+        "iceland",
+        "ring-road",
+        "routes"
+      ],
+      "notes": "匹配 ring-road-full.json 和 ring-road-south.json 相关的 chunks"
+    },
+    {
+      "id": "is-westfjords-001",
+      "query": "西峡湾路线有什么景点",
+      "groundTruthChunkIds": [
+        "90ae6ef2-5154-4061-aba9-77f57d509712"
+      ],
+      "tags": [
+        "iceland",
+        "westfjords",
+        "routes"
+      ],
+      "notes": "匹配 westfjords.json 相关的 chunks"
+    },
+    {
+      "id": "is-snaefellsnes-001",
+      "query": "斯奈山半岛路线",
+      "groundTruthChunkIds": [
+        "49b3c536-de1a-4aeb-92aa-d00e4696a13d"
+      ],
+      "tags": [
+        "iceland",
+        "snaefellsnes",
+        "routes"
+      ],
+      "notes": "匹配 snaefellsnes.json 相关的 chunks"
+    }
+  ]
+}

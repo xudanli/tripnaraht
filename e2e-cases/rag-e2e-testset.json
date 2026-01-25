@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "name": "rag-e2e-complete",
+  "description": "RAG E2E 测试集 - 覆盖 5 层降级策略、4 个真实数据源、决策追踪和证据验证",
+  "createdAt": "2026-01-25T00:00:00.000Z",
+  "testCases": [
+    {
+      "id": "e2e-vector-001",
+      "name": "Level 1: Vector RAG - 高相似度路线查询",
+      "query": "冰岛环岛路线推荐",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "GENERAL",
+      "tags": ["iceland", "ring-road", "routes", "level-1"],
+      "groundTruthChunkIds": [
+        "6d452c31-48cb-4e47-9fff-9445ce6d4717",
+        "5857504e-88c0-4fc9-b0a0-d6785814ffde"
+      ],
+      "expectedEvidenceSources": ["knowledge_base"],
+      "notes": "应该通过 Vector Search 直接找到环岛路线相关 chunks"
+    },
+    {
+      "id": "e2e-vector-002",
+      "name": "Level 1: Vector RAG - 西峡湾景点",
+      "query": "西峡湾路线有什么景点",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "POI",
+      "tags": ["iceland", "westfjords", "poi", "level-1"],
+      "groundTruthChunkIds": ["90ae6ef2-5154-4061-aba9-77f57d509712"],
+      "expectedEvidenceSources": ["knowledge_base"],
+      "notes": "应该通过 Vector Search 找到西峡湾路线 chunk"
+    },
+    {
+      "id": "e2e-hybrid-001",
+      "name": "Level 2: Hybrid RAG - 中等相似度查询",
+      "query": "冰岛北部有哪些值得去的小镇",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.60,
+      "category": "POI",
+      "tags": ["iceland", "north", "towns", "level-2"],
+      "groundTruthChunkIds": [],
+      "expectedEvidenceSources": ["knowledge_base"],
+      "notes": "Vector 可能不够精确，应该降级到 Hybrid Search"
+    },
+    {
+      "id": "e2e-hybrid-002",
+      "name": "Level 2: Hybrid RAG - F路开放时间",
+      "query": "冰岛F路什么时候开放",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.60,
+      "category": "RULES",
+      "tags": ["iceland", "f-road", "rules", "level-2"],
+      "groundTruthChunkIds": [],
+      "expectedEvidenceSources": ["knowledge_base"],
+      "notes": "混合关键词（F路、开放时间）应触发 Hybrid Search"
+    },
+    {
+      "id": "e2e-keyword-001",
+      "name": "Level 3: Keyword Fallback - 低相似度查询",
+      "query": "冰岛有什么特色美食",
+      "expectedLevel": "KEYWORD_FALLBACK",
+      "expectedConfidence": 0.40,
+      "category": "GENERAL",
+      "tags": ["iceland", "food", "level-3"],
+      "groundTruthChunkIds": [],
+      "expectedEvidenceSources": ["knowledge_base"],
+      "notes": "如果知识库缺少美食数据，应降级到 Keyword Search"
+    },
+    {
+      "id": "e2e-weather-001",
+      "name": "实时数据源: Weather API - 雷克雅未克天气",
+      "query": "雷克雅未克现在的天气怎么样",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "WEATHER",
+      "tags": ["iceland", "weather", "reykjavik", "real-time"],
+      "expectedToolCalls": ["weather.search"],
+      "expectedEvidenceSources": ["weather_api", "knowledge_base"],
+      "expectedApiCalls": {
+        "weather.search": {
+          "location": "Reykjavik",
+          "lat": 64.1466,
+          "lng": -21.9426
+        }
+      },
+      "notes": "应通过 RagFreshnessService 识别 WEATHER 类别并调用 weather.search"
+    },
+    {
+      "id": "e2e-weather-002",
+      "name": "实时数据源: Weather API - 阿克雷里天气",
+      "query": "阿克雷里的天气预报",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "WEATHER",
+      "tags": ["iceland", "weather", "akureyri", "real-time"],
+      "expectedToolCalls": ["weather.search"],
+      "expectedEvidenceSources": ["weather_api"],
+      "expectedApiCalls": {
+        "weather.search": {
+          "location": "Akureyri",
+          "lat": 65.6835,
+          "lng": -18.1059
+        }
+      },
+      "notes": "测试冰岛北部城市的天气查询"
+    },
+    {
+      "id": "e2e-road-001",
+      "name": "实时数据源: Road Status API - 1号公路状态",
+      "query": "1号公路现在路况如何",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "GATE",
+      "tags": ["iceland", "road-status", "ring-road", "real-time"],
+      "expectedToolCalls": ["road_status.check"],
+      "expectedEvidenceSources": ["road_status_api", "knowledge_base"],
+      "notes": "应调用 road.is API 获取实时路况"
+    },
+    {
+      "id": "e2e-poi-hours-001",
+      "name": "实时数据源: POI Opening Hours - 蓝湖温泉营业时间",
+      "query": "蓝湖温泉现在开门吗",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "POI_HOURS",
+      "tags": ["iceland", "poi", "opening-hours", "blue-lagoon"],
+      "expectedToolCalls": ["poi.search", "opening_hours.get"],
+      "expectedEvidenceSources": ["poi_database", "knowledge_base"],
+      "notes": "应先搜索 POI，然后查询开放时间"
+    },
+    {
+      "id": "e2e-poi-hours-002",
+      "name": "实时数据源: POI Opening Hours - 黄金圈景点开放时间",
+      "query": "黄金圈的景点今天开放吗",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.60,
+      "category": "POI_HOURS",
+      "tags": ["iceland", "poi", "opening-hours", "golden-circle"],
+      "expectedToolCalls": ["poi.search", "opening_hours.get"],
+      "expectedEvidenceSources": ["poi_database", "knowledge_base"],
+      "notes": "多个 POI 查询，需要批量检查开放时间"
+    },
+    {
+      "id": "e2e-web-browse-001",
+      "name": "Level 4: Web Browse - 驾照规则",
+      "query": "中国驾照在冰岛能用吗",
+      "expectedLevel": "WEB_BROWSE",
+      "expectedConfidence": 0.50,
+      "category": "RULES",
+      "tags": ["iceland", "rules", "driving-license", "level-4"],
+      "expectedToolCalls": ["web.browse"],
+      "expectedEvidenceSources": ["web_browse"],
+      "expectedWebBrowse": {
+        "url": "https://www.road.is",
+        "query": "driving license requirements"
+      },
+      "notes": "RULES 类查询，知识库无数据时应降级到 Web Browse"
+    },
+    {
+      "id": "e2e-web-browse-002",
+      "name": "Level 4: Web Browse - 签证要求",
+      "query": "中国公民去冰岛需要签证吗",
+      "expectedLevel": "WEB_BROWSE",
+      "expectedConfidence": 0.50,
+      "category": "RULES",
+      "tags": ["iceland", "rules", "visa", "level-4"],
+      "expectedToolCalls": ["web.browse"],
+      "expectedEvidenceSources": ["web_browse"],
+      "expectedWebBrowse": {
+        "url": "https://www.government.is",
+        "query": "visa requirements China"
+      },
+      "notes": "RULES 类查询，应通过 Web Browse 获取最新签证政策"
+    },
+    {
+      "id": "e2e-graceful-001",
+      "name": "Level 5: Graceful Failure - 无相关数据",
+      "query": "冰岛有哪些米其林三星餐厅",
+      "expectedLevel": "GRACEFUL_FAILURE",
+      "expectedConfidence": 0.0,
+      "category": "GENERAL",
+      "tags": ["iceland", "restaurant", "michelin", "level-5"],
+      "expectedEvidenceSources": [],
+      "expectedFallback": {
+        "message": "知识库暂无相关数据",
+        "officialLinks": ["https://guide.michelin.com/is/en/restaurants"],
+        "recordedInGapLog": true
+      },
+      "notes": "所有降级策略失败后，应优雅失败并提供官方链接"
+    },
+    {
+      "id": "e2e-gate-001",
+      "name": "Gate 决策: 冬季F路不可达",
+      "query": "12月可以走F35高地公路吗",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.70,
+      "category": "GATE",
+      "tags": ["iceland", "f-road", "gate", "winter"],
+      "expectedToolCalls": ["road_status.check"],
+      "expectedEvidenceSources": ["road_status_api", "knowledge_base"],
+      "expectedGateResult": {
+        "decision": "BLOCK",
+        "reason": "F路冬季关闭",
+        "alternatives": ["沿1号公路环岛"]
+      },
+      "notes": "应结合路况 API + 知识库做出 BLOCK 决策"
+    },
+    {
+      "id": "e2e-gate-002",
+      "name": "Gate 决策: 天气风险评估",
+      "query": "明天适合去斯奈山半岛吗",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.70,
+      "category": "GATE",
+      "tags": ["iceland", "snaefellsnes", "gate", "weather"],
+      "expectedToolCalls": ["weather.search"],
+      "expectedEvidenceSources": ["weather_api", "knowledge_base"],
+      "expectedGateResult": {
+        "decision": "ALLOW_WITH_CAUTION",
+        "reason": "需根据天气情况决定",
+        "conditions": ["天气良好", "无风暴预警"]
+      },
+      "notes": "应调用天气 API 进行风险评估"
+    },
+    {
+      "id": "e2e-evidence-001",
+      "name": "证据追踪: 多数据源综合",
+      "query": "冰岛环岛需要几天，路况怎么样",
+      "expectedLevel": "HYBRID_RAG",
+      "expectedConfidence": 0.70,
+      "category": "GENERAL",
+      "tags": ["iceland", "ring-road", "evidence-tracking"],
+      "expectedToolCalls": ["road_status.check"],
+      "expectedEvidenceSources": ["knowledge_base", "road_status_api"],
+      "expectedEvidenceCount": 2,
+      "notes": "应提供至少 2 个证据来源（知识库 + 路况 API）"
+    },
+    {
+      "id": "e2e-evidence-002",
+      "name": "证据追踪: POI + 开放时间",
+      "query": "辛格韦德利国家公园值得去吗，什么时候开放",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "POI_HOURS",
+      "tags": ["iceland", "poi", "opening-hours", "thingvellir"],
+      "expectedToolCalls": ["poi.search", "opening_hours.get"],
+      "expectedEvidenceSources": ["knowledge_base", "poi_database"],
+      "expectedEvidenceCount": 2,
+      "notes": "应同时提供景点评价（知识库）和开放时间（POI 数据库）"
+    },
+    {
+      "id": "e2e-decision-log-001",
+      "name": "决策日志: 完整流程追踪",
+      "query": "雷克雅未克到维克镇怎么走",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "GENERAL",
+      "tags": ["iceland", "routes", "decision-log"],
+      "expectedDecisionLog": {
+        "steps": ["QUERY_CLASSIFICATION", "VECTOR_SEARCH", "EVIDENCE_COLLECTION", "RESPONSE_GENERATION"],
+        "evidenceCount": 1
+      },
+      "notes": "验证完整的决策日志是否记录"
+    },
+    {
+      "id": "e2e-freshness-001",
+      "name": "数据新鲜度: WEATHER 类别识别",
+      "query": "冰岛今天天气",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "WEATHER",
+      "tags": ["iceland", "weather", "freshness"],
+      "expectedFreshnessCheck": true,
+      "expectedToolCalls": ["weather.search"],
+      "notes": "应通过 RagFreshnessService 识别为 WEATHER 类别并强制调用实时 API"
+    },
+    {
+      "id": "e2e-freshness-002",
+      "name": "数据新鲜度: POI_HOURS 类别识别",
+      "query": "哈尔格林姆斯教堂今天开门吗",
+      "expectedLevel": "VECTOR_RAG",
+      "expectedConfidence": 0.75,
+      "category": "POI_HOURS",
+      "tags": ["iceland", "poi", "opening-hours", "freshness"],
+      "expectedFreshnessCheck": true,
+      "expectedToolCalls": ["poi.search", "opening_hours.get"],
+      "notes": "应识别为 POI_HOURS 类别并查询实时开放时间"
+    }
+  ],
+  "expectedMetrics": {
+    "totalCases": 22,
+    "level1Cases": 2,
+    "level2Cases": 4,
+    "level3Cases": 1,
+    "level4Cases": 2,
+    "level5Cases": 1,
+    "weatherApiCases": 2,
+    "roadStatusCases": 2,
+    "poiHoursCases": 4,
+    "webBrowseCases": 2,
+    "gateCases": 2,
+    "evidenceCases": 2,
+    "decisionLogCases": 1,
+    "freshnessCases": 2,
+    "expectedGateAccuracy": 0.98,
+    "expectedEvidenceCoverage": 0.95
+  }
+}

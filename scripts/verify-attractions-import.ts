@@ -44,7 +44,7 @@ async function verifyAttractions() {
       if (metadata?.region) {
         console.log(`   地区: ${metadata.region}`);
       }
-      if (attr.location) {
+      if ((attr as { location?: unknown }).location) {
         console.log(`   坐标: ✅ 已设置`);
       }
       console.log('');
