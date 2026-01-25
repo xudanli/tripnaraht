@@ -28,6 +28,7 @@ import { ReadinessModule } from './trips/readiness/readiness.module';
 import { DataContractsModule } from './data-contracts/data-contracts.module';
 import { RouteDirectionsModule } from './route-directions/route-directions.module';
 import { RagModule } from './rag/rag.module';
+import { UploadModule } from './upload/upload.module';
 import { AuthModule } from './auth/auth.module';
 import { ContactModule } from './contact/contact.module';
 import { SkillsModule } from './skills/skills.module';
@@ -95,6 +96,7 @@ import { ContextEngineModule } from './agent/context-engine/context-engine.modul
     AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
     ContextEngineModule, // Context Engine 模块（上下文编译器）
     // SkillsModule, // Skills 模块（能力颗粒层）
+    UploadModule, // 图片上传模块（阿里云 OSS）
   ],
 })
 export class AppModule {}
