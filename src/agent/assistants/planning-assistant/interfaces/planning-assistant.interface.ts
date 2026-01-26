@@ -238,6 +238,8 @@ export interface PlanningAssistantRequest {
   userId?: string;
   message: string;
   language?: 'en' | 'zh';
+  /** 目标国家代码，用于过滤推荐 (e.g., 'IS' for Iceland, 'JP' for Japan) */
+  countryCode?: string;
   context?: {
     currentLocation?: { lat: number; lng: number };
     timezone?: string;

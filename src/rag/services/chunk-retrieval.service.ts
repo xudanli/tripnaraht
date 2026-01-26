@@ -6,6 +6,7 @@ import { EmbeddingService } from '../../places/services/embedding.service';
 import { RerankingService } from './reranking.service';
 import { RAGMonitoringService } from './rag-monitoring.service';
 import { QueryExpansionService } from './query-expansion.service';
+import { QueryIntentService } from './query-intent.service';
 
 export interface ChunkRetrievalResult {
   id: string;
@@ -32,12 +33,13 @@ export interface ChunkRetrievalParams {
   limit?: number;
   credibilityMin?: number;
   type?: string;
-  category?: string;
+  category?: string; // KnowledgeFile的category (文件级别分类)
+  chunkCategory?: string; // Chunk的category (RULES, POI_INFO, GATE, WEATHER, GENERAL)
   fileId?: string;
   // Hybrid Search 参数
   useHybridSearch?: boolean; // 是否使用混合检索
-  denseWeight?: number; // Dense 检索权重 (默认 0.7)
-  sparseWeight?: number; // Sparse 检索权重 (默认 0.3)
+  denseWeight?: number; // Dense 检索权重 (默认 0.6)
+  sparseWeight?: number; // Sparse 检索权重 (默认 0.4)
   sparseLimit?: number; // Sparse 检索返回数量 (默认与 limit 相同)
   // Reranking 参数
   useReranking?: boolean; // 是否使用重排序 (默认 false)
@@ -45,6 +47,8 @@ export interface ChunkRetrievalParams {
   // Query Expansion 参数
   useQueryExpansion?: boolean; // 是否使用查询扩展 (默认 false)
   maxQueryVariants?: number; // 最大查询变体数量 (默认 3)
+  // Query Intent 参数
+  useIntentClassification?: boolean; // 是否使用意图分类自动过滤 (默认 false)
 }
 
 @Injectable()
@@ -57,6 +61,7 @@ export class ChunkRetrievalService {
     @Optional() private readonly rerankingService?: RerankingService,
     @Optional() private readonly monitoringService?: RAGMonitoringService,
     @Optional() private readonly queryExpansionService?: QueryExpansionService,
+    @Optional() private readonly queryIntentService?: QueryIntentService,
   ) {}
 
   /**
@@ -68,28 +73,53 @@ export class ChunkRetrievalService {
    * - 重排序（Reranking: 对Top-K结果重新排序）
    */
   async retrieve(params: ChunkRetrievalParams): Promise<ChunkRetrievalResult[]> {
-    const {
+    let {
       query,
       limit = 10,
       credibilityMin = 0.5,
       type,
       category,
+      chunkCategory, // 可能被意图分类覆盖
       fileId,
       useHybridSearch = true, // 默认启用混合检索（推荐，对中文查询更有效）
-      denseWeight = 0.7,
-      sparseWeight = 0.3,
+      // 优化: 提升Sparse权重以增强关键词匹配（中文查询效果更好）
+      denseWeight = 0.6, // 从0.7降低，减少对Embedding语义的依赖
+      sparseWeight = 0.4, // 从0.3提升，增强关键词匹配（"环岛"→"ring-road"）
       useReranking = false, // 默认不启用重排序（因为会增加延迟）
       rerankTopK = 20,
       useQueryExpansion = false, // 默认不启用查询扩展（因为会增加延迟和成本）
       maxQueryVariants = 3,
+      useIntentClassification = false, // 是否启用意图分类
     } = params;
 
+    // 0. 意图分类（如果启用且未手动指定chunkCategory）
+    let intentInfo: string | undefined;
+    if (useIntentClassification && this.queryIntentService && !chunkCategory) {
+      const intent = this.queryIntentService.classifyIntent(query);
+      if (this.queryIntentService.shouldFilterByCategory(intent)) {
+        chunkCategory = intent.suggestedChunkCategory;
+        intentInfo = `${intent.type}(${intent.confidence.toFixed(2)})`;
+        this.logger.debug(
+          `🎯 意图分类: ${intent.type} → chunkCategory=${chunkCategory}, reason: ${intent.reasoning}`
+        );
+      }
+      // 使用增强的查询（添加同义词）
+      if (intent.expandedKeywords.length > 0) {
+        const enhancedQuery = this.queryIntentService.enhanceQuery(query);
+        this.logger.debug(`📝 查询增强: "${query}" → "${enhancedQuery}"`);
+        query = enhancedQuery;
+      }
+    }
+
     this.logger.debug(
-      `Chunk 检索: query="${query.substring(0, 50)}...", hybrid=${useHybridSearch}, rerank=${useReranking}, expansion=${useQueryExpansion}`
+      `Chunk 检索: query="${query.substring(0, 50)}...", hybrid=${useHybridSearch}, rerank=${useReranking}, expansion=${useQueryExpansion}${intentInfo ? `, intent=${intentInfo}` : ''}`
     );
 
     const startTime = Date.now();
     let embeddingLatency: number | undefined;
+
+    // 更新params中的chunkCategory（如果被意图分类修改）
+    const updatedParams = { ...params, query, chunkCategory };
 
     try {
       let results: ChunkRetrievalResult[];
@@ -97,7 +127,7 @@ export class ChunkRetrievalService {
       // 1. 如果启用查询扩展，生成查询变体并并行检索
       if (useQueryExpansion && this.queryExpansionService) {
         results = await this.retrieveWithExpansion({
-          ...params,
+          ...updatedParams,
           denseWeight,
           sparseWeight,
           maxQueryVariants,
@@ -106,14 +136,14 @@ export class ChunkRetrievalService {
         // 2. 执行检索（Hybrid Search 或 Dense Search）
         if (useHybridSearch) {
           results = await this.hybridRetrieve({
-            ...params,
+            ...updatedParams,
             denseWeight,
             sparseWeight,
           });
         } else {
           // 记录Embedding生成时间
           const embeddingStart = Date.now();
-          results = await this.denseRetrieve(params);
+          results = await this.denseRetrieve(updatedParams);
           embeddingLatency = Date.now() - embeddingStart;
         }
       }
@@ -260,6 +290,7 @@ export class ChunkRetrievalService {
       credibilityMin = 0.5,
       type,
       category,
+      chunkCategory,
       fileId,
     } = params;
 
@@ -301,6 +332,13 @@ export class ChunkRetrievalService {
       paramsList.push(fileId);
     }
 
+    // 按 Chunk 的 category 过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)
+    if (chunkCategory) {
+      conditions.push(`c.category = $${paramsList.length + 1}`);
+      paramsList.push(chunkCategory);
+      this.logger.debug(`🎯 Dense检索: 应用chunkCategory过滤 = ${chunkCategory}`);
+    }
+
     // 构建 FROM 子句
     let fromClause = 'FROM chunks c';
     if (category) {
@@ -310,6 +348,8 @@ export class ChunkRetrievalService {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    
+    this.logger.debug(`Dense检索: conditions=${conditions.join(', ')}`);
 
     // 3. 向量相似度搜索
     const querySql = `
@@ -356,10 +396,15 @@ export class ChunkRetrievalService {
       credibilityMin = 0.5,
       type,
       category,
+      chunkCategory, // 重要：确保chunkCategory被正确传递
       fileId,
       denseWeight,
       sparseWeight,
     } = params;
+
+    this.logger.debug(
+      `Hybrid检索参数: chunkCategory=${chunkCategory || 'N/A'}, denseWeight=${denseWeight}, sparseWeight=${sparseWeight}`
+    );
 
     // 并行执行 Dense 和 Sparse 检索
     const [denseResults, sparseResults] = await Promise.all([
@@ -403,6 +448,7 @@ export class ChunkRetrievalService {
       credibilityMin = 0.5,
       type,
       category,
+      chunkCategory,
       fileId,
     } = params;
 
@@ -438,6 +484,12 @@ export class ChunkRetrievalService {
     if (fileId) {
       conditions.push(`c.file_id = $${paramsList.length + 1}::uuid`);
       paramsList.push(fileId);
+    }
+
+    // 按 Chunk 的 category 过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)
+    if (chunkCategory) {
+      conditions.push(`c.category = $${paramsList.length + 1}`);
+      paramsList.push(chunkCategory);
     }
 
     // 构建 FROM 子句
@@ -586,7 +638,70 @@ export class ChunkRetrievalService {
   }
 
   /**
-   * 提取关键词（简单实现）
+   * 中英文同义词映射表
+   * 用于Sparse检索的关键词扩展
+   */
+  private readonly SYNONYM_MAP: Record<string, string[]> = {
+    // 路线相关
+    '环岛': ['ring road', 'ring-road', 'route 1', '一号公路', '环线'],
+    '环线': ['ring road', 'ring-road', '环岛'],
+    '自驾': ['driving', 'self-drive', 'car rental', '驾车', '开车'],
+    '路线': ['route', 'itinerary', '行程', '路径'],
+    '行程': ['itinerary', 'route', '路线', '规划'],
+    // 天气相关
+    '天气': ['weather', 'climate', '气候', '气温'],
+    '气候': ['climate', 'weather', '天气'],
+    '极光': ['aurora', 'northern lights', '北极光'],
+    '季节': ['season', 'monthly', '月份'],
+    // 景点相关
+    '蓝湖': ['blue lagoon', '蓝色温泉'],
+    '冰河湖': ['jökulsárlón', 'jokulsarlon', '杰古沙龙', '冰川湖'],
+    '瀑布': ['waterfall', 'foss'],
+    '冰川': ['glacier', 'ice'],
+    '温泉': ['hot spring', 'geothermal'],
+    '黑沙滩': ['black sand beach', 'reynisfjara'],
+    // 住宿相关 - 增强关键词以提高accommodations召回
+    '住宿': ['accommodation', 'accommodations', 'hotel', 'stay', 'lodging', 'booking', '酒店', '旅馆', '民宿'],
+    '酒店': ['hotel', 'accommodation', 'accommodations', 'lodging', '住宿'],
+    '旅馆': ['guesthouse', 'hostel', 'accommodation', '住宿'],
+    '民宿': ['airbnb', 'guesthouse', 'accommodation', '住宿'],
+    // 安全相关
+    '安全': ['safety', 'risk', 'danger', '危险', '注意'],
+    '危险': ['danger', 'risk', 'hazard', '安全'],
+    '注意': ['caution', 'warning', 'note', '小心'],
+    // 租车相关
+    '租车': ['car rental', 'rent a car', '租赁'],
+    '保险': ['insurance', '全险'],
+    '四驱': ['4x4', '4wd', 'suv', '四驱车'],
+    // 英文同义词
+    'ring road': ['环岛', '环线', 'route 1'],
+    'blue lagoon': ['蓝湖', '蓝色温泉'],
+    'weather': ['天气', '气候', 'climate'],
+    'safety': ['安全', '注意事项', 'risk'],
+    'accommodation': ['住宿', '酒店', 'hotel'],
+  };
+
+  /**
+   * 意图关键词boost配置
+   * 当查询包含特定意图关键词时，优先添加核心关键词以提高召回
+   */
+  private readonly INTENT_BOOST: Record<string, { triggers: string[]; boostKeywords: string[] }> = {
+    accommodation: {
+      triggers: ['住宿', '酒店', '旅馆', '民宿', 'hotel', 'accommodation', 'stay', 'lodging'],
+      boostKeywords: ['accommodations', 'accommodation', 'hotel', 'booking'],
+    },
+    route: {
+      triggers: ['路线', '环岛', '行程', 'route', 'ring road'],
+      boostKeywords: ['ring-road', 'route', 'itinerary'],
+    },
+    weather: {
+      triggers: ['天气', '气候', '温度', 'weather', 'climate'],
+      boostKeywords: ['climate', 'weather', 'seasonal'],
+    },
+  };
+
+  /**
+   * 提取关键词（增强版：支持同义词扩展 + 意图boost）
    */
   private extractKeywords(query: string): string[] {
     // 移除标点符号，转换为小写，分词
@@ -601,7 +716,45 @@ export class ChunkRetrievalService {
       .filter((w) => w.length >= 2) // 过滤太短的词
       .filter((w) => !this.isStopWord(w)); // 过滤停用词
 
-    return words;
+    // 同义词扩展
+    const expandedWords = new Set<string>(words);
+    
+    // 检查原始查询中的关键词短语
+    const queryLower = query.toLowerCase();
+    for (const [key, synonyms] of Object.entries(this.SYNONYM_MAP)) {
+      if (queryLower.includes(key.toLowerCase())) {
+        synonyms.forEach(syn => expandedWords.add(syn.toLowerCase()));
+        this.logger.debug(`🔄 关键词扩展: "${key}" → [${synonyms.join(', ')}]`);
+      }
+    }
+
+    // 检查分词后的词
+    for (const word of words) {
+      const synonyms = this.SYNONYM_MAP[word];
+      if (synonyms) {
+        synonyms.forEach(syn => expandedWords.add(syn.toLowerCase()));
+      }
+    }
+
+    // 意图boost：将核心关键词放到数组前面（增加权重）
+    const result = Array.from(expandedWords);
+    const boostedKeywords: string[] = [];
+    
+    for (const [intent, config] of Object.entries(this.INTENT_BOOST)) {
+      const triggered = config.triggers.some(t => queryLower.includes(t.toLowerCase()));
+      if (triggered) {
+        this.logger.debug(`🎯 意图boost: ${intent} → [${config.boostKeywords.join(', ')}]`);
+        // 将boost关键词添加到结果前面（优先匹配）
+        config.boostKeywords.forEach(kw => {
+          if (!boostedKeywords.includes(kw.toLowerCase())) {
+            boostedKeywords.push(kw.toLowerCase());
+          }
+        });
+      }
+    }
+    
+    // 将boost关键词放到最前面
+    return [...boostedKeywords, ...result.filter(w => !boostedKeywords.includes(w))];
   }
 
   /**

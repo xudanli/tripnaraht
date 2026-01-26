@@ -121,21 +121,28 @@ export class PlanningAssistantController {
     @Query('budget') budget?: string,
     @Query('travelersCount') travelersCount?: string,
     @Query('preferredType') preferredType?: string,
+    @Query('country_code') countryCode?: string,
+    @Query('duration_days') durationDays?: string,
+    @Query('travel_style') travelStyle?: string,
+    @Query('budget_level') budgetLevel?: string,
     @Query('language') language?: 'en' | 'zh',
   ): Promise<any> {
-    // 创建临时会话
-    const sessionId = await this.planningAssistantService.createSession();
+    // 创建临时会话，传入国家代码
+    const sessionId = await this.planningAssistantService.createSession(countryCode);
     
     // 构造快速推荐消息
     let message = '请给我推荐目的地';
     if (budget) message += `，预算大约${budget}`;
+    if (budgetLevel) message += `，预算级别${budgetLevel}`;
     if (travelersCount) message += `，${travelersCount}人出行`;
-    if (preferredType) message += `，偏好${preferredType}类型的旅行`;
+    if (durationDays) message += `，${durationDays}天`;
+    if (preferredType || travelStyle) message += `，偏好${preferredType || travelStyle}类型的旅行`;
     
     const response = await this.planningAssistantService.chat({
       sessionId,
       message,
       language: language || 'zh',
+      countryCode, // 传递国家代码用于过滤
     });
     
     return {

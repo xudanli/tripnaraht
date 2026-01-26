@@ -1,5 +1,6 @@
 // src/contact/contact.module.ts
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ContactController } from './contact.controller';
 import { ContactService } from './services/contact.service';
 import { FileStorageService } from './services/file-storage.service';
@@ -9,7 +10,7 @@ import { RedisModule } from '../redis/redis.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule],
+  imports: [PrismaModule, RedisModule, ConfigModule],
   controllers: [ContactController],
   providers: [
     ContactService,

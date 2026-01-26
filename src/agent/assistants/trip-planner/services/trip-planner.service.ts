@@ -2468,10 +2468,12 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
       where: { id: tripId },
       include: {
         TripDay: {
+          orderBy: { date: 'asc' },  // orderBy 必须在 include 之前
           include: {
-            ItineraryItem: true,
+            ItineraryItem: {
+              orderBy: { startTime: 'asc' },
+            },
           },
-          orderBy: { date: 'asc' },
         },
       },
     });

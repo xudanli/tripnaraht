@@ -310,26 +310,32 @@ export class PlanningAssistantService {
       }
     }
 
-    // P1: 优先使用推荐引擎
+    // P1: 优先使用推荐引擎（如果指定了国家代码，传递给引擎过滤）
     if (this.recommendationEngine) {
       try {
         const scoredDestinations = await this.recommendationEngine.getRecommendations({
           preferences: mergedPreferences,
           limit: 5,
           excludeDestinations: [],
+          countryCode: request.countryCode, // 传递国家代码用于过滤
         });
 
         recommendations = scoredDestinations.map(sd => sd.destination);
-        this.logger.debug(`[规划助手] 推荐引擎返回 ${recommendations.length} 个目的地`);
+        this.logger.debug(`[规划助手] 推荐引擎返回 ${recommendations.length} 个目的地${request.countryCode ? ` (过滤: ${request.countryCode})` : ''}`);
       } catch (error: any) {
         this.logger.warn(`[规划助手] 推荐引擎调用失败: ${error.message}`);
       }
     }
 
-    // 回退：从数据库获取
+    // 回退：从数据库获取（支持国家代码过滤）
     if (recommendations.length === 0 && this.prisma) {
       try {
         const where: any = { isActive: true };
+        // 如果指定了国家代码，添加过滤条件
+        if (request.countryCode) {
+          where.countryCode = request.countryCode.toUpperCase();
+          this.logger.debug(`[规划助手] 数据库查询过滤国家代码: ${request.countryCode}`);
+        }
         const packs = await this.prisma.readinessPack.findMany({
           where,
           take: 10,
@@ -1094,11 +1100,36 @@ To give you the best recommendations, I'd like to know a bit more:
       preferences.budget = { total, currency: unit.includes('usd') || unit.includes('美元') ? 'USD' : 'CNY' };
     }
 
-    // 人数提取
-    if (lowerMessage.includes('一个人') || lowerMessage.includes('solo') || lowerMessage.includes('独自')) {
-      preferences.travelers = { adults: 1 };
-    } else if (lowerMessage.includes('两个人') || lowerMessage.includes('couple') || lowerMessage.includes('情侣')) {
-      preferences.travelers = { adults: 2 };
+    // 人数提取 - 先尝试匹配数字+人的通用模式
+    const travelerPatterns = [
+      /(\d+)\s*个人/,      // "2个人", "3个人"
+      /(\d+)\s*人/,        // "2人", "3人"
+      /(\d+)\s*位/,        // "2位", "3位"
+      /(\d+)\s*persons?/i, // "2 persons"
+      /(\d+)\s*people/i,   // "2 people"
+      /(\d+)\s*adults?/i,  // "2 adults"
+    ];
+    
+    let travelersMatched = false;
+    for (const pattern of travelerPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        const count = parseInt(match[1], 10);
+        if (count > 0 && count <= 20) { // 合理范围限制
+          preferences.travelers = { adults: count };
+          travelersMatched = true;
+          break;
+        }
+      }
+    }
+    
+    // 如果没有匹配到数字模式，再尝试固定短语匹配
+    if (!travelersMatched) {
+      if (lowerMessage.includes('一个人') || lowerMessage.includes('solo') || lowerMessage.includes('独自')) {
+        preferences.travelers = { adults: 1 };
+      } else if (lowerMessage.includes('两个人') || lowerMessage.includes('couple') || lowerMessage.includes('情侣')) {
+        preferences.travelers = { adults: 2 };
+      }
     }
 
     // 日期提取

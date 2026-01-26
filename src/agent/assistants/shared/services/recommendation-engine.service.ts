@@ -21,6 +21,8 @@ export interface RecommendationInput {
   preferences: UserPreferences;
   limit?: number;
   excludeDestinations?: string[];
+  /** 目标国家代码，用于过滤推荐 (e.g., 'IS' for Iceland, 'JP' for Japan) */
+  countryCode?: string;
 }
 
 export interface ScoredDestination {
@@ -133,17 +135,23 @@ export class RecommendationEngineService {
    * 获取智能推荐
    */
   async getRecommendations(input: RecommendationInput): Promise<ScoredDestination[]> {
-    const { preferences, limit = 5, excludeDestinations = [] } = input;
+    const { preferences, limit = 5, excludeDestinations = [], countryCode } = input;
 
-    // 1. 获取候选目的地
-    let candidates = await this.getCandidates(excludeDestinations);
+    // 1. 获取候选目的地（传递 countryCode 用于过滤）
+    let candidates = await this.getCandidates(excludeDestinations, countryCode);
 
-    // 2. 为每个候选计算分数
+    // 2. 如果指定了国家代码但没有候选，记录警告
+    if (countryCode && candidates.length === 0) {
+      this.logger.warn(`[推荐引擎] 国家代码 ${countryCode} 无匹配候选，回退到全部候选`);
+      candidates = await this.getCandidates(excludeDestinations);
+    }
+
+    // 3. 为每个候选计算分数
     const scoredCandidates = candidates.map(candidate => 
       this.scoreDestination(candidate, preferences)
     );
 
-    // 3. 排序并返回
+    // 4. 排序并返回
     return scoredCandidates
       .sort((a, b) => b.scores.total - a.scores.total)
       .slice(0, limit);
@@ -151,13 +159,29 @@ export class RecommendationEngineService {
 
   /**
    * 获取候选目的地
+   * @param excludeDestinations 排除的目的地ID列表
+   * @param countryCode 可选的国家代码过滤 (e.g., 'IS' for Iceland)
    */
-  private async getCandidates(excludeDestinations: string[]): Promise<DestinationRecommendation[]> {
+  private async getCandidates(excludeDestinations: string[], countryCode?: string): Promise<DestinationRecommendation[]> {
     const candidates: DestinationRecommendation[] = [];
+    const normalizedCountryCode = countryCode?.toUpperCase();
+
+    // 国家代码映射（内置数据ID -> 国家代码）
+    const idToCountryCode: Record<string, string> = {
+      iceland: 'IS',
+      japan: 'JP',
+      newzealand: 'NZ',
+      italy: 'IT',
+      thailand: 'TH',
+      spain: 'ES',
+    };
 
     // 从内置数据获取
     for (const [id, data] of Object.entries(this.destinationTags)) {
       if (excludeDestinations.includes(id)) continue;
+      
+      // 如果指定了国家代码，过滤不匹配的内置数据
+      if (normalizedCountryCode && idToCountryCode[id] !== normalizedCountryCode) continue;
 
       candidates.push(this.createDestinationFromTags(id, data));
     }
@@ -165,11 +189,17 @@ export class RecommendationEngineService {
     // 尝试从数据库获取更多
     if (this.prisma) {
       try {
+        const where: any = {
+          isActive: true,
+          packId: { notIn: excludeDestinations },
+        };
+        // 如果指定了国家代码，添加过滤条件
+        if (normalizedCountryCode) {
+          where.countryCode = normalizedCountryCode;
+        }
+        
         const packs = await this.prisma.readinessPack.findMany({
-          where: {
-            isActive: true,
-            packId: { notIn: excludeDestinations },
-          },
+          where,
           take: 20,
           select: {
             packId: true,

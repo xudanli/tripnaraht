@@ -1841,12 +1841,14 @@ export class RagController {
         category: { type: 'string', description: '文件分类' },
         fileId: { type: 'string', description: '文件ID' },
         useHybridSearch: { type: 'boolean', description: '是否使用混合检索（默认true，推荐启用，对中文查询更有效）', default: true },
-        denseWeight: { type: 'number', description: 'Dense检索权重（默认0.7）', default: 0.7 },
-        sparseWeight: { type: 'number', description: 'Sparse检索权重（默认0.3）', default: 0.3 },
-        useReranking: { type: 'boolean', description: '是否使用重排序（默认false，会增加延迟但提升准确率）', default: false },
+        denseWeight: { type: 'number', description: 'Dense检索权重（默认0.6，优化后）', default: 0.6 },
+        sparseWeight: { type: 'number', description: 'Sparse检索权重（默认0.4，优化后增强关键词匹配）', default: 0.4 },
+        useReranking: { type: 'boolean', description: '是否使用重排序（默认false，启用后准确率可达100%，但延迟+2-3秒）', default: false },
         rerankTopK: { type: 'number', description: '重排序的Top-K数量（默认20）', default: 20 },
         useQueryExpansion: { type: 'boolean', description: '是否使用查询扩展（默认false，会增加延迟和成本但提升召回率）', default: false },
         maxQueryVariants: { type: 'number', description: '最大查询变体数量（默认3）', default: 3 },
+        chunkCategory: { type: 'string', description: 'Chunk分类过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)' },
+        useIntentClassification: { type: 'boolean', description: '是否使用意图分类自动过滤（默认false）', default: false },
       },
       required: ['query'],
     },
@@ -1858,6 +1860,7 @@ export class RagController {
     credibilityMin?: number;
     type?: string;
     category?: string;
+    chunkCategory?: string; // Chunk的category (RULES, POI_INFO, GATE, WEATHER, GENERAL)
     fileId?: string;
     useHybridSearch?: boolean;
     denseWeight?: number;
@@ -1866,6 +1869,7 @@ export class RagController {
     rerankTopK?: number;
     useQueryExpansion?: boolean;
     maxQueryVariants?: number;
+    useIntentClassification?: boolean;
   }) {
     try {
       const results = await this.chunkRetrieval.retrieve({
@@ -1874,14 +1878,16 @@ export class RagController {
         credibilityMin: body.credibilityMin || 0.5,
         type: body.type,
         category: body.category,
+        chunkCategory: body.chunkCategory, // 传递chunkCategory参数
         fileId: body.fileId,
         useHybridSearch: body.useHybridSearch !== false, // 默认true
-        denseWeight: body.denseWeight || 0.7,
-        sparseWeight: body.sparseWeight || 0.3,
+        denseWeight: body.denseWeight || 0.6, // 优化后的默认值
+        sparseWeight: body.sparseWeight || 0.4, // 优化后的默认值
         useReranking: body.useReranking === true, // 默认false
         rerankTopK: body.rerankTopK || 20,
         useQueryExpansion: body.useQueryExpansion === true, // 默认false
         maxQueryVariants: body.maxQueryVariants || 3,
+        useIntentClassification: body.useIntentClassification === true, // 默认false
       });
       return successResponse(results);
     } catch (error: any) {

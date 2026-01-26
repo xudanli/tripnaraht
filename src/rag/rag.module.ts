@@ -58,6 +58,7 @@ import { RedisCacheService } from './services/redis-cache.service';
 import { HybridCacheService } from './services/hybrid-cache.service';
 import { RetryHelperService } from './services/retry-helper.service';
 import { ParallelExecutorService } from './services/parallel-executor.service';
+import { QueryIntentService } from './services/query-intent.service';
 import { LlmModule } from '../llm/llm.module';
 import { RagController } from './rag.controller';
 import { RagMetricsController } from './rag-metrics.controller';
@@ -90,6 +91,7 @@ import { SkillsModule } from '../skills/skills.module';
     RerankingService, // 重排序服务
     RAGMonitoringService, // RAG监控服务
     QueryExpansionService, // 查询扩展服务
+    QueryIntentService, // 查询意图分类服务（P1优化）
     RagTestsetService, // 测试集服务（评估数据）
     RagFallbackService, // RAG降级策略服务（P0）
     GateDecisionLoggerService, // Gate决策日志服务（P0）
@@ -114,6 +116,7 @@ import { SkillsModule } from '../skills/skills.module';
     RerankingService, // 导出重排序服务
     RAGMonitoringService, // 导出监控服务
     QueryExpansionService, // 导出查询扩展服务
+    QueryIntentService, // 导出查询意图分类服务
     RagTestsetService, // 导出测试集服务
     RagFallbackService, // 导出降级策略服务
     GateDecisionLoggerService, // 导出决策日志服务
