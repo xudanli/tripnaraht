@@ -932,6 +932,50 @@ export class PlacesService {
   }
 
   /**
+   * 推荐活动 - 获取指定国家评分4.0以上的地点
+   * 
+   * @param countryCode 国家代码（必填，如 IS、JP、CN）
+   * @param category 类别过滤（可选）
+   * @param limit 返回数量限制（默认 20）
+   * @returns 地点列表
+   */
+  async getRecommendedActivities(
+    countryCode: string,
+    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    limit: number = 20
+  ) {
+    if (!countryCode) {
+      throw new BadRequestException('国家代码不能为空');
+    }
+
+    const categoryFilter = category
+      ? Prisma.sql`AND p.category = ${category}::"PlaceCategory"`
+      : Prisma.sql``;
+
+    const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
+      SELECT 
+        p.id,
+        p."nameCN",
+        p."nameEN",
+        p.metadata,
+        p.address,
+        p.rating,
+        p.category,
+        0::float as distance_meters
+      FROM "Place" p
+      INNER JOIN "City" c ON p."cityId" = c.id
+      WHERE c."countryCode" = ${countryCode.toUpperCase()}
+        AND p.rating >= 4.0
+        AND p.rating IS NOT NULL
+        ${categoryFilter}
+      ORDER BY p.rating DESC, p."nameCN" ASC
+      LIMIT ${limit}
+    `;
+
+    return rawResults.map((row) => this.mapToDto(row));
+  }
+
+  /**
    * 关键词搜索地点
    * 
    * @param query 搜索关键词

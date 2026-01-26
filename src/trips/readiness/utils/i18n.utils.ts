@@ -65,9 +65,19 @@ export function getLocalizedText(
  * @returns 对应语言的文本数组
  */
 export function getLocalizedTexts(
-  texts: (LocalizedString | undefined | null)[],
+  texts: (LocalizedString | undefined | null)[] | undefined | null,
   lang: SupportedLanguage = 'en'
 ): string[] {
+  // 如果 texts 为 undefined 或 null，返回空数组
+  if (!texts) {
+    return [];
+  }
+  
+  // 如果不是数组，返回空数组
+  if (!Array.isArray(texts)) {
+    return [];
+  }
+  
   return texts.map(text => getLocalizedText(text, lang));
 }
 

@@ -1234,6 +1234,59 @@ export class PlacesController {
   }
 
   @Public()
+  @Get('recommendations/activities')
+  @ApiOperation({
+    summary: '推荐活动 - 获取指定国家评分4.0以上的地点',
+    description: '根据国家代码推荐评分4.0以上的地点，支持按类别筛选。',
+  })
+  @ApiQuery({ name: 'countryCode', description: '国家代码（ISO 3166-1 alpha-2，如 IS=冰岛，JP=日本，CN=中国）', example: 'IS', type: String, required: true })
+  @ApiQuery({ name: 'category', description: '地点类别筛选', enum: PlaceCategory, example: 'ATTRACTION', required: false })
+  @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20，最大 100）', example: 20, type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '推荐成功',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '参数错误',
+    type: ApiErrorResponseDto,
+  })
+  async getRecommendedActivities(
+    @Query('countryCode') countryCode: string,
+    @Query('category') category?: PlaceCategory,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      if (!countryCode) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, '国家代码不能为空');
+      }
+
+      const limitNum = limit ? parseInt(limit, 10) : 20;
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'limit 参数必须在 1-100 之间');
+      }
+
+      // 过滤只允许的类别
+      const allowedCategories = ['ATTRACTION', 'RESTAURANT', 'SHOPPING', 'HOTEL'] as const;
+      const validCategory = category && allowedCategories.includes(category as any)
+        ? (category as 'ATTRACTION' | 'RESTAURANT' | 'SHOPPING' | 'HOTEL')
+        : undefined;
+
+      const places = await this.placesService.getRecommendedActivities(
+        countryCode,
+        validCategory,
+        limitNum,
+      );
+
+      return successResponse(places);
+    } catch (error: any) {
+      this.logger.error('获取推荐活动失败:', error);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message || '获取推荐活动失败');
+    }
+  }
+
+  @Public()
   @Get('recommendations')
   @ApiOperation({
     summary: '获取地点推荐（功能待实现）',

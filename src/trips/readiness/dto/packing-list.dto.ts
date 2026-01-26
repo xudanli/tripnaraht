@@ -30,7 +30,7 @@ export class CustomPackingItemDto {
 }
 
 /**
- * 生成打包清单请求 DTO
+ * 生成打包清单请求 DTO（增强版）
  */
 export class GeneratePackingListDto {
   @ApiPropertyOptional({
@@ -57,6 +57,69 @@ export class GeneratePackingListDto {
   @IsArray()
   @IsOptional()
   customItems?: CustomPackingItemDto[];
+
+  // 🆕 新增：基于模板的参数
+  @ApiPropertyOptional({
+    description: '季节：summer(6-8月), transition(5月/9月), winter(11-3月)',
+    enum: ['summer', 'transition', 'winter'],
+    example: 'summer',
+  })
+  @IsString()
+  @IsOptional()
+  season?: 'summer' | 'transition' | 'winter';
+
+  @ApiPropertyOptional({
+    description: '路线类型',
+    enum: ['golden_circle', 'south_coast', 'snaefellsnes', 'full_ring_road', 'westfjords', 'highlands', 'custom'],
+    example: 'south_coast',
+  })
+  @IsString()
+  @IsOptional()
+  route?: string;
+
+  @ApiPropertyOptional({
+    description: '用户类型',
+    enum: ['first_timer', 'photographer', 'adventurer', 'family_with_kids', 'budget_backpacker', 'cultural_explorer', 'luxury_traveler'],
+    example: 'first_timer',
+  })
+  @IsString()
+  @IsOptional()
+  userType?: string;
+
+  @ApiPropertyOptional({
+    description: '计划的活动',
+    type: [String],
+    example: ['hiking', 'hot_spring'],
+  })
+  @IsArray()
+  @IsOptional()
+  activities?: string[];
+
+  @ApiPropertyOptional({
+    description: '租车类型',
+    enum: ['compact_car', 'sedan', 'suv_2wd', 'suv_4wd', 'campervan'],
+    example: 'suv_4wd',
+  })
+  @IsString()
+  @IsOptional()
+  vehicleType?: string;
+
+  @ApiPropertyOptional({
+    description: '特殊需求',
+    type: [String],
+    example: [],
+  })
+  @IsArray()
+  @IsOptional()
+  specialNeeds?: string[];
+
+  @ApiPropertyOptional({
+    description: '是否使用模板数据生成（默认 true，如果提供了 season 等参数）',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  useTemplate?: boolean;
 }
 
 /**

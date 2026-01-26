@@ -51,7 +51,10 @@ import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-u
 import { ChecklistStatusService } from './services/checklist-status.service';
 import { FindingMarksService } from './services/finding-marks.service';
 import { PackingListService } from './services/packing-list.service';
+import { PackingTemplateService } from './services/packing-template.service';
 import { SolutionService } from './services/solution.service';
+import { ReadinessAIService } from './services/readiness-ai.service';
+import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
 import {
   UpdateChecklistStatusDto,
   ChecklistStatusResponseDto,
@@ -124,8 +127,11 @@ export class ReadinessController {
     private readonly checklistStatusService: ChecklistStatusService,
     private readonly findingMarksService: FindingMarksService,
     private readonly packingListService: PackingListService,
+    private readonly packingTemplateService: PackingTemplateService,
     private readonly solutionService: SolutionService,
     private readonly packStorageService: PackStorageService,
+    private readonly readinessAIService: ReadinessAIService,
+    private readonly featureFlagsService: ReadinessFeatureFlagsService,
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
@@ -536,6 +542,8 @@ export class ReadinessController {
     description: '获取适配行程的准备事项清单，按 blocker/must/should/optional 分类，包含截止时间和办理渠道',
   })
   @ApiQuery({ name: 'tripId', description: '行程 ID', required: true })
+  @ApiQuery({ name: 'lang', description: '语言', required: false, enum: ['en', 'zh'] })
+  @ApiQuery({ name: 'userId', description: '用户 ID（可选，用于个性化）', required: false })
   @ApiResponse({
     status: 200,
     description: '成功返回个性化准备清单',
@@ -544,10 +552,15 @@ export class ReadinessController {
   async getPersonalizedChecklist(
     @Query('tripId') tripId: string,
     @Query('lang') lang?: 'en' | 'zh',
+    @Query('userId') userId?: string,
+    @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<any> {
     try {
+      // 获取用户 ID（优先使用 currentUser，其次使用 query 参数）
+      const effectiveUserId = currentUser?.userId || userId;
+
       // 从行程获取上下文
-      const result = await this.readinessService.checkFromDestination(tripId, {
+      const baseResult = await this.readinessService.checkFromDestination(tripId, {
         traveler: {},
         trip: {},
         itinerary: {
@@ -557,33 +570,77 @@ export class ReadinessController {
         lang: lang || 'en',
       });
 
-      // 转换为个性化清单格式
-      const checklist = {
-        blocker: result.findings.flatMap(f => f.blockers.map(b => ({
-          message: b.message,
-          tasks: b.tasks || [],
-          deadline: undefined, // ReadinessFindingItem 没有 deadline 字段
-          channel: undefined, // ReadinessFindingItem 没有 channel 字段
-        }))),
-        must: result.findings.flatMap(f => f.must.map(m => ({
-          message: m.message,
-          tasks: m.tasks || [],
-          deadline: undefined,
-          channel: undefined,
-        }))),
-        should: result.findings.flatMap(f => f.should.map(s => ({
-          message: s.message,
-          tasks: s.tasks || [],
-          deadline: undefined,
-          channel: undefined,
-        }))),
-        optional: result.findings.flatMap(f => f.optional.map(o => ({
-          message: o.message,
-          tasks: o.tasks || [],
-          deadline: undefined,
-          channel: undefined,
-        }))),
-      };
+      // 提取 Trip Context（用于 AI 增强）
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+      });
+
+      if (!trip) {
+        throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+      }
+
+      // 计算行程天数
+      const startDate = new Date(trip.startDate);
+      const endDate = new Date(trip.endDate);
+      const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+      // 获取用户画像（如果提供了 userId）
+      let userProfileData = null;
+      if (effectiveUserId) {
+        userProfileData = await this.prisma.userProfile.findUnique({
+          where: { userId: effectiveUserId },
+        });
+      }
+
+      // 构建 Trip Context
+      const tripContext = this.readinessService.extractTripContext({
+        context: {
+          destination: trip.destination || '',
+          startDate: trip.startDate.toISOString().split('T')[0],
+          durationDays,
+          preferences: {
+            intents: {},
+            pace: 'moderate',
+            riskTolerance: 'medium',
+          },
+        },
+        candidatesByDate: {},
+        signals: {
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      });
+
+      // 构建用户画像
+      const userProfile = effectiveUserId
+        ? await this.extractUserProfile(effectiveUserId, userProfileData)
+        : undefined;
+
+      // 检查是否启用 AI 增强
+      const aiEnabled =
+        effectiveUserId &&
+        (await this.featureFlagsService.isAIEnhancementEnabled(
+          effectiveUserId,
+          'readiness_ai_enhancement',
+        ));
+
+      // AI 增强（如果启用）
+      let enhancedResult = baseResult;
+      if (aiEnabled && userProfile) {
+        try {
+          enhancedResult = await this.readinessAIService.enhancePersonalizedChecklist(
+            baseResult,
+            userProfile,
+            tripContext,
+            { enableAI: true },
+          );
+        } catch (error) {
+          this.logger.warn('AI enhancement failed, using base result', error);
+          // 降级到基础结果
+        }
+      }
+
+      // 转换为个性化清单格式（带 AI 增强）
+      const checklist = this.buildChecklistWithEnhancements(enhancedResult);
 
       return successResponse({
         tripId,
@@ -594,12 +651,77 @@ export class ReadinessController {
           totalShould: checklist.should.length,
           totalOptional: checklist.optional.length,
         },
+        aiEnhanced: aiEnabled && !!(enhancedResult as any).aiEnhancements,
+        failedFeatures: (enhancedResult as any).failedFeatures || [],
       });
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to get personalized checklist: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
+  }
+
+  /**
+   * 提取用户画像
+   */
+  private async extractUserProfile(
+    userId: string,
+    userProfile?: any,
+  ): Promise<import('./types/ai-enhanced.types').UserProfile> {
+    const profile: import('./types/ai-enhanced.types').UserProfile = {
+      userId,
+    };
+
+    if (userProfile?.preferences) {
+      const prefs = userProfile.preferences as any;
+      profile.budgetLevel = prefs.budgetLevel;
+      profile.riskTolerance = prefs.riskTolerance;
+      profile.tags = prefs.tags;
+      profile.nationality = prefs.nationality;
+      profile.residencyCountry = prefs.residencyCountry;
+    }
+
+    return profile;
+  }
+
+  /**
+   * 构建带 AI 增强的清单
+   */
+  private buildChecklistWithEnhancements(result: import('./types/readiness-findings.types').ReadinessCheckResult & { aiEnhancements?: any; failedFeatures?: string[] }) {
+    const enhancements = result.aiEnhancements || {};
+    const deadlinesMap = new Map<string, import('./types/ai-enhanced.types').DeadlineEnhancement>();
+    const channelsMap = new Map<string, import('./types/ai-enhanced.types').ChannelEnhancement>();
+    const rankingsMap = new Map<string, import('./types/ai-enhanced.types').RankingEnhancement>();
+
+    // 构建映射
+    enhancements.deadlines?.forEach((d: any) => deadlinesMap.set(d.itemId, d));
+    enhancements.channels?.forEach((c: any) => channelsMap.set(c.itemId, c));
+    enhancements.rankings?.forEach((r: any) => rankingsMap.set(r.itemId, r));
+
+    // 构建清单项
+    const buildItem = (item: any) => {
+      const deadline = deadlinesMap.get(item.id);
+      const channel = channelsMap.get(item.id);
+      const ranking = rankingsMap.get(item.id);
+
+      return {
+        id: item.id,
+        message: item.message,
+        tasks: item.tasks || [],
+        deadline: deadline?.deadline,
+        channel: channel?.channels?.[0]?.name || channel?.channels?.[0]?.url,
+        channelDetails: channel?.channels,
+        personalizedRank: ranking?.personalizedRank,
+        rankingReasoning: ranking?.reasoning,
+      };
+    };
+
+    return {
+      blocker: result.findings.flatMap((f) => f.blockers.map(buildItem)),
+      must: result.findings.flatMap((f) => f.must.map(buildItem)),
+      should: result.findings.flatMap((f) => f.should.map(buildItem)),
+      optional: result.findings.flatMap((f) => f.optional.map(buildItem)),
+    };
   }
 
   @Public()
@@ -609,6 +731,8 @@ export class ReadinessController {
     description: '提前知晓行程中的潜在风险，提供应对措施和救援信息',
   })
   @ApiQuery({ name: 'tripId', description: '行程 ID', required: true })
+  @ApiQuery({ name: 'lang', description: '语言', required: false, enum: ['en', 'zh'] })
+  @ApiQuery({ name: 'userId', description: '用户 ID（可选，用于个性化）', required: false })
   @ApiResponse({
     status: 200,
     description: '成功返回风险预警',
@@ -617,41 +741,132 @@ export class ReadinessController {
   async getRiskWarnings(
     @Query('tripId') tripId: string,
     @Query('lang') lang?: 'en' | 'zh',
+    @Query('userId') userId?: string,
+    @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<any> {
     try {
-      // 获取行程信息以获取目的地
+      // 获取用户 ID（优先使用 currentUser，其次使用 query 参数）
+      const effectiveUserId = currentUser?.userId || userId;
+
+      // 获取行程信息
       const trip = await this.prisma.trip.findUnique({
         where: { id: tripId },
-        select: { destination: true },
       });
 
       if (!trip) {
         throw new NotFoundException(`行程 ID ${tripId} 不存在`);
       }
 
+      // 计算行程天数
+      const startDate = new Date(trip.startDate);
+      const endDate = new Date(trip.endDate);
+      const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+      // 获取用户画像（如果提供了 userId）
+      let userProfileData = null;
+      if (effectiveUserId) {
+        userProfileData = await this.prisma.userProfile.findUnique({
+          where: { userId: effectiveUserId },
+        });
+      }
+
       // 从行程获取上下文
-      const result = await this.readinessService.checkFromDestination(
+      const baseResult = await this.readinessService.checkFromDestination(
         trip.destination,
         {
-        traveler: {},
-        trip: {},
-        itinerary: {
-          countries: [],
-        },
+          traveler: {},
+          trip: {},
+          itinerary: {
+            countries: [],
+          },
         },
         {
-        lang: lang || 'en',
+          lang: lang || 'en',
         },
       );
 
-      // 提取风险信息
-      const risks = result.findings.flatMap(f => f.risks.map(r => ({
-        type: r.type,
-        severity: r.severity,
-        message: r.summary,
-        mitigation: r.mitigations || [],
-        emergencyContacts: [], // Risk 对象没有 emergencyContacts 字段
-      })));
+      // 构建 Trip Context
+      const tripContext = this.readinessService.extractTripContext({
+        context: {
+          destination: trip.destination || '',
+          startDate: trip.startDate.toISOString().split('T')[0],
+          durationDays,
+          preferences: {
+            intents: {},
+            pace: 'moderate',
+            riskTolerance: 'medium',
+          },
+        },
+        candidatesByDate: {},
+        signals: {
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      });
+
+      // 构建用户画像
+      const userProfile = effectiveUserId
+        ? await this.extractUserProfile(effectiveUserId, userProfileData)
+        : undefined;
+
+      // 检查是否启用 AI 增强
+      const aiEnabled =
+        effectiveUserId &&
+        (await this.featureFlagsService.isAIEnhancementEnabled(
+          effectiveUserId,
+          'readiness_ai_enhancement',
+        ));
+
+      // AI 增强（如果启用）
+      let riskEnhancements: import('./types/ai-enhanced.types').RiskAIEnhancements = {};
+      if (aiEnabled && userProfile) {
+        try {
+          riskEnhancements = await this.readinessAIService.enhanceRiskWarnings(
+            baseResult,
+            userProfile,
+            tripContext,
+            { enableAI: true },
+          );
+        } catch (error) {
+          this.logger.warn('Risk AI enhancement failed, using base result', error);
+          // 降级到基础结果
+        }
+      }
+
+      // 构建风险映射
+      const severityMap = new Map<string, string>();
+      const mitigationMap = new Map<string, string[]>();
+      const emergencyContactsMap = new Map<string, any[]>();
+
+      riskEnhancements.severityAssessments?.forEach((s) => {
+        severityMap.set(s.riskId, s.assessedSeverity);
+      });
+      riskEnhancements.mitigations?.forEach((m) => {
+        mitigationMap.set(m.riskId, m.personalizedMitigations);
+      });
+      riskEnhancements.emergencyContacts?.forEach((e) => {
+        emergencyContactsMap.set(e.riskId, e.contacts);
+      });
+
+      // 提取风险信息（带 AI 增强）
+      let riskIndex = 0;
+      const risks = baseResult.findings.flatMap((f) =>
+        f.risks.map((r) => {
+          const riskId = `${f.destinationId}-${f.packId}-risk-${riskIndex++}`;
+          const enhancedSeverity = severityMap.get(riskId) || r.severity;
+          const enhancedMitigations = mitigationMap.get(riskId) || r.mitigations || [];
+          const enhancedContacts = emergencyContactsMap.get(riskId) || [];
+
+          return {
+            id: riskId,
+            type: r.type,
+            severity: enhancedSeverity,
+            originalSeverity: r.severity,
+            message: r.summary,
+            mitigation: enhancedMitigations.length > 0 ? enhancedMitigations : r.mitigations || [],
+            emergencyContacts: enhancedContacts,
+          };
+        }),
+      );
 
       // 获取时间冲突并转换为风险
       try {
@@ -661,16 +876,17 @@ export class ReadinessController {
         } else {
           const conflictsResult = await tripConflictsService.getConflicts(tripId);
           const timeConflicts = conflictsResult.conflicts.filter(
-            c => c.type === ConflictType.TIME_CONFLICT
+            (c) => c.type === ConflictType.TIME_CONFLICT,
           );
 
           // 将时间冲突转换为风险格式
-          // 使用 'logistics_remote' 作为类型，因为时间冲突与行程安排/物流相关
-          const conflictRisks = timeConflicts.map(conflict => ({
+          const conflictRisks = timeConflicts.map((conflict) => ({
+            id: `conflict-${conflict.id}`,
             type: 'logistics_remote' as const,
             severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
+            originalSeverity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
             message: conflict.description,
-            mitigation: conflict.suggestions?.map(s => s.description) || [],
+            mitigation: conflict.suggestions?.map((s) => s.description) || [],
             emergencyContacts: [],
           }));
 
@@ -680,7 +896,7 @@ export class ReadinessController {
       } catch (conflictError) {
         // 如果获取冲突失败，记录日志但不影响主流程
         this.logger.warn(
-          `Failed to get time conflicts for trip ${tripId}: ${(conflictError as Error).message}`
+          `Failed to get time conflicts for trip ${tripId}: ${(conflictError as Error).message}`,
         );
       }
 
@@ -689,10 +905,11 @@ export class ReadinessController {
         risks,
         summary: {
           totalRisks: risks.length,
-          highSeverity: risks.filter(r => r.severity === 'high').length,
-          mediumSeverity: risks.filter(r => r.severity === 'medium').length,
-          lowSeverity: risks.filter(r => r.severity === 'low').length,
+          highSeverity: risks.filter((r) => r.severity === 'high').length,
+          mediumSeverity: risks.filter((r) => r.severity === 'medium').length,
+          lowSeverity: risks.filter((r) => r.severity === 'low').length,
         },
+        aiEnhanced: aiEnabled && Object.keys(riskEnhancements).length > 0,
       });
     } catch (error) {
       const err = error as Error;
@@ -954,6 +1171,7 @@ export class ReadinessController {
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiBody({ type: GeneratePackingListDto })
+  @ApiQuery({ name: 'userId', description: '用户 ID（可选，用于个性化）', required: false })
   @ApiResponse({
     status: 200,
     description: '成功生成打包清单',
@@ -962,10 +1180,134 @@ export class ReadinessController {
   async generatePackingList(
     @Param('tripId') tripId: string,
     @Body() dto: GeneratePackingListDto,
+    @Query('userId') userId?: string,
+    @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<any> {
     try {
-      const result = await this.packingListService.generatePackingList(tripId, dto);
-      return successResponse(result);
+      // 获取用户 ID（优先使用 currentUser，其次使用 query 参数）
+      const effectiveUserId = currentUser?.userId || userId;
+
+      // 生成基础打包清单
+      const baseResult = await this.packingListService.generatePackingList(tripId, dto);
+
+      // 获取行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+      });
+
+      if (!trip) {
+        throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+      }
+
+      // 计算行程天数
+      const startDate = new Date(trip.startDate);
+      const endDate = new Date(trip.endDate);
+      const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+      // 获取用户画像（如果提供了 userId）
+      let userProfileData = null;
+      if (effectiveUserId) {
+        userProfileData = await this.prisma.userProfile.findUnique({
+          where: { userId: effectiveUserId },
+        });
+      }
+
+      // 构建 Trip Context
+      const tripContext = this.readinessService.extractTripContext({
+        context: {
+          destination: trip.destination || '',
+          startDate: trip.startDate.toISOString().split('T')[0],
+          durationDays,
+          preferences: {
+            intents: {},
+            pace: 'moderate',
+            riskTolerance: 'medium',
+          },
+        },
+        candidatesByDate: {},
+        signals: {
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      });
+
+      // 构建用户画像
+      const userProfile = effectiveUserId
+        ? await this.extractUserProfile(effectiveUserId, userProfileData)
+        : undefined;
+
+      // 检查是否启用 AI 增强
+      const aiEnabled =
+        effectiveUserId &&
+        (await this.featureFlagsService.isAIEnhancementEnabled(
+          effectiveUserId,
+          'readiness_ai_enhancement',
+        ));
+
+      // AI 增强（如果启用）
+      let enhancedItems = baseResult.items;
+      if (aiEnabled && userProfile && baseResult.items.length > 0) {
+        try {
+          const enhancements = await this.readinessAIService.enhancePackingList(
+            baseResult.items.map((item) => ({
+              id: item.id,
+              name: item.name,
+              category: item.category,
+              quantity: item.quantity,
+              priority: item.priority,
+            })),
+            userProfile,
+            tripContext,
+            durationDays,
+            { enableAI: true },
+          );
+
+          // 应用增强结果
+          if (enhancements.itemEnhancements) {
+            const enhancementMap = new Map<string, any>();
+            enhancements.itemEnhancements.forEach((enh) => {
+              enhancementMap.set(enh.itemId, enh);
+            });
+
+            // 更新现有物品
+            enhancedItems = baseResult.items.map((item) => {
+              const enh = enhancementMap.get(item.id);
+              if (enh) {
+                return {
+                  ...item,
+                  quantity: enh.recommendedQuantity ?? item.quantity,
+                  reason: enh.reason ?? item.reason,
+                };
+              }
+              return item;
+            });
+
+            // 添加新推荐的物品
+            enhancements.itemEnhancements.forEach((enh) => {
+              if (enh.itemId.startsWith('recommended-')) {
+                enhancedItems.push({
+                  id: enh.itemId,
+                  name: (enh as any).name || '推荐物品',
+                  category: (enh as any).category || 'other',
+                  quantity: enh.recommendedQuantity || 1,
+                  unit: '件',
+                  priority: 'optional' as const,
+                  reason: enh.reason,
+                  checked: false,
+                });
+              }
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Packing list AI enhancement failed, using base result', error);
+          // 降级到基础结果
+        }
+      }
+
+      return successResponse({
+        ...baseResult,
+        items: enhancedItems,
+        aiEnhanced: aiEnabled && enhancedItems !== baseResult.items,
+      });
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to generate packing list: ${err.message}`, err.stack);
@@ -1021,6 +1363,52 @@ export class ReadinessController {
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to update packing list item: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  // ==================== 打包清单辅助接口 ====================
+
+  @Public()
+  @Get('packing-order-steps')
+  @ApiOperation({
+    summary: '获取打包顺序步骤',
+    description: '获取推荐的打包顺序步骤，帮助用户有序打包',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回打包顺序步骤',
+    type: ApiSuccessResponseDto,
+  })
+  async getPackingOrderSteps(): Promise<any> {
+    try {
+      const steps = this.packingTemplateService.getPackingOrderSteps();
+      return successResponse(steps);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing order steps: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('pre-departure-checklist')
+  @ApiOperation({
+    summary: '获取出发前检查清单',
+    description: '获取出发前24小时的最终检查清单',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回出发前检查清单',
+    type: ApiSuccessResponseDto,
+  })
+  async getPreDepartureChecklist(): Promise<any> {
+    try {
+      const checklist = this.packingTemplateService.getPreDepartureChecklist();
+      return successResponse(checklist);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get pre-departure checklist: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }
@@ -1420,6 +1808,426 @@ export class ReadinessController {
         return errorResponse(ErrorCode.NOT_FOUND, err.message);
       }
       this.logger.error(`Failed to delete readiness pack: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  // ==================== 打包模板管理接口 ====================
+
+  @Public()
+  @Get('admin/packing-templates')
+  @ApiOperation({
+    summary: '获取打包清单模板列表（管理接口）',
+    description: '获取所有打包清单模板，支持分页、筛选、搜索。需要管理员权限。',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
+  @ApiQuery({ name: 'version', required: false, type: String, description: '版本筛选' })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: '是否激活' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（版本、元数据）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回模板列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getPackingTemplates(@Query() query: any): Promise<any> {
+    try {
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const skip = (page - 1) * limit;
+
+      let whereClause = 'WHERE 1=1';
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (query.version) {
+        whereClause += ` AND version = $${paramIndex}`;
+        params.push(query.version);
+        paramIndex++;
+      }
+
+      if (query.isActive !== undefined) {
+        whereClause += ` AND is_active = $${paramIndex}`;
+        params.push(query.isActive);
+        paramIndex++;
+      } else {
+        // 默认只返回激活的
+        whereClause += ` AND is_active = $${paramIndex}`;
+        params.push(true);
+        paramIndex++;
+      }
+
+      if (query.search) {
+        whereClause += ` AND (version ILIKE $${paramIndex} OR template_data::text ILIKE $${paramIndex})`;
+        params.push(`%${query.search}%`);
+        paramIndex++;
+      }
+
+      // 查询总数
+      const countResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*)::bigint as count FROM packing_checklist_templates ${whereClause}`,
+        ...params,
+      );
+      const total = Number(countResult[0]?.count || 0);
+
+      // 查询列表
+      const listResult = await this.prisma.$queryRawUnsafe<Array<{
+        id: string;
+        version: string;
+        last_updated: Date;
+        template_data: any;
+        is_active: boolean;
+        created_at: Date;
+        updated_at: Date;
+      }>>(
+        `SELECT id, version, last_updated, template_data, is_active, created_at, updated_at 
+         FROM packing_checklist_templates 
+         ${whereClause} 
+         ORDER BY last_updated DESC 
+         LIMIT $${paramIndex}::int OFFSET $${paramIndex + 1}::int`,
+        ...params,
+        limit,
+        skip,
+      );
+
+      const templates = listResult.map((row) => ({
+        id: row.id,
+        version: row.version,
+        lastUpdated: row.last_updated,
+        templateData: row.template_data,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        // 提取元数据用于显示
+        metadata: row.template_data?.metadata || {},
+      }));
+
+      return successResponse({
+        templates,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing templates: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packing-templates/:id')
+  @ApiOperation({
+    summary: '获取打包清单模板详情（管理接口）',
+    description: '根据模板ID获取完整的模板数据。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '模板ID', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回模板详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '模板不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getPackingTemplateById(@Param('id') id: string): Promise<any> {
+    try {
+      const result = await this.prisma.$queryRawUnsafe<Array<{
+        id: string;
+        version: string;
+        last_updated: Date;
+        template_data: any;
+        is_active: boolean;
+        created_at: Date;
+        updated_at: Date;
+      }>>(
+        `SELECT id, version, last_updated, template_data, is_active, created_at, updated_at 
+         FROM packing_checklist_templates 
+         WHERE id = $1::uuid`,
+        id,
+      );
+
+      if (!result || result.length === 0) {
+        return errorResponse(ErrorCode.NOT_FOUND, `打包清单模板 ${id} 不存在`);
+      }
+
+      const template = result[0];
+      return successResponse({
+        id: template.id,
+        version: template.version,
+        lastUpdated: template.last_updated,
+        templateData: template.template_data,
+        isActive: template.is_active,
+        createdAt: template.created_at,
+        updatedAt: template.updated_at,
+        metadata: template.template_data?.metadata || {},
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing template: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packing-templates/stats')
+  @ApiOperation({
+    summary: '获取打包清单模板统计信息（管理接口）',
+    description: '获取打包清单模板的统计信息。需要管理员权限。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回统计信息',
+    type: ApiSuccessResponseDto,
+  })
+  async getPackingTemplatesStats(): Promise<any> {
+    try {
+      const statsResult = await this.prisma.$queryRawUnsafe<Array<{
+        total: bigint;
+        active: bigint;
+        inactive: bigint;
+        latest_version: string;
+        latest_updated: Date;
+      }>>(
+        `SELECT 
+          COUNT(*)::bigint as total,
+          COUNT(*) FILTER (WHERE is_active = true)::bigint as active,
+          COUNT(*) FILTER (WHERE is_active = false)::bigint as inactive,
+          MAX(version) as latest_version,
+          MAX(last_updated) as latest_updated
+         FROM packing_checklist_templates`,
+      );
+
+      const stats = statsResult[0] || {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        latest_version: null,
+        latest_updated: null,
+      };
+
+      return successResponse({
+        total: Number(stats.total),
+        active: Number(stats.active),
+        inactive: Number(stats.inactive),
+        latestVersion: stats.latest_version,
+        latestUpdated: stats.latest_updated,
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing templates stats: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packing-guides')
+  @ApiOperation({
+    summary: '获取打包指南列表（管理接口）',
+    description: '获取所有打包指南，支持分页、筛选、搜索。需要管理员权限。',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
+  @ApiQuery({ name: 'version', required: false, type: String, description: '版本筛选' })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: '是否激活' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（版本、元数据）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回指南列表',
+    type: ApiSuccessResponseDto,
+  })
+  async getPackingGuides(@Query() query: any): Promise<any> {
+    try {
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const skip = (page - 1) * limit;
+
+      let whereClause = 'WHERE 1=1';
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (query.version) {
+        whereClause += ` AND version = $${paramIndex}`;
+        params.push(query.version);
+        paramIndex++;
+      }
+
+      if (query.isActive !== undefined) {
+        whereClause += ` AND is_active = $${paramIndex}`;
+        params.push(query.isActive);
+        paramIndex++;
+      } else {
+        // 默认只返回激活的
+        whereClause += ` AND is_active = $${paramIndex}`;
+        params.push(true);
+        paramIndex++;
+      }
+
+      if (query.search) {
+        whereClause += ` AND (version ILIKE $${paramIndex} OR guide_data::text ILIKE $${paramIndex})`;
+        params.push(`%${query.search}%`);
+        paramIndex++;
+      }
+
+      // 查询总数
+      const countResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*)::bigint as count FROM packing_guides ${whereClause}`,
+        ...params,
+      );
+      const total = Number(countResult[0]?.count || 0);
+
+      // 查询列表
+      const listResult = await this.prisma.$queryRawUnsafe<Array<{
+        id: string;
+        version: string;
+        last_updated: Date;
+        guide_data: any;
+        is_active: boolean;
+        created_at: Date;
+        updated_at: Date;
+      }>>(
+        `SELECT id, version, last_updated, guide_data, is_active, created_at, updated_at 
+         FROM packing_guides 
+         ${whereClause} 
+         ORDER BY last_updated DESC 
+         LIMIT $${paramIndex}::int OFFSET $${paramIndex + 1}::int`,
+        ...params,
+        limit,
+        skip,
+      );
+
+      const guides = listResult.map((row) => ({
+        id: row.id,
+        version: row.version,
+        lastUpdated: row.last_updated,
+        guideData: row.guide_data,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        // 提取元数据用于显示
+        metadata: row.guide_data?.metadata || {},
+      }));
+
+      return successResponse({
+        guides,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing guides: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packing-guides/:id')
+  @ApiOperation({
+    summary: '获取打包指南详情（管理接口）',
+    description: '根据指南ID获取完整的指南数据。需要管理员权限。',
+  })
+  @ApiParam({ name: 'id', description: '指南ID', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回指南详情',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '指南不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getPackingGuideById(@Param('id') id: string): Promise<any> {
+    try {
+      const result = await this.prisma.$queryRawUnsafe<Array<{
+        id: string;
+        version: string;
+        last_updated: Date;
+        guide_data: any;
+        is_active: boolean;
+        created_at: Date;
+        updated_at: Date;
+      }>>(
+        `SELECT id, version, last_updated, guide_data, is_active, created_at, updated_at 
+         FROM packing_guides 
+         WHERE id = $1::uuid`,
+        id,
+      );
+
+      if (!result || result.length === 0) {
+        return errorResponse(ErrorCode.NOT_FOUND, `打包指南 ${id} 不存在`);
+      }
+
+      const guide = result[0];
+      return successResponse({
+        id: guide.id,
+        version: guide.version,
+        lastUpdated: guide.last_updated,
+        guideData: guide.guide_data,
+        isActive: guide.is_active,
+        createdAt: guide.created_at,
+        updatedAt: guide.updated_at,
+        metadata: guide.guide_data?.metadata || {},
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing guide: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/packing-guides/stats')
+  @ApiOperation({
+    summary: '获取打包指南统计信息（管理接口）',
+    description: '获取打包指南的统计信息。需要管理员权限。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回统计信息',
+    type: ApiSuccessResponseDto,
+  })
+  async getPackingGuidesStats(): Promise<any> {
+    try {
+      const statsResult = await this.prisma.$queryRawUnsafe<Array<{
+        total: bigint;
+        active: bigint;
+        inactive: bigint;
+        latest_version: string;
+        latest_updated: Date;
+      }>>(
+        `SELECT 
+          COUNT(*)::bigint as total,
+          COUNT(*) FILTER (WHERE is_active = true)::bigint as active,
+          COUNT(*) FILTER (WHERE is_active = false)::bigint as inactive,
+          MAX(version) as latest_version,
+          MAX(last_updated) as latest_updated
+         FROM packing_guides`,
+      );
+
+      const stats = statsResult[0] || {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        latest_version: null,
+        latest_updated: null,
+      };
+
+      return successResponse({
+        total: Number(stats.total),
+        active: Number(stats.active),
+        inactive: Number(stats.inactive),
+        latestVersion: stats.latest_version,
+        latestUpdated: stats.latest_updated,
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get packing guides stats: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }

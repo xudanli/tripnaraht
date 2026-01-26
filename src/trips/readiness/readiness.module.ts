@@ -32,7 +32,14 @@ import { UsersModule } from '../../users/users.module';
 import { ChecklistStatusService } from './services/checklist-status.service';
 import { FindingMarksService } from './services/finding-marks.service';
 import { PackingListService } from './services/packing-list.service';
+import { PackingTemplateService } from './services/packing-template.service';
 import { SolutionService } from './services/solution.service';
+import { ReadinessAIService } from './services/readiness-ai.service';
+import { ReadinessCacheService } from './services/readiness-cache.service';
+import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
+import { LlmModule } from '../../llm/llm.module';
+import { RedisModule } from '../../redis/redis.module';
+import { RagModule } from '../../rag/rag.module';
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 暂时禁用，验证懒加载方案是否能解决问题
 // import { TripsModule } from '../trips.module';
@@ -42,6 +49,9 @@ import { SolutionService } from './services/solution.service';
     PrismaModule, 
     UsersModule,
     DemModule, // 导入 DemModule 以使用 DEM 服务
+    LlmModule, // 导入 LlmModule 以使用 LLM 服务
+    RedisModule, // 导入 RedisModule 以使用 Redis 服务
+    forwardRef(() => RagModule), // 使用 forwardRef 避免循环依赖（ReadinessModule -> RagModule -> SkillsModule -> ReadinessModule）
     // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],
@@ -68,7 +78,12 @@ import { SolutionService } from './services/solution.service';
     ChecklistStatusService,
     FindingMarksService,
     PackingListService,
+    PackingTemplateService,
     SolutionService,
+    // AI 增强服务
+    ReadinessAIService,
+    ReadinessCacheService,
+    ReadinessFeatureFlagsService,
   ],
   exports: [
     ReadinessService,
@@ -87,6 +102,10 @@ import { SolutionService } from './services/solution.service';
     GeoFactsCacheService,
     CapabilityPackEvaluatorService,
     // DEMElevationService 和 DEMEffortMetadataService 已移至 DemModule
+    // AI 增强服务
+    ReadinessAIService,
+    ReadinessCacheService,
+    ReadinessFeatureFlagsService,
   ],
 })
 export class ReadinessModule {}

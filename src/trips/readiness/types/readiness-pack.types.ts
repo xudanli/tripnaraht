@@ -116,7 +116,7 @@ export interface Rule {
     activities?: string[];
     travelerTags?: string[];
   };
-  when: Condition;
+  when?: Condition;  // 可选：如果规则总是触发，可以没有 when 条件
   then: Action;
   evidence?: Evidence[];
   notes?: LocalizedString;

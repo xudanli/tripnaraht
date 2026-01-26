@@ -10,6 +10,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
 import { LlmModule } from '../../../llm/llm.module';
 import { DemModule } from '../../../trips/dem/dem.module';
 import { AgentModule } from '../../agent.module';
+import { RagModule } from '../../../rag/rag.module';
 import { ItineraryVerifySkill } from '../../../skills/itinerary/itinerary-verify.skill';
 import { TransportSearchSkill } from '../../../skills/transport/transport-search.skill';
 import { OpeningHoursGetSkill } from '../../../skills/places/opening-hours-get.skill';
@@ -21,6 +22,7 @@ import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-z
     PrismaModule,
     LlmModule,
     DemModule, // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要 DEMElevationService 和 DEMEffortMetadataService）
+    RagModule, // 导入 RagModule 以使用 RAG 服务（LLM 失败时的降级策略）
     // 引入 AgentModule 获取 StateStore, Orchestrator, Sub-Agents
     forwardRef(() => AgentModule),
   ],

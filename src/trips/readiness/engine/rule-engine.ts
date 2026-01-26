@@ -14,13 +14,34 @@ export class RuleEngine {
   /**
    * 评估条件是否满足
    */
-  evaluate(condition: Condition, context: TripContext): boolean {
+  evaluate(condition: Condition | undefined | null, context: TripContext): boolean {
+    // 如果条件为空，默认返回 false（不触发规则）
+    if (!condition) {
+      return false;
+    }
+
     if (condition.all) {
-      return condition.all.every(c => this.evaluate(c, context));
+      if (!Array.isArray(condition.all)) {
+        return false;
+      }
+      // 过滤掉 undefined/null 的子条件
+      const validConditions = condition.all.filter(c => c != null);
+      if (validConditions.length === 0) {
+        return false;
+      }
+      return validConditions.every(c => this.evaluate(c, context));
     }
 
     if (condition.any) {
-      return condition.any.some(c => this.evaluate(c, context));
+      if (!Array.isArray(condition.any)) {
+        return false;
+      }
+      // 过滤掉 undefined/null 的子条件
+      const validConditions = condition.any.filter(c => c != null);
+      if (validConditions.length === 0) {
+        return false;
+      }
+      return validConditions.some(c => this.evaluate(c, context));
     }
 
     if (condition.not) {

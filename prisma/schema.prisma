@@ -164,23 +164,23 @@ model HotelWideData_Quarterly {
 }
 
 model ItineraryItem {
-  id          String       @id
-  startTime   DateTime?
-  endTime     DateTime?
-  type        ItemType
-  placeId     Int?
-  tripDayId   String
-  note        String?
-  trailId     Int?
+  id        String    @id
+  startTime DateTime?
+  endTime   DateTime?
+  type      ItemType
+  placeId   Int?
+  tripDayId String
+  note      String?
+  trailId   Int?
 
   // ========== 费用相关字段 ==========
-  estimatedCost Float?                      // 预估费用
-  actualCost    Float?                      // 实际费用
-  currency      String?   @default("CNY")   // 货币类型
-  costCategory  String?                     // 费用分类: ACCOMMODATION, TRANSPORTATION, FOOD, ACTIVITIES, SHOPPING, OTHER
-  costNote      String?                     // 费用备注
-  isPaid        Boolean   @default(false)   // 是否已支付
-  paidBy        String?                     // 支付人ID
+  estimatedCost Float? // 预估费用
+  actualCost    Float? // 实际费用
+  currency      String? @default("CNY") // 货币类型
+  costCategory  String? // 费用分类: ACCOMMODATION, TRANSPORTATION, FOOD, ACTIVITIES, SHOPPING, OTHER
+  costNote      String? // 费用备注
+  isPaid        Boolean @default(false) // 是否已支付
+  paidBy        String? // 支付人ID
 
   Place       Place?       @relation(fields: [placeId], references: [id])
   Trail       Trail?       @relation(fields: [trailId], references: [id])
@@ -645,6 +645,7 @@ model User {
   // Relations
   refreshTokens RefreshToken[]
   profile       UserProfile?
+  featureFlags  UserFeatureFlag[]
 
   @@index([googleSub])
   @@index([email])
@@ -675,6 +676,37 @@ model UserProfile {
   User        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ========== Feature Flags ==========
+
+model UserFeatureFlag {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  feature   String   @db.VarChar(100)
+  enabled   Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, feature], name: "user_feature_flag_user_feature_unique")
+  @@index([feature, enabled])
+  @@index([userId])
+  @@map("user_feature_flags")
+}
+
+model GlobalFeatureFlag {
+  id        String   @id @default(uuid()) @db.Uuid
+  feature   String   @unique @db.VarChar(100)
+  enabled   Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([enabled])
+  @@map("global_feature_flags")
 }
 
 model EmailVerificationCode {
@@ -1114,18 +1146,18 @@ model TripAttempt {
 
 // ===== 知识库文件表 =====
 model KnowledgeFile {
-  id        String   @id @default(uuid()) @db.Uuid
-  filename  String   @unique @db.VarChar(255)
-  filepath  String   @db.VarChar(500)
-  category  String   @db.VarChar(50) // practical_guides, decision_support, safety, etc.
-  version   String   @db.VarChar(20)
-  language  String   @default("zh-CN") @db.VarChar(10)
+  id       String @id @default(uuid()) @db.Uuid
+  filename String @unique @db.VarChar(255)
+  filepath String @db.VarChar(500)
+  category String @db.VarChar(50) // practical_guides, decision_support, safety, etc.
+  version  String @db.VarChar(20)
+  language String @default("zh-CN") @db.VarChar(10)
 
-  credibilityScore Float   @map("credibility_score")
+  credibilityScore Float    @map("credibility_score")
   dataSources      String[] @map("data_sources")
   lastUpdated      DateTime @map("last_updated")
 
-  chunks    Chunk[]
+  chunks Chunk[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1137,32 +1169,32 @@ model KnowledgeFile {
 
 // ===== 文档分块表 =====
 model Chunk {
-  id       String @id @default(uuid()) @db.Uuid
-  chunkId  String @unique @map("chunk_id") @db.VarChar(255) // rhythm_pattern_relaxed_001
+  id      String @id @default(uuid()) @db.Uuid
+  chunkId String @unique @map("chunk_id") @db.VarChar(255) // rhythm_pattern_relaxed_001
 
-  content  String @db.Text
+  content String @db.Text
 
   // pgvector 向量字段 (1536维度 - OpenAI text-embedding-3-small)
   embedding Unsupported("vector(1536)")?
 
   // 元数据
-  type            String  @db.VarChar(50) // rhythm_pattern, legal_rule, operational_guide, etc.
-  section         String? @db.VarChar(100)
-  credibilityScore Float  @map("credibility_score")
-  keywords        String[]
+  type             String   @db.VarChar(50) // rhythm_pattern, legal_rule, operational_guide, etc.
+  section          String?  @db.VarChar(100)
+  credibilityScore Float    @map("credibility_score")
+  keywords         String[]
 
   // 关联
-  fileId          String @map("file_id") @db.Uuid
-  file            KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId String        @map("file_id") @db.Uuid
+  file   KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   // 附加元数据（JSON）
-  metadata        Json?
+  metadata Json?
 
-  tokenCount      Int? @map("token_count")
+  tokenCount Int? @map("token_count")
 
   // RAG 架构扩展字段
   lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz
-  category       String?   // RULES, POI_HOURS, POI_INFO, GATE, WEATHER, GENERAL
+  category       String? // RULES, POI_HOURS, POI_INFO, GATE, WEATHER, GENERAL
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1178,9 +1210,9 @@ model Chunk {
 
 // ===== 关键词索引表（辅助检索）=====
 model KeywordIndex {
-  id       String   @id @default(uuid()) @db.Uuid
-  keyword  String   @unique @db.VarChar(100)
-  files    String[] // 相关文件列表
+  id      String   @id @default(uuid()) @db.Uuid
+  keyword String   @unique @db.VarChar(100)
+  files   String[] // 相关文件列表
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1190,15 +1222,15 @@ model KeywordIndex {
 
 // ===== 查询历史表（用于分析和优化）=====
 model QueryHistory {
-  id              String   @id @default(uuid()) @db.Uuid
-  query           String   @db.Text
-  retrievedChunks Json     @map("retrieved_chunks") // chunk IDs
-  answer          String?  @db.Text
+  id              String  @id @default(uuid()) @db.Uuid
+  query           String  @db.Text
+  retrievedChunks Json    @map("retrieved_chunks") // chunk IDs
+  answer          String? @db.Text
 
-  avgCredibility  Float?   @map("avg_credibility")
-  executionTimeMs Int      @map("execution_time_ms")
+  avgCredibility  Float? @map("avg_credibility")
+  executionTimeMs Int    @map("execution_time_ms")
 
-  userId          String?  @map("user_id") @db.Uuid // 可选：关联用户
+  userId String? @map("user_id") @db.Uuid // 可选：关联用户
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -1515,28 +1547,28 @@ model ValidatedTrajectory {
 
 // 规划方案表（用于规划工作台）
 model PlanningPlan {
-  id            String   @id @default(uuid()) @db.Uuid
-  tripId        String   @map("trip_id")
-  planVersion   Int      @default(1) @map("plan_version")
-  status        String   @default("DRAFT") @db.VarChar(20) // 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED'
-  
+  id          String @id @default(uuid()) @db.Uuid
+  tripId      String @map("trip_id")
+  planVersion Int    @default(1) @map("plan_version")
+  status      String @default("DRAFT") @db.VarChar(20) // 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED'
+
   // 规划状态（PlanState）
-  planState     Json     @map("plan_state")
-  
+  planState Json @map("plan_state")
+
   // UI 输出（UIOutput）
-  uiOutput      Json?    @map("ui_output")
-  
+  uiOutput Json? @map("ui_output")
+
   // 方案摘要（用于列表展示）
-  summary       Json?    // { itemCount, days, budget, consolidatedDecision, personas }
-  
+  summary Json? // { itemCount, days, budget, consolidatedDecision, personas }
+
   // 元数据
-  createdBy     String?  @map("created_by") @db.VarChar(255)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  
+  createdBy String?  @map("created_by") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // 关联的 Trip
-  Trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  
+  Trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
   @@index([tripId])
   @@index([tripId, status])
   @@index([status])
@@ -1550,17 +1582,17 @@ model PlanningPlan {
 
 // RagDecisionLog Model - RAG 决策日志（用于 Gate 决策追踪）
 model RagDecisionLog {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  requestId       String   @map("request_id")
-  step            String   // INTAKE, RESEARCH, GATE_EVAL, PLAN_GEN, VERIFY, REPAIR, NARRATE, DONE, FAILED
-  actor           String   // Orchestrator, Planner, Gatekeeper, Compliance, LocalInsight, CoreDecision, Narrator
-  timestamp       DateTime @db.Timestamptz
-  inputsSummary   Json     @map("inputs_summary") @default("{}")
-  outputsSummary  Json     @map("outputs_summary") @default("{}")
-  evidenceRefs    Json     @map("evidence_refs") @default("[]")
-  retrievalTrace  Json?    @map("retrieval_trace")
-  metadata        Json?
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId      String   @map("request_id")
+  step           String // INTAKE, RESEARCH, GATE_EVAL, PLAN_GEN, VERIFY, REPAIR, NARRATE, DONE, FAILED
+  actor          String // Orchestrator, Planner, Gatekeeper, Compliance, LocalInsight, CoreDecision, Narrator
+  timestamp      DateTime @db.Timestamptz
+  inputsSummary  Json     @default("{}") @map("inputs_summary")
+  outputsSummary Json     @default("{}") @map("outputs_summary")
+  evidenceRefs   Json     @default("[]") @map("evidence_refs")
+  retrievalTrace Json?    @map("retrieval_trace")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([requestId], name: "idx_rag_decision_logs_request_id")
   @@index([step], name: "idx_rag_decision_logs_step")
@@ -1573,11 +1605,11 @@ model RagDecisionLog {
 model RagKnowledgeGap {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   query            String
-  category         String    // RULES, GATE, POI, SPATIAL, GENERAL
+  category         String // RULES, GATE, POI, SPATIAL, GENERAL
   timestamp        DateTime  @db.Timestamptz
-  attemptedMethods Json      @map("attempted_methods") @default("[]")
+  attemptedMethods Json      @default("[]") @map("attempted_methods")
   source           String?
-  needsIndex       Boolean   @map("needs_index") @default(true)
+  needsIndex       Boolean   @default(true) @map("needs_index")
   indexedAt        DateTime? @map("indexed_at") @db.Timestamptz
   notes            String?
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz

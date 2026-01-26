@@ -45,6 +45,13 @@ export class ReadinessChecker {
         continue;
       }
 
+      // 如果规则没有 when 条件，跳过（或根据业务逻辑决定是否触发）
+      if (!rule.when) {
+        // 如果没有条件，可以选择跳过或默认触发
+        // 这里选择跳过，因为通常规则应该有明确的条件
+        continue;
+      }
+
       // 评估条件
       if (this.ruleEngine.evaluate(rule.when, enhancedContext)) {
         const item = this.ruleToFindingItem(rule, lang);
@@ -67,7 +74,7 @@ export class ReadinessChecker {
       type: h.type,
       severity: h.severity,
       summary: getLocalizedText(h.summary, lang),
-      mitigations: getLocalizedTexts(h.mitigations, lang),
+      mitigations: getLocalizedTexts(h.mitigations || [], lang),
     }));
 
     // 收集缺失信息

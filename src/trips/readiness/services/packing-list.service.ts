@@ -11,6 +11,8 @@ import {
   PackingListSummaryDto,
 } from '../dto/packing-list.dto';
 import { ReadinessService } from './readiness.service';
+import { PackingTemplateService } from './packing-template.service';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class PackingListService {
@@ -19,10 +21,11 @@ export class PackingListService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly readinessService: ReadinessService,
+    private readonly packingTemplateService: PackingTemplateService,
   ) {}
 
   /**
-   * 生成打包清单
+   * 生成打包清单（增强版：支持模板数据）
    */
   async generatePackingList(
     tripId: string,
@@ -37,50 +40,91 @@ export class PackingListService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    // 获取准备度检查结果
-    const readinessResult = await this.readinessService.checkFromDestination(
-      trip.destination,
-      {
-        traveler: {},
-        trip: {
-          startDate: trip.startDate.toISOString().split('T')[0],
-          endDate: trip.endDate.toISOString().split('T')[0],
-        },
-        itinerary: {
-          countries: [trip.destination],
-        },
-      },
+    // 计算行程天数
+    const startDate = DateTime.fromJSDate(trip.startDate);
+    const endDate = DateTime.fromJSDate(trip.endDate);
+    const durationDays = endDate.diff(startDate, 'days').days + 1;
+
+    // 🆕 如果提供了模板参数，使用模板服务生成
+    const useTemplate = dto.useTemplate !== false && (
+      dto.season || dto.userType || dto.activities || dto.route
     );
 
-    // 调试日志：查看 readinessResult 的数据
-    this.logger.debug(
-      `Readiness check result for trip ${tripId}: ${readinessResult.findings.length} findings`,
-    );
-    for (const finding of readinessResult.findings) {
-      this.logger.debug(
-        `Finding: ${finding.packId || finding.destinationId}, must: ${finding.must?.length || 0}, should: ${finding.should?.length || 0}, optional: ${finding.optional?.length || 0}`,
+    let items: PackingListItemDto[] = [];
+
+    if (useTemplate) {
+      // 使用模板数据生成
+      const season = dto.season || this.packingTemplateService.inferSeasonFromDate(trip.startDate);
+      
+      const templateItems = this.packingTemplateService.generatePackingList({
+        season,
+        route: dto.route as any,
+        durationDays: Math.floor(durationDays),
+        userType: dto.userType as any,
+        activities: dto.activities as any,
+        vehicleType: dto.vehicleType as any,
+        specialNeeds: dto.specialNeeds as any,
+      });
+
+      // 转换为 DTO 格式
+      items = templateItems.map(item => ({
+        id: item.id,
+        name: item.nameCN || item.name,
+        category: item.category,
+        quantity: item.quantity,
+        unit: item.unit,
+        priority: item.priority,
+        reason: item.reason,
+        checked: item.checked,
+        note: item.note,
+      }));
+
+      this.logger.debug(`使用模板生成 ${items.length} 个打包清单项`);
+    } else {
+      // 原有逻辑：从准备度检查结果生成
+      const readinessResult = await this.readinessService.checkFromDestination(
+        trip.destination,
+        {
+          traveler: {},
+          trip: {
+            startDate: trip.startDate.toISOString().split('T')[0],
+            endDate: trip.endDate.toISOString().split('T')[0],
+          },
+          itinerary: {
+            countries: [trip.destination],
+          },
+        },
       );
-      if (finding.must && finding.must.length > 0) {
-        const categories = finding.must.map((item) => item.category);
-        this.logger.debug(`Must items categories: ${categories.join(', ')}`);
-      }
-      if (finding.should && finding.should.length > 0) {
-        const categories = finding.should.map((item) => item.category);
-        this.logger.debug(`Should items categories: ${categories.join(', ')}`);
-      }
-    }
 
-    // 从准备度检查结果生成打包清单项
-    const items: PackingListItemDto[] = [];
+      // 调试日志：查看 readinessResult 的数据
+      this.logger.debug(
+        `Readiness check result for trip ${tripId}: ${readinessResult.findings.length} findings`,
+      );
+      for (const finding of readinessResult.findings) {
+        this.logger.debug(
+          `Finding: ${finding.packId || finding.destinationId}, must: ${finding.must?.length || 0}, should: ${finding.should?.length || 0}, optional: ${finding.optional?.length || 0}`,
+        );
+        if (finding.must && finding.must.length > 0) {
+          const categories = finding.must.map((item) => item.category);
+          this.logger.debug(`Must items categories: ${categories.join(', ')}`);
+        }
+        if (finding.should && finding.should.length > 0) {
+          const categories = finding.should.map((item) => item.category);
+          this.logger.debug(`Should items categories: ${categories.join(', ')}`);
+        }
+      }
 
-    // 处理 must 和 should 项
-    // 只处理与打包清单相关的类别：
-    // - safety_hazards: 安全装备（如防滑链、急救包等）
-    // - gear_packing: 装备与穿搭
-    // - health_insurance: 医疗相关物品（如药品、保险单等）
-    const packingRelevantCategories = ['safety_hazards', 'gear_packing', 'health_insurance'];
-    
-    for (const finding of readinessResult.findings) {
+      // 从准备度检查结果生成打包清单项
+      items = [];
+
+      // 处理 must 和 should 项
+      // 只处理与打包清单相关的类别：
+      // - safety_hazards: 安全装备（如防滑链、急救包等）
+      // - gear_packing: 装备与穿搭
+      // - health_insurance: 医疗相关物品（如药品、保险单等）
+      const packingRelevantCategories = ['safety_hazards', 'gear_packing', 'health_insurance'];
+      
+      for (const finding of readinessResult.findings) {
       for (const mustItem of finding.must || []) {
         if (packingRelevantCategories.includes(mustItem.category)) {
           items.push({
@@ -127,6 +171,7 @@ export class PackingListService {
             });
           }
         }
+      }
       }
     }
 

@@ -65,6 +65,8 @@ import { ContextAnalyzerService } from './context-analyzer.service';
 import { IntentDisambiguatorService } from './intent-disambiguator.service';
 import { RouteOptimizationService } from './route-optimization.service';
 import { RouteOptimizationEvidence } from '../interfaces/route-optimization.interface';
+import { EnhancedChatService } from '../../../../rag/services/enhanced-chat.service';
+import { RagService } from '../../../../rag/services/rag.service';
 
 /**
  * 多意图识别结果
@@ -224,9 +226,11 @@ export class TripPlannerService {
     @Optional() private readonly contextAnalyzer?: ContextAnalyzerService,
     @Optional() private readonly intentDisambiguator?: IntentDisambiguatorService,
     @Optional() private readonly routeOptimization?: RouteOptimizationService,
+    @Optional() private readonly enhancedChat?: EnhancedChatService, // 用于 RAG 降级
+    @Optional() private readonly ragService?: RagService, // 直接 RAG 检索
   ) {
-    this.logger.log('🚀 行程规划智能助手已初始化 (V2 增强版 + 路线优化)');
-    this.logger.debug(`服务注入状态: StateStore=${!!stateStore}, Orchestrator=${!!orchestrator}, ContextAnalyzer=${!!contextAnalyzer}, RouteOptimization=${!!routeOptimization}`);
+    this.logger.log('🚀 行程规划智能助手已初始化 (V2 增强版 + 路线优化 + RAG降级)');
+    this.logger.debug(`服务注入状态: StateStore=${!!stateStore}, Orchestrator=${!!orchestrator}, ContextAnalyzer=${!!contextAnalyzer}, RouteOptimization=${!!routeOptimization}, EnhancedChat=${!!enhancedChat}, RagService=${!!ragService}`);
   }
 
   /**
@@ -853,10 +857,15 @@ export class TripPlannerService {
       { id: '4', label: '✅ 行前清单', action: 'CREATE_CHECKLIST', style: 'secondary' },
     ];
 
-    // 检查行程问题并添加提示
+    // 检查行程问题并添加提示（极简展示）
     const issues = this.detectTripIssues(ctx);
     if (issues.length > 0) {
-      message += `\n\n⚠️ **发现 ${issues.length} 个潜在问题**：\n${issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}`;
+      // 产品优化：极简展示，只显示问题类型摘要，不列出详细内容
+      // 用户可以通过"修复问题"按钮查看详情
+      const issueSummary = issues.length === 1 
+        ? issues[0] 
+        : `${issues.slice(0, 2).join('、')}${issues.length > 2 ? '等' : ''}`;
+      message += `\n\n⚠️ ${issueSummary}`;
       quickActions.unshift({
         id: '0',
         label: '🔧 修复问题',
@@ -1201,21 +1210,155 @@ ${transportNeeds.passes.map(p => `• ${p.name}：¥${p.price}（${p.reason}）`
       };
     }
 
-    const message = `我找到了以下空闲时间段：
+    // 主动推荐：为每个空闲时间段生成推荐活动
+    const recommendations: Array<{
+      day: number;
+      timeSlot: { start: string; end: string };
+      suggestions: Array<{ name: string; type: string; reason: string }>;
+    }> = [];
 
-${freeSlots.map(s => `📅 第${s.day}天 ${s.start}-${s.end}（${s.duration}分钟）\n   📍 附近可以去：${s.nearbyOptions.join('、')}`).join('\n\n')}
+    for (const slot of freeSlots) {
+      const day = ctx.days.find(d => d.dayNumber === slot.day);
+      if (!day) continue;
 
-需要我为您推荐活动来填充吗？`;
+      // 分析当天已有行程，确定推荐类型
+      const dayItems = day.items.filter(item => item.startTime && item.type !== 'TRANSPORT');
+      const slotStartMinutes = this.parseTimeToMinutes(slot.start);
+      
+      // 判断时间段类型（早餐/午餐/晚餐/活动）
+      let recommendationType: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'ACTIVITY' = 'ACTIVITY';
+      let suggestions: Array<{ name: string; type: string; reason: string }> = [];
+
+      if (slotStartMinutes >= 7 * 60 && slotStartMinutes < 10 * 60) {
+        // 早餐时间（7:00-10:00）
+        recommendationType = 'RESTAURANT';
+        suggestions = [
+          { name: '当地特色早餐店', type: 'RESTAURANT', reason: '体验当地早餐文化' },
+          { name: '咖啡厅', type: 'RESTAURANT', reason: '悠闲的早晨时光' },
+        ];
+      } else if (slotStartMinutes >= 11 * 60 && slotStartMinutes < 14 * 60) {
+        // 午餐时间（11:00-14:00）
+        recommendationType = 'RESTAURANT';
+        suggestions = [
+          { name: '当地特色餐厅', type: 'RESTAURANT', reason: '品尝地道美食' },
+          { name: '网红餐厅', type: 'RESTAURANT', reason: '热门打卡地' },
+        ];
+      } else if (slotStartMinutes >= 17 * 60 && slotStartMinutes < 21 * 60) {
+        // 晚餐时间（17:00-21:00）
+        recommendationType = 'RESTAURANT';
+        suggestions = [
+          { name: '特色餐厅', type: 'RESTAURANT', reason: '享受晚餐时光' },
+          { name: '观景餐厅', type: 'RESTAURANT', reason: '边用餐边欣赏风景' },
+        ];
+      } else {
+        // 活动时间
+        // 根据当天已有行程类型推荐
+        const hasNature = dayItems.some(item => 
+          item.category?.includes('自然') || item.name?.includes('公园') || item.name?.includes('山')
+        );
+        const hasCulture = dayItems.some(item => 
+          item.category?.includes('文化') || item.name?.includes('博物馆') || item.name?.includes('寺')
+        );
+        const hasShopping = dayItems.some(item => 
+          item.category?.includes('购物') || item.name?.includes('购物') || item.name?.includes('商场')
+        );
+
+        if (hasNature && !hasShopping) {
+          suggestions = [
+            { name: '购物中心', type: 'SHOPPING', reason: '补充购物行程' },
+            { name: '特色小店', type: 'SHOPPING', reason: '寻找纪念品' },
+          ];
+        } else if (hasCulture && !hasNature) {
+          suggestions = [
+            { name: '公园/自然景点', type: 'ATTRACTION', reason: '放松身心' },
+            { name: '观景台', type: 'ATTRACTION', reason: '欣赏城市全景' },
+          ];
+        } else {
+          suggestions = [
+            { name: '特色体验活动', type: 'ACTIVITY', reason: '丰富行程内容' },
+            { name: '当地文化体验', type: 'ACTIVITY', reason: '深入了解当地' },
+            { name: '休闲场所', type: 'ACTIVITY', reason: '放松休息' },
+          ];
+        }
+      }
+
+      // 如果有位置信息，可以推荐附近的POI（简化版本）
+      const nearbyItems = dayItems.filter(item => item.location);
+      if (nearbyItems.length > 0 && suggestions.length > 0) {
+        suggestions[0].reason += '（附近有相关景点）';
+      }
+
+      recommendations.push({
+        day: slot.day,
+        timeSlot: { start: slot.start, end: slot.end },
+        suggestions: suggestions.slice(0, 3), // 最多3个推荐
+      });
+    }
+
+    // 构建推荐消息 - 增强版：直接展示推荐，提供一键添加
+    let message = `我为您找到了空闲时间段，并推荐了以下活动：\n\n`;
+    
+    // 构建推荐数据结构，供前端使用
+    const recommendationData: Array<{
+      day: number;
+      timeSlot: { start: string; end: string };
+      duration: number;
+      suggestions: Array<{
+        id: string;
+        name: string;
+        type: string;
+        reason: string;
+        action: string;
+      }>;
+    }> = [];
+
+    for (const rec of recommendations) {
+      const slot = freeSlots.find(s => s.day === rec.day);
+      const slotDuration = slot?.duration || 0;
+      
+      message += `📅 **第${rec.day}天 ${rec.timeSlot.start}-${rec.timeSlot.end}**（${slotDuration}分钟空闲）\n`;
+      message += `💡 **推荐活动**：\n`;
+      
+      const suggestionsWithActions = rec.suggestions.map((s, idx) => {
+        const suggestionId = `rec_${rec.day}_${idx}_${Date.now()}`;
+        message += `   ${idx + 1}. ${s.name}（${s.reason}）\n`;
+        return {
+          id: suggestionId,
+          name: s.name,
+          type: s.type,
+          reason: s.reason,
+          action: 'ADD_TO_ITINERARY', // 一键添加动作
+        };
+      });
+      
+      recommendationData.push({
+        day: rec.day,
+        timeSlot: rec.timeSlot,
+        duration: slotDuration,
+        suggestions: suggestionsWithActions,
+      });
+      
+      message += `\n`;
+    }
+
+    message += `💡 您可以直接选择推荐的活动，我会帮您添加到行程中。`;
 
     return {
       sessionId: state.sessionId,
       message,
       phase: 'DETAILING',
       intent: 'FILL_FREE_TIME',
+      // 使用richContent存储推荐数据，供前端渲染和操作
+      richContent: {
+        type: 'poi_list',
+        data: {
+          recommendations: recommendationData,
+          actionType: 'ADD_TO_ITINERARY', // 一键添加动作类型
+        },
+      },
       quickActions: [
-        { id: '1', label: '✨ 自动填充', action: 'AUTO_FILL', style: 'primary' },
-        { id: '2', label: '🎯 我来选择', action: 'MANUAL_SELECT', style: 'secondary' },
-        { id: '3', label: '😌 保持空闲', action: 'KEEP_FREE', style: 'secondary' },
+        { id: '1', label: '🔄 刷新推荐', action: 'REFRESH_RECOMMENDATIONS', style: 'secondary' },
+        { id: '2', label: '😌 保持空闲', action: 'KEEP_FREE', style: 'secondary' },
       ],
     };
   }
@@ -1463,6 +1606,8 @@ ${checklist.finance.map(f => `☐ ${f}`).join('\n')}
    */
   private async handleGeneralChat(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
+    
+    this.logger.debug(`[规划助手] handleGeneralChat: message="${request.message.substring(0, 50)}...", llmService=${!!this.llmService}, ragService=${!!this.ragService}`);
     
     // 使用 LLM 生成回复
     const response = await this.generateGeneralResponse(ctx, request.message, state.messages);
@@ -2057,6 +2202,24 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
   // ==================== 应用建议 ====================
 
   /**
+   * 映射建议类型到操作类型
+   * 用于将Abu等守护者的建议类型（如'timing'、'early_start'）映射到实际的操作类型（如'modify_time'）
+   */
+  private mapSuggestionTypeToAction(suggestionType: string): string {
+    const mapping: Record<string, string> = {
+      'timing': 'modify_time',
+      'early_start': 'modify_time',
+      'late_end': 'modify_time',
+      'time_conflict': 'modify_time',
+      'distance': 'optimize_route',
+      'overlap': 'modify_time',
+      'add_restaurant': 'add_meal',
+      'add_activity': 'add_place',
+    };
+    return mapping[suggestionType] || suggestionType;
+  }
+
+  /**
    * 应用 AI 建议到行程
    */
   async applySuggestion(
@@ -2111,8 +2274,11 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
 
     const targetDayContext = tripContext.days[dto.targetDay - 1];
 
-    // 3. 处理不同类型的建议
-    switch (dto.suggestionType) {
+    // 3. 映射建议类型（如果传入的是Abu建议类型，映射到操作类型）
+    const actionType = this.mapSuggestionTypeToAction(dto.suggestionType) as typeof dto.suggestionType;
+
+    // 4. 处理不同类型的建议
+    switch (actionType) {
       case 'add_place':
       case 'add_meal':
         return this.applyAddPlaceSuggestion(dto, targetDayContext, tripContext, state);
@@ -2124,7 +2290,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
         return this.applyOptimizeRouteSuggestion(dto, tripContext, state);
 
       default:
-        throw new Error(`不支持的建议类型: ${dto.suggestionType}`);
+        throw new Error(`不支持的建议类型: ${dto.suggestionType}（映射后: ${actionType}）`);
     }
   }
 
@@ -2287,16 +2453,205 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     tripContext: TripContext,
     state: TripPlannerState,
   ): Promise<any> {
-    // TODO: 实现修改时间逻辑
+    this.logger.debug(`[应用时间调整建议] day=${dto.targetDay}, suggestionId=${dto.suggestionId}`);
+
+    // 1. 找到需要调整的行程项（最早的那个，且开始时间 < 06:00）
+    const activitiesWithTime = targetDay.items
+      .filter(item => item.startTime && item.type !== 'TRANSPORT')
+      .sort((a, b) => {
+        const timeA = this.parseTimeToMinutes(a.startTime!);
+        const timeB = this.parseTimeToMinutes(b.startTime!);
+        return timeA - timeB;
+      });
+
+    if (activitiesWithTime.length === 0) {
+      return {
+        message: '没有找到需要调整时间的行程项',
+        tripUpdate: {
+          totalChanges: 0,
+          addedItems: 0,
+          removedItems: 0,
+          modifiedItems: 0,
+          affectedDays: [],
+        },
+      };
+    }
+
+    const targetItem = activitiesWithTime[0];
+    const originalStartTime = targetItem.startTime!; // 保存原始时间用于消息显示
+    const currentStartTimeMinutes = this.parseTimeToMinutes(originalStartTime);
+    
+    // 2. 如果当前时间已经合理（>= 06:00），不需要调整
+    if (currentStartTimeMinutes >= 6 * 60) {
+      return {
+        message: `行程项「${this.getItemName(targetItem)}」的开始时间 ${originalStartTime} 已经合理，无需调整`,
+        tripUpdate: {
+          totalChanges: 0,
+          addedItems: 0,
+          removedItems: 0,
+          modifiedItems: 0,
+          affectedDays: [],
+        },
+      };
+    }
+
+    // 3. 计算合理的开始时间（默认08:00，或根据用户偏好）
+    const recommendedStartTimeMinutes = dto.timeSlot?.start
+      ? this.parseTimeToMinutes(dto.timeSlot.start)
+      : 8 * 60; // 默认 08:00
+
+    // 确保推荐时间 >= 06:00
+    const finalStartTimeMinutes = Math.max(recommendedStartTimeMinutes, 6 * 60);
+    
+    // 4. 计算时间差
+    const timeDiff = finalStartTimeMinutes - currentStartTimeMinutes;
+    const newStartTime = this.formatMinutesToTime(finalStartTimeMinutes);
+    
+    // 5. 计算新的结束时间（保持原有时长）
+    const originalEndTime = targetItem.endTime;
+    const originalDuration = targetItem.duration || 
+      (originalEndTime ? this.parseTimeToMinutes(originalEndTime) - currentStartTimeMinutes : 120); // 默认2小时
+    const newEndTimeMinutes = finalStartTimeMinutes + originalDuration;
+    const newEndTime = this.formatMinutesToTime(newEndTimeMinutes);
+
+    // 6. 更新数据库（如果有数据库连接）
+    const adjustedItems: string[] = [];
+    if (this.prisma && targetItem.itemId) {
+      try {
+        const dayDate = new Date(targetDay.date);
+        const [startHour, startMin] = newStartTime.split(':').map(Number);
+        const [endHour, endMin] = newEndTime.split(':').map(Number);
+        
+        const startDateTime = new Date(dayDate);
+        startDateTime.setHours(startHour, startMin, 0, 0);
+        
+        const endDateTime = new Date(dayDate);
+        endDateTime.setHours(endHour, endMin, 0, 0);
+
+        await this.prisma.itineraryItem.update({
+          where: { id: targetItem.itemId },
+          data: {
+            startTime: startDateTime,
+            endTime: endDateTime,
+          },
+        });
+        
+        adjustedItems.push(targetItem.itemId);
+        this.logger.debug(`[应用时间调整建议] 已更新数据库: itemId=${targetItem.itemId}, newTime=${newStartTime}-${newEndTime}`);
+      } catch (error: any) {
+        this.logger.error(`[应用时间调整建议] 数据库更新失败: ${error.message}`);
+        // 继续执行，至少更新内存状态
+      }
+    }
+
+    // 7. 更新内存状态
+    targetItem.startTime = newStartTime;
+    targetItem.endTime = newEndTime;
+
+    // 8. 调整后续行程项（如果有时间冲突）
+    // 按时间排序所有行程项
+    const allItems = targetDay.items
+      .filter(item => item.startTime)
+      .sort((a, b) => this.parseTimeToMinutes(a.startTime!) - this.parseTimeToMinutes(b.startTime!));
+    
+    const targetItemIndex = allItems.findIndex(item => item.itemId === targetItem.itemId);
+    
+    // 从目标项之后开始，检查并调整时间冲突
+    for (let i = targetItemIndex + 1; i < allItems.length; i++) {
+      const currentItem = allItems[i];
+      const prevItem = allItems[i - 1];
+      
+      const prevEndTime = this.parseTimeToMinutes(prevItem.endTime || this.formatMinutesToTime(this.parseTimeToMinutes(prevItem.startTime!) + (prevItem.duration || 120)));
+      const currentStartTime = this.parseTimeToMinutes(currentItem.startTime!);
+      
+      // 如果当前项的开始时间早于前一项的结束时间，需要调整
+      if (currentStartTime < prevEndTime) {
+        const bufferMinutes = 15; // 15分钟缓冲
+        const adjustedStartTime = prevEndTime + bufferMinutes;
+        const adjustedStartTimeStr = this.formatMinutesToTime(adjustedStartTime);
+        const adjustedDuration = currentItem.duration || 120;
+        const adjustedEndTimeStr = this.formatMinutesToTime(adjustedStartTime + adjustedDuration);
+        
+        // 更新内存状态
+        currentItem.startTime = adjustedStartTimeStr;
+        currentItem.endTime = adjustedEndTimeStr;
+        
+        // 更新数据库
+        if (this.prisma && currentItem.itemId) {
+          try {
+            const dayDate = new Date(targetDay.date);
+            const [startHour, startMin] = adjustedStartTimeStr.split(':').map(Number);
+            const [endHour, endMin] = adjustedEndTimeStr.split(':').map(Number);
+            
+            const startDateTime = new Date(dayDate);
+            startDateTime.setHours(startHour, startMin, 0, 0);
+            
+            const endDateTime = new Date(dayDate);
+            endDateTime.setHours(endHour, endMin, 0, 0);
+
+            await this.prisma.itineraryItem.update({
+              where: { id: currentItem.itemId },
+              data: {
+                startTime: startDateTime,
+                endTime: endDateTime,
+              },
+            });
+            
+            adjustedItems.push(currentItem.itemId);
+          } catch (error: any) {
+            this.logger.warn(`[应用时间调整建议] 调整后续项失败: ${error.message}`);
+          }
+        }
+      }
+    }
+
+    // 9. 记录消息
+    const itemName = this.getItemName(targetItem);
+    this.addMessage(state, {
+      id: `msg_${Date.now()}`,
+      role: 'system',
+      content: `已接受建议：将「${itemName}」的开始时间从 ${originalStartTime} 调整为 ${newStartTime}`,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 10. 重新评估Abu，确认问题已解决
+    try {
+      const reEvaluation = await this.evaluateWithGuardians(
+        state,
+        'GENERAL_CHAT',
+        `时间已调整，请重新评估第${dto.targetDay}天的安排`,
+      );
+      
+      // 如果Abu的评估显示问题已解决，更新消息
+      if (reEvaluation.evaluation.abu?.issues.length === 0 || 
+          !reEvaluation.evaluation.abu?.issues.some(issue => issue.includes(itemName) || issue.includes('太早'))) {
+        this.logger.debug(`[应用时间调整建议] 重新评估确认问题已解决`);
+      }
+    } catch (error: any) {
+      this.logger.warn(`[应用时间调整建议] 重新评估失败: ${error.message}`);
+      // 不影响主流程，继续执行
+    }
+
+    await this.saveSession(state);
+
     return {
-      message: '时间修改功能即将推出',
+      message: `已将「${itemName}」的开始时间从 ${originalStartTime} 调整为 ${newStartTime}${adjustedItems.length > 1 ? `，并调整了 ${adjustedItems.length - 1} 个后续行程项` : ''}`,
+      item: {
+        id: targetItem.itemId,
+        tripDayId: targetDay.dayId,
+        startTime: `${targetDay.date}T${newStartTime}:00.000Z`,
+        endTime: `${targetDay.date}T${newEndTime}:00.000Z`,
+        type: targetItem.type,
+        placeId: targetItem.poiId ? parseInt(targetItem.poiId, 10) : undefined,
+      },
       tripUpdate: {
-        totalChanges: 0,
+        totalChanges: adjustedItems.length,
         addedItems: 0,
         removedItems: 0,
-        modifiedItems: 0,
-        affectedDays: [],
+        modifiedItems: adjustedItems.length,
+        affectedDays: [dto.targetDay],
       },
+      suggestionStatus: 'RESOLVED', // 标记建议已解决
     };
   }
 
@@ -2364,6 +2719,9 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
 
   /**
    * 标准化时间字段（将各种格式转为 HH:mm 字符串）
+   * 
+   * 修复：使用本地时间而非UTC时间，确保与前端显示一致
+   * 原因：数据库存储UTC时间，但前端显示本地时间，Abu评估时应该使用本地时间
    */
   private normalizeTimeField(time: any): string | undefined {
     if (!time) return undefined;
@@ -2372,21 +2730,60 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
       // 已经是字符串格式
       if (time.includes('T')) {
         // ISO 格式：2026-01-10T09:00:00.000Z
+        // 修复：使用本地时间而非UTC时间，确保与前端显示一致
         const d = new Date(time);
-        return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        const localHours = d.getHours();
+        const localMinutes = d.getMinutes();
+        // 验证时间是否合理（0-23小时，0-59分钟）
+        if (localHours >= 0 && localHours < 24 && localMinutes >= 0 && localMinutes < 60) {
+          return `${localHours.toString().padStart(2, '0')}:${localMinutes.toString().padStart(2, '0')}`;
+        }
+        // 如果本地时间不合理，尝试UTC时间（作为降级方案）
+        const utcHours = d.getUTCHours();
+        const utcMinutes = d.getUTCMinutes();
+        if (utcHours >= 0 && utcHours < 24 && utcMinutes >= 0 && utcMinutes < 60) {
+          this.logger.warn(`[normalizeTimeField] 本地时间不合理，使用UTC时间: ${time} -> ${utcHours}:${utcMinutes}`);
+          return `${utcHours.toString().padStart(2, '0')}:${utcMinutes.toString().padStart(2, '0')}`;
+        }
+        return undefined;
       }
-      return time; // 假设已经是 HH:mm 格式
+      // 验证 HH:mm 格式
+      const timeMatch = time.match(/^(\d{1,2}):(\d{2})$/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+          return time;
+        }
+      }
+      return undefined; // 格式无效
     }
     
     if (time instanceof Date) {
-      return `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+      // 修复：优先使用本地时间，确保与前端显示一致
+      const localHours = time.getHours();
+      const localMinutes = time.getMinutes();
+      if (localHours >= 0 && localHours < 24 && localMinutes >= 0 && localMinutes < 60) {
+        return `${localHours.toString().padStart(2, '0')}:${localMinutes.toString().padStart(2, '0')}`;
+      }
+      // 降级到UTC时间
+      const utcHours = time.getUTCHours();
+      const utcMinutes = time.getUTCMinutes();
+      if (utcHours >= 0 && utcHours < 24 && utcMinutes >= 0 && utcMinutes < 60) {
+        this.logger.warn(`[normalizeTimeField] 本地时间不合理，使用UTC时间: ${time} -> ${utcHours}:${utcMinutes}`);
+        return `${utcHours.toString().padStart(2, '0')}:${utcMinutes.toString().padStart(2, '0')}`;
+      }
+      return undefined;
     }
     
     if (typeof time === 'number') {
       // 可能是分钟数
       const h = Math.floor(time / 60);
       const m = time % 60;
-      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      }
+      return undefined;
     }
     
     return undefined;
@@ -2602,22 +2999,29 @@ ${ctx.days.map(d => `**第${d.dayNumber}天** (${d.date})${d.theme ? ` - ${d.the
   }
 
   /**
-   * 检测行程问题
+   * 检测行程问题（返回简化的问题描述）
    */
   private detectTripIssues(ctx: TripContext): string[] {
     const issues: string[] = [];
     
-    ctx.days.forEach(day => {
-      if (day.stats.itemCount === 0) {
-        issues.push(`第${day.dayNumber}天没有任何安排`);
+    // 统计空安排的天数（简化描述）
+    const emptyDays = ctx.days.filter(day => day.stats.itemCount === 0).map(day => day.dayNumber);
+    if (emptyDays.length > 0) {
+      if (emptyDays.length === 1) {
+        issues.push(`${emptyDays.length}天未安排`);
+      } else {
+        issues.push(`${emptyDays.length}天未安排`);
       }
-      if (day.stats.totalDuration > 12 * 60) {
-        issues.push(`第${day.dayNumber}天安排超过12小时，可能太紧凑`);
-      }
-    });
+    }
+    
+    // 统计紧凑安排的天数（简化描述）
+    const tightDays = ctx.days.filter(day => day.stats.totalDuration > 12 * 60).map(day => day.dayNumber);
+    if (tightDays.length > 0) {
+      issues.push(`${tightDays.length}天安排较紧凑`);
+    }
 
     if (ctx.completeness < 50) {
-      issues.push('行程整体完成度较低，建议添加更多活动');
+      issues.push('完成度较低');
     }
 
     return issues;
@@ -3557,7 +3961,9 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
    */
   private async generateGeneralResponse(ctx: TripContext, message: string, history: TripPlannerMessage[]): Promise<string> {
     if (!this.llmService) {
-      return `好的，我理解了。关于您的${ctx.destinationName || ctx.destination}行程，还有什么我可以帮您的吗？`;
+      // LLM 服务不可用，尝试使用 RAG 降级
+      this.logger.debug(`[规划助手] LLM 服务不可用，直接使用 RAG 降级`);
+      return await this.fallbackToRAG(ctx, message);
     }
 
     const prompt = `你是 NARA，一位专业、热情的旅行规划师。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
@@ -3575,8 +3981,142 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
         data: { prompt },
       });
     } catch (error) {
-      return `好的，我理解了。关于您的${ctx.destinationName || ctx.destination}行程，还有什么我可以帮您的吗？`;
+      this.logger.warn(`[规划助手] LLM 生成回复失败，尝试 RAG 降级: ${error}`);
+      // LLM 失败，降级到 RAG
+      return await this.fallbackToRAG(ctx, message);
     }
+  }
+
+  /**
+   * RAG 降级策略：当 LLM 失败时直接使用 RAG 检索知识库
+   */
+  private async fallbackToRAG(ctx: TripContext, message: string): Promise<string> {
+    this.logger.debug(`[规划助手] 开始 RAG 降级流程: message="${message}", ragService=${!!this.ragService}, enhancedChat=${!!this.enhancedChat}`);
+    
+    // 优先使用直接 RAG 检索
+    if (this.ragService) {
+      try {
+        this.logger.debug(`[规划助手] 直接 RAG 检索: "${message}", countryCode=${ctx.destination}, collection=travel_guides`);
+        
+        // 直接使用 RagService 检索
+        const results = await this.ragService.retrieve({
+          query: message,
+          collection: 'travel_guides',
+          countryCode: ctx.destination, // 例如 'IS' for 冰岛
+          limit: 5,
+          minScore: 0.4, // 降低阈值，因为 embedding 可能失败
+        });
+        
+        this.logger.debug(`[规划助手] RAG 检索完成: 返回 ${results?.length || 0} 个结果`);
+        
+        if (results && results.length > 0) {
+          // 格式化检索结果
+          const answer = this.formatRAGResults(results, ctx, message);
+          this.logger.debug(`[规划助手] RAG 检索成功，找到 ${results.length} 个相关文档，答案长度: ${answer.length}`);
+          return answer;
+        } else {
+          this.logger.warn(`[规划助手] RAG 检索返回 0 个结果，尝试其他降级策略`);
+        }
+      } catch (error: any) {
+        this.logger.error(`[规划助手] 直接 RAG 检索失败: ${error?.message}`, error.stack);
+      }
+    } else {
+      this.logger.warn(`[规划助手] RagService 未注入，跳过直接 RAG 检索`);
+    }
+    
+    // 降级：尝试使用 EnhancedChatService
+    if (this.enhancedChat) {
+      try {
+        const context = {
+          countryCode: ctx.destination,
+          destination: ctx.destinationName || ctx.destination,
+          days: ctx.durationDays,
+        };
+
+        const answer = await this.enhancedChat.answerRouteQuestion(message, context);
+        const answerText = answer?.answer?.trim() || '';
+        if (answerText.length > 20) {
+          this.logger.debug(`[规划助手] EnhancedChat RAG 降级成功，返回答案长度: ${answerText.length}`);
+          return answerText;
+        }
+      } catch (error: any) {
+        this.logger.error(`[规划助手] EnhancedChat RAG 降级失败: ${error?.message}`);
+      }
+    }
+    
+    // 最终降级：生成友好消息
+    return this.generateFallbackMessage(ctx, message, true);
+  }
+
+  /**
+   * 格式化 RAG 检索结果为用户友好的答案
+   */
+  private formatRAGResults(
+    results: Array<{ title?: string; content: string; source?: string; score?: number }>,
+    ctx: TripContext,
+    originalQuery: string
+  ): string {
+    const destination = ctx.destinationName || ctx.destination;
+    
+    if (results.length === 0) {
+      return this.generateFallbackMessage(ctx, originalQuery, true);
+    }
+    
+    // 取前 3 个最相关的结果
+    const topResults = results.slice(0, 3);
+    
+    let answer = `关于"${originalQuery}"，我找到以下信息：\n\n`;
+    
+    topResults.forEach((result, index) => {
+      const content = (result.content || '').trim();
+      const title = result.title || '相关信息';
+      const source = result.source ? `（来源：${result.source}）` : '';
+      const score = result.score ? `（相关度：${(result.score * 100).toFixed(0)}%）` : '';
+      
+      // 截取内容前 300 字符
+      const contentPreview = content.length > 300 
+        ? content.substring(0, 300) + '...' 
+        : content;
+      
+      answer += `${index + 1}. **${title}**${source}${score}\n${contentPreview}\n\n`;
+    });
+    
+    if (results.length > 3) {
+      answer += `还有 ${results.length - 3} 条相关信息，如需查看完整内容，请告诉我。\n\n`;
+    }
+    
+    answer += `以上信息来自知识库，如需更详细的信息，建议查看官方文档或咨询相关机构。`;
+    
+    return answer;
+  }
+
+  /**
+   * 生成降级消息（当 LLM 和 RAG 都失败时）
+   */
+  private generateFallbackMessage(ctx: TripContext, message: string, ragAttempted: boolean = false): string {
+    const destination = ctx.destinationName || ctx.destination;
+    
+    // 根据问题类型生成更有用的降级消息
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('保险') || lowerMessage.includes('insurance')) {
+      return `关于${destination}的租车保险，建议您：\n\n1. 查看租车公司的保险政策\n2. 确认是否包含碰撞险和第三方责任险\n3. 考虑是否需要额外的保险覆盖\n\n如需更详细的信息，建议咨询租车公司或查看相关官方文档。`;
+    }
+    
+    if (lowerMessage.includes('签证') || lowerMessage.includes('visa')) {
+      return `关于${destination}的签证信息，建议您：\n\n1. 查看目的地国家的官方签证要求\n2. 确认您的护照有效期（通常需要6个月以上）\n3. 提前准备所需材料\n\n建议访问目的地国家的大使馆或领事馆官网获取最新信息。`;
+    }
+    
+    if (lowerMessage.includes('天气') || lowerMessage.includes('weather')) {
+      return `关于${destination}的天气，建议您：\n\n1. 查看当地天气预报\n2. 根据季节准备合适的衣物\n3. 关注极端天气预警\n\n建议使用天气应用或网站获取实时天气信息。`;
+    }
+    
+    // 通用降级消息
+    if (ragAttempted) {
+      return `抱歉，我暂时无法获取关于"${message}"的详细信息。\n\n建议您：\n1. 查看${destination}的官方旅游网站\n2. 咨询相关服务机构\n3. 稍后重试，或换一种方式提问\n\n关于您的${destination}行程，还有什么其他我可以帮您的吗？`;
+    }
+    
+    return `好的，我理解了您关于"${message}"的问题。\n\n关于您的${destination}行程，我可以帮您：\n• 优化行程路线\n• 安排餐厅和交通\n• 解答其他疑问\n\n有什么需要我帮您的吗？`;
   }
 
   /**
@@ -4338,17 +4878,46 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
         }
       }
 
-      // 检查活动时间是否合理
-      const firstActivity = day.items.find(item => item.startTime);
-      if (firstActivity && firstActivity.startTime) {
-        const startHour = parseInt(String(firstActivity.startTime).split(':')[0], 10);
-        if (startHour < 6) {
-          issues.push(`第${day.dayNumber}天${firstActivity.startTime}开始可能太早`);
-          risks.push({
-            type: 'timing',
-            severity: 'low',
-            description: `早起可能影响体力`,
-          });
+      // 检查活动时间是否合理（检查所有活动，而不是只检查第一个）
+      const activitiesWithTime = day.items.filter(item => item.startTime && item.type !== 'TRANSPORT');
+      if (activitiesWithTime.length > 0) {
+        // 按开始时间排序，检查最早的活动
+        // 使用 normalizeTimeField 统一时间格式，确保时间解析一致
+        const sortedActivities = activitiesWithTime.sort((a, b) => {
+          const normalizedTimeA = this.normalizeTimeField(a.startTime);
+          const normalizedTimeB = this.normalizeTimeField(b.startTime);
+          if (!normalizedTimeA || !normalizedTimeB) return 0;
+          const minutesA = this.parseTimeToMinutes(normalizedTimeA);
+          const minutesB = this.parseTimeToMinutes(normalizedTimeB);
+          return minutesA - minutesB;
+        });
+        
+        const earliestActivity = sortedActivities[0];
+        if (earliestActivity && earliestActivity.startTime) {
+          // 使用 normalizeTimeField 统一时间格式，避免时区或格式问题
+          const normalizedTime = this.normalizeTimeField(earliestActivity.startTime);
+          if (normalizedTime) {
+            const timeParts = normalizedTime.split(':');
+            const startHour = parseInt(timeParts[0], 10);
+            const startMinute = parseInt(timeParts[1] || '0', 10);
+            const startMinutes = startHour * 60 + startMinute;
+            
+            // 只对合理的时间范围进行检查（0:00-5:59 认为太早）
+            // 同时记录原始时间用于调试
+            if (!isNaN(startHour) && startMinutes >= 0 && startMinutes < 6 * 60) {
+              const originalTime = earliestActivity.startTime;
+              const itemName = this.getItemName(earliestActivity);
+              issues.push(`第${day.dayNumber}天「${itemName}」${normalizedTime}开始可能太早${originalTime !== normalizedTime ? `（检测到的时间：${originalTime}）` : ''}`);
+              risks.push({
+                type: 'timing',
+                severity: 'low',
+                description: `早起可能影响体力`,
+              });
+            }
+          } else {
+            // 如果时间无法标准化，记录警告但不报错（可能是数据格式问题）
+            this.logger.warn(`[Abu评估] 无法标准化时间: ${earliestActivity.startTime}, itemId=${earliestActivity.itemId}`);
+          }
         }
       }
     }
