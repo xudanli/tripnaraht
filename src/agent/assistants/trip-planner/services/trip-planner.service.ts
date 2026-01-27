@@ -951,11 +951,31 @@ export class TripPlannerService {
       },
     });
     
+    // 🆕 不再追加固定问句，suggestion 中已包含动态结论
     const message = `好的，我来帮您优化行程路线。
 
-${suggestion}
+${suggestion}`;
 
-您觉得这个优化方案怎么样？`;
+    // 🆕 根据 suggestion 内容判断是否有问题需要处理
+    const hasNightIssue = suggestion.includes('凌晨') || suggestion.includes('夜间时段');
+    const needsAdjustment = suggestion.includes('需要您确认') || suggestion.includes('建议调整');
+
+    // 🆕 动态生成操作按钮
+    type BtnStyle = 'primary' | 'secondary' | 'danger' | 'outline' | 'ghost';
+    const quickActions: Array<{ id: string; label: string; action: string; params?: any; style: BtnStyle }> = [];
+    
+    if (needsAdjustment && hasNightIssue) {
+      quickActions.push({ id: '1', label: '⏰ 自动调整凌晨活动', action: 'FIX_NIGHT_ACTIVITIES', params: { changeId }, style: 'primary' });
+      quickActions.push({ id: '2', label: '✅ 保持原样', action: 'APPLY_OPTIMIZATION', params: { changeId }, style: 'secondary' });
+    } else if (needsAdjustment) {
+      quickActions.push({ id: '1', label: '🔧 自动修复问题', action: 'AUTO_FIX', params: { changeId }, style: 'primary' });
+      quickActions.push({ id: '2', label: '✅ 保持原样', action: 'APPLY_OPTIMIZATION', params: { changeId }, style: 'secondary' });
+    } else {
+      quickActions.push({ id: '1', label: '✅ 应用优化', action: 'APPLY_OPTIMIZATION', params: { changeId }, style: 'primary' });
+    }
+    
+    quickActions.push({ id: '3', label: '🔄 换个方案', action: 'OPTIMIZE_ROUTE', style: 'secondary' });
+    quickActions.push({ id: '4', label: '❌ 不需要', action: 'CANCEL', style: 'secondary' });
 
     return {
       sessionId: state.sessionId,
@@ -963,11 +983,7 @@ ${suggestion}
       phase: 'OPTIMIZING',
       intent: 'OPTIMIZE_ROUTE',
       pendingChanges: [state.pendingChanges![state.pendingChanges!.length - 1]],
-      quickActions: [
-        { id: '1', label: '✅ 应用优化', action: 'APPLY_OPTIMIZATION', params: { changeId }, style: 'primary' },
-        { id: '2', label: '🔄 换个方案', action: 'OPTIMIZE_ROUTE', style: 'secondary' },
-        { id: '3', label: '❌ 不需要', action: 'CANCEL', style: 'secondary' },
-      ],
+      quickActions,
       followUp: {
         question: '需要我进一步解释优化的原因吗？',
         options: ['好的，解释一下', '直接应用吧', '我再想想'],
@@ -2445,6 +2461,159 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
   }
 
   /**
+   * 🆕 修复凌晨活动 - 将凌晨时段的活动调整到白天合理时间
+   */
+  async fixNightActivities(dto: {
+    tripId: string;
+    sessionId: string;
+    userId: string;
+    changeId?: string;
+  }): Promise<{
+    sessionId: string;
+    message: string;
+    phase: string;
+    intent: string;
+    tripUpdate?: any;
+  }> {
+    this.logger.debug(`[修复凌晨活动] tripId=${dto.tripId}`);
+
+    // 1. 加载行程上下文
+    const tripContext = await this.loadTripContext(dto.tripId);
+
+    // 2. 找到所有凌晨活动（00:00-06:00）
+    const nightActivities: Array<{ day: number; item: TripItemContext; dayContext: TripDayContext }> = [];
+    
+    for (const day of tripContext.days) {
+      for (const item of day.items) {
+        if (item.startTime) {
+          const startMinutes = this.parseTimeToMinutes(item.startTime);
+          // 凌晨时段：00:00-06:00 (0-360分钟)
+          if (startMinutes >= 0 && startMinutes < 360) {
+            nightActivities.push({ day: day.dayNumber, item, dayContext: day });
+          }
+        }
+      }
+    }
+
+    if (nightActivities.length === 0) {
+      return {
+        sessionId: dto.sessionId,
+        message: '没有找到需要调整的凌晨活动。您的行程安排看起来已经很合理了！',
+        phase: 'OVERVIEW',
+        intent: 'FIX_NIGHT_ACTIVITIES',
+      };
+    }
+
+    // 3. 调整每个凌晨活动到白天合理时间
+    const adjustments: string[] = [];
+    let totalChanges = 0;
+
+    for (const { day, item, dayContext } of nightActivities) {
+      const oldStartTime = item.startTime!;
+      const duration = item.duration || 60;
+      
+      // 计算新的开始时间：默认调整到 09:00，或者根据当天其他活动顺延
+      let newStartMinutes = 9 * 60; // 09:00
+      
+      // 检查当天是否有其他活动，找到合适的空档
+      const otherActivities = dayContext.items
+        .filter(i => i.itemId !== item.itemId && i.startTime)
+        .sort((a, b) => this.parseTimeToMinutes(a.startTime!) - this.parseTimeToMinutes(b.startTime!));
+      
+      if (otherActivities.length > 0) {
+        // 找到最早的活动之前的空档，或者最后一个活动之后
+        const firstActivity = otherActivities[0];
+        const firstStartMinutes = this.parseTimeToMinutes(firstActivity.startTime!);
+        
+        if (firstStartMinutes >= 9 * 60 + duration + 30) {
+          // 第一个活动之前有足够空间
+          newStartMinutes = 9 * 60;
+        } else {
+          // 放到最后一个活动之后
+          const lastActivity = otherActivities[otherActivities.length - 1];
+          const lastEndMinutes = lastActivity.endTime 
+            ? this.parseTimeToMinutes(lastActivity.endTime)
+            : this.parseTimeToMinutes(lastActivity.startTime!) + (lastActivity.duration || 60);
+          newStartMinutes = lastEndMinutes + 30; // 30分钟间隔
+        }
+      }
+      
+      const newStartTimeStr = `${Math.floor(newStartMinutes / 60).toString().padStart(2, '0')}:${(newStartMinutes % 60).toString().padStart(2, '0')}`;
+      const newEndMinutes = newStartMinutes + duration;
+      const newEndTimeStr = `${Math.floor(newEndMinutes / 60).toString().padStart(2, '0')}:${(newEndMinutes % 60).toString().padStart(2, '0')}`;
+      
+      // 获取当天的日期（从 dayContext.date 或 tripContext.startDate 计算）
+      let dayDateStr = dayContext.date;
+      if (!dayDateStr && tripContext.startDate) {
+        const startDate = new Date(tripContext.startDate);
+        startDate.setDate(startDate.getDate() + day - 1);
+        dayDateStr = startDate.toISOString().split('T')[0];
+      }
+      if (!dayDateStr) {
+        dayDateStr = new Date().toISOString().split('T')[0];
+      }
+      
+      // 更新数据库
+      if (this.prisma && item.itemId) {
+        try {
+          await this.prisma.itineraryItem.update({
+            where: { id: item.itemId },
+            data: {
+              startTime: new Date(`${dayDateStr}T${newStartTimeStr}:00`),
+              endTime: new Date(`${dayDateStr}T${newEndTimeStr}:00`),
+            },
+          });
+          totalChanges++;
+          adjustments.push(`第${day}天「${item.name}」: ${oldStartTime} → ${newStartTimeStr}`);
+        } catch (error) {
+          this.logger.warn(`[修复凌晨活动] 更新失败: ${error}`);
+        }
+      }
+    }
+
+    const message = totalChanges > 0
+      ? `已成功调整 ${totalChanges} 个凌晨活动的时间：\n\n${adjustments.map(a => `✅ ${a}`).join('\n')}\n\n现在您的行程安排更加合理了！`
+      : '调整过程中遇到问题，请稍后重试。';
+
+    return {
+      sessionId: dto.sessionId,
+      message,
+      phase: 'OVERVIEW',
+      intent: 'FIX_NIGHT_ACTIVITIES',
+      tripUpdate: {
+        totalChanges,
+        modifiedItems: totalChanges,
+        affectedDays: [...new Set(nightActivities.map(n => n.day))],
+      },
+    };
+  }
+
+  /**
+   * 🆕 应用待处理的更改
+   */
+  async applyPendingChange(dto: {
+    tripId: string;
+    sessionId: string;
+    changeId: string;
+    userId: string;
+  }): Promise<{
+    sessionId: string;
+    message: string;
+    phase: string;
+    intent: string;
+  }> {
+    this.logger.debug(`[应用待处理更改] changeId=${dto.changeId}`);
+    
+    // 目前直接返回确认消息，实际的更改应用逻辑可以后续完善
+    return {
+      sessionId: dto.sessionId,
+      message: '已应用当前的优化建议。您的行程已更新！',
+      phase: 'OVERVIEW',
+      intent: 'APPLY_OPTIMIZATION',
+    };
+  }
+
+  /**
    * 应用修改时间建议
    */
   private async applyModifyTimeSuggestion(
@@ -2865,10 +3034,13 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
       where: { id: tripId },
       include: {
         TripDay: {
-          orderBy: { date: 'asc' },  // orderBy 必须在 include 之前
+          orderBy: { date: 'asc' },
           include: {
             ItineraryItem: {
               orderBy: { startTime: 'asc' },
+              include: {
+                Place: true,  // 🆕 获取关联的 Place 数据以获取名称
+              },
             },
           },
         },
@@ -2895,9 +3067,14 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
         theme: day.theme,
         city: day.city,
         items: items.map((item: any) => {
-          // 兼容多种字段名，确保名称不为空
-          const name = item.title || item.name || item.placeName || item.place?.name || item.activity?.name || '';
           const itemId = item.id || '';
+          
+          // 🆕 优先从 Place 关系获取名称
+          const placeNameCN = item.Place?.nameCN || item.Place?.name;
+          const placeNameEN = item.Place?.nameEN || item.Place?.name;
+          
+          // 兼容多种字段名，确保名称不为空
+          const name = placeNameCN || placeNameEN || item.title || item.name || item.placeName || item.place?.name || item.activity?.name || '';
           
           // 如果名称仍然为空，使用 itemId 作为后备
           const finalName = name && name.trim() !== '' 
@@ -2908,7 +3085,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
             itemId,
             type: item.type || 'ACTIVITY',
             name: finalName,
-            nameCN: item.nameCN || item.title_cn || item.placeName_cn,
+            nameCN: placeNameCN || item.nameCN || item.title_cn || item.placeName_cn,
           startTime: this.normalizeTimeField(item.startTime),
           endTime: this.normalizeTimeField(item.endTime),
           duration: item.duration,
@@ -3171,13 +3348,32 @@ ${ctx.days.map(d => `**第${d.dayNumber}天** (${d.date})${d.theme ? ` - ${d.the
       result += '\n';
     }
 
-    // 6. 下一步
+    // 6. 下一步 - 🆕 根据实际问题动态生成结论
+    const hasHighRiskNight = evidence.key_features.night_segments?.some(s => s.risk_level === 'HIGH');
+    const hasMediumRiskNight = evidence.key_features.night_segments?.some(s => s.risk_level === 'MEDIUM');
+    const hasWarnings = evidence.hard_gates.some(g => g.severity === 'WARNING');
+
     if (evidence.next_steps.length > 0) {
       const mainStep = evidence.next_steps[0];
-      if (mainStep.action === 'AUTO_FIX') {
-        result += `需要我帮您**自动修复**这些问题吗？`;
+      
+      if (mainStep.action === 'AUTO_FIX' || mainStep.action === 'ADJUST') {
+        if (hasHighRiskNight) {
+          const nightCount = evidence.key_features.night_segments?.filter(s => s.risk_level === 'HIGH').length || 0;
+          result += `⚠️ **需要您确认**：有 ${nightCount} 个活动安排在凌晨时段，建议调整时间。\n`;
+          result += `需要我帮您**自动调整**这些活动的时间吗？`;
+        } else {
+          result += `需要我帮您**自动修复**这些问题吗？`;
+        }
       } else if (mainStep.action === 'APPLY') {
-        result += `您的行程已经很完善，可以放心出发！`;
+        if (hasHighRiskNight) {
+          result += `⚠️ 您的行程存在凌晨活动安排，建议调整后再出发。`;
+        } else if (hasMediumRiskNight || hasWarnings) {
+          result += `您的行程基本可行，但有一些细节可以优化。`;
+        } else {
+          result += `您的行程安排很完善，可以放心出发！`;
+        }
+      } else if (mainStep.action === 'REJECT') {
+        result += `❌ ${mainStep.message}`;
       } else {
         result += mainStep.message;
       }

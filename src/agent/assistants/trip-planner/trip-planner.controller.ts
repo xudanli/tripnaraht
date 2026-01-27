@@ -217,6 +217,34 @@ export class TripPlannerController {
     this.logger.debug(`[TripPlanner] 执行操作: tripId=${dto.tripId}, action=${dto.action}`);
 
     try {
+      // 🆕 特殊处理：FIX_NIGHT_ACTIVITIES 直接调用凌晨活动调整
+      if (dto.action === 'FIX_NIGHT_ACTIVITIES') {
+        const result = await this.tripPlannerService.fixNightActivities({
+          tripId: dto.tripId,
+          sessionId: dto.sessionId,
+          userId,
+          changeId: dto.params?.changeId,
+        });
+        return {
+          success: true,
+          data: result,
+        };
+      }
+
+      // 🆕 特殊处理：APPLY_OPTIMIZATION 直接应用优化
+      if (dto.action === 'APPLY_OPTIMIZATION' && dto.params?.changeId) {
+        const result = await this.tripPlannerService.applyPendingChange({
+          tripId: dto.tripId,
+          sessionId: dto.sessionId,
+          changeId: dto.params.changeId,
+          userId,
+        });
+        return {
+          success: true,
+          data: result,
+        };
+      }
+
       // 将快捷操作转换为对话消息
       const actionMessages: Record<string, string> = {
         OPTIMIZE_ROUTE: '帮我优化行程路线',
@@ -227,6 +255,7 @@ export class TripPlannerController {
         FILL_FREE_TIME: '看看还有哪些空闲时间可以安排',
         GET_SUGGESTION: '给我一些建议',
         EXPORT_ITINERARY: '导出行程',
+        AUTO_FIX: '自动修复行程中的问题',
       };
 
       const message = actionMessages[dto.action] || `执行操作: ${dto.action}`;

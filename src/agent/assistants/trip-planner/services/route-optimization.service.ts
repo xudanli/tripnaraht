@@ -189,11 +189,11 @@ export class RouteOptimizationService {
       ? this.generateAlternatives(ctx, deduplicatedGates, softScores)
       : [];
 
-    // 8. 生成结论
-    const conclusion = this.generateConclusion(deduplicatedGates, softScores);
+    // 8. 生成结论（传入夜间活动信息）
+    const conclusion = this.generateConclusion(deduplicatedGates, softScores, keyFeatures.night_segments);
 
-    // 9. 确定下一步
-    const nextSteps = this.determineNextSteps(conclusion, alternatives);
+    // 9. 确定下一步（传入夜间活动信息）
+    const nextSteps = this.determineNextSteps(conclusion, alternatives, keyFeatures.night_segments);
 
     const processingTime = Date.now() - startTime;
 
@@ -620,8 +620,35 @@ export class RouteOptimizationService {
   }
 
   /**
-   * 检测数据缺失
+   * 🆕 将技术字段名翻译为用户友好的中文描述
    */
+  private translateFieldName(field: string): string {
+    const fieldNameMap: Record<string, string> = {
+      'items.location': '活动地点',
+      'items.startTime': '开始时间',
+      'items.endTime': '结束时间',
+      'date': '日期',
+      'destination': '目的地',
+      'startDate': '出发日期',
+      'endDate': '结束日期',
+      'days': '行程天数',
+    };
+
+    const dayMatch = field.match(/^day(\d+)\./);
+    const dayPrefix = dayMatch ? `第${dayMatch[1]}天的` : '';
+    const fieldName = field.replace(/^day\d+\./, '');
+    const translation = fieldNameMap[fieldName];
+    
+    if (translation) return `${dayPrefix}${translation}`;
+    if (fieldName.includes('location')) return `${dayPrefix}地点信息`;
+    if (fieldName.includes('time') || fieldName.includes('Time')) return `${dayPrefix}时间信息`;
+    return field;
+  }
+
+  private translateFieldNames(fields: string[]): string {
+    return fields.map(f => this.translateFieldName(f)).join('、');
+  }
+
   /**
    * 🆕 检测数据缺失（保守策略）
    * 
@@ -666,19 +693,19 @@ export class RouteOptimizationService {
         rule: 'DATA_MISSING',
         result: 'FAIL',
         severity: 'ERROR',
-        detail: `缺少关键数据，无法生成可靠路线: ${criticalFields.join(', ')}`,
+        detail: `缺少关键数据，无法生成可靠路线: ${this.translateFieldNames(criticalFields)}`,
         suggestion: '请补充完整的行程数据（起始日期、结束日期、目的地）',
       });
     }
 
-    // 🆕 部分数据缺失 → 警告用户
+    // 🆕 部分数据缺失 → 警告用户（使用翻译后的字段名）
     if (partialFields.length > 0 && criticalFields.length === 0) {
       results.push({
         rule: 'DATA_MISSING',
         result: 'PASS',
         severity: 'WARNING',
-        detail: `部分数据缺失，生成的路线可能需要用户确认: ${partialFields.join(', ')}`,
-        suggestion: '建议补充完整的行程数据以获得更准确的优化建议',
+        detail: `部分数据不完整（${this.translateFieldNames(partialFields)}），建议补充后获得更准确的优化`,
+        suggestion: '补充完整的地点和时间信息可以获得更精准的路线优化建议',
       });
     }
 
@@ -1173,40 +1200,61 @@ export class RouteOptimizationService {
 
   /**
    * 生成结论
+   * @param nightSegments 夜间活动列表，用于判断是否需要调整
    */
   private generateConclusion(
     hardGates: HardGateResult[],
-    softScores: RouteOptimizationEvidence['soft_scores']
+    softScores: RouteOptimizationEvidence['soft_scores'],
+    nightSegments?: RouteOptimizationEvidence['key_features']['night_segments']
   ): RouteOptimizationEvidence['conclusion'] {
     const failedGates = hardGates.filter(g => g.result === 'FAIL');
     const errorGates = hardGates.filter(g => g.severity === 'ERROR');
 
+    // 🆕 高风险夜间活动（凌晨 00:00-06:00）也需要调整
+    const highRiskNightActivities = nightSegments?.filter(s => s.risk_level === 'HIGH') || [];
+    const hasHighRiskNight = highRiskNightActivities.length > 0;
+
     const routeApproved = failedGates.length === 0;
-    const adjustmentRequired = errorGates.length > 0 || softScores.overall < 60;
+    // 🆕 有高风险夜间活动时也需要调整
+    const adjustmentRequired = errorGates.length > 0 || softScores.overall < 60 || hasHighRiskNight;
 
     // 计算可执行性评分
     let executabilityScore = 100;
     executabilityScore -= failedGates.length * 20;
     executabilityScore -= (100 - softScores.overall) * 0.3;
+    // 🆕 高风险夜间活动扣分
+    executabilityScore -= highRiskNightActivities.length * 10;
     executabilityScore = Math.max(0, Math.min(100, executabilityScore));
+
+    // 🆕 收集所有拒绝原因
+    const rejectionReasons = [...failedGates.map(g => g.detail)];
+    if (hasHighRiskNight) {
+      rejectionReasons.push(`存在 ${highRiskNightActivities.length} 个凌晨时段的活动安排`);
+    }
 
     return {
       route_approved: routeApproved,
-      rejection_reasons: failedGates.map(g => g.detail),
+      rejection_reasons: rejectionReasons,
       adjustment_required: adjustmentRequired,
       executability_score: Math.round(executabilityScore),
-      confidence: routeApproved ? 0.9 : 0.7,
+      confidence: routeApproved ? (hasHighRiskNight ? 0.8 : 0.9) : 0.7,
     };
   }
 
   /**
    * 确定下一步
+   * @param nightSegments 夜间活动列表，用于生成针对性建议
    */
   private determineNextSteps(
     conclusion: RouteOptimizationEvidence['conclusion'],
-    alternatives: RouteAlternative[]
+    alternatives: RouteAlternative[],
+    nightSegments?: RouteOptimizationEvidence['key_features']['night_segments']
   ): NextStepAction[] {
     const steps: NextStepAction[] = [];
+
+    // 🆕 检查是否有高风险夜间活动
+    const highRiskNightActivities = nightSegments?.filter(s => s.risk_level === 'HIGH') || [];
+    const hasHighRiskNight = highRiskNightActivities.length > 0;
 
     if (conclusion.route_approved && !conclusion.adjustment_required) {
       steps.push({
@@ -1214,6 +1262,22 @@ export class RouteOptimizationService {
         message: '行程可执行，可以直接使用',
         requires_user_confirmation: false,
       });
+    } else if (hasHighRiskNight) {
+      // 🆕 优先处理凌晨活动问题
+      steps.push({
+        action: 'AUTO_FIX',
+        message: `建议调整 ${highRiskNightActivities.length} 个凌晨时段的活动时间`,
+        requires_user_confirmation: true,
+      });
+      
+      // 提供具体的调整建议
+      for (const segment of highRiskNightActivities.slice(0, 3)) {
+        steps.push({
+          action: 'ADJUST',
+          message: segment.description || '调整活动时间',
+          requires_user_confirmation: true,
+        });
+      }
     } else if (conclusion.adjustment_required && alternatives.length > 0) {
       steps.push({
         action: 'AUTO_FIX',
@@ -1971,6 +2035,11 @@ export class RouteOptimizationService {
 
   /**
    * 🆕 检测夜间段（18:00-06:00）
+   * 
+   * 修复：正确判断夜间活动
+   * - 凌晨（00:00-06:00）：高风险
+   * - 深夜（18:00-24:00）：中等风险
+   * - 白天（06:00-18:00）：不标记
    */
   private detectNightSegments(
     ctx: TripContext
@@ -1986,29 +2055,30 @@ export class RouteOptimizationService {
         const startTime = this.parseTimeToMinutes(item.startTime);
         const endTime = this.parseTimeToMinutes(item.endTime);
 
-        // 检查是否跨越夜间（18:00-06:00）
-        const nightStart = 18 * 60; // 18:00
-        const nightEnd = 6 * 60;    // 06:00
+        // 夜间定义：18:00-次日06:00
+        const nightStart = 18 * 60; // 18:00 = 1080 分钟
+        const nightEnd = 6 * 60;    // 06:00 = 360 分钟
 
         let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
         let isNightSegment = false;
 
-        // 情况1: 活动在夜间开始和结束
-        if (startTime >= nightStart || endTime <= nightEnd) {
+        // 🆕 修复：正确的夜间判断逻辑
+        // 情况1: 活动开始于凌晨（00:00-06:00）- 高风险
+        if (startTime >= 0 && startTime < nightEnd) {
           isNightSegment = true;
           riskLevel = 'HIGH';
         }
-        // 情况2: 活动跨越夜间
-        else if (startTime < nightStart && endTime > nightEnd) {
+        // 情况2: 活动开始于深夜（18:00-24:00）- 中等风险
+        else if (startTime >= nightStart) {
           isNightSegment = true;
           riskLevel = 'MEDIUM';
         }
-        // 情况3: 活动在夜间部分时间
-        else if ((startTime >= nightStart && startTime < 24 * 60) || 
-                 (endTime > 0 && endTime <= nightEnd)) {
+        // 情况3: 活动结束于凌晨但开始于白天（跨天活动）- 中等风险
+        else if (endTime > 0 && endTime < nightEnd && startTime >= nightEnd && startTime < nightStart) {
           isNightSegment = true;
           riskLevel = 'MEDIUM';
         }
+        // 注意：白天活动（如 07:20-08:20, 12:04-13:04）不应该被标记
 
         if (isNightSegment) {
           const startDateTime = new Date(dayDate);
