@@ -43,10 +43,9 @@ export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
-    return this.safeRequest(
-      async () => {
-        // 调用 OpenWeather Current Weather API
-        const response = await this.httpClient.get('/weather', {
+    try {
+      // 调用 OpenWeather Current Weather API
+      const response = await this.httpClient.get('/weather', {
         params: {
           lat: query.lat,
           lon: query.lng,
@@ -72,18 +71,18 @@ export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter
         },
       };
 
-        return weatherData;
-      },
-      '获取天气数据失败',
-      AdapterMapper.createDefaultErrorResponse<WeatherData>(
-        'openweather',
-        new Error('Unknown error'),
-        {
-          temperature: 0,
-          condition: 'unknown',
-        }
-      )
-    );
+      return weatherData;
+    } catch (error: any) {
+      // 对于 401/403（API Key 无效）等错误，抛出异常以便路由器知道失败
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        this.logger.warn(`OpenWeather 认证失败 (${error.response?.status}): ${error.response?.data?.message || error.message}，将降级到其他适配器`);
+        throw new Error(`OpenWeather 认证失败: ${error.response?.data?.message || 'API Key 无效或配额用尽'}`);
+      }
+      
+      // 对于其他错误，也抛出异常
+      this.logger.error(`获取 OpenWeather 天气数据失败: ${error.message}`);
+      throw error;
+    }
   }
 
   getSupportedCountries(): string[] {

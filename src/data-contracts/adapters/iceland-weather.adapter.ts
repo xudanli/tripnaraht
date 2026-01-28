@@ -45,45 +45,44 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
-    return this.safeRequest(
-      async () => {
-        // 根据坐标选择最近的观测站
-        const stationId = this.findNearestStation(query.lat, query.lng);
-        
-        // 调用 apis.is Weather Observations API
-        const response = await this.httpClient.get('/weather/observations/en', {
-          params: {
-            stations: stationId,
-            time: '1h',      // 每小时更新的自动观测站数据
-            anytime: '0',     // 如果当前数据不可用则返回错误
-          },
-        });
+    try {
+      // 根据坐标选择最近的观测站
+      const stationId = this.findNearestStation(query.lat, query.lng);
+      
+      // 调用 apis.is Weather Observations API
+      const response = await this.httpClient.get('/weather/observations/en', {
+        params: {
+          stations: stationId,
+          time: '1h',      // 每小时更新的自动观测站数据
+          anytime: '0',     // 如果当前数据不可用则返回错误
+        },
+      });
 
-        const data = response.data;
-        
-        // 检查响应格式
-        if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
-          throw new Error('未找到观测站数据');
-        }
+      const data = response.data;
+      
+      // 检查响应格式
+      if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+        throw new Error('未找到观测站数据');
+      }
 
-        // 使用第一个结果（应该只有一个，因为我们只查询一个观测站）
-        const observation = data.results[0];
-        
-        // 转换为标准格式
-        const weatherData = await this.mapToWeatherData(observation, query);
-        
-        return weatherData;
-      },
-      '获取冰岛天气失败',
-      AdapterMapper.createDefaultErrorResponse<WeatherData>(
-        'apis.is',
-        new Error('Unknown error'),
-        {
-          temperature: 0,
-          condition: 'unknown',
-        }
-      )
-    );
+      // 使用第一个结果（应该只有一个，因为我们只查询一个观测站）
+      const observation = data.results[0];
+      
+      // 转换为标准格式
+      const weatherData = await this.mapToWeatherData(observation, query);
+      
+      return weatherData;
+    } catch (error: any) {
+      // 对于证书过期等错误，抛出异常以便路由器降级到其他适配器
+      if (error.code === 'CERT_HAS_EXPIRED' || error.message?.includes('certificate')) {
+        this.logger.warn(`apis.is SSL 证书错误: ${error.message}，将降级到其他适配器`);
+        throw new Error(`apis.is SSL 证书错误: ${error.message}`);
+      }
+      
+      // 对于其他错误，也抛出异常以便降级
+      this.logger.error(`获取冰岛天气失败: ${error.message}`);
+      throw error;
+    }
   }
 
   getSupportedCountries(): string[] {
