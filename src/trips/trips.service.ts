@@ -726,11 +726,13 @@ export class TripsService {
     // P0 必须返回：id, nameCN, nameEN, category, address, rating, metadata.openingHours
     // P1 推荐返回：metadata.price, metadata.priceLevel, metadata.tags
     // P2 可选返回：metadata.phone, metadata.website
+    // 🆕 同时添加 crossDayInfo 跨天信息
     const transformedTripDays = tripData.TripDay?.map((day: any) => ({
       ...day,
       ItineraryItem: day.ItineraryItem?.map((item: any) => ({
         ...item,
         Place: item.Place ? toPlaceResponseDto(item.Place) : null,
+        crossDayInfo: this.calculateCrossDayInfo(item, day.date),
       })),
     }));
 
@@ -758,6 +760,60 @@ export class TripsService {
       activeAlertsCount,
       pendingTasksCount,
     };
+  }
+
+  /**
+   * 🆕 计算行程项的跨天信息
+   */
+  private calculateCrossDayInfo(item: any, tripDayDate: Date): {
+    isCrossDay: boolean;
+    crossDays: number;
+    isCheckoutItem: boolean;
+    displayMode: 'checkin' | 'checkout' | 'normal';
+    timeLabels: { start: string; end: string };
+  } {
+    const startDate = DateTime.fromJSDate(new Date(item.startTime), { zone: 'utc' });
+    const endDate = DateTime.fromJSDate(new Date(item.endTime), { zone: 'utc' });
+
+    // 计算跨天数
+    const startDay = startDate.startOf('day');
+    const endDay = endDate.startOf('day');
+    const crossDays = Math.floor(endDay.diff(startDay, 'days').days);
+
+    const isCrossDay = crossDays > 0;
+    const isCheckoutItem = false; // 在 findOne 中不处理退房项，由 findByTripDay 处理
+
+    // 时间标签
+    const timeLabels = this.getTimeLabelsForType(item.type, isCheckoutItem);
+
+    return {
+      isCrossDay,
+      crossDays,
+      isCheckoutItem,
+      displayMode: isCrossDay ? 'checkin' : 'normal',
+      timeLabels,
+    };
+  }
+
+  /**
+   * 🆕 根据类型获取时间标签
+   */
+  private getTimeLabelsForType(itemType: string, isCheckoutItem: boolean): { start: string; end: string } {
+    if (isCheckoutItem) {
+      return { start: '退房时间', end: '' };
+    }
+    
+    switch (itemType) {
+      case 'REST':
+        return { start: '入住时间', end: '退房时间' };
+      case 'MEAL_ANCHOR':
+      case 'MEAL_FLOATING':
+        return { start: '用餐时间', end: '结束时间' };
+      case 'TRANSIT':
+        return { start: '出发时间', end: '到达时间' };
+      default:
+        return { start: '开始时间', end: '结束时间' };
+    }
   }
 
   /**
