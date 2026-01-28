@@ -1,17 +1,19 @@
 // src/weather/weather.controller.ts
 
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, Optional } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
-import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
+import { WeatherQuery, WeatherData } from '../data-contracts/interfaces/weather.interface';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { HybridCacheService } from '../rag/services/hybrid-cache.service';
 
 @ApiTags('Weather')
 @Controller('weather')
 export class WeatherController {
   constructor(
     private readonly dataSourceRouter: DataSourceRouterService,
+    @Optional() private readonly cacheService?: HybridCacheService,
   ) {}
 
   @Public()
@@ -71,6 +73,23 @@ export class WeatherController {
     }
 
     try {
+      // 构建缓存键（基于坐标和参数）
+      const cacheKey = `weather:${latNum.toFixed(4)},${lngNum.toFixed(4)}:wind=${includeWindDetails === 'true'}:aurora=${includeAuroraInfo === 'true'}`;
+      
+      // 检查缓存（TTL: 30分钟，天气数据更新频率较高）
+      if (this.cacheService) {
+        const cached = await this.cacheService.get<WeatherData>(cacheKey);
+        if (cached) {
+          return successResponse({
+            ...cached,
+            metadata: {
+              ...cached.metadata,
+              cached: true,
+            },
+          });
+        }
+      }
+
       const query: WeatherQuery = {
         lat: latNum,
         lng: lngNum,
@@ -79,6 +98,15 @@ export class WeatherController {
       };
 
       const weatherData = await this.dataSourceRouter.getWeather(query);
+      
+      // 缓存结果（TTL: 30分钟 = 1800秒）
+      if (this.cacheService) {
+        await this.cacheService.set(cacheKey, weatherData, 1800).catch(err => {
+          // 缓存失败不影响响应
+          console.warn(`天气数据缓存失败: ${err.message}`);
+        });
+      }
+      
       return successResponse(weatherData);
     } catch (error: any) {
       return errorResponse(
