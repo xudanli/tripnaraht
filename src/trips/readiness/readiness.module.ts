@@ -37,6 +37,8 @@ import { SolutionService } from './services/solution.service';
 import { ReadinessAIService } from './services/readiness-ai.service';
 import { ReadinessCacheService } from './services/readiness-cache.service';
 import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
+import { CapabilityPackChecklistService } from './services/capability-pack-checklist.service';
+import { CoverageMapService } from './services/coverage-map.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';
@@ -84,6 +86,10 @@ import { RagModule } from '../../rag/rag.module';
     ReadinessAIService,
     ReadinessCacheService,
     ReadinessFeatureFlagsService,
+    // 能力包清单服务
+    CapabilityPackChecklistService,
+    // 覆盖地图服务
+    CoverageMapService,
   ],
   exports: [
     ReadinessService,

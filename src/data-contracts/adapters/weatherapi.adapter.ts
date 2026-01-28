@@ -71,6 +71,7 @@ export class WeatherApiAdapter extends BaseAdapter implements WeatherAdapter {
       // 转换为标准格式
       const weatherData: WeatherData = {
         temperature: data.current?.temp_c || 0,
+        feelsLikeTemperature: data.current?.feelslike_c,
         condition: this.mapWeatherCondition(data.current?.condition?.text),
         windSpeed: data.current?.wind_kph ? data.current.wind_kph / 3.6 : undefined, // 转换为米/秒
         windDirection: data.current?.wind_degree,
@@ -83,7 +84,6 @@ export class WeatherApiAdapter extends BaseAdapter implements WeatherAdapter {
           weatherapiLocation: data.location,
           uv: data.current?.uv,
           pressure: data.current?.pressure_mb,
-          feelsLike: data.current?.feelslike_c,
           airQuality: data.current?.air_quality,
           conditionCode: data.current?.condition?.code,
           conditionIcon: data.current?.condition?.icon,

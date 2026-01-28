@@ -122,49 +122,93 @@ export class TripMetricsService {
     const items = day.ItineraryItem || [];
     
     let totalWalk = 0; // 公里
-    let totalDrive = 0; // 分钟
+    let totalDrive = 0; // 分钟 (兼容旧字段)
     let totalBuffer = 0; // 分钟
     let totalFatigue = 0;
     let totalAscent = 0; // 米
     let totalCost = 0;
+    let totalDistance = 0; // 米
+    let totalTravelTime = 0; // 分钟
 
-    // 计算步行距离和车程
-    for (let i = 0; i < items.length - 1; i++) {
+    // 按交通方式分类的时间
+    const travelByMode = {
+      walking: 0,
+      driving: 0,
+      transit: 0,
+      train: 0,
+      flight: 0,
+      ferry: 0,
+      bicycle: 0,
+      taxi: 0,
+    };
+
+    // 使用新的交通信息字段计算
+    for (let i = 1; i < items.length; i++) {
       const current = items[i];
-      const next = items[i + 1];
+      const prev = items[i - 1];
 
-      // Place 的 location 字段可能是 lat/lng 或者 location 对象
-      const currentLat = (current.Place as any)?.lat || (current.Place as any)?.location?.lat;
-      const currentLng = (current.Place as any)?.lng || (current.Place as any)?.location?.lng;
-      const nextLat = (next.Place as any)?.lat || (next.Place as any)?.location?.lat;
-      const nextLng = (next.Place as any)?.lng || (next.Place as any)?.location?.lng;
+      const distance = current.travelFromPreviousDistance || 0; // 米
+      const duration = current.travelFromPreviousDuration || 0; // 分钟
+      const travelMode = (current.travelMode || 'DRIVING').toUpperCase();
 
-      if (!currentLat || !currentLng || !nextLat || !nextLng) {
-        continue;
-      }
+      totalDistance += distance;
+      totalTravelTime += duration;
 
-      const distance = this.haversineDistance(
-        currentLat,
-        currentLng,
-        nextLat,
-        nextLng
-      );
-
-      // 判断是步行还是车程（简化：距离 < 2km 为步行，否则为车程）
-      if (distance < 2) {
-        totalWalk += distance;
-      } else {
-        // 车程时间估算：假设平均速度 50 km/h
-        totalDrive += Math.round((distance / 50) * 60);
+      // 按交通方式分类计算时间
+      switch (travelMode) {
+        case 'WALKING':
+          travelByMode.walking += duration;
+          totalWalk += distance / 1000; // 步行距离（公里）
+          break;
+        case 'DRIVING':
+          travelByMode.driving += duration;
+          totalDrive += duration;
+          break;
+        case 'TRANSIT':
+          travelByMode.transit += duration;
+          totalDrive += duration;
+          break;
+        case 'TRAIN':
+          travelByMode.train += duration;
+          totalDrive += duration;
+          break;
+        case 'FLIGHT':
+          travelByMode.flight += duration;
+          totalDrive += duration;
+          break;
+        case 'FERRY':
+          travelByMode.ferry += duration;
+          totalDrive += duration;
+          break;
+        case 'BICYCLE':
+          travelByMode.bicycle += duration;
+          totalWalk += distance / 1000; // 骑行也算入步行距离
+          break;
+        case 'TAXI':
+          travelByMode.taxi += duration;
+          totalDrive += duration;
+          break;
+        default:
+          // 未知类型，根据距离判断
+          if (distance < 2000) {
+            travelByMode.walking += duration;
+            totalWalk += distance / 1000;
+          } else {
+            travelByMode.driving += duration;
+            totalDrive += duration;
+          }
       }
 
       // 计算缓冲时间
-      if (current.endTime && next.startTime) {
-        const currentEnd = DateTime.fromJSDate(current.endTime);
-        const nextStart = DateTime.fromJSDate(next.startTime);
-        const bufferMinutes = nextStart.diff(currentEnd, 'minutes').minutes;
-        if (bufferMinutes > 0) {
-          totalBuffer += bufferMinutes;
+      if (prev.endTime && current.startTime) {
+        const prevEnd = DateTime.fromJSDate(prev.endTime);
+        const currentStart = DateTime.fromJSDate(current.startTime);
+        const bufferMinutes = currentStart.diff(prevEnd, 'minutes').minutes;
+        
+        // 减去交通时间，得到实际缓冲时间
+        const actualBuffer = bufferMinutes - duration;
+        if (actualBuffer > 0) {
+          totalBuffer += actualBuffer;
         }
       }
     }
@@ -174,23 +218,29 @@ export class TripMetricsService {
       if (item.Place?.physicalMetadata) {
         const physical = item.Place.physicalMetadata as any;
         totalFatigue += physical.fatigueScore || 0;
-        totalAscent += physical.elevationGain || 0;
+        totalAscent += physical.elevationGain || physical.elevation || 0;
       }
 
-      // 计算花费
-      if (item.Place?.metadata) {
+      // 计算花费（使用行程项的费用字段）
+      totalCost += item.estimatedCost || item.actualCost || 0;
+      
+      // 如果行程项没有费用，尝试从 Place 获取
+      if (!item.estimatedCost && !item.actualCost && item.Place?.metadata) {
         const metadata = item.Place.metadata as any;
         totalCost += metadata.cost || metadata.price || 0;
       }
     }
 
     return {
-      walk: Math.round(totalWalk * 100) / 100, // 保留两位小数
+      walk: Math.round(totalWalk * 100) / 100,
       drive: totalDrive,
-      buffer: totalBuffer,
-      fatigue: Math.min(100, totalFatigue), // 限制在 0-100
+      buffer: Math.max(0, totalBuffer),
+      fatigue: Math.min(100, totalFatigue),
       ascent: totalAscent,
       cost: totalCost,
+      travelByMode,
+      totalTravelTime,
+      totalDistance,
     };
   }
 

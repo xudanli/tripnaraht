@@ -57,6 +57,7 @@ export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter
       // 转换为标准格式
       const weatherData: WeatherData = {
         temperature: data.main?.temp || 0,
+        feelsLikeTemperature: data.main?.feels_like,
         condition: this.mapWeatherCondition(data.weather?.[0]?.main),
         windSpeed: data.wind?.speed,
         windDirection: data.wind?.deg,

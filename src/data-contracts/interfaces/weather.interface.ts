@@ -9,6 +9,9 @@ export interface WeatherData {
   /** 温度（摄氏度） */
   temperature: number;
   
+  /** 体感温度（摄氏度，可选） */
+  feelsLikeTemperature?: number;
+  
   /** 天气状况（如 'sunny', 'rainy', 'snowy', 'cloudy'） */
   condition: string;
   

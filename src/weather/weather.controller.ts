@@ -37,6 +37,7 @@ export class WeatherController {
           type: 'object',
           properties: {
             temperature: { type: 'number', example: 5.6 },
+            feelsLikeTemperature: { type: 'number', example: 3.2, description: '体感温度（摄氏度，可选）' },
             condition: { type: 'string', example: 'cloudy' },
             windSpeed: { type: 'number', example: 8 },
             windDirection: { type: 'number', example: 22.5 },

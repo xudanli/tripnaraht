@@ -182,6 +182,17 @@ model ItineraryItem {
   isPaid        Boolean @default(false) // 是否已支付
   paidBy        String? // 支付人ID
 
+  // ========== 交通信息字段 ==========
+  travelFromPreviousDuration Int?    // 从上一地点的时间（分钟）
+  travelFromPreviousDistance Int?    // 从上一地点的距离（米）
+  travelMode                 String? // 交通方式: DRIVING, WALKING, TRANSIT, FLIGHT, TRAIN, FERRY, BICYCLE, TAXI
+
+  // ========== 预订信息字段 ==========
+  bookingStatus       String?   // 预订状态: BOOKED, NEED_BOOKING, NO_BOOKING
+  bookingConfirmation String?   // 预订确认号
+  bookingUrl          String?   // 预订链接
+  bookedAt            DateTime? // 预订时间
+
   Place       Place?       @relation(fields: [placeId], references: [id])
   Trail       Trail?       @relation(fields: [trailId], references: [id])
   TripDay     TripDay      @relation(fields: [tripDayId], references: [id])
@@ -189,6 +200,7 @@ model ItineraryItem {
 
   @@index([costCategory])
   @@index([isPaid])
+  @@index([bookingStatus])
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -534,9 +546,10 @@ model Trip {
   TripDay             TripDay[]
   TripLike            TripLike[]
   TripShare           TripShare[]
-  TripChecklistStatus TripChecklistStatus[]
-  TripFindingMark     TripFindingMark[]
-  TripPackingListItem TripPackingListItem[]
+  TripChecklistStatus      TripChecklistStatus[]
+  TripFindingMark          TripFindingMark[]
+  TripCapabilityPackItem   TripCapabilityPackItem[]
+  TripPackingListItem      TripPackingListItem[]
   PlanningPlan        PlanningPlan[]
 
   @@index([status])
@@ -1359,6 +1372,27 @@ model TripFindingMark {
   @@index([tripId])
   @@index([findingId])
   @@map("trip_finding_marks")
+}
+
+// 能力包清单项表 - 存储从能力包添加的准备清单项
+model TripCapabilityPackItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  tripId         String   @map("trip_id")
+  ruleId         String   @map("rule_id") @db.VarChar(255) // 规则ID，如 rule.seasonal.night.driving
+  sourcePackType String   @map("source_pack_type") @db.VarChar(50) // 来源能力包类型
+  level          String   @db.VarChar(20) // 'blocker' | 'must' | 'should' | 'optional'
+  message        String   @db.Text // 规则消息
+  category       String?  @db.VarChar(50) // 规则分类
+  tasks          Json?    @db.JsonB // 关联任务
+  checked        Boolean  @default(false) // 是否已完成
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  Trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, ruleId, sourcePackType])
+  @@index([tripId])
+  @@index([sourcePackType])
+  @@map("trip_capability_pack_items")
 }
 
 // 打包清单表

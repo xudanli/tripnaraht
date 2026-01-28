@@ -22,6 +22,8 @@ import {
   Put,
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { IsOptional, IsString, IsObject, ValidateNested, IsArray, IsNumber, IsBoolean, Allow } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   ApiTags,
   ApiOperation,
@@ -55,6 +57,8 @@ import { PackingTemplateService } from './services/packing-template.service';
 import { SolutionService } from './services/solution.service';
 import { ReadinessAIService } from './services/readiness-ai.service';
 import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
+import { CapabilityPackChecklistService, AddFromCapabilityPackRequest } from './services/capability-pack-checklist.service';
+import { CoverageMapService } from './services/coverage-map.service';
 import {
   UpdateChecklistStatusDto,
   ChecklistStatusResponseDto,
@@ -82,34 +86,196 @@ import { ConflictType } from '../dto/trip-conflicts.dto';
 import { PackStorageService } from './storage/pack-storage.service';
 import { GetReadinessPacksQueryDto, ReadinessPackListResponseDto, CreateReadinessPackDto, UpdateReadinessPackDto } from './dto/admin-pack.dto';
 
+class TravelerDto {
+  @IsOptional()
+  @IsString()
+  nationality?: string;
+
+  @IsOptional()
+  @IsString()
+  residencyCountry?: string;
+
+  @IsOptional()
+  @IsArray()
+  tags?: string[];
+
+  @IsOptional()
+  @IsString()
+  budgetLevel?: 'low' | 'medium' | 'high';
+
+  @IsOptional()
+  @IsString()
+  riskTolerance?: 'low' | 'medium' | 'high';
+}
+
+class TripDto {
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+class ItineraryDto {
+  @IsOptional()
+  @IsArray()
+  countries?: string[];
+
+  @IsOptional()
+  @IsArray()
+  activities?: string[];
+
+  @IsOptional()
+  @IsString()
+  season?: string;
+
+  @IsOptional()
+  @IsString()
+  region?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  hasSeaCrossing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hasAuroraActivity?: boolean;
+
+  @IsOptional()
+  @IsString()
+  vehicleType?: string;
+
+  @IsOptional()
+  @IsNumber()
+  routeLength?: number;
+}
+
+class MountainsDto {
+  @IsOptional()
+  @IsBoolean()
+  inMountain?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  mountainElevationAvg?: number;
+
+  @IsOptional()
+  @IsNumber()
+  terrainComplexity?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  hasMountainPass?: boolean;
+}
+
+class RoadsDto {
+  @IsOptional()
+  @IsBoolean()
+  nearRoad?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  roadDensityScore?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  hasMountainPass?: boolean;
+}
+
+class SafetyDto {
+  @IsOptional()
+  @IsBoolean()
+  hasHospital?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hasPolice?: boolean;
+}
+
+class SupplyDto {
+  @IsOptional()
+  @IsBoolean()
+  hasFuel?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hasSupermarket?: boolean;
+}
+
+class PoisDto {
+  @IsOptional()
+  @IsNumber()
+  supplyDensity?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  hasCheckpoint?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SafetyDto)
+  safety?: SafetyDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SupplyDto)
+  supply?: SupplyDto;
+}
+
+class GeoDto {
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  enhanceWithGeo?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MountainsDto)
+  mountains?: MountainsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RoadsDto)
+  roads?: RoadsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PoisDto)
+  pois?: PoisDto;
+}
+
 export class CheckReadinessDto {
+  @IsString()
   destinationId!: string;
-  traveler?: {
-    nationality?: string;
-    residencyCountry?: string;
-    tags?: string[];
-    budgetLevel?: 'low' | 'medium' | 'high';
-    riskTolerance?: 'low' | 'medium' | 'high';
-  };
-  trip?: {
-    startDate?: string;
-    endDate?: string;
-  };
-  itinerary?: {
-    countries?: string[];
-    activities?: string[];
-    season?: string;
-    region?: string;
-    hasSeaCrossing?: boolean;
-    hasAuroraActivity?: boolean;
-    vehicleType?: string;
-    routeLength?: number;
-  };
-  geo?: {
-    lat?: number;
-    lng?: number;
-    enhanceWithGeo?: boolean;
-  };
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TravelerDto)
+  traveler?: TravelerDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TripDto)
+  trip?: TripDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ItineraryDto)
+  itinerary?: ItineraryDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoDto)
+  geo?: GeoDto;
 }
 
 @ApiTags('readiness')
@@ -132,6 +298,8 @@ export class ReadinessController {
     private readonly packStorageService: PackStorageService,
     private readonly readinessAIService: ReadinessAIService,
     private readonly featureFlagsService: ReadinessFeatureFlagsService,
+    private readonly capabilityPackChecklistService: CapabilityPackChecklistService,
+    private readonly coverageMapService: CoverageMapService,
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
@@ -486,27 +654,113 @@ export class ReadinessController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '评估能力包',
-    description: '评估哪些能力包应该被触发',
+    description: '评估哪些能力包应该被触发。支持自动获取目的地地理特征（P2增强）',
   })
   @ApiBody({ type: CheckReadinessDto })
+  @ApiQuery({ name: 'autoEnhanceGeo', description: '是否自动获取目的地地理特征', required: false, type: Boolean })
   @ApiResponse({
     status: 200,
     description: '成功返回能力包评估结果',
     type: ApiSuccessResponseDto,
   })
-  async evaluateCapabilityPacks(@Body() dto: CheckReadinessDto): Promise<any> {
+  async evaluateCapabilityPacks(
+    @Body() dto: CheckReadinessDto,
+    @Query('autoEnhanceGeo') autoEnhanceGeo?: string,
+  ): Promise<any> {
     try {
+      let geoData = dto.geo ? {
+        latitude: dto.geo.lat,
+        longitude: dto.geo.lng,
+        mountains: dto.geo.mountains,
+        roads: dto.geo.roads,
+        pois: dto.geo.pois,
+      } : undefined;
+
+      // P2: 自动获取目的地地理特征（如果请求且 geo 未提供）
+      let geoEnhanced = false;
+      if (autoEnhanceGeo === 'true' && dto.destinationId && (!dto.geo || dto.geo.enhanceWithGeo)) {
+        try {
+          // 尝试从 GeoFactsService 获取地理特征
+          const geoFacts = await this.readinessService.getGeoFactsForDestination(dto.destinationId);
+          if (geoFacts) {
+            geoData = {
+              ...geoData,
+              latitude: geoFacts.latitude || geoData?.latitude,
+              longitude: geoFacts.longitude || geoData?.longitude,
+              mountains: geoFacts.mountains || geoData?.mountains,
+              roads: geoFacts.roads || geoData?.roads,
+              pois: geoFacts.pois || geoData?.pois,
+            };
+            geoEnhanced = true;
+          }
+        } catch (geoError) {
+          this.logger.warn(`Failed to auto-enhance geo for ${dto.destinationId}: ${(geoError as Error).message}`);
+        }
+      }
+
+      // 自动计算季节（如果未提供）
+      let season = dto.itinerary?.season;
+      if (!season && dto.trip?.startDate) {
+        const startDate = new Date(dto.trip.startDate);
+        const month = startDate.getMonth() + 1; // 1-12
+        if (month >= 12 || month <= 2) {
+          season = 'winter';
+        } else if (month >= 3 && month <= 5) {
+          season = 'spring';
+        } else if (month >= 6 && month <= 8) {
+          season = 'summer';
+        } else {
+          season = 'autumn';
+        }
+        this.logger.debug(`Auto-calculated season from trip date: ${season}`);
+      }
+
+      // 如果是冰岛且 geoData 不完整，添加默认的冰岛特征
+      if (dto.destinationId === 'IS' || dto.itinerary?.countries?.includes('IS')) {
+        // 确保 geoData 已初始化
+        const icelandGeo = geoData || ({} as any);
+        
+        // 冰岛默认有山区和季节性道路
+        if (!icelandGeo.mountains) {
+          icelandGeo.mountains = {
+            inMountain: true,
+            hasMountainPass: true,
+          };
+        }
+        if (!icelandGeo.roads) {
+          icelandGeo.roads = {
+            hasMountainPass: true,
+            roadDensityScore: 0.15, // 冰岛道路密度较低（触发 emergency pack 需要 < 0.2）
+          };
+        }
+        if (!icelandGeo.pois) {
+          icelandGeo.pois = {
+            supplyDensity: 0.15, // 冰岛补给点密度较低
+            hasCheckpoint: false,
+          };
+        }
+        // 冰岛安全设施（偏远地区医院稀少）
+        if (!icelandGeo.pois.safety) {
+          icelandGeo.pois.safety = {
+            hasHospital: false,
+            hasPolice: false,
+          };
+        }
+        
+        geoData = icelandGeo;
+        this.logger.debug(`Enhanced Iceland geo data: mountains=${JSON.stringify(icelandGeo.mountains)}, roads=${JSON.stringify(icelandGeo.roads)}, pois=${JSON.stringify(icelandGeo.pois)}`);
+      }
+
       const context: TripContext = {
         traveler: dto.traveler || {},
         trip: dto.trip || {},
         itinerary: {
           countries: dto.itinerary?.countries || [],
           activities: dto.itinerary?.activities || [],
-          season: dto.itinerary?.season,
+          season: season,
+          routeLength: dto.itinerary?.routeLength,
         },
-        geo: dto.geo?.lat && dto.geo?.lng ? {
-          latitude: dto.geo.lat,
-        } : undefined,
+        geo: geoData,
       };
 
       const allPacks = [
@@ -517,9 +771,21 @@ export class ReadinessController {
         emergencyPack,
       ];
 
-      const results = allPacks.map(pack =>
-        this.capabilityPackEvaluator.evaluatePack(pack, context)
-      );
+      // P2: 增强评估结果，包含触发原因
+      const results = allPacks.map(pack => {
+        const result = this.capabilityPackEvaluator.evaluatePack(pack, context);
+        
+        // 生成触发原因
+        let triggerReason: string | undefined;
+        if (result.triggered) {
+          triggerReason = this.generateTriggerReason(pack, context);
+        }
+        
+        return {
+          ...result,
+          triggerReason,
+        };
+      });
 
       const triggeredPacks = results.filter(r => r.triggered);
 
@@ -527,11 +793,218 @@ export class ReadinessController {
         total: allPacks.length,
         triggered: triggeredPacks.length,
         results: triggeredPacks,
+        // P2: 返回是否使用了自动地理增强
+        geoEnhanced,
+        // P2: 返回实际使用的上下文（用于调试）
+        context: {
+          hasGeo: !!geoData,
+          hasTraveler: Object.keys(dto.traveler || {}).length > 0,
+          itinerary: {
+            countries: context.itinerary.countries,
+            activities: context.itinerary.activities,
+            season: context.itinerary.season,
+            routeLength: context.itinerary.routeLength,
+          },
+        },
       });
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to evaluate capability packs: ${err.message}`, err.stack);
       return errorResponse('EVALUATE_CAPABILITY_PACKS_FAILED', err.message);
+    }
+  }
+
+  /**
+   * P2: 生成触发原因
+   */
+  private generateTriggerReason(pack: any, context: TripContext): string {
+    const reasons: string[] = [];
+    
+    switch (pack.type) {
+      case 'high_altitude':
+        if (context.geo?.mountains?.mountainElevationAvg) {
+          reasons.push(`平均海拔 ${context.geo.mountains.mountainElevationAvg}m`);
+        }
+        break;
+      case 'sparse_supply':
+        if (context.geo?.roads?.roadDensityScore !== undefined) {
+          reasons.push(`道路密度 ${(context.geo.roads.roadDensityScore * 100).toFixed(0)}%`);
+        }
+        if (context.geo?.pois?.supplyDensity !== undefined) {
+          reasons.push(`补给点密度 ${(context.geo.pois.supplyDensity * 100).toFixed(0)}%`);
+        }
+        if (context.itinerary.routeLength) {
+          reasons.push(`路线长度 ${context.itinerary.routeLength}km`);
+        }
+        break;
+      case 'seasonal_road':
+        if (context.geo?.mountains?.inMountain) {
+          reasons.push('山区路线');
+        }
+        if (context.itinerary.season === 'winter') {
+          reasons.push('冬季出行');
+        }
+        break;
+      case 'permit_checkpoint':
+        if (context.geo?.pois?.hasCheckpoint) {
+          reasons.push('存在检查站');
+        }
+        break;
+      case 'emergency':
+        if (context.geo?.roads?.roadDensityScore !== undefined && context.geo.roads.roadDensityScore < 0.2) {
+          reasons.push('偏远地区');
+        }
+        if (context.geo?.pois?.safety?.hasHospital === false) {
+          reasons.push('附近无医院');
+        }
+        break;
+    }
+    
+    return reasons.length > 0 ? reasons.join('、') : '满足触发条件';
+  }
+
+  // ==================== P0: 能力包规则同步到准备清单 ====================
+
+  @Public()
+  @Post('trip/:tripId/checklist/add-from-capability-pack')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '从能力包添加规则到准备清单',
+    description: '将能力包评估结果中的规则添加到行程的准备清单中',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        packType: { type: 'string', description: '能力包类型', example: 'seasonal_road' },
+        rules: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: 'rule.seasonal.night.driving' },
+              level: { type: 'string', enum: ['blocker', 'must', 'should', 'optional'] },
+              message: { type: 'string' },
+              category: { type: 'string' },
+              tasks: { type: 'array' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功添加规则到准备清单',
+    type: ApiSuccessResponseDto,
+  })
+  async addFromCapabilityPack(
+    @Param('tripId') tripId: string,
+    @Body() dto: AddFromCapabilityPackRequest,
+  ): Promise<any> {
+    try {
+      const result = await this.capabilityPackChecklistService.addFromCapabilityPack(tripId, dto);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to add from capability pack: ${err.message}`, err.stack);
+      return errorResponse('ADD_FROM_CAPABILITY_PACK_FAILED', err.message);
+    }
+  }
+
+  @Public()
+  @Get('trip/:tripId/checklist/capability-pack-items')
+  @ApiOperation({
+    summary: '获取能力包清单项',
+    description: '获取行程中从能力包添加的准备清单项',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ name: 'packType', description: '能力包类型（可选，用于筛选）', required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回能力包清单项',
+    type: ApiSuccessResponseDto,
+  })
+  async getCapabilityPackItems(
+    @Param('tripId') tripId: string,
+    @Query('packType') packType?: string,
+  ): Promise<any> {
+    try {
+      const items = await this.capabilityPackChecklistService.getCapabilityPackItems(tripId, packType);
+      const grouped = await this.capabilityPackChecklistService.getItemsGroupedByLevel(tripId);
+      return successResponse({
+        items,
+        grouped,
+        total: items.length,
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get capability pack items: ${err.message}`, err.stack);
+      return errorResponse('GET_CAPABILITY_PACK_ITEMS_FAILED', err.message);
+    }
+  }
+
+  @Public()
+  @Put('trip/:tripId/checklist/capability-pack-items/:itemId/status')
+  @ApiOperation({
+    summary: '更新能力包清单项状态',
+    description: '更新能力包清单项的勾选状态',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiParam({ name: 'itemId', description: '清单项 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        checked: { type: 'boolean', description: '是否已完成' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新状态',
+    type: ApiSuccessResponseDto,
+  })
+  async updateCapabilityPackItemStatus(
+    @Param('tripId') tripId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: { checked: boolean },
+  ): Promise<any> {
+    try {
+      const item = await this.capabilityPackChecklistService.updateItemStatus(tripId, itemId, dto.checked);
+      return successResponse(item);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to update capability pack item status: ${err.message}`, err.stack);
+      return errorResponse('UPDATE_CAPABILITY_PACK_ITEM_STATUS_FAILED', err.message);
+    }
+  }
+
+  @Public()
+  @Delete('trip/:tripId/checklist/capability-pack-items/:itemId')
+  @ApiOperation({
+    summary: '删除能力包清单项',
+    description: '从准备清单中删除指定的能力包清单项',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiParam({ name: 'itemId', description: '清单项 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功删除',
+    type: ApiSuccessResponseDto,
+  })
+  async removeCapabilityPackItem(
+    @Param('tripId') tripId: string,
+    @Param('itemId') itemId: string,
+  ): Promise<any> {
+    try {
+      const result = await this.capabilityPackChecklistService.removeItem(tripId, itemId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to remove capability pack item: ${err.message}`, err.stack);
+      return errorResponse('REMOVE_CAPABILITY_PACK_ITEM_FAILED', err.message);
     }
   }
 
@@ -733,6 +1206,7 @@ export class ReadinessController {
   @ApiQuery({ name: 'tripId', description: '行程 ID', required: true })
   @ApiQuery({ name: 'lang', description: '语言', required: false, enum: ['en', 'zh'] })
   @ApiQuery({ name: 'userId', description: '用户 ID（可选，用于个性化）', required: false })
+  @ApiQuery({ name: 'includeCapabilityPackHazards', description: '是否包含能力包风险', required: false, type: Boolean })
   @ApiResponse({
     status: 200,
     description: '成功返回风险预警',
@@ -742,6 +1216,7 @@ export class ReadinessController {
     @Query('tripId') tripId: string,
     @Query('lang') lang?: 'en' | 'zh',
     @Query('userId') userId?: string,
+    @Query('includeCapabilityPackHazards') includeCapabilityPackHazards?: string,
     @CurrentUser() currentUser?: CurrentUserPayload,
   ): Promise<any> {
     try {
@@ -900,9 +1375,54 @@ export class ReadinessController {
         );
       }
 
+      // P1: 包含能力包风险（如果请求）
+      if (includeCapabilityPackHazards === 'true') {
+        try {
+          const capabilityPackItems = await this.capabilityPackChecklistService.getCapabilityPackItems(tripId);
+          
+          // 获取唯一的能力包类型
+          const packTypes = [...new Set(capabilityPackItems.map(item => item.sourcePackType))];
+          
+          // 从能力包定义中获取 hazards
+          const allPacks = [
+            highAltitudePack,
+            sparseSupplyPack,
+            seasonalRoadPack,
+            permitCheckpointPack,
+            emergencyPack,
+          ];
+
+          for (const packType of packTypes) {
+            const pack = allPacks.find(p => p.type === packType);
+            if (pack?.hazards) {
+              const packHazards = pack.hazards.map((h, idx) => ({
+                id: `capability-pack-${packType}-hazard-${idx}`,
+                type: h.type as any,
+                severity: h.severity as 'high' | 'medium' | 'low',
+                originalSeverity: h.severity as 'high' | 'medium' | 'low',
+                message: typeof h.summary === 'string' ? h.summary : (h.summary as any)?.en || h.summary,
+                mitigation: h.mitigations || [],
+                emergencyContacts: [] as any[],
+                // P1 新增：标记来源
+                sourceType: 'capability_pack' as const,
+                sourcePackType: packType,
+              }));
+              risks.push(...(packHazards as any[]));
+            }
+          }
+        } catch (capabilityError) {
+          this.logger.warn(
+            `Failed to get capability pack hazards for trip ${tripId}: ${(capabilityError as Error).message}`,
+          );
+        }
+      }
+
       return successResponse({
         tripId,
-        risks,
+        risks: risks.map(r => ({
+          ...r,
+          sourceType: (r as any).sourceType || 'readiness',
+        })),
         summary: {
           totalRisks: risks.length,
           highSeverity: risks.filter((r) => r.severity === 'high').length,
@@ -914,6 +1434,216 @@ export class ReadinessController {
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to get risk warnings: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  // ==================== 覆盖地图接口 ====================
+
+  @Public()
+  @Get('trip/:tripId/coverage-map')
+  @ApiOperation({
+    summary: '获取行程覆盖地图数据',
+    description: '获取行程的地图覆盖数据，用于前端渲染覆盖地图。包含 POI 覆盖状态、路段信息、覆盖缺口等。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID (UUID)', example: 'ed69d9c5-660f-4549-bf03-85654e972403' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回覆盖地图数据',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            tripId: { type: 'string' },
+            bounds: {
+              type: 'object',
+              properties: {
+                northeast: { type: 'object', properties: { lat: { type: 'number' }, lng: { type: 'number' } } },
+                southwest: { type: 'object', properties: { lat: { type: 'number' }, lng: { type: 'number' } } },
+              },
+            },
+            center: { type: 'object', properties: { lat: { type: 'number' }, lng: { type: 'number' } } },
+            zoom: { type: 'number' },
+            pois: { type: 'array', items: { type: 'object' } },
+            segments: { type: 'array', items: { type: 'object' } },
+            gaps: { type: 'array', items: { type: 'object' } },
+            summary: {
+              type: 'object',
+              properties: {
+                totalPois: { type: 'number' },
+                coveredPois: { type: 'number' },
+                partialPois: { type: 'number' },
+                uncoveredPois: { type: 'number' },
+                totalSegments: { type: 'number' },
+                coveredSegments: { type: 'number' },
+                warningSegments: { type: 'number' },
+                blockedSegments: { type: 'number' },
+                totalGaps: { type: 'number' },
+                coverageRate: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getCoverageMap(@Param('tripId') tripId: string): Promise<any> {
+    try {
+      const result = await this.coverageMapService.getCoverageMap(tripId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        this.logger.error(`Trip not found for coverage map: ${tripId}`);
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to get coverage map: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('trip/:tripId/score')
+  @ApiOperation({
+    summary: '获取行程准备度分数',
+    description: '获取行程的准备度分数分解，包含证据覆盖、时间可行性、交通确定性、安全风险、缓冲时间等维度',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID (UUID)', example: 'ed69d9c5-660f-4549-bf03-85654e972403' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回准备度分数',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            tripId: { type: 'string' },
+            score: {
+              type: 'object',
+              properties: {
+                overall: { type: 'number', example: 78 },
+                evidenceCoverage: { type: 'number', example: 45 },
+                scheduleFeasibility: { type: 'number', example: 85 },
+                transportCertainty: { type: 'number', example: 70 },
+                safetyRisk: { type: 'number', example: 90 },
+                buffers: { type: 'number', example: 65 },
+              },
+            },
+            findings: { type: 'array', items: { type: 'object' } },
+            risks: { type: 'array', items: { type: 'object' } },
+            summary: {
+              type: 'object',
+              properties: {
+                totalFindings: { type: 'number' },
+                blockers: { type: 'number' },
+                warnings: { type: 'number' },
+                suggestions: { type: 'number' },
+                highRisks: { type: 'number' },
+                mediumRisks: { type: 'number' },
+                lowRisks: { type: 'number' },
+              },
+            },
+            calculatedAt: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getReadinessScore(@Param('tripId') tripId: string): Promise<any> {
+    try {
+      const result = await this.coverageMapService.getReadinessScore(tripId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        this.logger.error(`Trip not found for readiness score: ${tripId}`);
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to get readiness score: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('repair-options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '获取阻塞项修复选项',
+    description: '根据准备度检查的阻塞项ID，获取可用的修复选项列表',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId', 'blockerId'],
+      properties: {
+        tripId: { type: 'string', description: '行程 ID', example: 'ed69d9c5-660f-4549-bf03-85654e972403' },
+        blockerId: { type: 'string', description: '阻塞项 ID', example: 'finding-1' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回修复选项',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            blockerId: { type: 'string', example: 'finding-1' },
+            blockerMessage: { type: 'string', example: '斯卡夫塔山国家公园缺少证据覆盖' },
+            options: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: 'option-1' },
+                  title: { type: 'string', example: '查询天气预报' },
+                  description: { type: 'string', example: '获取该地点的天气信息' },
+                  cost: { type: 'number', example: 0 },
+                  impact: { type: 'string', enum: ['high', 'medium', 'low'], example: 'medium' },
+                  timeEstimate: { type: 'string', example: '2分钟' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getRepairOptions(@Body() body: { tripId: string; blockerId: string }): Promise<any> {
+    try {
+      const { tripId, blockerId } = body;
+      const result = await this.coverageMapService.getRepairOptions(tripId, blockerId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        this.logger.error(`Trip not found for repair options: ${body.tripId}`);
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to get repair options: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }

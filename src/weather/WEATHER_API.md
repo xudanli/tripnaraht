@@ -64,6 +64,7 @@
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
 | `temperature` | number | 温度（摄氏度） |
+| `feelsLikeTemperature` | number | 体感温度（摄氏度，可选）- 考虑风速、湿度等因素后的实际感受温度 |
 | `condition` | string | 天气状况（sunny, cloudy, rainy, snowy, stormy, foggy, hazy, windy） |
 | `windSpeed` | number | 风速（米/秒） |
 | `windDirection` | number | 风向（度，0-360，0=北，90=东，180=南，270=西） |

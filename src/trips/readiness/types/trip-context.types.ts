@@ -28,6 +28,7 @@ export interface ItineraryInfo {
   requires4x4?: boolean; // 是否需要4x4车辆
   isTightSchedule?: boolean;
   hasTightConnections?: boolean;
+  routeLength?: number; // 路线总长度（km）
 }
 
 export interface TripContext {
@@ -51,11 +52,13 @@ export interface TripContext {
       inMountain?: boolean;
       mountainElevationAvg?: number;
       terrainComplexity?: number;
+      hasMountainPass?: boolean; // 是否有山口/垭口
     };
     /** 道路特征 */
     roads?: {
       nearRoad?: boolean;
       roadDensityScore?: number;
+      hasMountainPass?: boolean; // 是否有山口道路
     };
     /** 海岸线特征 */
     coastlines?: {
@@ -69,9 +72,21 @@ export interface TripContext {
       trailAccessPoints?: Array<{ poi_id: string; category: string }>;
       hasEVCharger?: boolean;
       hasFerryTerminal?: boolean;
+      supplyDensity?: number; // 补给点密度
+      hasCheckpoint?: boolean; // 是否有检查站
+      safety?: {
+        hasHospital?: boolean;
+        hasPolice?: boolean;
+      };
+      supply?: {
+        hasFuel?: boolean;
+        hasSupermarket?: boolean;
+      };
     };
     /** 纬度（用于极地判断） */
     latitude?: number;
+    /** 经度 */
+    longitude?: number;
     /** 西藏特有特征 */
     altitude_m?: number; // 平均海拔（米）
     fuelDensity?: number; // 燃料密度（每 100km 的加油站数量）

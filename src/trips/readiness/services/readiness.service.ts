@@ -437,5 +437,48 @@ export class ReadinessService {
   ): Promise<ReturnType<ReadinessToConstraintsCompiler['extractTasks']>> {
     return this.constraintsCompiler.extractTasks(result);
   }
+
+  /**
+   * P2: 获取目的地的地理特征
+   * 用于自动增强能力包评估参数
+   */
+  async getGeoFactsForDestination(destinationId: string): Promise<TripContext['geo'] | null> {
+    // 目的地默认坐标映射（可扩展）
+    const destinationCoords: Record<string, { lat: number; lng: number }> = {
+      'IS': { lat: 64.9631, lng: -19.0208 }, // 冰岛中心点
+      'CN-XZ': { lat: 29.6500, lng: 91.1000 }, // 西藏拉萨
+      'NO': { lat: 60.4720, lng: 8.4689 }, // 挪威
+      'NZ': { lat: -40.9006, lng: 174.8860 }, // 新西兰
+    };
+
+    const coords = destinationCoords[destinationId];
+    if (!coords || !this.geoFactsService) {
+      return null;
+    }
+
+    try {
+      const geoFeatures = await this.geoFactsService.getGeoFeaturesForPoint(
+        coords.lat,
+        coords.lng,
+        {
+          densityBufferKm: 50,
+          poiRadiusKm: 100,
+        }
+      );
+
+      return {
+        latitude: coords.lat,
+        longitude: coords.lng,
+        rivers: geoFeatures.rivers,
+        mountains: geoFeatures.mountains,
+        roads: geoFeatures.roads,
+        coastlines: geoFeatures.coastlines,
+        pois: geoFeatures.pois as any,
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to get geo facts for ${destinationId}: ${(error as Error).message}`);
+      return null;
+    }
+  }
 }
 
