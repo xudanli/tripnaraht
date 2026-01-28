@@ -5,7 +5,7 @@
  * 规划工作台 API 接口
  */
 
-import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest, PlanningWorkbenchResponse } from './services/planning-workbench-agent.service';
 import { PlanContext } from '../skills/plan/shared/plan-state.types';
@@ -15,6 +15,8 @@ import { Public } from '../auth/decorators/public.decorator';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
+import { ReadinessService } from '../trips/readiness/services/readiness.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('planning-workbench')
 @Controller('planning-workbench')
@@ -26,6 +28,8 @@ export class PlanningWorkbenchController {
     private readonly budgetEvaluationService: BudgetEvaluationService,
     private readonly tripBudgetService: TripBudgetService,
     private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService,
+    @Optional() private readonly readinessService?: ReadinessService,
+    private readonly prisma?: PrismaService,
   ) {}
 
   /**
@@ -774,6 +778,172 @@ export class PlanningWorkbenchController {
       return successResponse(plan);
     } catch (error: any) {
       this.logger.error(`获取方案详情失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 准备度检查接口 ====================
+
+  @Public()
+  @Get('trips/:tripId/readiness')
+  @ApiOperation({
+    summary: '获取行程准备度检查结果',
+    description: '从规划工作台获取指定行程的准备度检查结果，包括 must/should/optional 清单和风险预警',
+  })
+  @ApiParam({
+    name: 'tripId',
+    description: '行程 ID',
+    type: 'string',
+  })
+  @ApiQuery({
+    name: 'lang',
+    description: '语言',
+    required: false,
+    enum: ['en', 'zh'],
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回准备度检查结果',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            findings: { type: 'array' },
+            summary: { type: 'object' },
+            readinessUrl: { type: 'string', description: '准备度详细页面 URL' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getTripReadiness(
+    @Param('tripId') tripId: string,
+    @Query('lang') lang?: 'en' | 'zh',
+  ) {
+    try {
+      if (!this.readinessService) {
+        return errorResponse(
+          ErrorCode.INTERNAL_ERROR,
+          '准备度服务未启用，请检查 ReadinessModule 是否正确导入',
+        );
+      }
+
+      if (!this.prisma) {
+        return errorResponse(
+          ErrorCode.INTERNAL_ERROR,
+          'PrismaService 未注入',
+        );
+      }
+
+      // 获取行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: {
+          id: true,
+          destination: true,
+          startDate: true,
+          endDate: true,
+        },
+      });
+
+      if (!trip) {
+        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
+      }
+
+      // 构建 TripContext
+      const context = this.readinessService.extractTripContext({
+        context: {
+          destination: trip.destination || '',
+          startDate: trip.startDate.toISOString().split('T')[0],
+          durationDays: Math.ceil(
+            (trip.endDate.getTime() - trip.startDate.getTime()) / (1000 * 60 * 60 * 24),
+          ) + 1,
+          preferences: {
+            intents: {},
+            pace: 'moderate',
+            riskTolerance: 'medium',
+          },
+        },
+        candidatesByDate: {},
+        signals: {
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      });
+
+      // 调用准备度检查
+      const result = await this.readinessService.checkFromDestination(
+        trip.destination,
+        context,
+        {
+          lang: lang || 'en',
+        },
+      );
+
+      return successResponse({
+        ...result,
+        readinessUrl: `/api/readiness/trip/${tripId}`,
+        quickLinks: {
+          personalizedChecklist: `/api/readiness/personalized-checklist?tripId=${tripId}`,
+          riskWarnings: `/api/readiness/risk-warnings?tripId=${tripId}`,
+          readinessScore: `/api/readiness/trip/${tripId}/score`,
+          coverageMap: `/api/readiness/trip/${tripId}/coverage-map`,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`获取行程准备度失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('trips/:tripId/readiness/score')
+  @ApiOperation({
+    summary: '获取行程准备度分数',
+    description: '从规划工作台获取指定行程的准备度分数，包括多维度评分。实际调用 /api/readiness/trip/:tripId/score',
+  })
+  @ApiParam({
+    name: 'tripId',
+    description: '行程 ID',
+    type: 'string',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回准备度分数链接',
+  })
+  async getTripReadinessScore(@Param('tripId') tripId: string) {
+    try {
+      if (!this.prisma) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'PrismaService 未注入');
+      }
+
+      // 检查行程是否存在
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { id: true },
+      });
+
+      if (!trip) {
+        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
+      }
+
+      // 返回准备度分数 API 链接
+      return successResponse({
+        message: '请使用准备度 API 获取详细分数',
+        readinessScoreUrl: `/api/readiness/trip/${tripId}/score`,
+        readinessChecklistUrl: `/api/readiness/personalized-checklist?tripId=${tripId}`,
+        readinessRiskWarningsUrl: `/api/readiness/risk-warnings?tripId=${tripId}`,
+        readinessCoverageMapUrl: `/api/readiness/trip/${tripId}/coverage-map`,
+      });
+    } catch (error: any) {
+      this.logger.error(`获取行程准备度分数失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
