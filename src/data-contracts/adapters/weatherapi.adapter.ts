@@ -36,6 +36,17 @@ export class WeatherApiAdapter extends BaseAdapter implements WeatherAdapter {
         key: apiKey || '',
       },
     });
+    
+    // 禁用代理（axios 会自动使用环境变量中的 HTTP_PROXY/HTTPS_PROXY，但 WeatherAPI.com 不需要代理）
+    // 如果代理服务器未运行，会导致 ECONNREFUSED 错误
+    this.httpClient.defaults.proxy = false;
+    // 同时禁用环境变量中的代理设置（仅针对此实例）
+    if (this.httpClient.defaults.httpAgent) {
+      delete this.httpClient.defaults.httpAgent;
+    }
+    if (this.httpClient.defaults.httpsAgent) {
+      delete this.httpClient.defaults.httpsAgent;
+    }
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
