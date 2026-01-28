@@ -999,25 +999,25 @@ export class PlacesService {
     // 构建搜索条件
     const searchCondition = Prisma.sql`
       (
-        "nameCN" ILIKE ${`%${query}%`} OR
-        "nameEN" ILIKE ${`%${query}%`} OR
-        address ILIKE ${`%${query}%`} OR
-        metadata::text ILIKE ${`%${query}%`}
+        p."nameCN" ILIKE ${`%${query}%`} OR
+        p."nameEN" ILIKE ${`%${query}%`} OR
+        p.address ILIKE ${`%${query}%`} OR
+        p.metadata::text ILIKE ${`%${query}%`}
       )
     `;
 
     const categoryFilter = category
-      ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+      ? Prisma.sql`AND p.category = ${category}::"PlaceCategory"`
       : Prisma.sql``;
 
-    // 国家代码过滤（根据 metadata->>'countryCode'）
+    // 🔧 国家代码过滤：优先通过 City.countryCode，其次通过 metadata->>'countryCode'
     const countryFilter = countryCode
-      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
+      ? Prisma.sql`AND (c."countryCode" = ${countryCode} OR p.metadata->>'countryCode' = ${countryCode})`
       : Prisma.sql``;
 
     const locationFilter = lat && lng && radius
       ? Prisma.sql`AND ST_DWithin(
-          location,
+          p.location,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
           ${radius}
         )`
@@ -1025,19 +1025,20 @@ export class PlacesService {
 
     const orderBy = lat && lng
       ? Prisma.sql`ORDER BY ST_Distance(
-          location,
+          p.location,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         ) ASC`
-      : Prisma.sql`ORDER BY rating DESC NULLS LAST, "nameCN" ASC`;
+      : Prisma.sql`ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC`;
 
     const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
       SELECT 
-        id, "nameCN", "nameEN", metadata, address, rating, category,
+        p.id, p."nameCN", p."nameEN", p.metadata, p.address, p.rating, p.category,
         ${lat && lng ? Prisma.sql`ST_Distance(
-          location,
+          p.location,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         ) as distance_meters` : Prisma.sql`NULL as distance_meters`}
-      FROM "Place"
+      FROM "Place" p
+      LEFT JOIN "City" c ON p."cityId" = c.id
       WHERE ${searchCondition}
         ${categoryFilter}
         ${countryFilter}
@@ -1068,22 +1069,22 @@ export class PlacesService {
   ) {
     const searchCondition = Prisma.sql`
       (
-        "nameCN" ILIKE ${`%${query}%`} OR
-        "nameEN" ILIKE ${`%${query}%`}
+        p."nameCN" ILIKE ${`%${query}%`} OR
+        p."nameEN" ILIKE ${`%${query}%`}
       )
     `;
 
-    // 国家代码过滤
+    // 🔧 国家代码过滤：优先通过 City.countryCode，其次通过 metadata->>'countryCode'
     const countryFilter = countryCode
-      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
+      ? Prisma.sql`AND (c."countryCode" = ${countryCode} OR p.metadata->>'countryCode' = ${countryCode})`
       : Prisma.sql``;
 
     const orderBy = lat && lng
       ? Prisma.sql`ORDER BY ST_Distance(
-          location,
+          p.location,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         ) ASC`
-      : Prisma.sql`ORDER BY rating DESC NULLS LAST, "nameCN" ASC`;
+      : Prisma.sql`ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC`;
 
     const results = await this.prisma.$queryRaw<Array<{
       id: number;
@@ -1093,8 +1094,9 @@ export class PlacesService {
       address: string | null;
     }>>`
       SELECT 
-        id, "nameCN", "nameEN", category, address
-      FROM "Place"
+        p.id, p."nameCN", p."nameEN", p.category, p.address
+      FROM "Place" p
+      LEFT JOIN "City" c ON p."cityId" = c.id
       WHERE ${searchCondition}
         ${countryFilter}
       ${orderBy}
