@@ -33,6 +33,15 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
       baseURL: 'http://apis.is',
       timeout: 15000,
     });
+    
+    // 禁用代理（apis.is 不需要代理，且代理服务器可能未运行）
+    this.httpClient.defaults.proxy = false;
+    if (this.httpClient.defaults.httpAgent) {
+      delete this.httpClient.defaults.httpAgent;
+    }
+    if (this.httpClient.defaults.httpsAgent) {
+      delete this.httpClient.defaults.httpsAgent;
+    }
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {

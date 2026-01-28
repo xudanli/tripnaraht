@@ -31,6 +31,15 @@ export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter
       paramName: 'appid',
       additionalParams: { units: 'metric' },
     });
+    
+    // 禁用代理（OpenWeather 不需要代理，且代理服务器可能未运行）
+    this.httpClient.defaults.proxy = false;
+    if (this.httpClient.defaults.httpAgent) {
+      delete this.httpClient.defaults.httpAgent;
+    }
+    if (this.httpClient.defaults.httpsAgent) {
+      delete this.httpClient.defaults.httpsAgent;
+    }
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
