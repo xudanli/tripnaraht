@@ -399,8 +399,17 @@ export class ItineraryItemsService {
    * 
    * 如果更新了开始时间，会根据前一个行程项的位置和当前行程项的位置，
    * 计算实际距离和旅行时间，并自动调整后续行程项的时间。
+   * 
+   * @param id 行程项 ID
+   * @param updateDto 更新数据
+   * @param options.forceUpdate 用户已确认级联影响，跳过部分校验
    */
-  async update(id: string, updateDto: Partial<CreateItineraryItemDto>) {
+  async update(
+    id: string, 
+    updateDto: Partial<CreateItineraryItemDto>,
+    options?: { forceUpdate?: boolean }
+  ) {
+    const { forceUpdate = false } = options || {};
     // 如果更新了时间，需要重新校验和计算
     if (updateDto.startTime || updateDto.endTime) {
       // 获取现有数据（包含完整的关联信息）
@@ -464,7 +473,8 @@ export class ItineraryItemsService {
         await this.adjustSubsequentItemsBasedOnTravelTime(
           existing,
           start,
-          existing.TripDay
+          existing.TripDay,
+          { skipTimeValidation: forceUpdate } // 用户已确认时，跳过时间合理性校验
         );
       }
     }
@@ -514,12 +524,19 @@ export class ItineraryItemsService {
 
   /**
    * 根据实际距离和交通方式调整后续行程项的时间
+   * 
+   * @param currentItem 当前行程项
+   * @param newStartTime 新的开始时间
+   * @param tripDay 行程日
+   * @param options.skipTimeValidation 跳过时间合理性校验（用户已确认级联影响时使用）
    */
   private async adjustSubsequentItemsBasedOnTravelTime(
     currentItem: any,
     newStartTime: Date,
-    tripDay: any
+    tripDay: any,
+    options?: { skipTimeValidation?: boolean }
   ): Promise<void> {
+    const { skipTimeValidation = false } = options || {};
     if (!tripDay || !tripDay.ItineraryItem) {
       return;
     }
@@ -604,14 +621,24 @@ export class ItineraryItemsService {
           const newStart = DateTime.fromJSDate(newStartTime);
           const calculatedStart = DateTime.fromJSDate(calculatedStartTime);
           
-          // 如果用户指定的时间早于计算出的时间，给出警告
+          // 如果用户指定的时间早于计算出的时间
           if (newStart < calculatedStart) {
             const diffMinutes = calculatedStart.diff(newStart, 'minutes').minutes;
             if (diffMinutes > 30) {
-              // 时间差异超过30分钟，给出警告
-              throw new BadRequestException(
-                `时间可能不合理：根据实际距离（${distance.toFixed(1)}km）和交通方式（${travelMode}），预计需要 ${travelTimeMinutes} 分钟，建议开始时间不早于 ${calculatedStart.toFormat('HH:mm')}`
-              );
+              // 时间差异超过30分钟
+              if (skipTimeValidation) {
+                // 用户已确认级联影响，只记录警告不阻止操作
+                console.warn(
+                  `[时间偏差警告] 用户已确认。实际距离 ${distance.toFixed(1)}km，` +
+                  `交通方式 ${travelMode}，预计需要 ${travelTimeMinutes} 分钟，` +
+                  `建议时间 ${calculatedStart.toFormat('HH:mm')}，用户选择 ${newStart.toFormat('HH:mm')}`
+                );
+              } else {
+                // 首次请求，抛出异常让用户确认
+                throw new BadRequestException(
+                  `时间可能不合理：根据实际距离（${distance.toFixed(1)}km）和交通方式（${travelMode}），预计需要 ${travelTimeMinutes} 分钟，建议开始时间不早于 ${calculatedStart.toFormat('HH:mm')}`
+                );
+              }
             }
           }
 

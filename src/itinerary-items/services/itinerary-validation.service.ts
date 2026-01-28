@@ -456,26 +456,46 @@ export class ItineraryValidationService {
       return undefined;
     }
 
+    // 计算当前行程项的新结束时间
+    const newStartTime = dto.startTime ? new Date(dto.startTime) : existingItem.startTime;
     const newEndTime = dto.endTime 
       ? new Date(dto.endTime) 
       : existingItem.endTime;
 
     const affectedItems: CascadeImpactItem[] = [];
 
+    // 追踪累积的时间偏移（与执行阶段逻辑一致）
+    let currentEndTime = DateTime.fromJSDate(newEndTime);
+    let prevLocation = this.extractCoordinates(existingItem.Place);
+
     // 检查后续行程项是否受影响
     for (let i = currentIndex + 1; i < items.length; i++) {
       const nextItem = items[i];
       const nextStart = DateTime.fromJSDate(nextItem.startTime);
       const nextEnd = DateTime.fromJSDate(nextItem.endTime);
-      const newEnd = DateTime.fromJSDate(newEndTime);
+      const duration = nextEnd.diff(nextStart, 'minutes').minutes;
 
-      // 如果新结束时间晚于下一项开始时间
-      if (newEnd > nextStart) {
-        const delay = newEnd.diff(nextStart, 'minutes').minutes;
-        const suggestedStart = newEnd.plus({ minutes: 15 });
-        const duration = nextEnd.diff(nextStart, 'minutes').minutes;
+      // 获取下一个行程项的位置
+      const nextLocation = this.extractCoordinates(nextItem.Place);
+      
+      // 🆕 计算旅行时间（与执行阶段逻辑一致）
+      let travelTimeMinutes = 15; // 默认 15 分钟缓冲
+      if (prevLocation && nextLocation) {
+        const distance = this.calculateHaversineDistance(
+          prevLocation.lat, prevLocation.lng,
+          nextLocation.lat, nextLocation.lng
+        );
+        // 根据距离估算旅行时间（与执行阶段使用相同的逻辑）
+        travelTimeMinutes = this.estimateTravelTime(distance);
+      }
+
+      // 计算建议的开始时间
+      const suggestedStart = currentEndTime.plus({ minutes: travelTimeMinutes });
+      
+      // 只有当建议开始时间晚于原开始时间时，才算受影响
+      if (suggestedStart > nextStart) {
         const suggestedEnd = suggestedStart.plus({ minutes: duration });
-        const totalDelayMinutes = Math.ceil(delay + 15);
+        const delayMinutes = Math.ceil(suggestedStart.diff(nextStart, 'minutes').minutes);
 
         affectedItems.push({
           id: nextItem.id,
@@ -483,7 +503,7 @@ export class ItineraryValidationService {
           // 兼容旧格式
           originalTime: `${nextStart.toFormat('HH:mm')}-${nextEnd.toFormat('HH:mm')}`,
           suggestedTime: `${suggestedStart.toFormat('HH:mm')}-${suggestedEnd.toFormat('HH:mm')}`,
-          delayMinutes: totalDelayMinutes,
+          delayMinutes,
           // 🆕 新增结构化字段
           originalTimeRange: {
             start: nextStart.toFormat('HH:mm'),
@@ -493,11 +513,17 @@ export class ItineraryValidationService {
             start: suggestedStart.toFormat('HH:mm'),
             end: suggestedEnd.toFormat('HH:mm'),
           },
-          timeDelta: this.formatTimeDelta(totalDelayMinutes),
+          timeDelta: this.formatTimeDelta(delayMinutes),
         });
+
+        // 更新累积时间，继续检查后续项
+        currentEndTime = suggestedEnd;
+        prevLocation = nextLocation;
       } else {
-        // 如果这个不受影响，后面的也不会受影响
-        break;
+        // 如果这个不受影响，后面的可能仍受影响（因为时间链式传递）
+        // 但如果原时间已经足够，就不需要调整
+        currentEndTime = nextEnd;
+        prevLocation = nextLocation;
       }
     }
 
@@ -506,7 +532,6 @@ export class ItineraryValidationService {
     }
 
     // 生成调整说明
-    const totalDelay = affectedItems.reduce((sum, item) => sum + item.delayMinutes, 0);
     const adjustmentSummary = affectedItems.length === 1
       ? `「${affectedItems[0].name}」将顺延${this.formatTimeDelta(affectedItems[0].delayMinutes)}`
       : `${affectedItems.length}个活动将顺延，最大延迟${this.formatTimeDelta(Math.max(...affectedItems.map(i => i.delayMinutes)))}`;
@@ -518,6 +543,46 @@ export class ItineraryValidationService {
       autoAdjust: true,  // 确认后会自动调整
       adjustmentSummary,
     };
+  }
+
+  /**
+   * 🆕 估算旅行时间（与执行阶段逻辑一致）
+   */
+  private estimateTravelTime(distanceKm: number): number {
+    const bufferMinutes = 15;
+    
+    if (distanceKm < 2) {
+      // 步行：约 12 分钟/km
+      return Math.ceil(distanceKm * 12) + bufferMinutes;
+    } else if (distanceKm < 50) {
+      // 驾车：约 2 分钟/km（考虑市区交通）
+      return Math.ceil(distanceKm * 2) + bufferMinutes;
+    } else {
+      // 长途：约 1 分钟/km
+      return Math.ceil(distanceKm * 1) + bufferMinutes;
+    }
+  }
+
+  /**
+   * 🆕 计算两点间的距离（Haversine 公式）
+   */
+  private calculateHaversineDistance(
+    lat1: number, lng1: number,
+    lat2: number, lng2: number
+  ): number {
+    const R = 6371; // 地球半径（公里）
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private toRad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 
   /**

@@ -290,8 +290,10 @@ export class ItineraryItemsController {
         }
       }
 
-      // 执行更新
-      const item = await this.itineraryItemsService.update(id, dto);
+      // 执行更新（如果用户已确认级联影响，跳过执行阶段的时间校验）
+      const item = await this.itineraryItemsService.update(id, dto, {
+        forceUpdate: dto.forceCreate === true,
+      });
 
       return successResponse({
         item,
