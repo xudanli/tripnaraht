@@ -39,14 +39,19 @@ export class LlmService {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
+    // 检查是否禁用代理（默认禁用，因为代理服务器可能未运行）
+    const disableProxy = this.configService?.get<string>('LLM_DISABLE_PROXY') === 'true' || true;
+    
     // 检查代理环境变量（用于创建共享的 httpsAgent）
-    const proxyUrl =
-      process.env.HTTPS_PROXY ||
-      process.env.https_proxy ||
-      process.env.ALL_PROXY ||
-      process.env.all_proxy;
+    const proxyUrl = disableProxy
+      ? undefined
+      : (process.env.HTTPS_PROXY ||
+         process.env.https_proxy ||
+         process.env.ALL_PROXY ||
+         process.env.all_proxy);
 
     // 创建共享的 HTTPS Agent（用于其他 LLM 提供商）
+    // 注意：如果代理服务器未运行，会导致连接错误，因此默认禁用代理
     this.httpsAgent = proxyUrl
       ? new HttpsProxyAgent<string>(proxyUrl)
       : new https.Agent({
@@ -57,8 +62,8 @@ export class LlmService {
     // 处理 baseURL - 使用可选链和 process.env 作为保底
     const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
     
-    // 使用统一的工厂函数创建 OpenAI HTTP 客户端
-    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
+    // 使用统一的工厂函数创建 OpenAI HTTP 客户端（默认禁用代理）
+    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger, { disableProxy });
     
     // 创建熔断器（连续 5 次失败后熔断，1 分钟后进入 HALF_OPEN）
     this.circuitBreaker = new CircuitBreaker('LlmService', {
