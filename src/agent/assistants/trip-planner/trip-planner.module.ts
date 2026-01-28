@@ -6,6 +6,9 @@ import { TripPlannerService } from './services/trip-planner.service';
 import { ContextAnalyzerService } from './services/context-analyzer.service';
 import { IntentDisambiguatorService } from './services/intent-disambiguator.service';
 import { RouteOptimizationService } from './services/route-optimization.service';
+import { TripPlannerFeedbackService } from './services/trip-planner-feedback.service';
+import { PromptService } from './services/prompt.service';
+import { GapPreferencesService } from './services/gap-preferences.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { LlmModule } from '../../../llm/llm.module';
 import { DemModule } from '../../../trips/dem/dem.module';
@@ -32,6 +35,9 @@ import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-z
     ContextAnalyzerService,
     IntentDisambiguatorService,
     RouteOptimizationService,
+    TripPlannerFeedbackService, // 🚀 Phase 3 优化：反馈服务
+    PromptService, // 🚀 Prompt优化：Prompt版本管理服务
+    GapPreferencesService, // 🚀 Phase 3 优化：缺口偏好服务
     // Skills
     ItineraryVerifySkill,
     TransportSearchSkill,
@@ -44,6 +50,7 @@ import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-z
     ContextAnalyzerService,
     IntentDisambiguatorService,
     RouteOptimizationService,
+    TripPlannerFeedbackService, // 🚀 Phase 3 优化：导出反馈服务
   ],
 })
 export class TripPlannerModule {}

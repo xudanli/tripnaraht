@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LlmService } from './services/llm.service';
 import { LlmController } from './llm.controller';
 import { LlmCostService } from './services/llm-cost.service';
+import { PythonAIService } from './services/python-ai.service';
 import { AgentInfraModule } from '../agent/infra/infra.module';
 
 @Module({
@@ -12,7 +13,7 @@ import { AgentInfraModule } from '../agent/infra/infra.module';
     forwardRef(() => AgentInfraModule), // 使用 forwardRef 解决循环依赖
   ],
   controllers: [LlmController],
-  providers: [LlmService, LlmCostService],
-  exports: [LlmService, LlmCostService],
+  providers: [LlmService, LlmCostService, PythonAIService],
+  exports: [LlmService, LlmCostService, PythonAIService], // 导出 PythonAIService 供其他模块使用
 })
 export class LlmModule {}

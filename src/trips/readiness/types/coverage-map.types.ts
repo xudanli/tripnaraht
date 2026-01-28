@@ -158,6 +158,7 @@ export interface PoiCoverage {
   evidenceCount: number;
   evidenceTypes?: EvidenceType[];
   missingEvidence?: EvidenceType[];
+  metadata?: any; // 保存原始 Place.metadata 引用，用于获取证据时间戳和来源
 }
 
 /**
@@ -177,6 +178,16 @@ export interface SegmentCoverage {
 }
 
 /**
+ * 证据状态
+ */
+export interface EvidenceStatus {
+  type: EvidenceType;
+  status: 'fetched' | 'missing' | 'fetching' | 'failed';
+  lastUpdated?: string;
+  source?: string;
+}
+
+/**
  * 覆盖缺口
  */
 export interface CoverageGap {
@@ -188,6 +199,10 @@ export interface CoverageGap {
   message: string;
   missingEvidence?: EvidenceType[];
   hazards?: string[];
+  hazardType?: string; // 用于去重的危险类型
+  evidenceStatus?: EvidenceStatus[]; // 证据获取状态
+  affectedDays?: number[]; // 受影响的天数
+  affectedPois?: string[]; // 受影响的 POI IDs
 }
 
 /**
@@ -218,4 +233,24 @@ export interface CoverageMapData {
   segments: SegmentCoverage[];
   gaps: CoverageGap[];
   summary: CoverageSummary;
+  // 优化后的数据
+  deduplicatedWarnings?: CoverageGap[]; // 去重后的警告列表
+  warningsBySeverity?: {
+    high: CoverageGap[];
+    medium: CoverageGap[];
+    low: CoverageGap[];
+  };
+  evidenceStatusSummary?: {
+    total: number;
+    fetched: number;
+    missing: number;
+    fetching: number;
+    failed: number;
+  };
+  calculatedAt: string; // 计算时间戳
+  dataFreshness?: {
+    weather?: string; // 天气数据最后更新时间
+    roadClosure?: string; // 道路封闭数据最后更新时间
+    openingHours?: string; // 开放时间数据最后更新时间
+  };
 }

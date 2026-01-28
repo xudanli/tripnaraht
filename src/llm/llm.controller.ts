@@ -13,6 +13,7 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 import { Public } from '../auth/decorators/public.decorator';
 import { TokenStatsService } from '../agent/services/token-stats.service';
 import { LlmCostService } from './services/llm-cost.service';
+import { PythonAIService } from './services/python-ai.service';
 
 @ApiTags('llm')
 @Controller('llm')
@@ -21,6 +22,7 @@ export class LlmController {
     private readonly llmService: LlmService,
     private readonly tokenStatsService: TokenStatsService,
     private readonly llmCostService: LlmCostService,
+    private readonly pythonAIService?: PythonAIService,
   ) {}
 
   @Post('natural-language-to-params')
@@ -271,6 +273,52 @@ export class LlmController {
       });
 
       return successResponse(costStats);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 获取 Python AI Service 状态
+   */
+  @Public()
+  @Get('python-ai/status')
+  @ApiOperation({
+    summary: 'Python AI Service 状态',
+    description: '获取 Python AI Service 的连接状态、健康状态、熔断器状态等信息',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回服务状态（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getPythonAIStatus() {
+    try {
+      if (!this.pythonAIService) {
+        return successResponse({
+          enabled: false,
+          message: 'Python AI Service is not available',
+        });
+      }
+
+      const status = this.pythonAIService.getServiceStatus();
+      
+      // 尝试获取健康检查信息
+      let healthCheck: any = null;
+      try {
+        healthCheck = await this.pythonAIService.checkHealth();
+      } catch (error: any) {
+        healthCheck = {
+          error: error.message,
+          available: false,
+        };
+      }
+
+      return successResponse({
+        ...status,
+        healthCheck,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }

@@ -17,6 +17,11 @@ import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budg
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
+import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
+import { RoadStatusQuery } from '../data-contracts/interfaces/road-status.interface';
+import { PlacesService } from '../places/places.service';
+import { Prisma } from '@prisma/client';
 
 @ApiTags('planning-workbench')
 @Controller('planning-workbench')
@@ -30,6 +35,8 @@ export class PlanningWorkbenchController {
     private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService,
     @Optional() private readonly readinessService?: ReadinessService,
     private readonly prisma?: PrismaService,
+    @Optional() private readonly dataSourceRouter?: DataSourceRouterService,
+    @Optional() private readonly placesService?: PlacesService,
   ) {}
 
   /**
@@ -944,6 +951,735 @@ export class PlanningWorkbenchController {
       });
     } catch (error: any) {
       this.logger.error(`获取行程准备度分数失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 天气数据获取接口 ====================
+
+  @Public()
+  @Post('trips/:tripId/fetch-weather')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '为行程地点批量获取天气数据',
+    description: '为指定行程中缺少天气数据的地点批量获取天气数据，并更新到 Place 的 metadata 中',
+  })
+  @ApiParam({
+    name: 'tripId',
+    description: '行程 ID',
+    type: 'string',
+  })
+  @ApiQuery({
+    name: 'placeIds',
+    description: '指定要获取天气数据的地点 ID 列表（可选，不提供则处理所有缺少天气数据的地点）',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'forceRefresh',
+    description: '是否强制刷新已有天气数据',
+    required: false,
+    type: Boolean,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回天气数据获取结果',
+  })
+  async fetchWeatherForTrip(
+    @Param('tripId') tripId: string,
+    @Query('placeIds') placeIds?: string,
+    @Query('forceRefresh') forceRefresh?: string,
+  ) {
+    try {
+      if (!this.prisma) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'PrismaService 未注入');
+      }
+
+      if (!this.dataSourceRouter) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'DataSourceRouterService 未注入');
+      }
+
+      // 获取行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: {
+                include: {
+                  Place: {
+                    select: {
+                      id: true,
+                      nameCN: true,
+                      nameEN: true,
+                      category: true,
+                      metadata: true,
+                    },
+                  },
+                },
+                where: {
+                  placeId: { not: null },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!trip) {
+        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
+      }
+
+      // 收集所有地点
+      const placeMap = new Map<number, any>();
+      const tripWithDays = trip as any; // 类型断言，因为 Prisma include 的类型推断可能不完整
+      if (tripWithDays.TripDay) {
+        for (const day of tripWithDays.TripDay) {
+          if (day.ItineraryItem) {
+            for (const item of day.ItineraryItem) {
+              if (item.Place) {
+                placeMap.set(item.Place.id, item.Place);
+              }
+            }
+          }
+        }
+      }
+
+      // 如果指定了 placeIds，只处理指定的地点
+      let targetPlaceIds: number[] | null = null;
+      if (placeIds) {
+        targetPlaceIds = placeIds.split(',').map((id: string) => parseInt(id.trim(), 10)).filter((id: number) => !isNaN(id));
+      }
+
+      const shouldForceRefresh = forceRefresh === 'true';
+      const results: Array<{
+        placeId: number;
+        placeName: string;
+        status: 'success' | 'failed' | 'skipped';
+        error?: string;
+        weatherData?: any;
+      }> = [];
+
+      let successCount = 0;
+      let failedCount = 0;
+
+      // 处理每个地点
+      for (const [placeId, place] of placeMap.entries()) {
+        // 如果指定了 placeIds，只处理指定的地点
+        if (targetPlaceIds && !targetPlaceIds.includes(placeId)) {
+          continue;
+        }
+
+        const placeName = place.nameCN || place.nameEN || `Place ${placeId}`;
+        const metadata = (place.metadata as any) || {};
+
+        // 检查是否已有天气数据
+        if (!shouldForceRefresh && (metadata.weatherInfo || metadata.weather)) {
+          results.push({
+            placeId,
+            placeName,
+            status: 'skipped',
+          });
+          continue;
+        }
+
+        // 获取地点坐标
+        let lat: number | null = null;
+        let lng: number | null = null;
+
+        // 方法1: 从 metadata 中获取坐标
+        if (metadata.lat && metadata.lng) {
+          lat = metadata.lat;
+          lng = metadata.lng;
+        } else if (metadata.coordinates && Array.isArray(metadata.coordinates)) {
+          lat = metadata.coordinates[1];
+          lng = metadata.coordinates[0];
+        } else if (place.location) {
+          // 方法2: 从 location 字段提取（支持多种格式）
+          const location = place.location;
+          
+          // 2.1: 如果是 JSON 对象格式 {lat, lng}
+          if (typeof location === 'object' && location.lat && location.lng) {
+            lat = location.lat;
+            lng = location.lng;
+          }
+          // 2.2: 如果是 GeoJSON 格式 {coordinates: [lng, lat]}
+          else if (typeof location === 'object' && location.coordinates && Array.isArray(location.coordinates)) {
+            lng = location.coordinates[0];
+            lat = location.coordinates[1];
+          }
+          // 2.3: 如果是字符串格式 POINT(lng lat)
+          else if (typeof location === 'string') {
+            const match = location.match(/POINT\(([^)]+)\)/);
+            if (match) {
+              const [lngStr, latStr] = match[1].split(/\s+/);
+              lng = parseFloat(lngStr);
+              lat = parseFloat(latStr);
+            }
+          }
+        }
+
+        // 方法3: 如果前面都没获取到，使用原始 SQL 查询 PostGIS location 字段
+        if ((!lat || !lng) && this.prisma) {
+          try {
+            const placeCoords = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+              SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+              FROM "Place"
+              WHERE id = ${placeId} AND location IS NOT NULL
+            `;
+            if (placeCoords && placeCoords.length > 0 && placeCoords[0].lat && placeCoords[0].lng) {
+              lat = placeCoords[0].lat;
+              lng = placeCoords[0].lng;
+            }
+          } catch (err) {
+            // 忽略查询错误，继续使用前面的结果
+            this.logger.debug(`PostGIS 坐标查询失败 (placeId: ${placeId}): ${err}`);
+          }
+        }
+
+        if (!lat || !lng) {
+          this.logger.warn(`地点 ${placeId} (${placeName}) 无法获取坐标`);
+          results.push({
+            placeId,
+            placeName,
+            status: 'failed',
+            error: '无法获取地点坐标',
+          });
+          failedCount++;
+          continue;
+        }
+
+        try {
+          // 调用天气接口获取天气数据
+          const weatherQuery: WeatherQuery = {
+            lat,
+            lng,
+            includeWindDetails: false,
+            includeAuroraInfo: false,
+          };
+
+          const weatherData = await this.dataSourceRouter.getWeather(weatherQuery);
+
+          // 更新 Place 的 metadata
+          const updatedMetadata = {
+            ...metadata,
+            weatherInfo: {
+              temperature: weatherData.temperature,
+              feelsLikeTemperature: weatherData.feelsLikeTemperature,
+              condition: weatherData.condition,
+              windSpeed: weatherData.windSpeed,
+              windDirection: weatherData.windDirection,
+              humidity: weatherData.humidity,
+              visibility: weatherData.visibility,
+              alerts: weatherData.alerts,
+              lastUpdated: weatherData.lastUpdated,
+              source: weatherData.source,
+            },
+            weather: weatherData, // 保留完整数据
+            weatherFetchedAt: new Date().toISOString(),
+          };
+
+          await this.prisma.place.update({
+            where: { id: placeId },
+            data: {
+              metadata: updatedMetadata as any,
+              updatedAt: new Date(),
+            },
+          });
+
+          results.push({
+            placeId,
+            placeName,
+            status: 'success',
+            weatherData: {
+              temperature: weatherData.temperature,
+              condition: weatherData.condition,
+              source: weatherData.source,
+            },
+          });
+          successCount++;
+        } catch (error: any) {
+          this.logger.error(`为地点 ${placeId} (${placeName}) 获取天气数据失败: ${error.message}`, error.stack);
+          results.push({
+            placeId,
+            placeName,
+            status: 'failed',
+            error: error.message || '获取天气数据失败',
+          });
+          failedCount++;
+        }
+      }
+
+      return successResponse({
+        totalPlaces: placeMap.size,
+        processedPlaces: results.length,
+        successCount,
+        failedCount,
+        results,
+      });
+    } catch (error: any) {
+      this.logger.error(`批量获取天气数据失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ==================== 综合证据获取接口 ====================
+
+  @Public()
+  @Post('trips/:tripId/fetch-evidence')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '为行程地点批量获取所有类型的证据数据',
+    description: '为指定行程中缺少证据的地点批量获取天气、道路封闭、开放时间等证据数据，并更新到 Place 的 metadata 中',
+  })
+  @ApiParam({
+    name: 'tripId',
+    description: '行程 ID',
+    type: 'string',
+  })
+  @ApiQuery({
+    name: 'placeIds',
+    description: '指定要获取证据的地点 ID 列表（可选，不提供则处理所有缺少证据的地点）',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'evidenceTypes',
+    description: '要获取的证据类型，多个类型用逗号分隔（weather,road_closure,opening_hours）。不提供则获取所有类型',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'forceRefresh',
+    description: '是否强制刷新已有证据数据',
+    required: false,
+    type: Boolean,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回证据数据获取结果',
+  })
+  async fetchEvidenceForTrip(
+    @Param('tripId') tripId: string,
+    @Query('placeIds') placeIds?: string,
+    @Query('evidenceTypes') evidenceTypes?: string,
+    @Query('forceRefresh') forceRefresh?: string,
+  ) {
+    try {
+      if (!this.prisma) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'PrismaService 未注入');
+      }
+
+      // 解析证据类型
+      const requestedTypes = evidenceTypes
+        ? evidenceTypes.split(',').map(t => t.trim().toLowerCase())
+        : ['weather', 'road_closure', 'opening_hours'];
+      
+      const shouldFetchWeather = requestedTypes.includes('weather');
+      const shouldFetchRoadClosure = requestedTypes.includes('road_closure');
+      const shouldFetchOpeningHours = requestedTypes.includes('opening_hours');
+      const shouldForceRefresh = forceRefresh === 'true';
+
+      // 获取行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: {
+                include: {
+                  Place: {
+                    select: {
+                      id: true,
+                      nameCN: true,
+                      nameEN: true,
+                      category: true,
+                      metadata: true,
+                    },
+                  },
+                },
+                where: {
+                  placeId: { not: null },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!trip) {
+        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
+      }
+
+      // 收集所有地点
+      const placeMap = new Map<number, any>();
+      const tripWithDays = trip as any;
+      if (tripWithDays.TripDay) {
+        for (const day of tripWithDays.TripDay) {
+          if (day.ItineraryItem) {
+            for (const item of day.ItineraryItem) {
+              if (item.Place) {
+                placeMap.set(item.Place.id, item.Place);
+              }
+            }
+          }
+        }
+      }
+
+      // 批量获取所有地点的坐标（使用原始 SQL 查询 PostGIS location 字段）
+      const allPlaceIds = Array.from(placeMap.keys());
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      if (allPlaceIds.length > 0 && this.prisma) {
+        try {
+          this.logger.debug(`批量查询 ${allPlaceIds.length} 个地点的坐标: ${allPlaceIds.join(', ')}`);
+          
+          // 根据用户反馈，location 字段可能是 JSON 对象格式 {lat, lng}
+          // 尝试多种方式查询坐标
+          
+          // 方法1: 尝试 PostGIS geography 查询
+          try {
+            const postgisResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+              SELECT 
+                id,
+                ST_Y(location::geometry) as lat,
+                ST_X(location::geometry) as lng
+              FROM "Place"
+              WHERE id = ANY(${allPlaceIds}::int[]) 
+                AND location IS NOT NULL
+            `;
+            
+            postgisResults.forEach(result => {
+              if (!isNaN(result.lat) && !isNaN(result.lng)) {
+                locationMap.set(result.id, {
+                  lat: Number(result.lat),
+                  lng: Number(result.lng),
+                });
+                this.logger.debug(`地点 ${result.id} 坐标（PostGIS）: lat=${result.lat}, lng=${result.lng}`);
+              }
+            });
+            this.logger.debug(`PostGIS 查询返回 ${postgisResults.length} 个坐标`);
+          } catch (postgisError: any) {
+            this.logger.debug(`PostGIS 查询失败（可能不是 geography 类型）: ${postgisError.message}`);
+          }
+          
+          // 方法2: 如果 PostGIS 查询没有返回所有地点，尝试查询 location 的文本表示（可能是 JSON）
+          if (locationMap.size < allPlaceIds.length) {
+            try {
+              const missingIds = allPlaceIds.filter(id => !locationMap.has(id));
+              if (missingIds.length > 0) {
+                this.logger.debug(`尝试查询 ${missingIds.length} 个缺失地点的 location 文本`);
+                // 直接查询 location 的文本表示，然后尝试解析
+                const rawResults = await this.prisma.$queryRaw<Array<{ id: number; location_text: string | null }>>`
+                  SELECT 
+                    id,
+                    location::text as location_text
+                  FROM "Place"
+                  WHERE id = ANY(${missingIds}::int[]) 
+                    AND location IS NOT NULL
+                `;
+                
+                this.logger.debug(`原始 location 文本查询返回 ${rawResults.length} 个结果`);
+                rawResults.forEach(result => {
+                  if (!locationMap.has(result.id) && result.location_text) {
+                    const locText = result.location_text;
+                    // 尝试解析 JSON 格式 {lat: ..., lng: ...}
+                    try {
+                      // 如果 location 是 JSONB 类型，直接解析
+                      if (locText.startsWith('{')) {
+                        const locJson = JSON.parse(locText);
+                        if (locJson && typeof locJson === 'object' && locJson.lat && locJson.lng) {
+                          locationMap.set(result.id, {
+                            lat: Number(locJson.lat),
+                            lng: Number(locJson.lng),
+                          });
+                          this.logger.debug(`地点 ${result.id} 坐标（JSON解析）: lat=${locJson.lat}, lng=${locJson.lng}`);
+                        }
+                      }
+                      // 如果 location 是 PostGIS POINT 格式，解析坐标
+                      else if (locText.includes('POINT')) {
+                        const match = locText.match(/POINT\(([^)]+)\)/);
+                        if (match) {
+                          const [lngStr, latStr] = match[1].split(/\s+/);
+                          const lng = parseFloat(lngStr);
+                          const lat = parseFloat(latStr);
+                          if (!isNaN(lat) && !isNaN(lng)) {
+                            locationMap.set(result.id, { lat, lng });
+                            this.logger.debug(`地点 ${result.id} 坐标（POINT解析）: lat=${lat}, lng=${lng}`);
+                          }
+                        }
+                      }
+                    } catch (parseError: any) {
+                      this.logger.debug(`地点 ${result.id} location 解析失败: ${locText?.substring(0, 100)}, 错误: ${parseError.message}`);
+                    }
+                  }
+                });
+              }
+            } catch (rawError: any) {
+              this.logger.debug(`原始 location 文本查询失败: ${rawError.message}`);
+            }
+          }
+          
+          this.logger.debug(`最终 locationMap 大小: ${locationMap.size}/${allPlaceIds.length}`);
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`, error.stack);
+        }
+      }
+
+      // 如果指定了 placeIds，只处理指定的地点
+      let targetPlaceIds: number[] | null = null;
+      if (placeIds) {
+        targetPlaceIds = placeIds.split(',').map((id: string) => parseInt(id.trim(), 10)).filter((id: number) => !isNaN(id));
+      }
+
+      const results: Array<{
+        placeId: number;
+        placeName: string;
+        evidenceTypes: string[];
+        status: 'success' | 'partial' | 'failed';
+        errors?: Record<string, string>;
+        fetched?: Record<string, any>;
+      }> = [];
+
+      let successCount = 0;
+      let partialCount = 0;
+      let failedCount = 0;
+
+      // 处理每个地点
+      for (const [placeId, place] of placeMap.entries()) {
+        // 如果指定了 placeIds，只处理指定的地点
+        if (targetPlaceIds && !targetPlaceIds.includes(placeId)) {
+          continue;
+        }
+
+        const placeName = place.nameCN || place.nameEN || `Place ${placeId}`;
+        const metadata = (place.metadata as any) || {};
+        
+        // 获取地点坐标
+        let lat: number | null = null;
+        let lng: number | null = null;
+
+        // 方法1: 从 metadata 中获取坐标
+        if (metadata.lat && metadata.lng) {
+          lat = metadata.lat;
+          lng = metadata.lng;
+        } else if (metadata.coordinates && Array.isArray(metadata.coordinates)) {
+          lat = metadata.coordinates[1];
+          lng = metadata.coordinates[0];
+        }
+        // 方法2: 从批量查询的 locationMap 中获取（优先使用，因为已经查询过了）
+        if (locationMap.has(placeId)) {
+          const coords = locationMap.get(placeId)!;
+          lat = coords.lat;
+          lng = coords.lng;
+          this.logger.debug(`从 locationMap 获取地点 ${placeId} 坐标: lat=${lat}, lng=${lng}`);
+        }
+        // 方法3: 如果 locationMap 中没有，尝试从 place.location 对象中获取（Prisma 可能返回 JSON 格式）
+        else if (place.location) {
+          const location = place.location;
+          
+          // 3.1: 如果是 JSON 对象格式 {lat, lng}（Prisma 客户端可能返回这种格式）
+          if (typeof location === 'object' && location.lat && location.lng) {
+            lat = location.lat;
+            lng = location.lng;
+            this.logger.debug(`从 place.location JSON 对象获取地点 ${placeId} 坐标: lat=${lat}, lng=${lng}`);
+          }
+          // 3.2: 如果是 GeoJSON 格式 {coordinates: [lng, lat]}
+          else if (typeof location === 'object' && location.coordinates && Array.isArray(location.coordinates)) {
+            lng = location.coordinates[0];
+            lat = location.coordinates[1];
+            this.logger.debug(`从 place.location GeoJSON 获取地点 ${placeId} 坐标: lat=${lat}, lng=${lng}`);
+          }
+          // 3.3: 如果是字符串格式 POINT(lng lat)
+          else if (typeof location === 'string') {
+            const match = location.match(/POINT\(([^)]+)\)/);
+            if (match) {
+              const [lngStr, latStr] = match[1].split(/\s+/);
+              lng = parseFloat(lngStr);
+              lat = parseFloat(latStr);
+              this.logger.debug(`从 place.location 字符串获取地点 ${placeId} 坐标: lat=${lat}, lng=${lng}`);
+            }
+          }
+        }
+
+        // 方法3: 如果前面都没获取到，使用原始 SQL 查询 PostGIS location 字段
+        if ((!lat || !lng) && this.prisma) {
+          try {
+            const placeCoords = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+              SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+              FROM "Place"
+              WHERE id = ${placeId} AND location IS NOT NULL
+            `;
+            if (placeCoords && placeCoords.length > 0 && placeCoords[0].lat && placeCoords[0].lng) {
+              lat = placeCoords[0].lat;
+              lng = placeCoords[0].lng;
+            }
+          } catch (err) {
+            // 忽略查询错误，继续使用前面的结果
+            this.logger.debug(`PostGIS 坐标查询失败 (placeId: ${placeId}): ${err}`);
+          }
+        }
+
+        const fetched: Record<string, any> = {};
+        const errors: Record<string, string> = {};
+        const evidenceTypesFetched: string[] = [];
+
+        // 1. 获取天气数据
+        if (shouldFetchWeather && lat && lng) {
+          if (shouldForceRefresh || !metadata.weatherInfo && !metadata.weather) {
+            try {
+              if (this.dataSourceRouter) {
+                const weatherQuery: WeatherQuery = {
+                  lat,
+                  lng,
+                  includeWindDetails: false,
+                  includeAuroraInfo: false,
+                };
+                const weatherData = await this.dataSourceRouter.getWeather(weatherQuery);
+                fetched.weather = {
+                  temperature: weatherData.temperature,
+                  condition: weatherData.condition,
+                  source: weatherData.source,
+                };
+                metadata.weatherInfo = {
+                  temperature: weatherData.temperature,
+                  feelsLikeTemperature: weatherData.feelsLikeTemperature,
+                  condition: weatherData.condition,
+                  windSpeed: weatherData.windSpeed,
+                  windDirection: weatherData.windDirection,
+                  humidity: weatherData.humidity,
+                  visibility: weatherData.visibility,
+                  alerts: weatherData.alerts,
+                  lastUpdated: weatherData.lastUpdated,
+                  source: weatherData.source,
+                };
+                metadata.weather = weatherData;
+                metadata.weatherFetchedAt = new Date().toISOString();
+                evidenceTypesFetched.push('weather');
+              }
+            } catch (error: any) {
+              errors.weather = error.message || '获取天气数据失败';
+            }
+          }
+        }
+
+        // 2. 获取道路封闭信息
+        if (shouldFetchRoadClosure && lat && lng) {
+          if (shouldForceRefresh || !metadata.roadStatus && !metadata.roadClosure) {
+            try {
+              if (this.dataSourceRouter) {
+                const roadQuery: RoadStatusQuery = {
+                  lat,
+                  lng,
+                  radius: 50000, // 50km 半径
+                  includeFRoadInfo: true,
+                  includeRiverCrossing: true,
+                };
+                const roadStatus = await this.dataSourceRouter.getRoadStatus(roadQuery);
+                fetched.road_closure = {
+                  isOpen: roadStatus.isOpen,
+                  riskLevel: roadStatus.riskLevel,
+                  source: roadStatus.source,
+                };
+                metadata.roadStatus = {
+                  isOpen: roadStatus.isOpen,
+                  riskLevel: roadStatus.riskLevel,
+                  reason: roadStatus.reason,
+                  lastUpdated: roadStatus.lastUpdated,
+                  source: roadStatus.source,
+                  metadata: roadStatus.metadata,
+                };
+                metadata.roadClosure = !roadStatus.isOpen;
+                metadata.roadStatusFetchedAt = new Date().toISOString();
+                evidenceTypesFetched.push('road_closure');
+              }
+            } catch (error: any) {
+              errors.road_closure = error.message || '获取道路封闭信息失败';
+            }
+          }
+        }
+
+        // 3. 获取开放时间
+        if (shouldFetchOpeningHours) {
+          if (shouldForceRefresh || !metadata.openingHours && !metadata.opening_hours) {
+            try {
+              if (this.placesService && place.category === 'ATTRACTION') {
+                await this.placesService.enrichPlaceFromAmap(placeId);
+                // 重新获取更新后的 metadata
+                const updatedPlace = await this.prisma.place.findUnique({
+                  where: { id: placeId },
+                  select: { metadata: true },
+                });
+                if (updatedPlace) {
+                  const updatedMetadata = (updatedPlace.metadata as any) || {};
+                  if (updatedMetadata.openingHours || updatedMetadata.opening_hours) {
+                    fetched.opening_hours = {
+                      hasData: true,
+                      source: 'amap',
+                    };
+                    metadata.openingHours = updatedMetadata.openingHours || updatedMetadata.opening_hours;
+                    evidenceTypesFetched.push('opening_hours');
+                  }
+                }
+              }
+            } catch (error: any) {
+              errors.opening_hours = error.message || '获取开放时间失败';
+            }
+          }
+        }
+
+        // 更新 Place metadata
+        if (Object.keys(fetched).length > 0) {
+          try {
+            await this.prisma.place.update({
+              where: { id: placeId },
+              data: {
+                metadata: metadata as any,
+                updatedAt: new Date(),
+              },
+            });
+          } catch (error: any) {
+            this.logger.error(`更新地点 ${placeId} metadata 失败: ${error.message}`);
+          }
+        }
+
+        // 确定状态
+        const requestedCount = requestedTypes.length;
+        const fetchedCount = evidenceTypesFetched.length;
+        const errorCount = Object.keys(errors).length;
+
+        let status: 'success' | 'partial' | 'failed';
+        if (fetchedCount === requestedCount && errorCount === 0) {
+          status = 'success';
+          successCount++;
+        } else if (fetchedCount > 0) {
+          status = 'partial';
+          partialCount++;
+        } else {
+          status = 'failed';
+          failedCount++;
+        }
+
+        results.push({
+          placeId,
+          placeName,
+          evidenceTypes: evidenceTypesFetched,
+          status,
+          errors: Object.keys(errors).length > 0 ? errors : undefined,
+          fetched: Object.keys(fetched).length > 0 ? fetched : undefined,
+        });
+      }
+
+      return successResponse({
+        totalPlaces: placeMap.size,
+        processedPlaces: results.length,
+        successCount,
+        partialCount,
+        failedCount,
+        requestedEvidenceTypes: requestedTypes,
+        results,
+      });
+    } catch (error: any) {
+      this.logger.error(`批量获取证据数据失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

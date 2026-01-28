@@ -171,7 +171,30 @@ export class CoverageMapService {
     const zoom = this.calculateZoom(bounds);
     const summary = this.calculateSummary(pois, segments, gaps);
 
-    return { tripId, bounds, center, zoom, pois, segments, gaps, summary };
+    // 优化：去重和排序警告
+    const { deduplicatedWarnings, warningsBySeverity } = this.deduplicateAndSortWarnings(gaps, pois, segments);
+    
+    // 优化：计算证据状态摘要
+    const evidenceStatusSummary = this.calculateEvidenceStatusSummary(pois);
+    
+    // 优化：获取数据新鲜度
+    const dataFreshness = this.getDataFreshness(pois);
+
+    return {
+      tripId,
+      bounds,
+      center,
+      zoom,
+      pois,
+      segments,
+      gaps,
+      summary,
+      deduplicatedWarnings,
+      warningsBySeverity,
+      evidenceStatusSummary,
+      calculatedAt: new Date().toISOString(),
+      dataFreshness,
+    };
   }
 
   private extractPlaceCoordinates(place: PlaceWithCoordinates): Coordinates | null {
@@ -221,6 +244,7 @@ export class CoverageMapService {
       id, day, order, name, type, coordinates, coverageStatus: status, evidenceCount,
       evidenceTypes: evidenceTypes.length > 0 ? evidenceTypes : undefined,
       missingEvidence: missingEvidence.length > 0 ? missingEvidence : undefined,
+      metadata: place.metadata, // 保存 metadata 引用，用于获取证据时间戳和来源
     };
   }
 
@@ -493,17 +517,27 @@ export class CoverageMapService {
     const gaps: CoverageGap[] = [];
     let gapIndex = 0;
 
+    // 1. POI 级别的缺口
     for (const poi of pois) {
       if (poi.coverageStatus === 'uncovered' || poi.coverageStatus === 'partial') {
         gapIndex++;
+        const evidenceStatus = this.getEvidenceStatus(poi);
         gaps.push({
-          id: `gap-${gapIndex}`, type: 'poi', relatedId: poi.id, coordinates: poi.coordinates,
+          id: `gap-${gapIndex}`, 
+          type: 'poi', 
+          relatedId: poi.id, 
+          coordinates: poi.coordinates,
           severity: poi.coverageStatus === 'uncovered' ? 'high' : 'medium',
-          message: `${poi.name}缺少证据覆盖`, missingEvidence: poi.missingEvidence,
+          message: `${poi.name}缺少证据覆盖`, 
+          missingEvidence: poi.missingEvidence,
+          evidenceStatus,
+          affectedDays: [poi.day],
+          affectedPois: [poi.id],
         });
       }
     }
 
+    // 2. 路段级别的缺口
     for (const segment of segments) {
       if (segment.coverageStatus === 'warning' || segment.coverageStatus === 'blocked') {
         gapIndex++;
@@ -514,16 +548,79 @@ export class CoverageMapService {
             lat: (fromPoi.coordinates.lat + toPoi.coordinates.lat) / 2,
             lng: (fromPoi.coordinates.lng + toPoi.coordinates.lng) / 2,
           };
-          gaps.push({
-            id: `gap-${gapIndex}`, type: 'segment', relatedId: segment.id, coordinates: midpoint,
-            severity: segment.coverageStatus === 'blocked' ? 'high' : 'medium',
-            message: segment.hazards.length > 0 ? segment.hazards[0].message : '路段存在潜在风险',
-            hazards: segment.hazards.map(h => h.type),
-          });
+          
+          // 为每个危险类型创建一个 gap（用于后续去重）
+          for (const hazard of segment.hazards) {
+            gaps.push({
+              id: `gap-${gapIndex}-${hazard.type}`, 
+              type: 'segment', 
+              relatedId: segment.id, 
+              coordinates: midpoint,
+              severity: segment.coverageStatus === 'blocked' ? 'high' : hazard.severity,
+              message: hazard.message,
+              hazards: [hazard.type],
+              hazardType: hazard.type, // 用于去重
+              affectedDays: [segment.day],
+              affectedPois: [segment.fromPoiId, segment.toPoiId],
+            });
+          }
         }
       }
     }
     return gaps;
+  }
+
+  /**
+   * 获取 POI 的证据状态
+   */
+  private getEvidenceStatus(poi: PoiCoverage): Array<{
+    type: EvidenceType;
+    status: 'fetched' | 'missing' | 'fetching' | 'failed';
+    lastUpdated?: string;
+    source?: string;
+  }> {
+    const status: Array<{
+      type: EvidenceType;
+      status: 'fetched' | 'missing' | 'fetching' | 'failed';
+      lastUpdated?: string;
+      source?: string;
+    }> = [];
+
+    const metadata = poi.metadata || {};
+    const evidenceTypes: EvidenceType[] = ['weather', 'road_closure', 'opening_hours', 'booking_confirmation', 'permit'];
+    
+    for (const type of evidenceTypes) {
+      let evidenceStatus: 'fetched' | 'missing' | 'fetching' | 'failed' = 'missing';
+      let lastUpdated: string | undefined;
+      let source: string | undefined;
+      
+      // 检查是否已获取
+      if (poi.evidenceTypes?.includes(type)) {
+        evidenceStatus = 'fetched';
+        
+        // 从 metadata 中获取时间戳和来源
+        if (type === 'weather') {
+          lastUpdated = metadata.weatherFetchedAt || metadata.weatherInfo?.lastUpdated || metadata.weather?.lastUpdated;
+          source = metadata.weatherInfo?.source || metadata.weather?.source;
+        } else if (type === 'road_closure') {
+          lastUpdated = metadata.roadStatusFetchedAt || metadata.roadStatus?.lastUpdated;
+          source = metadata.roadStatus?.source;
+        } else if (type === 'opening_hours') {
+          lastUpdated = metadata.openingHoursFetchedAt;
+        }
+      } else if (poi.missingEvidence?.includes(type)) {
+        evidenceStatus = 'missing';
+      }
+      
+      status.push({
+        type,
+        status: evidenceStatus,
+        lastUpdated,
+        source,
+      });
+    }
+
+    return status;
   }
 
   private calculateDistance(from: Coordinates, to: Coordinates): number {
@@ -1354,5 +1451,149 @@ export class CoverageMapService {
     });
 
     return options;
+  }
+
+  /**
+   * 去重和排序警告
+   */
+  private deduplicateAndSortWarnings(
+    gaps: CoverageGap[],
+    pois: PoiCoverage[],
+    segments: SegmentCoverage[]
+  ): {
+    deduplicatedWarnings: CoverageGap[];
+    warningsBySeverity: {
+      high: CoverageGap[];
+      medium: CoverageGap[];
+      low: CoverageGap[];
+    };
+  } {
+    // 按类型和消息去重
+    const warningMap = new Map<string, CoverageGap>();
+    
+    for (const gap of gaps) {
+      // 生成唯一键：类型 + 危险类型 + 消息
+      const key = `${gap.type}-${gap.hazardType || 'general'}-${gap.message}`;
+      
+      if (!warningMap.has(key)) {
+        warningMap.set(key, { ...gap });
+      } else {
+        // 合并受影响的天数和 POI
+        const existing = warningMap.get(key)!;
+        const affectedDays = new Set([...(existing.affectedDays || []), ...(gap.affectedDays || [])]);
+        const affectedPois = new Set([...(existing.affectedPois || []), ...(gap.affectedPois || [])]);
+        
+        // 如果新警告的严重程度更高，更新严重程度
+        if (this.compareSeverity(gap.severity, existing.severity) > 0) {
+          existing.severity = gap.severity;
+        }
+        
+        existing.affectedDays = Array.from(affectedDays).sort((a, b) => a - b);
+        existing.affectedPois = Array.from(affectedPois);
+      }
+    }
+    
+    const deduplicatedWarnings = Array.from(warningMap.values());
+    
+    // 按严重程度排序：high > medium > low
+    deduplicatedWarnings.sort((a, b) => {
+      const severityCompare = this.compareSeverity(b.severity, a.severity);
+      if (severityCompare !== 0) return severityCompare;
+      // 如果严重程度相同，按受影响天数排序
+      return (a.affectedDays?.length || 0) - (b.affectedDays?.length || 0);
+    });
+    
+    // 按严重程度分组
+    const warningsBySeverity = {
+      high: deduplicatedWarnings.filter(w => w.severity === 'high'),
+      medium: deduplicatedWarnings.filter(w => w.severity === 'medium'),
+      low: deduplicatedWarnings.filter(w => w.severity === 'low'),
+    };
+    
+    return { deduplicatedWarnings, warningsBySeverity };
+  }
+
+  /**
+   * 比较严重程度
+   * @returns 正数表示 a > b，负数表示 a < b，0 表示相等
+   */
+  private compareSeverity(a: 'high' | 'medium' | 'low', b: 'high' | 'medium' | 'low'): number {
+    const severityMap = { high: 3, medium: 2, low: 1 };
+    return severityMap[a] - severityMap[b];
+  }
+
+  /**
+   * 计算证据状态摘要
+   */
+  private calculateEvidenceStatusSummary(pois: PoiCoverage[]): {
+    total: number;
+    fetched: number;
+    missing: number;
+    fetching: number;
+    failed: number;
+  } {
+    let total = 0;
+    let fetched = 0;
+    let missing = 0;
+    let fetching = 0;
+    let failed = 0;
+    
+    for (const poi of pois) {
+      const statuses = this.getEvidenceStatus(poi);
+      for (const status of statuses) {
+        total++;
+        if (status.status === 'fetched') fetched++;
+        else if (status.status === 'missing') missing++;
+        else if (status.status === 'fetching') fetching++;
+        else if (status.status === 'failed') failed++;
+      }
+    }
+    
+    return { total, fetched, missing, fetching, failed };
+  }
+
+  /**
+   * 获取数据新鲜度
+   */
+  private getDataFreshness(pois: PoiCoverage[]): {
+    weather?: string;
+    roadClosure?: string;
+    openingHours?: string;
+  } {
+    const freshness: {
+      weather?: string;
+      roadClosure?: string;
+      openingHours?: string;
+    } = {};
+    
+    const weatherDates: string[] = [];
+    const roadClosureDates: string[] = [];
+    const openingHoursDates: string[] = [];
+    
+    for (const poi of pois) {
+      const statuses = this.getEvidenceStatus(poi);
+      for (const status of statuses) {
+        if (status.type === 'weather' && status.status === 'fetched' && status.lastUpdated) {
+          weatherDates.push(status.lastUpdated);
+        } else if (status.type === 'road_closure' && status.status === 'fetched' && status.lastUpdated) {
+          roadClosureDates.push(status.lastUpdated);
+        } else if (status.type === 'opening_hours' && status.status === 'fetched' && status.lastUpdated) {
+          openingHoursDates.push(status.lastUpdated);
+        }
+      }
+    }
+    
+    // 获取最新的时间戳
+    if (weatherDates.length > 0) {
+      freshness.weather = weatherDates.sort().reverse()[0];
+    }
+    if (roadClosureDates.length > 0) {
+      freshness.roadClosure = roadClosureDates.sort().reverse()[0];
+    }
+    if (openingHoursDates.length > 0) {
+      freshness.openingHours = openingHoursDates.sort().reverse()[0];
+    }
+    
+    return freshness;
   }
 }

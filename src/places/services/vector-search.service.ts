@@ -60,14 +60,77 @@ export interface HybridSearchResult {
 @Injectable()
 export class VectorSearchService {
   private readonly logger = new Logger(VectorSearchService.name);
-  private readonly embeddingDimension: number;
+  private dbEmbeddingDimension: number | null = null;  // 数据库中实际的 embedding 维度
 
   constructor(
     private prisma: PrismaService,
     @Optional() private embeddingService?: EmbeddingService
   ) {
-    // 如果 EmbeddingService 不可用，使用默认维度
-    this.embeddingDimension = this.embeddingService?.getEmbeddingDimension() || 1536;
+    // 不再在构造函数中固定维度，改为动态获取
+    // 因为 EmbeddingService 现在支持多提供商（python/openai），维度可能不同
+    // - Python (BGE-M3): 1024 维
+    // - OpenAI (text-embedding-3-small): 1536 维
+  }
+
+  /**
+   * 获取当前 embedding 维度（动态）
+   * 
+   * 注意：维度取决于当前使用的 Embedding 提供商
+   */
+  private getEmbeddingDimension(): number {
+    return this.embeddingService?.getEmbeddingDimension() || 1536;
+  }
+
+  /**
+   * 检测数据库中 embedding 的实际维度
+   * 用于确保查询向量维度与存储向量维度匹配
+   */
+  private async detectDbEmbeddingDimension(): Promise<number | null> {
+    if (this.dbEmbeddingDimension !== null) {
+      return this.dbEmbeddingDimension;
+    }
+
+    try {
+      // 查询一条有 embedding 的记录来检测维度
+      const result = await this.prisma.$queryRaw<Array<{ dim: number }>>`
+        SELECT vector_dims(embedding) as dim 
+        FROM "Place" 
+        WHERE embedding IS NOT NULL 
+        LIMIT 1
+      `;
+
+      if (result.length > 0 && result[0].dim) {
+        this.dbEmbeddingDimension = result[0].dim;
+        this.logger.log(`检测到数据库 embedding 维度: ${this.dbEmbeddingDimension}`);
+        return this.dbEmbeddingDimension;
+      }
+    } catch (error: any) {
+      this.logger.warn(`检测数据库 embedding 维度失败: ${error.message}`);
+    }
+
+    return null;
+  }
+
+  /**
+   * 检查查询向量维度是否与数据库匹配
+   */
+  private async checkDimensionCompatibility(queryDimension: number): Promise<boolean> {
+    const dbDimension = await this.detectDbEmbeddingDimension();
+    
+    if (dbDimension === null) {
+      // 数据库中没有 embedding 数据，无需检查
+      return true;
+    }
+
+    if (queryDimension !== dbDimension) {
+      this.logger.warn(
+        `⚠️ 维度不匹配: 查询向量=${queryDimension}维, 数据库=${dbDimension}维。` +
+        `将降级到关键词搜索。请考虑重新生成 POI embedding。`
+      );
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -170,14 +233,21 @@ export class VectorSearchService {
     // 检查是否为降级后的零向量（embedding 失败时的降级策略）
     const isZeroVector = queryEmbedding.every(v => v === 0);
     
+    // 检查维度兼容性（查询向量维度 vs 数据库存储维度）
+    const isDimensionCompatible = await this.checkDimensionCompatibility(queryEmbedding.length);
+    
     this.logger.debug(`[hybridSearch] Embedding 信息: {
   dimension: ${queryEmbedding.length},
   isZeroVector: ${isZeroVector},
+  isDimensionCompatible: ${isDimensionCompatible},
   placesWithEmbedding: ${embeddingCount}
 }`);
     
-    if (isZeroVector) {
-      this.logger.warn('检测到零向量（embedding 失败），降级到纯关键词搜索');
+    if (isZeroVector || !isDimensionCompatible) {
+      const reason = isZeroVector 
+        ? '检测到零向量（embedding 失败）'
+        : `维度不匹配（查询=${queryEmbedding.length}维，数据库=${await this.detectDbEmbeddingDimension()}维）`;
+      this.logger.warn(`${reason}，降级到纯关键词搜索`);
       // 直接使用关键词搜索，跳过向量搜索
       const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
@@ -192,7 +262,7 @@ export class VectorSearchService {
         vectorScore: 0,
         keywordScore: r.keywordScore,
         finalScore: r.keywordScore,
-        matchReasons: ['关键词匹配（embedding 降级）'],
+        matchReasons: [`关键词匹配（${reason}）`],
         distance: r.distance,
       }));
     }
@@ -1023,8 +1093,14 @@ export class VectorSearchService {
     }
     const isZeroVector = queryEmbedding.every(v => v === 0);
     
-    if (isZeroVector) {
-      // 零向量，降级到关键词搜索
+    // 检查维度兼容性
+    const isDimensionCompatible = await this.checkDimensionCompatibility(queryEmbedding.length);
+    
+    if (isZeroVector || !isDimensionCompatible) {
+      const reason = isZeroVector 
+        ? '检测到零向量（embedding 失败）'
+        : `维度不匹配（查询=${queryEmbedding.length}维，数据库=${await this.detectDbEmbeddingDimension()}维）`;
+      // 零向量或维度不匹配，降级到关键词搜索
       const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
       return keywordResults.map(r => ({
         id: r.id,
@@ -1037,7 +1113,7 @@ export class VectorSearchService {
         vectorScore: 0,
         keywordScore: r.keywordScore,
         finalScore: r.keywordScore,
-        matchReasons: ['关键词匹配（embedding 降级）'],
+        matchReasons: [`关键词匹配（${reason}）`],
         distance: r.distance,
       }));
     }

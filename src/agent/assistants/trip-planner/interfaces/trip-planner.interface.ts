@@ -254,6 +254,11 @@ export interface TripPlannerRequest {
     currentLocation?: { lat: number; lng: number };
     currentTime?: string;
     selectedItems?: string[];
+    // 🚀 Phase 1 优化：快捷操作上下文
+    action?: string;
+    category?: string;
+    destination?: string;
+    sources?: any[];
   };
   
   // 🆕 澄清选择数据（用户点击澄清按钮后携带）
@@ -286,7 +291,7 @@ export interface TripPlannerResponse {
   
   // 富文本内容（可选）
   richContent?: {
-    type: 'day_overview' | 'poi_card' | 'poi_list' | 'comparison' | 'checklist' | 'map' | 'timeline' | 'guardian_panel' | 'gap_highlight';
+    type: 'day_overview' | 'poi_card' | 'poi_list' | 'comparison' | 'checklist' | 'map' | 'timeline' | 'guardian_panel' | 'gap_highlight' | 'rag_sources' | 'evidence_chain' | 'related_questions';
     data: any;
   };
   
@@ -319,12 +324,31 @@ export interface TripPlannerResponse {
   // 责任边界声明（当用户忽略安全警告时）
   disclaimer?: Disclaimer;
   
+  // 🚀 Phase 1 优化：RAG 结果结构化展示
+  ragResults?: {
+    sources: Array<{
+      id: string;
+      title: string;
+      content: string;
+      source?: string;
+      score: number;
+      relevance: 'HIGH' | 'MEDIUM' | 'LOW';
+    }>;
+    evidenceChain?: Array<{
+      step: number;
+      description: string;
+      sourceId: string;
+    }>;
+  };
+
   // 元数据
   meta?: {
     processingTime?: number;
     guardiansInvoked?: GuardianPersona[]; // 哪些守护者参与了评估
     uncertainty?: IntentUncertainty; // 意图不确定性类型
     detectedGaps?: ResponseItineraryGap[]; // 检测到的行程缺口
+    source?: 'RAG' | 'RAG+LLM' | 'LLM'; // 🚀 Phase 1 优化：回答来源
+    ragConfidence?: number; // 🚀 Phase 1 优化：RAG 置信度
   };
 }
 

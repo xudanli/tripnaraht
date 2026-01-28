@@ -54,6 +54,7 @@ import {
   GuardianInvokedEvent,
   GuardianInsightShownEvent,
   GuardianWarningIgnoredEvent,
+  ResponseItineraryGap,
 } from '../interfaces/trip-planner.interface';
 import {
   IntentUncertainty,
@@ -67,6 +68,10 @@ import { RouteOptimizationService } from './route-optimization.service';
 import { RouteOptimizationEvidence } from '../interfaces/route-optimization.interface';
 import { EnhancedChatService } from '../../../../rag/services/enhanced-chat.service';
 import { RagService } from '../../../../rag/services/rag.service';
+import { HybridCacheService } from '../../../../rag/services/hybrid-cache.service';
+import { PromptService } from './prompt.service';
+import { TelemetryService } from '../../../infra/telemetry.service';
+import { GapPreferencesService } from './gap-preferences.service';
 
 /**
  * 多意图识别结果
@@ -94,6 +99,15 @@ export interface StreamEvent {
     progress?: number;
     quickActions?: QuickAction[];
     error?: string;
+    // 🚀 Phase 2 优化：流式响应扩展字段
+    ragResults?: any;
+    intent?: TripPlannerIntent;
+    partial?: boolean;
+    enhanced?: boolean;
+    // 🚀 Phase 2 优化：结构化内容
+    richContent?: any;
+    meta?: any;
+    note?: string;
   };
 }
 
@@ -228,6 +242,10 @@ export class TripPlannerService {
     @Optional() private readonly routeOptimization?: RouteOptimizationService,
     @Optional() private readonly enhancedChat?: EnhancedChatService, // 用于 RAG 降级
     @Optional() private readonly ragService?: RagService, // 直接 RAG 检索
+    @Optional() private readonly cacheService?: HybridCacheService, // 🚀 Phase 1 优化：缓存服务
+    @Optional() private readonly promptService?: PromptService, // 🚀 Prompt优化：Prompt版本管理服务
+    @Optional() private readonly telemetryService?: TelemetryService, // 🚀 Prompt优化：性能监控服务
+    @Optional() private readonly gapPreferencesService?: GapPreferencesService, // 🚀 Phase 3 优化：缺口偏好服务
   ) {
     this.logger.log('🚀 行程规划智能助手已初始化 (V2 增强版 + 路线优化 + RAG降级)');
     this.logger.debug(`服务注入状态: StateStore=${!!stateStore}, Orchestrator=${!!orchestrator}, ContextAnalyzer=${!!contextAnalyzer}, RouteOptimization=${!!routeOptimization}, EnhancedChat=${!!enhancedChat}, RagService=${!!ragService}`);
@@ -280,7 +298,7 @@ export class TripPlannerService {
         // 如果意图不明确，需要澄清
         if (disambiguation.uncertainty !== IntentUncertainty.CLEAR && disambiguation.clarificationNeeded) {
           this.logger.debug(`[规划助手] 需要澄清: ${disambiguation.uncertainty}`);
-          let clarificationResponse = this.createClarificationResponse(state, disambiguation);
+          let clarificationResponse = await this.createClarificationResponse(state, disambiguation);
           
           // 🎭 即使需要澄清，也运行三人格评估（检查距离等问题）
           const guardianResult = await this.evaluateWithGuardians(state, intent, request.message);
@@ -463,21 +481,27 @@ export class TripPlannerService {
   }
 
   private async processChatStream(request: TripPlannerRequest, subject: Subject<StreamEvent>): Promise<void> {
+    // 🚀 Phase 2 优化：流式响应 - RAG-First 策略
+    const state = await this.loadOrCreateSession(request);
+    
+    // 如果是咨询问题，使用 RAG-First 流式响应
+    const intentResult = await this.analyzeIntentMultiple(request.message, state);
+    if (intentResult.primary === 'ASK_QUESTION') {
+      await this.processAskQuestionStream(request, state, subject);
+      return;
+    }
+    
     // 发送思考状态
     subject.next({
       type: 'thinking',
       data: { content: '正在分析您的需求...', progress: 10 },
     });
-
-    const state = await this.loadOrCreateSession(request);
     
     // 发送意图分析状态
     subject.next({
       type: 'thinking',
       data: { content: '理解您的意图...', progress: 30 },
     });
-
-    const intentResult = await this.analyzeIntentMultiple(request.message, state);
     
     // 发送处理状态
     subject.next({
@@ -575,7 +599,17 @@ export class TripPlannerService {
     // 细化类
     if (/添加|加上|增加|想去/.test(message)) intents.push('ADD_ACTIVITY');
     if (/吃|餐厅|美食|饭|当地.*美食/.test(message)) intents.push('ARRANGE_MEALS');
-    if (/交通|怎么去|地铁|打车|公交/.test(message)) intents.push('PLAN_TRANSPORT');
+    
+    // 🚨 修复：优先识别"租车"相关查询，避免被误判为通用交通规划
+    // 租车相关关键词（优先级：高）
+    if (/租车|car.*rent|rental|租.*车|自驾|开车|驾驶/.test(message)) {
+      // "租车"查询应该作为咨询问题处理，而不是交通规划
+      intents.push('ASK_QUESTION');
+    } else if (/交通|怎么去|地铁|打车|公交/.test(message)) {
+      // 通用交通规划（排除租车）
+      intents.push('PLAN_TRANSPORT');
+    }
+    
     if (/空闲|没安排|还能|还有时间|填充/.test(message)) intents.push('FILL_FREE_TIME');
     
     // 🆕 目的地特色类（转为 GET_SUGGESTION 处理）
@@ -588,11 +622,21 @@ export class TripPlannerService {
     // 🆕 问题修复类
     if (/修复|问题|分析.*问题/.test(message)) intents.push('OPTIMIZE_ROUTE');
     
-    // 咨询类
+    // 咨询类（🚀 Phase 1 优化：增强咨询问题识别）
     if (/可行|来得及|够不够|会不会/.test(message)) intents.push('CHECK_FEASIBILITY');
     if (/对比|比较|哪个好/.test(message)) intents.push('COMPARE_OPTIONS');
     if (/建议|推荐|应该|景点|地点/.test(message)) intents.push('GET_SUGGESTION');
-    if (/\?|？/.test(message) && intents.length === 0) intents.push('ASK_QUESTION');
+    
+    // 咨询问题关键词（优先级：高）
+    const questionKeywords = [
+      '什么', '怎么', '如何', '为什么', '是否', '需要', '可以', '能否',
+      '多少', '多久', '哪里', '哪个', '哪些', '什么时候', '怎么办',
+      '保险', '签证', '天气', '费用', '价格', '预算', '时间', '路线',
+      '?', '？', '吗', '呢', '呢？'
+    ];
+    if (questionKeywords.some(k => message.includes(k)) && intents.length === 0) {
+      intents.push('ASK_QUESTION');
+    }
     
     // 执行类
     if (/清单|准备|要带/.test(message)) intents.push('CREATE_CHECKLIST');
@@ -745,9 +789,28 @@ export class TripPlannerService {
 
   /**
    * LLM 多意图分析
+   * 🚀 Prompt优化：使用PromptService统一管理Prompt
    */
   private async analyzeIntentWithLLM(message: string, state: TripPlannerState): Promise<IntentAnalysisResult> {
-    const prompt = `你是一个行程规划助手。分析用户的消息，识别所有意图。
+    const startTime = Date.now();
+    
+    // 🚀 Prompt优化：使用PromptService加载Prompt模板
+    let prompt: string;
+    if (this.promptService) {
+      try {
+        prompt = await this.promptService.renderPrompt('intent_analysis', {
+          message,
+          destination: state.tripContext.destinationName || state.tripContext.destination,
+          durationDays: state.tripContext.durationDays,
+          phase: state.phase,
+        }, 'v1.0');
+        
+        // 🚀 Prompt优化：记录Prompt调用埋点
+        this.logger.debug(`[Prompt优化] 使用PromptService加载意图分析Prompt，耗时: ${Date.now() - startTime}ms`);
+      } catch (error) {
+        this.logger.warn(`[Prompt优化] PromptService加载失败，使用默认Prompt: ${error}`);
+        // 降级：使用默认Prompt
+        prompt = `你是一个行程规划助手。分析用户的消息，识别所有意图。
 
 用户消息: "${message}"
 
@@ -786,11 +849,59 @@ export class TripPlannerService {
     "mealType": "lunch"
   }
 }`;
+      }
+    } else {
+      // 降级：使用默认Prompt
+      prompt = `你是一个行程规划助手。分析用户的消息，识别所有意图。
 
+用户消息: "${message}"
+
+当前行程上下文:
+- 目的地: ${state.tripContext.destinationName || state.tripContext.destination}
+- 天数: ${state.tripContext.durationDays}天
+- 当前阶段: ${state.phase}
+
+可能的意图类型:
+- OPTIMIZE_ROUTE: 优化路线顺序
+- REPLACE_POI: 替换某个景点
+- ADJUST_PACE: 调整节奏（太紧/太松）
+- REBALANCE_DAYS: 重新平衡各天安排
+- ADD_ACTIVITY: 添加活动
+- ARRANGE_MEALS: 安排餐厅
+- PLAN_TRANSPORT: 规划交通
+- FILL_FREE_TIME: 填充空闲时间
+- ASK_QUESTION: 问问题
+- GET_SUGGESTION: 获取建议
+- CHECK_FEASIBILITY: 检查可行性
+- COMPARE_OPTIONS: 对比选项
+- CREATE_CHECKLIST: 创建行前清单
+- EXPORT_ITINERARY: 导出行程
+- SHOW_OVERVIEW: 显示行程概览
+- UNDO_CHANGE: 撤销修改
+- GENERAL_CHAT: 通用对话
+
+返回 JSON 格式:
+{
+  "primary": "主要意图",
+  "secondary": ["次要意图1", "次要意图2"],
+  "confidence": 0.9,
+  "entities": {
+    "dayNumber": 2,
+    "poiName": "景点名",
+    "mealType": "lunch"
+  }
+}`;
+    }
+
+    const llmStartTime = Date.now();
     const response = await this.llmService!.humanizeResult({
       dataType: 'multi_intent_analysis',
       data: { prompt },
     });
+    
+    // 🚀 Prompt优化：记录LLM调用性能指标
+    const llmLatency = Date.now() - llmStartTime;
+    this.logger.debug(`[Prompt优化] LLM调用耗时: ${llmLatency}ms, Prompt长度: ${prompt.length}字符`);
 
     try {
       // 尝试解析 JSON
@@ -958,6 +1069,108 @@ export class TripPlannerService {
       case 'UNDO_CHANGE': return this.handleUndoChange(state, request);
       default: return this.handleGeneralChat(state, request);
     }
+  }
+
+  /**
+   * 🚀 Phase 2 优化：流式处理咨询问题（RAG-First）
+   */
+  private async processAskQuestionStream(
+    request: TripPlannerRequest,
+    state: TripPlannerState,
+    subject: Subject<StreamEvent>
+  ): Promise<void> {
+    const ctx = state.tripContext;
+    
+    // 1. 发送"正在检索"状态
+    subject.next({
+      type: 'thinking',
+      data: { content: '正在检索相关信息...', progress: 20 },
+    });
+
+    // 2. 快速 RAG 检索
+    const ragResult = await this.answerQuestionWithRAG(request.message, ctx);
+    
+    // 3. 如果 RAG 结果充足，立即返回（快速路径）
+    if (ragResult && ragResult.confidence >= 0.7) {
+      subject.next({
+        type: 'content',
+        data: {
+          content: ragResult.answer,
+          phase: 'CONSULTING',
+          quickActions: this.generateQuestionQuickActions(request.message, ctx, ragResult),
+          ragResults: ragResult.structuredResults,
+          richContent: ragResult.structuredResults ? {
+            type: 'rag_sources' as const,
+            data: {
+              sources: ragResult.structuredResults.sources,
+              evidenceChain: ragResult.structuredResults.evidenceChain,
+            },
+          } : undefined,
+        },
+      });
+      
+      subject.next({
+        type: 'done',
+        data: {
+          phase: 'CONSULTING',
+          intent: 'ASK_QUESTION',
+          meta: {
+            source: 'RAG',
+            ragConfidence: ragResult.confidence,
+            processingTime: ragResult.processingTime,
+          },
+        },
+      });
+      
+      subject.complete();
+      return;
+    }
+
+    // 4. RAG 结果不足，使用 LLM 增强（异步推送）
+    if (ragResult && ragResult.confidence < 0.7) {
+      subject.next({
+        type: 'content',
+        data: {
+          content: ragResult.answer,
+          phase: 'CONSULTING',
+          partial: true,
+          note: '正在生成更详细的回答...',
+        },
+      });
+    }
+
+    subject.next({
+      type: 'thinking',
+      data: { content: '正在生成更详细的回答...', progress: 70 },
+    });
+
+    // 5. LLM 增强（异步）
+    const llmAnswer = await this.answerQuestionWithLLM(request.message, ctx, ragResult);
+    
+    subject.next({
+      type: 'content',
+      data: {
+        content: llmAnswer,
+        phase: 'CONSULTING',
+        enhanced: true,
+        quickActions: this.generateQuestionQuickActions(request.message, ctx, ragResult),
+        ragResults: ragResult?.structuredResults,
+      },
+    });
+
+    subject.next({
+      type: 'done',
+      data: {
+        phase: 'CONSULTING',
+        intent: 'ASK_QUESTION',
+        meta: {
+          source: ragResult ? 'RAG+LLM' : 'LLM',
+          ragConfidence: ragResult?.confidence || 0,
+        },
+      },
+    });
+
+    subject.complete();
   }
 
   // ==================== 意图处理器 ====================
@@ -1500,19 +1713,262 @@ ${transportNeeds.passes.map(p => `• ${p.name}：¥${p.price}（${p.reason}）`
    */
   private async handleAskQuestion(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
+    const startTime = Date.now();
     
-    // 使用 LLM 回答问题
-    const answer = await this.answerQuestionWithLLM(request.message, ctx);
+    // 🚀 Phase 2 优化：并行处理 - RAG 检索和缺口检测并行执行
+    const [ragResult, gapAnalysis] = await Promise.all([
+      this.answerQuestionWithRAG(request.message, ctx),
+      // 如果意图消歧器可用，并行检测缺口（用于后续上下文增强）
+      this.intentDisambiguator 
+        ? this.intentDisambiguator.disambiguate(request.message, 'ASK_QUESTION', state)
+            .then(result => result.diagnostics?.relatedGaps || [])
+            .catch(() => [])
+        : Promise.resolve([]),
+    ]);
     
+    // 如果 RAG 结果充足，直接返回（快速路径）
+    if (ragResult && ragResult.confidence >= 0.7) {
+      const processingTime = Date.now() - startTime;
+      this.logger.debug(`[规划助手] RAG-First 快速路径: 置信度=${ragResult.confidence.toFixed(2)}, 耗时=${processingTime}ms, 缺口数=${gapAnalysis.length}`);
+      
+      // 🚀 Phase 2 优化：RAG 结果结构化展示
+      const richContent = ragResult.structuredResults ? {
+        type: 'rag_sources' as const,
+        data: {
+          sources: ragResult.structuredResults.sources,
+          evidenceChain: ragResult.structuredResults.evidenceChain,
+        },
+      } : undefined;
+
+      // 🚀 Phase 2 优化：添加反馈选项
+      // 🚀 Phase 3 优化：生成追问建议
+      const followUpQuestions = await this.generateFollowUpQuestions(request.message, ragResult, ctx);
+      
+      const quickActionsWithFeedback = [
+        ...this.generateQuestionQuickActions(request.message, ctx, ragResult),
+        // 追问建议（最多3个）
+        ...followUpQuestions.slice(0, 3).map((q, i) => ({
+          id: `follow-up-${i + 1}`,
+          label: q,
+          action: 'ASK_QUESTION',
+          params: { question: q },
+          style: 'secondary' as const,
+        })),
+        {
+          id: 'feedback-helpful',
+          label: '👍 有用',
+          action: 'SUBMIT_FEEDBACK',
+          params: { helpful: true },
+          style: 'ghost' as const,
+        },
+        {
+          id: 'feedback-not-helpful',
+          label: '👎 无用',
+          action: 'SUBMIT_FEEDBACK',
+          params: { helpful: false },
+          style: 'ghost' as const,
+        },
+      ];
+
+      // 🚀 Phase 3 优化：记录性能指标（用于监控）
+      this.recordPerformanceMetrics({
+        intent: 'ASK_QUESTION',
+        source: 'RAG',
+        processingTime,
+        ragConfidence: ragResult.confidence,
+        sessionId: state.sessionId,
+        tripId: ctx.tripId,
+        promptType: 'qa_enhancement',
+        promptVersion: 'v1.0',
+      });
+
+      return {
+        sessionId: state.sessionId,
+        message: ragResult.answer,
+        phase: 'CONSULTING',
+        intent: 'ASK_QUESTION',
+        quickActions: quickActionsWithFeedback,
+        ragResults: ragResult.structuredResults,
+        richContent,
+        meta: {
+          processingTime,
+          source: 'RAG',
+          ragConfidence: ragResult.confidence,
+          // 🚀 Gap显示优化：智能过滤 + 用户偏好 + 聚合展示
+          detectedGaps: await (async () => {
+            const filtered = this.filterRelevantGaps(gapAnalysis, 'ASK_QUESTION', request.message);
+            if (filtered.length === 0) {
+              return undefined;
+            }
+            
+            const mapped: ResponseItineraryGap[] = filtered.map((g: ItineraryGap, index: number): ResponseItineraryGap => ({
+              id: g.id || `gap_${index}_${Date.now()}`,
+              type: g.type as ResponseItineraryGap['type'],
+              dayNumber: g.dayNumber,
+              timeSlot: g.timeSlot,
+              description: g.description,
+              severity: g.severity,
+              context: g.context ? {
+                beforeItem: g.context.beforeActivity?.name,
+                afterItem: g.context.afterActivity?.name,
+                nearbyLocation: g.context.dayCity,
+              } : undefined,
+            }));
+            
+            // 🚀 Phase 3 优化：应用用户偏好过滤
+            let finalGaps = mapped;
+            if (this.gapPreferencesService && request.userId) {
+              try {
+                const preferences = await this.gapPreferencesService.getPreferences(
+                  request.userId,
+                  ctx.tripId,
+                  state.sessionId
+                );
+
+                if (preferences.showOnlyCritical) {
+                  finalGaps = finalGaps.filter(g => g.severity === 'CRITICAL');
+                }
+
+                if (preferences.filterTypes.length > 0) {
+                  finalGaps = finalGaps.filter(g => preferences.filterTypes.includes(g.type));
+                }
+
+                finalGaps = await this.gapPreferencesService.filterIgnoredGaps(
+                  request.userId,
+                  finalGaps,
+                  ctx.tripId
+                );
+              } catch (error: any) {
+                this.logger.warn(`[缺口偏好] 应用用户偏好失败: ${error.message}`);
+              }
+            }
+            
+            // Phase 2: 聚合相同类型的重复缺口
+            const aggregated = this.aggregateGaps(finalGaps);
+            return aggregated.length > 0 ? aggregated : undefined;
+          })(),
+        },
+      };
+    }
+    
+    // RAG 结果不足，使用 LLM 增强
+    const answer = await this.answerQuestionWithLLM(request.message, ctx, ragResult);
+    const processingTime = Date.now() - startTime;
+    
+    // 🚀 Phase 2 优化：添加反馈选项
+    // 🚀 Phase 3 优化：生成追问建议
+    const followUpQuestions = await this.generateFollowUpQuestions(request.message, ragResult, ctx);
+    
+    const quickActionsWithFeedback = [
+      ...this.generateQuestionQuickActions(request.message, ctx, ragResult),
+      // 追问建议（最多3个）
+      ...followUpQuestions.slice(0, 3).map((q, i) => ({
+        id: `follow-up-${i + 1}`,
+        label: q,
+        action: 'ASK_QUESTION',
+        params: { question: q },
+        style: 'secondary' as const,
+      })),
+      {
+        id: 'feedback-helpful',
+        label: '👍 有用',
+        action: 'SUBMIT_FEEDBACK',
+        params: { helpful: true },
+        style: 'ghost' as const,
+      },
+      {
+        id: 'feedback-not-helpful',
+        label: '👎 无用',
+        action: 'SUBMIT_FEEDBACK',
+        params: { helpful: false },
+        style: 'ghost' as const,
+      },
+    ];
+
+    // 🚀 Phase 3 优化：记录性能指标（用于监控）
+    this.recordPerformanceMetrics({
+      intent: 'ASK_QUESTION',
+      source: ragResult ? 'RAG+LLM' : 'LLM',
+      processingTime,
+      ragConfidence: ragResult?.confidence || 0,
+      sessionId: state.sessionId,
+      tripId: ctx.tripId,
+      promptType: 'qa_enhancement',
+      promptVersion: 'v1.0',
+    });
+
+    // 🚀 Gap显示优化：智能过滤缺口，减少信息冗余
+    let filteredGaps = this.filterRelevantGaps(
+      gapAnalysis,
+      'ASK_QUESTION',
+      request.message
+    );
+
+    // 🚀 Gap显示优化 Phase 2：聚合相同类型的重复缺口
+    const mappedGaps: ResponseItineraryGap[] = filteredGaps.length > 0 
+      ? filteredGaps.map((g: ItineraryGap): ResponseItineraryGap => ({
+          id: g.id,
+          type: g.type as ResponseItineraryGap['type'],
+          dayNumber: g.dayNumber,
+          timeSlot: g.timeSlot,
+          description: g.description,
+          severity: g.severity,
+          context: g.context ? {
+            beforeItem: g.context.beforeActivity?.name,
+            afterItem: g.context.afterActivity?.name,
+            nearbyLocation: g.context.dayCity,
+          } : undefined,
+        }))
+      : [];
+
+    // 🚀 Phase 3 优化：应用用户偏好过滤（优先级过滤、类型过滤、忽略过滤）
+    let finalGaps = mappedGaps;
+    if (this.gapPreferencesService && request.userId) {
+      try {
+        const preferences = await this.gapPreferencesService.getPreferences(
+          request.userId,
+          ctx.tripId,
+          state.sessionId
+        );
+
+        // 优先级过滤
+        if (preferences.showOnlyCritical) {
+          finalGaps = finalGaps.filter(g => g.severity === 'CRITICAL');
+        }
+
+        // 类型过滤
+        if (preferences.filterTypes.length > 0) {
+          finalGaps = finalGaps.filter(g => preferences.filterTypes.includes(g.type));
+        }
+
+        // 过滤已忽略的缺口
+        finalGaps = await this.gapPreferencesService.filterIgnoredGaps(
+          request.userId,
+          finalGaps,
+          ctx.tripId
+        );
+      } catch (error: any) {
+        this.logger.warn(`[缺口偏好] 应用用户偏好失败: ${error.message}`);
+        // 如果偏好服务失败，继续使用原始过滤结果
+      }
+    }
+
+    // 聚合相同类型的重复缺口
+    const aggregatedGaps = this.aggregateGaps(finalGaps);
+
     return {
       sessionId: state.sessionId,
       message: answer,
       phase: 'CONSULTING',
       intent: 'ASK_QUESTION',
-      quickActions: [
-        { id: '1', label: '❓ 继续问', action: 'ASK_MORE', style: 'secondary' },
-        { id: '2', label: '🔙 返回行程', action: 'SHOW_OVERVIEW', style: 'secondary' },
-      ],
+      quickActions: quickActionsWithFeedback,
+      ragResults: ragResult?.structuredResults,
+      meta: {
+        processingTime,
+        source: ragResult ? 'RAG+LLM' : 'LLM',
+        ragConfidence: ragResult?.confidence || 0,
+        detectedGaps: aggregatedGaps.length > 0 ? aggregatedGaps : undefined,
+      },
     };
   }
 
@@ -2175,6 +2631,32 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
   /**
    * 加载或创建会话（V2: 支持 StateStore 持久化）
    */
+  /**
+   * 🚀 Phase 3 优化：获取会话状态（用于反馈收集）
+   */
+  async getSession(sessionId: string): Promise<TripPlannerState | null> {
+    // 先检查内存缓存
+    const state = this.sessionCache.get(sessionId);
+    if (state) {
+      return state;
+    }
+
+    // 从 StateStore 加载
+    if (this.stateStore) {
+      try {
+        const stored = await this.stateStore.get<TripPlannerState>(`TripPlannerSession/${sessionId}`, 'TripPlannerSession');
+        if (stored && stored.data) {
+          this.sessionCache.set(sessionId, stored.data);
+          return stored.data;
+        }
+      } catch (error) {
+        this.logger.warn(`[规划助手] 从 StateStore 加载会话失败: ${error}`);
+      }
+    }
+
+    return null;
+  }
+
   private async loadOrCreateSession(request: TripPlannerRequest): Promise<TripPlannerState> {
     const sessionId = request.sessionId || `planner_${request.tripId}_${randomUUID().substring(0, 8)}`;
     
@@ -2715,6 +3197,67 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
       message: '已应用当前的优化建议。您的行程已更新！',
       phase: 'OVERVIEW' as const,
       intent: 'OPTIMIZE_ROUTE' as const,
+    };
+  }
+
+  /**
+   * 🆕 确认修改（批量确认多个待处理的更改）
+   */
+  async confirmChanges(dto: {
+    tripId: string;
+    sessionId: string;
+    changeIds: string[];
+    userId: string;
+  }): Promise<TripPlannerResponse> {
+    this.logger.debug(`[确认修改] changeIds=${dto.changeIds.join(',')}`);
+    
+    // 加载会话状态
+    const state = await this.loadOrCreateSession({
+      tripId: dto.tripId,
+      userId: dto.userId,
+      sessionId: dto.sessionId,
+      message: '__CONFIRM_CHANGES__',
+    });
+
+    // 应用所有待确认的更改
+    const appliedChanges: string[] = [];
+    const failedChanges: string[] = [];
+
+    for (const changeId of dto.changeIds) {
+      try {
+        await this.applyPendingChange({
+          tripId: dto.tripId,
+          sessionId: dto.sessionId,
+          changeId,
+          userId: dto.userId,
+        });
+        appliedChanges.push(changeId);
+      } catch (error: any) {
+        this.logger.warn(`[确认修改] 应用更改失败: changeId=${changeId}, error=${error.message}`);
+        failedChanges.push(changeId);
+      }
+    }
+
+    // 更新会话状态中的pendingChanges
+    if (state.pendingChanges) {
+      state.pendingChanges = state.pendingChanges.filter(
+        change => !dto.changeIds.includes(change.id)
+      );
+      await this.saveSession(state);
+    }
+
+    const message = appliedChanges.length > 0
+      ? `已成功应用 ${appliedChanges.length} 个修改。${failedChanges.length > 0 ? `有 ${failedChanges.length} 个修改应用失败。` : ''}`
+      : `所有修改应用失败。`;
+
+    return {
+      sessionId: dto.sessionId,
+      message,
+      phase: state.phase,
+      intent: 'OPTIMIZE_ROUTE',
+      quickActions: [
+        { id: '1', label: '📋 查看行程', action: 'SHOW_OVERVIEW', style: 'secondary' },
+      ],
     };
   }
 
@@ -4343,24 +4886,214 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   /**
    * 使用 LLM 回答问题
    */
-  private async answerQuestionWithLLM(question: string, ctx: TripContext): Promise<string> {
+  /**
+   * 🚀 Phase 1 优化：RAG-First 策略 - 先检索 RAG，结果不足时再用 LLM 增强
+   */
+  private async answerQuestionWithRAG(
+    question: string,
+    ctx: TripContext
+  ): Promise<{ answer: string; confidence: number; structuredResults?: any; processingTime?: number } | null> {
+    if (!this.ragService) {
+      this.logger.debug(`[规划助手] RagService 未注入，跳过 RAG 检索`);
+      return null;
+    }
+
+    const startTime = Date.now();
+    
+    // 🚀 Phase 1 优化：缓存检查
+    if (this.cacheService) {
+      const cacheKey = `qa:${ctx.destination}:${question.substring(0, 100).toLowerCase().trim()}`;
+      const cached = await this.cacheService.get<{ answer: string; confidence: number; structuredResults?: any }>(cacheKey);
+      if (cached && cached.answer && typeof cached.confidence === 'number') {
+        this.logger.debug(`[规划助手] 缓存命中: ${cacheKey}`);
+        return { ...cached, processingTime: Date.now() - startTime };
+      }
+    }
+    
+    try {
+      // 🚨 修复：针对"租车"查询优化检索策略
+      const isCarRentalQuery = /租车|car.*rent|rental|租.*车|自驾|开车|驾驶/.test(question.toLowerCase());
+      
+      // 并行检索多个知识库
+      const ragPromises = [
+        this.ragService.retrieve({
+          query: question,
+          collection: 'travel_guides',
+          countryCode: ctx.destination,
+          limit: isCarRentalQuery ? 8 : 5, // 租车查询增加检索数量
+          minScore: isCarRentalQuery ? 0.4 : 0.5, // 租车查询降低阈值，避免遗漏
+        }),
+        this.ragService.retrieve({
+          query: question,
+          collection: 'legal_rules',
+          countryCode: ctx.destination,
+          limit: isCarRentalQuery ? 5 : 3, // 租车查询增加检索数量
+          minScore: isCarRentalQuery ? 0.4 : 0.5, // 租车查询降低阈值
+        }),
+      ];
+
+      const ragResults = await Promise.all(ragPromises);
+      let allResults = ragResults.flat().filter(r => r && r.score >= (isCarRentalQuery ? 0.4 : 0.5));
+      
+      // 🚨 修复：如果检测到租车查询但结果不相关，尝试更精确的查询
+      if (isCarRentalQuery && allResults.length > 0) {
+        // 检查结果相关性：如果最高分低于0.6，尝试更精确的查询
+        const maxScore = Math.max(...allResults.map(r => r.score || 0));
+        if (maxScore < 0.6) {
+          this.logger.debug(`[规划助手] 租车查询结果相关性较低(maxScore=${maxScore.toFixed(2)})，尝试精确查询`);
+          // 尝试更精确的查询：添加"租车"关键词
+          const preciseQuery = `${question} 租车 自驾 汽车租赁`;
+          const precisePromises = [
+            this.ragService.retrieve({
+              query: preciseQuery,
+              collection: 'travel_guides',
+              countryCode: ctx.destination,
+              limit: 5,
+              minScore: 0.4,
+            }),
+            this.ragService.retrieve({
+              query: preciseQuery,
+              collection: 'legal_rules',
+              countryCode: ctx.destination,
+              limit: 3,
+              minScore: 0.4,
+            }),
+          ];
+          const preciseResults = await Promise.all(precisePromises);
+          const preciseAllResults = preciseResults.flat().filter(r => r && r.score >= 0.4);
+          
+          // 合并结果，去重（基于内容相似度）
+          if (preciseAllResults.length > 0) {
+            const existingContent = new Set(allResults.map(r => r.content?.substring(0, 100) || ''));
+            const newResults = preciseAllResults.filter(r => {
+              const contentKey = r.content?.substring(0, 100) || '';
+              return !existingContent.has(contentKey);
+            });
+            allResults = [...allResults, ...newResults].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10);
+            this.logger.debug(`[规划助手] 精确查询补充了 ${newResults.length} 个结果`);
+          }
+        }
+      }
+
+      if (allResults.length === 0) {
+        this.logger.debug(`[规划助手] RAG 检索返回 0 个结果`);
+        return null;
+      }
+
+      // 计算置信度（基于最高分和结果数量）
+      const maxScore = Math.max(...allResults.map(r => r.score || 0));
+      const resultCount = allResults.length;
+      const confidence = Math.min(maxScore * 0.9 + (resultCount >= 3 ? 0.1 : 0), 0.95);
+
+      // 格式化 RAG 结果
+      const formatted = this.formatRAGResults(allResults, ctx, question);
+      
+      const processingTime = Date.now() - startTime;
+      this.logger.debug(`[规划助手] RAG 检索成功: ${allResults.length} 个结果, 置信度=${confidence.toFixed(2)}, 耗时=${processingTime}ms`);
+
+      const result = {
+        answer: formatted.answer,
+        confidence,
+        structuredResults: formatted.structuredResults,
+        processingTime,
+      };
+
+      // 🚀 Phase 1 优化：缓存结果（TTL: 24小时）
+      if (this.cacheService && confidence >= 0.6) {
+        const cacheKey = `qa:${ctx.destination}:${question.substring(0, 100).toLowerCase().trim()}`;
+        await this.cacheService.set(cacheKey, result, 86400); // 24小时
+        this.logger.debug(`[规划助手] 缓存已保存: ${cacheKey}`);
+      }
+
+      return result;
+    } catch (error: any) {
+      this.logger.error(`[规划助手] RAG 检索失败: ${error?.message}`, error.stack);
+      return null;
+    }
+  }
+
+  /**
+   * 🚀 Phase 1 优化：LLM 增强（传入 RAG 上下文）
+   */
+  private async answerQuestionWithLLM(
+    question: string,
+    ctx: TripContext,
+    ragResult?: { answer: string; confidence: number; structuredResults?: any } | null
+  ): Promise<string> {
     if (!this.llmService) {
+      // 降级：使用 RAG 结果或生成友好消息
+      if (ragResult && ragResult.confidence >= 0.5) {
+        return ragResult.answer;
+      }
       return `关于"${question}"的问题，建议您查阅最新的旅游攻略或咨询当地旅行社。`;
     }
 
-    const prompt = `你是一位专业的旅行顾问。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
+    // 🚨 修复：检测租车查询，优化提示词
+    const isCarRentalQuery = /租车|car.*rent|rental|租.*车|自驾|开车|驾驶/.test(question.toLowerCase());
+    
+    // 构建 RAG 上下文
+    const ragContext = ragResult?.structuredResults?.sources
+      ? `\n\n相关参考信息：\n${ragResult.structuredResults.sources.slice(0, 3).map((s: any, i: number) => `${i + 1}. ${s.title}: ${s.content.substring(0, 200)}...`).join('\n')}`
+      : '';
 
-用户问：${question}
+    // 🚨 修复：针对租车查询的特殊提示
+    const carRentalGuidance = isCarRentalQuery ? `
+重要提示：用户询问的是"租车"相关问题，请务必：
+1. 专注于回答租车相关的内容（租车公司、价格、保险、驾照要求、路况等）
+2. 不要回答公共交通（地铁、公交、出租车）相关内容
+3. 如果参考信息中没有租车相关内容，请明确说明"关于租车的信息较少，建议咨询租车公司或查阅最新攻略"
+4. 可以提及：租车公司推荐、价格范围、保险选择、驾照要求、路况注意事项等
+` : '';
 
-请用专业、友好的语气回答这个问题。如果问题涉及具体价格或时效性信息，请提醒用户以实际情况为准。`;
+    // 🚀 Prompt优化：使用PromptService加载Prompt模板
+    let prompt: string;
+    const promptStartTime = Date.now();
+    
+    if (this.promptService) {
+      try {
+        prompt = await this.promptService.renderPrompt('qa_enhancement', {
+          destination: ctx.destinationName || ctx.destination,
+          durationDays: ctx.durationDays,
+          question,
+          ragContext: ragContext || undefined,
+          carRentalGuidance: carRentalGuidance || undefined,
+        }, 'v1.0');
+        
+        this.logger.debug(`[Prompt优化] 使用PromptService加载问答Prompt，耗时: ${Date.now() - promptStartTime}ms`);
+      } catch (error) {
+        this.logger.warn(`[Prompt优化] PromptService加载失败，使用默认Prompt: ${error}`);
+        // 降级：使用默认Prompt
+        prompt = `你是一位专业的旅行顾问。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
+
+用户问：${question}${ragContext}${carRentalGuidance}
+
+请用专业、友好的语气回答这个问题。如果问题涉及具体价格或时效性信息，请提醒用户以实际情况为准。${ragContext ? '\n\n注意：上述参考信息来自知识库，请结合这些信息给出更准确的回答。' : ''}`;
+      }
+    } else {
+      // 降级：使用默认Prompt
+      prompt = `你是一位专业的旅行顾问。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
+
+用户问：${question}${ragContext}${carRentalGuidance}
+
+请用专业、友好的语气回答这个问题。如果问题涉及具体价格或时效性信息，请提醒用户以实际情况为准。${ragContext ? '\n\n注意：上述参考信息来自知识库，请结合这些信息给出更准确的回答。' : ''}`;
+    }
 
     try {
+      const llmStartTime = Date.now();
       const response = await this.llmService.humanizeResult({
         dataType: 'travel_qa',
         data: { prompt },
       });
+      
+      // 🚀 Prompt优化：记录LLM调用性能指标
+      const llmLatency = Date.now() - llmStartTime;
+      this.logger.debug(`[Prompt优化] LLM调用耗时: ${llmLatency}ms, Prompt长度: ${prompt.length}字符`);
       return response;
     } catch (error) {
+      // 降级：使用 RAG 结果
+      if (ragResult && ragResult.confidence >= 0.5) {
+        return ragResult.answer;
+      }
       return `关于"${question}"，我建议您查阅最新的官方信息或咨询专业旅行社。`;
     }
   }
@@ -4530,7 +5263,25 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
       return await this.fallbackToRAG(ctx, message);
     }
 
-    const prompt = `你是 NARA，一位专业、热情的旅行规划师。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
+    // 🚀 Prompt优化：使用PromptService加载Prompt模板
+    let prompt: string;
+    const promptStartTime = Date.now();
+    
+    if (this.promptService) {
+      try {
+        const historyText = history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
+        prompt = await this.promptService.renderPrompt('general_chat', {
+          destination: ctx.destinationName || ctx.destination,
+          durationDays: ctx.durationDays,
+          history: historyText,
+          message,
+        }, 'v1.0');
+        
+        this.logger.debug(`[Prompt优化] 使用PromptService加载通用对话Prompt，耗时: ${Date.now() - promptStartTime}ms`);
+      } catch (error) {
+        this.logger.warn(`[Prompt优化] PromptService加载失败，使用默认Prompt: ${error}`);
+        // 降级：使用默认Prompt
+        prompt = `你是 NARA，一位专业、热情的旅行规划师。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
 
 对话历史：
 ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
@@ -4538,12 +5289,35 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
 用户说：${message}
 
 请用专业、友好的语气回复，并在适当时候引导用户完善行程。`;
+      }
+    } else {
+      // 降级：使用默认Prompt
+      prompt = `你是 NARA，一位专业、热情的旅行规划师。用户正在规划去${ctx.destinationName || ctx.destination}的${ctx.durationDays}天旅行。
+
+对话历史：
+${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
+
+用户说：${message}
+
+请用专业、友好的语气回复，并在适当时候引导用户完善行程。`;
+    }
 
     try {
-      return await this.llmService.humanizeResult({
+      const llmStartTime = Date.now();
+      const response = await this.llmService.humanizeResult({
         dataType: 'travel_chat',
         data: { prompt },
       });
+      
+      // 🚀 Prompt优化：记录LLM调用性能指标
+      const llmLatency = Date.now() - llmStartTime;
+      this.logger.debug(`[Prompt优化] LLM调用耗时: ${llmLatency}ms, Prompt长度: ${prompt.length}字符`);
+      
+      // 🚀 Prompt优化：记录性能指标（问答增强）
+      // 注意：这里不记录完整的性能指标，因为answerQuestionWithLLM会被handleAskQuestion调用
+      // 完整的性能指标在handleAskQuestion中记录
+      
+      return response;
     } catch (error) {
       this.logger.warn(`[规划助手] LLM 生成回复失败，尝试 RAG 降级: ${error}`);
       // LLM 失败，降级到 RAG
@@ -4575,7 +5349,8 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
         
         if (results && results.length > 0) {
           // 格式化检索结果
-          const answer = this.formatRAGResults(results, ctx, message);
+          const formatted = this.formatRAGResults(results, ctx, message);
+          const answer = formatted.answer; // formatRAGResults返回对象，提取answer字段
           this.logger.debug(`[规划助手] RAG 检索成功，找到 ${results.length} 个相关文档，答案长度: ${answer.length}`);
           return answer;
         } else {
@@ -4613,17 +5388,127 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
   }
 
   /**
-   * 格式化 RAG 检索结果为用户友好的答案
+   * 🚀 Phase 1 优化：智能生成快捷操作（根据问题类型和 RAG 结果）
+   */
+  private generateQuestionQuickActions(
+    question: string,
+    ctx: TripContext,
+    ragResult?: { answer: string; confidence: number; structuredResults?: any } | null
+  ): QuickAction[] {
+    const actions: QuickAction[] = [];
+    let actionId = 1;
+
+    const lowerQuestion = question.toLowerCase();
+
+    // 1. 根据问题类型生成针对性操作
+    if (lowerQuestion.includes('保险') || lowerQuestion.includes('insurance')) {
+      actions.push({
+        id: String(actionId++),
+        label: '📋 添加到行前清单',
+        action: 'ADD_TO_CHECKLIST',
+        params: { category: 'insurance', content: ragResult?.answer || question },
+        style: 'primary',
+      });
+      actions.push({
+        id: String(actionId++),
+        label: '🔗 查看租车公司政策',
+        action: 'OPEN_EXTERNAL_LINK',
+        params: { type: 'car_rental_insurance' },
+        style: 'secondary',
+      });
+    }
+
+    if (lowerQuestion.includes('天气') || lowerQuestion.includes('weather')) {
+      actions.push({
+        id: String(actionId++),
+        label: '📅 查看天气预报',
+        action: 'SHOW_WEATHER',
+        params: { destination: ctx.destination },
+        style: 'primary',
+      });
+      actions.push({
+        id: String(actionId++),
+        label: '👕 生成穿衣建议',
+        action: 'GENERATE_PACKING_LIST',
+        params: { basedOnWeather: true },
+        style: 'secondary',
+      });
+    }
+
+    if (lowerQuestion.includes('餐厅') || lowerQuestion.includes('美食') || lowerQuestion.includes('restaurant') || lowerQuestion.includes('吃')) {
+      actions.push({
+        id: String(actionId++),
+        label: '🍽️ 推荐餐厅',
+        action: 'RECOMMEND_RESTAURANTS',
+        params: { destination: ctx.destination },
+        style: 'primary',
+      });
+      actions.push({
+        id: String(actionId++),
+        label: '📅 安排用餐时间',
+        action: 'ARRANGE_MEALS',
+        style: 'secondary',
+      });
+    }
+
+    if (lowerQuestion.includes('签证') || lowerQuestion.includes('visa')) {
+      actions.push({
+        id: String(actionId++),
+        label: '📋 添加到行前清单',
+        action: 'ADD_TO_CHECKLIST',
+        params: { category: 'documents', content: ragResult?.answer || question },
+        style: 'primary',
+      });
+      actions.push({
+        id: String(actionId++),
+        label: '🔗 查看官方要求',
+        action: 'OPEN_EXTERNAL_LINK',
+        params: { type: 'visa_requirements' },
+        style: 'secondary',
+      });
+    }
+
+    // 2. 如果有 RAG 结果，提供"了解更多"操作
+    if (ragResult && ragResult.structuredResults?.sources && ragResult.structuredResults.sources.length > 0) {
+      actions.push({
+        id: String(actionId++),
+        label: '📚 查看完整文档',
+        action: 'SHOW_RAG_SOURCES',
+        params: { sources: ragResult.structuredResults.sources.map((s: any) => ({ id: s.id, title: s.title, score: s.score })) },
+        style: 'outline',
+      });
+    }
+
+    // 3. 通用操作
+    actions.push({
+      id: String(actionId++),
+      label: '💬 继续追问',
+      action: 'ASK_FOLLOW_UP',
+      style: 'secondary',
+    });
+    actions.push({
+      id: String(actionId++),
+      label: '🔙 返回行程',
+      action: 'SHOW_OVERVIEW',
+      style: 'ghost',
+    });
+
+    return actions;
+  }
+
+  /**
+   * 格式化 RAG 检索结果为用户友好的答案（🚀 Phase 1 优化：返回结构化结果）
    */
   private formatRAGResults(
-    results: Array<{ title?: string; content: string; source?: string; score?: number }>,
+    results: Array<{ id?: string; title?: string; content: string; source?: string; score?: number }>,
     ctx: TripContext,
     originalQuery: string
-  ): string {
+  ): { answer: string; structuredResults: any } {
     const destination = ctx.destinationName || ctx.destination;
     
     if (results.length === 0) {
-      return this.generateFallbackMessage(ctx, originalQuery, true);
+      const fallbackAnswer = this.generateFallbackMessage(ctx, originalQuery, true);
+      return { answer: fallbackAnswer, structuredResults: null };
     }
     
     // 取前 3 个最相关的结果
@@ -4651,7 +5536,375 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     
     answer += `以上信息来自知识库，如需更详细的信息，建议查看官方文档或咨询相关机构。`;
     
-    return answer;
+    // 🚀 Phase 1 优化：返回结构化结果
+    const structuredResults = {
+      sources: results.map((r, index) => ({
+        id: r.id || `source_${index}`,
+        title: r.title || '相关信息',
+        content: r.content.substring(0, 500),
+        source: r.source,
+        score: r.score || 0.5,
+        relevance: this.calculateRelevance(r.score || 0.5),
+      })),
+      evidenceChain: topResults.slice(0, 3).map((r, index) => ({
+        step: index + 1,
+        description: `从"${r.title || '来源'}"中提取相关信息`,
+        sourceId: r.id || `source_${index}`,
+      })),
+    };
+    
+    return { answer, structuredResults };
+  }
+
+  /**
+   * 计算相关度等级
+   */
+  private calculateRelevance(score: number): 'HIGH' | 'MEDIUM' | 'LOW' {
+    if (score >= 0.7) return 'HIGH';
+    if (score >= 0.5) return 'MEDIUM';
+    return 'LOW';
+  }
+
+  /**
+   * 🚀 Phase 3 优化：生成追问建议（基于 RAG 结果和问题类型）
+   */
+  private async generateFollowUpQuestions(
+    question: string,
+    ragResult: { answer: string; confidence: number; structuredResults?: any } | null,
+    ctx: TripContext
+  ): Promise<string[]> {
+    const lowerQuestion = question.toLowerCase();
+    const questions: string[] = [];
+
+    // 1. 基于问题类型生成模板化追问
+    // 🚨 修复：优先处理"租车"相关查询
+    if (lowerQuestion.includes('租车') || lowerQuestion.includes('car') && (lowerQuestion.includes('rent') || lowerQuestion.includes('rental')) || lowerQuestion.includes('自驾') || lowerQuestion.includes('开车')) {
+      questions.push(
+        `${ctx.destinationName || ctx.destination}有哪些租车公司推荐？`,
+        '租车需要什么证件？',
+        '租车价格大概是多少？',
+        '租车保险怎么买？',
+        '路况怎么样？需要注意什么？'
+      );
+    } else if (lowerQuestion.includes('保险') || lowerQuestion.includes('insurance')) {
+      questions.push(
+        '租车保险包含哪些内容？',
+        '需要购买额外的保险吗？',
+        '保险费用大概是多少？',
+        '如何理赔？'
+      );
+    } else if (lowerQuestion.includes('天气') || lowerQuestion.includes('weather')) {
+      questions.push(
+        `${ctx.destinationName || ctx.destination} 的最佳旅行时间是什么时候？`,
+        '需要准备什么衣物？',
+        '会有极端天气吗？',
+        '如何查看实时天气预报？'
+      );
+    } else if (lowerQuestion.includes('餐厅') || lowerQuestion.includes('美食') || lowerQuestion.includes('restaurant')) {
+      questions.push(
+        '推荐一些当地特色餐厅',
+        '需要提前预订吗？',
+        '人均消费大概是多少？',
+        '有什么必吃的美食？'
+      );
+    } else if (lowerQuestion.includes('签证') || lowerQuestion.includes('visa')) {
+      questions.push(
+        '签证需要多长时间办理？',
+        '需要准备哪些材料？',
+        '签证费用是多少？',
+        '在哪里办理签证？'
+      );
+    } else if (lowerQuestion.includes('交通') || lowerQuestion.includes('transport')) {
+      questions.push(
+        '如何从机场到市区？',
+        '公共交通方便吗？',
+        '需要租车吗？',
+        '有什么交通卡推荐？'
+      );
+    }
+
+    // 2. 基于 RAG 结果生成追问（如果 RAG 结果中有相关信息）
+    if (ragResult?.structuredResults?.sources && ragResult.structuredResults.sources.length > 0) {
+      const sources = ragResult.structuredResults.sources;
+      
+      // 从 RAG 来源中提取关键词，生成相关追问
+      sources.forEach((source: any) => {
+        const title = source.title?.toLowerCase() || '';
+        const content = source.content?.toLowerCase() || '';
+        
+        // 提取关键词并生成追问
+        if (title.includes('费用') || content.includes('费用') || content.includes('价格')) {
+          questions.push('费用大概是多少？');
+        }
+        if (title.includes('时间') || content.includes('时间') || content.includes('开放')) {
+          questions.push('什么时间最合适？');
+        }
+        if (title.includes('注意') || content.includes('注意') || content.includes('提醒')) {
+          questions.push('有什么需要注意的吗？');
+        }
+      });
+    }
+
+    // 3. 通用追问模板
+    if (questions.length === 0) {
+      questions.push(
+        '能详细说明一下吗？',
+        '有什么需要注意的吗？',
+        '还有其他相关信息吗？'
+      );
+    }
+
+    // 去重并返回前5个
+    return Array.from(new Set(questions)).slice(0, 5);
+  }
+
+  /**
+   * 🚀 Phase 3 优化：记录性能指标（用于监控）
+   */
+  /**
+   * 🚀 Gap显示优化：智能过滤缺口，减少信息冗余
+   * 
+   * 优化策略：
+   * 1. 根据用户意图和查询内容过滤相关缺口
+   * 2. 优先显示 CRITICAL，隐藏 OPTIONAL
+   * 3. 限制显示数量（最多5个）
+   * 4. ASK_QUESTION 意图默认不显示缺口（除非明确询问）
+   */
+  private filterRelevantGaps(
+    gaps: ItineraryGap[],
+    userIntent: TripPlannerIntent,
+    userMessage: string
+  ): ItineraryGap[] {
+    if (!gaps || gaps.length === 0) {
+      return [];
+    }
+
+    const lowerMessage = userMessage.toLowerCase();
+
+    // 1. 如果用户明确询问某个类型，只显示该类型
+    if (lowerMessage.includes('用餐') || lowerMessage.includes('餐厅') || lowerMessage.includes('吃饭') || lowerMessage.includes('早餐') || lowerMessage.includes('午餐') || lowerMessage.includes('晚餐')) {
+      const mealGaps = gaps.filter(g => g.type === 'MEAL');
+      // 如果用户明确询问用餐，显示所有用餐缺口（但不超过5个）
+      return mealGaps.slice(0, 5);
+    }
+    
+    if (lowerMessage.includes('交通') || lowerMessage.includes('租车') || lowerMessage.includes('打车') || lowerMessage.includes('公交')) {
+      return gaps.filter(g => g.type === 'TRANSPORT').slice(0, 5);
+    }
+    
+    if (lowerMessage.includes('住宿') || lowerMessage.includes('酒店') || lowerMessage.includes('住')) {
+      return gaps.filter(g => g.type === 'HOTEL').slice(0, 5);
+    }
+    
+    if (lowerMessage.includes('活动') || lowerMessage.includes('景点') || lowerMessage.includes('空档')) {
+      return gaps.filter(g => g.type === 'ACTIVITY' || g.type === 'FREE_TIME').slice(0, 5);
+    }
+
+    // 2. 如果用户意图是 ASK_QUESTION，默认不显示缺口（除非明确询问"待完善"或"缺口"）
+    if (userIntent === 'ASK_QUESTION') {
+      const isGapRelatedQuery = lowerMessage.includes('待完善') || 
+                                lowerMessage.includes('缺口') || 
+                                lowerMessage.includes('问题') ||
+                                lowerMessage.includes('需要') ||
+                                lowerMessage.includes('完善');
+      
+      if (!isGapRelatedQuery) {
+        // 不显示缺口，避免信息冗余
+        return [];
+      }
+    }
+
+    // 3. 如果用户意图是优化类，显示所有缺口（但限制数量）
+    if (['OPTIMIZE_ROUTE', 'ADJUST_PACE', 'REBALANCE_DAYS', 'REPLACE_POI'].includes(userIntent)) {
+      // 按优先级排序，优先显示 CRITICAL
+      const sorted = gaps.sort((a, b) => {
+        const severityOrder = { CRITICAL: 0, SUGGESTED: 1, OPTIONAL: 2 };
+        return severityOrder[a.severity] - severityOrder[b.severity];
+      });
+      return sorted.slice(0, 5);
+    }
+
+    // 4. 默认：只显示 CRITICAL 和 SUGGESTED，最多5个
+    const filtered = gaps
+      .filter(g => g.severity === 'CRITICAL' || g.severity === 'SUGGESTED')
+      .sort((a, b) => {
+        const severityOrder = { CRITICAL: 0, SUGGESTED: 1, OPTIONAL: 2 };
+        return severityOrder[a.severity] - severityOrder[b.severity];
+      })
+      .slice(0, 5);
+
+    return filtered;
+  }
+
+  /**
+   * 🚀 Gap显示优化 Phase 2：聚合相同类型的重复缺口
+   * 
+   * 将相同类型、相同严重程度、相同时间段的缺口聚合显示
+   * 例如：6天的早餐缺口 → "早餐未安排 (共6天，07:00-09:30)"
+   */
+  private aggregateGaps(gaps: ResponseItineraryGap[]): ResponseItineraryGap[] {
+    if (!gaps || gaps.length === 0) {
+      return [];
+    }
+
+    // 如果缺口数量 <= 3，不需要聚合
+    if (gaps.length <= 3) {
+      return gaps;
+    }
+
+    // 按类型、严重程度、时间段分组
+    const grouped = new Map<string, ResponseItineraryGap[]>();
+    
+    gaps.forEach(gap => {
+      // 生成分组key：类型_严重程度_时间段
+      const timeKey = `${gap.timeSlot.start}-${gap.timeSlot.end}`;
+      const key = `${gap.type}_${gap.severity}_${timeKey}`;
+      
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(gap);
+    });
+
+    // 聚合：如果同一组有2个或以上，则聚合
+    const aggregated: ResponseItineraryGap[] = [];
+    
+    grouped.forEach((group, key) => {
+      if (group.length === 1) {
+        // 单个缺口，直接添加
+        aggregated.push(group[0]);
+      } else {
+        // 多个缺口，聚合显示
+        const first = group[0];
+        const days = group.map(g => g.dayNumber).sort((a, b) => a - b);
+        
+        // 生成聚合描述
+        let description = '';
+        if (first.type === 'MEAL') {
+          // 用餐缺口：提取用餐类型（早餐/午餐/晚餐）
+          const mealType = first.description.match(/(早餐|午餐|晚餐)/)?.[0] || '用餐';
+          description = `${mealType}未安排 (共${group.length}天，${first.timeSlot.start}-${first.timeSlot.end})`;
+        } else if (first.type === 'TRANSPORT') {
+          description = `交通未安排 (共${group.length}天)`;
+        } else if (first.type === 'HOTEL') {
+          description = `住宿未安排 (共${group.length}天)`;
+        } else if (first.type === 'ACTIVITY' || first.type === 'FREE_TIME') {
+          description = `活动空档 (共${group.length}天，${first.timeSlot.start}-${first.timeSlot.end})`;
+        } else {
+          description = `${first.description} (共${group.length}天)`;
+        }
+
+        // 创建聚合后的缺口
+        aggregated.push({
+          id: `aggregated_${key}_${days[0]}_${days[days.length - 1]}`,
+          type: first.type,
+          dayNumber: days[0], // 使用第一天作为代表
+          timeSlot: first.timeSlot,
+          description,
+          severity: first.severity,
+          context: {
+            // 聚合信息：显示涉及的天数
+            nearbyLocation: `涉及第${days.join('、')}天`,
+          },
+        });
+      }
+    });
+
+    // 按优先级排序
+    return aggregated.sort((a, b) => {
+      const severityOrder = { CRITICAL: 0, SUGGESTED: 1, OPTIONAL: 2 };
+      return severityOrder[a.severity] - severityOrder[b.severity];
+    });
+  }
+
+  /**
+   * 🚀 Prompt优化：记录性能指标（集成TelemetryService）
+   */
+  private recordPerformanceMetrics(metrics: {
+    intent: TripPlannerIntent;
+    source: 'RAG' | 'RAG+LLM' | 'LLM';
+    processingTime: number;
+    ragConfidence?: number;
+    sessionId: string;
+    tripId?: string;
+    promptType?: 'intent_analysis' | 'qa_enhancement' | 'general_chat';
+    promptVersion?: string;
+    promptLength?: number;
+    llmLatency?: number;
+  }): void {
+    // 记录日志
+    this.logger.debug(
+      `[性能监控] intent=${metrics.intent}, source=${metrics.source}, ` +
+      `latency=${metrics.processingTime}ms, ragConfidence=${metrics.ragConfidence || 'N/A'}, ` +
+      `promptType=${metrics.promptType || 'N/A'}, promptVersion=${metrics.promptVersion || 'N/A'}`
+    );
+    
+    // 🚀 Prompt优化：集成TelemetryService记录性能指标
+    if (this.telemetryService) {
+      try {
+        // 创建或获取Trace ID（基于sessionId）
+        const traceId = `trip-planner-${metrics.sessionId}`;
+        
+        // 检查Trace是否存在，如果不存在则创建
+        // 注意：TelemetryService的startTrace返回traceId，不是spanId
+        let traceExists = false;
+        try {
+          // 尝试访问activeTraces（私有属性，使用类型断言）
+          const activeTraces = (this.telemetryService as any).activeTraces;
+          if (activeTraces && activeTraces.has(traceId)) {
+            traceExists = true;
+          }
+        } catch {
+          // 如果无法访问，假设不存在
+        }
+        
+        if (!traceExists) {
+          this.telemetryService.startTrace(
+            `trip-planner-${metrics.intent}`,
+            'agent_request',
+            {
+              sessionId: metrics.sessionId,
+              tripId: metrics.tripId || 'unknown',
+            }
+          );
+        }
+        
+        // 记录性能指标Span
+        const spanId = this.telemetryService.startSpan(
+          traceId,
+          `trip-planner-${metrics.intent}-${metrics.source}`,
+          'llm_call',
+          undefined,
+          {
+            intent: metrics.intent,
+            source: metrics.source,
+            promptType: metrics.promptType || 'unknown',
+            promptVersion: metrics.promptVersion || 'unknown',
+            ragConfidence: metrics.ragConfidence?.toFixed(2) || 'N/A',
+            tripId: metrics.tripId || 'unknown',
+          }
+        );
+        
+        // 结束Span并记录性能指标
+        if (spanId) {
+          this.telemetryService.endSpan(spanId, 'success', {
+            durationMs: metrics.processingTime,
+            ...(metrics.promptLength && { promptLength: metrics.promptLength }),
+            ...(metrics.llmLatency && { llmLatency: metrics.llmLatency }),
+          });
+        }
+      } catch (error: any) {
+        this.logger.warn(`[性能监控] TelemetryService记录失败: ${error.message}`);
+      }
+    }
+    
+    // 可以在这里添加：
+    // - Prometheus metrics（未来）
+    // - 性能数据存储（未来）
+    // - 告警触发（如果延迟过高）
+    if (metrics.processingTime > 5000) {
+      this.logger.warn(`[性能告警] 处理时间过长: ${metrics.processingTime}ms, intent=${metrics.intent}`);
+    }
   }
 
   /**
@@ -4702,10 +5955,10 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
   /**
    * 创建澄清响应（用户意图不明确时）
    */
-  private createClarificationResponse(
+  private async createClarificationResponse(
     state: TripPlannerState,
     disambiguation: DisambiguationResult,
-  ): TripPlannerResponse {
+  ): Promise<TripPlannerResponse> {
     const clarification = disambiguation.clarificationNeeded!;
     
     // 构建澄清消息
@@ -4746,10 +5999,17 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
       };
     }
     
-    // 收集所有相关缺口
-    const detectedGaps = disambiguation.diagnostics?.relatedGaps?.map(gap => ({
+    // 🚀 Gap显示优化：收集并处理相关缺口（过滤+用户偏好+聚合）
+    const allGaps = disambiguation.diagnostics?.relatedGaps || [];
+    let filteredGaps = this.filterRelevantGaps(
+      allGaps,
+      disambiguation.originalIntent || 'ASK_QUESTION',
+      '' // 澄清阶段没有用户消息，使用空字符串
+    );
+    
+    let mappedGaps: ResponseItineraryGap[] = filteredGaps.map(gap => ({
       id: gap.id,
-      type: gap.type,
+      type: gap.type as ResponseItineraryGap['type'],
       dayNumber: gap.dayNumber,
       timeSlot: gap.timeSlot,
       description: gap.description,
@@ -4759,7 +6019,37 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
         afterItem: gap.context.afterActivity?.name,
         nearbyLocation: gap.context.dayCity,
       } : undefined,
-    })) || [];
+    }));
+    
+    // 🚀 Phase 3 优化：应用用户偏好过滤（如果有userId）
+    if (this.gapPreferencesService && state.userId) {
+      try {
+        const preferences = await this.gapPreferencesService.getPreferences(
+          state.userId,
+          state.tripId,
+          state.sessionId
+        );
+
+        if (preferences.showOnlyCritical) {
+          mappedGaps = mappedGaps.filter(g => g.severity === 'CRITICAL');
+        }
+
+        if (preferences.filterTypes.length > 0) {
+          mappedGaps = mappedGaps.filter(g => preferences.filterTypes.includes(g.type));
+        }
+
+        mappedGaps = await this.gapPreferencesService.filterIgnoredGaps(
+          state.userId,
+          mappedGaps,
+          state.tripId
+        );
+      } catch (error: any) {
+        this.logger.warn(`[缺口偏好] 应用用户偏好失败: ${error.message}`);
+      }
+    }
+    
+    // Phase 2: 聚合相同类型的重复缺口
+    const detectedGaps = this.aggregateGaps(mappedGaps);
     
     return {
       sessionId: state.sessionId,

@@ -1,25 +1,38 @@
 // src/places/services/embedding.service.ts
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AxiosInstance } from 'axios';
 import dns from 'node:dns';
 import { createOpenAIHttp } from '../../llm/utils/openai-http.factory';
 import { retryWithBackoff } from '../../llm/utils/retry-with-backoff';
 import { EmbeddingCacheService } from '../../rag/services/embedding-cache.service';
+import { PythonAIService } from '../../llm/services/python-ai.service';
+
+/**
+ * Embedding 提供商类型
+ */
+export type EmbeddingProvider = 'python' | 'openai';
 
 /**
  * Embedding 服务
  * 
- * 支持 OpenAI text-embedding-3-small（1536维）
- * 自动降级：如果主提供商失败，自动尝试备用提供商
+ * 支持多提供商:
+ * - python: BGE-M3 (1024维) - 通过 Python AI 服务，本地部署，零成本
+ * - openai: text-embedding-3-small (1536维) - OpenAI API
+ * 
+ * 智能降级策略:
+ * 1. 优先使用 Python AI 服务（如果启用且可用）
+ * 2. Python 服务不可用时自动降级到 OpenAI
+ * 3. 所有提供商失败时返回零向量（最终降级）
+ * 
  * 缓存优化：使用Redis缓存查询embedding，减少API调用和延迟
  */
 @Injectable()
 export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name);
-  private readonly provider: string;
+  private readonly provider: EmbeddingProvider;
   private readonly openaiApiKey?: string;
-  private readonly fallbackProviders: string[]; // 备用提供商列表
+  private readonly embeddingDimension: number;
   // OpenAI HTTP 客户端（使用统一的工厂函数，确保代理配置一致）
   private readonly openaiHttp: AxiosInstance;
   
@@ -29,30 +42,42 @@ export class EmbeddingService {
   constructor(
     @Optional() private configService?: ConfigService,
     @Optional() private embeddingCacheService?: EmbeddingCacheService,
+    @Optional() @Inject(forwardRef(() => PythonAIService)) private pythonAIService?: PythonAIService,
   ) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
-    this.provider = this.configService?.get<string>('EMBEDDING_PROVIDER') || 'openai';
-    this.openaiApiKey = this.configService?.get<string>('OPENAI_API_KEY');
+    // 读取配置的提供商（默认 python，因为成本更低）
+    const configuredProvider = this.configService?.get<string>('EMBEDDING_PROVIDER') || 'python';
+    this.provider = configuredProvider as EmbeddingProvider;
     
-    // 配置备用提供商（目前仅支持 OpenAI）
-    this.fallbackProviders = [];
+    // 读取 embedding 维度配置
+    // python (BGE-M3): 1024 维
+    // openai (text-embedding-3-small): 1536 维
+    const configuredDimension = this.configService?.get<number>('EMBEDDING_DIMENSION');
+    this.embeddingDimension = configuredDimension || (this.provider === 'python' ? 1024 : 1536);
+    
+    this.openaiApiKey = this.configService?.get<string>('OPENAI_API_KEY');
     
     // 使用统一的工厂函数创建 OpenAI HTTP 客户端（与 LlmService 使用相同配置）
     // 注意：禁用代理，因为代理服务器可能未运行，会导致连接错误
     const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
     const disableProxy = this.configService?.get<string>('OPENAI_DISABLE_PROXY') === 'true' || true; // 默认禁用代理
     this.openaiHttp = createOpenAIHttp(baseUrl, this.logger, { disableProxy });
+    
+    this.logger.log(`Embedding 服务初始化: provider=${this.provider}, dimension=${this.embeddingDimension}`);
   }
 
   /**
    * 生成文本的 embedding
    * 
+   * 智能路由策略：
+   * 1. 优先使用 Python AI 服务（BGE-M3，本地部署，零成本）
+   * 2. Python 不可用时降级到 OpenAI
+   * 3. 所有提供商失败时返回零向量
+   * 
    * 缓存优化：优先从缓存获取，未命中时生成并缓存
    * 并发去重：如果多个请求同时请求相同文本，复用同一个生成任务
-   * 如果主提供商失败，自动尝试备用提供商
-   * 如果所有提供商都失败，返回空向量（降级策略），让流程能继续
    */
   async generateEmbedding(text: string): Promise<number[]> {
     if (!text || text.trim().length === 0) {
@@ -94,61 +119,70 @@ export class EmbeddingService {
   }
 
   /**
+   * 获取当前使用的提供商
+   */
+  getCurrentProvider(): EmbeddingProvider {
+    // 如果配置为 python 且 Python 服务可用，返回 python
+    if (this.provider === 'python' && this.pythonAIService?.isAvailable()) {
+      return 'python';
+    }
+    // 否则降级到 openai
+    return 'openai';
+  }
+
+  /**
    * 内部方法：实际生成 embedding
+   * 
+   * 路由策略：
+   * 1. 配置为 python 时，优先尝试 Python AI 服务
+   * 2. Python 失败或不可用时，降级到 OpenAI
+   * 3. 所有提供商失败时，返回零向量
    */
   private async generateEmbeddingInternal(text: string, normalizedText: string): Promise<number[]> {
-    // 缓存未命中，生成新的embedding
-    let embedding: number[];
-    try {
-      embedding = await this.generateEmbeddingWithProvider(text, this.provider);
-    } catch (error: any) {
-      this.logger.warn(`主提供商 ${this.provider} 失败: ${error.message}，尝试备用提供商...`);
-      
-      // 尝试备用提供商
-      let found = false;
-      for (const fallbackProvider of this.fallbackProviders) {
+    let embedding: number[] | null = null;
+    let usedProvider: EmbeddingProvider = this.provider;
+
+    // 策略1：优先尝试 Python AI 服务（如果配置为 python）
+    if (this.provider === 'python' && this.pythonAIService) {
+      if (this.pythonAIService.isAvailable()) {
         try {
-          this.logger.log(`尝试备用提供商: ${fallbackProvider}`);
-          embedding = await this.generateEmbeddingWithProvider(text, fallbackProvider);
-          found = true;
-          break;
-        } catch (fallbackError: any) {
-          this.logger.warn(`备用提供商 ${fallbackProvider} 也失败: ${fallbackError.message}`);
-          continue;
+          embedding = await this.pythonAIService.generateEmbedding(text);
+          usedProvider = 'python';
+          this.logger.debug(`✅ Python AI (BGE-M3) embedding 生成成功: ${text.substring(0, 50)}...`);
+        } catch (error: any) {
+          this.logger.warn(`Python AI 服务失败: ${error.message}，降级到 OpenAI...`);
         }
-      }
-      
-      if (!found) {
-        // 所有提供商都失败，返回零向量
-        this.logger.error(`所有 embedding 提供商都失败，返回零向量`);
-        const dimension = this.getEmbeddingDimension();
-        this.logger.warn(`Embedding 失败，返回零向量（维度: ${dimension}），将降级到关键词搜索`);
-        return new Array(dimension).fill(0);
+      } else {
+        this.logger.debug(`Python AI 服务不可用，降级到 OpenAI`);
       }
     }
 
-    // 缓存生成的embedding（不缓存零向量）
-    // 注意：在生成完成后立即写入内存缓存，确保后续并发请求可以立即使用
+    // 策略2：降级到 OpenAI（如果 Python 失败或配置为 openai）
+    if (!embedding) {
+      try {
+        embedding = await this.generateOpenAIEmbedding(text);
+        usedProvider = 'openai';
+        this.logger.debug(`✅ OpenAI embedding 生成成功: ${text.substring(0, 50)}...`);
+      } catch (error: any) {
+        this.logger.error(`OpenAI embedding 也失败: ${error.message}`);
+      }
+    }
+
+    // 策略3：所有提供商都失败，返回零向量
+    if (!embedding) {
+      const dimension = this.getEmbeddingDimension();
+      this.logger.error(`所有 embedding 提供商都失败，返回零向量（维度: ${dimension}）`);
+      return new Array(dimension).fill(0);
+    }
+
+    // 缓存生成的 embedding（不缓存零向量）
     if (this.embeddingCacheService && embedding.some(v => v !== 0)) {
-      // 先写入内存缓存（同步，立即可用）
       await this.embeddingCacheService.set(text, embedding).catch(err => {
-        this.logger.warn(`缓存embedding失败: ${err.message}`);
+        this.logger.warn(`缓存 embedding 失败: ${err.message}`);
       });
     }
 
     return embedding;
-  }
-
-  /**
-   * 使用指定提供商生成 embedding
-   */
-  private async generateEmbeddingWithProvider(text: string, provider: string): Promise<number[]> {
-    switch (provider.toLowerCase()) {
-      case 'openai':
-        return await this.generateOpenAIEmbedding(text);
-      default:
-        throw new Error(`不支持的 embedding 提供商: ${provider}`);
-    }
   }
 
   /**
@@ -264,10 +298,38 @@ export class EmbeddingService {
 
   /**
    * 获取 embedding 维度
+   * 
+   * 维度说明：
+   * - python (BGE-M3): 1024 维
+   * - openai (text-embedding-3-small): 1536 维
+   * 
+   * 注意：当前实际使用的维度取决于 getCurrentProvider() 返回的提供商
    */
-  getEmbeddingDimension(provider?: string): number {
-    // 统一使用 OpenAI text-embedding-3-small（1536维）
-    return 1536;
+  getEmbeddingDimension(provider?: EmbeddingProvider): number {
+    const effectiveProvider = provider || this.getCurrentProvider();
+    
+    switch (effectiveProvider) {
+      case 'python':
+        return 1024;  // BGE-M3
+      case 'openai':
+        return 1536;  // text-embedding-3-small
+      default:
+        return this.embeddingDimension;
+    }
+  }
+
+  /**
+   * 获取配置的默认维度
+   */
+  getConfiguredDimension(): number {
+    return this.embeddingDimension;
+  }
+
+  /**
+   * 检查 Python AI 服务是否可用
+   */
+  isPythonAIAvailable(): boolean {
+    return this.pythonAIService?.isAvailable() ?? false;
   }
 }
 
