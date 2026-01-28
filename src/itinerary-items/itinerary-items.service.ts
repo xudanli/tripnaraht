@@ -65,9 +65,10 @@ export class ItineraryItemsService {
     const tripDayDate = DateTime.fromJSDate(tripDay.date, { zone: 'utc' });
     const startDateTime = DateTime.fromJSDate(start, { zone: 'utc' });
     
-    // 计算行程日期的范围：当天 00:00 到次日 06:00（允许凌晨活动）
+    // 计算行程日期的范围：当天 00:00 到次日 03:00（允许深夜活动）
+    // 注：03:00 而非 06:00，因为凌晨 3 点后的活动更应归属于新的一天
     const dayStart = tripDayDate.startOf('day');
-    const dayEnd = tripDayDate.plus({ days: 1, hours: 6 }); // 次日凌晨6点
+    const dayEnd = tripDayDate.plus({ days: 1, hours: 3 }); // 次日凌晨3点
     
     if (startDateTime < dayStart || startDateTime >= dayEnd) {
       const expectedDate = tripDayDate.toFormat('yyyy-MM-dd');
@@ -367,17 +368,32 @@ export class ItineraryItemsService {
 
   /**
    * 获取指定 TripDay 的所有行程项
+   * 
+   * 🆕 支持跨天住宿显示：
+   * - 返回当天的所有行程项
+   * - 额外返回前一天跨到今天的住宿项（标记为退房）
    */
   async findByTripDay(tripDayId: string) {
-    return this.prisma.itineraryItem.findMany({
+    // 获取当前 TripDay 信息
+    const currentTripDay = await this.prisma.tripDay.findUnique({
+      where: { id: tripDayId },
+      include: { Trip: true },
+    });
+
+    if (!currentTripDay) {
+      return [];
+    }
+
+    // 查询当天的行程项
+    const todayItems = await this.prisma.itineraryItem.findMany({
       where: { tripDayId },
       include: {
         Place: true,
         Trail: {
           include: {
-                    Place_Trail_startPlaceIdToPlace: true,
-                    Place_Trail_endPlaceIdToPlace: true,
-                TrailWaypoint: {
+            Place_Trail_startPlaceIdToPlace: true,
+            Place_Trail_endPlaceIdToPlace: true,
+            TrailWaypoint: {
               include: {
                 Place: true,
               },
@@ -387,11 +403,135 @@ export class ItineraryItemsService {
             },
           },
         },
+        TripDay: true,
       },
       orderBy: {
         startTime: 'asc',
       },
     });
+
+    // 🆕 查询前一天的跨天住宿项
+    const checkoutItems = await this.findCheckoutItemsForDay(currentTripDay);
+
+    // 合并结果，退房项排在最前面
+    const allItems = [...checkoutItems, ...todayItems];
+
+    // 添加跨天标记
+    return allItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+  }
+
+  /**
+   * 🆕 查找应该在指定日期显示"退房"的住宿项
+   */
+  private async findCheckoutItemsForDay(currentTripDay: any): Promise<any[]> {
+    const currentDate = DateTime.fromJSDate(currentTripDay.date, { zone: 'utc' });
+    const currentDayStart = currentDate.startOf('day');
+    const currentDayEnd = currentDate.endOf('day');
+
+    // 获取同一行程的前一天
+    const previousTripDay = await this.prisma.tripDay.findFirst({
+      where: {
+        tripId: currentTripDay.tripId,
+        date: {
+          lt: currentTripDay.date,
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    if (!previousTripDay) {
+      return [];
+    }
+
+    // 查询前一天的住宿项（REST 类型），其结束时间在今天
+    const checkoutItems = await this.prisma.itineraryItem.findMany({
+      where: {
+        tripDayId: previousTripDay.id,
+        type: 'REST', // 住宿类型
+        endTime: {
+          gte: currentDayStart.toJSDate(),
+          lte: currentDayEnd.plus({ hours: 14 }).toJSDate(), // 退房时间通常在中午前
+        },
+      },
+      include: {
+        Place: true,
+        Trail: {
+          include: {
+            Place_Trail_startPlaceIdToPlace: true,
+            Place_Trail_endPlaceIdToPlace: true,
+            TrailWaypoint: {
+              include: {
+                Place: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+          },
+        },
+        TripDay: true,
+      },
+    });
+
+    // 标记为退房项
+    return checkoutItems.map(item => ({
+      ...item,
+      _isCheckoutItem: true,  // 内部标记
+      _checkoutDate: currentTripDay.date,
+    }));
+  }
+
+  /**
+   * 🆕 为行程项添加跨天信息
+   */
+  private addCrossDayInfo(item: any, tripDayDate: Date): any {
+    const startDate = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
+    const endDate = DateTime.fromJSDate(item.endTime, { zone: 'utc' });
+    const tripDate = DateTime.fromJSDate(tripDayDate, { zone: 'utc' });
+
+    // 计算跨天数
+    const startDay = startDate.startOf('day');
+    const endDay = endDate.startOf('day');
+    const crossDays = Math.floor(endDay.diff(startDay, 'days').days);
+
+    // 判断是否为退房项
+    const isCheckoutItem = item._isCheckoutItem === true;
+
+    return {
+      ...item,
+      // 🆕 跨天信息
+      crossDayInfo: {
+        isCrossDay: crossDays > 0,
+        crossDays: crossDays,
+        isCheckoutItem: isCheckoutItem,
+        displayMode: isCheckoutItem ? 'checkout' : (crossDays > 0 ? 'checkin' : 'normal'),
+        // 时间标签建议
+        timeLabels: this.getTimeLabels(item.type, isCheckoutItem),
+      },
+    };
+  }
+
+  /**
+   * 🆕 根据类型获取时间标签
+   */
+  private getTimeLabels(itemType: string, isCheckoutItem: boolean): { start: string; end: string } {
+    if (isCheckoutItem) {
+      return { start: '退房时间', end: '' };
+    }
+    
+    switch (itemType) {
+      case 'REST':
+        return { start: '入住时间', end: '退房时间' };
+      case 'MEAL_ANCHOR':
+      case 'MEAL_FLOATING':
+        return { start: '用餐时间', end: '结束时间' };
+      case 'TRANSIT':
+        return { start: '出发时间', end: '到达时间' };
+      default:
+        return { start: '开始时间', end: '结束时间' };
+    }
   }
 
   /**
