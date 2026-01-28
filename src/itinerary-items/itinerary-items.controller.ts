@@ -88,16 +88,17 @@ export class ItineraryItemsController {
     }
   }
 
+  @Public()
   @Post()
   @ApiOperation({ 
     summary: '创建行程项（带智能校验）',
     description: `在指定日期添加行程项。系统会自动校验：
-- **时间重叠**：与同日其他行程项是否有时间冲突（ERROR 级别，必须修正）
-- **交通时间**：从前一个地点到此地点的交通时间是否充足（WARNING 级别，可用 forceCreate 覆盖）
-- **缓冲时间**：行程项之间的缓冲时间是否充足（INFO 级别，仅提示）
+- **时间重叠**：与同日其他行程项是否有时间冲突
+- **交通时间**：从前一个地点到此地点的交通时间是否充足
+- **缓冲时间**：行程项之间的缓冲时间是否充足
 - **营业时间**：地点在指定时间是否营业
 
-如存在 WARNING 级别问题且未设置 forceCreate=true，将返回警告要求确认。`
+如存在潜在问题，将返回警告要求用户确认后继续。`
   })
   @ApiResponse({ 
     status: 200, 
@@ -139,7 +140,8 @@ export class ItineraryItemsController {
             success: false,
             error: {
               code: 'REQUIRES_CONFIRMATION',
-              message: '存在警告需要确认。请设置 forceCreate=true 或调整时间后重新提交',
+              message: '检测到时间安排可能存在问题，请确认是否继续添加？',
+              requiresConfirmation: true, // 前端可据此显示确认按钮
             },
             warnings: unresolvedWarnings,
             travelInfo: validation.travelInfo,
@@ -231,7 +233,7 @@ export class ItineraryItemsController {
 2. 分析修改对后续行程项的级联影响
 3. 返回受影响的行程项及建议的调整时间
 
-如存在 WARNING 级别问题且未设置 forceCreate=true，将返回警告和级联影响分析。`
+如存在潜在问题或级联影响，将返回警告要求用户确认后继续。`
   })
   @ApiParam({ name: 'id', description: '行程项 ID (UUID)' })
   @ApiResponse({ 
@@ -275,8 +277,9 @@ export class ItineraryItemsController {
             error: {
               code: 'REQUIRES_CONFIRMATION',
               message: validation.cascadeImpact 
-                ? `此修改将影响后续 ${validation.cascadeImpact.affectedCount} 个行程项。请设置 forceCreate=true 确认更新`
-                : '存在警告需要确认',
+                ? `此修改将影响后续 ${validation.cascadeImpact.affectedCount} 个行程项，系统将自动调整受影响项目的时间。确认继续？`
+                : '存在时间冲突，请确认是否继续',
+              requiresConfirmation: true, // 前端可据此显示确认按钮
             },
             warnings: unresolvedWarnings,
             cascadeImpact: validation.cascadeImpact,
@@ -431,6 +434,328 @@ export class ItineraryItemsController {
       const items = await this.itemCostService.getUnpaidItems(tripId);
       return successResponse(items);
     } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ========== 数据修复接口 ==========
+
+  @Public()
+  @Post('trip/:tripId/fix-dates')
+  @ApiOperation({ 
+    summary: '修复行程项日期一致性',
+    description: '修复行程项的 startTime/endTime 与所属 TripDay.date 不一致的问题。会自动将日期调整为正确的日期，同时保留时间部分'
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: '修复结果',
+    schema: {
+      type: 'object',
+      properties: {
+        tripId: { type: 'string' },
+        totalDays: { type: 'number' },
+        fixedCount: { type: 'number' },
+        fixes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              itemId: { type: 'string' },
+              oldStartTime: { type: 'string' },
+              newStartTime: { type: 'string' },
+              fixed: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async fixItemDates(@Param('tripId') tripId: string) {
+    try {
+      const result = await this.itineraryItemsService.fixItemDateConsistency(tripId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ========== 交通信息相关接口 ==========
+
+  @Public()
+  @Post('trip/:tripId/calculate-all-travel')
+  @ApiOperation({ 
+    summary: '计算整个行程的交通信息（支持跨天）',
+    description: '自动计算整个行程所有行程项之间的交通时间和距离，包括跨天的交通段。例如：第1天最后一个景点 → 第2天第一个景点'
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        defaultTravelMode: { 
+          type: 'string', 
+          enum: ['DRIVING', 'WALKING', 'TRANSIT'],
+          default: 'DRIVING'
+        },
+      },
+    },
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '计算结果',
+    schema: {
+      type: 'object',
+      properties: {
+        tripId: { type: 'string' },
+        totalDays: { type: 'number' },
+        totalItems: { type: 'number' },
+        calculatedCount: { type: 'number' },
+        crossDaySegments: { type: 'number', description: '跨天交通段数量' },
+        results: { type: 'array' },
+        summary: { type: 'object' },
+      },
+    },
+  })
+  async calculateAllTravelInfo(
+    @Param('tripId') tripId: string,
+    @Body() body: { defaultTravelMode?: 'DRIVING' | 'WALKING' | 'TRANSIT' },
+  ) {
+    try {
+      const result = await this.itineraryItemsService.calculateAllTravelInfo(
+        tripId,
+        body.defaultTravelMode || 'DRIVING'
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('trip/:tripId/days/:dayId/calculate-travel')
+  @ApiOperation({ 
+    summary: '自动计算单天交通信息',
+    description: '自动计算某天所有行程项之间的交通时间和距离，并保存到数据库。支持自动选择交通方式：<1km步行，1-50km驾车，>50km需手动指定'
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiParam({ name: 'dayId', description: '行程日期 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        defaultTravelMode: { 
+          type: 'string', 
+          enum: ['DRIVING', 'WALKING', 'TRANSIT'],
+          description: '默认交通方式（无法自动判断时使用）',
+          default: 'DRIVING'
+        },
+      },
+    },
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '计算结果',
+    schema: {
+      type: 'object',
+      properties: {
+        dayId: { type: 'string' },
+        date: { type: 'string' },
+        itemCount: { type: 'number' },
+        calculatedCount: { type: 'number' },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              itemId: { type: 'string' },
+              fromPlace: { type: 'string' },
+              toPlace: { type: 'string' },
+              duration: { type: 'number', description: '分钟' },
+              distance: { type: 'number', description: '米' },
+              travelMode: { type: 'string' },
+              calculated: { type: 'boolean' },
+              error: { type: 'string' },
+            },
+          },
+        },
+        summary: {
+          type: 'object',
+          properties: {
+            totalDuration: { type: 'number' },
+            totalDistance: { type: 'number' },
+            successRate: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  async calculateTravelInfo(
+    @Param('tripId') tripId: string,
+    @Param('dayId') dayId: string,
+    @Body() body: { defaultTravelMode?: 'DRIVING' | 'WALKING' | 'TRANSIT' },
+  ) {
+    try {
+      const result = await this.itineraryItemsService.calculateAndSaveTravelInfo(
+        tripId,
+        dayId,
+        body.defaultTravelMode || 'DRIVING'
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('trip/:tripId/days/:dayId/travel-info')
+  @ApiOperation({ 
+    summary: '获取某天的交通信息',
+    description: '计算某天所有行程项之间的交通时间、距离和交通方式'
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiParam({ name: 'dayId', description: '行程日期 ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: '交通信息',
+    schema: {
+      type: 'object',
+      properties: {
+        dayId: { type: 'string' },
+        date: { type: 'string', format: 'date' },
+        itemCount: { type: 'number' },
+        segments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              fromItemId: { type: 'string' },
+              toItemId: { type: 'string' },
+              fromPlace: { type: 'string' },
+              toPlace: { type: 'string' },
+              duration: { type: 'number', description: '分钟' },
+              distance: { type: 'number', description: '米' },
+              travelMode: { type: 'string', enum: ['DRIVING', 'WALKING', 'TRANSIT', 'FLIGHT', 'TRAIN', 'FERRY', 'BICYCLE', 'TAXI'] },
+            },
+          },
+        },
+        summary: {
+          type: 'object',
+          properties: {
+            totalDuration: { type: 'number', description: '总时间（分钟）' },
+            totalDistance: { type: 'number', description: '总距离（米）' },
+            segmentCount: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  async getDayTravelInfo(
+    @Param('tripId') tripId: string,
+    @Param('dayId') dayId: string,
+  ) {
+    try {
+      const result = await this.itineraryItemsService.getDayTravelInfo(tripId, dayId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ========== 预订信息相关接口 ==========
+
+  @Public()
+  @Patch(':id/booking')
+  @ApiOperation({ 
+    summary: '更新预订状态',
+    description: '更新行程项的预订状态、确认号、预订链接等信息'
+  })
+  @ApiParam({ name: 'id', description: '行程项 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        bookingStatus: { 
+          type: 'string', 
+          enum: ['BOOKED', 'NEED_BOOKING', 'NO_BOOKING'],
+          description: '预订状态'
+        },
+        bookingConfirmation: { type: 'string', description: '预订确认号' },
+        bookingUrl: { type: 'string', description: '预订链接' },
+        bookedAt: { type: 'string', format: 'date-time', description: '预订时间' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '更新成功' })
+  async updateBookingStatus(
+    @Param('id') id: string,
+    @Body() body: {
+      bookingStatus?: 'BOOKED' | 'NEED_BOOKING' | 'NO_BOOKING';
+      bookingConfirmation?: string;
+      bookingUrl?: string;
+      bookedAt?: string;
+    },
+  ) {
+    try {
+      const item = await this.itineraryItemsService.updateBookingStatus(id, body);
+      return successResponse({ item, message: '预订状态更新成功' });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Patch(':id/travel-info')
+  @ApiOperation({ 
+    summary: '更新交通信息',
+    description: '更新行程项从上一地点的交通时间、距离和交通方式'
+  })
+  @ApiParam({ name: 'id', description: '行程项 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        travelFromPreviousDuration: { type: 'number', description: '从上一地点的时间（分钟）' },
+        travelFromPreviousDistance: { type: 'number', description: '从上一地点的距离（米）' },
+        travelMode: { 
+          type: 'string', 
+          enum: ['DRIVING', 'WALKING', 'TRANSIT', 'FLIGHT', 'TRAIN', 'FERRY', 'BICYCLE', 'TAXI'],
+          description: '交通方式: DRIVING(自驾), WALKING(步行), TRANSIT(公交), FLIGHT(飞机), TRAIN(火车/高铁), FERRY(轮渡), BICYCLE(骑行), TAXI(出租车)'
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '更新成功' })
+  async updateTravelInfo(
+    @Param('id') id: string,
+    @Body() body: {
+      travelFromPreviousDuration?: number;
+      travelFromPreviousDistance?: number;
+      travelMode?: 'DRIVING' | 'WALKING' | 'TRANSIT';
+    },
+  ) {
+    try {
+      const item = await this.itineraryItemsService.updateTravelInfo(id, body);
+      return successResponse({ item, message: '交通信息更新成功' });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

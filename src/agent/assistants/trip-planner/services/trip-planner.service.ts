@@ -241,6 +241,13 @@ export class TripPlannerService {
     this.logger.debug(`[规划助手] 收到消息: tripId=${request.tripId}, message=${request.message.substring(0, 50)}...`);
 
     try {
+      // 🆕 0. 检查是否为按钮点击（前端可能直接发送 label 文本）
+      const buttonAction = this.detectButtonClick(request.message);
+      if (buttonAction) {
+        this.logger.debug(`[规划助手] 检测到按钮点击: ${buttonAction.action}`);
+        return await this.handleButtonAction(request, buttonAction);
+      }
+
       // 1. 加载或创建会话
       const state = await this.loadOrCreateSession(request);
       
@@ -567,14 +574,24 @@ export class TripPlannerService {
     
     // 细化类
     if (/添加|加上|增加|想去/.test(message)) intents.push('ADD_ACTIVITY');
-    if (/吃|餐厅|美食|饭/.test(message)) intents.push('ARRANGE_MEALS');
+    if (/吃|餐厅|美食|饭|当地.*美食/.test(message)) intents.push('ARRANGE_MEALS');
     if (/交通|怎么去|地铁|打车|公交/.test(message)) intents.push('PLAN_TRANSPORT');
-    if (/空闲|没安排|还能|还有时间/.test(message)) intents.push('FILL_FREE_TIME');
+    if (/空闲|没安排|还能|还有时间|填充/.test(message)) intents.push('FILL_FREE_TIME');
+    
+    // 🆕 目的地特色类（转为 GET_SUGGESTION 处理）
+    if (/极光|aurora|北极光/.test(message)) intents.push('GET_SUGGESTION');
+    if (/海滩|海岛|沙滩|beach/.test(message)) intents.push('GET_SUGGESTION');
+    if (/博物馆|艺术馆|museum/.test(message)) intents.push('GET_SUGGESTION');
+    if (/潜水|浮潜|水上活动/.test(message)) intents.push('GET_SUGGESTION');
+    if (/当地特色|本地体验|local/.test(message)) intents.push('GET_SUGGESTION');
+    
+    // 🆕 问题修复类
+    if (/修复|问题|分析.*问题/.test(message)) intents.push('OPTIMIZE_ROUTE');
     
     // 咨询类
     if (/可行|来得及|够不够|会不会/.test(message)) intents.push('CHECK_FEASIBILITY');
     if (/对比|比较|哪个好/.test(message)) intents.push('COMPARE_OPTIONS');
-    if (/建议|推荐|应该/.test(message)) intents.push('GET_SUGGESTION');
+    if (/建议|推荐|应该|景点|地点/.test(message)) intents.push('GET_SUGGESTION');
     if (/\?|？/.test(message) && intents.length === 0) intents.push('ASK_QUESTION');
     
     // 执行类
@@ -586,6 +603,124 @@ export class TripPlannerService {
     if (/撤销|取消|恢复/.test(message)) intents.push('UNDO_CHANGE');
     
     return intents;
+  }
+
+  /**
+   * 🆕 检测按钮点击（前端可能直接发送 label 文本）
+   */
+  private detectButtonClick(message: string): { action: string; label: string } | null {
+    // 按钮 label 到 action 的映射
+    const buttonMappings: Record<string, string> = {
+      // 凌晨活动调整
+      '⏰ 自动调整凌晨活动': 'FIX_NIGHT_ACTIVITIES',
+      '自动调整凌晨活动': 'FIX_NIGHT_ACTIVITIES',
+      // 优化相关
+      '✅ 应用优化': 'APPLY_OPTIMIZATION',
+      '应用优化': 'APPLY_OPTIMIZATION',
+      '✅ 保持原样': 'APPLY_OPTIMIZATION',
+      '保持原样': 'APPLY_OPTIMIZATION',
+      '🔄 换个方案': 'OPTIMIZE_ROUTE',
+      '换个方案': 'OPTIMIZE_ROUTE',
+      '❌ 不需要': 'CANCEL',
+      '不需要': 'CANCEL',
+      // 问题修复
+      '🔧 修复问题': 'FIX_ISSUES',
+      '修复问题': 'FIX_ISSUES',
+      '🔧 自动修复问题': 'AUTO_FIX',
+      '自动修复问题': 'AUTO_FIX',
+      // 智能填充
+      '✨ 智能填充行程': 'FILL_FREE_TIME',
+      '智能填充行程': 'FILL_FREE_TIME',
+      // 目的地特色
+      '🌌 极光观测点': 'FIND_AURORA_SPOTS',
+      '极光观测点': 'FIND_AURORA_SPOTS',
+      '🍣 美食探店': 'FIND_LOCAL_FOOD',
+      '美食探店': 'FIND_LOCAL_FOOD',
+      '🏝️ 海岛推荐': 'FIND_BEACHES',
+      '海岛推荐': 'FIND_BEACHES',
+      '🏛️ 博物馆推荐': 'FIND_MUSEUMS',
+      '博物馆推荐': 'FIND_MUSEUMS',
+      '🤿 水上活动': 'FIND_WATER_ACTIVITIES',
+      '水上活动': 'FIND_WATER_ACTIVITIES',
+      '🎯 当地特色': 'FIND_LOCAL_ATTRACTIONS',
+      '当地特色': 'FIND_LOCAL_ATTRACTIONS',
+      // 基础操作
+      '📍 优化行程路线': 'OPTIMIZE_ROUTE',
+      '优化行程路线': 'OPTIMIZE_ROUTE',
+      '🍜 推荐餐厅': 'ARRANGE_MEALS',
+      '推荐餐厅': 'ARRANGE_MEALS',
+      '❓ 问问题': 'ASK_QUESTION',
+      '问问题': 'ASK_QUESTION',
+      '✅ 行前清单': 'CREATE_CHECKLIST',
+      '行前清单': 'CREATE_CHECKLIST',
+      '🚗 规划交通': 'PLAN_TRANSPORT',
+      '规划交通': 'PLAN_TRANSPORT',
+    };
+
+    const trimmedMessage = message.trim();
+    const action = buttonMappings[trimmedMessage];
+    
+    if (action) {
+      return { action, label: trimmedMessage };
+    }
+    
+    return null;
+  }
+
+  /**
+   * 🆕 处理按钮点击操作
+   */
+  private async handleButtonAction(
+    request: TripPlannerRequest, 
+    buttonAction: { action: string; label: string }
+  ): Promise<TripPlannerResponse> {
+    const { action } = buttonAction;
+    
+    // 特殊处理：FIX_NIGHT_ACTIVITIES
+    if (action === 'FIX_NIGHT_ACTIVITIES') {
+      return await this.fixNightActivities({
+        tripId: request.tripId,
+        sessionId: request.sessionId || '',
+        userId: request.userId,
+      });
+    }
+    
+    // 特殊处理：CANCEL
+    if (action === 'CANCEL') {
+      return {
+        sessionId: request.sessionId || '',
+        message: '好的，已取消当前操作。有什么其他需要我帮您的吗？',
+        phase: 'OVERVIEW',
+        intent: 'GENERAL_CHAT',
+      };
+    }
+    
+    // 其他按钮：转换为消息重新处理
+    const actionMessages: Record<string, string> = {
+      OPTIMIZE_ROUTE: '帮我优化行程路线',
+      ARRANGE_MEALS: '帮我推荐餐厅',
+      CREATE_CHECKLIST: '生成行前清单',
+      PLAN_TRANSPORT: '帮我规划交通',
+      FILL_FREE_TIME: '帮我填充空闲时间，推荐一些适合的活动',
+      FIX_ISSUES: '帮我分析并修复行程中的问题',
+      FIND_AURORA_SPOTS: '推荐适合观测极光的地点和时间',
+      FIND_LOCAL_FOOD: '推荐当地特色美食和餐厅',
+      FIND_BEACHES: '推荐适合游玩的海滩和海岛',
+      FIND_MUSEUMS: '推荐值得参观的博物馆和艺术馆',
+      FIND_WATER_ACTIVITIES: '推荐潜水、浮潜等水上活动',
+      FIND_LOCAL_ATTRACTIONS: '推荐当地特色景点和体验',
+      AUTO_FIX: '自动修复行程中的问题',
+      APPLY_OPTIMIZATION: '应用当前的优化建议',
+      ASK_QUESTION: '我有问题想问',
+    };
+    
+    const convertedMessage = actionMessages[action] || `执行操作: ${action}`;
+    
+    // 递归调用 chat，但使用转换后的消息
+    return await this.chat({
+      ...request,
+      message: convertedMessage,
+    });
   }
 
   /**
@@ -849,29 +984,10 @@ export class TripPlannerService {
       message = await this.generateOverviewMessage(ctx);
     }
 
-    // 生成快捷操作
-    const quickActions: QuickAction[] = [
-      { id: '1', label: '📍 优化行程路线', action: 'OPTIMIZE_ROUTE', style: 'primary' },
-      { id: '2', label: '🍜 推荐餐厅', action: 'ARRANGE_MEALS', style: 'secondary' },
-      { id: '3', label: '❓ 问问题', action: 'ASK_QUESTION', style: 'secondary' },
-      { id: '4', label: '✅ 行前清单', action: 'CREATE_CHECKLIST', style: 'secondary' },
-    ];
-
-    // 检查行程问题并添加提示（极简展示）
-    const issues = this.detectTripIssues(ctx);
-    if (issues.length > 0) {
-      // 产品优化：极简展示，只显示问题类型摘要，不列出详细内容
-      // 用户可以通过"修复问题"按钮查看详情
-      const issueSummary = issues.length === 1 
-        ? issues[0] 
-        : `${issues.slice(0, 2).join('、')}${issues.length > 2 ? '等' : ''}`;
-      message += `\n\n⚠️ ${issueSummary}`;
-      quickActions.unshift({
-        id: '0',
-        label: '🔧 修复问题',
-        action: 'FIX_ISSUES',
-        style: 'danger',
-      });
+    // 🆕 智能生成快捷操作（根据行程状态动态调整）
+    const { quickActions, issueMessage } = this.generateSmartQuickActions(ctx);
+    if (issueMessage) {
+      message += `\n\n${issueMessage}`;
     }
 
     return {
@@ -2468,13 +2584,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     sessionId: string;
     userId: string;
     changeId?: string;
-  }): Promise<{
-    sessionId: string;
-    message: string;
-    phase: string;
-    intent: string;
-    tripUpdate?: any;
-  }> {
+  }): Promise<TripPlannerResponse> {
     this.logger.debug(`[修复凌晨活动] tripId=${dto.tripId}`);
 
     // 1. 加载行程上下文
@@ -2499,8 +2609,8 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
       return {
         sessionId: dto.sessionId,
         message: '没有找到需要调整的凌晨活动。您的行程安排看起来已经很合理了！',
-        phase: 'OVERVIEW',
-        intent: 'FIX_NIGHT_ACTIVITIES',
+        phase: 'OVERVIEW' as const,
+        intent: 'OPTIMIZE_ROUTE' as const,
       };
     }
 
@@ -2578,11 +2688,11 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     return {
       sessionId: dto.sessionId,
       message,
-      phase: 'OVERVIEW',
-      intent: 'FIX_NIGHT_ACTIVITIES',
+      phase: 'OVERVIEW' as const,
+      intent: 'OPTIMIZE_ROUTE' as const,
       tripUpdate: {
-        totalChanges,
-        modifiedItems: totalChanges,
+        changed: totalChanges > 0,
+        summary: `调整了 ${totalChanges} 个凌晨活动`,
         affectedDays: [...new Set(nightActivities.map(n => n.day))],
       },
     };
@@ -2596,20 +2706,15 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     sessionId: string;
     changeId: string;
     userId: string;
-  }): Promise<{
-    sessionId: string;
-    message: string;
-    phase: string;
-    intent: string;
-  }> {
+  }): Promise<TripPlannerResponse> {
     this.logger.debug(`[应用待处理更改] changeId=${dto.changeId}`);
     
     // 目前直接返回确认消息，实际的更改应用逻辑可以后续完善
     return {
       sessionId: dto.sessionId,
       message: '已应用当前的优化建议。您的行程已更新！',
-      phase: 'OVERVIEW',
-      intent: 'APPLY_OPTIMIZATION',
+      phase: 'OVERVIEW' as const,
+      intent: 'OPTIMIZE_ROUTE' as const,
     };
   }
 
@@ -3202,6 +3307,194 @@ ${ctx.days.map(d => `**第${d.dayNumber}天** (${d.date})${d.theme ? ` - ${d.the
     }
 
     return issues;
+  }
+
+  /**
+   * 🆕 智能生成快捷操作按钮（根据行程状态、目的地、时间等动态调整）
+   */
+  private generateSmartQuickActions(ctx: TripContext): { 
+    quickActions: QuickAction[]; 
+    issueMessage?: string;
+  } {
+    const quickActions: QuickAction[] = [];
+    let actionId = 1;
+    
+    // ========== 1. 检测行程问题，生成紧急操作 ==========
+    const issues = this.detectTripIssues(ctx);
+    let issueMessage: string | undefined;
+    
+    if (issues.length > 0) {
+      const issueSummary = issues.length === 1 
+        ? issues[0] 
+        : `${issues.slice(0, 2).join('、')}${issues.length > 2 ? '等' : ''}`;
+      issueMessage = `⚠️ ${issueSummary}`;
+      
+      quickActions.push({
+        id: String(actionId++),
+        label: '🔧 修复问题',
+        action: 'FIX_ISSUES',
+        style: 'danger',
+      });
+    }
+    
+    // ========== 2. 根据行程完成度推荐不同操作 ==========
+    const emptyDays = ctx.days.filter(day => day.stats.itemCount === 0).length;
+    const hasActivities = ctx.days.some(day => day.stats.itemCount > 0);
+    
+    if (emptyDays > ctx.durationDays / 2) {
+      // 大部分天数为空：优先填充行程
+      quickActions.push({
+        id: String(actionId++),
+        label: '✨ 智能填充行程',
+        action: 'FILL_FREE_TIME',
+        style: 'primary',
+      });
+    } else if (hasActivities) {
+      // 有一些活动：优先优化路线
+      quickActions.push({
+        id: String(actionId++),
+        label: '📍 优化行程路线',
+        action: 'OPTIMIZE_ROUTE',
+        style: 'primary',
+      });
+    }
+    
+    // ========== 3. 根据目的地特点推荐特色功能 ==========
+    const destination = (ctx.destination || '').toLowerCase();
+    const destinationName = ctx.destinationName || ctx.destination || '';
+    
+    // 目的地特色推荐
+    const destinationFeatures = this.getDestinationFeatures(destination, destinationName);
+    if (destinationFeatures.specialAction) {
+      quickActions.push({
+        id: String(actionId++),
+        label: destinationFeatures.specialAction.label,
+        action: destinationFeatures.specialAction.action,
+        style: 'secondary',
+      });
+    }
+    
+    // ========== 4. 根据行程缺失内容推荐 ==========
+    const hasMeals = ctx.days.some(day => 
+      day.items.some(item => item.type === 'RESTAURANT' || item.category?.includes('餐'))
+    );
+    const hasTransport = ctx.days.some(day => 
+      day.items.some(item => item.type === 'TRANSPORT')
+    );
+    
+    if (!hasMeals && quickActions.length < 4) {
+      quickActions.push({
+        id: String(actionId++),
+        label: '🍜 推荐餐厅',
+        action: 'ARRANGE_MEALS',
+        style: 'secondary',
+      });
+    }
+    
+    if (!hasTransport && ctx.durationDays > 1 && quickActions.length < 4) {
+      quickActions.push({
+        id: String(actionId++),
+        label: '🚗 规划交通',
+        action: 'PLAN_TRANSPORT',
+        style: 'secondary',
+      });
+    }
+    
+    // ========== 5. 根据出行时间推荐 ==========
+    const startDate = ctx.startDate ? new Date(ctx.startDate) : null;
+    const now = new Date();
+    const daysUntilTrip = startDate ? Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    
+    if (daysUntilTrip !== null && daysUntilTrip <= 7 && daysUntilTrip > 0) {
+      // 出发前一周：推荐行前清单
+      quickActions.push({
+        id: String(actionId++),
+        label: '✅ 行前清单',
+        action: 'CREATE_CHECKLIST',
+        style: 'secondary',
+      });
+    }
+    
+    // ========== 6. 补充通用操作（确保至少有 4 个按钮）==========
+    const defaultActions = [
+      { label: '📍 优化行程路线', action: 'OPTIMIZE_ROUTE' },
+      { label: '🍜 推荐餐厅', action: 'ARRANGE_MEALS' },
+      { label: '❓ 问问题', action: 'ASK_QUESTION' },
+      { label: '✅ 行前清单', action: 'CREATE_CHECKLIST' },
+    ];
+    
+    for (const defaultAction of defaultActions) {
+      if (quickActions.length >= 5) break;
+      if (!quickActions.some(qa => qa.action === defaultAction.action)) {
+        quickActions.push({
+          id: String(actionId++),
+          label: defaultAction.label,
+          action: defaultAction.action,
+          style: 'secondary',
+        });
+      }
+    }
+    
+    return { quickActions, issueMessage };
+  }
+
+  /**
+   * 🆕 获取目的地特色功能推荐
+   */
+  private getDestinationFeatures(destination: string, destinationName: string): {
+    specialAction?: { label: string; action: string };
+    highlights?: string[];
+  } {
+    const dest = `${destination} ${destinationName}`.toLowerCase();
+    
+    // 冰岛：极光、冰川
+    if (dest.includes('iceland') || dest.includes('冰岛') || dest.includes('is')) {
+      return {
+        specialAction: { label: '🌌 极光观测点', action: 'FIND_AURORA_SPOTS' },
+        highlights: ['极光', '冰川徒步', '温泉', '瀑布'],
+      };
+    }
+    
+    // 日本：美食、温泉
+    if (dest.includes('japan') || dest.includes('日本') || dest.includes('jp') || 
+        dest.includes('tokyo') || dest.includes('osaka') || dest.includes('kyoto')) {
+      return {
+        specialAction: { label: '🍣 美食探店', action: 'FIND_LOCAL_FOOD' },
+        highlights: ['美食', '温泉', '购物', '神社'],
+      };
+    }
+    
+    // 泰国：海岛、美食
+    if (dest.includes('thailand') || dest.includes('泰国') || dest.includes('th') ||
+        dest.includes('bangkok') || dest.includes('phuket') || dest.includes('chiang mai')) {
+      return {
+        specialAction: { label: '🏝️ 海岛推荐', action: 'FIND_BEACHES' },
+        highlights: ['海岛', '美食', '寺庙', 'SPA'],
+      };
+    }
+    
+    // 欧洲城市：博物馆、历史
+    if (dest.includes('paris') || dest.includes('london') || dest.includes('rome') ||
+        dest.includes('巴黎') || dest.includes('伦敦') || dest.includes('罗马')) {
+      return {
+        specialAction: { label: '🏛️ 博物馆推荐', action: 'FIND_MUSEUMS' },
+        highlights: ['博物馆', '历史建筑', '艺术', '美食'],
+      };
+    }
+    
+    // 海岛目的地
+    if (dest.includes('maldives') || dest.includes('bali') || dest.includes('hawaii') ||
+        dest.includes('马尔代夫') || dest.includes('巴厘岛') || dest.includes('夏威夷')) {
+      return {
+        specialAction: { label: '🤿 水上活动', action: 'FIND_WATER_ACTIVITIES' },
+        highlights: ['潜水', '沙滩', '日落', 'SPA'],
+      };
+    }
+    
+    // 默认
+    return {
+      specialAction: { label: '🎯 当地特色', action: 'FIND_LOCAL_ATTRACTIONS' },
+    };
   }
 
   /**
@@ -4073,13 +4366,88 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   }
 
   /**
-   * 生成建议
+   * 🆕 智能生成建议（根据消息内容和目的地特点）
    */
   private async generateSuggestions(ctx: TripContext, message: string): Promise<any[]> {
+    const dest = `${ctx.destination || ''} ${ctx.destinationName || ''}`.toLowerCase();
+    const msg = message.toLowerCase();
+    
+    // 🌌 极光相关
+    if (msg.includes('极光') || msg.includes('aurora') || msg.includes('北极光')) {
+      return [
+        { id: '1', title: '🌌 最佳观测时间', description: '冰岛极光季为9月至次年3月，晚上10点至凌晨2点是最佳观测时段', action: 'ADD_ACTIVITY' },
+        { id: '2', title: '📍 推荐观测地点', description: '辛格维利尔国家公园、塞里雅兰瀑布附近、米湖地区远离光污染', action: 'ADD_ACTIVITY' },
+        { id: '3', title: '📱 极光预报APP', description: '下载 Aurora Forecast 或 My Aurora Forecast 实时追踪极光活动', action: 'INFO' },
+        { id: '4', title: '🚗 极光团推荐', description: '参加当地极光团，有经验的向导会带您找到最佳观测点', action: 'ADD_ACTIVITY' },
+      ];
+    }
+    
+    // 🍣 美食相关
+    if (msg.includes('美食') || msg.includes('餐厅') || msg.includes('food') || msg.includes('吃')) {
+      if (dest.includes('japan') || dest.includes('日本')) {
+        return [
+          { id: '1', title: '🍣 寿司名店', description: '筑地市场、银座附近有众多顶级寿司店，建议提前预约', action: 'ARRANGE_MEALS' },
+          { id: '2', title: '🍜 拉面推荐', description: '一兰拉面、一风堂等连锁店品质稳定，无需预约', action: 'ARRANGE_MEALS' },
+          { id: '3', title: '🍱 便利店美食', description: '711、全家的便当和甜点性价比极高', action: 'INFO' },
+        ];
+      }
+      if (dest.includes('iceland') || dest.includes('冰岛')) {
+        return [
+          { id: '1', title: '🐟 海鲜汤', description: 'Icelandic Fish & Chips、Sea Baron 的龙虾汤是必尝美食', action: 'ARRANGE_MEALS' },
+          { id: '2', title: '🍖 羊肉料理', description: '冰岛羊肉鲜嫩，推荐 Grillið 餐厅', action: 'ARRANGE_MEALS' },
+          { id: '3', title: '🌭 热狗', description: 'Bæjarins Beztu 是雷克雅未克最著名的热狗店', action: 'ARRANGE_MEALS' },
+        ];
+      }
+      return [
+        { id: '1', title: '🍴 当地特色餐厅', description: '推荐尝试当地特色美食，体验地道风味', action: 'ARRANGE_MEALS' },
+        { id: '2', title: '📱 餐厅预订', description: '热门餐厅建议提前预约，可使用 OpenTable 或当地平台', action: 'INFO' },
+      ];
+    }
+    
+    // 🏝️ 海滩/海岛相关
+    if (msg.includes('海滩') || msg.includes('海岛') || msg.includes('beach') || msg.includes('沙滩')) {
+      return [
+        { id: '1', title: '🏖️ 最佳海滩', description: '根据您的目的地，推荐当地最美的海滩和浮潜点', action: 'ADD_ACTIVITY' },
+        { id: '2', title: '🌅 日落观赏', description: '海边日落是不可错过的体验，建议提前30分钟到达', action: 'ADD_ACTIVITY' },
+        { id: '3', title: '🤿 水上活动', description: '浮潜、皮划艇、帆船等，建议提前预订', action: 'ADD_ACTIVITY' },
+      ];
+    }
+    
+    // 🏛️ 博物馆相关
+    if (msg.includes('博物馆') || msg.includes('艺术') || msg.includes('museum')) {
+      return [
+        { id: '1', title: '🎫 提前购票', description: '热门博物馆建议网上提前购票，可免排队', action: 'INFO' },
+        { id: '2', title: '🕐 最佳时间', description: '工作日上午人流较少，建议10点前到达', action: 'INFO' },
+        { id: '3', title: '📱 语音导览', description: '大多数博物馆提供中文语音导览，增强体验', action: 'INFO' },
+      ];
+    }
+    
+    // 🤿 水上活动相关
+    if (msg.includes('潜水') || msg.includes('浮潜') || msg.includes('水上活动')) {
+      return [
+        { id: '1', title: '🤿 浮潜体验', description: '适合初学者，无需证书，建议参加半日团', action: 'ADD_ACTIVITY' },
+        { id: '2', title: '🐠 深潜课程', description: '需要 PADI 证书，可报名当地体验课程', action: 'ADD_ACTIVITY' },
+        { id: '3', title: '🛶 皮划艇', description: '适合全家参与的水上活动，安全有趣', action: 'ADD_ACTIVITY' },
+      ];
+    }
+    
+    // 🔧 问题修复相关
+    if (msg.includes('修复') || msg.includes('问题')) {
+      const issues = this.detectTripIssues(ctx);
+      if (issues.length > 0) {
+        return [
+          { id: '1', title: '✨ 智能填充空天', description: `您有${issues.filter(i => i.includes('未安排')).length || '多'}天没有安排，点击自动推荐活动`, action: 'FILL_FREE_TIME' },
+          { id: '2', title: '📍 优化路线顺序', description: '重新规划行程顺序，减少往返时间', action: 'OPTIMIZE_ROUTE' },
+          { id: '3', title: '⏰ 调整紧凑安排', description: '某些天安排过满，建议适当放松节奏', action: 'ADJUST_PACE' },
+        ];
+      }
+    }
+    
+    // 默认建议
     return [
-      { id: '1', title: '提前预约热门餐厅', description: '建议提前1-2周预约，特别是米其林餐厅' },
-      { id: '2', title: '购买景点联票', description: '购买套票可节省约20%费用' },
-      { id: '3', title: '下载离线地图', description: '部分地区网络信号较差，建议提前下载' },
+      { id: '1', title: '📍 优化行程路线', description: '分析当前行程，优化景点顺序和时间安排', action: 'OPTIMIZE_ROUTE' },
+      { id: '2', title: '🍴 推荐当地美食', description: '根据您的行程安排，推荐沿途的特色餐厅', action: 'ARRANGE_MEALS' },
+      { id: '3', title: '📝 生成行前清单', description: '根据目的地和行程，生成个性化打包清单', action: 'CREATE_CHECKLIST' },
     ];
   }
 

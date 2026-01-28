@@ -247,15 +247,25 @@ export class TripPlannerController {
 
       // 将快捷操作转换为对话消息
       const actionMessages: Record<string, string> = {
+        // 基础操作
         OPTIMIZE_ROUTE: '帮我优化行程路线',
         ARRANGE_MEALS: '帮我推荐餐厅',
         CREATE_CHECKLIST: '生成行前清单',
         SHOW_OVERVIEW: '查看行程概览',
         PLAN_TRANSPORT: '帮我规划交通',
-        FILL_FREE_TIME: '看看还有哪些空闲时间可以安排',
+        FILL_FREE_TIME: '帮我填充空闲时间，推荐一些适合的活动',
         GET_SUGGESTION: '给我一些建议',
         EXPORT_ITINERARY: '导出行程',
         AUTO_FIX: '自动修复行程中的问题',
+        // 🆕 问题修复
+        FIX_ISSUES: '帮我分析并修复行程中的问题',
+        // 🆕 目的地特色功能
+        FIND_AURORA_SPOTS: '推荐适合观测极光的地点和时间',
+        FIND_LOCAL_FOOD: '推荐当地特色美食和餐厅',
+        FIND_BEACHES: '推荐适合游玩的海滩和海岛',
+        FIND_MUSEUMS: '推荐值得参观的博物馆和艺术馆',
+        FIND_WATER_ACTIVITIES: '推荐潜水、浮潜等水上活动',
+        FIND_LOCAL_ATTRACTIONS: '推荐当地特色景点和体验',
       };
 
       const message = actionMessages[dto.action] || `执行操作: ${dto.action}`;
