@@ -102,30 +102,30 @@ export class EmbeddingCacheService {
 
   /**
    * 设置缓存
+   * 
+   * 优化：先写入内存缓存（同步，立即可用），然后异步写入Redis
+   * 这样可以避免并发请求在Redis写入完成前检查缓存时未命中
    */
   async set(text: string, embedding: number[], ttl: number = this.DEFAULT_TTL): Promise<void> {
     const cacheKey = this.generateCacheKey(text);
 
-    try {
-      // 优先使用Redis缓存
-      if (this.redisService) {
-        await this.redisService.set(cacheKey, embedding, ttl);
+    // 1. 先写入内存缓存（同步，立即可用）
+    const expires = Date.now() + ttl * 1000;
+    this.memoryCache.set(cacheKey, { embedding, expires });
+    this.logger.debug(`💾 Embedding已写入内存缓存: ${text.substring(0, 50)}... (TTL: ${ttl}s)`);
+
+    // 2. 异步写入Redis（不阻塞）
+    if (this.redisService) {
+      this.redisService.set(cacheKey, embedding, ttl).then(() => {
         this.logger.debug(`💾 Embedding已缓存到Redis: ${text.substring(0, 50)}... (TTL: ${ttl}s)`);
-      }
+      }).catch((error: any) => {
+        this.logger.warn(`Redis缓存写入失败（已写入内存缓存）: ${error.message}`);
+      });
+    }
 
-      // 同时写入内存缓存（降级使用）
-      const expires = Date.now() + ttl * 1000;
-      this.memoryCache.set(cacheKey, { embedding, expires });
-
-      // 清理过期内存缓存（每100次操作清理一次）
-      if (this.memoryCache.size > 1000) {
-        this.cleanExpiredMemoryCache();
-      }
-    } catch (error: any) {
-      this.logger.warn(`设置缓存失败: ${error.message}`);
-      // 即使Redis失败，也写入内存缓存
-      const expires = Date.now() + ttl * 1000;
-      this.memoryCache.set(cacheKey, { embedding, expires });
+    // 3. 清理过期内存缓存（每100次操作清理一次）
+    if (this.memoryCache.size > 1000) {
+      this.cleanExpiredMemoryCache();
     }
   }
 

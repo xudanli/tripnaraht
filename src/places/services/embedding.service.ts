@@ -22,6 +22,9 @@ export class EmbeddingService {
   private readonly fallbackProviders: string[]; // 备用提供商列表
   // OpenAI HTTP 客户端（使用统一的工厂函数，确保代理配置一致）
   private readonly openaiHttp: AxiosInstance;
+  
+  // 并发请求去重：避免同时生成相同文本的 embedding
+  private readonly inFlightRequests = new Map<string, Promise<number[]>>();
 
   constructor(
     @Optional() private configService?: ConfigService,
@@ -47,6 +50,7 @@ export class EmbeddingService {
    * 生成文本的 embedding
    * 
    * 缓存优化：优先从缓存获取，未命中时生成并缓存
+   * 并发去重：如果多个请求同时请求相同文本，复用同一个生成任务
    * 如果主提供商失败，自动尝试备用提供商
    * 如果所有提供商都失败，返回空向量（降级策略），让流程能继续
    */
@@ -54,6 +58,9 @@ export class EmbeddingService {
     if (!text || text.trim().length === 0) {
       throw new Error('文本不能为空');
     }
+
+    // 标准化文本（用于缓存键和去重）
+    const normalizedText = text.trim().toLowerCase();
 
     // 1. 尝试从缓存获取
     if (this.embeddingCacheService) {
@@ -64,7 +71,33 @@ export class EmbeddingService {
       }
     }
 
-    // 2. 缓存未命中，生成新的embedding
+    // 2. 检查是否有正在进行的相同请求（并发去重）
+    const inFlightRequest = this.inFlightRequests.get(normalizedText);
+    if (inFlightRequest) {
+      this.logger.debug(`🔄 复用正在进行的embedding生成: ${text.substring(0, 50)}...`);
+      return inFlightRequest;
+    }
+
+    // 3. 创建新的生成任务
+    const embeddingPromise = this.generateEmbeddingInternal(text, normalizedText);
+    
+    // 4. 将任务添加到进行中的请求映射
+    this.inFlightRequests.set(normalizedText, embeddingPromise);
+
+    try {
+      const embedding = await embeddingPromise;
+      return embedding;
+    } finally {
+      // 5. 完成后从映射中移除
+      this.inFlightRequests.delete(normalizedText);
+    }
+  }
+
+  /**
+   * 内部方法：实际生成 embedding
+   */
+  private async generateEmbeddingInternal(text: string, normalizedText: string): Promise<number[]> {
+    // 缓存未命中，生成新的embedding
     let embedding: number[];
     try {
       embedding = await this.generateEmbeddingWithProvider(text, this.provider);
@@ -94,8 +127,10 @@ export class EmbeddingService {
       }
     }
 
-    // 3. 缓存生成的embedding（不缓存零向量）
+    // 缓存生成的embedding（不缓存零向量）
+    // 注意：在生成完成后立即写入内存缓存，确保后续并发请求可以立即使用
     if (this.embeddingCacheService && embedding.some(v => v !== 0)) {
+      // 先写入内存缓存（同步，立即可用）
       await this.embeddingCacheService.set(text, embedding).catch(err => {
         this.logger.warn(`缓存embedding失败: ${err.message}`);
       });
