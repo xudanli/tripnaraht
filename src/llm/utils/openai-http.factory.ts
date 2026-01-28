@@ -9,24 +9,35 @@ import { Logger } from '@nestjs/common';
  * 
  * 所有 OpenAI API 调用（chat/completions, embeddings, images 等）都应该使用这个工厂函数
  * 确保代理配置、IPv4 设置、超时等配置一致
+ * 
+ * @param baseURL OpenAI API 基础 URL（默认: https://api.openai.com/v1）
+ * @param logger 日志记录器（可选）
+ * @param options 可选配置
+ * @param options.disableProxy 是否禁用代理（默认: false，如果代理不可用建议设为 true）
  */
 export function createOpenAIHttp(
   baseURL: string = 'https://api.openai.com/v1',
-  logger?: Logger
+  logger?: Logger,
+  options?: { disableProxy?: boolean }
 ): AxiosInstance {
   // 检查代理环境变量
-  const proxyUrl =
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy ||
-    process.env.ALL_PROXY ||
-    process.env.all_proxy;
+  const proxyUrl = options?.disableProxy
+    ? undefined
+    : (process.env.HTTPS_PROXY ||
+       process.env.https_proxy ||
+       process.env.ALL_PROXY ||
+       process.env.all_proxy);
 
   if (proxyUrl && logger) {
     logger.log(`[OpenAI HTTP Factory] 使用代理: ${proxyUrl}`);
   } else if (!proxyUrl && logger) {
-    // 仅在需要时输出警告（例如在需要访问外网但可能被墙的环境）
-    // 如果应用能正常访问 OpenAI API，可以忽略此警告
-    logger.warn('[OpenAI HTTP Factory] 未找到代理环境变量。如果需要通过代理访问外部 API，请设置 HTTPS_PROXY 或 ALL_PROXY。');
+    if (options?.disableProxy) {
+      logger.debug('[OpenAI HTTP Factory] 代理已禁用');
+    } else {
+      // 仅在需要时输出警告（例如在需要访问外网但可能被墙的环境）
+      // 如果应用能正常访问 OpenAI API，可以忽略此警告
+      logger.warn('[OpenAI HTTP Factory] 未找到代理环境变量。如果需要通过代理访问外部 API，请设置 HTTPS_PROXY 或 ALL_PROXY。');
+    }
   }
 
   // 处理 baseURL

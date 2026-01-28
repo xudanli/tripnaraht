@@ -37,8 +37,10 @@ export class EmbeddingService {
     this.fallbackProviders = [];
     
     // 使用统一的工厂函数创建 OpenAI HTTP 客户端（与 LlmService 使用相同配置）
+    // 注意：禁用代理，因为代理服务器可能未运行，会导致连接错误
     const baseUrl = this.configService?.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
-    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger);
+    const disableProxy = this.configService?.get<string>('OPENAI_DISABLE_PROXY') === 'true' || true; // 默认禁用代理
+    this.openaiHttp = createOpenAIHttp(baseUrl, this.logger, { disableProxy });
   }
 
   /**
