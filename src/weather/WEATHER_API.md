@@ -105,6 +105,55 @@
 | `VALIDATION_ERROR` | 参数验证失败 |
 | `INTERNAL_ERROR` | 服务器内部错误 |
 
+## 缓存机制
+
+### 缓存策略
+
+天气 API 实现了智能缓存机制，以减少 API 调用次数并提升响应速度。
+
+**缓存实现**：
+- 使用 `HybridCacheService`（Redis + 内存缓存）
+- 缓存 TTL: **30分钟**（1800秒）
+- 缓存键基于坐标和参数
+
+**缓存键格式**：
+```
+weather:{lat},{lng}:wind={true|false}:aurora={true|false}
+```
+
+**示例**：
+```
+weather:64.1466,-21.9426:wind=true:aurora=false
+```
+
+### 缓存行为
+
+| 场景 | 行为 |
+|------|------|
+| **第一次请求** | 调用 API，结果写入缓存 |
+| **30分钟内重复请求** | 从缓存读取（响应时间 < 50ms） |
+| **30分钟后请求** | 缓存过期，重新调用 API |
+| **不同参数** | 使用不同的缓存键（独立缓存） |
+| **缓存失败** | 不影响 API 响应，直接调用 API |
+
+### 性能对比
+
+| 指标 | 无缓存 | 有缓存 |
+|------|--------|--------|
+| **响应时间** | 1-3秒 | < 50ms |
+| **API 调用** | 每次请求 | 30分钟内1次 |
+| **配额消耗** | 高 | 低 |
+
+### 缓存位置
+
+1. **WeatherController** (`GET /api/weather/current`)
+   - TTL: 30分钟
+   - 缓存键: `weather:{lat},{lng}:wind={bool}:aurora={bool}`
+
+2. **McpToolsService** (`getWeather`)
+   - TTL: 30分钟（可配置）
+   - 缓存键: `weather:{location}:{lat},{lng}`
+
 ## 使用示例
 
 ### 示例 1: 查询冰岛雷克雅未克天气
