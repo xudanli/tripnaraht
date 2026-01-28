@@ -248,8 +248,12 @@ export class ItineraryItemsController {
   })
   async update(@Param('id') id: string, @Body() dto: UpdateItineraryItemDto) {
     try {
-      // 执行校验（包含级联影响检测）
-      const validation = await this.validationService.validateUpdate(id, dto);
+      const cascadeMode = dto.cascadeMode ?? 'auto'; // 默认为 'auto'
+      
+      // 执行校验（如果 cascadeMode 为 'none'，不检测级联影响）
+      const validation = await this.validationService.validateUpdate(id, dto, {
+        detectCascadeImpact: cascadeMode === 'auto',
+      });
 
       // 如果有 ERROR 级别错误，直接返回
       if (!validation.canProceed) {
@@ -258,33 +262,35 @@ export class ItineraryItemsController {
           validation.errors[0]?.message || '校验失败',
           { 
             errors: validation.errors,
-            cascadeImpact: validation.cascadeImpact,
+            cascadeImpact: cascadeMode === 'auto' ? validation.cascadeImpact : undefined,
           }
         );
       }
 
       // 如果有 WARNING 或级联影响，且未强制更新
-      const hasUnresolvedIssues = validation.requiresConfirmation || validation.cascadeImpact;
+      // 如果 cascadeMode 为 'none'，忽略级联影响，只检查警告
+      const hasUnresolvedIssues = validation.requiresConfirmation || (cascadeMode === 'auto' && validation.cascadeImpact);
       if (hasUnresolvedIssues && !dto.forceCreate) {
         const ignoredCodes = new Set(dto.ignoreWarnings || []);
         const unresolvedWarnings = validation.warnings.filter(
           w => !ignoredCodes.has(w.code)
         );
 
-        if (unresolvedWarnings.length > 0 || validation.cascadeImpact) {
+        const hasCascadeImpact = cascadeMode === 'auto' && validation.cascadeImpact;
+        if (unresolvedWarnings.length > 0 || hasCascadeImpact) {
           return {
             success: false,
             error: {
               code: 'REQUIRES_CONFIRMATION',
-              message: validation.cascadeImpact 
-                ? validation.cascadeImpact.adjustmentSummary 
-                  ? `修改时间将影响后续行程：${validation.cascadeImpact.adjustmentSummary}。确认继续？`
-                  : `修改时间将影响后续 ${validation.cascadeImpact.affectedCount} 个行程项。确认继续？`
+              message: hasCascadeImpact
+                ? validation.cascadeImpact!.adjustmentSummary 
+                  ? `修改时间将影响后续行程：${validation.cascadeImpact!.adjustmentSummary}。确认继续？`
+                  : `修改时间将影响后续 ${validation.cascadeImpact!.affectedCount} 个行程项。确认继续？`
                 : '存在时间冲突，请确认是否继续',
               requiresConfirmation: true, // 前端可据此显示确认按钮
             },
             warnings: unresolvedWarnings,
-            cascadeImpact: validation.cascadeImpact,
+            cascadeImpact: hasCascadeImpact ? validation.cascadeImpact : undefined,
             travelInfo: validation.travelInfo,
           };
         }
@@ -298,7 +304,7 @@ export class ItineraryItemsController {
       return successResponse({
         item,
         warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
-        cascadeImpact: validation.cascadeImpact,
+        cascadeImpact: cascadeMode === 'auto' ? validation.cascadeImpact : undefined,
         travelInfo: validation.travelInfo,
       });
     } catch (error: any) {

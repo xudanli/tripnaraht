@@ -106,8 +106,10 @@ export class ItineraryValidationService {
    */
   async validateUpdate(
     itemId: string,
-    dto: Partial<CreateItineraryItemDto>
+    dto: Partial<CreateItineraryItemDto>,
+    options?: { detectCascadeImpact?: boolean }
   ): Promise<AggregatedValidationResult & { cascadeImpact?: CascadeImpact }> {
+    const { detectCascadeImpact = true } = options || {};
     // 获取现有行程项
     const existingItem = await this.prisma.itineraryItem.findUnique({
       where: { id: itemId },
@@ -178,12 +180,14 @@ export class ItineraryValidationService {
 
     const basicResult = this.aggregateResults(results, travelInfo);
 
-    // 检测级联影响
-    const cascadeImpact = this.detectCascadeImpact(
-      existingItem,
-      dto,
-      existingItem.TripDay
-    );
+    // 检测级联影响（如果启用）
+    const cascadeImpact = detectCascadeImpact
+      ? this.detectCascadeImpact(
+          existingItem,
+          dto,
+          existingItem.TripDay
+        )
+      : undefined;
 
     return {
       ...basicResult,

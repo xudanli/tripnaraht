@@ -538,7 +538,7 @@ export class ItineraryItemsService {
    * 更新行程项
    * 
    * 如果更新了开始时间，会根据前一个行程项的位置和当前行程项的位置，
-   * 计算实际距离和旅行时间，并自动调整后续行程项的时间。
+   * 计算实际距离和旅行时间，并根据 cascadeMode 决定是否自动调整后续行程项的时间。
    * 
    * @param id 行程项 ID
    * @param updateDto 更新数据
@@ -546,10 +546,11 @@ export class ItineraryItemsService {
    */
   async update(
     id: string, 
-    updateDto: Partial<CreateItineraryItemDto>,
+    updateDto: Partial<CreateItineraryItemDto> & { cascadeMode?: 'auto' | 'none' },
     options?: { forceUpdate?: boolean }
   ) {
     const { forceUpdate = false } = options || {};
+    const cascadeMode = updateDto.cascadeMode ?? 'auto'; // 默认为 'auto'
     // 如果更新了时间，需要重新校验和计算
     if (updateDto.startTime || updateDto.endTime) {
       // 获取现有数据（包含完整的关联信息）
@@ -608,8 +609,8 @@ export class ItineraryItemsService {
         }
       }
 
-      // 如果更新了开始时间，需要根据实际距离计算旅行时间并调整后续行程项
-      if (updateDto.startTime && this.smartRoutesService) {
+      // 如果更新了开始时间，且 cascadeMode 为 'auto'，需要根据实际距离计算旅行时间并调整后续行程项
+      if (updateDto.startTime && cascadeMode === 'auto' && this.smartRoutesService) {
         await this.adjustSubsequentItemsBasedOnTravelTime(
           existing,
           start,
@@ -617,6 +618,7 @@ export class ItineraryItemsService {
           { skipTimeValidation: forceUpdate } // 用户已确认时，跳过时间合理性校验
         );
       }
+      // 如果 cascadeMode 为 'none'，只更新当前项，不调整后续行程项
     }
 
     return this.prisma.itineraryItem.update({
