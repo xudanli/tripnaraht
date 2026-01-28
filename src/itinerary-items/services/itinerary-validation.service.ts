@@ -117,6 +117,7 @@ export class ItineraryValidationService {
         Place: true,
         TripDay: {
           include: {
+            Trip: true, // 需要获取 tripId 来查找新的 TripDay
             ItineraryItem: {
               include: { Place: true },
               orderBy: { startTime: 'asc' },
@@ -142,9 +143,61 @@ export class ItineraryValidationService {
       };
     }
 
+    // 确定目标 tripDayId：如果明确提供则使用，否则根据 startTime 查找
+    let targetTripDayId = dto.tripDayId;
+    let targetTripDay: any = existingItem.TripDay;
+
+    if (dto.startTime && !targetTripDayId) {
+      // 如果更新了 startTime 但未提供 tripDayId，根据新的 startTime 找到对应的 TripDay
+      const startDate = DateTime.fromJSDate(new Date(dto.startTime), { zone: 'utc' });
+      const dayStart = startDate.startOf('day').toJSDate();
+      const dayEnd = startDate.endOf('day').toJSDate();
+
+      const tripId = existingItem.TripDay.Trip?.id;
+      if (tripId) {
+        const newTripDay = await this.prisma.tripDay.findFirst({
+          where: {
+            tripId,
+            date: {
+              gte: dayStart,
+              lte: dayEnd,
+            },
+          },
+          include: {
+            Trip: true,
+            ItineraryItem: {
+              include: { Place: true },
+              orderBy: { startTime: 'asc' },
+            },
+          },
+        });
+
+        if (newTripDay) {
+          targetTripDayId = newTripDay.id;
+          targetTripDay = newTripDay;
+        }
+      }
+    } else if (targetTripDayId && targetTripDayId !== existingItem.tripDayId) {
+      // 如果明确提供了不同的 tripDayId，获取新的 TripDay
+      const newTripDay = await this.prisma.tripDay.findUnique({
+        where: { id: targetTripDayId },
+        include: {
+          Trip: true,
+          ItineraryItem: {
+            include: { Place: true },
+            orderBy: { startTime: 'asc' },
+          },
+        },
+      });
+
+      if (newTripDay) {
+        targetTripDay = newTripDay;
+      }
+    }
+
     // 合并现有数据和更新数据
     const mergedDto: CreateItineraryItemDto = {
-      tripDayId: existingItem.tripDayId,
+      tripDayId: targetTripDayId ?? existingItem.tripDayId,
       placeId: dto.placeId ?? existingItem.placeId ?? undefined,
       type: (dto.type ?? existingItem.type) as any,
       startTime: dto.startTime ?? existingItem.startTime.toISOString(),
@@ -180,12 +233,12 @@ export class ItineraryValidationService {
 
     const basicResult = this.aggregateResults(results, travelInfo);
 
-    // 检测级联影响（如果启用）
+    // 检测级联影响（如果启用）- 使用目标 TripDay
     const cascadeImpact = detectCascadeImpact
       ? this.detectCascadeImpact(
           existingItem,
           dto,
-          existingItem.TripDay
+          targetTripDay
         )
       : undefined;
 

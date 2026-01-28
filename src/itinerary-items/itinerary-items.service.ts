@@ -551,48 +551,92 @@ export class ItineraryItemsService {
   ) {
     const { forceUpdate = false } = options || {};
     const cascadeMode = updateDto.cascadeMode ?? 'auto'; // 默认为 'auto'
-    // 如果更新了时间，需要重新校验和计算
-    if (updateDto.startTime || updateDto.endTime) {
-      // 获取现有数据（包含完整的关联信息）
-      const existing = await this.prisma.itineraryItem.findUnique({
-        where: { id },
-        include: {
-          Place: {
-            include: {
-              City: true,
-            },
+    
+    // 获取现有数据（包含完整的关联信息）
+    const existing = await this.prisma.itineraryItem.findUnique({
+      where: { id },
+      include: {
+        Place: {
+          include: {
+            City: true,
           },
-          TripDay: {
-            include: {
-              ItineraryItem: {
-                include: {
-                  Place: {
-                    include: {
-                      City: true,
-                    },
+        },
+        TripDay: {
+          include: {
+            Trip: true, // 需要获取 tripId 来查找新的 TripDay
+            ItineraryItem: {
+              include: {
+                Place: {
+                  include: {
+                    City: true,
                   },
                 },
-                orderBy: {
-                  startTime: 'asc',
-                },
+              },
+              orderBy: {
+                startTime: 'asc',
               },
             },
           },
         },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
+    }
+
+    const start = updateDto.startTime ? new Date(updateDto.startTime) : existing.startTime;
+    const end = updateDto.endTime ? new Date(updateDto.endTime) : existing.endTime;
+
+    // 基础校验
+    if (start >= end) {
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    }
+
+    // 处理 tripDayId 更新：如果 startTime 跨天或明确提供了 tripDayId
+    let targetTripDayId = updateDto.tripDayId;
+    
+    // 如果明确提供了 tripDayId，使用它
+    if (targetTripDayId) {
+      // 验证 tripDayId 是否存在
+      const tripDay = await this.prisma.tripDay.findUnique({
+        where: { id: targetTripDayId },
+      });
+      if (!tripDay) {
+        throw new NotFoundException(`找不到指定的行程日期 (ID: ${targetTripDayId})`);
+      }
+    } else if (updateDto.startTime) {
+      // 如果更新了 startTime 但未提供 tripDayId，根据新的 startTime 找到对应的 TripDay
+      const startDate = DateTime.fromJSDate(start, { zone: 'utc' });
+      const dayStart = startDate.startOf('day').toJSDate();
+      const dayEnd = startDate.endOf('day').toJSDate();
+
+      const tripId = existing.TripDay.Trip.id;
+      
+      // 查找对应日期的 TripDay
+      const targetTripDay = await this.prisma.tripDay.findFirst({
+        where: {
+          tripId,
+          date: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+        },
       });
 
-      if (!existing) {
-        throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
+      if (targetTripDay) {
+        targetTripDayId = targetTripDay.id;
+      } else {
+        // 如果找不到对应的 TripDay，使用现有的（不跨天的情况）
+        targetTripDayId = existing.tripDayId;
       }
+    } else {
+      // 没有更新 startTime，保持原有的 tripDayId
+      targetTripDayId = existing.tripDayId;
+    }
 
-      const start = updateDto.startTime ? new Date(updateDto.startTime) : existing.startTime;
-      const end = updateDto.endTime ? new Date(updateDto.endTime) : existing.endTime;
-
-      // 基础校验
-      if (start >= end) {
-        throw new BadRequestException('结束时间必须晚于开始时间');
-      }
-
+    // 如果更新了时间，需要重新校验和计算
+    if (updateDto.startTime || updateDto.endTime) {
       // 如果关联了地点，重新校验营业时间
       if (existing.placeId && existing.Place) {
         const meta = existing.Place?.metadata as any;
@@ -610,13 +654,37 @@ export class ItineraryItemsService {
       }
 
       // 如果更新了开始时间，且 cascadeMode 为 'auto'，需要根据实际距离计算旅行时间并调整后续行程项
+      // 注意：如果跨天了，需要获取新日期的 TripDay 来调整后续项
       if (updateDto.startTime && cascadeMode === 'auto' && this.smartRoutesService) {
-        await this.adjustSubsequentItemsBasedOnTravelTime(
-          existing,
-          start,
-          existing.TripDay,
-          { skipTimeValidation: forceUpdate } // 用户已确认时，跳过时间合理性校验
-        );
+        // 获取目标 TripDay（可能是新的日期）
+        const targetTripDay = targetTripDayId !== existing.tripDayId
+          ? await this.prisma.tripDay.findUnique({
+              where: { id: targetTripDayId },
+              include: {
+                ItineraryItem: {
+                  include: {
+                    Place: {
+                      include: {
+                        City: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    startTime: 'asc',
+                  },
+                },
+              },
+            })
+          : existing.TripDay;
+
+        if (targetTripDay) {
+          await this.adjustSubsequentItemsBasedOnTravelTime(
+            existing,
+            start,
+            targetTripDay,
+            { skipTimeValidation: forceUpdate } // 用户已确认时，跳过时间合理性校验
+          );
+        }
       }
       // 如果 cascadeMode 为 'none'，只更新当前项，不调整后续行程项
     }
@@ -630,6 +698,8 @@ export class ItineraryItemsService {
         ...(updateDto.startTime && { startTime: new Date(updateDto.startTime) }),
         ...(updateDto.endTime && { endTime: new Date(updateDto.endTime) }),
         ...(updateDto.note !== undefined && { note: updateDto.note }),
+        // 更新 tripDayId（如果跨天或明确提供）
+        ...(targetTripDayId !== existing.tripDayId && { tripDayId: targetTripDayId }),
         // 费用相关字段
         ...(updateDto.estimatedCost !== undefined && { estimatedCost: updateDto.estimatedCost }),
         ...(updateDto.actualCost !== undefined && { actualCost: updateDto.actualCost }),
