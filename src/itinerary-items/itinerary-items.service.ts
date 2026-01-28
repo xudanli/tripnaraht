@@ -57,6 +57,27 @@ export class ItineraryItemsService {
     }
 
     // ============================================
+    // 步骤 2.5: 校验日期一致性
+    // ============================================
+    // 行程项的开始时间应该在 TripDay 的日期范围内
+    // TripDay.date 存储的是 UTC 00:00:00，代表该天
+    // 允许跨夜活动（如住宿），所以只检查开始时间
+    const tripDayDate = DateTime.fromJSDate(tripDay.date, { zone: 'utc' });
+    const startDateTime = DateTime.fromJSDate(start, { zone: 'utc' });
+    
+    // 计算行程日期的范围：当天 00:00 到次日 06:00（允许凌晨活动）
+    const dayStart = tripDayDate.startOf('day');
+    const dayEnd = tripDayDate.plus({ days: 1, hours: 6 }); // 次日凌晨6点
+    
+    if (startDateTime < dayStart || startDateTime >= dayEnd) {
+      const expectedDate = tripDayDate.toFormat('yyyy-MM-dd');
+      const actualDate = startDateTime.toFormat('yyyy-MM-dd HH:mm');
+      throw new BadRequestException(
+        `行程项开始时间 (${actualDate}) 与所属日期 (${expectedDate}) 不匹配。请检查日期或选择正确的行程日`
+      );
+    }
+
+    // ============================================
     // 步骤 3: 智能营业时间校验（如果关联了地点）
     // ============================================
     // 只有当类型是 ACTIVITY 或 MEAL_ANCHOR 时才需要检查营业时间
@@ -142,15 +163,33 @@ export class ItineraryItemsService {
     }
 
     // ============================================
+    // 步骤 3.8: 🆕 智能类型推断（如果未指定类型）
+    // ============================================
+    let finalType = dto.type;
+    if (!finalType && dto.placeId) {
+      const placeForType = await this.prisma.place.findUnique({
+        where: { id: dto.placeId },
+        select: { category: true, nameCN: true, nameEN: true, metadata: true },
+      });
+      if (placeForType) {
+        finalType = this.inferItemType(placeForType);
+      }
+    }
+    // 默认为 ACTIVITY
+    if (!finalType) {
+      finalType = ItemType.ACTIVITY;
+    }
+
+    // ============================================
     // 步骤 4: 写入数据库
     // ============================================
-    return this.prisma.itineraryItem.create({
+    const newItem = await this.prisma.itineraryItem.create({
       data: {
         id: randomUUID(),
         tripDayId: dto.tripDayId,
         placeId: dto.placeId,
         trailId: dto.trailId,
-        type: dto.type as any, // Prisma 枚举类型
+        type: finalType as any, // Prisma 枚举类型
         startTime: start,
         endTime: end,
         note: dto.note,
@@ -182,6 +221,75 @@ export class ItineraryItemsService {
         },
       },
     });
+
+    // ============================================
+    // 步骤 5: 自动计算交通信息（异步执行，不阻塞返回）
+    // ============================================
+    this.calculateTravelInfoForItem(newItem.id, tripDay.Trip.id).catch(err => {
+      console.warn('自动计算交通信息失败:', err.message);
+    });
+
+    return newItem;
+  }
+
+  /**
+   * 🆕 根据 Place 信息推断行程项类型
+   */
+  private inferItemType(place: {
+    category: string | null;
+    nameCN: string | null;
+    nameEN: string | null;
+    metadata: any;
+  }): ItemType {
+    const category = (place.category || '').toUpperCase();
+    const nameCN = (place.nameCN || '').toLowerCase();
+    const nameEN = (place.nameEN || '').toLowerCase();
+    const name = `${nameCN} ${nameEN}`;
+    const meta = place.metadata as any;
+    const metaCategory = (meta?.category || '').toLowerCase();
+
+    // 1. 根据 PlaceCategory 推断
+    if (category === 'HOTEL') {
+      return ItemType.REST;  // 住宿用 REST 类型
+    }
+    if (category === 'RESTAURANT') {
+      return ItemType.MEAL_ANCHOR;  // 餐厅用 MEAL_ANCHOR
+    }
+    if (category === 'TRANSIT_HUB') {
+      return ItemType.TRANSIT;  // 交通枢纽用 TRANSIT
+    }
+
+    // 2. 根据名称关键词推断
+    // 住宿类
+    if (name.includes('酒店') || name.includes('hotel') || 
+        name.includes('旅馆') || name.includes('民宿') ||
+        name.includes('套房') || name.includes('hostel') ||
+        name.includes('resort') || name.includes('度假') ||
+        name.includes('guesthouse') || name.includes('inn')) {
+      return ItemType.REST;
+    }
+
+    // 餐饮类
+    if (name.includes('餐厅') || name.includes('restaurant') ||
+        name.includes('饭店') || name.includes('cafe') ||
+        name.includes('咖啡') || name.includes('bar') ||
+        name.includes('酒吧') || name.includes('小吃') ||
+        name.includes('food') || name.includes('bakery')) {
+      return ItemType.MEAL_ANCHOR;
+    }
+
+    // 3. 根据元数据中的 category 推断
+    if (metaCategory.includes('hotel') || metaCategory.includes('lodging') ||
+        metaCategory.includes('accommodation')) {
+      return ItemType.REST;
+    }
+    if (metaCategory.includes('restaurant') || metaCategory.includes('food') ||
+        metaCategory.includes('cafe') || metaCategory.includes('dining')) {
+      return ItemType.MEAL_ANCHOR;
+    }
+
+    // 4. 默认为 ACTIVITY
+    return ItemType.ACTIVITY;
   }
 
   /**
@@ -370,6 +478,14 @@ export class ItineraryItemsService {
         ...(updateDto.startTime && { startTime: new Date(updateDto.startTime) }),
         ...(updateDto.endTime && { endTime: new Date(updateDto.endTime) }),
         ...(updateDto.note !== undefined && { note: updateDto.note }),
+        // 费用相关字段
+        ...(updateDto.estimatedCost !== undefined && { estimatedCost: updateDto.estimatedCost }),
+        ...(updateDto.actualCost !== undefined && { actualCost: updateDto.actualCost }),
+        ...(updateDto.currency !== undefined && { currency: updateDto.currency }),
+        ...(updateDto.costCategory !== undefined && { costCategory: updateDto.costCategory }),
+        ...(updateDto.costNote !== undefined && { costNote: updateDto.costNote }),
+        ...(updateDto.isPaid !== undefined && { isPaid: updateDto.isPaid }),
+        ...(updateDto.paidBy !== undefined && { paidBy: updateDto.paidBy }),
       },
       include: {
         Place: {
@@ -626,6 +742,36 @@ export class ItineraryItemsService {
       }
     }
 
+    // 方法3: 从 _coordinates 缓存字段获取（用于 PostGIS）
+    if (place._coordinates) {
+      return { lat: place._coordinates.lat, lng: place._coordinates.lng };
+    }
+
+    return null;
+  }
+
+  /**
+   * 使用原始 SQL 获取 Place 坐标（解决 PostGIS 类型问题）
+   */
+  private async getPlaceCoordinates(placeId: number): Promise<{ lat: number; lng: number } | null> {
+    if (!placeId) return null;
+
+    try {
+      const result = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+        SELECT 
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ${placeId} AND location IS NOT NULL
+      `;
+
+      if (result.length > 0 && result[0].lat && result[0].lng) {
+        return { lat: result[0].lat, lng: result[0].lng };
+      }
+    } catch (e) {
+      // PostGIS 查询失败，返回 null
+    }
+
     return null;
   }
 
@@ -674,6 +820,842 @@ export class ItineraryItemsService {
 
     return this.prisma.itineraryItem.delete({
       where: { id },
+    });
+  }
+
+  // ========== 交通信息相关方法 ==========
+
+  /**
+   * 计算单个行程项与前一个行程项之间的交通信息（支持跨天）
+   * 
+   * @param itemId 当前行程项 ID
+   * @param tripId 行程 ID
+   */
+  async calculateTravelInfoForItem(itemId: string, tripId: string) {
+    // 获取该行程的所有天和行程项，按日期和时间排序
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: { Place: true },
+              orderBy: { startTime: 'asc' },
+            },
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!trip) return;
+
+    // 构建所有行程项的有序列表（跨天）
+    const allItems: Array<{
+      id: string;
+      placeId: number | null;
+      Place: any;
+      startTime: Date | null;
+      dayIndex: number;
+    }> = [];
+
+    trip.TripDay.forEach((day, dayIndex) => {
+      day.ItineraryItem.forEach(item => {
+        allItems.push({
+          id: item.id,
+          placeId: item.placeId,
+          Place: item.Place,
+          startTime: item.startTime,
+          dayIndex,
+        });
+      });
+    });
+
+    // 按开始时间排序
+    allItems.sort((a, b) => {
+      if (!a.startTime || !b.startTime) return 0;
+      return a.startTime.getTime() - b.startTime.getTime();
+    });
+
+    // 找到当前行程项的位置
+    const currentIndex = allItems.findIndex(item => item.id === itemId);
+    if (currentIndex <= 0) {
+      // 是第一个行程项，没有前一个
+      return;
+    }
+
+    const currentItem = allItems[currentIndex];
+    const prevItem = allItems[currentIndex - 1];
+
+    // 获取坐标
+    let fromCoords = this.extractPlaceCoordinates(prevItem.Place);
+    let toCoords = this.extractPlaceCoordinates(currentItem.Place);
+
+    if (!fromCoords && prevItem.placeId) {
+      fromCoords = await this.getPlaceCoordinates(prevItem.placeId);
+    }
+    if (!toCoords && currentItem.placeId) {
+      toCoords = await this.getPlaceCoordinates(currentItem.placeId);
+    }
+
+    if (!fromCoords || !toCoords) {
+      return; // 缺少坐标，无法计算
+    }
+
+    // 计算距离
+    const straightDistance = this.calculateHaversineDistance(
+      fromCoords.lat, fromCoords.lng,
+      toCoords.lat, toCoords.lng
+    );
+
+    // 自动选择交通方式
+    let travelMode: string;
+    if (straightDistance < 1) {
+      travelMode = 'WALKING';
+    } else if (straightDistance < 50) {
+      travelMode = 'DRIVING';
+    } else {
+      travelMode = 'DRIVING';
+    }
+
+    let duration: number | null = null;
+    let distance: number | null = null;
+
+    // 调用路线 API
+    if (this.smartRoutesService && ['DRIVING', 'WALKING', 'TRANSIT'].includes(travelMode)) {
+      try {
+        const routes = await this.smartRoutesService.getRoutes(
+          fromCoords.lat, fromCoords.lng,
+          toCoords.lat, toCoords.lng,
+          travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT'
+        );
+
+        if (routes.length > 0) {
+          duration = routes[0].durationMinutes;
+          const routeData = routes[0] as any;
+          if (routeData.distanceMeters) {
+            distance = routeData.distanceMeters;
+          } else if (routeData.distanceKm) {
+            distance = Math.round(routeData.distanceKm * 1000);
+          } else {
+            distance = Math.round(straightDistance * 1000);
+          }
+        } else {
+          distance = Math.round(straightDistance * 1000);
+          duration = this.estimateDuration(straightDistance, travelMode);
+        }
+      } catch (e) {
+        distance = Math.round(straightDistance * 1000);
+        duration = this.estimateDuration(straightDistance, travelMode);
+      }
+    } else {
+      distance = Math.round(straightDistance * 1000);
+      duration = this.estimateDuration(straightDistance, travelMode);
+    }
+
+    // 保存到数据库
+    await this.prisma.itineraryItem.update({
+      where: { id: itemId },
+      data: {
+        travelFromPreviousDuration: duration,
+        travelFromPreviousDistance: distance,
+        travelMode: travelMode,
+      },
+    });
+
+    return {
+      itemId,
+      fromPlace: prevItem.Place?.nameCN || prevItem.Place?.nameEN || '未知',
+      toPlace: currentItem.Place?.nameCN || currentItem.Place?.nameEN || '未知',
+      duration,
+      distance,
+      travelMode,
+      crossDay: currentItem.dayIndex !== prevItem.dayIndex,
+    };
+  }
+
+  /**
+   * 自动计算并保存整个行程所有行程项之间的交通信息（支持跨天）
+   * 
+   * @param tripId 行程 ID
+   * @param defaultTravelMode 默认交通方式
+   * @returns 计算结果
+   */
+  async calculateAllTravelInfo(
+    tripId: string,
+    defaultTravelMode: 'DRIVING' | 'WALKING' | 'TRANSIT' = 'DRIVING'
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: { Place: true },
+              orderBy: { startTime: 'asc' },
+            },
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
+    }
+
+    // 构建所有行程项的有序列表
+    const allItems: Array<{
+      id: string;
+      placeId: number | null;
+      Place: any;
+      startTime: Date | null;
+      travelMode: string | null;
+      dayIndex: number;
+      dayDate: Date;
+    }> = [];
+
+    trip.TripDay.forEach((day, dayIndex) => {
+      day.ItineraryItem.forEach(item => {
+        allItems.push({
+          id: item.id,
+          placeId: item.placeId,
+          Place: item.Place,
+          startTime: item.startTime,
+          travelMode: item.travelMode,
+          dayIndex,
+          dayDate: day.date,
+        });
+      });
+    });
+
+    // 按开始时间排序
+    allItems.sort((a, b) => {
+      if (!a.startTime || !b.startTime) return 0;
+      return a.startTime.getTime() - b.startTime.getTime();
+    });
+
+    const results: Array<{
+      itemId: string;
+      fromPlace: string;
+      toPlace: string;
+      duration: number | null;
+      distance: number | null;
+      travelMode: string;
+      crossDay: boolean;
+      calculated: boolean;
+      error?: string;
+    }> = [];
+
+    // 计算每个行程项与前一个的交通信息
+    for (let i = 1; i < allItems.length; i++) {
+      const fromItem = allItems[i - 1];
+      const toItem = allItems[i];
+      const crossDay = toItem.dayIndex !== fromItem.dayIndex;
+
+      const resultEntry = {
+        itemId: toItem.id,
+        fromPlace: fromItem.Place?.nameCN || fromItem.Place?.nameEN || '未知地点',
+        toPlace: toItem.Place?.nameCN || toItem.Place?.nameEN || '未知地点',
+        duration: null as number | null,
+        distance: null as number | null,
+        travelMode: toItem.travelMode || defaultTravelMode,
+        crossDay,
+        calculated: false,
+        error: undefined as string | undefined,
+      };
+
+      let fromCoords = this.extractPlaceCoordinates(fromItem.Place);
+      let toCoords = this.extractPlaceCoordinates(toItem.Place);
+
+      if (!fromCoords && fromItem.placeId) {
+        fromCoords = await this.getPlaceCoordinates(fromItem.placeId);
+      }
+      if (!toCoords && toItem.placeId) {
+        toCoords = await this.getPlaceCoordinates(toItem.placeId);
+      }
+
+      if (!fromCoords || !toCoords) {
+        resultEntry.error = '缺少坐标信息';
+        results.push(resultEntry);
+        continue;
+      }
+
+      try {
+        const straightDistance = this.calculateHaversineDistance(
+          fromCoords.lat, fromCoords.lng,
+          toCoords.lat, toCoords.lng
+        );
+
+        let travelMode = toItem.travelMode;
+        if (!travelMode) {
+          if (straightDistance < 1) {
+            travelMode = 'WALKING';
+          } else if (straightDistance < 50) {
+            travelMode = 'DRIVING';
+          } else {
+            travelMode = 'DRIVING';
+          }
+        }
+
+        let duration: number | null = null;
+        let distance: number | null = null;
+
+        if (this.smartRoutesService && ['DRIVING', 'WALKING', 'TRANSIT'].includes(travelMode)) {
+          try {
+            const routes = await this.smartRoutesService.getRoutes(
+              fromCoords.lat, fromCoords.lng,
+              toCoords.lat, toCoords.lng,
+              travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT'
+            );
+
+            if (routes.length > 0) {
+              duration = routes[0].durationMinutes;
+              const routeData = routes[0] as any;
+              if (routeData.distanceMeters) {
+                distance = routeData.distanceMeters;
+              } else if (routeData.distanceKm) {
+                distance = Math.round(routeData.distanceKm * 1000);
+              } else {
+                distance = Math.round(straightDistance * 1000);
+              }
+            } else {
+              distance = Math.round(straightDistance * 1000);
+              duration = this.estimateDuration(straightDistance, travelMode);
+            }
+          } catch (e) {
+            distance = Math.round(straightDistance * 1000);
+            duration = this.estimateDuration(straightDistance, travelMode);
+          }
+        } else {
+          distance = Math.round(straightDistance * 1000);
+          duration = this.estimateDuration(straightDistance, travelMode);
+        }
+
+        await this.prisma.itineraryItem.update({
+          where: { id: toItem.id },
+          data: {
+            travelFromPreviousDuration: duration,
+            travelFromPreviousDistance: distance,
+            travelMode: travelMode,
+          },
+        });
+
+        resultEntry.duration = duration;
+        resultEntry.distance = distance;
+        resultEntry.travelMode = travelMode;
+        resultEntry.calculated = true;
+        results.push(resultEntry);
+      } catch (error) {
+        resultEntry.error = error instanceof Error ? error.message : String(error);
+        results.push(resultEntry);
+      }
+    }
+
+    const totalDuration = results.reduce((sum, r) => sum + (r.duration || 0), 0);
+    const totalDistance = results.reduce((sum, r) => sum + (r.distance || 0), 0);
+    const successCount = results.filter(r => r.calculated).length;
+    const crossDayCount = results.filter(r => r.crossDay).length;
+
+    return {
+      tripId,
+      totalDays: trip.TripDay.length,
+      totalItems: allItems.length,
+      calculatedCount: successCount,
+      crossDaySegments: crossDayCount,
+      results,
+      summary: {
+        totalDuration,
+        totalDistance,
+        successRate: allItems.length > 1 ? successCount / (allItems.length - 1) : 1,
+      },
+    };
+  }
+
+  /**
+   * 自动计算并保存某天所有行程项之间的交通信息
+   * 
+   * @param tripId 行程 ID
+   * @param dayId 行程日期 ID
+   * @param defaultTravelMode 默认交通方式（用于无法自动判断时）
+   * @returns 计算结果
+   */
+  async calculateAndSaveTravelInfo(
+    tripId: string,
+    dayId: string,
+    defaultTravelMode: 'DRIVING' | 'WALKING' | 'TRANSIT' = 'DRIVING'
+  ) {
+    // 验证 TripDay 存在且属于该 Trip
+    const tripDay = await this.prisma.tripDay.findFirst({
+      where: {
+        id: dayId,
+        Trip: { id: tripId },
+      },
+      include: {
+        ItineraryItem: {
+          include: {
+            Place: true,
+          },
+          orderBy: { startTime: 'asc' },
+        },
+      },
+    });
+
+    if (!tripDay) {
+      throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
+    }
+
+    const items = tripDay.ItineraryItem;
+    const results: Array<{
+      itemId: string;
+      fromPlace: string;
+      toPlace: string;
+      duration: number | null;
+      distance: number | null;
+      travelMode: string;
+      calculated: boolean;
+      error?: string;
+    }> = [];
+
+    // 计算相邻行程项之间的交通信息
+    for (let i = 1; i < items.length; i++) {
+      const fromItem = items[i - 1];
+      const toItem = items[i];
+
+      // 先尝试从 metadata 获取，再用 PostGIS 原始查询
+      let fromCoords = this.extractPlaceCoordinates(fromItem.Place);
+      let toCoords = this.extractPlaceCoordinates(toItem.Place);
+
+      // 如果 metadata 没有坐标，使用原始 SQL 查询 PostGIS
+      if (!fromCoords && fromItem.placeId) {
+        fromCoords = await this.getPlaceCoordinates(fromItem.placeId);
+      }
+      if (!toCoords && toItem.placeId) {
+        toCoords = await this.getPlaceCoordinates(toItem.placeId);
+      }
+
+      const resultEntry = {
+        itemId: toItem.id,
+        fromPlace: fromItem.Place?.nameCN || fromItem.Place?.nameEN || '未知地点',
+        toPlace: toItem.Place?.nameCN || toItem.Place?.nameEN || '未知地点',
+        duration: null as number | null,
+        distance: null as number | null,
+        travelMode: toItem.travelMode || defaultTravelMode,
+        calculated: false,
+        error: undefined as string | undefined,
+      };
+
+      if (!fromCoords || !toCoords) {
+        resultEntry.error = '缺少坐标信息';
+        results.push(resultEntry);
+        continue;
+      }
+
+      try {
+        // 计算直线距离
+        const straightDistance = this.calculateHaversineDistance(
+          fromCoords.lat, fromCoords.lng,
+          toCoords.lat, toCoords.lng
+        );
+
+        // 根据距离自动选择交通方式（如果未指定）
+        let travelMode = toItem.travelMode;
+        if (!travelMode) {
+          if (straightDistance < 1) {
+            travelMode = 'WALKING';
+          } else if (straightDistance < 50) {
+            travelMode = 'DRIVING';
+          } else {
+            travelMode = 'DRIVING'; // 长距离默认驾车，飞机/高铁需要手动指定
+          }
+        }
+
+        // 调用路线 API 计算实际距离和时间
+        let duration: number | null = null;
+        let distance: number | null = null;
+
+        if (this.smartRoutesService && ['DRIVING', 'WALKING', 'TRANSIT'].includes(travelMode)) {
+          try {
+            const routes = await this.smartRoutesService.getRoutes(
+              fromCoords.lat, fromCoords.lng,
+              toCoords.lat, toCoords.lng,
+              travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT'
+            );
+
+            if (routes.length > 0) {
+              duration = routes[0].durationMinutes;
+              // 尝试获取距离
+              const routeData = routes[0] as any;
+              if (routeData.distanceMeters) {
+                distance = routeData.distanceMeters;
+              } else if (routeData.distanceKm) {
+                distance = Math.round(routeData.distanceKm * 1000);
+              } else {
+                distance = Math.round(straightDistance * 1000);
+              }
+            } else {
+              // API 返回空结果，使用估算
+              distance = Math.round(straightDistance * 1000);
+              duration = this.estimateDuration(straightDistance, travelMode);
+            }
+          } catch (routeError) {
+            // API 调用失败，使用估算
+            distance = Math.round(straightDistance * 1000);
+            duration = this.estimateDuration(straightDistance, travelMode);
+          }
+        } else {
+          // 对于飞机、高铁等，使用估算
+          distance = Math.round(straightDistance * 1000);
+          duration = this.estimateDuration(straightDistance, travelMode);
+        }
+
+        // 保存到数据库
+        await this.prisma.itineraryItem.update({
+          where: { id: toItem.id },
+          data: {
+            travelFromPreviousDuration: duration,
+            travelFromPreviousDistance: distance,
+            travelMode: travelMode,
+          },
+        });
+
+        resultEntry.duration = duration;
+        resultEntry.distance = distance;
+        resultEntry.travelMode = travelMode;
+        resultEntry.calculated = true;
+        results.push(resultEntry);
+
+      } catch (error) {
+        resultEntry.error = error instanceof Error ? error.message : String(error);
+        results.push(resultEntry);
+      }
+    }
+
+    // 计算总计
+    const totalDuration = results.reduce((sum, r) => sum + (r.duration || 0), 0);
+    const totalDistance = results.reduce((sum, r) => sum + (r.distance || 0), 0);
+    const successCount = results.filter(r => r.calculated).length;
+
+    return {
+      dayId,
+      date: tripDay.date,
+      itemCount: items.length,
+      calculatedCount: successCount,
+      results,
+      summary: {
+        totalDuration,
+        totalDistance,
+        successRate: items.length > 1 ? successCount / (items.length - 1) : 1,
+      },
+    };
+  }
+
+  /**
+   * 根据距离和交通方式估算时间（分钟）
+   */
+  private estimateDuration(distanceKm: number, travelMode: string): number {
+    switch (travelMode) {
+      case 'WALKING':
+        return Math.round(distanceKm / 5 * 60); // 5 km/h
+      case 'BICYCLE':
+        return Math.round(distanceKm / 15 * 60); // 15 km/h
+      case 'DRIVING':
+      case 'TAXI':
+        return Math.round(distanceKm / 60 * 60); // 60 km/h (含堵车)
+      case 'TRANSIT':
+        return Math.round(distanceKm / 30 * 60); // 30 km/h (含换乘)
+      case 'TRAIN':
+        return Math.round(distanceKm / 250 * 60) + 60; // 250 km/h + 1小时候车
+      case 'FLIGHT':
+        return Math.round(distanceKm / 800 * 60) + 180; // 800 km/h + 3小时值机安检
+      case 'FERRY':
+        return Math.round(distanceKm / 30 * 60) + 30; // 30 km/h + 30分钟登船
+      default:
+        return Math.round(distanceKm / 50 * 60); // 默认 50 km/h
+    }
+  }
+
+  /**
+   * 获取某天所有行程项之间的交通信息
+   */
+  async getDayTravelInfo(tripId: string, dayId: string) {
+    // 验证 TripDay 存在且属于该 Trip
+    const tripDay = await this.prisma.tripDay.findFirst({
+      where: {
+        id: dayId,
+        Trip: { id: tripId },
+      },
+      include: {
+        ItineraryItem: {
+          include: {
+            Place: true,
+          },
+          orderBy: { startTime: 'asc' },
+        },
+      },
+    });
+
+    if (!tripDay) {
+      throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
+    }
+
+    const items = tripDay.ItineraryItem;
+    const travelSegments: Array<{
+      fromItemId: string;
+      toItemId: string;
+      fromPlace: string;
+      toPlace: string;
+      duration: number | null;
+      distance: number | null;
+      travelMode: string | null;
+    }> = [];
+
+    // 计算相邻行程项之间的交通信息
+    for (let i = 0; i < items.length - 1; i++) {
+      const fromItem = items[i];
+      const toItem = items[i + 1];
+
+      // 先尝试从 metadata 获取，再用 PostGIS 原始查询
+      let fromCoords = this.extractPlaceCoordinates(fromItem.Place);
+      let toCoords = this.extractPlaceCoordinates(toItem.Place);
+
+      // 如果 metadata 没有坐标，使用原始 SQL 查询 PostGIS
+      if (!fromCoords && fromItem.placeId) {
+        fromCoords = await this.getPlaceCoordinates(fromItem.placeId);
+      }
+      if (!toCoords && toItem.placeId) {
+        toCoords = await this.getPlaceCoordinates(toItem.placeId);
+      }
+
+      let duration: number | null = toItem.travelFromPreviousDuration;
+      let distance: number | null = toItem.travelFromPreviousDistance;
+      let travelMode: string | null = toItem.travelMode;
+
+      // 如果数据库没有存储，尝试计算
+      if ((!duration || !distance) && fromCoords && toCoords) {
+        const calculatedDistance = this.calculateHaversineDistance(
+          fromCoords.lat, fromCoords.lng,
+          toCoords.lat, toCoords.lng
+        );
+        distance = Math.round(calculatedDistance * 1000); // 转为米
+
+        // 根据距离估算时间
+        if (calculatedDistance < 2) {
+          travelMode = 'WALKING';
+          duration = Math.round(calculatedDistance / 5 * 60); // 步行 5km/h
+        } else if (calculatedDistance < 50) {
+          travelMode = 'DRIVING';
+          duration = Math.round(calculatedDistance / 60 * 60); // 驾车 60km/h
+        } else {
+          travelMode = 'TRANSIT';
+          duration = Math.round(calculatedDistance / 80 * 60); // 公交 80km/h
+        }
+
+        // 如果有 SmartRoutesService，使用更精确的计算
+        if (this.smartRoutesService) {
+          try {
+            const routes = await this.smartRoutesService.getRoutes(
+              fromCoords.lat, fromCoords.lng,
+              toCoords.lat, toCoords.lng,
+              travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT'
+            );
+            if (routes.length > 0) {
+              duration = routes[0].durationMinutes;
+              // 使用 distanceMeters 如果存在，否则使用估算
+              const routeData = routes[0] as any;
+              if (routeData.distanceMeters) {
+                distance = routeData.distanceMeters;
+              } else if (routeData.distanceKm) {
+                distance = Math.round(routeData.distanceKm * 1000);
+              }
+            }
+          } catch (e) {
+            // 使用估算值
+          }
+        }
+      }
+
+      travelSegments.push({
+        fromItemId: fromItem.id,
+        toItemId: toItem.id,
+        fromPlace: fromItem.Place?.nameCN || fromItem.Place?.nameEN || '未知地点',
+        toPlace: toItem.Place?.nameCN || toItem.Place?.nameEN || '未知地点',
+        duration,
+        distance,
+        travelMode,
+      });
+    }
+
+    // 计算总时间和距离
+    const totalDuration = travelSegments.reduce((sum, s) => sum + (s.duration || 0), 0);
+    const totalDistance = travelSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
+
+    return {
+      dayId,
+      date: tripDay.date,
+      itemCount: items.length,
+      segments: travelSegments,
+      summary: {
+        totalDuration, // 分钟
+        totalDistance, // 米
+        segmentCount: travelSegments.length,
+      },
+    };
+  }
+
+  // ========== 预订信息相关方法 ==========
+
+  /**
+   * 更新行程项的预订状态
+   */
+  async updateBookingStatus(
+    id: string,
+    bookingData: {
+      bookingStatus?: 'BOOKED' | 'NEED_BOOKING' | 'NO_BOOKING';
+      bookingConfirmation?: string;
+      bookingUrl?: string;
+      bookedAt?: string;
+    }
+  ) {
+    const item = await this.prisma.itineraryItem.findUnique({
+      where: { id },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
+    }
+
+    return this.prisma.itineraryItem.update({
+      where: { id },
+      data: {
+        bookingStatus: bookingData.bookingStatus,
+        bookingConfirmation: bookingData.bookingConfirmation,
+        bookingUrl: bookingData.bookingUrl,
+        bookedAt: bookingData.bookedAt ? new Date(bookingData.bookedAt) : undefined,
+      },
+      include: {
+        Place: true,
+        TripDay: true,
+      },
+    });
+  }
+
+  /**
+   * 修复行程项的日期一致性
+   * 
+   * 将行程项的 startTime/endTime 调整为与 TripDay.date 一致
+   */
+  async fixItemDateConsistency(tripId: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: true,
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
+    }
+
+    const fixes: Array<{
+      itemId: string;
+      placeName: string;
+      oldStartTime: string;
+      newStartTime: string;
+      fixed: boolean;
+    }> = [];
+
+    for (const day of trip.TripDay) {
+      const tripDayDate = DateTime.fromJSDate(day.date, { zone: 'utc' });
+      
+      for (const item of day.ItineraryItem) {
+        if (!item.startTime) continue;
+        
+        const startDateTime = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
+        const startDateOnly = startDateTime.toFormat('yyyy-MM-dd');
+        const tripDayDateOnly = tripDayDate.toFormat('yyyy-MM-dd');
+        
+        // 检查日期是否一致
+        if (startDateOnly !== tripDayDateOnly) {
+          // 保留原始的时间部分（小时、分钟），只修改日期
+          const timeOfDay = startDateTime.toFormat('HH:mm:ss');
+          const newStartTime = DateTime.fromFormat(
+            `${tripDayDateOnly} ${timeOfDay}`,
+            'yyyy-MM-dd HH:mm:ss',
+            { zone: 'utc' }
+          );
+          
+          // 计算时间差，用于调整 endTime
+          const timeDiff = newStartTime.toMillis() - startDateTime.toMillis();
+          
+          let newEndTime: DateTime | null = null;
+          if (item.endTime) {
+            newEndTime = DateTime.fromJSDate(item.endTime, { zone: 'utc' }).plus({ milliseconds: timeDiff });
+          }
+          
+          // 更新数据库
+          await this.prisma.itineraryItem.update({
+            where: { id: item.id },
+            data: {
+              startTime: newStartTime.toJSDate(),
+              ...(newEndTime && { endTime: newEndTime.toJSDate() }),
+            },
+          });
+          
+          fixes.push({
+            itemId: item.id,
+            placeName: item.id, // 简化，实际可以关联 Place
+            oldStartTime: startDateTime.toISO() || '',
+            newStartTime: newStartTime.toISO() || '',
+            fixed: true,
+          });
+        }
+      }
+    }
+
+    return {
+      tripId,
+      totalDays: trip.TripDay.length,
+      fixedCount: fixes.length,
+      fixes,
+    };
+  }
+
+  /**
+   * 更新行程项的交通信息
+   */
+  async updateTravelInfo(
+    id: string,
+    travelData: {
+      travelFromPreviousDuration?: number;
+      travelFromPreviousDistance?: number;
+      travelMode?: 'DRIVING' | 'WALKING' | 'TRANSIT' | 'FLIGHT' | 'TRAIN' | 'FERRY' | 'BICYCLE' | 'TAXI';
+    }
+  ) {
+    const item = await this.prisma.itineraryItem.findUnique({
+      where: { id },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
+    }
+
+    return this.prisma.itineraryItem.update({
+      where: { id },
+      data: {
+        travelFromPreviousDuration: travelData.travelFromPreviousDuration,
+        travelFromPreviousDistance: travelData.travelFromPreviousDistance,
+        travelMode: travelData.travelMode,
+      },
+      include: {
+        Place: true,
+        TripDay: true,
+      },
     });
   }
 }

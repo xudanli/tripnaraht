@@ -110,20 +110,44 @@ export interface AggregatedValidationResult {
  * 级联影响项
  */
 export interface CascadeImpactItem {
+  /** 行程项 ID */
   id: string;
+  /** 活动名称 */
   name: string;
+  /** 原时间（兼容旧格式） */
   originalTime: string;
+  /** 建议时间（兼容旧格式） */
   suggestedTime: string;
+  /** 延迟分钟数 */
   delayMinutes: number;
+  /** 🆕 原时间（结构化） */
+  originalTimeRange?: {
+    start: string;  // HH:mm
+    end: string;    // HH:mm
+  };
+  /** 🆕 调整后时间（结构化） */
+  adjustedTimeRange?: {
+    start: string;  // HH:mm
+    end: string;    // HH:mm
+  };
+  /** 🆕 时间变化描述 */
+  timeDelta?: string;  // "+2小时30分钟"
 }
 
 /**
  * 级联影响
  */
 export interface CascadeImpact {
+  /** 受影响数量 */
   affectedCount: number;
+  /** 受影响的行程项详情 */
   affectedItems: CascadeImpactItem[];
+  /** 是否已自动调整 */
   autoAdjusted: boolean;
+  /** 🆕 是否会自动调整（用于前端显示提示） */
+  autoAdjust?: boolean;
+  /** 🆕 调整说明 */
+  adjustmentSummary?: string;
 }
 
 /**

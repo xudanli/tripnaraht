@@ -277,7 +277,9 @@ export class ItineraryItemsController {
             error: {
               code: 'REQUIRES_CONFIRMATION',
               message: validation.cascadeImpact 
-                ? `此修改将影响后续 ${validation.cascadeImpact.affectedCount} 个行程项，系统将自动调整受影响项目的时间。确认继续？`
+                ? validation.cascadeImpact.adjustmentSummary 
+                  ? `修改时间将影响后续行程：${validation.cascadeImpact.adjustmentSummary}。确认继续？`
+                  : `修改时间将影响后续 ${validation.cascadeImpact.affectedCount} 个行程项。确认继续？`
                 : '存在时间冲突，请确认是否继续',
               requiresConfirmation: true, // 前端可据此显示确认按钮
             },

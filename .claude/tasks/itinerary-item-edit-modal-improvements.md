@@ -58,8 +58,11 @@
 ```
 
 **验收标准**:
-- [ ] API 返回 `cascadeImpact.affectedItems` 包含受影响项详情
-- [ ] API 返回 `cascadeImpact.autoAdjust` 明确告知是否自动调整
+- [x] API 返回 `cascadeImpact.affectedItems` 包含受影响项详情 ✅ 已实现
+- [x] API 返回 `cascadeImpact.autoAdjust` 明确告知是否自动调整 ✅ 已实现
+- [x] 新增 `originalTimeRange` 和 `adjustedTimeRange` 结构化时间字段 ✅ 已实现
+- [x] 新增 `timeDelta` 人性化时间差描述（如"+2小时30分钟"） ✅ 已实现
+- [x] 新增 `adjustmentSummary` 调整说明 ✅ 已实现
 
 ---
 
@@ -137,9 +140,10 @@ private inferItemType(place: Place, dto: CreateItineraryItemDto): ItineraryItemT
 ```
 
 **验收标准**:
-- [ ] 酒店/住宿类 Place 自动识别为 HOTEL 类型
-- [ ] 餐厅类 Place 自动识别为 RESTAURANT 类型
-- [ ] 用户手动指定类型时优先使用用户指定
+- [x] 酒店/住宿类 Place 自动识别为 REST 类型（ItemType 无 HOTEL，用 REST 表示住宿） ✅ 已实现
+- [x] 餐厅类 Place 自动识别为 MEAL_ANCHOR 类型 ✅ 已实现
+- [x] 用户手动指定类型时优先使用用户指定 ✅ 已实现
+- [x] 支持根据名称关键词推断（酒店/hotel/套房/餐厅/restaurant 等） ✅ 已实现
 
 ---
 

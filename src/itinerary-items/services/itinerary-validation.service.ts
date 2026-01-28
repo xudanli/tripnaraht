@@ -466,22 +466,34 @@ export class ItineraryValidationService {
     for (let i = currentIndex + 1; i < items.length; i++) {
       const nextItem = items[i];
       const nextStart = DateTime.fromJSDate(nextItem.startTime);
+      const nextEnd = DateTime.fromJSDate(nextItem.endTime);
       const newEnd = DateTime.fromJSDate(newEndTime);
 
       // 如果新结束时间晚于下一项开始时间
       if (newEnd > nextStart) {
         const delay = newEnd.diff(nextStart, 'minutes').minutes;
         const suggestedStart = newEnd.plus({ minutes: 15 });
-        const duration = DateTime.fromJSDate(nextItem.endTime)
-          .diff(nextStart, 'minutes').minutes;
+        const duration = nextEnd.diff(nextStart, 'minutes').minutes;
         const suggestedEnd = suggestedStart.plus({ minutes: duration });
+        const totalDelayMinutes = Math.ceil(delay + 15);
 
         affectedItems.push({
           id: nextItem.id,
           name: nextItem.Place?.nameCN || nextItem.Place?.nameEN || '未知活动',
-          originalTime: `${nextStart.toFormat('HH:mm')}-${DateTime.fromJSDate(nextItem.endTime).toFormat('HH:mm')}`,
+          // 兼容旧格式
+          originalTime: `${nextStart.toFormat('HH:mm')}-${nextEnd.toFormat('HH:mm')}`,
           suggestedTime: `${suggestedStart.toFormat('HH:mm')}-${suggestedEnd.toFormat('HH:mm')}`,
-          delayMinutes: Math.ceil(delay + 15),
+          delayMinutes: totalDelayMinutes,
+          // 🆕 新增结构化字段
+          originalTimeRange: {
+            start: nextStart.toFormat('HH:mm'),
+            end: nextEnd.toFormat('HH:mm'),
+          },
+          adjustedTimeRange: {
+            start: suggestedStart.toFormat('HH:mm'),
+            end: suggestedEnd.toFormat('HH:mm'),
+          },
+          timeDelta: this.formatTimeDelta(totalDelayMinutes),
         });
       } else {
         // 如果这个不受影响，后面的也不会受影响
@@ -493,11 +505,34 @@ export class ItineraryValidationService {
       return undefined;
     }
 
+    // 生成调整说明
+    const totalDelay = affectedItems.reduce((sum, item) => sum + item.delayMinutes, 0);
+    const adjustmentSummary = affectedItems.length === 1
+      ? `「${affectedItems[0].name}」将顺延${this.formatTimeDelta(affectedItems[0].delayMinutes)}`
+      : `${affectedItems.length}个活动将顺延，最大延迟${this.formatTimeDelta(Math.max(...affectedItems.map(i => i.delayMinutes)))}`;
+
     return {
       affectedCount: affectedItems.length,
       affectedItems,
       autoAdjusted: false,
+      autoAdjust: true,  // 确认后会自动调整
+      adjustmentSummary,
     };
+  }
+
+  /**
+   * 🆕 格式化时间差
+   */
+  private formatTimeDelta(minutes: number): string {
+    if (minutes < 60) {
+      return `+${minutes}分钟`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins === 0) {
+      return `+${hours}小时`;
+    }
+    return `+${hours}小时${mins}分钟`;
   }
 
   /**

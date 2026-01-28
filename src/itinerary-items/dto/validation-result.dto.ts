@@ -108,6 +108,17 @@ export class AggregatedValidationResultDto {
 }
 
 /**
+ * 时间范围 DTO
+ */
+export class TimeRangeDto {
+  @ApiProperty({ description: '开始时间', example: '09:00' })
+  start: string;
+
+  @ApiProperty({ description: '结束时间', example: '11:00' })
+  end: string;
+}
+
+/**
  * 级联影响项 DTO
  */
 export class CascadeImpactItemDto {
@@ -117,14 +128,23 @@ export class CascadeImpactItemDto {
   @ApiProperty({ description: '活动名称', example: '午餐' })
   name: string;
 
-  @ApiProperty({ description: '原时间', example: '12:00-13:00' })
+  @ApiProperty({ description: '原时间（兼容格式）', example: '12:00-13:00' })
   originalTime: string;
 
-  @ApiProperty({ description: '建议时间', example: '12:30-13:30' })
+  @ApiProperty({ description: '建议时间（兼容格式）', example: '12:30-13:30' })
   suggestedTime: string;
 
   @ApiProperty({ description: '延迟分钟数', example: 30 })
   delayMinutes: number;
+
+  @ApiPropertyOptional({ type: TimeRangeDto, description: '原时间（结构化）' })
+  originalTimeRange?: TimeRangeDto;
+
+  @ApiPropertyOptional({ type: TimeRangeDto, description: '调整后时间（结构化）' })
+  adjustedTimeRange?: TimeRangeDto;
+
+  @ApiPropertyOptional({ description: '时间变化描述', example: '+2小时30分钟' })
+  timeDelta?: string;
 }
 
 /**
@@ -139,6 +159,12 @@ export class CascadeImpactDto {
 
   @ApiProperty({ description: '是否已自动调整', example: false })
   autoAdjusted: boolean;
+
+  @ApiPropertyOptional({ description: '是否会自动调整（确认后）', example: true })
+  autoAdjust?: boolean;
+
+  @ApiPropertyOptional({ description: '调整说明', example: '「黄金瀑布」将顺延+2小时' })
+  adjustmentSummary?: string;
 }
 
 /**
