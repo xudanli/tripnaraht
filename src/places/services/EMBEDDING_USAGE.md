@@ -138,22 +138,33 @@ ERROR [EmbeddingService] OpenAI Embedding API error details: {
 
 ## 修复方案
 
-### 方案 1: 禁用代理（推荐）
+### ✅ 已修复
 
-在 `EmbeddingService` 中禁用代理：
+**EmbeddingService**:
+- 默认禁用代理（`disableProxy: true`）
+- 通过 `createOpenAIHttp` 工厂函数禁用代理
 
-```typescript
-// 在创建 OpenAI 客户端时禁用代理
-const client = new OpenAI({
-  apiKey: this.apiKey,
-  httpAgent: undefined, // 禁用代理
-  httpsAgent: undefined,
-});
+**LlmService**:
+- 默认禁用代理（`disableProxy: true`）
+- `httpsAgent` 不使用代理
+- OpenAI HTTP 客户端禁用代理
+
+### 方案 1: 环境变量控制（推荐）
+
+如果需要启用代理，可以在 `.env` 中设置：
+```bash
+# 禁用代理（默认）
+OPENAI_DISABLE_PROXY=true
+LLM_DISABLE_PROXY=true
 ```
 
 ### 方案 2: 启动代理服务器
 
-如果确实需要代理，确保代理服务器运行在 `127.0.0.1:9090`。
+如果确实需要代理，确保代理服务器运行在 `127.0.0.1:9090`，并设置：
+```bash
+OPENAI_DISABLE_PROXY=false
+LLM_DISABLE_PROXY=false
+```
 
 ### 方案 3: 移除环境变量
 
