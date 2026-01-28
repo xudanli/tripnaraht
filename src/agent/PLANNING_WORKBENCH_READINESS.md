@@ -155,6 +155,40 @@ const ReadinessSummary = ({ tripId }) => {
 
 详细文档请参考：[准备度 API 文档](../trips/readiness/READINESS_API.md)
 
+## 测试
+
+### 运行测试脚本
+
+```bash
+# 自动查找测试行程
+./scripts/test-planning-workbench-readiness.sh
+
+# 或指定行程 ID
+./scripts/test-planning-workbench-readiness.sh <tripId>
+```
+
+### 手动测试
+
+```bash
+# 1. 获取行程准备度检查结果（中文）
+curl "http://localhost:3000/api/planning-workbench/trips/{tripId}/readiness?lang=zh"
+
+# 2. 获取行程准备度检查结果（英文）
+curl "http://localhost:3000/api/planning-workbench/trips/{tripId}/readiness?lang=en"
+
+# 3. 获取准备度分数链接
+curl "http://localhost:3000/api/planning-workbench/trips/{tripId}/readiness/score"
+```
+
+### 测试检查项
+
+- ✅ 接口返回成功响应
+- ✅ 包含准备度检查结果（findings）
+- ✅ 包含摘要统计（summary）
+- ✅ 包含快速链接（quickLinks）
+- ✅ 支持中英文切换
+- ✅ 错误处理正确（行程不存在、服务未启用等）
+
 ## 注意事项
 
 1. **服务依赖**: 如果 `ReadinessModule` 未正确导入，准备度接口会返回错误提示
@@ -170,6 +204,17 @@ const ReadinessSummary = ({ tripId }) => {
   "error": {
     "code": "INTERNAL_ERROR",
     "message": "准备度服务未启用，请检查 ReadinessModule 是否正确导入"
+  }
+}
+```
+
+如果行程不存在，接口会返回：
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "行程 {tripId} 不存在"
   }
 }
 ```
