@@ -138,8 +138,9 @@ export class AbuStrategy implements DecisionPersonaStrategy {
     }
 
     // 2️⃣ 检查 DEM 硬违规
+    // 注意：跳过占位符 demEvidence（segmentId 包含 'placeholder'）
     const demHardViolation = physical.demEvidence.find(
-      e => e.violation === 'HARD'
+      e => e.violation === 'HARD' && !e.segmentId.includes('placeholder')
     );
 
     if (demHardViolation) {

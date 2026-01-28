@@ -451,19 +451,38 @@ export class ContextEngineerService {
       // 1. 从 tripId 获取国家代码
       let countryCode: string | undefined;
       if (tripId && this.prisma) {
-        const trip = await this.prisma.trip.findUnique({
-          where: { id: tripId },
-          select: { destination: true },
-        });
-        // 简化：从 destination 提取国家代码（实际应该更智能）
-        if (trip?.destination) {
-          // 尝试从 destination 中提取国家代码
-          countryCode = trip.destination.split('_')[0] || trip.destination;
+        try {
+          const trip = await this.prisma.trip.findUnique({
+            where: { id: tripId },
+            select: { destination: true },
+          });
+          // destination 应该是 ISO 3166-1 alpha-2 格式（如 'IS', 'JP'）
+          // 如果包含下划线，提取第一部分；否则直接使用
+          if (trip?.destination) {
+            const dest = trip.destination.trim().toUpperCase();
+            // 如果包含下划线，提取第一部分（如 'IS_WINTER' -> 'IS'）
+            // 否则直接使用（如 'IS' -> 'IS'）
+            countryCode = dest.includes('_') ? dest.split('_')[0] : dest;
+            // 验证格式（应该是2个大写字母）
+            if (countryCode.length === 2 && /^[A-Z]{2}$/.test(countryCode)) {
+              // 格式正确
+            } else {
+              this.logger.warn(`国家代码格式不正确: ${countryCode}，期望 ISO 3166-1 alpha-2 格式`);
+              countryCode = undefined;
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`获取行程信息失败: ${error?.message || error}`);
         }
       }
 
-      if (!countryCode || !this.skillsRegistry) {
-        this.logger.warn(`无法获取国家代码或 SkillsRegistryService 未注入，跳过国家包块`);
+      if (!countryCode) {
+        this.logger.warn(`无法获取国家代码 (tripId: ${tripId})，跳过国家包块`);
+        return blocks;
+      }
+
+      if (!this.skillsRegistry) {
+        this.logger.warn(`SkillsRegistryService 未注入，跳过国家包块`);
         return blocks;
       }
 
