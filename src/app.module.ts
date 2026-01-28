@@ -33,6 +33,7 @@ import { AuthModule } from './auth/auth.module';
 import { ContactModule } from './contact/contact.module';
 import { SkillsModule } from './skills/skills.module';
 import { CitiesModule } from './cities/cities.module';
+import { WeatherModule } from './weather/weather.module';
 import { DataQualityModule } from './data-quality/data-quality.module';
 import { DataPrivacyModule } from './data-privacy/data-privacy.module';
 import { DataPipelineModule } from './data-pipeline/data-pipeline.module';
@@ -68,6 +69,7 @@ import { ContextEngineModule } from './agent/context-engine/context-engine.modul
     UsersModule, // 用户画像模块
     CountriesModule, // 国家档案模块
     CitiesModule, // 城市模块
+    WeatherModule, // 天气模块
     LlmModule, // LLM 通用服务模块
     PlacesModule, // 地点相关模块
     FlightPricesModule, // 机票价格参考模块
