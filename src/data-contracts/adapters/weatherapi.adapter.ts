@@ -50,59 +50,58 @@ export class WeatherApiAdapter extends BaseAdapter implements WeatherAdapter {
   }
 
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
-    return this.safeRequest(
-      async () => {
-        if (!this.apiKey) {
-          throw new Error('WEATHERAPI_API_KEY 未配置');
-        }
+    try {
+      if (!this.apiKey) {
+        throw new Error('WEATHERAPI_API_KEY 未配置');
+      }
 
-        // 构建查询参数：使用坐标格式 "lat,lng"
-        const q = `${query.lat},${query.lng}`;
-        
-        // 调用 WeatherAPI Current Weather API
-        const response = await this.httpClient.get('/current.json', {
-          params: {
-            q,
-            aqi: 'yes', // 包含空气质量数据
-          },
-        });
+      // 构建查询参数：使用坐标格式 "lat,lng"
+      const q = `${query.lat},${query.lng}`;
+      
+      // 调用 WeatherAPI Current Weather API
+      const response = await this.httpClient.get('/current.json', {
+        params: {
+          q,
+          aqi: 'yes', // 包含空气质量数据
+        },
+      });
 
-        const data = response.data;
-        
-        // 转换为标准格式
-        const weatherData: WeatherData = {
-          temperature: data.current?.temp_c || 0,
-          condition: this.mapWeatherCondition(data.current?.condition?.text),
-          windSpeed: data.current?.wind_kph ? data.current.wind_kph / 3.6 : undefined, // 转换为米/秒
-          windDirection: data.current?.wind_degree,
-          humidity: data.current?.humidity,
-          visibility: data.current?.vis_km ? data.current.vis_km * 1000 : undefined, // 转换为米
-          alerts: this.extractAlerts(data),
-          lastUpdated: new Date(data.current?.last_updated || Date.now()),
-          source: 'weatherapi',
-          metadata: {
-            weatherapiLocation: data.location,
-            uv: data.current?.uv,
-            pressure: data.current?.pressure_mb,
-            feelsLike: data.current?.feelslike_c,
-            airQuality: data.current?.air_quality,
-            conditionCode: data.current?.condition?.code,
-            conditionIcon: data.current?.condition?.icon,
-          },
-        };
+      const data = response.data;
+      
+      // 转换为标准格式
+      const weatherData: WeatherData = {
+        temperature: data.current?.temp_c || 0,
+        condition: this.mapWeatherCondition(data.current?.condition?.text),
+        windSpeed: data.current?.wind_kph ? data.current.wind_kph / 3.6 : undefined, // 转换为米/秒
+        windDirection: data.current?.wind_degree,
+        humidity: data.current?.humidity,
+        visibility: data.current?.vis_km ? data.current.vis_km * 1000 : undefined, // 转换为米
+        alerts: this.extractAlerts(data),
+        lastUpdated: new Date(data.current?.last_updated || Date.now()),
+        source: 'weatherapi',
+        metadata: {
+          weatherapiLocation: data.location,
+          uv: data.current?.uv,
+          pressure: data.current?.pressure_mb,
+          feelsLike: data.current?.feelslike_c,
+          airQuality: data.current?.air_quality,
+          conditionCode: data.current?.condition?.code,
+          conditionIcon: data.current?.condition?.icon,
+        },
+      };
 
-        return weatherData;
-      },
-      '获取 WeatherAPI 天气数据失败',
-      AdapterMapper.createDefaultErrorResponse<WeatherData>(
-        'weatherapi',
-        new Error('Unknown error'),
-        {
-          temperature: 0,
-          condition: 'unknown',
-        }
-      )
-    );
+      return weatherData;
+    } catch (error: any) {
+      // 对于 403（API Key 无效/配额用尽）等错误，抛出异常以便路由器降级到其他适配器
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        this.logger.warn(`WeatherAPI 认证失败 (${error.response?.status}): ${error.response?.data?.error?.message || error.message}，将降级到其他适配器`);
+        throw new Error(`WeatherAPI 认证失败: ${error.response?.data?.error?.message || 'API Key 无效或配额用尽'}`);
+      }
+      
+      // 对于其他错误，也抛出异常以便降级
+      this.logger.error(`获取 WeatherAPI 天气数据失败: ${error.message}`);
+      throw error;
+    }
   }
 
   getSupportedCountries(): string[] {

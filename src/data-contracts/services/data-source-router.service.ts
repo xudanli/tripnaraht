@@ -85,11 +85,43 @@ export class DataSourceRouterService implements OnModuleInit {
 
   /**
    * 获取天气数据
+   * 
+   * 如果适配器失败（如 API Key 无效、配额用尽等），会自动降级到下一个优先级的适配器
    */
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
     const countryCode = await this.getCountryCode(query.lat, query.lng);
-    const adapter = this.selectWeatherAdapter(countryCode);
-    return adapter.getWeather(query);
+    
+    // 获取所有候选适配器（按优先级排序）
+    const candidates = this.weatherAdapters.filter(adapter =>
+      adapter.getSupportedCountries().includes(countryCode) ||
+      adapter.getSupportedCountries().includes('*')
+    );
+    
+    if (candidates.length === 0) {
+      throw new Error(`未找到支持国家 ${countryCode} 的天气适配器`);
+    }
+    
+    // 按优先级排序
+    candidates.sort((a, b) => a.getPriority() - b.getPriority());
+    
+    // 尝试每个适配器，如果失败则降级到下一个
+    let lastError: Error | null = null;
+    for (const adapter of candidates) {
+      try {
+        const weatherData = await adapter.getWeather(query);
+        this.logger.debug(`成功使用适配器 ${adapter.getName()} 获取天气数据`);
+        return weatherData;
+      } catch (error: any) {
+        lastError = error;
+        const errorMsg = error.response?.data?.error?.message || error.message;
+        this.logger.warn(`适配器 ${adapter.getName()} 失败: ${errorMsg}，尝试下一个适配器`);
+        // 继续尝试下一个适配器
+        continue;
+      }
+    }
+    
+    // 所有适配器都失败了
+    throw new Error(`所有天气适配器都失败。最后错误: ${lastError?.message || 'Unknown error'}`);
   }
 
   /**
