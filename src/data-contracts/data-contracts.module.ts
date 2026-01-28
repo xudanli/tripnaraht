@@ -4,6 +4,7 @@ import { Module, Global, OnModuleInit } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DataSourceRouterService } from './services/data-source-router.service';
 import { DefaultWeatherAdapter } from './adapters/default-weather.adapter';
+import { WeatherApiAdapter } from './adapters/weatherapi.adapter';
 import { DefaultRoadStatusAdapter } from './adapters/default-road-status.adapter';
 import { IcelandRoadStatusAdapter } from './adapters/iceland-road-status.adapter';
 import { IcelandWeatherAdapter } from './adapters/iceland-weather.adapter';
@@ -27,6 +28,7 @@ import { IcelandComprehensiveService } from './services/iceland-comprehensive.se
     
     // 天气适配器
     DefaultWeatherAdapter,
+    WeatherApiAdapter,
     IcelandWeatherAdapter,
     
     // 路况适配器
@@ -48,6 +50,7 @@ export class DataContractsModule implements OnModuleInit {
   constructor(
     private readonly router: DataSourceRouterService,
     private readonly defaultWeather: DefaultWeatherAdapter,
+    private readonly weatherApi: WeatherApiAdapter,
     private readonly icelandWeather: IcelandWeatherAdapter,
     private readonly defaultRoad: DefaultRoadStatusAdapter,
     private readonly icelandRoad: IcelandRoadStatusAdapter,
@@ -55,9 +58,10 @@ export class DataContractsModule implements OnModuleInit {
 
   onModuleInit() {
     console.log('🔌 [DataContractsModule] onModuleInit called - START');
-    // 注册天气适配器（先注册特定适配器，再注册默认适配器）
+    // 注册天气适配器（优先级：特定国家适配器 > WeatherAPI > 默认适配器）
     console.log('🔌 [DataContractsModule] Registering weather adapters...');
     this.router.registerWeatherAdapter(this.icelandWeather);
+    this.router.registerWeatherAdapter(this.weatherApi);
     this.router.registerWeatherAdapter(this.defaultWeather);
     console.log('🔌 [DataContractsModule] Weather adapters registered');
     
