@@ -1,4 +1,6 @@
 // src/places/dto/geo-result.dto.ts
+import { PlaceCategory } from '@prisma/client';
+
 // 1. 定义数据库 Raw SQL 返回的原始结构
 export interface RawPlaceResult {
   id: number;
@@ -6,7 +8,7 @@ export interface RawPlaceResult {
   nameEN: string | null;
   metadata: any; // JSONB
   distance_meters: number; // 我们计算出的距离
-  category: string;
+  category: PlaceCategory; // 统一使用 PlaceCategory 枚举
   address?: string;
   rating?: number;
 }
@@ -17,7 +19,7 @@ export interface PlaceWithDistance {
   name: string; // 显示名称（优先 nameEN，否则 nameCN）
   nameCN: string;
   nameEN: string | null;
-  category: string;
+  category: PlaceCategory; // 统一使用 PlaceCategory 枚举
   distance: number; // 单位：米
   isOpen: boolean;  // 从 metadata 解析出的快捷字段
   tags: string[];   // 从 metadata 解析出的快捷字段

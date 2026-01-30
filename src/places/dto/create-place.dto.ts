@@ -33,7 +33,7 @@ export class CreatePlaceDto {
 
   @IsOptional()
   @IsString()
-  googlePlaceId?: string;
+  googlePlaceId?: string | null; // 允许为空字符串或 null
 
   @IsOptional()
   @IsNumber()

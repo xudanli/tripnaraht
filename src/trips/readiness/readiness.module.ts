@@ -39,6 +39,7 @@ import { ReadinessCacheService } from './services/readiness-cache.service';
 import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
 import { CapabilityPackChecklistService } from './services/capability-pack-checklist.service';
 import { CoverageMapService } from './services/coverage-map.service';
+import { RiskTypeMapperService } from './services/risk-type-mapper.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';
@@ -90,6 +91,8 @@ import { RagModule } from '../../rag/rag.module';
     CapabilityPackChecklistService,
     // 覆盖地图服务
     CoverageMapService,
+    // 风险类型映射服务
+    RiskTypeMapperService,
   ],
   exports: [
     ReadinessService,

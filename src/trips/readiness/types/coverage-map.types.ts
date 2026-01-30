@@ -25,7 +25,14 @@ export interface ReadinessScoreBreakdown {
  */
 export interface ReadinessScoreFinding {
   id: string;
-  type: 'blocker' | 'warning' | 'suggestion';
+  /**
+   * 🆕 统一类型命名：
+   * - 'blocker': 阻塞项
+   * - 'must': 必须项（原 'warning'）
+   * - 'should': 建议项（原 'suggestion'）
+   * 向后兼容：仍支持 'warning' 和 'suggestion'，但建议使用新命名
+   */
+  type: 'blocker' | 'must' | 'should' | 'warning' | 'suggestion';
   category: string;
   message: string;
   severity: 'high' | 'medium' | 'low';
@@ -56,8 +63,26 @@ export interface ReadinessScoreResponse {
   summary: {
     totalFindings: number;
     blockers: number;
-    warnings: number;
-    suggestions: number;
+    /**
+     * 🆕 统一字段命名：必须项数量（对应 must）
+     * 向后兼容：同时保留 warnings 字段
+     */
+    must: number;
+    /**
+     * 🆕 统一字段命名：建议项数量（对应 should）
+     * 向后兼容：同时保留 suggestions 字段
+     */
+    should: number;
+    /**
+     * @deprecated 使用 must 替代
+     * 向后兼容：保留此字段，值等于 must
+     */
+    warnings?: number;
+    /**
+     * @deprecated 使用 should 替代
+     * 向后兼容：保留此字段，值等于 should
+     */
+    suggestions?: number;
     highRisks: number;
     mediumRisks: number;
     lowRisks: number;

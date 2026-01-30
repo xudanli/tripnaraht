@@ -58,6 +58,7 @@ import { SolutionService } from './services/solution.service';
 import { ReadinessAIService } from './services/readiness-ai.service';
 import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
 import { CapabilityPackChecklistService, AddFromCapabilityPackRequest } from './services/capability-pack-checklist.service';
+import { RiskTypeMapperService } from './services/risk-type-mapper.service';
 import { CoverageMapService } from './services/coverage-map.service';
 import {
   UpdateChecklistStatusDto,
@@ -300,6 +301,7 @@ export class ReadinessController {
     private readonly featureFlagsService: ReadinessFeatureFlagsService,
     private readonly capabilityPackChecklistService: CapabilityPackChecklistService,
     private readonly coverageMapService: CoverageMapService,
+    private readonly riskTypeMapperService: RiskTypeMapperService,
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
@@ -587,6 +589,64 @@ export class ReadinessController {
           lang: lang || 'en',
         }
       );
+
+      // 🆕 增强风险信息（如果存在）
+      if (result.findings && result.findings.length > 0) {
+        // 构建POI映射（用于增强风险信息）
+        const poiMap = new Map<number, { name: string; nameCN?: string; day: number }>();
+        try {
+          if (trip.TripDay) {
+            trip.TripDay.forEach((day, dayIndex) => {
+              day.ItineraryItem?.forEach((item) => {
+                if (item.Place) {
+                  const placeId = item.Place.id;
+                  if (!poiMap.has(placeId)) {
+                    poiMap.set(placeId, {
+                      name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
+                      nameCN: item.Place.nameCN,
+                      day: dayIndex + 1,
+                    });
+                  }
+                }
+              });
+            });
+          }
+        } catch (poiError) {
+          this.logger.warn(`构建POI映射失败，风险信息将不包含POI详情: ${(poiError as Error).message}`);
+        }
+
+        // 增强每个finding中的风险信息
+        result.findings = result.findings.map((finding: any) => {
+          if (finding.risks && finding.risks.length > 0) {
+            finding.risks = finding.risks.map((r: any) => {
+              const baseRisk: any = {
+                ...r,
+                sourceType: 'readiness',
+                severity: (r.severity || 'medium') as 'high' | 'medium' | 'low',
+                affectedPois: (r.affectedPois || []).map((poiId: any) => {
+                  const poiIdNum = typeof poiId === 'string' ? parseInt(poiId, 10) : poiId;
+                  const poiInfo = poiMap.get(poiIdNum);
+                  if (poiInfo) {
+                    return {
+                      id: poiIdNum.toString(),
+                      name: poiInfo.name,
+                      nameCN: poiInfo.nameCN,
+                      day: poiInfo.day,
+                    };
+                  }
+                  return {
+                    id: poiIdNum.toString(),
+                    name: `POI ${poiIdNum}`,
+                    day: undefined,
+                  };
+                }),
+              };
+              return this.riskTypeMapperService.enhanceRisk(baseRisk, lang || 'zh');
+            });
+          }
+          return finding;
+        });
+      }
 
       return successResponse(result);
     } catch (error) {
@@ -1223,9 +1283,29 @@ export class ReadinessController {
       // 获取用户 ID（优先使用 currentUser，其次使用 query 参数）
       const effectiveUserId = currentUser?.userId || userId;
 
-      // 获取行程信息
+      // 获取行程信息（包含POI信息，用于增强风险信息）
       const trip = await this.prisma.trip.findUnique({
         where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: {
+                include: {
+                  Place: {
+                    select: {
+                      id: true,
+                      nameCN: true,
+                      nameEN: true,
+                      category: true,
+                    },
+                  },
+                },
+                orderBy: { startTime: 'asc' },
+              },
+            },
+            orderBy: { date: 'asc' },
+          },
+        },
       });
 
       if (!trip) {
@@ -1246,19 +1326,35 @@ export class ReadinessController {
       }
 
       // 从行程获取上下文
-      const baseResult = await this.readinessService.checkFromDestination(
-        trip.destination,
-        {
-          traveler: {},
-          trip: {},
-          itinerary: {
-            countries: [],
+      let baseResult;
+      try {
+        baseResult = await this.readinessService.checkFromDestination(
+          trip.destination,
+          {
+            traveler: {},
+            trip: {},
+            itinerary: {
+              countries: [],
+            },
           },
-        },
-        {
-          lang: lang || 'en',
-        },
-      );
+          {
+            lang: lang || 'en',
+          },
+        );
+      } catch (readinessError) {
+        this.logger.error(`准备度检查失败: ${(readinessError as Error).message}`, (readinessError as Error).stack);
+        // 如果准备度检查失败，返回空结果而不是500错误
+        baseResult = {
+          findings: [],
+          summary: {
+            totalBlockers: 0,
+            totalMust: 0,
+            totalShould: 0,
+            totalOptional: 0,
+            totalRisks: 0,
+          },
+        };
+      }
 
       // 构建 Trip Context
       const tripContext = this.readinessService.extractTripContext({
@@ -1322,23 +1418,38 @@ export class ReadinessController {
         emergencyContactsMap.set(e.riskId, e.contacts);
       });
 
+      // 🆕 收集所有 Pack 的官方来源（用于去重）
+      const packSourcesMap = new Map<string, any>();
+      
       // 提取风险信息（带 AI 增强）
       let riskIndex = 0;
-      const risks = baseResult.findings.flatMap((f) =>
-        f.risks.map((r) => {
-          const riskId = `${f.destinationId}-${f.packId}-risk-${riskIndex++}`;
-          const enhancedSeverity = severityMap.get(riskId) || r.severity;
+      const risks = (baseResult.findings || []).flatMap((f) =>
+        (f.risks || []).map((r) => {
+          const riskId = `${f.destinationId || 'unknown'}-${f.packId || 'unknown'}-risk-${riskIndex++}`;
+          const enhancedSeverity = severityMap.get(riskId) || r.severity || 'medium';
           const enhancedMitigations = mitigationMap.get(riskId) || r.mitigations || [];
           const enhancedContacts = emergencyContactsMap.get(riskId) || [];
 
+          // 🆕 收集风险关联的 sources（如果存在）
+          const riskSources = (r as any).sources || [];
+          riskSources.forEach((source: any) => {
+            if (source.sourceId && !packSourcesMap.has(source.sourceId)) {
+              packSourcesMap.set(source.sourceId, source);
+            }
+          });
+
           return {
             id: riskId,
-            type: r.type,
+            type: r.type || 'unknown',
             severity: enhancedSeverity,
-            originalSeverity: r.severity,
-            message: r.summary,
+            originalSeverity: r.severity || 'medium',
+            message: r.summary || '',
+            summary: r.summary || '', // 保留summary字段以兼容
             mitigation: enhancedMitigations.length > 0 ? enhancedMitigations : r.mitigations || [],
             emergencyContacts: enhancedContacts,
+            affectedPois: [],
+            // 🆕 保留 sources（如果有）
+            sources: riskSources.length > 0 ? riskSources : undefined,
           };
         }),
       );
@@ -1361,6 +1472,7 @@ export class ReadinessController {
             severity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
             originalSeverity: conflict.severity.toLowerCase() as 'high' | 'medium' | 'low',
             message: conflict.description,
+            summary: conflict.description, // 添加summary字段
             mitigation: conflict.suggestions?.map((s) => s.description) || [],
             emergencyContacts: [],
           }));
@@ -1381,7 +1493,7 @@ export class ReadinessController {
           const capabilityPackItems = await this.capabilityPackChecklistService.getCapabilityPackItems(tripId);
           
           // 获取唯一的能力包类型
-          const packTypes = [...new Set(capabilityPackItems.map(item => item.sourcePackType))];
+          const packTypes = [...new Set((capabilityPackItems || []).map(item => item.sourcePackType).filter(Boolean))];
           
           // 从能力包定义中获取 hazards
           const allPacks = [
@@ -1417,17 +1529,82 @@ export class ReadinessController {
         }
       }
 
+      // 🆕 构建POI映射（用于增强风险信息）
+      const poiMap = new Map<number, { name: string; nameCN?: string; day: number }>();
+      try {
+        if (trip.TripDay) {
+          trip.TripDay.forEach((day, dayIndex) => {
+            day.ItineraryItem?.forEach((item) => {
+              if (item.Place) {
+                const placeId = item.Place.id;
+                if (!poiMap.has(placeId)) {
+                  poiMap.set(placeId, {
+                    name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
+                    nameCN: item.Place.nameCN,
+                    day: dayIndex + 1,
+                  });
+                }
+              }
+            });
+          });
+        }
+      } catch (poiError) {
+        this.logger.warn(`构建POI映射失败，风险信息将不包含POI详情: ${(poiError as Error).message}`);
+        // 继续执行，但不包含POI信息
+      }
+
+      // 🆕 使用 RiskTypeMapperService 增强风险信息
+      const enhancedRisks = risks.map(r => {
+        const riskAny = r as any;
+        const baseRisk: any = {
+          ...r,
+          sourceType: riskAny.sourceType || 'readiness',
+          severity: (riskAny.severity || r.severity) as 'high' | 'medium' | 'low',
+          // 🆕 增强影响的POI信息
+          affectedPois: (riskAny.affectedPois || []).map((poiId: any) => {
+            const poiIdNum = typeof poiId === 'string' ? parseInt(poiId, 10) : poiId;
+            const poiInfo = poiMap.get(poiIdNum);
+            if (poiInfo) {
+              return {
+                id: poiIdNum.toString(),
+                name: poiInfo.name,
+                nameCN: poiInfo.nameCN,
+                day: poiInfo.day,
+              };
+            }
+            return {
+              id: poiIdNum.toString(),
+              name: `POI ${poiIdNum}`,
+              day: undefined,
+            };
+          }),
+        };
+        return this.riskTypeMapperService.enhanceRisk(baseRisk, lang || 'zh');
+      });
+
+      // 🆕 按分类分组风险
+      const risksByCategory = this.riskTypeMapperService.groupRisksByCategory(enhancedRisks);
+
+      // 🆕 提取 Pack 级别的官方来源（所有风险共享）
+      const packSources = Array.from(packSourcesMap.values());
+
       return successResponse({
         tripId,
-        risks: risks.map(r => ({
-          ...r,
-          sourceType: (r as any).sourceType || 'readiness',
-        })),
+        risks: enhancedRisks,
+        risksByCategory, // 🆕 按分类分组
+        packSources, // 🆕 Pack 级别的官方来源
         summary: {
           totalRisks: risks.length,
           highSeverity: risks.filter((r) => r.severity === 'high').length,
           mediumSeverity: risks.filter((r) => r.severity === 'medium').length,
           lowSeverity: risks.filter((r) => r.severity === 'low').length,
+          byCategory: { // 🆕 按分类统计
+            weather: risksByCategory.weather?.length || 0,
+            terrain: risksByCategory.terrain?.length || 0,
+            safety: risksByCategory.safety?.length || 0,
+            logistics: risksByCategory.logistics?.length || 0,
+            other: risksByCategory.other?.length || 0,
+          },
         },
         aiEnhanced: aiEnabled && Object.keys(riskEnhancements).length > 0,
       });
@@ -1546,8 +1723,10 @@ export class ReadinessController {
               properties: {
                 totalFindings: { type: 'number' },
                 blockers: { type: 'number' },
-                warnings: { type: 'number' },
-                suggestions: { type: 'number' },
+                must: { type: 'number', description: '🆕 统一字段命名：必须项数量（对应 must）' },
+                should: { type: 'number', description: '🆕 统一字段命名：建议项数量（对应 should）' },
+                warnings: { type: 'number', description: '@deprecated 使用 must 替代，向后兼容保留' },
+                suggestions: { type: 'number', description: '@deprecated 使用 should 替代，向后兼容保留' },
                 highRisks: { type: 'number' },
                 mediumRisks: { type: 'number' },
                 lowRisks: { type: 'number' },

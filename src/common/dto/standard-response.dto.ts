@@ -72,4 +72,7 @@ export enum ErrorCode {
   
   // 未授权（需要登录）
   UNAUTHORIZED = 'UNAUTHORIZED',
+  
+  // 禁止访问（无权限）
+  FORBIDDEN = 'FORBIDDEN',
 }

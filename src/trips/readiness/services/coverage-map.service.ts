@@ -775,11 +775,19 @@ export class CoverageMapService {
     const risks = this.extractRisks(coverageData, readinessResult);
 
     // 生成摘要
+    const blockers = findings.filter(f => f.type === 'blocker').length;
+    // 🆕 统一字段命名：支持新命名（must/should）和旧命名（warning/suggestion）的兼容
+    const must = findings.filter(f => f.type === 'must' || f.type === 'warning').length;
+    const should = findings.filter(f => f.type === 'should' || f.type === 'suggestion').length;
+    
     const summary = {
       totalFindings: findings.length,
-      blockers: findings.filter(f => f.type === 'blocker').length,
-      warnings: findings.filter(f => f.type === 'warning').length,
-      suggestions: findings.filter(f => f.type === 'suggestion').length,
+      blockers,
+      must,  // 🆕 统一字段命名
+      should,  // 🆕 统一字段命名
+      // 向后兼容：保留旧字段
+      warnings: must,
+      suggestions: should,
       highRisks: risks.filter(r => r.severity === 'high').length,
       mediumRisks: risks.filter(r => r.severity === 'medium').length,
       lowRisks: risks.filter(r => r.severity === 'low').length,
@@ -994,9 +1002,11 @@ export class CoverageMapService {
     // 从覆盖缺口提取
     for (const gap of coverageData.gaps) {
       findingIndex++;
+      // 🆕 统一类型命名：high severity → blocker, medium/low → must
+      const findingType = gap.severity === 'high' ? 'blocker' : 'must';
       findings.push({
         id: `finding-${findingIndex}`,
-        type: gap.severity === 'high' ? 'blocker' : 'warning',
+        type: findingType,
         category: gap.type === 'poi' ? 'evidence' : 'transport',
         message: gap.message,
         severity: gap.severity,
@@ -1027,11 +1037,24 @@ export class CoverageMapService {
         findingIndex++;
         findings.push({
           id: `finding-${findingIndex}`,
-          type: 'warning',
+          type: 'must',  // 🆕 统一类型命名：warning → must
           category: must.category || 'readiness',
           message: must.message,
           severity: 'medium',
           actionRequired: must.tasks?.map((t: any) => t.action).join(', '),
+        });
+      }
+
+      // 🆕 处理 should 项
+      for (const should of finding.should || []) {
+        findingIndex++;
+        findings.push({
+          id: `finding-${findingIndex}`,
+          type: 'should',  // 🆕 统一类型命名：suggestion → should
+          category: should.category || 'readiness',
+          message: should.message,
+          severity: 'low',
+          actionRequired: should.tasks?.map((t: any) => t.action).join(', '),
         });
       }
     }
@@ -1043,7 +1066,7 @@ export class CoverageMapService {
           findingIndex++;
           findings.push({
             id: `finding-${findingIndex}`,
-            type: 'warning',
+            type: 'must',  // 🆕 统一类型命名：warning → must（高风险路段）
             category: 'transport',
             message: hazard.message,
             severity: hazard.severity,

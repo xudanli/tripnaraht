@@ -338,6 +338,8 @@ const result = await response.json();
 
 **接口**: `DELETE /route-directions/templates/:id`
 
+**描述**: 软删除路线模板（设置 `isActive = false`），数据仍保留在数据库中
+
 **路径参数**:
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -368,6 +370,67 @@ const result = await response.json();
   "error": null
 }
 ```
+
+---
+
+### 5.1 物理删除路线模板
+
+**接口**: `DELETE /route-directions/templates/:id/hard`
+
+**描述**: 物理删除路线模板，从数据库中彻底删除记录（不可恢复）。请谨慎使用此接口。
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | number | 是 | 路线模板ID |
+
+**请求示例**:
+
+```typescript
+const response = await fetch('/route-directions/templates/1/hard', {
+  method: 'DELETE',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+const result = await response.json();
+```
+
+```javascript
+// JavaScript
+const response = await fetch('/route-directions/templates/1/hard', {
+  method: 'DELETE',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+const result = await response.json();
+```
+
+**响应示例**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Route template hard deleted successfully"
+  },
+  "error": null
+}
+```
+
+**错误响应**:
+
+- `404`: 路线模板不存在
+- `500`: 服务器内部错误
+
+**注意事项**:
+- 物理删除操作不可恢复，请确保在删除前已备份重要数据
+- 删除后，该路线模板的所有关联数据也将被删除（根据数据库外键约束）
+- 建议在前端添加确认对话框，防止误操作
 
 ---
 

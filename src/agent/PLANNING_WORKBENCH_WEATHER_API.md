@@ -1,5 +1,8 @@
 # 规划工作台证据数据获取 API
 
+**版本**: v1.6.0  
+**最后更新**: 2026-01-29
+
 ## 概述
 
 规划工作台提供了批量获取证据数据的接口，用于为行程中缺少证据的地点补充各类信息。支持获取的证据类型包括：
@@ -9,6 +12,8 @@
 3. **开放时间** (opening_hours) - 营业时间、开放状态
 
 所有证据数据会自动更新到 `Place` 的 `metadata` 中，供准备度检查和覆盖地图使用。
+
+**🆕 P1功能**: 支持异步模式，提供任务进度查询和取消功能（v1.6.0）。
 
 ## API 端点
 
@@ -25,6 +30,7 @@
 - `placeIds` (string, 可选): 指定要获取证据的地点 ID 列表，多个 ID 用逗号分隔。如果不提供，则处理所有缺少证据的地点。
 - `evidenceTypes` (string, 可选): 要获取的证据类型，多个类型用逗号分隔。可选值：`weather`, `road_closure`, `opening_hours`。不提供则获取所有类型。
 - `forceRefresh` (boolean, 可选): 是否强制刷新已有证据数据。默认为 `false`，已有证据的地点会被跳过。
+- `async` (boolean, 可选): 🆕 P1功能 - 是否异步执行。如果为 `true`，立即返回任务ID，使用任务ID查询进度。默认为 `false`（同步模式）。
 
 #### 请求示例
 
@@ -40,6 +46,9 @@ curl -X POST "http://localhost:3000/api/planning-workbench/trips/trip123/fetch-e
 
 # 强制刷新所有证据
 curl -X POST "http://localhost:3000/api/planning-workbench/trips/trip123/fetch-evidence?forceRefresh=true"
+
+# 🆕 P1功能：异步模式（立即返回taskId）
+curl -X POST "http://localhost:3000/api/planning-workbench/trips/trip123/fetch-evidence?async=true"
 ```
 
 #### 响应格式
@@ -103,6 +112,126 @@ curl -X POST "http://localhost:3000/api/planning-workbench/trips/trip123/fetch-e
   }
 }
 ```
+
+#### 异步模式响应（async=true）
+
+当使用 `async=true` 参数时，接口会立即返回任务ID，而不是等待处理完成：
+
+```json
+{
+  "success": true,
+  "data": {
+    "taskId": "abc123-def456-ghi789",
+    "message": "证据获取任务已启动，请使用任务ID查询进度"
+  }
+}
+```
+
+然后使用任务ID查询进度（见下方"任务进度查询"接口）。
+
+---
+
+## 🆕 P1功能：任务进度管理接口
+
+### GET `/api/planning-workbench/tasks/:taskId/progress`
+
+查询异步证据获取任务的进度信息。
+
+#### 路径参数
+
+- `taskId` (string, 必需): 任务ID（从异步模式响应中获取）
+
+#### 请求示例
+
+```bash
+curl -X GET "http://localhost:3000/api/planning-workbench/tasks/abc123-def456-ghi789/progress"
+```
+
+#### 响应格式
+
+```json
+{
+  "success": true,
+  "data": {
+    "taskId": "abc123-def456-ghi789",
+    "tripId": "trip-uuid",
+    "status": "RUNNING",
+    "totalPlaces": 10,
+    "processedPlaces": 5,
+    "currentPlace": {
+      "id": 123,
+      "name": "蓝湖温泉",
+      "evidenceTypes": ["weather", "opening_hours"]
+    },
+    "estimatedTimeRemaining": 15,
+    "canCancel": true,
+    "successCount": 4,
+    "failedCount": 0,
+    "partialCount": 1,
+    "createdAt": "2026-01-29T10:00:00Z",
+    "updatedAt": "2026-01-29T10:00:30Z"
+  }
+}
+```
+
+#### 响应字段说明
+
+- `taskId`: 任务ID
+- `tripId`: 行程ID
+- `status`: 任务状态
+  - `PENDING`: 待执行
+  - `RUNNING`: 执行中
+  - `COMPLETED`: 已完成
+  - `FAILED`: 失败
+  - `CANCELLED`: 已取消
+- `totalPlaces`: 总POI数量
+- `processedPlaces`: 已处理POI数量
+- `currentPlace`: 当前处理的POI（如果正在执行）
+  - `id`: POI ID
+  - `name`: POI名称
+  - `evidenceTypes`: 正在获取的证据类型列表
+- `estimatedTimeRemaining`: 预计剩余时间（秒）
+- `canCancel`: 是否可以取消
+- `successCount`: 成功数量
+- `failedCount`: 失败数量
+- `partialCount`: 部分成功数量
+- `error`: 错误信息（如果失败）
+- `createdAt`: 创建时间
+- `updatedAt`: 更新时间
+- `completedAt`: 完成时间（如果已完成）
+
+---
+
+### POST `/api/planning-workbench/tasks/:taskId/cancel`
+
+取消正在执行的证据获取任务。
+
+#### 路径参数
+
+- `taskId` (string, 必需): 任务ID
+
+#### 请求示例
+
+```bash
+curl -X POST "http://localhost:3000/api/planning-workbench/tasks/abc123-def456-ghi789/cancel"
+```
+
+#### 响应格式
+
+```json
+{
+  "success": true,
+  "data": {
+    "taskId": "abc123-def456-ghi789",
+    "message": "任务已取消"
+  }
+}
+```
+
+#### 注意事项
+
+- 只能取消 `PENDING` 或 `RUNNING` 状态的任务
+- 已完成、失败或已取消的任务无法再次取消
 
 ---
 
@@ -297,6 +426,60 @@ POST /api/planning-workbench/trips/trip123/fetch-evidence?evidenceTypes=opening_
 POST /api/planning-workbench/trips/{tripId}/fetch-evidence?forceRefresh=true
 ```
 
+### 场景 5: 🆕 P1功能 - 异步获取证据（带进度反馈）
+
+对于大量地点的证据获取，可以使用异步模式，避免长时间等待：
+
+```javascript
+// 1. 启动异步任务
+const response = await fetch(
+  `/api/planning-workbench/trips/${tripId}/fetch-evidence?async=true`,
+  { method: 'POST' }
+);
+const { taskId } = await response.json();
+
+// 2. 轮询查询进度
+const pollInterval = setInterval(async () => {
+  const progressResponse = await fetch(
+    `/api/planning-workbench/tasks/${taskId}/progress`
+  );
+  const progress = await progressResponse.json();
+  
+  // 显示进度
+  updateProgressBar({
+    current: progress.processedPlaces,
+    total: progress.totalPlaces,
+    percentage: (progress.processedPlaces / progress.totalPlaces) * 100,
+    estimatedTime: progress.estimatedTimeRemaining,
+    currentPlace: progress.currentPlace,
+  });
+  
+  // 检查是否完成
+  if (progress.status === 'COMPLETED' || progress.status === 'FAILED' || progress.status === 'CANCELLED') {
+    clearInterval(pollInterval);
+    
+    if (progress.status === 'COMPLETED') {
+      showSuccess(`任务完成：成功 ${progress.successCount}，部分成功 ${progress.partialCount}，失败 ${progress.failedCount}`);
+    } else if (progress.status === 'FAILED') {
+      showError(`任务失败：${progress.error}`);
+    } else {
+      showInfo('任务已取消');
+    }
+  }
+}, 1000); // 每秒轮询一次
+
+// 3. 提供取消按钮
+if (progress.canCancel) {
+  showCancelButton({
+    onClick: async () => {
+      await fetch(`/api/planning-workbench/tasks/${taskId}/cancel`, { method: 'POST' });
+      clearInterval(pollInterval);
+      showInfo('任务已取消');
+    },
+  });
+}
+```
+
 ## 错误处理
 
 ### 常见错误
@@ -333,9 +516,14 @@ POST /api/planning-workbench/trips/{tripId}/fetch-evidence?forceRefresh=true
    - 道路封闭信息建议每小时刷新一次
    - 开放时间数据相对稳定，建议每天刷新一次
 3. **坐标精度**: 确保地点的坐标信息准确，否则可能获取到错误的天气或路况数据
-4. **异步处理**: 对于大量地点，建议使用异步处理或分批处理
+4. **异步处理**: 对于大量地点，建议使用异步模式（`async=true`）或分批处理
 5. **开放时间限制**: 开放时间获取仅支持 `ATTRACTION` 类别的地点，其他类别会跳过
 6. **部分成功**: 接口支持部分成功，即使某些证据类型获取失败，其他类型仍会正常处理
+7. **🆕 P1功能 - 任务进度**: 
+   - 异步模式使用内存存储任务状态，服务重启后任务状态会丢失
+   - 建议前端使用轮询方式查询进度（建议间隔1-2秒）
+   - 任务完成后会自动清理（24小时后）
+   - 生产环境建议使用Redis和队列系统实现真正的异步任务
 
 ## 相关接口
 
@@ -344,3 +532,5 @@ POST /api/planning-workbench/trips/{tripId}/fetch-evidence?forceRefresh=true
 - `GET /api/weather/current`: 获取单个地点的当前天气（不更新数据库）
 - `POST /api/planning-workbench/trips/:tripId/fetch-evidence`: ⭐ 综合证据获取接口（推荐）
 - `POST /api/planning-workbench/trips/:tripId/fetch-weather`: 仅获取天气数据
+- `GET /api/planning-workbench/tasks/:taskId/progress`: 🆕 P1功能 - 查询任务进度
+- `POST /api/planning-workbench/tasks/:taskId/cancel`: 🆕 P1功能 - 取消任务

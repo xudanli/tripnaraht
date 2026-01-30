@@ -45,6 +45,11 @@
     "test:gap-preferences-with-user": "npx tsx scripts/create-test-user-and-test-gap-preferences.ts",
     "script:import-iceland-poi": "npx tsx scripts/import-iceland-poi-geojson.ts",
     "script:import-iceland-poi:dry-run": "npx tsx scripts/import-iceland-poi-geojson.ts --dry-run",
+    "script:import-iceland-opening-hours": "npx tsx scripts/import-iceland-poi-opening-hours.ts",
+    "script:import-iceland-opening-hours:amap": "npx tsx scripts/import-iceland-poi-opening-hours-alternative.ts",
+    "script:import-iceland-opening-hours:deepseek": "npx tsx scripts/import-iceland-opening-hours-with-deepseek.ts",
+    "test:risk-warnings-enhanced": "npx tsx scripts/test-risk-warnings-enhanced.ts",
+    "script:batch-update-iceland-opening-hours": "npx tsx scripts/batch-update-iceland-opening-hours.ts",
     "script:clean-iceland-poi-geojson": "npx tsx scripts/clean-iceland-poi-geojson.ts",
     "script:clean-iceland-poi-geojson:dry-run": "npx tsx scripts/clean-iceland-poi-geojson.ts --dry-run",
     "script:enrich-iceland-poi": "npx tsx scripts/enrich-iceland-poi-with-deepseek.ts",
@@ -62,7 +67,12 @@
     "test:python-ai": "ts-node scripts/test-python-ai-service.ts",
     "rag:e2e:gate": "npx tsx scripts/test-rag-e2e.ts --category=GATE",
     "rag:e2e:level1": "npx tsx scripts/test-rag-e2e.ts --level=1",
-    "rag:e2e:level4": "npx tsx scripts/test-rag-e2e.ts --level=4"
+    "rag:e2e:level4": "npx tsx scripts/test-rag-e2e.ts --level=4",
+    "test:evidence-enrichment": "npx tsx scripts/test-evidence-enrichment.ts",
+    "test:evidence-progress": "npx tsx scripts/test-evidence-progress.ts",
+    "test:evidence-apis": "npx tsx scripts/test-evidence-apis.ts",
+    "test:evidence-apis:http": "npx tsx scripts/test-evidence-apis-http.ts",
+    "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",

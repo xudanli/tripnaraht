@@ -356,8 +356,8 @@ export class TripInsightService {
    */
   private estimateReadiness(trip: any): ReadinessSummaryDto {
     let blockers = 0;
-    let warnings = 0;
-    let suggestions = 0;
+    let must = 0;  // 🆕 统一字段命名
+    let should = 0;  // 🆕 统一字段命名
 
     // 检查各种潜在问题
     
@@ -373,9 +373,9 @@ export class TripInsightService {
       ).length;
       
       if (activityCount > 8) {
-        warnings++;
+        must++;  // 🆕 高密度行程 → must
       } else if (activityCount > 6) {
-        suggestions++;
+        should++;  // 🆕 中等密度 → should
       }
     }
 
@@ -383,7 +383,7 @@ export class TripInsightService {
     for (const day of trip.TripDay) {
       for (const item of day.ItineraryItem) {
         if (item.type === 'ACTIVITY' && !item.placeId) {
-          suggestions++;
+          should++;  // 🆕 缺失信息 → should
         }
       }
     }
@@ -391,14 +391,14 @@ export class TripInsightService {
     // 4. 检查预算配置
     const budgetConfig = trip.budgetConfig as any;
     if (!budgetConfig?.totalBudget) {
-      suggestions++;
+      should++;  // 🆕 预算缺失 → should
     }
 
     // 确定状态
     let status: ReadinessStatus;
     if (blockers > 0) {
       status = ReadinessStatus.BLOCK;
-    } else if (warnings > 0) {
+    } else if (must > 0) {
       status = ReadinessStatus.WARN;
     } else {
       status = ReadinessStatus.PASS;
@@ -407,8 +407,11 @@ export class TripInsightService {
     return {
       status,
       blockers,
-      warnings,
-      suggestions: Math.min(suggestions, 10), // 限制最大数量
+      must,  // 🆕 统一字段命名
+      should: Math.min(should, 10),  // 🆕 统一字段命名，限制最大数量
+      // 向后兼容：保留旧字段
+      warnings: must,
+      suggestions: Math.min(should, 10),
     };
   }
 

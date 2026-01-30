@@ -80,16 +80,21 @@ export class RouteDirectionsService {
       name: dto.name,
       nameCN: dto.nameCN,
       nameEN: dto.nameEN,
-      dayPlans: dto.dayPlans as Prisma.InputJsonValue,
+      dayPlans: this.normalizeDayPlans(dto.dayPlans) as Prisma.InputJsonValue,
       defaultPacePreference: dto.defaultPacePreference,
       metadata: dto.metadata as Prisma.InputJsonValue,
       isActive: dto.isActive ?? true,
     };
 
-    return this.prisma.routeTemplate.create({
+    const template = await this.prisma.routeTemplate.create({
       data,
       include: { routeDirection: true },
     });
+
+    // 标准化返回的 dayPlans 格式
+    template.dayPlans = this.normalizeDayPlans(template.dayPlans);
+
+    return template;
   }
 
   /**
@@ -334,6 +339,42 @@ export class RouteDirectionsService {
   }
 
   /**
+   * 标准化 dayPlans 格式
+   * 将旧格式（嵌套数组）转换为新格式（对象数组）
+   */
+  private normalizeDayPlans(dayPlans: any): any[] {
+    if (!dayPlans || !Array.isArray(dayPlans) || dayPlans.length === 0) {
+      return [];
+    }
+
+    const firstItem = dayPlans[0];
+
+    // 检查是否是对象数组格式（新格式）
+    if (typeof firstItem === 'object' && firstItem !== null && !Array.isArray(firstItem)) {
+      // 确保每个对象都有 day 字段，并保留所有其他字段（包括 requiredNodes）
+      return dayPlans.map((plan: any, index: number) => {
+        // 使用展开运算符保留所有字段，然后确保 day 字段存在
+        return {
+          ...plan,  // 保留所有原始字段（requiredNodes, theme, pois 等）
+          day: plan.day ?? index + 1,  // 确保 day 字段存在
+        };
+      });
+    }
+
+    // 检查是否是嵌套数组格式（旧格式）
+    if (Array.isArray(firstItem)) {
+      // 转换为新格式
+      return dayPlans.map((nodes: string[], index: number) => ({
+        day: index + 1,
+        requiredNodes: nodes || [],
+      }));
+    }
+
+    // 未知格式，返回空数组
+    return [];
+  }
+
+  /**
    * 获取路线模板
    */
   async findRouteTemplateById(
@@ -348,7 +389,161 @@ export class RouteDirectionsService {
       throw new NotFoundException(`Route template with ID ${id} not found`);
     }
 
+    // 标准化 dayPlans 格式
+    template.dayPlans = this.normalizeDayPlans(template.dayPlans);
+
     return template;
+  }
+
+  /**
+   * 根据路线模板获取可用POI列表
+   * @param templateId 路线模板ID
+   * @param options 查询选项（类别、搜索关键词、分页）
+   */
+  async getAvailablePoisByTemplate(
+    templateId: number,
+    options?: {
+      category?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    // 1. 查询路线模板
+    const template = await this.findRouteTemplateById(templateId);
+    
+    // 2. 获取关联的路线方向
+    const routeDirection = template.routeDirection;
+    if (!routeDirection) {
+      throw new NotFoundException(`Route direction not found for template ${templateId}`);
+    }
+
+    // 3. 获取国家代码
+    const countryCode = routeDirection.countryCode;
+    if (!countryCode) {
+      throw new BadRequestException(`Country code not found for route direction ${routeDirection.id}`);
+    }
+
+    // 4. 构建查询条件
+    const page = options?.page || 1;
+    const limit = Math.min(options?.limit || 50, 100);
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.PlaceWhereInput = {
+      OR: [
+        { City: { countryCode } },
+        { metadata: { path: ['countryCode'], equals: countryCode } },
+      ],
+    };
+
+    // 类别筛选
+    if (options?.category) {
+      where.category = options.category as any;
+    }
+
+    // 搜索关键词
+    if (options?.search) {
+      const searchCondition = {
+        OR: [
+          { nameCN: { contains: options.search, mode: 'insensitive' } },
+          { nameEN: { contains: options.search, mode: 'insensitive' } },
+          { address: { contains: options.search, mode: 'insensitive' } },
+        ],
+      };
+      where.AND = [
+        {
+          OR: [
+            { City: { countryCode } },
+            { metadata: { path: ['countryCode'], equals: countryCode } },
+          ],
+        },
+        searchCondition,
+      ];
+    }
+
+    try {
+      // 5. 查询POI列表
+      const [total, places] = await Promise.all([
+        this.prisma.place.count({ where }),
+        this.prisma.place.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { rating: 'desc' },
+          include: {
+            City: {
+              select: {
+                id: true,
+                name: true,
+                countryCode: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      // 6. 批量提取坐标
+      const placeIds = places.map(p => p.id);
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (placeIds.length > 0) {
+        try {
+          const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            locationMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`);
+        }
+      }
+
+      // 7. 转换为响应格式
+      const placeList = places.map(place => {
+        const coords: { lat: number; lng: number } | null = locationMap.get(place.id) || null;
+        const city = place.City;
+
+        return {
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          category: place.category,
+          rating: place.rating,
+          location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+          city: city ? {
+            id: city.id,
+            name: city.name,
+            countryCode: city.countryCode,
+          } : null,
+        };
+      });
+
+      return {
+        places: placeList,
+        total,
+        page,
+        limit,
+        routeDirection: {
+          id: routeDirection.id,
+          countryCode: routeDirection.countryCode,
+          nameCN: routeDirection.nameCN,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`获取可用POI列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
@@ -406,7 +601,13 @@ export class RouteDirectionsService {
       query.skip = options.offset;
     }
 
-    return this.prisma.routeTemplate.findMany(query);
+    const templates = await this.prisma.routeTemplate.findMany(query);
+
+    // 标准化每个模板的 dayPlans 格式
+    return templates.map(template => ({
+      ...template,
+      dayPlans: this.normalizeDayPlans(template.dayPlans),
+    }));
   }
 
   /**
@@ -451,7 +652,30 @@ export class RouteDirectionsService {
     if (dto.nameCN !== undefined) updateData.nameCN = dto.nameCN;
     if (dto.nameEN !== undefined) updateData.nameEN = dto.nameEN;
     if (dto.dayPlans !== undefined) {
-      updateData.dayPlans = dto.dayPlans as Prisma.InputJsonValue;
+      // 调试日志：记录原始输入数据
+      this.logger.debug(`Original dayPlans input for template ${id}:`, JSON.stringify(dto.dayPlans, null, 2));
+      
+      // 验证数据完整性
+      dto.dayPlans.forEach((plan: any, index: number) => {
+        if (!plan.requiredNodes || (Array.isArray(plan.requiredNodes) && plan.requiredNodes.length === 0)) {
+          this.logger.warn(`⚠️  Day ${plan.day || index + 1} has empty requiredNodes in input data`);
+        }
+      });
+      
+      // 标准化 dayPlans 格式（确保是对象数组格式）
+      const normalizedDayPlans = this.normalizeDayPlans(dto.dayPlans);
+      
+      // 验证标准化后的数据
+      normalizedDayPlans.forEach((plan: any, index: number) => {
+        if (!plan.pois || (Array.isArray(plan.pois) && plan.pois.length === 0)) {
+          this.logger.warn(`⚠️  Day ${plan.day || index + 1} has no pois after normalization. Please use pois array format.`);
+        }
+      });
+      
+      // 调试日志：检查标准化后的数据
+      this.logger.debug(`Normalized dayPlans for template ${id}:`, JSON.stringify(normalizedDayPlans, null, 2));
+      
+      updateData.dayPlans = normalizedDayPlans as Prisma.InputJsonValue;
     }
     if (dto.defaultPacePreference !== undefined) {
       updateData.defaultPacePreference = dto.defaultPacePreference;
@@ -463,11 +687,27 @@ export class RouteDirectionsService {
 
     updateData.updatedAt = new Date();
 
-    return this.prisma.routeTemplate.update({
+    // 调试日志：记录即将保存到数据库的数据
+    if (updateData.dayPlans) {
+      this.logger.debug(`About to save dayPlans to database for template ${id}:`, JSON.stringify(updateData.dayPlans, null, 2));
+    }
+
+    const updated = await this.prisma.routeTemplate.update({
       where: { id },
       data: updateData,
       include: { routeDirection: true },
     });
+
+    // 调试日志：记录数据库返回的数据
+    this.logger.debug(`Database returned dayPlans for template ${id}:`, JSON.stringify(updated.dayPlans, null, 2));
+
+    // 标准化返回的 dayPlans 格式
+    updated.dayPlans = this.normalizeDayPlans(updated.dayPlans);
+
+    // 调试日志：记录标准化后的返回数据
+    this.logger.debug(`Normalized return dayPlans for template ${id}:`, JSON.stringify(updated.dayPlans, null, 2));
+
+    return updated;
   }
 
   /**
@@ -488,6 +728,24 @@ export class RouteDirectionsService {
         isActive: false,
         updatedAt: new Date(),
       },
+    });
+  }
+
+  /**
+   * 物理删除路线模板（从数据库中彻底删除）
+   * @param id 路线模板ID
+   */
+  async hardDeleteRouteTemplate(id: number): Promise<void> {
+    const existing = await this.prisma.routeTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Route template with ID ${id} not found`);
+    }
+
+    await this.prisma.routeTemplate.delete({
+      where: { id },
     });
   }
 
@@ -526,8 +784,8 @@ export class RouteDirectionsService {
       throw new NotFoundException(`Place with ID ${dto.poiId} not found`);
     }
 
-    // 3. 解析 dayPlans
-    const dayPlans = (template.dayPlans as any[]) || [];
+    // 3. 解析 dayPlans（标准化格式）
+    const dayPlans = this.normalizeDayPlans(template.dayPlans);
     const dayPlan = dayPlans.find((dp: any) => dp.day === dto.day);
 
     if (!dayPlan) {
@@ -579,6 +837,9 @@ export class RouteDirectionsService {
       },
     });
 
+    // 标准化返回的 dayPlans 格式
+    updated.dayPlans = this.normalizeDayPlans(updated.dayPlans);
+
     // 8. 更新 RouteDirection 的 signaturePois.examples
     const routeDirection = await this.prisma.routeDirection.findUnique({
       where: { id: template.routeDirectionId },
@@ -621,8 +882,8 @@ export class RouteDirectionsService {
       throw new NotFoundException(`Route template with ID ${templateId} not found`);
     }
 
-    // 2. 解析 dayPlans
-    const dayPlans = (template.dayPlans as any[]) || [];
+    // 2. 解析 dayPlans（标准化格式）
+    const dayPlans = this.normalizeDayPlans(template.dayPlans);
     const dayPlan = dayPlans.find((dp: any) => dp.day === dto.day);
 
     if (!dayPlan) {
@@ -682,6 +943,9 @@ export class RouteDirectionsService {
         routeDirection: true,
       },
     });
+
+    // 标准化返回的 dayPlans 格式
+    updatedTemplate.dayPlans = this.normalizeDayPlans(updatedTemplate.dayPlans);
 
     return {
       template: updatedTemplate,
@@ -833,6 +1097,7 @@ export class RouteDirectionsService {
   async createTripFromTemplate(
     templateId: number,
     dto: CreateTripFromRouteTemplateDto,
+    userId?: string | null, // 用户ID（可选，如果已认证）
   ): Promise<any> {
     // 1. 读取模板
     const template = await this.findRouteTemplateById(templateId);
@@ -846,8 +1111,20 @@ export class RouteDirectionsService {
     }
 
     // 2. 解析模板结构
-    const dayPlans = template.dayPlans as DayPlan[];
+    const dayPlans = this.normalizeDayPlans(template.dayPlans) as DayPlan[];
     const durationDays = template.durationDays;
+
+    // 调试日志：检查 dayPlans 中的 pois 数据
+    this.logger.debug(`Template ${templateId} dayPlans after normalization:`, JSON.stringify(dayPlans, null, 2));
+    let totalPois = 0;
+    dayPlans.forEach((plan, index) => {
+      const pois = plan.pois || [];
+      totalPois += pois.length;
+      if (pois.length > 0) {
+        this.logger.debug(`Day ${plan.day || index + 1} has ${pois.length} POIs:`, JSON.stringify(pois.map((p: any) => ({ id: p.id, uuid: p.uuid, nameCN: p.nameCN, required: p.required })), null, 2));
+      }
+    });
+    this.logger.debug(`Total POIs in template: ${totalPois}`);
 
     // 验证日期范围
     const startDate = new Date(dto.startDate);
@@ -862,11 +1139,13 @@ export class RouteDirectionsService {
 
     // 3. 匹配地点（从 place 表检索候选地点）
     const countryCode = dto.destination.toUpperCase().trim();
+    this.logger.debug(`Retrieving place candidates for country ${countryCode} with ${totalPois} POIs from template`);
     const candidates = await this.retrievePlaceCandidates(
       countryCode,
       dayPlans,
       routeDirection
     );
+    this.logger.debug(`Retrieved ${candidates.length} candidates, ${candidates.filter(c => c.isRequired).length} are required`);
 
     if (candidates.length === 0) {
       throw new NotFoundException(
@@ -892,6 +1171,7 @@ export class RouteDirectionsService {
           destination: countryCode,
           startDate: startDate,
           endDate: endDate,
+          status: 'PLANNING', // 显式设置状态，确保行程可以显示在列表中
           budgetConfig: {
             totalBudget: dto.totalBudget || 0,
             currency: 'CNY',
@@ -909,11 +1189,51 @@ export class RouteDirectionsService {
         } as any,
       });
 
-      // 5.2 创建 TripDay
+      // 5.1.1 创建 TripCollaborator 记录（如果提供了用户ID）
+      // 这确保行程可以在行程列表中显示（通过用户筛选）
+      if (userId) {
+        try {
+          await tx.tripCollaborator.create({
+            data: {
+              id: randomUUID(),
+              tripId: trip.id,
+              userId: userId,
+              role: 'OWNER', // 创建者默认为 OWNER 角色
+              updatedAt: new Date(),
+            } as any,
+          });
+          this.logger.debug(`Created TripCollaborator for trip ${trip.id} with userId ${userId}`);
+        } catch (error: any) {
+          // 如果用户不存在或其他错误，记录警告但不阻止行程创建
+          this.logger.warn(`Failed to create TripCollaborator for trip ${trip.id}: ${error.message}`);
+        }
+      } else {
+        this.logger.warn(`No userId provided when creating trip from template ${templateId}. Trip will not be associated with any user.`);
+      }
+
+      // 5.2 创建 TripDay（保存主题到metadata）
       const tripDays = [];
+      const dayThemes: Record<number, string> = {}; // 用于保存主题到Trip metadata
+      
       for (let i = 0; i < durationDays; i++) {
         const dayDate = new Date(startDate);
         dayDate.setDate(dayDate.getDate() + i);
+        const dayNumber = i + 1;
+        const dayResult = llmResult.days?.find(d => d.day === dayNumber);
+        // 优先从llmResult获取主题，然后从dayPlans中查找（使用day字段匹配）
+        const dayPlan = dayPlans.find(p => p.day === dayNumber) || dayPlans[i];
+        const theme = dayResult?.theme || dayPlan?.theme || '';
+        
+        // 保存主题到dayThemes（即使为空字符串也保存，用于调试）
+        dayThemes[dayNumber] = theme;
+        
+        // 调试日志
+        if (!theme) {
+          this.logger.warn(`Day ${dayNumber} has no theme. dayResult.theme=${dayResult?.theme}, dayPlan.theme=${dayPlan?.theme}`);
+        } else {
+          this.logger.debug(`Day ${dayNumber} theme: ${theme}`);
+        }
+        
         const tripDay = await tx.tripDay.create({
           data: {
             id: randomUUID(),
@@ -923,6 +1243,23 @@ export class RouteDirectionsService {
         });
         tripDays.push(tripDay);
       }
+      
+      // 更新Trip的metadata，保存每天的主题（在事务中更新）
+      // 即使dayThemes中有空字符串，也保存（用于调试和追踪）
+      const existingMetadata = trip.metadata as any || {};
+      const updatedMetadata = {
+        ...existingMetadata,
+        dayThemes: dayThemes,
+      };
+      await tx.trip.update({
+        where: { id: trip.id },
+        data: { metadata: updatedMetadata as any },
+      });
+      // 更新内存中的trip对象，以便后续使用
+      trip.metadata = updatedMetadata as any;
+      
+      // 调试日志
+      this.logger.debug(`Saved dayThemes to Trip metadata:`, JSON.stringify(dayThemes));
 
       // 5.3 批量创建 ItineraryItem
       const itemsToCreate = [];
@@ -956,6 +1293,12 @@ export class RouteDirectionsService {
           // 计算时间
           const { startTime, endTime } = this.calculateSlotTime(dayDate, slot);
 
+          // 构建note，包含reason和isRequired信息
+          let note = slotData.reason || null;
+          if (slotData.required) {
+            note = note ? `${note} [必游]` : '[必游]';
+          }
+
           itemsToCreate.push({
             id: randomUUID(),
             tripDayId: tripDay.id,
@@ -963,7 +1306,8 @@ export class RouteDirectionsService {
             type: this.mapSlotToItemType(slot, candidate.category),
             startTime: startTime,
             endTime: endTime,
-            note: slotData.reason || null,
+            note: note,
+            // 注意：isRequired字段不在schema中，我们通过note标记来标识
           });
         }
       }
@@ -1022,7 +1366,168 @@ export class RouteDirectionsService {
     dayPlans: DayPlan[],
     routeDirection: any
   ): Promise<Array<{ id: number; nameCN: string; nameEN?: string; category: string; lat: number; lng: number; uuid?: string; isRequired?: boolean }>> {
-    // 1. 收集所有 requiredNodes（Place UUID 或名称），并建立映射
+    // 1. 优先收集 dayPlans 中的 pois 字段（如果存在）
+    const poisFromTemplate: Array<{
+      id?: number;
+      uuid?: string;
+      required?: boolean;
+    }> = [];
+    const poisIdSet = new Set<number>();
+    const poisUuidSet = new Set<string>();
+    
+    for (const plan of dayPlans) {
+      // 优先使用 pois 字段
+      if (plan.pois && Array.isArray(plan.pois) && plan.pois.length > 0) {
+        this.logger.debug(`Found ${plan.pois.length} POIs in day ${plan.day || 'unknown'}`);
+        for (const poi of plan.pois) {
+          if (poi.id) {
+            poisIdSet.add(poi.id);
+            poisFromTemplate.push({
+              id: poi.id,
+              uuid: poi.uuid,
+              required: poi.required || false,
+            });
+            this.logger.debug(`Added POI: id=${poi.id}, uuid=${poi.uuid}, required=${poi.required || false}`);
+          } else if (poi.uuid) {
+            poisUuidSet.add(poi.uuid);
+            poisFromTemplate.push({
+              uuid: poi.uuid,
+              required: poi.required || false,
+            });
+            this.logger.debug(`Added POI: uuid=${poi.uuid}, required=${poi.required || false}`);
+          } else {
+            this.logger.warn(`POI in day ${plan.day} has neither id nor uuid:`, JSON.stringify(poi));
+          }
+        }
+      } else {
+        this.logger.debug(`Day ${plan.day || 'unknown'} has no pois array or pois is empty`);
+      }
+    }
+    
+    // 如果模板中有完整的 pois 信息，使用 pois
+    if (poisFromTemplate.length > 0) {
+      const poiIds = Array.from(poisIdSet);
+      const poiUuids = Array.from(poisUuidSet);
+      
+      this.logger.debug(`Querying places: ${poiIds.length} IDs, ${poiUuids.length} UUIDs`);
+      
+      // 从数据库查询这些 POI 的完整信息（使用原始SQL以支持PostGIS location字段）
+      const places = await this.prisma.$queryRaw<Array<{
+        id: number;
+        uuid: string;
+        nameCN: string;
+        nameEN: string | null;
+        category: string;
+        lat: number;
+        lng: number;
+      }>>`
+        SELECT 
+          p.id,
+          p.uuid,
+          p."nameCN",
+          p."nameEN",
+          p.category,
+          ST_Y(p.location::geometry) as lat,
+          ST_X(p.location::geometry) as lng
+        FROM "Place" p
+        ${countryCode ? Prisma.sql`INNER JOIN "City" c ON p."cityId" = c.id` : Prisma.sql``}
+        WHERE 
+          ${countryCode ? Prisma.sql`c."countryCode" = ${countryCode} AND` : Prisma.sql``}
+          p.location IS NOT NULL
+          AND (
+            ${poiIds.length > 0 && poiUuids.length > 0 
+              ? Prisma.sql`(p.id = ANY(${poiIds}::int[]) OR p.uuid = ANY(${poiUuids}::text[]))`
+              : poiIds.length > 0
+              ? Prisma.sql`p.id = ANY(${poiIds}::int[])`
+              : poiUuids.length > 0
+              ? Prisma.sql`p.uuid = ANY(${poiUuids}::text[])`
+              : Prisma.sql`FALSE`
+            }
+          )
+      `;
+      
+      this.logger.debug(`Found ${places.length} places in database (expected ${poisFromTemplate.length})`);
+      if (places.length < poisFromTemplate.length) {
+        const foundIds = new Set(places.map(p => p.id));
+        const foundUuids = new Set(places.map(p => p.uuid));
+        const missingPois = poisFromTemplate.filter(poi => {
+          if (poi.id) return !foundIds.has(poi.id);
+          if (poi.uuid) return !foundUuids.has(poi.uuid);
+          return true;
+        });
+        this.logger.warn(`Missing ${missingPois.length} POIs in database:`, JSON.stringify(missingPois, null, 2));
+      }
+      
+      // 构建 required 映射
+      const requiredMap = new Map<number | string, boolean>();
+      poisFromTemplate.forEach(poi => {
+        if (poi.id) requiredMap.set(poi.id, poi.required || false);
+        if (poi.uuid) requiredMap.set(poi.uuid, poi.required || false);
+      });
+      
+      const foundPlaceIds = new Set(places.map(p => p.id));
+      const foundPlaceUuids = new Set(places.map(p => p.uuid));
+      
+      // 查询其他候选地点（排除已找到的 POI，使用原始SQL以支持PostGIS location字段）
+      const otherPlaces = foundPlaceIds.size > 0 || foundPlaceUuids.size > 0
+        ? await this.prisma.$queryRaw<Array<{
+            id: number;
+            uuid: string;
+            nameCN: string;
+            nameEN: string | null;
+            category: string;
+            lat: number;
+            lng: number;
+          }>>`
+            SELECT 
+              p.id,
+              p.uuid,
+              p."nameCN",
+              p."nameEN",
+              p.category,
+              ST_Y(p.location::geometry) as lat,
+              ST_X(p.location::geometry) as lng
+            FROM "Place" p
+            ${countryCode ? Prisma.sql`INNER JOIN "City" c ON p."cityId" = c.id` : Prisma.sql``}
+            WHERE 
+              ${countryCode ? Prisma.sql`c."countryCode" = ${countryCode} AND` : Prisma.sql``}
+              p.location IS NOT NULL
+              ${foundPlaceIds.size > 0 ? Prisma.sql`AND p.id != ALL(${Array.from(foundPlaceIds)}::int[])` : Prisma.sql``}
+              ${foundPlaceUuids.size > 0 ? Prisma.sql`AND p.uuid != ALL(${Array.from(foundPlaceUuids)}::text[])` : Prisma.sql``}
+            ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
+            LIMIT ${Math.max(0, 200 - places.length)}
+          `
+        : [];
+      
+      // 合并结果：模板中的 POI 在前，并标记 isRequired
+      return [
+        ...places.map(place => ({
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN || undefined,
+          category: place.category,
+          lat: place.lat,
+          lng: place.lng,
+          isRequired: requiredMap.get(place.id) || requiredMap.get(place.uuid) || false,
+        })),
+        ...otherPlaces.map(place => ({
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN || undefined,
+          category: place.category,
+          lat: place.lat,
+          lng: place.lng,
+          isRequired: false,
+        })),
+      ];
+    }
+    
+    // 如果没有 pois，记录警告并使用默认逻辑
+    this.logger.warn(
+      `No pois found in dayPlans for template. Please use pois array format instead of requiredNodes.`
+    );
     const requiredNodeIds: string[] = [];
     const requiredNodeNames: string[] = [];
     const requiredNodesSet = new Set<string>(); // 用于快速判断是否为required
@@ -1288,7 +1793,7 @@ export class RouteDirectionsService {
 
   /**
    * Mock LLM 编排（临时实现）
-   * 改进：每天选择不同的POI，考虑主题和requiredNodes
+   * 改进：严格按照模板的POI顺序选择，优先使用模板中定义的POI
    */
   private mockLLMOrchestration(
     template: any,
@@ -1296,9 +1801,9 @@ export class RouteDirectionsService {
     durationDays: number
   ): any {
     const days = [];
-    const dayPlans = template.dayPlans as DayPlan[];
+    const dayPlans = this.normalizeDayPlans(template.dayPlans) as DayPlan[];
     
-    // 跟踪已使用的POI，避免重复
+    // 跟踪已使用的POI，避免重复（但允许模板中的required POI重复使用）
     const usedPlaceIds = new Set<number>();
     
     // 按类别分组候选POI
@@ -1306,30 +1811,31 @@ export class RouteDirectionsService {
     const attractions = candidates.filter(c => c.category === 'ATTRACTION');
     const hotels = candidates.filter(c => c.category === 'HOTEL');
     
-    // 获取requiredNodes对应的POI
-    const getRequiredPOIs = (dayPlan: DayPlan | undefined): number[] => {
-      if (!dayPlan?.requiredNodes || dayPlan.requiredNodes.length === 0) {
+    // 获取模板中定义的POI（按order排序）
+    const getTemplatePOIs = (dayPlan: DayPlan | undefined): Array<{ id: number; required: boolean; order: number }> => {
+      if (!dayPlan?.pois || dayPlan.pois.length === 0) {
         return [];
       }
       
-      const requiredIds: number[] = [];
-      for (const node of dayPlan.requiredNodes) {
-        // 尝试通过UUID匹配
-        const byUuid = candidates.find(c => c.uuid === node);
-        if (byUuid) {
-          requiredIds.push(byUuid.id);
-          continue;
-        }
-        
-        // 尝试通过名称匹配
-        const byName = candidates.find(
-          c => c.nameCN === node || c.nameEN === node
-        );
-        if (byName) {
-          requiredIds.push(byName.id);
+      const templatePois: Array<{ id: number; required: boolean; order: number }> = [];
+      for (const poi of dayPlan.pois) {
+        if (poi.id) {
+          // 验证POI在候选列表中
+          const candidate = candidates.find(c => c.id === poi.id || c.uuid === poi.uuid);
+          if (candidate) {
+            templatePois.push({
+              id: candidate.id,
+              required: poi.required || false,
+              order: poi.order || templatePois.length + 1,
+            });
+          } else {
+            this.logger.warn(`Template POI ${poi.id} (${poi.uuid || 'no uuid'}) not found in candidates for day ${dayPlan.day}`);
+          }
         }
       }
-      return requiredIds;
+      
+      // 按order排序
+      return templatePois.sort((a, b) => a.order - b.order);
     };
     
     // 根据主题匹配POI（简单关键词匹配）
@@ -1344,7 +1850,7 @@ export class RouteDirectionsService {
       });
     };
     
-    // 获取未使用的POI
+    // 获取未使用的POI（优先从preferred列表中选择）
     const getUnusedPOI = (pool: typeof candidates, preferred?: typeof candidates): number | null => {
       // 优先使用preferred中的POI
       if (preferred && preferred.length > 0) {
@@ -1364,19 +1870,6 @@ export class RouteDirectionsService {
         }
       }
       
-      // 如果都用完了，允许重复使用（但尽量选择不同的）
-      if (pool.length > 0) {
-        // 选择使用次数最少的（简单实现：随机选择）
-        const available = pool.filter(p => !usedPlaceIds.has(p.id));
-        if (available.length > 0) {
-          const selected = available[Math.floor(Math.random() * available.length)];
-          usedPlaceIds.add(selected.id);
-          return selected.id;
-        }
-        // 如果都用了，返回第一个（避免null）
-        return pool[0].id;
-      }
-      
       return null;
     };
 
@@ -1384,75 +1877,153 @@ export class RouteDirectionsService {
       const dayPlan = dayPlans.find(p => p.day === day) || dayPlans[day - 1];
       const theme = dayPlan?.theme || '';
       
-      // 获取requiredNodes对应的POI
-      const requiredPOIs = getRequiredPOIs(dayPlan);
+      // 获取模板中定义的POI（按order排序）
+      const templatePOIs = getTemplatePOIs(dayPlan);
       
-      // 根据主题匹配的POI
+      // 分离required和optional的POI（用于后续判断）
+      const requiredPOIs = templatePOIs.filter(p => p.required).map(p => p.id);
+      const optionalPOIs = templatePOIs.filter(p => !p.required).map(p => p.id);
+      
+      // 根据类别分组模板POI（用于补充缺失的slot）
+      const templateAttractions = attractions.filter(a => 
+        requiredPOIs.includes(a.id) || optionalPOIs.includes(a.id)
+      );
+      const templateRestaurants = restaurants.filter(r => 
+        requiredPOIs.includes(r.id) || optionalPOIs.includes(r.id)
+      );
+      
+      // 🆕 改进：严格按照模板的pois顺序分配POI
+      // 优先使用模板中定义的POI（按order顺序），而不是按时间段分配
+      const slots: any = {
+        morning: null,
+        lunch: null,
+        afternoon: null,
+        dinner: null,
+        evening: null,
+      };
+      
+      // 如果模板中有POI，严格按照顺序分配
+      if (templatePOIs.length > 0) {
+        // 按order排序（已经在getTemplatePOIs中排序）
+        let slotIndex = 0;
+        const slotOrder = ['morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+        
+        for (const templatePOI of templatePOIs) {
+          const candidate = candidates.find(c => c.id === templatePOI.id);
+          if (!candidate) {
+            this.logger.warn(`Template POI ${templatePOI.id} not found in candidates for day ${day}`);
+            continue;
+          }
+          
+          // 如果POI已经被使用，跳过（除非是required）
+          if (usedPlaceIds.has(templatePOI.id) && !templatePOI.required) {
+            this.logger.warn(`Template POI ${templatePOI.id} already used, skipping (not required)`);
+            continue;
+          }
+          
+          // 根据POI类别选择合适的slot
+          let slotName: string | null = null;
+          if (candidate.category === 'ATTRACTION') {
+            // ATTRACTION优先分配到morning或afternoon
+            slotName = slotIndex % 2 === 0 ? 'morning' : 'afternoon';
+          } else if (candidate.category === 'RESTAURANT') {
+            // RESTAURANT优先分配到lunch或dinner
+            slotName = slotIndex % 2 === 0 ? 'lunch' : 'dinner';
+          } else {
+            // 其他类别按顺序分配
+            slotName = slotOrder[slotIndex % slotOrder.length];
+          }
+          
+          // 如果slot已被占用，找下一个可用slot
+          if (slots[slotName]) {
+            for (const nextSlot of slotOrder) {
+              if (!slots[nextSlot]) {
+                slotName = nextSlot;
+                break;
+              }
+            }
+          }
+          
+          // 如果所有slot都被占用，跳过这个POI（除非是required）
+          if (slots[slotName]) {
+            if (templatePOI.required) {
+              // required POI必须分配，替换已占用的slot
+              this.logger.warn(`Required POI ${templatePOI.id} replacing existing slot ${slotName}`);
+            } else {
+              this.logger.warn(`No available slot for POI ${templatePOI.id}, skipping`);
+              continue;
+            }
+          }
+          
+          usedPlaceIds.add(templatePOI.id);
+          slots[slotName] = {
+            placeId: templatePOI.id,
+            reason: templatePOI.required
+              ? `模板要求的必游景点：${candidate.nameCN || ''}`
+              : `模板推荐的景点：${candidate.nameCN || ''}`,
+            required: templatePOI.required,
+          };
+          slotIndex++;
+        }
+      }
+      
+      // 如果模板中没有足够的POI，使用主题匹配或其他候选补充
       const themeAttractions = matchPOIsByTheme(theme, attractions);
       const themeRestaurants = matchPOIsByTheme(theme, restaurants);
       
-      // 优先使用requiredNodes中的POI
-      const requiredAttractions = attractions.filter(a => requiredPOIs.includes(a.id));
-      const requiredRestaurants = restaurants.filter(r => requiredPOIs.includes(r.id));
+      // 补充缺失的slot
+      if (!slots.morning && templateAttractions.length > 0) {
+        const poi = getUnusedPOI(attractions, templateAttractions) || getUnusedPOI(attractions, themeAttractions);
+        if (poi) {
+          const candidate = candidates.find(c => c.id === poi);
+          slots.morning = {
+            placeId: poi,
+            reason: theme ? `根据主题"${theme}"选择：${candidate?.nameCN || ''}` : `探索景点：${candidate?.nameCN || ''}`,
+            required: false,
+          };
+        }
+      }
       
-      // 选择POI（优先required，其次theme匹配，最后从全部中选择）
-      const morningPOI = getUnusedPOI(
-        attractions,
-        requiredAttractions.length > 0 ? requiredAttractions : themeAttractions
-      );
+      if (!slots.lunch && templateRestaurants.length > 0) {
+        const poi = getUnusedPOI(restaurants, templateRestaurants) || getUnusedPOI(restaurants, themeRestaurants);
+        if (poi) {
+          const candidate = candidates.find(c => c.id === poi);
+          slots.lunch = {
+            placeId: poi,
+            reason: '午餐推荐',
+            required: false,
+          };
+        }
+      }
       
-      const lunchPOI = getUnusedPOI(
-        restaurants,
-        requiredRestaurants.length > 0 ? requiredRestaurants : themeRestaurants
-      );
+      if (!slots.afternoon && templateAttractions.length > 0) {
+        const poi = getUnusedPOI(attractions, templateAttractions) || getUnusedPOI(attractions, themeAttractions);
+        if (poi) {
+          const candidate = candidates.find(c => c.id === poi);
+          slots.afternoon = {
+            placeId: poi,
+            reason: theme ? `继续探索"${theme}"：${candidate?.nameCN || ''}` : `继续探索：${candidate?.nameCN || ''}`,
+            required: false,
+          };
+        }
+      }
       
-      const afternoonPOI = getUnusedPOI(
-        attractions,
-        requiredAttractions.length > 0 ? requiredAttractions : themeAttractions
-      );
-      
-      const dinnerPOI = getUnusedPOI(
-        restaurants,
-        requiredRestaurants.length > 0 ? requiredRestaurants : themeRestaurants
-      );
+      if (!slots.dinner && templateRestaurants.length > 0) {
+        const poi = getUnusedPOI(restaurants, templateRestaurants) || getUnusedPOI(restaurants, themeRestaurants);
+        if (poi) {
+          const candidate = candidates.find(c => c.id === poi);
+          slots.dinner = {
+            placeId: poi,
+            reason: '晚餐推荐',
+            required: false,
+          };
+        }
+      }
 
       days.push({
         day,
-        slots: {
-          morning: morningPOI ? {
-            placeId: morningPOI,
-            reason: requiredPOIs.includes(morningPOI) 
-              ? `模板要求的必游景点：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`
-              : theme 
-                ? `根据主题"${theme}"选择：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`
-                : `探索景点：${candidates.find(c => c.id === morningPOI)?.nameCN || ''}`,
-            required: requiredPOIs.includes(morningPOI),
-          } : null,
-          lunch: lunchPOI ? {
-            placeId: lunchPOI,
-            reason: requiredPOIs.includes(lunchPOI)
-              ? `模板推荐的餐厅：${candidates.find(c => c.id === lunchPOI)?.nameCN || ''}`
-              : '午餐推荐',
-            required: requiredPOIs.includes(lunchPOI),
-          } : null,
-          afternoon: afternoonPOI ? {
-            placeId: afternoonPOI,
-            reason: requiredPOIs.includes(afternoonPOI)
-              ? `模板要求的必游景点：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`
-              : theme
-                ? `继续探索"${theme}"：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`
-                : `继续探索：${candidates.find(c => c.id === afternoonPOI)?.nameCN || ''}`,
-            required: requiredPOIs.includes(afternoonPOI),
-          } : null,
-          dinner: dinnerPOI ? {
-            placeId: dinnerPOI,
-            reason: requiredPOIs.includes(dinnerPOI)
-              ? `模板推荐的餐厅：${candidates.find(c => c.id === dinnerPOI)?.nameCN || ''}`
-              : '晚餐推荐',
-            required: requiredPOIs.includes(dinnerPOI),
-          } : null,
-          evening: null,
-        },
+        theme: theme, // 保存主题，用于后续处理
+        slots: slots, // 使用新的slots对象（已经包含所有信息）
       });
     }
 

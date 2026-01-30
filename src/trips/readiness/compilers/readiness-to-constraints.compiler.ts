@@ -18,6 +18,15 @@ export interface ReadinessConstraint {
   id: string;
   type: 'hard' | 'soft';
   severity: 'error' | 'warning' | 'info';
+  /**
+   * 约束类型，用于区分blocker和must
+   * - 'legal_blocker': 法律/法规硬性要求（blocker级别）
+   * - 'safety_blocker': 安全硬性要求（blocker级别）
+   * - 'strong_recommendation': 强烈建议（must级别）
+   * - 'recommendation': 建议（should级别）
+   * - 'optional': 可选（optional级别）
+   */
+  constraintType?: 'legal_blocker' | 'safety_blocker' | 'strong_recommendation' | 'recommendation' | 'optional';
   message: string;
   predicate?: (state: any) => boolean; // 可选的运行时检查函数
   penalty?: (state: any) => number; // 软约束的惩罚函数
@@ -36,11 +45,17 @@ export class ReadinessToConstraintsCompiler {
 
     for (const finding of result.findings) {
       // Blockers → Hard Constraints (error)
+      // 根据category判断是legal_blocker还是safety_blocker
       for (const item of finding.blockers) {
+        const constraintType = item.category === 'entry_transit' || item.category === 'health_insurance' 
+          ? 'legal_blocker' 
+          : 'safety_blocker';
+        
         constraints.push({
           id: `readiness.blocker.${item.id}`,
           type: 'hard',
           severity: 'error',
+          constraintType,
           message: item.message,
           evidence: item.evidence,
           tasks: item.tasks?.map(task => ({
@@ -53,11 +68,13 @@ export class ReadinessToConstraintsCompiler {
       }
 
       // Must → Hard Constraints (error)
+      // 使用strong_recommendation区分blocker
       for (const item of finding.must) {
         constraints.push({
           id: `readiness.must.${item.id}`,
           type: 'hard',
           severity: 'error',
+          constraintType: 'strong_recommendation',
           message: item.message,
           evidence: item.evidence,
           tasks: item.tasks?.map(task => ({
@@ -75,6 +92,7 @@ export class ReadinessToConstraintsCompiler {
           id: `readiness.should.${item.id}`,
           type: 'soft',
           severity: 'warning',
+          constraintType: 'recommendation',
           message: item.message,
           evidence: item.evidence,
           tasks: item.tasks?.map(task => ({
@@ -94,6 +112,7 @@ export class ReadinessToConstraintsCompiler {
           id: `readiness.optional.${item.id}`,
           type: 'soft',
           severity: 'info',
+          constraintType: 'optional',
           message: item.message,
           evidence: item.evidence,
           tasks: item.tasks?.map(task => ({

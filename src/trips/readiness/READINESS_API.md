@@ -28,6 +28,22 @@
 
 准备度检查（Readiness Check）系统用于评估旅行者在特定目的地的准备情况，返回必须做/强烈建议/可选的准备清单、风险预警和证据引用。本文档描述了准备度相关的所有 API 接口。
 
+> 📖 **最新变更（2026-01-29）**: 
+> - 所有检查接口响应现在包含 `disclaimer` 字段（免责声明）
+> - 约束编译结果新增 `constraintType` 字段，用于区分blocker和must
+> - 完善数据模型定义，包含完整的字段说明
+> - 🆕 **风险预警接口大幅增强**：
+>   - ✅ 新增风险类型标签（中文/英文）、分类、图标
+>   - ✅ 新增严重程度标签（中文/英文）
+>   - ✅ 新增详细说明和影响描述
+>   - ✅ 新增影响的POI信息（名称、天数）
+>   - ✅ 新增按分类分组和统计
+>   - ✅ 修复风险描述为空的问题
+>   - ✅ 支持大小写不敏感的风险类型匹配
+>   - 📖 详细说明请参考 [11. 风险预警（增强版）](#11-风险预警增强版)
+> 
+> 📋 **快速参考**: 最新接口文档请参考 [`docs/READINESS_API_LATEST.md`](../../docs/READINESS_API_LATEST.md)
+
 ## 基础信息
 
 - **基础路径**: `/readiness`
@@ -84,11 +100,46 @@ interface ReadinessCheckResult {
   summary: {                          // 摘要信息
     totalBlockers: number;            // 阻塞项总数
     totalMust: number;                // 必须项总数
-    totalShould: number;           // 建议项总数
-    totalOptional: number;           // 可选项总数
+    totalShould: number;              // 建议项总数
+    totalOptional: number;            // 可选项总数
+    totalRisks: number;                // 风险总数
   };
-  risks: Risk[];                      // 风险列表
-  constraints: Constraint[];         // 约束列表
+  /**
+   * 免责声明和责任边界
+   * 必须包含在API响应中，前端必须显示给用户
+   */
+  disclaimer?: ReadinessDisclaimer;
+}
+```
+
+### ReadinessDisclaimer 接口
+
+```typescript
+interface ReadinessDisclaimer {
+  /**
+   * 免责声明消息
+   * 告知用户本检查结果仅供参考，实际要求以官方机构为准
+   */
+  message: string;
+  
+  /**
+   * 数据最后更新时间
+   * 格式：ISO 8601 datetime
+   * 来源：所有Pack的lastReviewedAt中的最新日期
+   */
+  lastUpdated?: string;
+  
+  /**
+   * 数据来源列表
+   * 例如：['pack.is.iceland', 'facts.NZ']
+   */
+  dataSources?: string[];
+  
+  /**
+   * 用户必须自行验证的事项
+   * 例如：['签证要求', '保险覆盖范围']
+   */
+  userActionRequired?: string[];
 }
 ```
 
@@ -96,12 +147,20 @@ interface ReadinessCheckResult {
 
 ```typescript
 interface ReadinessFinding {
-  category: string;                   // 分类（如 'entry', 'safety', 'health'）
-  blockers: ReadinessFindingItem[];  // 阻塞项（必须解决）
-  must: ReadinessFindingItem[];      // 必须项
-  should: ReadinessFindingItem[];    // 建议项
-  optional: ReadinessFindingItem[];   // 可选项
-  risks: Risk[];                      // 风险列表
+  destinationId: string;              // 目的地ID
+  packId: string;                      // Pack ID
+  packVersion: string;                 // Pack 版本号
+  blockers: ReadinessFindingItem[];     // 阻塞项（必须解决）
+  must: ReadinessFindingItem[];        // 必须项
+  should: ReadinessFindingItem[];      // 建议项
+  optional: ReadinessFindingItem[];    // 可选项
+  risks: Array<{                        // 风险列表
+    type: HazardType;
+    severity: RuleSeverity;
+    summary: string;
+    mitigations: string[];
+  }>;
+  missingInfo?: string[];               // 需要用户提供的信息
 }
 ```
 
@@ -109,9 +168,54 @@ interface ReadinessFinding {
 
 ```typescript
 interface ReadinessFindingItem {
-  message: string;                    // 消息描述
-  tasks?: string[];                   // 任务列表
-  evidence?: string;                  // 证据引用
+  id: string;                          // 规则ID
+  category: ReadinessCategory;         // 分类（entry_transit, safety_hazards等）
+  severity: RuleSeverity;              // 严重程度（low, medium, high）
+  level: ActionLevel;                  // 优先级级别（blocker, must, should, optional）
+  message: string;                     // 消息描述
+  tasks?: Array<{                      // 任务列表
+    title: string;                     // 任务标题
+    dueOffsetDays?: number;            // 相对出发日期的偏移天数（负数表示提前）
+    tags?: string[];                   // 标签
+  }>;
+  askUser?: string[];                  // 需要用户提供的信息
+  evidence?: Array<{                   // 证据引用
+    sourceId: string;
+    sectionId?: string;
+    quote?: string;
+  }>;
+}
+```
+
+### ReadinessConstraint 接口（约束编译结果）
+
+```typescript
+interface ReadinessConstraint {
+  id: string;                          // 约束ID
+  type: 'hard' | 'soft';              // 约束类型
+  severity: 'error' | 'warning' | 'info'; // 严重程度
+  /**
+   * 约束类型，用于区分blocker和must
+   * - 'legal_blocker': 法律/法规硬性要求（blocker级别，entry_transit/health_insurance类别）
+   * - 'safety_blocker': 安全硬性要求（blocker级别，其他类别）
+   * - 'strong_recommendation': 强烈建议（must级别）
+   * - 'recommendation': 建议（should级别）
+   * - 'optional': 可选（optional级别）
+   */
+  constraintType?: 'legal_blocker' | 'safety_blocker' | 'strong_recommendation' | 'recommendation' | 'optional';
+  message: string;                     // 消息描述
+  evidence?: Array<{                   // 证据引用
+    sourceId: string;
+    sectionId?: string;
+    quote?: string;
+  }>;
+  tasks?: Array<{                      // 任务列表
+    title: string;
+    dueOffsetDays?: number;
+    tags?: string[];
+  }>;
+  askUser?: string[];                  // 需要用户提供的信息
+  penalty?: (state: any) => number;     // 软约束的惩罚函数（仅soft类型）
 }
 ```
 
@@ -241,21 +345,14 @@ interface ReadinessFindingItem {
       "totalBlockers": 1,
       "totalMust": 3,
       "totalShould": 5,
-      "totalOptional": 2
+      "totalOptional": 2,
+      "totalRisks": 1
     },
-    "risks": [
-      {
-        "type": "altitude",
-        "severity": "medium",
-        "summary": "高海拔地区可能出现高原反应"
-      }
-    ],
-    "constraints": [
-      {
-        "type": "entry",
-        "message": "必须持有有效护照和 NZeTA"
-      }
-    ]
+    "disclaimer": {
+      "message": "本检查结果仅供参考，实际要求以官方机构（如大使馆、移民局、旅游局）的最新政策为准。建议在出发前再次确认关键信息（如签证、保险、健康证明等）。",
+      "dataSources": ["pack.nz.new-zealand"],
+      "userActionRequired": ["签证要求", "保险覆盖范围"]
+    }
   },
   "error": null
 }
@@ -335,10 +432,14 @@ GET /readiness/trip/d125c30f-44ab-4a9e-9970-b899fccdc3d8
       "totalBlockers": 1,
       "totalMust": 2,
       "totalShould": 3,
-      "totalOptional": 0
+      "totalOptional": 0,
+      "totalRisks": 0
     },
-    "risks": [],
-    "constraints": []
+    "disclaimer": {
+      "message": "本检查结果仅供参考，实际要求以官方机构（如大使馆、移民局、旅游局）的最新政策为准。建议在出发前再次确认关键信息（如签证、保险、健康证明等）。",
+      "dataSources": ["pack.is.iceland"],
+      "userActionRequired": ["签证要求", "保险覆盖范围"]
+    }
   },
   "error": null
 }
@@ -352,6 +453,7 @@ GET /readiness/trip/d125c30f-44ab-4a9e-9970-b899fccdc3d8
   - **活动类型**: 从行程项（ItineraryItem）的 Place 分类和名称中推断
   - **季节**: 根据开始日期自动计算
   - **旅行者偏好**: 从 `trip.metadata.preferences` 获取（如预算水平、风险承受度）
+- **免责声明**: 所有响应都包含 `disclaimer` 字段，前端必须显示给用户
 
 **错误响应**:
 
@@ -563,6 +665,8 @@ GET /readiness/personalized-checklist?tripId=trip-123
 
 ### 6. 行程潜在风险预警
 
+> ⚠️ **已更新**: 本接口已增强，请参考 [11. 风险预警（增强版）](#11-风险预警增强版) 获取完整功能。
+
 提前知晓行程中的潜在风险，提供应对措施和救援信息。
 
 **接口**: `GET /readiness/risk-warnings`
@@ -572,14 +676,17 @@ GET /readiness/personalized-checklist?tripId=trip-123
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | tripId | string | 是 | 行程ID |
+| lang | string | 否 | 语言（`en` 或 `zh`，默认 `en`） |
+| userId | string | 否 | 用户ID（可选，用于个性化） |
+| includeCapabilityPackHazards | boolean | 否 | 是否包含能力包风险（默认 `false`） |
 
 **请求示例**:
 
 ```http
-GET /readiness/risk-warnings?tripId=trip-123
+GET /readiness/risk-warnings?tripId=trip-123&lang=zh
 ```
 
-**响应示例**:
+**响应示例**（增强版）:
 
 ```json
 {
@@ -588,38 +695,53 @@ GET /readiness/risk-warnings?tripId=trip-123
     "tripId": "trip-123",
     "risks": [
       {
-        "type": "altitude",
+        "id": "risk-1",
+        "type": "WEATHER",
+        "typeLabel": "天气风险",
+        "typeLabelEn": "Weather Risk",
+        "typeIcon": "🌨️",
+        "category": "weather",
         "severity": "medium",
-        "message": "高海拔地区可能出现高原反应",
-        "mitigation": [
-          "逐步适应海拔",
-          "准备抗高反药物",
-          "避免剧烈运动"
-        ],
-        "emergencyContacts": []
-      },
-      {
-        "type": "weather",
-        "severity": "high",
-        "message": "冬季可能出现极端天气",
-        "mitigation": [
-          "关注天气预报",
-          "准备应急装备",
-          "制定备用路线"
-        ],
+        "severityLabel": "中",
+        "severityLabelEn": "Medium",
+        "message": "天气相关风险，如极端天气、暴风雪等",
+        "description": "天气相关风险，如极端天气、暴风雪等",
+        "impact": "可能影响行程执行",
+        "mitigation": [],
+        "mitigationDetails": [],
+        "affectedPois": [],
+        "sourceType": "readiness",
+        "originalSeverity": "medium",
         "emergencyContacts": []
       }
     ],
+    "risksByCategory": {
+      "weather": [...],
+      "terrain": [...],
+      "safety": [],
+      "logistics": [],
+      "other": []
+    },
     "summary": {
       "totalRisks": 2,
       "highSeverity": 1,
       "mediumSeverity": 1,
-      "lowSeverity": 0
-    }
+      "lowSeverity": 0,
+      "byCategory": {
+        "weather": 1,
+        "terrain": 0,
+        "safety": 0,
+        "logistics": 0,
+        "other": 1
+      }
+    },
+    "aiEnhanced": false
   },
   "error": null
 }
 ```
+
+> 📖 **注意**: 响应格式已增强，包含更多字段。详细说明请参考 [11. 风险预警（增强版）](#11-风险预警增强版)。
 
 ---
 
@@ -1125,37 +1247,213 @@ GET /readiness/risk-warnings?tripId=trip-123&includeCapabilityPackHazards=true
     "tripId": "trip-123",
     "risks": [
       {
-        "type": "weather",
+        "id": "risk-1",
+        "type": "weather_extreme",
+        "typeLabel": "极端天气",
+        "typeLabelEn": "Extreme Weather",
+        "typeIcon": "🌨️",
+        "category": "weather",
         "severity": "high",
-        "message": "冬季可能出现极端天气",
+        "severityLabel": "高",
+        "severityLabelEn": "High",
+        "message": "冬季可能出现极端天气，道路可能封闭",
+        "description": "冬季可能出现极端天气，道路可能封闭",
+        "impact": "影响 2 个POI",
+        "mitigation": [
+          "关注天气预报",
+          "准备应急装备",
+          "准备备用路线"
+        ],
+        "mitigationDetails": [
+          {
+            "action": "关注天气预报",
+            "priority": "high"
+          },
+          {
+            "action": "准备应急装备",
+            "priority": "medium"
+          },
+          {
+            "action": "准备备用路线",
+            "priority": "low"
+          }
+        ],
+        "affectedPois": [
+          {
+            "id": "123",
+            "name": "Thingvellir National Park",
+            "nameCN": "辛格维利尔国家公园",
+            "day": 1
+          },
+          {
+            "id": "456",
+            "name": "Golden Circle",
+            "nameCN": "黄金圈",
+            "day": 1
+          }
+        ],
         "sourceType": "readiness",
-        "mitigation": ["关注天气预报", "准备应急装备"]
+        "sourcePackType": null,
+        "originalSeverity": "high",
+        "emergencyContacts": [],
+        "sources": [
+          {
+            "sourceId": "src.safetravel.is",
+            "authority": "SafeTravel Iceland",
+            "type": "html",
+            "title": "冰岛旅行安全信息",
+            "canonicalUrl": "https://www.safetravel.is/"
+          },
+          {
+            "sourceId": "src.vedur.is",
+            "authority": "Icelandic Meteorological Office",
+            "type": "html",
+            "title": "天气预报和预警",
+            "canonicalUrl": "https://www.vedur.is/"
+          }
+        ]
       },
       {
-        "type": "road_closure",
+        "id": "risk-2",
+        "type": "terrain",
+        "typeLabel": "地形风险",
+        "typeLabelEn": "Terrain Risk",
+        "typeIcon": "⛰️",
+        "category": "terrain",
         "severity": "medium",
+        "severityLabel": "中",
+        "severityLabelEn": "Medium",
         "message": "F 路可能因天气关闭",
+        "description": "F 路可能因天气关闭",
+        "impact": "影响 1 个POI",
+        "mitigation": [
+          "提前查询路况",
+          "准备备用路线"
+        ],
+        "mitigationDetails": [
+          {
+            "action": "提前查询路况",
+            "priority": "high"
+          },
+          {
+            "action": "准备备用路线",
+            "priority": "medium"
+          }
+        ],
+        "affectedPois": [
+          {
+            "id": "789",
+            "name": "Landmannalaugar",
+            "nameCN": "兰德曼纳劳卡",
+            "day": 2
+          }
+        ],
         "sourceType": "capability_pack",
         "sourcePackType": "seasonal-road",
-        "mitigation": ["提前查询路况", "准备备用路线"]
+        "originalSeverity": "medium",
+        "emergencyContacts": []
       }
     ],
+    "risksByCategory": {
+      "weather": [
+        {
+          "id": "risk-1",
+          "type": "weather_extreme",
+          "typeLabel": "极端天气",
+          "severity": "high",
+          "message": "冬季可能出现极端天气，道路可能封闭"
+        }
+      ],
+      "terrain": [
+        {
+          "id": "risk-2",
+          "type": "terrain",
+          "typeLabel": "地形风险",
+          "severity": "medium",
+          "message": "F 路可能因天气关闭"
+        }
+      ],
+      "safety": [],
+      "logistics": [],
+      "other": []
+    },
     "summary": {
       "totalRisks": 2,
       "highSeverity": 1,
       "mediumSeverity": 1,
-      "lowSeverity": 0
-    }
+      "lowSeverity": 0,
+      "byCategory": {
+        "weather": 1,
+        "terrain": 1,
+        "safety": 0,
+        "logistics": 0,
+        "other": 0
+      }
+    },
+    "aiEnhanced": false,
+    "packSources": [
+      {
+        "sourceId": "src.safetravel.is",
+        "authority": "SafeTravel Iceland",
+        "type": "html",
+        "title": "冰岛旅行安全信息",
+        "canonicalUrl": "https://www.safetravel.is/"
+      },
+      {
+        "sourceId": "src.vedur.is",
+        "authority": "Icelandic Meteorological Office",
+        "type": "html",
+        "title": "天气预报和预警",
+        "canonicalUrl": "https://www.vedur.is/"
+      }
+    ]
   }
 }
 ```
 
-**新增响应字段**:
+**响应字段说明**:
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `sourceType` | string | 来源类型：`readiness` 或 `capability_pack` |
-| `sourcePackType` | string | 能力包类型（仅当 sourceType 为 capability_pack 时） |
+| `risks` | Array | 风险列表（增强版） |
+| `risks[].id` | string | 风险ID |
+| `risks[].type` | string | 风险类型（技术标识，如 `weather_extreme`） |
+| `risks[].typeLabel` | string | 🆕 风险类型中文显示名称（如 `极端天气`） |
+| `risks[].typeLabelEn` | string | 🆕 风险类型英文显示名称 |
+| `risks[].typeIcon` | string | 🆕 风险类型图标（emoji） |
+| `risks[].category` | string | 🆕 风险分类（`weather`/`terrain`/`safety`/`logistics`/`other`） |
+| `risks[].severity` | string | 严重程度（`high`/`medium`/`low`） |
+| `risks[].severityLabel` | string | 🆕 严重程度中文显示（`高`/`中`/`低`） |
+| `risks[].severityLabelEn` | string | 🆕 严重程度英文显示 |
+| `risks[].message` | string | 风险描述 |
+| `risks[].description` | string | 🆕 详细说明（当前与message相同） |
+| `risks[].impact` | string | 🆕 影响说明 |
+| `risks[].mitigation` | string[] | 缓解建议列表 |
+| `risks[].mitigationDetails` | Array | 🆕 详细缓解建议（包含优先级） |
+| `risks[].affectedPois` | Array | 🆕 影响的POI列表（包含名称、天数） |
+| `risks[].affectedPois[].id` | string | POI ID |
+| `risks[].affectedPois[].name` | string | POI名称（英文） |
+| `risks[].affectedPois[].nameCN` | string | POI名称（中文） |
+| `risks[].affectedPois[].day` | number | 影响的天数（1-based） |
+| `risks[].sourceType` | string | 来源类型：`readiness` 或 `capability_pack` |
+| `risks[].sourcePackType` | string | 能力包类型（仅当 sourceType 为 capability_pack 时） |
+| `risks[].originalSeverity` | string | 原始严重程度（AI增强前） |
+| `risks[].emergencyContacts` | Array | 紧急联系方式 |
+| `risks[].sources` | Array | 🆕 官方来源列表（可选） |
+| `risks[].sources[].sourceId` | string | 来源ID |
+| `risks[].sources[].authority` | string | 官方机构名称（如 "SafeTravel Iceland"） |
+| `risks[].sources[].type` | string | 来源类型（`html`/`pdf`/`api`/`regulation`/`manual`） |
+| `risks[].sources[].title` | string | 来源标题（多语言） |
+| `risks[].sources[].canonicalUrl` | string | 官方链接 |
+| `risksByCategory` | Object | 🆕 按分类分组的风险 |
+| `packSources` | Array | 🆕 Pack 级别的官方来源（所有风险共享） |
+| `packSources[].sourceId` | string | 来源ID |
+| `packSources[].authority` | string | 官方机构名称 |
+| `packSources[].type` | string | 来源类型 |
+| `packSources[].title` | string | 来源标题 |
+| `packSources[].canonicalUrl` | string | 官方链接 |
+| `summary.byCategory` | Object | 🆕 按分类统计的风险数量 |
+| `aiEnhanced` | boolean | 是否启用AI增强 |
 
 ---
 
@@ -1548,6 +1846,8 @@ Content-Type: application/json
     "summary": {
       "totalFindings": 3,
       "blockers": 0,
+      "must": 2,
+      "should": 1,
       "warnings": 2,
       "suggestions": 1,
       "highRisks": 1,
@@ -1572,16 +1872,65 @@ Content-Type: application/json
 
 **Finding 类型**:
 
-| 值 | 说明 |
-|------|------|
-| `blocker` | 阻塞项，必须解决 |
-| `warning` | 警告项，建议处理 |
-| `suggestion` | 建议项，可选优化 |
+| 值 | 说明 | 状态级别 |
+|------|------|----------|
+| `blocker` | 阻塞项，必须解决 | blocker |
+| `must` | 必须项，强烈建议完成 | must |
+| `should` | 建议项，可选优化 | should |
+| `warning` | ⚠️ 已废弃，使用 `must` 替代 | must |
+| `suggestion` | ⚠️ 已废弃，使用 `should` 替代 | should |
+
+**🆕 字段统一规范（v1.7.0）**:
+- `summary.must` - 必须项数量（对应 `must` 状态）
+- `summary.should` - 建议项数量（对应 `should` 状态）
+- `summary.warnings` - ⚠️ 已废弃，值等于 `must`（向后兼容保留）
+- `summary.suggestions` - ⚠️ 已废弃，值等于 `should`（向后兼容保留）
 
 ---
 
 ## 更新日志
 
+- **2026-01-29**: 
+  - **🆕 v1.8.0：风险预警接口大幅增强**
+    - **新增字段**：
+      - `typeLabel` / `typeLabelEn`：风险类型中文/英文标签（如"天气风险"/"Weather Risk"）
+      - `category`：风险分类（weather/terrain/safety/logistics/other）
+      - `typeIcon`：风险类型图标（emoji，如🌨️⛰️🌊）
+      - `severityLabel` / `severityLabelEn`：严重程度中文/英文标签（如"高"/"High"）
+      - `description`：详细说明（当summary为空时使用typeDescription）
+      - `impact`：影响说明
+      - `mitigationDetails`：详细缓解建议（包含优先级）
+      - `affectedPois`：影响的POI信息（包含名称、天数）
+      - `risksByCategory`：按分类分组的风险
+      - `summary.byCategory`：按分类统计的风险数量
+    - **功能增强**：
+      - 支持大小写不敏感的风险类型匹配（兼容 WEATHER/TERRAIN 等大写类型）
+      - 修复风险描述为空的问题（使用typeDescription作为默认描述）
+      - 自动查询行程POI信息以增强affectedPois字段
+      - 添加错误处理，确保POI查询失败不影响主流程
+    - **向后兼容**：保留所有原有字段，新增字段不影响现有客户端
+  - **🆕 v1.7.0：字段统一规范**
+    - 统一字段命名：`warnings` → `must`，`suggestions` → `should`
+    - `ReadinessScoreResponse.summary` 新增 `must` 和 `should` 字段
+    - `ReadinessSummaryDto` 新增 `must` 和 `should` 字段
+    - `ReadinessScoreFinding.type` 支持 `must` 和 `should` 类型
+    - 保持向后兼容：保留 `warnings` 和 `suggestions` 字段（标记为废弃）
+    - 更新相关服务代码使用新字段名
+  - **P0修复：判断逻辑优化**
+    - 新增 `disclaimer` 字段到 `ReadinessCheckResult`，包含免责声明和责任边界
+    - 新增 `constraintType` 字段到 `ReadinessConstraint`，用于区分blocker和must
+    - 更新数据模型：完善 `ReadinessFinding` 和 `ReadinessFindingItem` 接口定义
+    - 所有检查接口（`POST /readiness/check`、`GET /readiness/trip/:id`等）现在自动包含免责声明
+    - 约束编译结果现在包含 `constraintType` 字段，决策层可以区分：
+      - `legal_blocker` / `safety_blocker`：法律/安全硬性要求（blocker级别）
+      - `strong_recommendation`：强烈建议（must级别）
+      - `recommendation`：建议（should级别）
+      - `optional`：可选（optional级别）
+  - **文档更新**
+    - 添加规则Level业务定义说明（blocker/must/should/optional）
+    - 添加约束编译映射规则说明
+    - 更新所有响应示例，包含disclaimer字段
+    - 更新风险预警接口文档，包含所有新增字段说明
 - **2025-01-27**: 
   - 新增 POI 分类枚举文档（IcelandCanonicalType）
   - 新增清单同步接口（P0）：添加/获取/更新/删除能力包规则

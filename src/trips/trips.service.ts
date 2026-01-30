@@ -1,6 +1,7 @@
 // src/trips/trips.service.ts
-import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Place } from '@prisma/client';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
 import { TripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
@@ -17,9 +18,25 @@ import { PipelineStatusResponseDto, PipelineStageDto, PipelineStageStatus } from
 import { DecisionLogStorageService } from './decision/services/decision-log-storage.service';
 import { TripDraftService } from './services/trip-draft.service';
 import { SaveTripDraftDto, TripDraftResponseDto } from './dto/trip-draft.dto';
-import { EvidenceItemDto, EvidenceListResponseDto, GetEvidenceQueryDto, EvidenceType, EvidenceSeverity } from './dto/evidence.dto';
+import { 
+  EvidenceItemDto, 
+  EvidenceListResponseDto, 
+  GetEvidenceQueryDto, 
+  EvidenceType, 
+  EvidenceSeverity,
+  UpdateEvidenceRequestDto,
+  UpdateEvidenceResponseDto,
+  BatchUpdateEvidenceRequestDto,
+  BatchUpdateEvidenceResponseDto,
+  EvidenceStatus
+} from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
 import { toPlaceResponseDto } from './dto/place-response.dto';
+import { EvidenceManagementService } from './services/evidence-management.service';
+import { EvidenceFilteringService } from './services/evidence-filtering.service';
+import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './services/evidence-completeness-checker.service';
+import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
+import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 
 @Injectable()
 export class TripsService {
@@ -43,7 +60,11 @@ export class TripsService {
     private scheduleConverter: ScheduleConverterService,
     private actionHistory: ActionHistoryService,
     private decisionLogStorage: DecisionLogStorageService,
-    private tripDraftService: TripDraftService
+    private tripDraftService: TripDraftService,
+    private evidenceManagement: EvidenceManagementService,
+    private evidenceFiltering: EvidenceFilteringService,
+    private evidenceCompletenessChecker: EvidenceCompletenessChecker,
+    private evidenceTrigger: EvidenceTriggerService,
   ) {}
 
   /**
@@ -727,14 +748,31 @@ export class TripsService {
     // P1 推荐返回：metadata.price, metadata.priceLevel, metadata.tags
     // P2 可选返回：metadata.phone, metadata.website
     // 🆕 同时添加 crossDayInfo 跨天信息
-    const transformedTripDays = tripData.TripDay?.map((day: any) => ({
-      ...day,
-      ItineraryItem: day.ItineraryItem?.map((item: any) => ({
-        ...item,
-        Place: item.Place ? toPlaceResponseDto(item.Place) : null,
-        crossDayInfo: this.calculateCrossDayInfo(item, day.date),
-      })),
-    }));
+    // 🆕 从 metadata.dayThemes 提取主题并添加到 TripDay
+    // 🆕 从 note 字段解析 isRequired 标记
+    const metadata = tripData.metadata as any || {};
+    const dayThemes = metadata.dayThemes || {};
+    
+    const transformedTripDays = tripData.TripDay?.map((day: any, index: number) => {
+      const dayNumber = index + 1;
+      const theme = dayThemes[dayNumber] || day.theme || null;
+      
+      return {
+        ...day,
+        theme: theme, // 添加主题字段
+        ItineraryItem: day.ItineraryItem?.map((item: any) => {
+          // 从 note 字段解析 isRequired（检查是否包含 [必游] 标记）
+          const isRequired = item.note?.includes('[必游]') || false;
+          
+          return {
+            ...item,
+            Place: item.Place ? toPlaceResponseDto(item.Place) : null,
+            crossDayInfo: this.calculateCrossDayInfo(item, day.date),
+            isRequired: isRequired, // 添加 isRequired 字段
+          };
+        }),
+      };
+    });
 
     return {
       ...tripData,
@@ -1350,15 +1388,380 @@ export class TripsService {
     // 排序（按时间倒序）
     filteredItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+    // 🆕 从Trip.metadata中读取证据状态并添加到证据项中
+    const metadata = trip.metadata as any || {};
+    const evidenceStatus = metadata.evidenceStatus || {};
+    
+    // 创建Place映射（用于证据增强）
+    const placeMap = new Map<number, Place>();
+    for (const tripDay of trip.TripDay) {
+      for (const item of tripDay.ItineraryItem) {
+        if (item.Place) {
+          placeMap.set(item.Place.id, item.Place);
+        }
+      }
+    }
+    
+    // 先添加状态信息
+    const itemsWithStatus = filteredItems.map(item => {
+      const statusInfo = evidenceStatus[item.id];
+      if (statusInfo) {
+        return {
+          ...item,
+          status: statusInfo.status as EvidenceStatus,
+          userNote: statusInfo.userNote,
+          acknowledgedAt: statusInfo.acknowledgedAt,
+          resolvedAt: statusInfo.resolvedAt,
+          dismissedAt: statusInfo.dismissedAt,
+        };
+      }
+      return {
+        ...item,
+        status: EvidenceStatus.NEW, // 默认为NEW
+      };
+    });
+
+    // 🆕 P0修复：增强证据项（添加freshness、confidence、qualityScore）
+    const enrichedItems = await this.evidenceManagement.enrichEvidenceItems(
+      itemsWithStatus,
+      placeMap,
+    );
+
+    // 🆕 P1修复：应用过滤和排序
+    const priority = query.priority || EvidencePriorityFilter.ALL;
+    const groupBy = query.groupBy || EvidenceGroupBy.NONE;
+    const sortBy = query.sortBy || EvidenceSortBy.TIME;
+    
+    // 获取当前天数（用于相关性排序）
+    const currentDay = query.day;
+    
+    const filteredAndSorted = this.evidenceFiltering.filterAndSort(
+      enrichedItems,
+      priority,
+      groupBy,
+      sortBy,
+      currentDay,
+    );
+
     // 分页
-    const total = filteredItems.length;
-    const paginatedItems = filteredItems.slice(offset, offset + limit);
+    const total = filteredAndSorted.length;
+    const paginatedItems = filteredAndSorted.slice(offset, offset + limit);
 
     return {
       items: paginatedItems,
       total,
       limit,
       offset,
+    };
+  }
+
+  /**
+   * 检查行程的证据完整性
+   * 
+   * @param tripId 行程ID
+   * @returns 完整性检查结果
+   */
+  async checkEvidenceCompleteness(tripId: string): Promise<EvidenceCompletenessResult> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: {
+                Place: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 收集所有Place
+    const places: Place[] = [];
+    for (const tripDay of trip.TripDay) {
+      for (const item of tripDay.ItineraryItem) {
+        if (item.Place) {
+          places.push(item.Place);
+        }
+      }
+    }
+
+    // 获取现有证据
+    const evidenceResult = await this.getEvidence(tripId, { limit: 1000 });
+    const existingEvidence = evidenceResult.items.map(item => ({
+      poiId: item.poiId,
+      type: item.type,
+    }));
+
+    // 检查完整性
+    return this.evidenceCompletenessChecker.checkCompleteness(
+      places,
+      existingEvidence,
+      trip.startDate?.toISOString(),
+    );
+  }
+
+  /**
+   * 获取证据获取建议（智能触发）
+   * 
+   * @param tripId 行程ID
+   * @returns 触发检查结果
+   */
+  async getEvidenceFetchSuggestions(tripId: string): Promise<EvidenceTriggerResult> {
+    return this.evidenceTrigger.checkAndSuggest(tripId);
+  }
+
+  /**
+   * 检查是否应该自动触发证据获取
+   * 
+   * @param tripId 行程ID
+   * @param threshold 完整性阈值（默认0.7）
+   * @returns 是否应该触发
+   */
+  async shouldAutoTriggerEvidenceFetch(tripId: string, threshold: number = 0.7): Promise<boolean> {
+    return this.evidenceTrigger.shouldAutoTrigger(tripId, threshold);
+  }
+
+  /**
+   * 验证用户是否有权限修改行程的证据
+   */
+  private async validateEvidenceAccess(tripId: string, userId?: string): Promise<void> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripCollaborator: true,
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 如果没有提供userId，跳过权限检查（临时方案，用于测试）
+    if (!userId) {
+      this.logger.warn(`未提供userId，跳过权限检查（仅用于测试）`);
+      return;
+    }
+
+    // 验证用户权限（只有OWNER和EDITOR可以修改）
+    const collaborator = trip.TripCollaborator?.find(
+      (c) => c.userId === userId && (c.role === 'OWNER' || c.role === 'EDITOR')
+    );
+
+    if (!collaborator) {
+      throw new ForbiddenException('无权修改该行程的证据，只有OWNER和EDITOR可以修改');
+    }
+  }
+
+  /**
+   * 验证证据状态转换是否合法
+   */
+  private validateEvidenceStatusTransition(currentStatus: string | undefined, newStatus: EvidenceStatus): boolean {
+    // 状态转换矩阵
+    const ALLOWED_TRANSITIONS: Record<string, EvidenceStatus[]> = {
+      [EvidenceStatus.NEW]: [EvidenceStatus.ACKNOWLEDGED, EvidenceStatus.RESOLVED, EvidenceStatus.DISMISSED],
+      [EvidenceStatus.ACKNOWLEDGED]: [EvidenceStatus.RESOLVED, EvidenceStatus.DISMISSED],
+      [EvidenceStatus.RESOLVED]: [], // 已解决不能回退
+      [EvidenceStatus.DISMISSED]: [EvidenceStatus.ACKNOWLEDGED], // 可以重新关注
+    };
+
+    // 如果没有当前状态，默认为NEW
+    const current = currentStatus || EvidenceStatus.NEW;
+    const allowed = ALLOWED_TRANSITIONS[current] || [];
+    return allowed.includes(newStatus);
+  }
+
+  /**
+   * 获取证据状态（从Trip.metadata中读取）
+   */
+  private getEvidenceStatus(trip: any, evidenceId: string): EvidenceStatus | undefined {
+    const metadata = trip.metadata as any || {};
+    const evidenceStatus = metadata.evidenceStatus || {};
+    return evidenceStatus[evidenceId]?.status;
+  }
+
+  /**
+   * 更新证据状态（保存到Trip.metadata）
+   */
+  private async updateEvidenceStatus(
+    tripId: string,
+    evidenceId: string,
+    status: EvidenceStatus,
+    userNote?: string,
+    userId?: string
+  ): Promise<void> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const metadata = trip.metadata as any || {};
+    const evidenceStatus = metadata.evidenceStatus || {};
+    const now = new Date().toISOString();
+
+    // 更新证据状态
+    evidenceStatus[evidenceId] = {
+      status,
+      updatedAt: now,
+      ...(userNote && { userNote }),
+      ...(status === EvidenceStatus.ACKNOWLEDGED && { acknowledgedAt: now }),
+      ...(status === EvidenceStatus.RESOLVED && { resolvedAt: now }),
+      ...(status === EvidenceStatus.DISMISSED && {
+        dismissedAt: now,
+        dismissedBy: userId,
+      }),
+    };
+
+    // 更新Trip的metadata
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        metadata: {
+          ...metadata,
+          evidenceStatus,
+        } as any,
+      },
+    });
+  }
+
+  /**
+   * 更新单个证据项的状态和备注
+   */
+  async updateEvidence(
+    tripId: string,
+    evidenceId: string,
+    dto: UpdateEvidenceRequestDto,
+    userId?: string
+  ): Promise<UpdateEvidenceResponseDto> {
+    // 1. 验证权限
+    await this.validateEvidenceAccess(tripId, userId);
+
+    // 2. 验证行程存在并获取当前证据状态
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 3. 验证证据是否存在（通过getEvidence方法检查）
+    const evidenceQuery: GetEvidenceQueryDto = { limit: 1000 }; // 获取所有证据
+    const evidenceList = await this.getEvidence(tripId, evidenceQuery);
+    const evidence = evidenceList.items.find((item) => item.id === evidenceId);
+
+    if (!evidence) {
+      throw new NotFoundException(`证据项 ${evidenceId} 不存在`);
+    }
+
+    // 4. 验证状态转换（如果提供了status）
+    if (dto.status) {
+      const currentStatus = this.getEvidenceStatus(trip, evidenceId);
+      if (!this.validateEvidenceStatusTransition(currentStatus, dto.status)) {
+        throw new BadRequestException(
+          `不允许的状态转换：${currentStatus || EvidenceStatus.NEW} → ${dto.status}`
+        );
+      }
+    }
+
+    // 5. 应用业务规则（自动设置时间戳）
+    const status = dto.status || this.getEvidenceStatus(trip, evidenceId) || EvidenceStatus.NEW;
+
+    // 6. 更新证据状态
+    await this.updateEvidenceStatus(tripId, evidenceId, status, dto.userNote, userId);
+
+    // 7. 返回更新结果
+    return {
+      evidenceId,
+      status,
+      updatedAt: new Date().toISOString(),
+      userNote: dto.userNote,
+    };
+  }
+
+  /**
+   * 批量更新证据项的状态和备注
+   */
+  async batchUpdateEvidence(
+    tripId: string,
+    dto: BatchUpdateEvidenceRequestDto,
+    userId?: string
+  ): Promise<BatchUpdateEvidenceResponseDto> {
+    // 1. 验证权限
+    await this.validateEvidenceAccess(tripId, userId);
+
+    // 2. 验证批量限制
+    if (dto.updates.length > 100) {
+      throw new BadRequestException('批量更新最多支持100个证据项');
+    }
+
+    // 3. 验证行程存在
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    // 4. 获取所有证据（用于验证evidenceId是否存在）
+    const evidenceQuery: GetEvidenceQueryDto = { limit: 1000 };
+    const evidenceList = await this.getEvidence(tripId, evidenceQuery);
+    const evidenceMap = new Map(evidenceList.items.map((item) => [item.id, item]));
+
+    // 5. 批量更新（使用事务）
+    const errors: Array<{ evidenceId: string; error: string }> = [];
+    let updatedCount = 0;
+
+    for (const update of dto.updates) {
+      try {
+        // 验证证据是否存在
+        if (!evidenceMap.has(update.evidenceId)) {
+          errors.push({
+            evidenceId: update.evidenceId,
+            error: '证据项不存在',
+          });
+          continue;
+        }
+
+        // 验证状态转换（如果提供了status）
+        if (update.status) {
+          const currentStatus = this.getEvidenceStatus(trip, update.evidenceId);
+          if (!this.validateEvidenceStatusTransition(currentStatus, update.status)) {
+            errors.push({
+              evidenceId: update.evidenceId,
+              error: `不允许的状态转换：${currentStatus || EvidenceStatus.NEW} → ${update.status}`,
+            });
+            continue;
+          }
+        }
+
+        // 更新证据状态
+        const status = update.status || this.getEvidenceStatus(trip, update.evidenceId) || EvidenceStatus.NEW;
+        await this.updateEvidenceStatus(tripId, update.evidenceId, status, update.userNote, userId);
+        updatedCount++;
+      } catch (error: any) {
+        errors.push({
+          evidenceId: update.evidenceId,
+          error: error.message || '更新失败',
+        });
+      }
+    }
+
+    return {
+      updated: updatedCount,
+      failed: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
     };
   }
 

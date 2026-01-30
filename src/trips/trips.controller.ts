@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DateTime } from 'luxon';
@@ -23,7 +23,14 @@ import { TaskDto, UpdateTaskStatusDto } from './dto/tasks.dto';
 import { PipelineStatusResponseDto } from './dto/pipeline-status.dto';
 import { CreateTripDraftDto, TripDraftResponseDto, SaveTripDraftDto, ReplaceItineraryItemDto, ReplaceItineraryItemResponseDto, RegenerateTripDto, RegenerateTripResponseDto } from './dto/trip-draft.dto';
 import { TripDraftService } from './services/trip-draft.service';
-import { GetEvidenceQueryDto, EvidenceListResponseDto } from './dto/evidence.dto';
+import { 
+  GetEvidenceQueryDto, 
+  EvidenceListResponseDto,
+  UpdateEvidenceRequestDto,
+  UpdateEvidenceResponseDto,
+  BatchUpdateEvidenceRequestDto,
+  BatchUpdateEvidenceResponseDto
+} from './dto/evidence.dto';
 import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/attention-queue.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
@@ -1750,6 +1757,66 @@ export class TripsController {
     }
   }
 
+  // 🆕 P1功能：更具体的路由必须放在通用路由之前
+  @Get(':id/evidence/completeness')
+  @ApiOperation({
+    summary: '检查行程的证据完整性',
+    description: '检查行程中所有POI的期望证据类型，识别缺失的证据，并提供补充建议（P1功能）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取完整性检查结果',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async checkEvidenceCompleteness(@Param('id') id: string) {
+    try {
+      const result = await this.tripsService.checkEvidenceCompleteness(id);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`检查证据完整性失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '检查证据完整性失败', { originalError: error.message });
+    }
+  }
+
+  @Get(':id/evidence/suggestions')
+  @ApiOperation({
+    summary: '获取证据获取建议（智能触发）',
+    description: '自动检测缺失证据并生成获取建议，支持一键批量获取（P1功能）',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取建议',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getEvidenceFetchSuggestions(@Param('id') id: string) {
+    try {
+      const result = await this.tripsService.getEvidenceFetchSuggestions(id);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取证据获取建议失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '获取证据获取建议失败', { originalError: error.message });
+    }
+  }
+
+  // 通用路由放在最后
   @Get(':id/evidence')
   @ApiOperation({
     summary: '获取行程证据列表',
@@ -1779,6 +1846,110 @@ export class TripsController {
       }
       this.logger.error(`获取证据列表失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, '获取证据列表失败', { originalError: error.message });
+    }
+  }
+
+  @Patch(':id/evidence/:evidenceId')
+  @ApiOperation({
+    summary: '更新单个证据项的状态和备注',
+    description: '更新指定证据项的状态（已读/已解决/已忽略）和用户备注。只有OWNER和EDITOR可以修改。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID' })
+  @ApiParam({ name: 'evidenceId', description: '证据项 ID' })
+  @ApiBody({ type: UpdateEvidenceRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功更新证据项',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '请求参数验证失败或状态转换不合法',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: '无权修改该行程的证据',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程或证据项不存在',
+    type: ApiErrorResponseDto,
+  })
+  async updateEvidence(
+    @Param('id') id: string,
+    @Param('evidenceId') evidenceId: string,
+    @Body() dto: UpdateEvidenceRequestDto,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
+    try {
+      const userId = user?.userId;
+      const result = await this.tripsService.updateEvidence(id, evidenceId, dto, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      this.logger.error(`更新证据失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '更新证据失败', { originalError: error.message });
+    }
+  }
+
+  @Put(':id/evidence/batch-update')
+  @ApiOperation({
+    summary: '批量更新证据项的状态和备注',
+    description: '批量更新多个证据项的状态和备注。最多支持100个证据项。只有OWNER和EDITOR可以修改。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID' })
+  @ApiBody({ type: BatchUpdateEvidenceRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功批量更新证据项',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '请求参数验证失败或批量数量超限',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: '无权修改该行程的证据',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在',
+    type: ApiErrorResponseDto,
+  })
+  async batchUpdateEvidence(
+    @Param('id') id: string,
+    @Body() dto: BatchUpdateEvidenceRequestDto,
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
+    try {
+      const userId = user?.userId;
+      const result = await this.tripsService.batchUpdateEvidence(id, dto, userId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      this.logger.error(`批量更新证据失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, '批量更新证据失败', { originalError: error.message });
     }
   }
 

@@ -104,11 +104,33 @@ export class ReadinessSummaryDto {
   @ApiProperty({ description: '阻塞项数量', example: 0 })
   blockers!: number;
 
-  @ApiProperty({ description: '警告项数量', example: 2 })
-  warnings!: number;
+  /**
+   * 🆕 统一字段命名：必须项数量（对应 must）
+   * 向后兼容：同时保留 warnings 字段
+   */
+  @ApiProperty({ description: '必须项数量', example: 2 })
+  must!: number;
 
+  /**
+   * 🆕 统一字段命名：建议项数量（对应 should）
+   * 向后兼容：同时保留 suggestions 字段
+   */
   @ApiProperty({ description: '建议项数量', example: 5 })
-  suggestions!: number;
+  should!: number;
+
+  /**
+   * @deprecated 使用 must 替代
+   * 向后兼容：保留此字段，值等于 must
+   */
+  @ApiPropertyOptional({ description: '警告项数量（已废弃，使用must）', example: 2, deprecated: true })
+  warnings?: number;
+
+  /**
+   * @deprecated 使用 should 替代
+   * 向后兼容：保留此字段，值等于 should
+   */
+  @ApiPropertyOptional({ description: '建议项数量（已废弃，使用should）', example: 5, deprecated: true })
+  suggestions?: number;
 }
 
 /**

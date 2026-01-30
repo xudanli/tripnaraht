@@ -69,12 +69,22 @@ export class ReadinessChecker {
       }
     }
 
-    // 收集风险信息
+    // 收集风险信息（🆕 关联 Pack 的官方来源）
+    const packSources = (pack.sources || []).map(s => ({
+      sourceId: s.sourceId,
+      authority: s.authority,
+      type: s.type,
+      title: getLocalizedText(s.title, lang) || s.authority,
+      canonicalUrl: s.canonicalUrl,
+    }));
+
     const risks = (pack.hazards || []).map(h => ({
       type: h.type,
       severity: h.severity,
       summary: getLocalizedText(h.summary, lang),
       mitigations: getLocalizedTexts(h.mitigations || [], lang),
+      // 🆕 关联 Pack 的官方来源
+      sources: packSources,
     }));
 
     // 收集缺失信息

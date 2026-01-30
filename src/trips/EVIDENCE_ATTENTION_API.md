@@ -61,6 +61,9 @@
 | offset | number | 否 | 偏移量 | 0 |
 | day | number | 否 | 筛选特定天数的证据（1-based） | - |
 | type | string | 否 | 筛选特定类型的证据 | - |
+| priority | string | 否 | 优先级过滤（P1功能）：`all`（全部）、`high`（高优先级）、`medium_and_high`（中等和高优先级） | `all` |
+| groupBy | string | 否 | 分组方式（P1功能）：`none`（不分组）、`importance`（按重要性）、`type`（按类型）、`day`（按天数） | `none` |
+| sortBy | string | 否 | 排序方式（P1功能）：`time`（按时间）、`importance`（按重要性）、`relevance`（按相关性）、`freshness`（按新鲜度）、`quality`（按质量评分） | `time` |
 
 #### 证据类型（type）
 
@@ -109,6 +112,29 @@ interface EvidenceItem {
   metadata?: {                   // 额外元数据（可选）
     [key: string]: any;
   };
+  // 🆕 P0修复：证据增强字段（v1.2.0）
+  freshness?: {                  // 证据时效性信息（可选）
+    fetchedAt: string;           // 获取时间（ISO 8601 格式）
+    expiresAt?: string;          // 过期时间（ISO 8601 格式）
+    freshnessStatus: 'FRESH' | 'STALE' | 'EXPIRED';  // 时效性状态
+    recommendedRefreshAt?: string;  // 建议刷新时间（ISO 8601 格式）
+  };
+  confidence?: {                 // 证据置信度信息（可选）
+    score: number;               // 置信度分数（0-1）
+    level: 'HIGH' | 'MEDIUM' | 'LOW';  // 置信度等级
+    factors: string[];           // 影响置信度的因素列表
+  };
+  qualityScore?: {               // 证据质量评分信息（可选）
+    overallScore: number;        // 综合质量评分（0-1）
+    components: {                 // 质量评分组件
+      sourceReliability: number; // 数据源可靠性（0-1）
+      timeliness: number;        // 时效性（0-1）
+      completeness: number;      // 完整性（0-1）
+      multiSourceVerification: number;  // 多源验证（0-1）
+    };
+    level: 'HIGH' | 'MEDIUM' | 'LOW';  // 质量等级
+    explanation: string;         // 质量说明
+  };
 }
 ```
 
@@ -136,6 +162,28 @@ interface EvidenceItem {
             "monday": "09:00-22:00",
             "tuesday": "09:00-22:00"
           }
+        },
+        "freshness": {
+          "fetchedAt": "2024-01-15T10:30:00Z",
+          "expiresAt": "2024-01-16T10:30:00Z",
+          "freshnessStatus": "FRESH",
+          "recommendedRefreshAt": "2024-01-16T10:30:00Z"
+        },
+        "confidence": {
+          "score": 0.85,
+          "level": "HIGH",
+          "factors": ["数据来源可靠", "数据新鲜", "数据完整"]
+        },
+        "qualityScore": {
+          "overallScore": 0.85,
+          "components": {
+            "sourceReliability": 0.9,
+            "timeliness": 1.0,
+            "completeness": 0.9,
+            "multiSourceVerification": 0.0
+          },
+          "level": "HIGH",
+          "explanation": "高质量：数据来源可靠、数据新鲜、数据完整，综合评分 85/100"
         }
       },
       {
@@ -199,12 +247,231 @@ interface EvidenceItem {
    - 如果指定了 `type`，只返回该类型的证据
    - 支持组合过滤
 
-3. **排序**：
-   - 按时间戳倒序排列（最新的在前）
+3. **排序**（P1功能增强）：
+   - 默认按时间戳倒序排列（最新的在前）
+   - 支持按重要性排序（`sortBy=importance`）
+   - 支持按相关性排序（`sortBy=relevance`，当前天数优先）
+   - 支持按新鲜度排序（`sortBy=freshness`）
+   - 支持按质量评分排序（`sortBy=quality`）
+
+4. **优先级过滤**（P1功能）：
+   - `priority=all`：显示所有证据（默认）
+   - `priority=high`：只显示高优先级证据（重要性 >= 0.7）
+   - `priority=medium_and_high`：显示中等和高优先级证据（重要性 >= 0.4）
+   - 重要性计算基于：严重程度、时效性状态、质量评分、置信度
 
 4. **分页**：
    - 支持 limit 和 offset 参数
    - 返回 total 总数用于前端分页计算
+
+---
+
+## 1.1 检查证据完整性（P1功能）
+
+### `GET /trips/:id/evidence/completeness`
+
+检查行程中所有POI的期望证据类型，识别缺失的证据，并提供补充建议。
+
+#### 路径参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 行程ID (UUID) |
+
+#### 响应结构
+
+```typescript
+{
+  completenessScore: number;  // 完整性评分（0-1）
+  missingEvidence: Array<{
+    poiId: number;
+    poiName: string;
+    missingTypes: EvidenceType[];
+    impact: 'LOW' | 'MEDIUM' | 'HIGH';
+    reason: string;
+  }>;
+  recommendations: Array<{
+    action: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    estimatedTime: number;  // 秒
+    evidenceTypes: EvidenceType[];
+    affectedPois: number[];
+  }>;
+}
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "completenessScore": 0.75,
+    "missingEvidence": [
+      {
+        "poiId": 123,
+        "poiName": "蓝湖温泉",
+        "missingTypes": ["weather", "opening_hours"],
+        "impact": "MEDIUM",
+        "reason": "景点需要营业时间信息、需要天气信息"
+      },
+      {
+        "poiId": 456,
+        "poiName": "F208公路",
+        "missingTypes": ["road_closure"],
+        "impact": "HIGH",
+        "reason": "需要道路封闭信息（安全关键）"
+      }
+    ],
+    "recommendations": [
+      {
+        "action": "为 5 个POI获取道路封闭信息",
+        "priority": "HIGH",
+        "estimatedTime": 8,
+        "evidenceTypes": ["road_closure"],
+        "affectedPois": [456, 789, 101]
+      },
+      {
+        "action": "为 10 个POI获取天气数据",
+        "priority": "MEDIUM",
+        "estimatedTime": 12,
+        "evidenceTypes": ["weather"],
+        "affectedPois": [123, 124, 125]
+      }
+    ]
+  }
+}
+```
+
+#### 业务逻辑
+
+1. **期望证据类型判断**：
+   - 基于POI类别（ATTRACTION需要营业时间、NATURE需要天气）
+   - 基于canonicalType（museum需要营业时间、hiking_trail需要天气和道路信息）
+   - 考虑季节因素（冬季需要更多天气和道路信息）
+
+2. **影响评估**：
+   - HIGH：道路封闭信息（安全关键）
+   - MEDIUM：天气信息（自然景点/冒险活动）、营业时间（景点/餐厅）
+   - LOW：其他证据类型
+
+3. **补充建议**：
+   - 按证据类型分组
+   - 按优先级排序
+   - 提供时间估算
+
+---
+
+## 1.2 获取证据获取建议（智能触发，P1功能）
+
+### `GET /trips/:id/evidence/suggestions`
+
+自动检测缺失证据并生成获取建议，支持一键批量获取。
+
+#### 路径参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 行程ID (UUID) |
+
+#### 响应结构
+
+```typescript
+{
+  hasMissingEvidence: boolean;  // 是否有缺失证据
+  completenessScore: number;    // 完整性评分（0-1）
+  suggestions: Array<{
+    id: string;
+    description: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    evidenceTypes: EvidenceType[];
+    affectedPoiIds: number[];
+    estimatedTime: number;  // 秒
+    reason: string;
+    canBatchFetch: boolean;
+  }>;
+  bulkFetchSuggestion?: {      // 一键批量获取建议（可选）
+    evidenceTypes: EvidenceType[];
+    affectedPoiIds: number[];
+    estimatedTime: number;
+    description: string;
+  };
+}
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "hasMissingEvidence": true,
+    "completenessScore": 0.75,
+    "suggestions": [
+      {
+        "id": "suggestion-road_closure-1234567890",
+        "description": "为 5 个POI获取道路封闭信息",
+        "priority": "HIGH",
+        "evidenceTypes": ["road_closure"],
+        "affectedPoiIds": [456, 789, 101],
+        "estimatedTime": 8,
+        "reason": "需要道路封闭信息（安全关键）",
+        "canBatchFetch": true
+      },
+      {
+        "id": "suggestion-weather-1234567891",
+        "description": "为 10 个POI获取天气数据",
+        "priority": "MEDIUM",
+        "evidenceTypes": ["weather"],
+        "affectedPoiIds": [123, 124, 125],
+        "estimatedTime": 12,
+        "reason": "自然景点/冒险活动需要天气信息",
+        "canBatchFetch": true
+      }
+    ],
+    "bulkFetchSuggestion": {
+      "evidenceTypes": ["road_closure"],
+      "affectedPoiIds": [456, 789, 101],
+      "estimatedTime": 8,
+      "description": "一键获取 1 项高优先级证据（3 个POI）"
+    }
+  }
+}
+```
+
+#### 业务逻辑
+
+1. **自动检测缺失证据**：
+   - 调用完整性检查服务
+   - 识别缺失的证据类型
+   - 评估影响和优先级
+
+2. **生成获取建议**：
+   - 按证据类型分组
+   - 按优先级排序（HIGH > MEDIUM > LOW）
+   - 提供时间估算
+   - 标记是否可批量获取
+
+3. **一键批量获取建议**：
+   - 只包含高优先级建议
+   - 合并所有高优先级建议的证据类型和POI
+   - 提供总时间估算
+
+#### 使用场景
+
+1. **准备度检查后**：
+   - 自动调用此接口检查缺失证据
+   - 显示获取建议
+   - 提供一键批量获取按钮
+
+2. **用户主动查看**：
+   - 用户点击"检查缺失证据"
+   - 显示建议列表
+   - 用户选择性地获取证据
+
+3. **自动触发**：
+   - 调用 `shouldAutoTrigger` 方法检查是否应该自动触发
+   - 如果完整性评分低于阈值（默认0.7）或有高优先级缺失，建议自动触发
 
 ---
 
@@ -785,7 +1052,244 @@ try {
 
 ---
 
+---
+
+## 3. 更新单个证据项状态
+
+### `PATCH /trips/:id/evidence/:evidenceId`
+
+更新指定证据项的状态和用户备注。
+
+#### 路径参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 行程ID (UUID) |
+| evidenceId | string | 是 | 证据项ID |
+
+#### 请求体
+
+```typescript
+{
+  status?: 'new' | 'acknowledged' | 'resolved' | 'dismissed';  // 可选：证据状态
+  userNote?: string;                                           // 可选：用户备注（最大500字符）
+}
+```
+
+#### 请求示例
+
+```http
+PATCH /api/trips/550e8400-e29b-41d4-a716-446655440000/evidence/ev-place-123-opening-hours
+Content-Type: application/json
+
+{
+  "status": "acknowledged",
+  "userNote": "已确认营业时间，已准备备选方案"
+}
+```
+
+#### 响应体
+
+```typescript
+{
+  success: true;
+  data: {
+    evidenceId: string;
+    status: string;
+    updatedAt: string;
+    userNote?: string;
+  };
+}
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "evidenceId": "ev-place-123-opening-hours",
+    "status": "acknowledged",
+    "updatedAt": "2026-01-29T12:00:00Z",
+    "userNote": "已确认营业时间，已准备备选方案"
+  }
+}
+```
+
+#### 状态转换规则
+
+| 当前状态 | 允许转换到 | 说明 |
+|---------|-----------|------|
+| `new` | `acknowledged`, `resolved`, `dismissed` | 新证据可以标记为已读、已解决或忽略 |
+| `acknowledged` | `resolved`, `dismissed` | 已读可以标记为已解决或忽略 |
+| `resolved` | - | 已解决不能回退 |
+| `dismissed` | `acknowledged` | 忽略的可以重新关注 |
+
+#### 权限要求
+
+- 只有 **OWNER** 和 **EDITOR** 可以修改证据
+- **VIEWER** 只能查看，不能修改
+
+#### 错误响应
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "不允许的状态转换：resolved → acknowledged"
+  }
+}
+```
+
+---
+
+## 4. 批量更新证据项状态
+
+### `PUT /trips/:id/evidence/batch-update`
+
+批量更新多个证据项的状态和备注。
+
+#### 路径参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 行程ID (UUID) |
+
+#### 请求体
+
+```typescript
+{
+  updates: Array<{
+    evidenceId: string;
+    status?: 'new' | 'acknowledged' | 'resolved' | 'dismissed';
+    userNote?: string;
+  }>;
+}
+```
+
+#### 请求示例
+
+```http
+PUT /api/trips/550e8400-e29b-41d4-a716-446655440000/evidence/batch-update
+Content-Type: application/json
+
+{
+  "updates": [
+    {
+      "evidenceId": "ev-place-123-opening-hours",
+      "status": "acknowledged",
+      "userNote": "已确认"
+    },
+    {
+      "evidenceId": "ev-place-456-weather",
+      "status": "resolved",
+      "userNote": "已准备雨具"
+    }
+  ]
+}
+```
+
+#### 响应体
+
+```typescript
+{
+  success: true;
+  data: {
+    updated: number;
+    failed: number;
+    errors?: Array<{
+      evidenceId: string;
+      error: string;
+    }>;
+  };
+}
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "updated": 2,
+    "failed": 0
+  }
+}
+```
+
+#### 批量限制
+
+- 最多支持 **100个** 证据项批量更新
+- 超过限制会返回 `VALIDATION_ERROR` 错误
+
+#### 部分失败处理
+
+如果部分更新失败，响应会包含失败详情：
+
+```json
+{
+  "success": true,
+  "data": {
+    "updated": 1,
+    "failed": 1,
+    "errors": [
+      {
+        "evidenceId": "ev-place-999-opening-hours",
+        "error": "证据项不存在"
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## 更新日志
+
+- **v1.6.0** (2026-01-29): P1修复 - 进度反馈和预期管理
+  - 新增 `POST /api/planning-workbench/trips/:tripId/fetch-evidence?async=true` 异步模式
+  - 新增 `GET /api/planning-workbench/tasks/:taskId/progress` 任务进度查询接口
+  - 新增 `POST /api/planning-workbench/tasks/:taskId/cancel` 任务取消接口
+  - 支持任务进度跟踪（处理数量、当前POI、预计剩余时间）
+  - 支持任务状态管理（PENDING/RUNNING/COMPLETED/FAILED/CANCELLED）
+  - 自动计算预计剩余时间
+  - 注意：当前为简化实现，使用内存存储
+
+- **v1.5.0** (2026-01-29): P1修复 - 智能触发机制
+  - 新增 `GET /trips/:id/evidence/suggestions` 接口
+  - 自动检测缺失证据并生成获取建议
+  - 支持一键批量获取建议（高优先级）
+  - 提供时间估算和优先级排序
+  - 支持自动触发判断（`shouldAutoTrigger`方法）
+
+- **v1.4.0** (2026-01-29): P1修复 - 证据完整性检查
+  - 新增 `GET /trips/:id/evidence/completeness` 接口
+  - 检查期望的证据类型（基于POI类别、canonicalType、季节）
+  - 识别缺失的证据并评估影响（HIGH/MEDIUM/LOW）
+  - 提供补充建议（按优先级排序、时间估算）
+  - 计算完整性评分（0-1）
+
+- **v1.3.0** (2026-01-29): P1修复 - 证据过滤和优先级机制
+  - 新增 `priority` 查询参数：支持按优先级过滤证据（all/high/medium_and_high）
+  - 新增 `groupBy` 查询参数：支持按重要性、类型、天数分组（暂未在响应中实现分组结构）
+  - 新增 `sortBy` 查询参数：支持按重要性、相关性、新鲜度、质量评分排序
+  - 实现智能重要性计算：基于严重程度、时效性状态、质量评分、置信度
+  - 默认保持向后兼容（所有新参数可选）
+
+- **v1.2.0** (2026-01-29): P0修复 - 证据增强功能
+  - 新增 `freshness` 字段：证据时效性信息（获取时间、过期时间、时效性状态）
+  - 新增 `confidence` 字段：证据置信度信息（置信度分数、等级、影响因素）
+  - 新增 `qualityScore` 字段：证据质量评分信息（综合评分、组件评分、质量等级、说明）
+  - 自动计算不同证据类型的TTL（天气30分钟、道路封闭1小时、营业时间24小时）
+  - 基于数据源可靠性、时效性、完整性、多源验证计算质量评分
+  - 所有字段均为可选，保持向后兼容
+
+- **v1.1.0** (2026-01-29): 新增证据修改接口
+  - 实现更新单个证据项状态接口 (`PATCH /trips/:id/evidence/:evidenceId`)
+  - 实现批量更新证据项状态接口 (`PUT /trips/:id/evidence/batch-update`)
+  - 支持状态转换校验和权限控制
+  - `GET /trips/:id/evidence` 接口现在返回状态信息
 
 - **v1.0.0** (2024-01-15): 初始版本
   - 实现获取证据列表接口

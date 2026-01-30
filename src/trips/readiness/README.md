@@ -103,6 +103,112 @@ const result = await this.readinessService.check(
 );
 ```
 
+## 规则Level业务定义
+
+**重要**：在定义Pack规则时，必须严格遵守以下level业务定义：
+
+### blocker（阻塞项）
+
+**定义**：法律/安全/健康硬性要求，不满足则无法出行
+
+**使用场景**：
+- 签证要求（VISA_REQUIRED、EVISA、VOA）
+- 强制保险（某些国家法律要求）
+- 禁止性规定（例如：斯瓦尔巴禁止独自进入荒野）
+- 健康证明（例如：某些国家要求黄热病疫苗证明）
+
+**约束编译**：映射为 `Hard Constraint (error)`，`constraintType: 'legal_blocker' | 'safety_blocker'`
+
+**示例**：
+```typescript
+{
+  id: 'rule.sval.safety.no-solo-wilderness',
+  category: 'safety_hazards',
+  severity: 'high',
+  then: {
+    level: 'blocker', // 不满足则无法出行
+    message: '禁止独自进入荒野区域',
+  },
+}
+```
+
+### must（必须项）
+
+**定义**：强烈建议，不满足可能导致行程失败或高风险
+
+**使用场景**：
+- 推荐保险（非强制但强烈建议，覆盖高风险活动）
+- 关键装备（例如：高海拔地区需要保暖衣物、防滑链）
+- 预订要求（例如：旺季住宿必须提前预订，否则无法入住）
+
+**约束编译**：映射为 `Hard Constraint (error)`，`constraintType: 'strong_recommendation'`
+
+**示例**：
+```typescript
+{
+  id: 'rule.is.gear.warm-clothing',
+  category: 'gear_packing',
+  severity: 'high',
+  then: {
+    level: 'must', // 强烈建议，不完成可能导致行程失败
+    message: '高海拔地区需要保暖衣物',
+  },
+}
+```
+
+### should（建议项）
+
+**定义**：建议性，不满足可能影响体验或增加风险
+
+**使用场景**：
+- 可选装备（例如：转换插头、现金准备）
+- 提前准备（例如：了解当地文化、学习基本语言）
+
+**约束编译**：映射为 `Soft Constraint (warning)`，`constraintType: 'recommendation'`
+
+**示例**：
+```typescript
+{
+  id: 'rule.nz.logistics.power-adapter',
+  category: 'logistics',
+  severity: 'medium',
+  then: {
+    level: 'should', // 建议完成，不完成可能影响体验
+    message: '建议准备转换插头',
+  },
+}
+```
+
+### optional（可选项）
+
+**定义**：可选，不影响核心行程
+
+**使用场景**：
+- 文化准备（例如：学习当地语言、了解当地习俗）
+- 非关键装备（例如：相机、充电宝）
+
+**约束编译**：映射为 `Soft Constraint (info)`，`constraintType: 'optional'`
+
+**示例**：
+```typescript
+{
+  id: 'rule.is.culture.language',
+  category: 'activities_bookings',
+  severity: 'low',
+  then: {
+    level: 'optional', // 可选完成，不影响核心行程
+    message: '学习基本冰岛语短语',
+  },
+}
+```
+
+### 选择指南
+
+- **如果违反法律/法规** → `blocker`
+- **如果可能导致行程失败** → `must`
+- **如果影响体验但可接受** → `should`
+- **如果完全可选** → `optional`
+
 ## 规则引擎
 
 规则引擎支持以下条件操作符：
@@ -158,11 +264,31 @@ const readinessResult = await this.readinessService.checkFromCountryFacts(
 
 Readiness Findings 会被编译成决策层可用的约束：
 
-- **Blockers / Must** → Hard Constraints (error)
+- **Blockers** → Hard Constraints (error)
+  - `constraintType: 'legal_blocker'`（entry_transit、health_insurance类别）
+  - `constraintType: 'safety_blocker'`（其他类别）
+- **Must** → Hard Constraints (error)
+  - `constraintType: 'strong_recommendation'`（用于区分blocker）
 - **Should** → Soft Constraints (warning)
+  - `constraintType: 'recommendation'`
 - **Optional** → Soft Constraints (info)
+  - `constraintType: 'optional'`
+
+**重要**：blocker和must虽然都映射为Hard Constraint (error)，但通过`constraintType`字段区分，决策层（Abu/Dr.Dre/Neptune）可以根据`constraintType`做出不同的决策：
+- `legal_blocker` / `safety_blocker`：必须解决，否则行程无法执行
+- `strong_recommendation`：强烈建议解决，不解决可能导致行程失败或高风险
 
 这些约束会被传递给 `ConstraintChecker` 和决策策略（Abu/Dr.Dre/Neptune）。
+
+### 免责声明
+
+所有准备度检查结果都包含 `disclaimer` 字段，明确系统的责任边界：
+
+- **免责声明消息**：告知用户检查结果仅供参考，实际要求以官方机构为准
+- **数据来源**：列出使用的Pack和数据源
+- **用户必须自行验证的事项**：如签证、保险等关键信息
+
+**前端必须显示免责声明**，确保用户理解系统的责任边界。
 
 ## 扩展新目的地
 

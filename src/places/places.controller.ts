@@ -15,6 +15,7 @@ import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { GetPlacesAdminQueryDto, PlaceListAdminResponseDto } from './dto/admin-place.dto';
 import { PlaceListQueryDto, PlaceListResponseDto } from './dto/place-list-query.dto';
 import { BatchPlaceImageRequestDto, BatchPlaceImageResponseDto, CATEGORY_MAP, SavePlaceImageRequestDto, SavePlaceImageResponseDto } from './dto/place-image.dto';
+import { BatchPlaceRequestDto, BatchPlaceResponseDto } from './dto/batch-place.dto';
 import { PlaceCategory } from '@prisma/client';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
@@ -51,7 +52,7 @@ export class PlacesController {
   @ApiQuery({ 
     name: 'type', 
     description: '地点类型', 
-    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    enum: PlaceCategory,
     required: false 
   })
   @ApiResponse({ 
@@ -63,7 +64,7 @@ export class PlacesController {
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
     @Query('radius') radius?: string,
-    @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    @Query('type') type?: PlaceCategory,
   ) {
     try {
       const radiusMeters = radius ? parseFloat(radius) : 2000;
@@ -122,6 +123,44 @@ export class PlacesController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       throw error;
+    }
+  }
+
+  @Public()
+  @Post('admin')
+  @ApiOperation({
+    summary: '创建地点（管理接口）',
+    description: '创建新的地点记录，包括地理位置（PostGIS）和元数据（JSONB）。管理接口，无需认证。',
+  })
+  @ApiBody({ type: CreatePlaceDto })
+  @ApiResponse({
+    status: 200,
+    description: '地点创建成功',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '输入数据验证失败',
+    type: ApiErrorResponseDto,
+  })
+  async createPlaceAdmin(@Body() createPlaceDto: CreatePlaceDto) {
+    try {
+      const place = await this.placesService.createPlace(createPlaceDto);
+      return successResponse(place);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      // 处理 Prisma 唯一约束错误
+      if (error?.code === 'P2002') {
+        const field = error.meta?.target?.[0] || '字段';
+        const message = field === 'googlePlaceId' 
+          ? `Google Place ID 已存在: ${createPlaceDto.googlePlaceId}`
+          : `唯一约束冲突: ${field} 已存在`;
+        return errorResponse(ErrorCode.VALIDATION_ERROR, message);
+      }
+      this.logger.error(`创建地点失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 
@@ -921,7 +960,7 @@ export class PlacesController {
   @ApiQuery({
     name: 'type',
     description: '地点类型（可选）',
-    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    enum: PlaceCategory,
     required: false,
   })
   @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
@@ -936,7 +975,7 @@ export class PlacesController {
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('radius') radius?: string,
-    @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    @Query('type') type?: PlaceCategory,
     @Query('limit') limit?: string,
   ) {
     if (!query) {
@@ -1012,7 +1051,7 @@ export class PlacesController {
         },
         type: {
           type: 'string',
-          enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+          enum: Object.values(PlaceCategory) as string[],
           description: '地点类型（可选）',
         },
         limit: {
@@ -1077,7 +1116,7 @@ export class PlacesController {
       lat?: number;
       lng?: number;
       radius?: number;
-      type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL';
+      type?: PlaceCategory;
       limit?: number;
     },
   ) {
@@ -1120,7 +1159,7 @@ export class PlacesController {
   @ApiQuery({
     name: 'type',
     description: '地点类型（可选）',
-    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    enum: PlaceCategory,
     required: false,
   })
   @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
@@ -1135,7 +1174,7 @@ export class PlacesController {
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('radius') radius?: string,
-    @Query('type') type?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    @Query('type') type?: PlaceCategory,
     @Query('limit') limit?: string,
   ) {
     if (!query) {
@@ -1160,7 +1199,7 @@ export class PlacesController {
   @ApiQuery({
     name: 'category',
     description: '地点类型筛选',
-    enum: ['RESTAURANT', 'ATTRACTION', 'SHOPPING', 'HOTEL'],
+    enum: PlaceCategory,
     required: false,
   })
   @ApiQuery({ name: 'cityId', description: '城市ID筛选', example: 1, type: Number, required: false })
@@ -1462,6 +1501,36 @@ export class PlacesController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       this.logger.error(`删除地点失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('admin/batch')
+  @ApiOperation({
+    summary: '批量获取POI详情（管理接口）',
+    description: '根据POI ID数组批量获取POI详情，用于在日计划中显示已选POI的完整信息。避免多次单独查询POI详情。',
+  })
+  @ApiBody({ type: BatchPlaceRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回POI详情列表',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '输入数据验证失败',
+    type: ApiErrorResponseDto,
+  })
+  async getPlacesBatchAdmin(@Body() dto: BatchPlaceRequestDto) {
+    try {
+      const places = await this.placesService.getPlacesByIds(dto.ids);
+      return successResponse({ places });
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`批量获取POI详情失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

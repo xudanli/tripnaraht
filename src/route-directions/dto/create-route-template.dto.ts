@@ -8,8 +8,9 @@ import {
   IsEnum,
   IsBoolean,
   ValidateNested,
+  IsIn,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { DayPlan } from '../interfaces/route-direction.interface';
 
 export class CreateRouteTemplateDto {
@@ -32,13 +33,33 @@ export class CreateRouteTemplateDto {
   nameEN?: string;
 
   @IsArray()
+  @Transform(({ value }) => {
+    // 确保数组中的每个对象都被保留，不丢失任何字段
+    if (Array.isArray(value)) {
+      return value.map((item: any) => {
+        if (typeof item === 'object' && item !== null) {
+          return { ...item }; // 保留所有字段
+        }
+        return item;
+      });
+    }
+    return value;
+  })
   // 不使用 ValidateNested，允许灵活的数据结构（包括 pois 字段）
   // 因为 DayPlan 是接口，且需要支持扩展字段（如 pois）
   dayPlans!: DayPlan[] | any[];
 
   @IsOptional()
-  @IsEnum(['RELAX', 'BALANCED', 'CHALLENGE'])
-  defaultPacePreference?: 'RELAX' | 'BALANCED' | 'CHALLENGE';
+  @Transform(({ value }) => {
+    // 兼容旧值：RELAX -> RELAXED, CHALLENGE -> INTENSE
+    if (value === 'RELAX') return 'RELAXED';
+    if (value === 'CHALLENGE') return 'INTENSE';
+    return value;
+  })
+  @IsIn(['RELAXED', 'BALANCED', 'INTENSE'], {
+    message: 'defaultPacePreference must be one of: RELAXED, BALANCED, INTENSE',
+  })
+  defaultPacePreference?: 'RELAXED' | 'BALANCED' | 'INTENSE';
 
   @IsOptional()
   @IsObject()

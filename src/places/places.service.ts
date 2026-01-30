@@ -129,6 +129,29 @@ export class PlacesService {
   async createPlace(dto: CreatePlaceDto) {
     const { lat, lng, ...rest } = dto;
     
+    // 规范化 googlePlaceId：空字符串或只包含空白字符的字符串转换为 null
+    const normalizedGooglePlaceId = dto.googlePlaceId?.trim() || null;
+    
+    // 检查 googlePlaceId 是否已存在（如果提供了非空值）
+    if (normalizedGooglePlaceId) {
+      const existingPlace = await this.prisma.place.findUnique({
+        where: { googlePlaceId: normalizedGooglePlaceId },
+        select: { id: true, nameCN: true },
+      });
+      
+      if (existingPlace) {
+        throw new BadRequestException(
+          `Google Place ID "${normalizedGooglePlaceId}" 已存在，对应的地点ID为 ${existingPlace.id} (${existingPlace.nameCN})`
+        );
+      }
+    }
+    
+    // 使用规范化后的 googlePlaceId
+    const placeData = {
+      ...rest,
+      googlePlaceId: normalizedGooglePlaceId,
+    };
+    
     // 快招1：增强 metadata（自动解析 OSM opening_hours 等）
     const enrichedMetadata = dto.metadata 
       ? MetadataEnricher.enrich(dto.metadata)
@@ -146,7 +169,7 @@ export class PlacesService {
     // 简便方法：先创建基础信息
     const place = await this.prisma.place.create({
       data: {
-        ...rest,
+        ...placeData,
         uuid: randomUUID(),
         metadata: enrichedMetadata as any, // 存入增强后的 JSON
         physicalMetadata: physicalMetadata as any, // 自动生成的体力消耗元数据
@@ -182,7 +205,7 @@ export class PlacesService {
     lat: number, 
     lng: number, 
     radius: number = 2000, // 默认 2km
-    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL' // 可选过滤
+    category?: PlaceCategory // 统一使用 PlaceCategory 枚举
   ): Promise<PlaceWithDistance[]> {
     
     // 1. 动态构建 SQL 条件 (如果需要复杂的动态查询，这里可以拼接数组)
@@ -941,7 +964,7 @@ export class PlacesService {
    */
   async getRecommendedActivities(
     countryCode: string,
-    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    category?: PlaceCategory, // 统一使用 PlaceCategory 枚举
     limit: number = 20
   ) {
     if (!countryCode) {
@@ -992,7 +1015,7 @@ export class PlacesService {
     lat?: number,
     lng?: number,
     radius?: number,
-    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    category?: PlaceCategory, // 统一使用 PlaceCategory 枚举
     limit: number = 20,
     countryCode?: string
   ) {
@@ -1132,7 +1155,7 @@ export class PlacesService {
     lat?: number,
     lng?: number,
     radius?: number,
-    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    category?: PlaceCategory, // 统一使用 PlaceCategory 枚举
     limit: number = 20,
     countryCode?: string
   ): Promise<Array<{
@@ -1206,7 +1229,7 @@ export class PlacesService {
     lat?: number,
     lng?: number,
     radius?: number,
-    category?: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'HOTEL',
+    category?: PlaceCategory, // 统一使用 PlaceCategory 枚举
     limit: number = 20
   ): Promise<Array<{
     query: string;
@@ -1678,6 +1701,233 @@ export class PlacesService {
       };
     } catch (error: any) {
       this.logger.error(`获取地点列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 按国家代码查询POI列表（支持分页、类别筛选、搜索）
+   * @param params 查询参数
+   */
+  async getPlacesByCountryCode(params: {
+    countryCode: string;
+    category?: PlaceCategory;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 50, 100);
+    const skip = (page - 1) * limit;
+
+    // 构建查询条件
+    const where: Prisma.PlaceWhereInput = {};
+
+    // 国家代码过滤
+    const countryFilter = {
+      OR: [
+        { City: { countryCode: params.countryCode } },
+        { metadata: { path: ['countryCode'], equals: params.countryCode } },
+      ],
+    };
+
+    // 类别筛选
+    if (params.category) {
+      where.category = params.category;
+    }
+
+    // 搜索关键词
+    if (params.search) {
+      where.AND = [
+        countryFilter,
+        {
+          OR: [
+            { nameCN: { contains: params.search, mode: 'insensitive' } },
+            { nameEN: { contains: params.search, mode: 'insensitive' } },
+            { address: { contains: params.search, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    } else {
+      // 没有搜索关键词时，直接使用国家代码过滤
+      where.AND = [countryFilter];
+    }
+
+    try {
+      // 并行执行 count 和 findMany 查询
+      const [total, places] = await Promise.all([
+        this.prisma.place.count({ where }),
+        this.prisma.place.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { rating: 'desc' },
+          include: {
+            City: {
+              select: {
+                id: true,
+                name: true,
+                nameCN: true,
+                nameEN: true,
+                countryCode: true,
+                timezone: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      // 批量提取坐标
+      const placeIds = places.map(p => p.id);
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (placeIds.length > 0) {
+        try {
+          const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            locationMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`);
+        }
+      }
+
+      // 转换为响应格式
+      const placeList = places.map(place => {
+        let coords: { lat: number; lng: number } | null = locationMap.get(place.id) || null;
+        
+        if (!coords) {
+          const location = (place as any).location;
+          coords = location ? this.extractCoordinates(location) : null;
+        }
+        
+        const city = place.City;
+
+        return {
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          category: place.category,
+          rating: place.rating,
+          location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+          city: city ? {
+            id: city.id,
+            name: city.name,
+            countryCode: city.countryCode,
+          } : null,
+        };
+      });
+
+      return {
+        places: placeList,
+        total,
+        page,
+        limit,
+      };
+    } catch (error: any) {
+      this.logger.error(`按国家代码查询POI失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量获取POI详情
+   * @param ids POI ID数组
+   */
+  async getPlacesByIds(ids: number[]) {
+    if (!ids || ids.length === 0) {
+      return [];
+    }
+
+    try {
+      const places = await this.prisma.place.findMany({
+        where: {
+          id: { in: ids },
+        },
+        include: {
+          City: {
+            select: {
+              id: true,
+              name: true,
+              nameCN: true,
+              nameEN: true,
+              countryCode: true,
+              timezone: true,
+            },
+          },
+        },
+      });
+
+      // 批量提取坐标
+      const placeIds = places.map(p => p.id);
+      const locationMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (placeIds.length > 0) {
+        try {
+          const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            locationMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`);
+        }
+      }
+
+      // 转换为响应格式
+      return places.map(place => {
+        let coords: { lat: number; lng: number } | null = locationMap.get(place.id) || null;
+        
+        if (!coords) {
+          const location = (place as any).location;
+          coords = location ? this.extractCoordinates(location) : null;
+        }
+        
+        const metadata = (place.metadata as any) || {};
+        const city = place.City;
+
+        return {
+          id: place.id,
+          uuid: place.uuid,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          category: place.category,
+          rating: place.rating,
+          address: place.address,
+          description: (place as any).description,
+          location: coords ? { lat: coords.lat, lng: coords.lng } : null,
+          metadata,
+          city: city ? {
+            id: city.id,
+            name: city.name,
+            countryCode: city.countryCode,
+          } : null,
+        };
+      });
+    } catch (error: any) {
+      this.logger.error(`批量获取POI详情失败: ${error.message}`, error.stack);
       throw error;
     }
   }

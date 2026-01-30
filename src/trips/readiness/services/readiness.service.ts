@@ -10,7 +10,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
-import { ReadinessCheckResult } from '../types/readiness-findings.types';
+import { ReadinessCheckResult, ReadinessDisclaimer, ReadinessFinding } from '../types/readiness-findings.types';
 import { ReadinessChecker } from '../engine/readiness-checker';
 import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compiler';
 import type { CountryFacts } from '../compilers/facts-to-readiness.compiler';
@@ -128,13 +128,72 @@ export class ReadinessService {
   }
 
   /**
+   * 生成免责声明
+   */
+  private generateDisclaimer(
+    findings: ReadinessFinding[],
+    lang: 'en' | 'zh' = 'en'
+  ): ReadinessDisclaimer {
+    const dataSources: string[] = [];
+    const lastReviewedDates: string[] = [];
+    const userActionRequired: string[] = [];
+
+    // 收集数据来源和最后更新时间
+    for (const finding of findings) {
+      dataSources.push(finding.packId);
+      if (finding.packVersion) {
+        // 尝试从pack中获取lastReviewedAt
+        // 这里简化处理，实际应该从pack对象中获取
+      }
+    }
+
+    // 检查是否有blocker或must级别的签证/保险相关项
+    for (const finding of findings) {
+      for (const item of [...finding.blockers, ...finding.must]) {
+        if (item.category === 'entry_transit') {
+          if (lang === 'zh') {
+            userActionRequired.push('签证要求');
+          } else {
+            userActionRequired.push('Visa requirements');
+          }
+        }
+        if (item.category === 'health_insurance') {
+          if (lang === 'zh') {
+            userActionRequired.push('保险覆盖范围');
+          } else {
+            userActionRequired.push('Insurance coverage');
+          }
+        }
+      }
+    }
+
+    // 去重
+    const uniqueUserActions = Array.from(new Set(userActionRequired));
+
+    const message = lang === 'zh'
+      ? '本检查结果仅供参考，实际要求以官方机构（如大使馆、移民局、旅游局）的最新政策为准。建议在出发前再次确认关键信息（如签证、保险、健康证明等）。'
+      : 'This readiness check result is for reference only. Actual requirements are subject to the latest policies from official authorities (e.g., embassies, immigration offices, tourism boards). Please reconfirm critical information (e.g., visas, insurance, health certificates) before departure.';
+
+    return {
+      message,
+      dataSources: dataSources.length > 0 ? dataSources : undefined,
+      userActionRequired: uniqueUserActions.length > 0 ? uniqueUserActions : undefined,
+    };
+  }
+
+  /**
    * 检查准备度（从 Pack 文件）
    */
   async checkFromPacks(
     packs: ReadinessPack[],
-    context: TripContext
+    context: TripContext,
+    lang: 'en' | 'zh' = 'en'
   ): Promise<ReadinessCheckResult> {
-    return this.readinessChecker.checkMultipleDestinations(packs, context);
+    const result = await this.readinessChecker.checkMultipleDestinations(packs, context, lang);
+    return {
+      ...result,
+      disclaimer: this.generateDisclaimer(result.findings, lang),
+    };
   }
 
   /**
@@ -243,7 +302,11 @@ export class ReadinessService {
     let pack = await this.packStorage.findPackByDestination(destinationId);
     if (pack) {
       this.logger.debug(`Found pack by exact destinationId: ${destinationId} -> ${pack.packId}`);
-      return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+      const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+      return {
+        ...result,
+        disclaimer: this.generateDisclaimer(result.findings, lang),
+      };
     }
 
     // 2. 解析 destinationId，提取城市和地区信息
@@ -272,7 +335,11 @@ export class ReadinessService {
         pack = await this.packStorage.findPackByCity(variant, countryCode);
         if (pack) {
           this.logger.debug(`Found pack by city variant: ${variant} -> ${pack.packId}`);
-          return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+          const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+          return {
+            ...result,
+            disclaimer: this.generateDisclaimer(result.findings, lang),
+          };
         }
       }
     }
@@ -282,7 +349,11 @@ export class ReadinessService {
       const regionPacks = await this.packStorage.findPacksByRegion(cityOrRegion);
       if (regionPacks.length > 0) {
         this.logger.debug(`Found ${regionPacks.length} pack(s) by region: ${cityOrRegion}`);
-        return this.readinessChecker.checkMultipleDestinations(regionPacks, enhancedContext, lang);
+        const result = await this.readinessChecker.checkMultipleDestinations(regionPacks, enhancedContext, lang);
+        return {
+          ...result,
+          disclaimer: this.generateDisclaimer(result.findings, lang),
+        };
       }
 
       // 尝试 region 名称的变体
@@ -297,7 +368,11 @@ export class ReadinessService {
         const variantPacks = await this.packStorage.findPacksByRegion(variant);
         if (variantPacks.length > 0) {
           this.logger.debug(`Found ${variantPacks.length} pack(s) by region variant: ${variant}`);
-          return this.readinessChecker.checkMultipleDestinations(variantPacks, enhancedContext, lang);
+          const result = await this.readinessChecker.checkMultipleDestinations(variantPacks, enhancedContext, lang);
+          return {
+            ...result,
+            disclaimer: this.generateDisclaimer(result.findings, lang),
+          };
         }
       }
     }
@@ -311,7 +386,11 @@ export class ReadinessService {
       );
       if (pack) {
         this.logger.debug(`Found pack by coordinates: (${options.geoLat}, ${options.geoLng}) -> ${pack.packId}`);
-        return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+        const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+        return {
+          ...result,
+          disclaimer: this.generateDisclaimer(result.findings, lang),
+        };
       }
     }
 
@@ -322,7 +401,11 @@ export class ReadinessService {
         this.logger.debug(`Found ${packs.length} pack(s) by country: ${countryCode}`);
         // 如果有多个国家级别的 packs，返回所有（让规则引擎处理）
         // 或者可以选择最通用的 pack（如果有优先级标记）
-        return this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
+        const result = await this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
+        return {
+          ...result,
+          disclaimer: this.generateDisclaimer(result.findings, lang),
+        };
       }
     }
 
@@ -337,6 +420,7 @@ export class ReadinessService {
         totalOptional: 0,
         totalRisks: 0,
       },
+      disclaimer: this.generateDisclaimer([], lang),
     };
   }
 
@@ -345,7 +429,8 @@ export class ReadinessService {
    */
   async checkFromCountryFacts(
     countryCodes: string[],
-    context: TripContext
+    context: TripContext,
+    lang: 'en' | 'zh' = 'en'
   ): Promise<ReadinessCheckResult> {
     const findings: any[] = [];
 
@@ -390,6 +475,7 @@ export class ReadinessService {
     return {
       findings,
       summary,
+      disclaimer: this.generateDisclaimer(findings, lang),
     };
   }
 
@@ -399,10 +485,11 @@ export class ReadinessService {
   async check(
     packs: ReadinessPack[],
     countryCodes: string[],
-    context: TripContext
+    context: TripContext,
+    lang: 'en' | 'zh' = 'en'
   ): Promise<ReadinessCheckResult> {
-    const packFindings = await this.checkFromPacks(packs, context);
-    const factsFindings = await this.checkFromCountryFacts(countryCodes, context);
+    const packFindings = await this.checkFromPacks(packs, context, lang);
+    const factsFindings = await this.checkFromCountryFacts(countryCodes, context, lang);
 
     // 合并结果
     const allFindings = [...packFindings.findings, ...factsFindings.findings];
@@ -417,6 +504,7 @@ export class ReadinessService {
     return {
       findings: allFindings,
       summary,
+      disclaimer: this.generateDisclaimer(allFindings, lang),
     };
   }
 

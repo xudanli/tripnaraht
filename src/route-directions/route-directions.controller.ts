@@ -34,8 +34,10 @@ import { RemovePoiFromTemplateDto } from './dto/remove-poi-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { QueryRouteTemplateDto } from './dto/query-route-template.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
+import { AvailablePoisQueryDto } from './dto/available-pois-query.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('route-directions')
 @Controller('route-directions')
@@ -142,6 +144,44 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to get route template by id',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Get('templates/:id/available-pois')
+  @ApiOperation({ 
+    summary: '按路线模板获取可用POI列表', 
+    description: '根据路线模板关联的路线方向，自动获取该国家/地区的可用POI列表。支持按类别筛选、搜索关键词和分页。' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiResponse({ status: 200, description: '成功返回可用POI列表' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async getAvailablePoisByTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: AvailablePoisQueryDto,
+  ) {
+    try {
+      const result = await this.routeDirectionsService.getAvailablePoisByTemplate(id, {
+        category: query.category,
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+      });
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to get available pois by template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to get available pois by template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }
@@ -292,6 +332,11 @@ export class RouteDirectionsController {
     @Body() dto: UpdateRouteTemplateDto,
   ) {
     try {
+      // 调试日志：记录接收到的原始数据
+      if (dto.dayPlans) {
+        this.logger.debug(`Controller received dayPlans for template ${id}:`, JSON.stringify(dto.dayPlans, null, 2));
+      }
+      
       const result = await this.routeDirectionsService.updateRouteTemplate(id, dto);
       return successResponse(result);
     } catch (error) {
@@ -333,6 +378,33 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to delete route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Delete('templates/:id/hard')
+  @ApiOperation({ summary: '物理删除路线模板', description: '从数据库中彻底删除路线模板（不可恢复）' })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiResponse({ status: 200, description: '成功物理删除路线模板' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async hardDeleteRouteTemplate(@Param('id', ParseIntPipe) id: number) {
+    try {
+      await this.routeDirectionsService.hardDeleteRouteTemplate(id);
+      return successResponse({ message: 'Route template hard deleted successfully' });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to hard delete route template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to hard delete route template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }
@@ -422,6 +494,7 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public() // 临时公开，用于测试
   @Post('templates/:id/create-trip')
   @ApiOperation({
     summary: '使用模板创建行程',
@@ -435,9 +508,11 @@ export class RouteDirectionsController {
   async createTripFromTemplate(
     @Param('id', ParseIntPipe) templateId: number,
     @Body() dto: CreateTripFromRouteTemplateDto,
+    @CurrentUser() user?: any, // 当前用户（可选，如果已认证）
   ) {
     try {
-      const result = await this.routeDirectionsService.createTripFromTemplate(templateId, dto);
+      const userId = user?.userId || null; // 获取用户ID（如果已认证）
+      const result = await this.routeDirectionsService.createTripFromTemplate(templateId, dto, userId);
       return successResponse(result);
     } catch (error) {
       if (error instanceof NotFoundException) {

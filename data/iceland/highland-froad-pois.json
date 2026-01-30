@@ -1,0 +1,429 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "title": "冰岛内陆高地F路5天游线POI",
+    "description": "包含入口/出口、F路节点、河流穿越、补给、住宿、景观、徒步、安全、信息源等POI",
+    "lastUpdated": "2026-01-29",
+    "totalPois": 28,
+    "categories": {
+      "ROUTE_GATE": "入口/出口",
+      "F_ROAD_NODE": "核心F路节点",
+      "RIVER_CROSSING": "河流穿越",
+      "GAS_STATION": "加油站",
+      "SUPPLY": "补给点",
+      "HUT": "山屋",
+      "SCENIC": "核心景观",
+      "HIKING": "徒步活动",
+      "HOT_SPRING": "温泉",
+      "SAFETY": "应急安全",
+      "INFO_SOURCE": "信息源"
+    },
+    "fRoads": {
+      "F208": "Landmannalaugar入口",
+      "F225": "Landmannalaugar → Þórsmörk",
+      "F26": "Sprengisandur高地纵贯",
+      "F910": "Askja火山",
+      "F88": "Askja → 北部",
+      "F249": "Þórsmörk入口"
+    }
+  },
+  "pois": [
+    {
+      "id": "gate-selfoss",
+      "nameCN": "塞尔福斯",
+      "nameEN": "Selfoss",
+      "nameIS": "Selfoss",
+      "subCategory": "ROUTE_GATE",
+      "lat": 63.9330,
+      "lng": -21.0023,
+      "description": "南部最后完整补给点，进入高地前的重要补给站",
+      "role": "最后完整补给",
+      "supplies": ["加油站", "超市", "餐厅"],
+      "tips": ["建议在此加满油", "购买3-5天食物和水"]
+    },
+    {
+      "id": "gate-hella",
+      "nameCN": "海拉",
+      "nameEN": "Hella",
+      "nameIS": "Hella",
+      "subCategory": "ROUTE_GATE",
+      "lat": 63.8359,
+      "lng": -20.3957,
+      "description": "高地南部入口前的补给站",
+      "role": "南部入口前最后补给",
+      "supplies": ["加油站"]
+    },
+    {
+      "id": "gate-myvatn",
+      "nameCN": "米湖",
+      "nameEN": "Mývatn",
+      "nameIS": "Mývatn",
+      "subCategory": "ROUTE_GATE",
+      "lat": 65.6030,
+      "lng": -16.9963,
+      "description": "北部文明出口，高地旅程终点",
+      "role": "北部出口",
+      "supplies": ["加油站", "超市", "住宿", "温泉"]
+    },
+    {
+      "id": "froad-landmannalaugar",
+      "nameCN": "兰德曼纳劳卡",
+      "nameEN": "Landmannalaugar",
+      "nameIS": "Landmannalaugar",
+      "subCategory": "F_ROAD_NODE",
+      "lat": 63.9930,
+      "lng": -19.0618,
+      "description": "F208起点，彩色流纹岩山脉、天然温泉",
+      "fRoads": ["F208", "F225"],
+      "elevation_m": 600,
+      "highlights": ["彩色流纹岩", "天然温泉", "Laugavegur起点"]
+    },
+    {
+      "id": "froad-thorsmork",
+      "nameCN": "索斯莫克",
+      "nameEN": "Þórsmörk",
+      "nameIS": "Þórsmörk",
+      "subCategory": "F_ROAD_NODE",
+      "lat": 63.6800,
+      "lng": -19.4800,
+      "description": "三冰川峡谷，冰岛最美徒步目的地",
+      "fRoads": ["F225", "F249"],
+      "elevation_m": 200,
+      "highlights": ["冰川峡谷", "Laugavegur终点"]
+    },
+    {
+      "id": "froad-sprengisandur",
+      "nameCN": "斯普伦吉桑杜尔",
+      "nameEN": "Sprengisandur",
+      "nameIS": "Sprengisandur",
+      "subCategory": "F_ROAD_NODE",
+      "lat": 64.7500,
+      "lng": -18.5000,
+      "description": "F26高地纵贯公路，冰岛最荒凉的公路",
+      "fRoads": ["F26"],
+      "elevation_m": 800,
+      "highlights": ["高地纵贯", "荒原景观", "火山沙漠"]
+    },
+    {
+      "id": "froad-askja",
+      "nameCN": "阿斯基亚火山",
+      "nameEN": "Askja",
+      "nameIS": "Askja",
+      "subCategory": "F_ROAD_NODE",
+      "lat": 65.0300,
+      "lng": -16.7500,
+      "description": "火山口群，Víti温泉火山口，NASA训练地",
+      "fRoads": ["F910", "F88"],
+      "elevation_m": 1100,
+      "highlights": ["火星地貌", "Víti火山口", "Öskjuvatn最深湖"]
+    },
+    {
+      "id": "river-krossa",
+      "nameCN": "克罗萨河渡口",
+      "nameEN": "Krossá River Crossing",
+      "nameIS": "Krossá",
+      "subCategory": "RIVER_CROSSING",
+      "lat": 63.6850,
+      "lng": -19.5200,
+      "description": "通往Þórsmörk的标志性河流穿越",
+      "fRoads": ["F249"],
+      "riskLevel": "HIGH",
+      "riverInfo": {
+        "multipleStreams": true,
+        "canBypass": false,
+        "depthCm": 60,
+        "bestCrossingTime": "早晨6-10点"
+      },
+      "warnings": ["🔴 高风险", "水深流速随天气变化", "必须有经验司机"]
+    },
+    {
+      "id": "river-skjalfandafljot",
+      "nameCN": "斯基亚尔凡达河渡口",
+      "nameEN": "Skjálfandafljót Crossing",
+      "nameIS": "Skjálfandafljót",
+      "subCategory": "RIVER_CROSSING",
+      "lat": 64.8000,
+      "lng": -18.0000,
+      "description": "Sprengisandur (F26) 上的主要河流穿越点",
+      "fRoads": ["F26"],
+      "riskLevel": "MEDIUM",
+      "riverInfo": {
+        "multipleStreams": true,
+        "canBypass": false,
+        "depthCm": 50,
+        "bestCrossingTime": "早晨"
+      },
+      "warnings": ["🟠 中高风险", "冰川融水"]
+    },
+    {
+      "id": "river-askja",
+      "nameCN": "阿斯基亚冰川河渡口",
+      "nameEN": "Askja Glacier River Crossings",
+      "nameIS": "Askja River",
+      "subCategory": "RIVER_CROSSING",
+      "lat": 65.0000,
+      "lng": -16.8500,
+      "description": "F910/F88通往Askja途中的多处冰川河穿越",
+      "fRoads": ["F910", "F88"],
+      "riskLevel": "MEDIUM",
+      "riverInfo": {
+        "multipleStreams": true,
+        "canBypass": false,
+        "depthCm": 40,
+        "bestCrossingTime": "早晨"
+      },
+      "warnings": ["🟠 中等风险", "多处连续渡河"]
+    },
+    {
+      "id": "supply-nyidalur",
+      "nameCN": "尼达鲁尔应急加油站",
+      "nameEN": "Nýidalur Emergency Fuel",
+      "nameIS": "Nýidalur",
+      "subCategory": "GAS_STATION",
+      "lat": 64.7300,
+      "lng": -18.1000,
+      "description": "Sprengisandur (F26) 唯一的应急补给点",
+      "fRoads": ["F26"],
+      "supplies": {
+        "gas": "有限",
+        "food": "无",
+        "water": "有"
+      },
+      "warnings": ["燃油供应有限", "不要依赖此处加油"]
+    },
+    {
+      "id": "supply-selfoss-n1",
+      "nameCN": "塞尔福斯N1加油站",
+      "nameEN": "Selfoss N1 Gas Station",
+      "subCategory": "GAS_STATION",
+      "lat": 63.9355,
+      "lng": -20.9950,
+      "description": "进入高地前最后的完整加油站",
+      "supplies": {
+        "gas": "完整",
+        "food": "有",
+        "water": "有"
+      },
+      "role": "最后完整加油"
+    },
+    {
+      "id": "hut-landmannalaugar",
+      "nameCN": "兰德曼纳劳卡山屋",
+      "nameEN": "Landmannalaugar Hut",
+      "nameIS": "Landmannalaugaskáli",
+      "subCategory": "HUT",
+      "lat": 63.9928,
+      "lng": -19.0615,
+      "description": "冰岛旅行协会运营的山屋",
+      "operator": "FÍ (Ferðafélag Íslands)",
+      "capacity": 78,
+      "facilities": {
+        "requiresBooking": true,
+        "hasHeating": true,
+        "allowsCamping": true,
+        "hasSignal": false
+      }
+    },
+    {
+      "id": "hut-thorsmork",
+      "nameCN": "索斯莫克山屋",
+      "nameEN": "Þórsmörk Huts",
+      "nameIS": "Þórsmörk",
+      "subCategory": "HUT",
+      "lat": 63.6795,
+      "lng": -19.4750,
+      "description": "多个运营方在Þórsmörk运营山屋",
+      "operator": "Multiple (Volcano Huts, FÍ, Útivist)",
+      "capacity": 100,
+      "facilities": {
+        "requiresBooking": true,
+        "hasHeating": true,
+        "allowsCamping": true,
+        "hasSignal": false
+      }
+    },
+    {
+      "id": "hut-nyidalur",
+      "nameCN": "尼达鲁尔山屋",
+      "nameEN": "Nýidalur Hut",
+      "nameIS": "Nýidalur",
+      "subCategory": "HUT",
+      "lat": 64.7300,
+      "lng": -18.1000,
+      "description": "Sprengisandur高地中心的山屋",
+      "fRoads": ["F26"],
+      "operator": "FÍ",
+      "capacity": 120,
+      "facilities": {
+        "requiresBooking": true,
+        "hasHeating": true,
+        "allowsCamping": true,
+        "hasSignal": false
+      }
+    },
+    {
+      "id": "hut-dreki",
+      "nameCN": "德雷基山屋",
+      "nameEN": "Dreki Hut",
+      "nameIS": "Dreki",
+      "subCategory": "HUT",
+      "lat": 65.0450,
+      "lng": -16.7300,
+      "description": "Askja火山区的山屋",
+      "fRoads": ["F910", "F88"],
+      "operator": "FÍ",
+      "capacity": 60,
+      "facilities": {
+        "requiresBooking": true,
+        "hasHeating": true,
+        "allowsCamping": true,
+        "hasSignal": false
+      }
+    },
+    {
+      "id": "scenic-brennisteinsalda",
+      "nameCN": "彩色流纹岩山",
+      "nameEN": "Brennisteinsalda",
+      "nameIS": "Brennisteinsalda",
+      "subCategory": "SCENIC",
+      "lat": 63.9850,
+      "lng": -19.0600,
+      "description": "冰岛最色彩斑斓的山峰",
+      "elevation_m": 855,
+      "highlights": ["彩色流纹岩", "标志性景观", "摄影圣地"]
+    },
+    {
+      "id": "scenic-viti",
+      "nameCN": "Víti火山口湖",
+      "nameEN": "Víti Crater",
+      "nameIS": "Víti",
+      "subCategory": "SCENIC",
+      "lat": 65.0480,
+      "lng": -16.7200,
+      "description": "Askja温泉火山口湖，可游泳",
+      "fRoads": ["F910"],
+      "elevation_m": 1053,
+      "highlights": ["火山口湖", "可游泳", "火星地貌"]
+    },
+    {
+      "id": "scenic-oskjuvatn",
+      "nameCN": "欧斯丘瓦湖",
+      "nameEN": "Öskjuvatn",
+      "nameIS": "Öskjuvatn",
+      "subCategory": "SCENIC",
+      "lat": 65.0500,
+      "lng": -16.7500,
+      "description": "冰岛最深湖泊（217米）",
+      "fRoads": ["F910"],
+      "highlights": ["冰岛最深湖", "火山口湖"]
+    },
+    {
+      "id": "scenic-valahnukur",
+      "nameCN": "瓦拉努库尔观景点",
+      "nameEN": "Valahnúkur",
+      "nameIS": "Valahnúkur",
+      "subCategory": "SCENIC",
+      "lat": 63.6750,
+      "lng": -19.5000,
+      "description": "Þórsmörk的观景山峰",
+      "elevation_m": 458,
+      "highlights": ["360度全景", "冰川景观"]
+    },
+    {
+      "id": "hiking-brennisteinsalda-loop",
+      "nameCN": "布伦尼斯坦达环线",
+      "nameEN": "Brennisteinsalda Loop",
+      "nameIS": "Brennisteinsalda gönguleið",
+      "subCategory": "HIKING",
+      "lat": 63.9870,
+      "lng": -19.0650,
+      "description": "Landmannalaugar最受欢迎的徒步路线",
+      "duration": "3-4小时",
+      "difficulty": "中等"
+    },
+    {
+      "id": "hiking-askja",
+      "nameCN": "阿斯基亚火山环线",
+      "nameEN": "Askja Caldera Hike",
+      "nameIS": "Askja gönguleið",
+      "subCategory": "HIKING",
+      "lat": 65.0350,
+      "lng": -16.7400,
+      "description": "从停车场到Víti火山口的徒步路线",
+      "fRoads": ["F910"],
+      "duration": "2-3小时",
+      "difficulty": "中等"
+    },
+    {
+      "id": "hotspring-landmannalaugar",
+      "nameCN": "兰德曼纳劳卡天然温泉",
+      "nameEN": "Landmannalaugar Hot Spring",
+      "nameIS": "Landmannalaugar laug",
+      "subCategory": "HOT_SPRING",
+      "lat": 63.9925,
+      "lng": -19.0610,
+      "description": "冰岛最著名的天然温泉之一",
+      "temperature": "38-40°C",
+      "fee": "免费"
+    },
+    {
+      "id": "safety-rescue",
+      "nameCN": "高地救援覆盖区信息",
+      "nameEN": "Highland Rescue Coverage",
+      "subCategory": "SAFETY",
+      "lat": 64.5000,
+      "lng": -18.5000,
+      "description": "冰岛高地救援服务覆盖区域信息",
+      "safetyInfo": {
+        "rescueOrg": "ICE-SAR",
+        "emergencyPhone": "112",
+        "noSignalZone": true
+      },
+      "tips": ["注册safetravel.is行程", "携带卫星通讯设备"]
+    },
+    {
+      "id": "safety-weather",
+      "nameCN": "高地天气监测站",
+      "nameEN": "Highland Weather Stations",
+      "subCategory": "SAFETY",
+      "lat": 64.6000,
+      "lng": -18.3000,
+      "description": "高地气象站网络",
+      "url": "https://vedur.is"
+    },
+    {
+      "id": "info-roadis",
+      "nameCN": "road.is路况信息",
+      "nameEN": "road.is Road Conditions",
+      "subCategory": "INFO_SOURCE",
+      "lat": 64.1466,
+      "lng": -21.9426,
+      "description": "冰岛道路管理局官方路况信息平台",
+      "url": "https://road.is",
+      "dataType": "F路开放状态",
+      "tips": ["绿色=开放", "红色=关闭", "黄色=需要注意"]
+    },
+    {
+      "id": "info-safetravel",
+      "nameCN": "safetravel.is安全信息",
+      "nameEN": "safetravel.is Safety Info",
+      "subCategory": "INFO_SOURCE",
+      "lat": 64.1466,
+      "lng": -21.9426,
+      "description": "冰岛旅行安全官方平台",
+      "url": "https://safetravel.is",
+      "dataType": "安全预警和行程注册"
+    },
+    {
+      "id": "info-vedur",
+      "nameCN": "vedur.is天气预报",
+      "nameEN": "vedur.is Weather",
+      "subCategory": "INFO_SOURCE",
+      "lat": 64.1466,
+      "lng": -21.9426,
+      "description": "冰岛气象局官方天气预报平台",
+      "url": "https://vedur.is",
+      "dataType": "天气预报"
+    }
+  ]
+}

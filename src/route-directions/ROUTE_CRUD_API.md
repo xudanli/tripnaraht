@@ -287,6 +287,26 @@ PUT /route-directions/templates/1
 DELETE /route-directions/templates/1
 ```
 
+### 2.5.1 物理删除路线模板
+
+**接口：** `DELETE /route-directions/templates/:id/hard`
+
+**描述：** 物理删除路线模板，从数据库中彻底删除记录（不可恢复）
+
+**路径参数：**
+- `id`: 路线模板ID（数字）
+
+**响应：** 返回成功消息
+
+**示例：**
+```
+DELETE /route-directions/templates/1/hard
+```
+
+**注意事项：**
+- 物理删除操作不可恢复，请确保在删除前已备份重要数据
+- 删除后，该路线模板的所有关联数据也将被删除（根据数据库外键约束）
+
 ### 2.6 使用模板创建行程
 
 **接口：** `POST /route-directions/templates/:id/create-trip`

@@ -44,6 +44,33 @@ export interface ReadinessFinding {
   missingInfo?: string[]; // 需要用户提供的信息
 }
 
+export interface ReadinessDisclaimer {
+  /**
+   * 免责声明消息
+   * 告知用户本检查结果仅供参考，实际要求以官方机构为准
+   */
+  message: string;
+  
+  /**
+   * 数据最后更新时间
+   * 格式：ISO 8601 datetime
+   * 来源：所有Pack的lastReviewedAt中的最新日期
+   */
+  lastUpdated?: string;
+  
+  /**
+   * 数据来源列表
+   * 例如：['pack.is.iceland', 'facts.NZ']
+   */
+  dataSources?: string[];
+  
+  /**
+   * 用户必须自行验证的事项
+   * 例如：['签证要求', '保险覆盖范围']
+   */
+  userActionRequired?: string[];
+}
+
 export interface ReadinessCheckResult {
   findings: ReadinessFinding[];
   summary: {
@@ -53,5 +80,10 @@ export interface ReadinessCheckResult {
     totalOptional: number;
     totalRisks: number;
   };
+  /**
+   * 免责声明和责任边界
+   * 必须包含在API响应中，前端必须显示给用户
+   */
+  disclaimer?: ReadinessDisclaimer;
 }
 
