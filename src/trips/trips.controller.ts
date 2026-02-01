@@ -862,9 +862,8 @@ export class TripsController {
       
       if (roundInfo.questions.length === 0) {
         this.logger.warn(`当前轮次 ${roundInfo.round.roundId} 没有需要问的问题，可能所有问题都已问过或被过滤`);
-        // 🆕 修复：如果没有问题，检查是否所有轮次都已完成
-        // 如果所有轮次都已完成，尝试创建行程
-        // 检查当前轮次的完成条件
+        
+        // 🆕 检查当前轮次的完成条件
         const round = roundInfo.round;
         const completionConditions = round.completionConditions;
         const allRequiredFieldsPresent = completionConditions.requiredFields.every(
@@ -888,6 +887,11 @@ export class TripsController {
             this.logger.debug(`进入下一轮: ${nextRoundInfo.round.roundId}`);
             roundInfo = nextRoundInfo;
           }
+        } else {
+          // 🆕 当前轮次未完成（如round_1_basic缺少基础字段），继续使用通用流程提取字段
+          // 这种情况通常发生在round_1_basic，questions为空，但完成条件需要更多字段
+          this.logger.debug(`当前轮次 ${roundInfo.round.roundId} 未完成（缺少字段: ${completionConditions.requiredFields.filter(f => !mergedParams[f]).join(', ')}），继续使用通用流程提取字段`);
+          // 继续执行，使用通用流程生成澄清问题
         }
       }
       
@@ -1599,12 +1603,12 @@ export class TripsController {
   @Public() // 🆕 允许未登录用户删除会话（与创建行程接口保持一致）
   @ApiOperation({
     summary: '删除对话会话',
-    description: '删除指定的对话会话及其所有历史记录',
+    description: '删除指定的对话会话及其所有历史记录。如果会话不存在，会静默返回成功（前端会处理）。',
   })
   @ApiParam({ name: 'sessionId', description: '会话 ID' })
   @ApiResponse({
     status: 200,
-    description: '成功删除会话',
+    description: '成功删除会话（或会话不存在）',
     type: ApiSuccessResponseDto,
   })
   async deleteConversation(
@@ -1615,11 +1619,24 @@ export class TripsController {
       // 🆕 如果没有 userId，使用 sessionId 作为临时 userId
       const userId = user?.userId || `temp_${sessionId}`;
 
+      this.logger.debug(`删除会话: sessionId=${sessionId}, userId=${userId}`);
+
+      // 删除会话（如果不存在也不会抛出错误，静默处理）
       await this.nlConversationContextService.deleteSession(sessionId, userId);
-      return successResponse({ message: '会话已删除' });
+      
+      // 🆕 修复：如果未登录用户，还需要尝试删除旧格式的会话（兼容旧会话）
+      // 因为 getConversationContext 会尝试使用 sessionId 作为 userId 查找
+      if (!user?.userId) {
+        this.logger.debug(`尝试删除旧格式会话: sessionId=${sessionId}, userId=${sessionId}`);
+        await this.nlConversationContextService.deleteSession(sessionId, sessionId);
+      }
+      
+      // 返回 null，符合前端要求
+      return successResponse(null);
     } catch (error: any) {
-      this.logger.error(`删除会话失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, '删除会话失败');
+      // 即使删除失败，也返回成功（前端会记录警告但继续清空本地数据）
+      this.logger.warn(`删除会话失败（静默处理）: ${error.message}`, error.stack);
+      return successResponse(null);
     }
   }
 
@@ -3839,6 +3856,24 @@ export class TripsController {
       'alps': 'AL',
       'AL': 'AL',
       'al': 'AL',
+      // 西藏
+      '西藏': 'XZ',
+      'Tibet': 'XZ',
+      'tibet': 'XZ',
+      'XZ': 'XZ',
+      'xz': 'XZ',
+      '拉萨': 'XZ',
+      'Lhasa': 'XZ',
+      'lhasa': 'XZ',
+      // 罗弗敦
+      '罗弗敦': 'LF',
+      'Lofoten': 'LF',
+      'lofoten': 'LF',
+      'LF': 'LF',
+      'lf': 'LF',
+      '罗弗敦群岛': 'LF',
+      'Lofoten Islands': 'LF',
+      'lofoten islands': 'LF',
       // 城市名映射到国家
       '东京': 'JP',
       'Tokyo': 'JP',
@@ -3932,11 +3967,44 @@ export class TripsController {
 
   /**
    * 从目的地字符串提取国家代码
-   * 支持格式：JP, IS, CN_XZ, IS-REYKJAVIK, SVALBARD_LONGYEARBYEN
+   * 支持格式：JP, IS, CN_XZ, IS-REYKJAVIK, SVALBARD_LONGYEARBYEN, XZ, LF, K2
    */
   private extractCountryCode(destination: string): string | undefined {
     if (!destination) {
       return undefined;
+    }
+    
+    const upperDest = destination.toUpperCase();
+    
+    // 🆕 特殊目的地代码映射（优先检查）
+    const specialDestinations: Record<string, string> = {
+      'XZ': 'XZ',
+      'CN_XZ': 'XZ',
+      'CN-XZ': 'XZ',
+      'TIBET': 'XZ',
+      'LF': 'LF',
+      'NO_LF': 'LF',
+      'NO-LF': 'LF',
+      'LOFOTEN': 'LF',
+      'K2': 'K2',
+      'SJ': 'SJ',
+      'SVALBARD': 'SJ',
+      'GL': 'GL',
+      'GREENLAND': 'GL',
+      'AL': 'AL',
+      'ALPS': 'AL',
+    };
+    
+    // 检查特殊目的地
+    if (specialDestinations[upperDest]) {
+      return specialDestinations[upperDest];
+    }
+    
+    // 检查包含特殊目的地的格式（如 CN_XZ, NO_LF）
+    for (const [key, code] of Object.entries(specialDestinations)) {
+      if (upperDest.includes(key)) {
+        return code;
+      }
     }
     
     // 如果包含下划线，提取第一部分（如 'IS_WINTER' -> 'IS'）
