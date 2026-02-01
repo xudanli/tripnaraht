@@ -17,10 +17,10 @@ export class ApiErrorDto {
     ],
     example: 'VALIDATION_ERROR',
   })
-  code: string;
+  code!: string;
 
   @ApiProperty({ example: 'poiId is required' })
-  message: string;
+  message!: string;
 
   @ApiPropertyOptional({ type: Object, example: { field: 'poiId' } })
   details?: Record<string, any>;
@@ -31,10 +31,10 @@ export class ApiErrorDto {
  */
 export class ApiSuccessResponseDto<T> {
   @ApiProperty({ enum: [true], example: true })
-  success: true;
+  success!: true;
 
   @ApiProperty()
-  data: T;
+  data!: T;
 }
 
 /**
@@ -42,8 +42,8 @@ export class ApiSuccessResponseDto<T> {
  */
 export class ApiErrorResponseDto {
   @ApiProperty({ enum: [false], example: false })
-  success: false;
+  success!: false;
 
   @ApiProperty({ type: ApiErrorDto })
-  error: ApiErrorDto;
+  error!: ApiErrorDto;
 }

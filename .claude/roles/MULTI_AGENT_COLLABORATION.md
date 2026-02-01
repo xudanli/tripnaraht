@@ -26,6 +26,11 @@
 11. **前端工程师（Frontend Engineer）** - `frontend-engineer.md` ⭐ 中优先级
 12. **安全工程师（Security Engineer）** - `security-engineer.md` ⭐ 低优先级（但重要）
 
+### 内容与数据管理角色
+
+13. **RAG工程师（RAG Engineer）** - `rag-engineer.md` ⭐ 中优先级
+14. **RAG文档数据负责人（RAG Content Manager）** - `rag-content-manager.md` ⭐ 中优先级
+
 ## 协作流程图
 
 ```

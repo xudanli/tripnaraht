@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-01-31T18:19:01.987Z",
+  "database": {
+    "documentIndex": {
+      "total": 42,
+      "withoutSource": 0
+    },
+    "knowledgeFiles": {
+      "total": 24
+    },
+    "chunks": {
+      "total": 201,
+      "withEmbedding": 201
+    }
+  },
+  "fileSystem": {
+    "totalFiles": 26
+  },
+  "issues": [],
+  "recommendations": []
+}

@@ -236,11 +236,11 @@ export class ReadinessAIService {
             const channelInfo = ragResults
               .filter(r => r.similarity >= 0.6) // 相似度阈值
               .map(r => ({
-                name: this.extractChannelName(r.content),
+                name: this.extractChannelName(r.content) || '',
                 url: this.extractChannelUrl(r.content),
                 description: r.content.substring(0, 200),
               }))
-              .filter(c => c.name); // 过滤掉无效渠道
+              .filter((c: { name: string; url?: string; description: string }) => c.name !== ''); // 过滤掉无效渠道
 
             if (channelInfo.length > 0) {
               channels.push({

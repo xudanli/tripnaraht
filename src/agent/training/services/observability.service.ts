@@ -131,8 +131,16 @@ export class ObservabilityService {
     };
 
     // 输出结构化日志（JSON格式）
-    const logMethod = this.logger[level].bind(this.logger);
-    logMethod(JSON.stringify(logEntry));
+    const logMessage = JSON.stringify(logEntry);
+    if (level === 'info') {
+      this.logger.log(logMessage);
+    } else if (level === 'warn') {
+      this.logger.warn(logMessage);
+    } else if (level === 'error') {
+      this.logger.error(logMessage);
+    } else if (level === 'debug') {
+      this.logger.debug(logMessage);
+    }
   }
 
   /**

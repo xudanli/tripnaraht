@@ -20,6 +20,7 @@ import { RouteDirectionsService } from '../../../route-directions/route-directio
 import { DemDecisionEvidencePipelineService } from '../services/dem-decision-evidence-pipeline.service';
 import { PhysicalRealityModel } from '../models/physical-reality.model';
 import { RouteDirectionWithPhilosophy } from '../shared/world-model.types';
+import { PhysicalRealityRetrievalService } from '../../readiness/services/physical-reality-retrieval.service';
 
 @Injectable()
 export class TripNaraCoreToolService implements ITripNaraCoreTool {
@@ -29,6 +30,7 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
     private readonly orchestrator: StrategyOrchestratorService,
     @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
     @Optional() private readonly demEvidencePipeline?: DemDecisionEvidencePipelineService,
+    @Optional() private readonly physicalRealityService?: PhysicalRealityRetrievalService,
   ) {}
 
   /**
@@ -308,17 +310,98 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
       this.logger.debug('有初始计划，但 DEM 证据生成需要 TripPlan 结构，暂时跳过');
     }
 
-    // 从 RouteDirection 的 constraints 和 riskProfile 提取信息
+    // 从RAG检索Physical Reality数据（如果服务可用）
+    if (this.physicalRealityService) {
+      try {
+        // 识别区域（根据countryCode或路线坐标）
+        const region = this.identifyRegionFromCountryCode(input.countryCode, routeDirection);
+        
+        if (region && region !== 'unknown') {
+          this.logger.debug(`检索Physical Reality数据: region=${region}, month=${input.month}`);
+          
+          // 获取路线坐标（如果有）
+          const routeCoords = this.extractRouteCoordinates(routeDirection);
+          
+          const physicalRealityData = await this.physicalRealityService.retrievePhysicalRealityData(
+            region,
+            {
+              lat: routeCoords?.lat,
+              lng: routeCoords?.lng,
+              month: input.month,
+              limit: 20,
+            }
+          );
+
+          // 转换道路状态
+          physicalRealityData.roadStates.forEach((road) => {
+            physical.roadStates.push({
+              roadId: road.roadId,
+              status: road.status,
+              seasonOpenFrom: road.seasonOpenFrom,
+              seasonOpenTo: road.seasonOpenTo,
+              requires4x4: road.requires4x4,
+              metadata: road.metadata,
+            });
+          });
+
+          // 转换渡轮状态
+          physicalRealityData.ferryStates.forEach((ferry) => {
+            physical.ferryStates.push({
+              ferryId: ferry.routeId,
+              routeId: ferry.routeId,
+              status: ferry.status,
+              seasonOpenFrom: ferry.seasonOpenFrom,
+              seasonOpenTo: ferry.seasonOpenTo,
+              metadata: ferry.metadata,
+            });
+          });
+
+          // 转换气候季节性（从天气窗口数据）
+          if (physicalRealityData.weatherWindows.length > 0) {
+            const weatherWindow = physicalRealityData.weatherWindows[0];
+            const riskLevel = weatherWindow.riskLevels?.find((r) => r.month === input.month);
+            
+            if (riskLevel) {
+              // 计算可达性评分（基于风险等级）
+              const accessibilityScore = this.calculateAccessibilityScoreFromRiskLevel(riskLevel.riskLevel);
+              
+              physical.climateSeasonality = {
+                countryCode: input.countryCode,
+                month: input.month,
+                accessibilityScore,
+                riskFactors: riskLevel.risks,
+                metadata: {
+                  regionId: weatherWindow.regionId,
+                  regionName: weatherWindow.regionName,
+                },
+              };
+            }
+          }
+
+          this.logger.debug(
+            `Physical Reality数据检索完成: ${physical.roadStates.length}条道路, ${physical.ferryStates.length}条渡轮, ${physicalRealityData.weatherWindows.length}个天气区域`
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`检索Physical Reality数据失败: ${error instanceof Error ? error.message : String(error)}`, error);
+      }
+    }
+
+    // 从 RouteDirection 的 constraints 和 riskProfile 提取信息（作为补充）
     if (routeDirection.constraints) {
       const constraints = routeDirection.constraints as any;
       if (constraints.hard) {
         // 可以推断一些道路状态
         if (constraints.hard.requiresPermit) {
-          physical.roadStates.push({
-            roadId: 'permit-required',
-            status: 'RESTRICTED',
-            requires4x4: constraints.hard.requires4x4 || false,
-          });
+          // 检查是否已存在
+          const exists = physical.roadStates.some((r) => r.roadId === 'permit-required');
+          if (!exists) {
+            physical.roadStates.push({
+              roadId: 'permit-required',
+              status: 'RESTRICTED',
+              requires4x4: constraints.hard.requires4x4 || false,
+            });
+          }
         }
       }
     }
@@ -326,17 +409,69 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
     if (routeDirection.riskProfile) {
       const riskProfile = routeDirection.riskProfile as any;
       if (riskProfile.roadClosure) {
-        // 添加季节性封路信息
-        physical.roadStates.push({
-          roadId: 'seasonal-closure',
-          status: 'SEASONAL',
-          seasonOpenFrom: riskProfile.weatherWindowMonths?.[0] || 6,
-          seasonOpenTo: riskProfile.weatherWindowMonths?.[riskProfile.weatherWindowMonths.length - 1] || 9,
-        });
+        // 检查是否已存在
+        const exists = physical.roadStates.some((r) => r.roadId === 'seasonal-closure');
+        if (!exists) {
+          physical.roadStates.push({
+            roadId: 'seasonal-closure',
+            status: 'SEASONAL',
+            seasonOpenFrom: riskProfile.weatherWindowMonths?.[0] || 6,
+            seasonOpenTo: riskProfile.weatherWindowMonths?.[riskProfile.weatherWindowMonths.length - 1] || 9,
+          });
+        }
       }
     }
 
     return physical;
+  }
+
+  /**
+   * 根据国家代码识别区域
+   */
+  private identifyRegionFromCountryCode(
+    countryCode: string,
+    routeDirection: RouteDirectionWithPhilosophy
+  ): string {
+    // 国家代码到区域的映射
+    const countryToRegion: Record<string, string> = {
+      IS: 'iceland',
+      GL: 'greenland',
+      SJ: 'svalbard',
+      FO: 'faroe-islands',
+      AR: 'argentina',
+      NO: 'lofoten', // 注意：挪威可能包含多个区域
+      NZ: 'new-zealand-south-island',
+      // 阿尔卑斯跨越多个国家
+      CH: 'alps',
+      AT: 'alps',
+      IT: 'alps',
+      FR: 'alps',
+      DE: 'alps',
+    };
+
+    return countryToRegion[countryCode] || 'unknown';
+  }
+
+  /**
+   * 从RouteDirection提取路线坐标
+   */
+  private extractRouteCoordinates(routeDirection: RouteDirectionWithPhilosophy): { lat: number; lng: number } | null {
+    // 简化实现，实际可以从routeDirection中提取起点坐标
+    return null;
+  }
+
+  /**
+   * 根据风险等级计算可达性评分
+   */
+  private calculateAccessibilityScoreFromRiskLevel(riskLevel: string): number {
+    const riskToScore: Record<string, number> = {
+      low: 0.9,
+      medium: 0.7,
+      high: 0.5,
+      very_high: 0.3,
+      extreme: 0.1,
+    };
+    return riskToScore[riskLevel] || 0.5;
   }
 
   /**

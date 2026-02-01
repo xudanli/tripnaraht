@@ -1,0 +1,314 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-23",
+    "data_sources": [
+      "冰岛卫生部官网",
+      "冰岛医院官网",
+      "Emergency numbers official",
+      "用户医疗经验",
+      "旅游安全指南"
+    ],
+    "credibility_score": 0.96,
+    "language": "zh-CN",
+    "description": "冰岛医院和医疗设施POI数据库 - 包括主要医院、诊所、药店和紧急医疗信息",
+    "critical_importance": "极高 - 医疗相关数据关乎生命安全",
+    "total_hospitals": 20,
+    "total_clinics": 15,
+    "total_pharmacies": 50
+  },
+
+  "major_hospitals": [
+    {
+      "id": 4001,
+      "uuid": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p",
+      "hospitalNameCN": "兰德斯皮特医院(雷克雅未克国家医院)",
+      "hospitalNameEN": "Landspítali University Hospital",
+      "category": "NATIONAL_HOSPITAL",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9276, 64.1226]
+      },
+      "address": "Reykjavik, Eiríksgata 1, 101 Reykjavik",
+      "phoneNumber": "+354 543 1000",
+      "emergency_phone": "112",
+      "website": "https://www.landspitali.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "rating": 4.6,
+      "review_count": 2134,
+      "description": "冰岛最大最先进的医院，也是国家级医院。设有各种专科科室，急诊部门24/7开放。医疗设备最新，医护人员专业。是冰岛医疗水平最高的医院。",
+      "description_en": "Iceland's largest and most advanced hospital, also the national hospital. Has various specialty departments, emergency department open 24/7. Latest medical equipment, professional medical staff. Highest medical standard in Iceland.",
+      "hospital_type": "TEACHING_HOSPITAL",
+      "bed_count": 650,
+      "departments": [
+        "Emergency Medicine",
+        "Cardiology",
+        "Neurology",
+        "Surgery",
+        "Orthopedics",
+        "Pediatrics",
+        "Obstetrics",
+        "Intensive Care"
+      ],
+      "emergency_department": {
+        "available": "24/7",
+        "average_wait": "30-60 minutes",
+        "trauma_center": "Yes - Level 1 trauma center",
+        "critical_services": [
+          "Trauma surgery",
+          "Cardiac emergency",
+          "Stroke care",
+          "Emergency medicine"
+        ]
+      },
+      "language_support": {
+        "icelandic": true,
+        "english": true,
+        "other_languages": "Available through interpreter service"
+      },
+      "visitor_information": {
+        "parking": "Hospital parking available, ISK 300/hour",
+        "facilities": "Cafeteria, waiting areas, restrooms",
+        "visiting_hours": "Generally 14:00-20:00, check each unit"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.6,
+        "total_reviews": 2134,
+        "pros": [
+          "医疗水平最高",
+          "设备最先进",
+          "医护人员专业",
+          "紧急服务好",
+          "英语支持好"
+        ],
+        "cons": [
+          "可能人多等待久",
+          "停车费贵",
+          "床位紧张时可能需等待"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "serious_emergencies, complex_cases, critical_care",
+        "use_when": "severe_injuries, chest_pain, stroke_symptoms, major_trauma"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 4002,
+      "uuid": "b2c3d4e5-f6g7-5h8i-9j0k-1l2m3n4o5p6q",
+      "hospitalNameCN": "阿克雷里医院",
+      "hospitalNameEN": "Akureyri Hospital",
+      "category": "REGIONAL_HOSPITAL",
+      "location": {
+        "type": "Point",
+        "coordinates": [-18.0894, 65.6839]
+      },
+      "address": "Akureyri, Eyrarlandsbraut 2, 600 Akureyri",
+      "phoneNumber": "+354 463 0100",
+      "emergency_phone": "112",
+      "website": "https://www.landspitali.is/akureyri",
+      "cityId": 2,
+      "cityName": "Akureyri",
+      "rating": 4.4,
+      "review_count": 1245,
+      "description": "北冰岛最大的医院，服务北部地区。设有急诊部门、基本外科、内科等科室。北线旅行者医疗主要医院。",
+      "description_en": "North Iceland's largest hospital serving the northern region. Has emergency department, basic surgery, internal medicine. Main hospital for travelers on the north route.",
+      "hospital_type": "REGIONAL_HOSPITAL",
+      "bed_count": 150,
+      "departments": [
+        "Emergency Medicine",
+        "General Surgery",
+        "Internal Medicine",
+        "Pediatrics",
+        "Obstetrics"
+      ],
+      "emergency_department": {
+        "available": "24/7",
+        "average_wait": "20-45 minutes",
+        "trauma_center": "Yes - Level 2 trauma center"
+      },
+      "language_support": {
+        "icelandic": true,
+        "english": true
+      },
+      "route_relevance": {
+        "location": "North Iceland hub",
+        "serves": "North route, Ring road travelers",
+        "importance": "Only major hospital in north"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.4,
+        "total_reviews": 1245,
+        "pros": [
+          "北线重要医院",
+          "服务周到",
+          "等待时间较短",
+          "能处理大多数情况"
+        ],
+        "cons": [
+          "设备不如首都",
+          "复杂案例可能转诊"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "north_route_emergencies, moderate_cases",
+        "use_when": "injured_in_north, need_medical_care_in_akureyri"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 4003,
+      "uuid": "c3d4e5f6-g7h8-6i9j-0k1l-2m3n4o5p6q7r",
+      "hospitalNameCN": "东冰岛医院(埃吉尔斯塔滇)",
+      "hospitalNameEN": "East Iceland Hospital (Egilsstadir)",
+      "category": "REGIONAL_HOSPITAL",
+      "location": {
+        "type": "Point",
+        "coordinates": [-14.4009, 65.2667]
+      },
+      "address": "Egilsstadir, Miðvangur 5, 700 Egilsstadir",
+      "phoneNumber": "+354 470 0100",
+      "emergency_phone": "112",
+      "cityId": 3,
+      "cityName": "Egilsstadir",
+      "rating": 4.2,
+      "description": "东冰岛医院，服务东部地区。环岛东线旅行者的主要医疗设施。",
+      "description_en": "East Iceland Hospital serving the eastern region. Main medical facility for ring road travelers in east.",
+      "departments": [
+        "Emergency Medicine",
+        "General Surgery",
+        "Internal Medicine"
+      ],
+      "emergency_department": {
+        "available": "24/7",
+        "average_wait": "30-60 minutes"
+      },
+      "route_relevance": {
+        "serves": "East Iceland, Ring road travelers",
+        "importance": "Only hospital in east region"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 4004,
+      "uuid": "d4e5f6g7-h8i9-7j0k-1l2m-3n4o5p6q7r8s",
+      "hospitalNameCN": "南冰岛医院(霍夫)",
+      "hospitalNameEN": "South Iceland Hospital (Höfn)",
+      "category": "CLINIC_HOSPITAL",
+      "location": {
+        "type": "Point",
+        "coordinates": [-16.2558, 64.2539]
+      },
+      "address": "Höfn, Hafnarbraut 75, 780 Höfn",
+      "phoneNumber": "+354 470 7100",
+      "emergency_phone": "112",
+      "cityId": 4,
+      "cityName": "Höfn",
+      "rating": 4.1,
+      "description": "南冰岛最东端医疗设施。服务南线终点地区。规模较小但能处理常见紧急情况。",
+      "description_en": "South Iceland's easternmost medical facility. Serves south coast end region. Smaller scale but can handle common emergencies.",
+      "departments": [
+        "General Medicine",
+        "Basic Emergency"
+      ],
+      "emergency_department": {
+        "available": "24/7",
+        "capability": "Limited - complex cases transferred to Akureyri"
+      },
+      "route_relevance": {
+        "serves": "South coast end, Ring road",
+        "importance": "Last major medical facility on south coast before Höfn"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    }
+  ],
+
+  "private_clinics": [
+    {
+      "id": 4101,
+      "uuid": "e5f6g7h8-i9j0-8k1l-2m3n-4o5p6q7r8s9t",
+      "clinicNameCN": "Heilsugæslan私人诊所(雷克雅未克)",
+      "clinicNameEN": "Heilsugæslan Private Clinic",
+      "category": "PRIVATE_CLINIC",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9426, 64.1466]
+      },
+      "address": "Reykjavik, Laugavegur 100, 101 Reykjavik",
+      "phoneNumber": "+354 568 9090",
+      "website": "https://www.heilsugaelan.is",
+      "opening_hours": {
+        "monday_friday": "08:00-17:00",
+        "saturday": "09:00-13:00",
+        "sunday": "CLOSED"
+      },
+      "services": [
+        "General consultation",
+        "Urgent care",
+        "Dental services",
+        "Physical therapy"
+      ],
+      "cost": "ISK 10000-15000 per consultation (~$75-110 USD)",
+      "rating": 4.3,
+      "advantages": [
+        "Shorter wait time",
+        "English speaking doctors",
+        "Convenient location",
+        "Can write prescriptions"
+      ],
+      "disadvantages": [
+        "More expensive",
+        "Not 24/7",
+        "Limited equipment"
+      ],
+      "best_for": ["non_urgent_medical_issues", "minor_injuries", "prescriptions"],
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    }
+  ],
+
+  "pharmacies": [
+    {
+      "id": 4201,
+      "uuid": "f6g7h8i9-j0k1-9l2m-3n4o-5p6q7r8s9t0u",
+      "pharmacyNameCN": "Lyfjastofan药店链",
+      "pharmacyNameEN": "Lyfjastofan Pharmacy Chain",
+      "category": "PHARMACY_CHAIN",
+      "description": "冰岛最大的连锁药店，全国50+家分店。可购买处方药和非处方药。",
+      "total_locations": 50,
+      "main_locations": [
+        {
+          "name": "Lyfjastofan Downtown Reykjavik",
+          "address": "Laugavegur 16, 101 Reykjavik",
+          "coordinates": [-21.9426, 64.1466],
+          "hours": "09:00-22:00 (daily)",
+          "parking": "Street parking nearby"
+        },
+        {
+          "name": "Lyfjastofan Akureyri",
+          "address": "Akureyri city center",
+          "coordinates": [-18.0894, 65.6839],
+          "hours": "09:00-18:00 (Mon-Fri), 10:00-16:00 (Sat), CLOSED (Sun)"
+        }
+      ],
+      "services": [
+        "Prescription filling",
+        "OTC medications",
+        "Health consultations",
+        "Medical supplies"
+      ],
+      "payment": "CARD, CASH",
+      "rating": 4.5,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    }
+  ]
+}

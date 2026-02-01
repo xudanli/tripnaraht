@@ -25,6 +25,9 @@ import { POIPickupScorerService } from './services/poi-pickup-scorer.service';
 import { POITrailheadService } from './services/poi-trailhead.service';
 import { GeoFactsService } from './services/geo-facts.service';
 import { GeoFactsCacheService } from './services/geo-facts-cache.service';
+import { PhysicalRealityRetrievalService } from './services/physical-reality-retrieval.service';
+import { PhysicalRealityQualityMonitorService } from './services/physical-reality-quality-monitor.service';
+import { PhysicalRealityDEMAssociationService } from './services/physical-reality-dem-association.service';
 import { CapabilityPackEvaluatorService } from './services/capability-pack-evaluator.service';
 import { ReadinessController } from './readiness.controller';
 import { DemModule } from '../dem/dem.module';
@@ -40,6 +43,9 @@ import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags
 import { CapabilityPackChecklistService } from './services/capability-pack-checklist.service';
 import { CoverageMapService } from './services/coverage-map.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
+import { UserDecisionService } from './services/user-decision.service';
+import { TrustMetricsService } from './services/trust-metrics.service';
+import { RiskQuantificationService } from './services/risk-quantification.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';
@@ -76,6 +82,9 @@ import { RagModule } from '../../rag/rag.module';
     GeoFactsPOIService,
     GeoFactsService,
     GeoFactsCacheService,
+    PhysicalRealityRetrievalService,
+    PhysicalRealityQualityMonitorService,
+    PhysicalRealityDEMAssociationService,
     CapabilityPackEvaluatorService,
     // DEMElevationService 和 DEMEffortMetadataService 已移至 DemModule
     ChecklistStatusService,
@@ -93,6 +102,8 @@ import { RagModule } from '../../rag/rag.module';
     CoverageMapService,
     // 风险类型映射服务
     RiskTypeMapperService,
+    // 用户决策服务
+    UserDecisionService,
   ],
   exports: [
     ReadinessService,
@@ -109,12 +120,17 @@ import { RagModule } from '../../rag/rag.module';
     GeoFactsPOIService,
     GeoFactsService,
     GeoFactsCacheService,
+    PhysicalRealityRetrievalService,
+    PhysicalRealityQualityMonitorService,
+    PhysicalRealityDEMAssociationService,
     CapabilityPackEvaluatorService,
     // DEMElevationService 和 DEMEffortMetadataService 已移至 DemModule
     // AI 增强服务
     ReadinessAIService,
     ReadinessCacheService,
     ReadinessFeatureFlagsService,
+    // 用户决策服务
+    UserDecisionService,
   ],
 })
 export class ReadinessModule {}

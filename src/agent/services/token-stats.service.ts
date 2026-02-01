@@ -58,7 +58,9 @@ export class TokenStatsService {
       // 如果超过最大记录数，清理最旧的记录
       if (this.tokenRecords.size > this.maxRecordsInMemory) {
         const firstKey = this.tokenRecords.keys().next().value;
-        this.tokenRecords.delete(firstKey);
+        if (firstKey) {
+          this.tokenRecords.delete(firstKey);
+        }
       }
       
       // 异步更新统计缓存

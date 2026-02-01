@@ -5,7 +5,7 @@ export class RemovePoiFromTemplateDto {
   /** 第几天（从 1 开始） */
   @IsInt()
   @Min(1)
-  day: number;
+  day!: number;
 
   /** POI ID（Place 表的 id）或 UUID */
   @IsOptional()

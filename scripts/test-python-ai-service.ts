@@ -11,7 +11,7 @@
 import axios from 'axios';
 import https from 'https';
 
-const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://101.37.210.241:8001';
+const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://121.43.192.56:8001';
 const TIMEOUT = parseInt(process.env.PYTHON_AI_SERVICE_HEALTH_TIMEOUT || '15000', 10);
 
 // 创建 HTTP 客户端（禁用代理）

@@ -64,6 +64,7 @@ import { RagController } from './rag.controller';
 import { RagMetricsController } from './rag-metrics.controller';
 import { RagMetricsService } from './services/rag-metrics.service';
 import { SkillsModule } from '../skills/skills.module';
+import { KPUModule } from '../kpu/kpu.module';
 
 @Module({
   imports: [
@@ -74,7 +75,8 @@ import { SkillsModule } from '../skills/skills.module';
     KnowledgeBaseModule, // 知识库管理模块
     RedisModule, // Redis缓存支持
     LlmModule, // LLM服务（用于Reranking和QueryExpansion）
-    SkillsModule, // Skills模块（Weather, POI, Web Browse等）
+    forwardRef(() => SkillsModule), // 使用forwardRef避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule）
+    forwardRef(() => KPUModule), // KPU模块（知识处理单元，深度融合）
   ],
   controllers: [RagController, RagMetricsController],
   providers: [

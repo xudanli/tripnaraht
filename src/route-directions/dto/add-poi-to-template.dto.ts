@@ -5,11 +5,11 @@ export class AddPoiToTemplateDto {
   /** 第几天（从 1 开始） */
   @IsInt()
   @Min(1)
-  day: number;
+  day!: number;
 
   /** POI ID（Place 表的 id） */
   @IsInt()
-  poiId: number;
+  poiId!: number;
 
   /** 是否为必游 POI（默认 false） */
   @IsOptional()

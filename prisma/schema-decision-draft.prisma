@@ -1,0 +1,116 @@
+// Decision Draft Models (to be merged into schema.prisma)
+
+// ========== Decision Draft 表 ==========
+model DecisionDraft {
+  id                String   @id @default(uuid()) @db.Uuid
+  draftId           String   @unique @map("draft_id") @db.VarChar(255)
+  workflowId        String   @unique @map("workflow_id") @db.VarChar(255)
+  version           String   @default("v1.0") @db.VarChar(50)
+  
+  // Step Draft 关联（JSON 存储）
+  stepDraftId       String?  @map("step_draft_id") @db.VarChar(255)
+  stepDraftData     Json?    @map("step_draft_data")
+  
+  // 执行结果（可选）
+  executionResultId String?  @map("execution_result_id") @db.VarChar(255)
+  executionResultData Json?  @map("execution_result_data")
+  
+  // 用户模式
+  userMode          String   @default("toc") @map("user_mode") @db.VarChar(20) // 'toc' | 'expert'
+  
+  // 元数据
+  decisionCount     Int      @default(0) @map("decision_count")
+  stepCount         Int      @default(0) @map("step_count")
+  createdBy        String   @default("system") @map("created_by") @db.VarChar(255)
+  
+  // 时间戳
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // 关联
+  decisionSteps    DecisionStep[]
+  
+  @@index([workflowId])
+  @@index([draftId])
+  @@index([createdAt(sort: Desc)])
+  @@map("decision_drafts")
+}
+
+// ========== Decision Step 表 ==========
+model DecisionStep {
+  id                String   @id @default(uuid()) @db.Uuid
+  decisionDraftId   String   @map("decision_draft_id") @db.Uuid
+  
+  // 基本信息
+  stepId            String   @map("step_id") @db.VarChar(255)
+  title             String   @db.VarChar(500)
+  description       String?  @db.Text
+  decisionType      String   @map("decision_type") @db.VarChar(50) // 'transport-decision' | 'pace-decision' | ...
+  status            String   @default("pending") @db.VarChar(20) // 'pending' | 'approved' | 'rejected' | 'modified'
+  confidence        Float    @default(0.7)
+  
+  // 输入输出（JSON 存储）
+  inputs            Json     @default("[]")
+  outputs           Json     @default("[]")
+  
+  // 证据（JSON 存储）
+  evidence          Json     @default("[]")
+  
+  // 决策日志（JSON 存储）
+  decisionLog       Json     @default("[]") @map("decision_log")
+  
+  // Step Draft 关联
+  stepDraftIds      String[] @default([]) @map("step_draft_ids")
+  
+  // 三人格评审（JSON 存储）
+  guardianReview    Json?    @map("guardian_review")
+  
+  // 用户反馈（JSON 存储）
+  userFeedback      Json?    @map("user_feedback")
+  
+  // 时间戳
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // 关联
+  decisionDraft     DecisionDraft @relation(fields: [decisionDraftId], references: [id], onDelete: Cascade)
+  
+  @@unique([decisionDraftId, stepId])
+  @@index([decisionDraftId])
+  @@index([stepId])
+  @@index([status])
+  @@index([decisionType])
+  @@map("decision_steps")
+}
+
+// ========== Decision Draft Version 表 ==========
+model DecisionDraftVersion {
+  id                  String   @id @default(uuid()) @db.Uuid
+  versionId           String   @unique @map("version_id") @db.VarChar(255)
+  workflowId          String   @map("workflow_id") @db.VarChar(255)
+  version             String   @db.VarChar(50) // 'v1.0', 'v1.1', ...
+  
+  // Decision Draft 数据（JSON 存储）
+  decisionDraftData   Json     @map("decision_draft_data")
+  
+  // Step Draft 数据（JSON 存储）
+  stepDraftData       Json     @map("step_draft_data")
+  
+  // 执行结果（可选，JSON 存储）
+  executionResultData Json?    @map("execution_result_data")
+  
+  // 版本差异（JSON 存储）
+  diffData            Json?    @map("diff_data")
+  
+  // 元数据
+  createdBy           String   @default("system") @map("created_by") @db.VarChar(255)
+  description         String?  @db.Text
+  
+  // 时间戳
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@index([workflowId])
+  @@index([workflowId, version])
+  @@index([createdAt(sort: Desc)])
+  @@map("decision_draft_versions")
+}

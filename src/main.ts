@@ -85,6 +85,26 @@ async function bootstrap() {
   console.log('✅ 安全中间件已注册');
   const securityMiddleware = new SecurityMiddleware();
   const httpAdapter = app.getHttpAdapter();
+  
+  // 添加根路径健康检查端点（绕过全局前缀）
+  httpAdapter.get('/health', (req: any, res: any) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'tripnara-api',
+    });
+  });
+  
+  // 添加根路径端点
+  httpAdapter.get('/', (req: any, res: any) => {
+    res.json({
+      message: 'TripNara API',
+      version: '1.0',
+      status: 'running',
+      timestamp: new Date().toISOString(),
+      docs: '/api-docs',
+    });
+  });
   httpAdapter.use((req: any, res: any, next: any) => {
     securityMiddleware.use(req, res, next);
   });

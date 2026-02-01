@@ -6,17 +6,22 @@
  * 核心服务：评估旅行准备度，输出 Findings
  */
 
-import { Injectable } from '@nestjs/common';
-import { ReadinessPack, Rule, SupportedLanguage } from '../types/readiness-pack.types';
+import { Injectable, Optional } from '@nestjs/common';
+import { ReadinessPack, Rule, SupportedLanguage, UserQuestion, LocalizedString } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
-import { ReadinessFinding, ReadinessFindingItem, ReadinessCheckResult } from '../types/readiness-findings.types';
+import { ReadinessFinding, ReadinessFindingItem, ReadinessCheckResult, FrontendUserQuestion } from '../types/readiness-findings.types';
 import { RuleEngine } from './rule-engine';
 import { requiresSchengenVisa } from '../types/trip-context.types';
 import { getLocalizedText, getLocalizedTexts } from '../utils/i18n.utils';
+import { RiskQuantificationService } from '../services/risk-quantification.service';
 
 @Injectable()
 export class ReadinessChecker {
   private ruleEngine = new RuleEngine();
+
+  constructor(
+    @Optional() private readonly riskQuantificationService?: RiskQuantificationService
+  ) {}
 
   /**
    * 检查单个目的地的准备度
@@ -85,13 +90,34 @@ export class ReadinessChecker {
       mitigations: getLocalizedTexts(h.mitigations || [], lang),
       // 🆕 关联 Pack 的官方来源
       sources: packSources,
+      // 🆕 风险量化指标（如果服务可用）
+      quantification: this.riskQuantificationService
+        ? this.riskQuantificationService.quantifyRisk(h.type, h.severity, enhancedContext, lang)
+        : undefined,
     }));
 
     // 收集缺失信息
     const missingInfo: string[] = [];
     for (const item of [...blockers, ...must, ...should]) {
       if (item.askUser) {
-        missingInfo.push(...item.askUser);
+        // 🆕 支持两种格式：字符串数组或结构化格式
+        if (Array.isArray(item.askUser)) {
+          if (item.askUser.length > 0) {
+            // 检查第一个元素是否是字符串（旧格式）
+            if (typeof item.askUser[0] === 'string') {
+              missingInfo.push(...(item.askUser as string[]));
+            } else {
+              // 结构化格式：提取问题文本
+              const questions = item.askUser as FrontendUserQuestion[];
+              questions.forEach(q => {
+                const text = typeof q.text === 'string' ? q.text : (q.text.zh || q.text.en || '');
+                if (text) {
+                  missingInfo.push(text);
+                }
+              });
+            }
+          }
+        }
       }
     }
 

@@ -1,0 +1,687 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "faroe-islands",
+    "regionName": "法罗群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "danish-meteorological-institute",
+    "description": "法罗群岛天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "faroe-islands-main",
+      "regionName": "法罗群岛",
+      "regionNameEN": "Faroe Islands",
+      "coordinates": {
+        "center": {
+          "lat": 62.0,
+          "lng": -7.0
+        },
+        "bounds": {
+          "north": 62.5,
+          "south": 61.3,
+          "east": -6.0,
+          "west": -7.7
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，风力相对较弱，天气相对稳定，但仍可能突然变化",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 19,
+            "description": "日照时间很长"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，风力较强但可接受，游客较少",
+          "temperature": {
+            "avg": 9,
+            "min": 5,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "风力相对较弱但仍可能突然强风",
+            "降雨量适中",
+            "天气变化极快",
+            "一日四季是常态"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 15,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "强风频繁（>15m/s）",
+            "降雨量大",
+            "突发雾",
+            "横向雨",
+            "天气变化极快"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁（>15m/s）",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "偶尔强风",
+            "天气变化快",
+            "突发雾"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化，避免悬崖边活动"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风和暴风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段",
+          "impact": "风速>15m/s，悬崖边和山脊极危险，可能吹倒人",
+          "historicalExample": {
+            "date": "2023-12-10",
+            "description": "2023年12月10日强风，风速达25m/s，多起游客被吹倒事件"
+          }
+        },
+        {
+          "type": "sudden_fog",
+          "severity": "high",
+          "description": "突发雾",
+          "typicalMonths": [1, 2, 3, 4, 5, 9, 10, 11, 12],
+          "frequency": "高，尤其在山地和海岸",
+          "impact": "能见度<50米，导航困难，易迷路或走向危险区域",
+          "historicalExample": {
+            "date": "2024-05-15",
+            "description": "2024年5月15日突发雾，能见度降至10米，多起迷路事件"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "faroe-islands-northern",
+      "regionName": "法罗群岛北部",
+      "regionNameEN": "Northern Faroe Islands",
+      "coordinates": {
+        "center": {
+          "lat": 62.3,
+          "lng": -6.5
+        },
+        "bounds": {
+          "north": 62.5,
+          "south": 62.1,
+          "east": -6.0,
+          "west": -7.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，风力相对较弱，但北部岛屿更暴露，风力仍可能较强",
+          "temperature": {
+            "avg": 11,
+            "min": 7,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 85,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 19,
+            "description": "日照时间很长"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，风力较强，游客较少",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 110,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 14,
+            "max": 28,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "北部岛屿更暴露，风力通常更强",
+            "降雨量适中",
+            "天气变化极快",
+            "悬崖和海岸线更危险"
+          ],
+          "typicalDays": {
+            "sunny": 7,
+            "cloudy": 16,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "强风更频繁（>18m/s）",
+            "降雨量大",
+            "突发雾更常见",
+            "横向雨和强风组合极危险",
+            "天气变化极快"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 19,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "强风非常频繁（>18m/s）",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "悬崖边极度危险"
+          ],
+          "recommendation": "不推荐旅行，北部岛屿更暴露，风险更高"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "强风较常见",
+            "天气变化快",
+            "突发雾",
+            "悬崖边需格外小心"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，避免悬崖边活动"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "强风非常频繁",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "悬崖边极度危险"
+          ],
+          "recommendation": "不推荐旅行，北部岛屿更暴露，风险更高"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "extreme",
+          "description": "强风和暴风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段，北部更严重",
+          "impact": "风速>18m/s，悬崖边和山脊极度危险，可能吹倒人",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日强风，北部岛屿风速达30m/s，多处道路封闭"
+          }
+        },
+        {
+          "type": "sudden_fog",
+          "severity": "very_high",
+          "description": "突发雾",
+          "typicalMonths": [1, 2, 3, 4, 5, 9, 10, 11, 12],
+          "frequency": "非常高，尤其在山地和海岸",
+          "impact": "能见度<30米，导航困难，易迷路或走向危险区域",
+          "historicalExample": {
+            "date": "2024-05-20",
+            "description": "2024年5月20日突发雾，北部岛屿能见度降至5米，多起迷路事件"
+          }
+        }
+      ],
+      "notes": "法罗群岛北部包括Borðoy、Viðoy、Kunoy等岛屿，更暴露于大西洋，风力通常更强，天气变化更剧烈。悬崖和海岸线更危险，需格外小心。"
+    },
+    {
+      "regionId": "faroe-islands-central",
+      "regionName": "法罗群岛中部",
+      "regionNameEN": "Central Faroe Islands",
+      "coordinates": {
+        "center": {
+          "lat": 62.0,
+          "lng": -7.0
+        },
+        "bounds": {
+          "north": 62.3,
+          "south": 61.7,
+          "east": -6.5,
+          "west": -7.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，中部岛屿相对更受保护，风力相对较弱",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 75,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 19,
+            "description": "日照时间很长"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，风力较强但可接受，游客较少",
+          "temperature": {
+            "avg": 9,
+            "min": 5,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 95,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 23,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "中部岛屿相对更受保护，风力稍弱",
+            "降雨量适中",
+            "天气变化快但仍相对可控",
+            "包括首都Tórshavn，基础设施较好"
+          ],
+          "typicalDays": {
+            "sunny": 9,
+            "cloudy": 14,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "强风频繁（>15m/s）但比北部稍弱",
+            "降雨量大",
+            "突发雾",
+            "横向雨",
+            "天气变化极快"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 17,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁（>15m/s）",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "偶尔强风",
+            "天气变化快",
+            "突发雾"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化，避免悬崖边活动"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风和暴风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段",
+          "impact": "风速>15m/s，悬崖边和山脊极危险，可能吹倒人",
+          "historicalExample": {
+            "date": "2023-12-10",
+            "description": "2023年12月10日强风，风速达25m/s，多起游客被吹倒事件"
+          }
+        },
+        {
+          "type": "sudden_fog",
+          "severity": "high",
+          "description": "突发雾",
+          "typicalMonths": [1, 2, 3, 4, 5, 9, 10, 11, 12],
+          "frequency": "高，尤其在山地和海岸",
+          "impact": "能见度<50米，导航困难，易迷路或走向危险区域",
+          "historicalExample": {
+            "date": "2024-05-15",
+            "description": "2024年5月15日突发雾，能见度降至10米，多起迷路事件"
+          }
+        }
+      ],
+      "notes": "法罗群岛中部包括Streymoy和Eysturoy等主要岛屿，包括首都Tórshavn。相对更受保护，风力稍弱，基础设施较好，但仍需注意天气变化。"
+    },
+    {
+      "regionId": "faroe-islands-southern",
+      "regionName": "法罗群岛南部",
+      "regionNameEN": "Southern Faroe Islands",
+      "coordinates": {
+        "center": {
+          "lat": 61.5,
+          "lng": -6.8
+        },
+        "bounds": {
+          "north": 61.7,
+          "south": 61.3,
+          "east": -6.5,
+          "west": -7.2
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，Suðuroy岛相对独立，天气模式略有不同",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 19,
+            "description": "日照时间很长"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，风力较强但可接受，游客较少",
+          "temperature": {
+            "avg": 9,
+            "min": 5,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "Suðuroy岛相对独立，天气模式略有不同",
+            "风力相对较弱但仍可能突然强风",
+            "降雨量适中",
+            "天气变化快",
+            "渡轮连接可能受天气影响"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 15,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "强风频繁（>15m/s）",
+            "降雨量大",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮连接可能因天气取消"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁（>15m/s）",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消（连接Tórshavn）"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划，注意渡轮可能取消"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "偶尔强风",
+            "天气变化快",
+            "突发雾",
+            "渡轮可能因天气取消"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化和渡轮时刻表"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "强风频繁",
+            "突发雾",
+            "横向雨",
+            "天气变化极快",
+            "渡轮可能取消（连接Tórshavn）"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划，注意渡轮可能取消"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风和暴风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段",
+          "impact": "风速>15m/s，悬崖边和山脊极危险，可能吹倒人，渡轮可能取消",
+          "historicalExample": {
+            "date": "2023-12-12",
+            "description": "2023年12月12日强风，Suðuroy渡轮取消，游客被困"
+          }
+        },
+        {
+          "type": "sudden_fog",
+          "severity": "high",
+          "description": "突发雾",
+          "typicalMonths": [1, 2, 3, 4, 5, 9, 10, 11, 12],
+          "frequency": "高，尤其在山地和海岸",
+          "impact": "能见度<50米，导航困难，易迷路或走向危险区域",
+          "historicalExample": {
+            "date": "2024-05-18",
+            "description": "2024年5月18日突发雾，Suðuroy能见度降至10米，多起迷路事件"
+          }
+        },
+        {
+          "type": "ferry_cancellation",
+          "severity": "high",
+          "description": "渡轮取消",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "Tórshavn - Suðuroy渡轮可能因恶劣天气取消，游客可能被困",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日，Suðuroy渡轮连续3天取消"
+          }
+        }
+      ],
+      "notes": "法罗群岛南部主要是Suðuroy岛，相对独立，需要通过渡轮连接Tórshavn。天气模式略有不同，但同样受强风和突发雾影响。需特别注意渡轮可能因天气取消，建议预留额外时间。"
+    }
+  ]
+}

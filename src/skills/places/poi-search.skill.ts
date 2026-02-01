@@ -92,11 +92,11 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
             .map(r => ({
               poi_id: String(r.id),
               name: r.nameCN || r.nameEN || r.name,
-              nameCN: r.nameCN,
-              nameEN: r.nameEN,
+              nameCN: r.nameCN ?? undefined,
+              nameEN: r.nameEN ?? undefined,
               coordinates: { lat: r.lat!, lng: r.lng! },
-              category: r.category,
-              address: r.address,
+              category: r.category ?? undefined,
+              address: r.address ?? undefined,
               evidence_id: `poi_${r.id}_${Date.now()}`,
             }));
         } catch (error: any) {
@@ -119,11 +119,11 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
           pois = searchResults.map((place: any, index: number) => ({
             poi_id: String(place.id || place.place_id || `poi_${index}`),
             name: place.name || place.nameCN || place.nameEN || '未知地点',
-            nameCN: place.nameCN,
-            nameEN: place.nameEN,
+            nameCN: place.nameCN ?? undefined,
+            nameEN: place.nameEN ?? undefined,
             coordinates: place.geo || (place.lat && place.lng ? { lat: place.lat, lng: place.lng } : undefined),
-            category: place.category,
-            address: place.address,
+            category: place.category ?? undefined,
+            address: place.address ?? undefined,
             evidence_id: `poi_${place.id || place.place_id || index}_${Date.now()}`,
           }));
         } catch (error: any) {

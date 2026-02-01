@@ -63,7 +63,9 @@ export class ReadinessToConstraintsCompiler {
             dueOffsetDays: task.dueOffsetDays,
             tags: task.tags,
           })),
-          askUser: item.askUser,
+          askUser: Array.isArray(item.askUser) && item.askUser.length > 0 && typeof item.askUser[0] === 'string'
+            ? item.askUser as string[]
+            : (item.askUser as any[])?.map(q => typeof q === 'string' ? q : (typeof q.text === 'string' ? q.text : (q.text?.zh || q.text?.en || ''))) || [],
         });
       }
 
@@ -82,7 +84,9 @@ export class ReadinessToConstraintsCompiler {
             dueOffsetDays: task.dueOffsetDays,
             tags: task.tags,
           })),
-          askUser: item.askUser,
+          askUser: Array.isArray(item.askUser) && item.askUser.length > 0 && typeof item.askUser[0] === 'string'
+            ? item.askUser as string[]
+            : (item.askUser as any[])?.map(q => typeof q === 'string' ? q : (typeof q.text === 'string' ? q.text : (q.text?.zh || q.text?.en || ''))) || [],
         });
       }
 
@@ -100,7 +104,9 @@ export class ReadinessToConstraintsCompiler {
             dueOffsetDays: task.dueOffsetDays,
             tags: task.tags,
           })),
-          askUser: item.askUser,
+          askUser: Array.isArray(item.askUser) && item.askUser.length > 0 && typeof item.askUser[0] === 'string'
+            ? item.askUser as string[]
+            : (item.askUser as any[])?.map(q => typeof q === 'string' ? q : (typeof q.text === 'string' ? q.text : (q.text?.zh || q.text?.en || ''))) || [],
           // 软约束的惩罚函数（可以根据 severity 调整权重）
           penalty: () => item.severity === 'high' ? 0.3 : 0.1,
         });

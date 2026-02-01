@@ -1,0 +1,296 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "svalbard",
+    "regionName": "斯瓦尔巴",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "sysselmesteren.no, visitsvalbard.com",
+    "description": "斯瓦尔巴道路状态数据 - 包含连接定居点的主要道路和雪地摩托路线信息"
+  },
+  "roads": [
+    {
+      "roadId": "svalbard-longyearbyen-airport",
+      "roadName": "朗伊尔城-机场路",
+      "roadNameEN": "Longyearbyen-Airport Road",
+      "roadNameLocal": "Longyearbyen-Lufthavn",
+      "roadType": "gravel_road",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "全年开放，但冬季需要雪地摩托或4x4车辆，夏季标准车辆可通行"
+      },
+      "requirements": {
+        "vehicleType": "seasonal",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "winterVehicle": "snowmobile_or_4x4",
+        "notes": "夏季标准车辆可通行，冬季必须使用雪地摩托或4x4车辆。所有车辆必须配备应急设备（卫星电话、GPS、保暖装备）"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 78.2232,
+          "lng": 15.6267,
+          "name": "Longyearbyen"
+        },
+        "end": {
+          "lat": 78.2461,
+          "lng": 15.4656,
+          "name": "Svalbard Airport"
+        }
+      },
+      "hazards": [
+        {
+          "type": "polar_bear_risk",
+          "severity": "extreme",
+          "location": {
+            "lat": 78.2346,
+            "lng": 15.5461
+          },
+          "description": "极地熊出没风险极高，必须携带防熊喷雾和信号枪。禁止单独行动",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "冬季极端低温（-20°C至-40°C），车辆可能无法启动，需要特殊防冻措施",
+          "typicalMonths": [11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "whiteout",
+          "severity": "high",
+          "description": "暴风雪时可能出现白化现象，能见度降至零，非常危险",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "sysselmesteren.no"
+    },
+    {
+      "roadId": "svalbard-longyearbyen-barentsburg",
+      "roadName": "朗伊尔城-巴伦支堡路",
+      "roadNameEN": "Longyearbyen-Barentsburg Road",
+      "roadNameLocal": "Longyearbyen-Barentsburg",
+      "roadType": "gravel_road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8],
+        "openPeriod": "夏季（6-8月）",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "8月底",
+        "notes": "仅夏季开放，具体时间取决于积雪情况。冬季必须使用雪地摩托或船只"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "guideRequired": true,
+        "notes": "必须4x4车辆，强烈建议雇佣当地向导。必须携带防熊设备（防熊喷雾、信号枪）。禁止单独行动"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 78.2232,
+          "lng": 15.6267,
+          "name": "Longyearbyen"
+        },
+        "end": {
+          "lat": 78.0667,
+          "lng": 14.2167,
+          "name": "Barentsburg"
+        },
+        "keyPoints": [
+          {
+            "lat": 78.1500,
+            "lng": 14.9000,
+            "name": "中间检查点",
+            "description": "必须在此检查点报告位置"
+          }
+        ]
+      },
+      "hazards": [
+        {
+          "type": "polar_bear_risk",
+          "severity": "extreme",
+          "location": {
+            "lat": 78.1500,
+            "lng": 14.9000
+          },
+          "description": "极地熊出没风险极高，必须携带防熊喷雾和信号枪。禁止单独行动，必须至少2人同行",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "glacier_crossing",
+          "severity": "high",
+          "location": {
+            "lat": 78.1200,
+            "lng": 14.7000
+          },
+          "description": "需要穿越冰川，存在裂缝风险，必须由经验丰富的向导带领",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "unpredictable_weather",
+          "severity": "high",
+          "description": "天气变化极快，可能突然出现暴风雪或白化现象",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "sysselmesteren.no"
+    },
+    {
+      "roadId": "svalbard-snowmobile-routes",
+      "roadName": "雪地摩托路线网络",
+      "roadNameEN": "Snowmobile Route Network",
+      "roadNameLocal": "Snøscooterruter",
+      "roadType": "snowmobile_trail",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [12, 1, 2, 3, 4],
+        "openPeriod": "冬季（12月-4月）",
+        "typicalOpenDate": "12月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季雪地摩托路线，覆盖主要定居点之间的连接。夏季无法通行"
+      },
+      "requirements": {
+        "vehicleType": "snowmobile_required",
+        "clearance": "n/a",
+        "experience": "experienced_driver",
+        "guideRequired": true,
+        "notes": "必须使用雪地摩托，强烈建议雇佣当地向导。必须携带防熊设备、GPS、卫星电话、应急装备。禁止单独行动"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 78.2232,
+          "lng": 15.6267,
+          "name": "Longyearbyen"
+        },
+        "end": {
+          "lat": 78.0667,
+          "lng": 14.2167,
+          "name": "Barentsburg"
+        },
+        "keyPoints": [
+          {
+            "lat": 78.1500,
+            "lng": 14.9000,
+            "name": "中间检查点",
+            "description": "必须在此检查点报告位置"
+          },
+          {
+            "lat": 78.4000,
+            "lng": 15.2000,
+            "name": "Pyramiden方向",
+            "description": "通往Pyramiden定居点的路线"
+          }
+        ]
+      },
+      "hazards": [
+        {
+          "type": "polar_bear_risk",
+          "severity": "extreme",
+          "description": "极地熊出没风险极高，必须携带防熊喷雾和信号枪。禁止单独行动，必须至少2人同行",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "极端低温（-30°C至-50°C），暴露皮肤可能在几分钟内冻伤",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "whiteout",
+          "severity": "extreme",
+          "description": "暴风雪时可能出现白化现象，能见度降至零，极易迷路",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "avalanche_risk",
+          "severity": "high",
+          "description": "山区存在雪崩风险，需要避开已知危险区域",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "crevasse_risk",
+          "severity": "high",
+          "description": "冰川区域存在裂缝风险，必须由经验丰富的向导带领",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "sysselmesteren.no"
+    },
+    {
+      "roadId": "svalbard-longyearbyen-pyramiden",
+      "roadName": "朗伊尔城-Pyramiden路",
+      "roadNameEN": "Longyearbyen-Pyramiden Road",
+      "roadNameLocal": "Longyearbyen-Pyramiden",
+      "roadType": "gravel_road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8],
+        "openPeriod": "夏季（6-8月）",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "8月底",
+        "notes": "仅夏季开放，具体时间取决于积雪情况。冬季必须使用雪地摩托或船只"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "guideRequired": true,
+        "notes": "必须4x4车辆，强烈建议雇佣当地向导。必须携带防熊设备（防熊喷雾、信号枪）。禁止单独行动"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 78.2232,
+          "lng": 15.6267,
+          "name": "Longyearbyen"
+        },
+        "end": {
+          "lat": 78.6569,
+          "lng": 16.3250,
+          "name": "Pyramiden"
+        },
+        "keyPoints": [
+          {
+            "lat": 78.4000,
+            "lng": 15.8000,
+            "name": "中间检查点",
+            "description": "必须在此检查点报告位置"
+          }
+        ]
+      },
+      "hazards": [
+        {
+          "type": "polar_bear_risk",
+          "severity": "extreme",
+          "description": "极地熊出没风险极高，必须携带防熊喷雾和信号枪。禁止单独行动，必须至少2人同行",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "glacier_crossing",
+          "severity": "high",
+          "description": "需要穿越多个冰川，存在裂缝风险，必须由经验丰富的向导带领",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "unpredictable_weather",
+          "severity": "high",
+          "description": "天气变化极快，可能突然出现暴风雪或白化现象",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "sysselmesteren.no"
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "faroe",
+    "regionName": "法罗群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "landsverk.fo",
+    "description": "法罗群岛道路状态数据 - 包含主要隧道、桥梁和道路的天气影响信息"
+  },
+  "roads": [
+    {
+      "roadId": "faroe-e10-main",
+      "roadName": "E10主要公路",
+      "roadNameEN": "E10 Main Highway",
+      "roadNameLocal": "E10 Høvuðsvegur",
+      "roadType": "highway",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "全年开放，但受天气影响可能临时关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，强风时需谨慎"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.0,
+          "lng": -6.8,
+          "name": "Tórshavn"
+        },
+        "end": {
+          "lat": 62.2,
+          "lng": -6.5,
+          "name": "Klaksvík"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风可能导致道路临时关闭，特别是桥梁和暴露路段",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12],
+          "windThreshold": 25,
+          "unit": "m/s"
+        },
+        {
+          "type": "fog",
+          "severity": "medium",
+          "description": "突发浓雾，能见度可能降至几米",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "black_ice",
+          "severity": "high",
+          "description": "冬季黑冰，特别是在隧道出口和桥梁上",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "landsverk.fo"
+    },
+    {
+      "roadId": "faroe-subsea-tunnels",
+      "roadName": "海底隧道",
+      "roadNameEN": "Sub-sea Tunnels",
+      "roadNameLocal": "Undirhavstunnlar",
+      "roadType": "tunnel",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "4条海底隧道，总长33.3公里，限速80km/h，收费道路"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，需支付过路费"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.0,
+          "lng": -6.8,
+          "name": "Tórshavn"
+        },
+        "end": {
+          "lat": 62.2,
+          "lng": -6.5,
+          "name": "Klaksvík"
+        }
+      },
+      "hazards": [
+        {
+          "type": "toll_required",
+          "severity": "low",
+          "description": "所有海底隧道均为收费道路，需支付过路费"
+        },
+        {
+          "type": "maintenance",
+          "severity": "low",
+          "description": "可能因维护临时关闭，但通常提前通知"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "weekly",
+      "source": "landsverk.fo"
+    },
+    {
+      "roadId": "faroe-mountain-roads",
+      "roadName": "山区道路",
+      "roadNameEN": "Mountain Roads",
+      "roadNameLocal": "Fjallvegir",
+      "roadType": "mountain_road",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放，但冬季受天气影响",
+        "notes": "部分山区道路在恶劣天气时可能临时关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季建议使用冬季轮胎"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.0,
+          "lng": -6.8,
+          "name": "Tórshavn"
+        },
+        "end": {
+          "lat": 62.1,
+          "lng": -6.7,
+          "name": "Mountain Area"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "部分道路有雪崩风险，特别是Leynartunnilin替代的旧路",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "landslide",
+          "severity": "medium",
+          "description": "沿海道路有滑坡风险，特别是Viðareiðistunnilin替代的旧路",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12]
+        },
+        {
+          "type": "icing",
+          "severity": "high",
+          "description": "冬季结冰，特别是Oyrarvegurin山区道路",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "landsverk.fo"
+    },
+    {
+      "roadId": "faroe-vidareidistunnilin",
+      "roadName": "Viðareiðistunnilin隧道",
+      "roadNameEN": "Viðareiðistunnilin Tunnel",
+      "roadNameLocal": "Viðareiðistunnilin",
+      "roadType": "tunnel",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "2016年建成，长1,939米，连接Viðareiði和Hvannasund，替代了易发生滑坡和雪崩的沿海道路"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，限速60km/h"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.35,
+          "lng": -6.52,
+          "name": "Viðareiði"
+        },
+        "end": {
+          "lat": 62.33,
+          "lng": -6.50,
+          "name": "Hvannasund"
+        }
+      },
+      "hazards": [
+        {
+          "type": "landslide",
+          "severity": "low",
+          "description": "隧道替代了易发生滑坡的旧沿海道路，但旧路仍对游客开放（风景路线）",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12]
+        },
+        {
+          "type": "avalanche",
+          "severity": "low",
+          "description": "隧道替代了易发生雪崩的旧路，但旧路仍对游客开放（风景路线）",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "weekly",
+      "source": "landsverk.fo"
+    },
+    {
+      "roadId": "faroe-leynartunnilin",
+      "roadName": "Leynartunnilin隧道",
+      "roadNameEN": "Leynartunnilin Tunnel",
+      "roadNameLocal": "Leynartunnilin",
+      "roadType": "tunnel",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "1977年建成，长760米，连接Leynar和Kollafjarðardalur山谷，替代了易发生雪崩的道路"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，限速60km/h"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.12,
+          "lng": -7.05,
+          "name": "Leynar"
+        },
+        "end": {
+          "lat": 62.10,
+          "lng": -7.00,
+          "name": "Kollafjarðardalur"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "low",
+          "description": "隧道替代了易发生雪崩的旧路，但旧路仍对游客开放（风景路线）",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "weekly",
+      "source": "landsverk.fo"
+    },
+    {
+      "roadId": "faroe-oyrarvegurin",
+      "roadName": "Oyrarvegurin山区道路",
+      "roadNameEN": "Oyrarvegurin Mountain Road",
+      "roadNameLocal": "Oyrarvegurin",
+      "roadType": "mountain_road",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放，但冬季条件恶劣",
+        "notes": "山区道路，冬季易结冰，Kollafjarðartunnilin（1992年建成）提供了更安全的替代路线"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "winterTires": "recommended",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季建议使用冬季轮胎，建议使用Kollafjarðartunnilin替代路线"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 62.10,
+          "lng": -7.00,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 62.15,
+          "lng": -6.95,
+          "name": "终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "icing",
+          "severity": "very_high",
+          "description": "冬季易结冰，特别是在寒冷天气和强风时",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风阵风，特别是在暴露路段",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12],
+          "windThreshold": 20,
+          "unit": "m/s"
+        }
+      ],
+      "alternatives": [
+        {
+          "roadId": "faroe-kollafjardartunnilin",
+          "name": "Kollafjarðartunnilin隧道",
+          "description": "1992年建成的更安全替代路线，建议冬季使用"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "landsverk.fo"
+    }
+  ]
+}

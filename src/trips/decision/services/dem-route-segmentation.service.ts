@@ -400,7 +400,7 @@ export class DEMRouteSegmentationService {
       const point = routePoints[i];
       
       // 获取海拔
-      const elevation = await this.demElevationService.getElevation(point.lat, point.lng) ?? 0;
+      const elevation = await this.demElevationService?.getElevation(point.lat, point.lng) ?? 0;
 
       // 计算距离
       let segmentDistance = 0;

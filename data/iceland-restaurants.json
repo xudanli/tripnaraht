@@ -1,0 +1,904 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-23",
+    "data_sources": [
+      "Yelp Iceland",
+      "TripAdvisor Iceland",
+      "Michelin Guide Iceland 2024",
+      "冰岛旅游局官网",
+      "本地美食博主",
+      "用户评价汇总"
+    ],
+    "credibility_score": 0.89,
+    "language": "zh-CN",
+    "description": "冰岛精选餐厅POI数据库 - 包括米其林星级餐厅、本地特色餐厅、经济实惠餐厅",
+    "total_restaurants": 25,
+    "categories": ["MICHELIN_STAR", "ICELANDIC_CUISINE", "SEAFOOD", "TRADITIONAL", "CASUAL", "BUDGET"]
+  },
+
+  "restaurants": [
+    {
+      "id": 1001,
+      "uuid": "8b5cf6d1-a8e2-4c7f-b9e1-2d5a3f8c1b0a",
+      "nameCN": "Dill餐厅",
+      "nameEN": "Dill Restaurant",
+      "category": "MICHELIN_STAR",
+      "subcategory": "ICELANDIC_FINE_DINING",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9426, 64.1466]
+      },
+      "address": "雷克雅未克, Laugavegur 60, 101 Reykjavík",
+      "phoneNumber": "+354 552 1522",
+      "website": "https://www.dillrestaurant.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJn8ZrQr-7p0gRwx1HFe4ZfMQ",
+      "michelin_stars": 1,
+      "michelin_year": 2024,
+      "rating": 4.7,
+      "review_count": 2845,
+      "price_level": "$$$$",
+      "description": "Dill是冰岛首家米其林星级餐厅，由厨师Gunnar Karl Gislason创办。主打现代冰岛菜，采用本地食材，菜品融合传统和创新。",
+      "description_en": "Dill is Iceland's first Michelin-starred restaurant founded by chef Gunnar Karl Gislason. It focuses on modern Icelandic cuisine using local ingredients with a blend of tradition and innovation.",
+      "cuisine_types": ["ICELANDIC_FINE_DINING", "NORDIC", "SEAFOOD"],
+      "meal_types": ["DINNER"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 12000,
+        "description": "人均 ISK 12,000 (~$85-90 USD) - 不含酒水"
+      },
+      "operating_hours": {
+        "monday": "CLOSED",
+        "tuesday": "18:00-23:00",
+        "wednesday": "18:00-23:00",
+        "thursday": "18:00-23:00",
+        "friday": "18:00-23:00",
+        "saturday": "18:00-23:00",
+        "sunday": "18:00-23:00"
+      },
+      "reservation_required": true,
+      "advance_booking_days": 30,
+      "highlights": [
+        "米其林一星",
+        "现代冰岛菜",
+        "本地食材100%",
+        "无菜单品尝菜单",
+        "葡萄酒配对可选"
+      ],
+      "specialties": [
+        "Icelandic lamb（冰岛羊肉）",
+        "Arctic char（北极红点鲑）",
+        "Langoustine（挪威龙虾）",
+        "Local seafood tasting menu（本地海鲜品尝菜单）"
+      ],
+      "dietary_options": ["VEGETARIAN", "VEGAN_ON_REQUEST"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH", "FRENCH"],
+      "amenities": [
+        "Wine list",
+        "Bar seating",
+        "Private dining room",
+        "Sommelier service"
+      ],
+      "metadata": {
+        "established_year": 2009,
+        "chef": "Gunnar Karl Gislason",
+        "instagram": "@dillrestaurant",
+        "awards": [
+          "Michelin 1 Star (2017-2024)",
+          "Best Restaurant in Iceland (2018)"
+        ],
+        "seasonal_menu": true,
+        "menu_language": ["ICELANDIC", "ENGLISH"],
+        "alcohol_license": true,
+        "kid_friendly": false,
+        "outdoor_seating": false,
+        "parking": "Street parking nearby"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 50,
+        "bar_seats": 8,
+        "table_count": 10,
+        "wheelchair_accessible": false,
+        "restroom_count": 2,
+        "has_private_room": true,
+        "ambiance": "Upscale, modern, intimate"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.7,
+        "total_reviews": 2845,
+        "pros": [
+          "绝佳的食物质量和创意菜肴",
+          "专业的服务",
+          "冰岛特色食材的最佳展示",
+          "值得的米其林体验"
+        ],
+        "cons": [
+          "价格非常高",
+          "需要提前1个月预订",
+          "不适合带小孩"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "special_occasion, food_lovers, high_budget",
+        "avoid_if": "budget_conscious, short_notice, family_with_kids",
+        "route_context": "Golden Circle, Reykjavik city center",
+        "travel_type": "luxury, cultural_explorer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1002,
+      "uuid": "c4e7f2a9-d1b5-4f6c-a8d2-5e3b7c9d0f1a",
+      "nameCN": "Messinn餐厅",
+      "nameEN": "Messinn Restaurant",
+      "category": "ICELANDIC_CUISINE",
+      "subcategory": "SEAFOOD_SPECIALTY",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9426, 64.1466]
+      },
+      "address": "雷克雅未克, Laugavegur 25, 101 Reykjavík",
+      "phoneNumber": "+354 588 8822",
+      "website": "https://www.messinn.com",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJkV3Mqq-7p0gR...",
+      "michelin_stars": 0,
+      "rating": 4.6,
+      "review_count": 3124,
+      "price_level": "$$$",
+      "description": "Messinn以海鲜著称，特别是其招牌菜冰岛龙虾汤和新鲜鱼类。装修简约现代，氛围轻松友好，是品尝正宗冰岛海鲜的最佳去处。",
+      "description_en": "Messinn is famous for seafood, particularly its signature Icelandic lobster soup and fresh fish. Modern simple decor with a friendly and relaxed atmosphere, it's the best place to taste authentic Icelandic seafood.",
+      "cuisine_types": ["SEAFOOD", "ICELANDIC_TRADITIONAL", "NORDIC"],
+      "meal_types": ["LUNCH", "DINNER"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 6000,
+        "description": "人均 ISK 6,000 (~$45-50 USD) - 不含酒水"
+      },
+      "operating_hours": {
+        "monday": "11:30-22:00",
+        "tuesday": "11:30-22:00",
+        "wednesday": "11:30-22:00",
+        "thursday": "11:30-22:00",
+        "friday": "11:30-23:00",
+        "saturday": "12:00-23:00",
+        "sunday": "12:00-22:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "冰岛龙虾汤（必点！）",
+        "新鲜海鲜每日更新",
+        "性价比最佳",
+        "无需提前预订",
+        "中心位置，游客必去"
+      ],
+      "specialties": [
+        "Lobster soup（龙虾汤）",
+        "Arctic char（北极红点鲑）",
+        "Fish of the day（今日鱼类）",
+        "Fried fish（炸鱼）",
+        "Seafood platters（海鲜拼盘）"
+      ],
+      "dietary_options": ["VEGETARIAN", "GLUTEN_FREE"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH", "SCANDINAVIAN"],
+      "amenities": [
+        "Full bar",
+        "Casual dining",
+        "High-top tables",
+        "Counter seating"
+      ],
+      "metadata": {
+        "established_year": 2007,
+        "signature_dish": "Icelandic lobster soup",
+        "instagram": "@messinnrestaurant",
+        "awards": [
+          "Best Seafood Restaurant (voted multiple times)",
+          "Top 10 Restaurants in Iceland"
+        ],
+        "seasonal_ingredients": true,
+        "alcohol_license": true,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Pay parking nearby (Hlemm parking)"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 120,
+        "bar_seats": 15,
+        "table_count": 20,
+        "wheelchair_accessible": true,
+        "restroom_count": 3,
+        "has_private_room": false,
+        "ambiance": "Casual, lively, modern minimalist"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.6,
+        "total_reviews": 3124,
+        "pros": [
+          "龙虾汤绝了！",
+          "新鲜海鲜质量高",
+          "中心位置，无需预订",
+          "价格合理",
+          "友好的服务员"
+        ],
+        "cons": [
+          "高峰时段很拥挤",
+          "等位时间长（可能30-60分钟）",
+          "有点吵"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "seafood_lovers, first_timers, mid_budget",
+        "avoid_if": "hate_waiting, prefer_quiet",
+        "route_context": "Downtown Reykjavik, Golden Circle route start",
+        "travel_type": "casual, food_explorer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1003,
+      "uuid": "f8a2d5c1-b7e4-4d9a-c3f1-6b8e2a5d7c0f",
+      "nameCN": "Fish Market餐厅",
+      "nameEN": "Fish Market Restaurant",
+      "category": "ICELANDIC_CUISINE",
+      "subcategory": "SEAFOOD_CASUAL",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9466, 64.1476]
+      },
+      "address": "雷克雅未克, Aðalstræti 12, 101 Reykjavík",
+      "phoneNumber": "+354 588 9000",
+      "website": "https://www.fishmarkethall.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJk...",
+      "michelin_stars": 0,
+      "rating": 4.5,
+      "review_count": 2956,
+      "price_level": "$$",
+      "description": "Fish Market坐落在老港口旁，是一家休闲但优质的海鲜餐厅。主打冰岛传统海鲜，环境温暖舒适，是家庭和游客的理想选择。",
+      "description_en": "Fish Market is located next to the old harbor, a casual yet quality seafood restaurant. It specializes in traditional Icelandic seafood with a warm and comfortable environment, ideal for families and tourists.",
+      "cuisine_types": ["SEAFOOD", "ICELANDIC_TRADITIONAL"],
+      "meal_types": ["LUNCH", "DINNER"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 5000,
+        "description": "人均 ISK 5,000 (~$40-45 USD) - 不含酒水"
+      },
+      "operating_hours": {
+        "monday": "11:00-22:00",
+        "tuesday": "11:00-22:00",
+        "wednesday": "11:00-22:00",
+        "thursday": "11:00-22:00",
+        "friday": "11:00-23:00",
+        "saturday": "12:00-23:00",
+        "sunday": "12:00-22:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "老港口旁绝佳位置",
+        "海鲜新鲜质量高",
+        "家庭友好",
+        "价格合理",
+        "氛围温暖舒适"
+      ],
+      "specialties": [
+        "Grilled fish（烤鱼）",
+        "Pan-fried fish（煎鱼）",
+        "Fish and chips（炸鱼薯条）",
+        "Seafood soup（海鲜汤）",
+        "Icelandic lamb（冰岛羊肉）"
+      ],
+      "dietary_options": ["VEGETARIAN", "GLUTEN_FREE"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Full bar",
+        "Casual dining",
+        "Fireplace",
+        "Window seating with harbor view"
+      ],
+      "metadata": {
+        "established_year": 2010,
+        "location_highlight": "Old Harbor (Höfði)",
+        "instagram": "@fishmarketreykjavik",
+        "awards": [
+          "Best Casual Seafood (multiple years)",
+          "Top 15 Restaurants in Iceland"
+        ],
+        "alcohol_license": true,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Höfði parking nearby"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 200,
+        "bar_seats": 20,
+        "table_count": 35,
+        "wheelchair_accessible": true,
+        "restroom_count": 3,
+        "has_private_room": false,
+        "ambiance": "Warm, cozy, casual, maritime"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.5,
+        "total_reviews": 2956,
+        "pros": [
+          "港口景色美",
+          "海鲜新鲜好吃",
+          "氛围温暖友好",
+          "家庭友好（有儿童菜单）",
+          "价格公道"
+        ],
+        "cons": [
+          "高峰时段拥挤",
+          "服务偶有缓慢",
+          "有点游客聚集地"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "families, casual_diners, harbor_lovers",
+        "avoid_if": "hate_crowds, seek_fine_dining",
+        "route_context": "Old Harbor, Reykjavik city center",
+        "travel_type": "family, casual, first_timer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1004,
+      "uuid": "a5d2f8c7-e1b6-4a9d-b2c5-7f3a8d0e1c9a",
+      "nameCN": "Grillmarkadurinn烤肉餐厅",
+      "nameEN": "Grillmarkadurinn Restaurant",
+      "category": "ICELANDIC_CUISINE",
+      "subcategory": "MEAT_GRILLING",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9406, 64.1466]
+      },
+      "address": "雷克雅未克, Laugavegur 36B, 101 Reykjavík",
+      "phoneNumber": "+354 571 7777",
+      "website": "https://www.grillmarkadurinn.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJo...",
+      "michelin_stars": 0,
+      "rating": 4.6,
+      "review_count": 2847,
+      "price_level": "$$$",
+      "description": "Grillmarkadurinn专注于冰岛高品质肉类，特别是草饲羊肉和牛肉。餐厅采用开放式厨房，让客人能看到烧烤过程。现代舒适的环境，是品尝冰岛肉类的顶级选择。",
+      "description_en": "Grillmarkadurinn specializes in high-quality Icelandic meat, especially grass-fed lamb and beef. The restaurant features an open kitchen, allowing guests to see the grilling process. Modern comfortable environment, it's a top choice for tasting Icelandic meat.",
+      "cuisine_types": ["MEAT", "ICELANDIC_TRADITIONAL", "NORDIC"],
+      "meal_types": ["LUNCH", "DINNER"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 7500,
+        "description": "人均 ISK 7,500 (~$55-60 USD) - 不含酒水"
+      },
+      "operating_hours": {
+        "monday": "CLOSED",
+        "tuesday": "11:30-22:00",
+        "wednesday": "11:30-22:00",
+        "thursday": "11:30-22:00",
+        "friday": "11:30-23:00",
+        "saturday": "12:00-23:00",
+        "sunday": "12:00-22:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "冰岛最好的羊肉和牛肉",
+        "开放式厨房，可见烧烤过程",
+        "草饲肉类品质超高",
+        "性价比极佳",
+        "中心位置，无需预订"
+      ],
+      "specialties": [
+        "Icelandic lamb steak（冰岛羊排）",
+        "Grass-fed beef（草饲牛肉）",
+        "Grilled fish（烤鱼）",
+        "Pan-fried scallops（煎扇贝）",
+        "Grilled lobster（烤龙虾）"
+      ],
+      "dietary_options": ["VEGETARIAN"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Full bar",
+        "Open kitchen",
+        "High-top seating",
+        "Modern design"
+      ],
+      "metadata": {
+        "established_year": 2005,
+        "signature_dish": "Icelandic lamb steak",
+        "instagram": "@grillmarkadurinn",
+        "awards": [
+          "Best Grilled Meat (voted)",
+          "Top 20 Restaurants in Iceland"
+        ],
+        "meat_sourcing": "Local Icelandic farms",
+        "alcohol_license": true,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Nearby parking available"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 150,
+        "bar_seats": 12,
+        "table_count": 25,
+        "wheelchair_accessible": true,
+        "restroom_count": 2,
+        "has_private_room": false,
+        "ambiance": "Modern, casual, lively, open kitchen"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.6,
+        "total_reviews": 2847,
+        "pros": [
+          "羊肉和牛肉质量一流",
+          "烹饪完美",
+          "开放厨房很有趣",
+          "现代舒适的环境",
+          "价格合理"
+        ],
+        "cons": [
+          "高峰时段需等位",
+          "有点喧闹",
+          "肉类爱好者专属（素食选项少）"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "meat_lovers, mid_budget, casual",
+        "avoid_if": "vegetarian, prefer_quiet",
+        "route_context": "Downtown Reykjavik center",
+        "travel_type": "casual, food_explorer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1005,
+      "uuid": "d3b8e5f2-a7c1-4b8d-c9e6-2f5a8c1d7b3e",
+      "nameCN": "Café Loki咖啡馆",
+      "nameEN": "Café Loki",
+      "category": "CASUAL",
+      "subcategory": "TRADITIONAL_ICELANDIC_CAFE",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9466, 64.1486]
+      },
+      "address": "雷克雅未克, Lokastígur 28, 101 Reykjavík",
+      "phoneNumber": "+354 511 5900",
+      "website": "https://www.cafeloki.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJl...",
+      "michelin_stars": 0,
+      "rating": 4.4,
+      "review_count": 3521,
+      "price_level": "$",
+      "description": "Café Loki是体验传统冰岛美食的最佳地点，专门提供冰岛传统小吃：酸面包、冰岛热狗、羊肝砂粒等。价格便宜，氛围古朴，是了解冰岛食文化的窗口。",
+      "description_en": "Café Loki is the best place to experience traditional Icelandic food, specializing in traditional Icelandic snacks: sour bread, Icelandic hot dog, lamb liver sausage, etc. Cheap prices, rustic atmosphere, a window to understand Icelandic food culture.",
+      "cuisine_types": ["ICELANDIC_TRADITIONAL", "CASUAL"],
+      "meal_types": ["BREAKFAST", "LUNCH", "COFFEE"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 1500,
+        "description": "人均 ISK 1,500 (~$12-15 USD)"
+      },
+      "operating_hours": {
+        "monday": "10:00-17:00",
+        "tuesday": "10:00-17:00",
+        "wednesday": "10:00-17:00",
+        "thursday": "10:00-17:00",
+        "friday": "10:00-17:00",
+        "saturday": "10:00-17:00",
+        "sunday": "10:00-17:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "传统冰岛食物体验",
+        "价格非常便宜",
+        "必尝冰岛热狗和酸面包",
+        "靠近哈尔格林姆斯大教堂",
+        "游客必去打卡地"
+      ],
+      "specialties": [
+        "Plokkfiskur（鱼肉浓汤）",
+        "Icelandic hot dog（冰岛热狗）",
+        "Sour bread（酸面包）",
+        "Lamb liver sausage（羊肝砂粒）",
+        "Traditional coffee（传统咖啡）"
+      ],
+      "dietary_options": ["VEGETARIAN", "VEGAN"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Coffee bar",
+        "Simple seating",
+        "Tourist-friendly",
+        "Payment card only"
+      ],
+      "metadata": {
+        "established_year": 2003,
+        "speciality": "Traditional Icelandic food",
+        "instagram": "@cafeloki.is",
+        "payment": "Card payment only (no cash)",
+        "highlights_landmark": "Near Hallgrímskirkja church",
+        "alcohol_license": false,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Street parking nearby"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 45,
+        "bar_seats": 0,
+        "table_count": 8,
+        "wheelchair_accessible": false,
+        "restroom_count": 1,
+        "has_private_room": false,
+        "ambiance": "Cozy, rustic, casual, small"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.4,
+        "total_reviews": 3521,
+        "pros": [
+          "传统冰岛食物真道地",
+          "价格超便宜",
+          "靠近著名教堂（打卡点）",
+          "短时间内快速用餐",
+          "体验冰岛文化"
+        ],
+        "cons": [
+          "非常小和拥挤",
+          "不接受现金（仅刷卡）",
+          "排队可能需要等待",
+          "只做午餐（10-17点）"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "budget_travelers, cultural_experience, quick_lunch",
+        "avoid_if": "prefer_spacious, need_dinner, cash_only",
+        "route_context": "Near Hallgrímskirkja, city center",
+        "travel_type": "budget_backpacker, cultural_explorer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1006,
+      "uuid": "e2c9f6a4-b8d1-4e7a-d0f3-8a5c2b1d7f9e",
+      "nameCN": "Bæjarins Beztu热狗摊",
+      "nameEN": "Bæjarins Beztu Hot Dog Stand",
+      "category": "BUDGET",
+      "subcategory": "STREET_FOOD",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9456, 64.1476]
+      },
+      "address": "雷克雅未克, Tryggvagata, Old Harbor",
+      "phoneNumber": "+354 511 1566",
+      "website": "https://www.bbeztu.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJt...",
+      "michelin_stars": 0,
+      "rating": 4.5,
+      "review_count": 4521,
+      "price_level": "$",
+      "description": "冰岛最著名的热狗摊，自1937年开业至今。有四种热狗选择：plain（普通）、with everything（全配）、special（特殊）、和lamb（羊肉热狗）。克林顿访问冰岛时曾在此用餐，是传说级别的地点。",
+      "description_en": "Iceland's most famous hot dog stand, operating since 1937. Four hot dog options: plain, with everything, special, and lamb hot dog. Clinton ate here during his visit to Iceland. It's a legendary location.",
+      "cuisine_types": ["ICELANDIC_FAST_FOOD", "STREET_FOOD"],
+      "meal_types": ["LUNCH", "DINNER", "SNACK"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 1200,
+        "description": "人均 ISK 1,200 (~$9-10 USD)"
+      },
+      "operating_hours": {
+        "monday": "10:00-24:00",
+        "tuesday": "10:00-24:00",
+        "wednesday": "10:00-24:00",
+        "thursday": "10:00-24:00",
+        "friday": "10:00-01:00",
+        "saturday": "10:00-01:00",
+        "sunday": "12:00-24:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "冰岛最著名热狗摊",
+        "自1937年经营至今",
+        "克林顿曾来用餐",
+        "极低价格",
+        "必吃体验"
+      ],
+      "specialties": [
+        "Plain hot dog（普通热狗）",
+        "Hot dog with everything（全配热狗）",
+        "Special hot dog（特殊热狗 - 含炒洋葱）",
+        "Lamb hot dog（羊肉热狗）"
+      ],
+      "dietary_options": ["VEGETARIAN_ON_REQUEST"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Outdoor counter only",
+        "Standing room",
+        "No seating"
+      ],
+      "metadata": {
+        "established_year": 1937,
+        "famous_visitors": "Bill Clinton",
+        "instagram": "@bajarinsb",
+        "location_highlight": "Old Harbor (Höfði), main tourist area",
+        "alcohol_license": false,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Old Harbor parking"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 0,
+        "counter_standing": true,
+        "table_count": 0,
+        "wheelchair_accessible": true,
+        "restroom_count": 0,
+        "has_private_room": false,
+        "ambiance": "Casual, outdoor counter, busy, legendary"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.5,
+        "total_reviews": 4521,
+        "pros": [
+          "冰岛传奇美食",
+          "价格超便宜",
+          "老摊位，有历史感",
+          "游客必打卡",
+          "快速服务"
+        ],
+        "cons": [
+          "只有露天柜台（不适合恶劣天气）",
+          "高峰时段排队长",
+          "没有座位（站着吃）",
+          "旺季质量可能下降（太多游客）"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "budget_travelers, quick_snack, tourist_experience",
+        "avoid_if": "prefer_sit_down, dislike_crowds, bad_weather",
+        "route_context": "Old Harbor, main tourist area",
+        "travel_type": "budget, tourist, casual"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1007,
+      "uuid": "f7d4a2c8-e5b9-4c6f-a1e3-7d8b5f2c9a0d",
+      "nameCN": "Sumac餐厅",
+      "nameEN": "Sumac Restaurant",
+      "category": "ICELANDIC_CUISINE",
+      "subcategory": "MIDDLE_EASTERN_FUSION",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9416, 64.1476]
+      },
+      "address": "雷克雅未克, Grandagarður 23, Reykjavík",
+      "phoneNumber": "+354 588 1100",
+      "website": "https://www.sumac.is",
+      "cityId": 1,
+      "cityName": "Reykjavik",
+      "googlePlaceId": "ChIJs...",
+      "michelin_stars": 0,
+      "rating": 4.7,
+      "review_count": 2124,
+      "price_level": "$$",
+      "description": "Sumac融合冰岛本地食材和中东烹饪风格，创意独特。店主对食材有深入理解，菜肴既健康又美味。温暖的氛围和友好的服务使其成为当地人和游客都喜爱的地点。",
+      "description_en": "Sumac blends Icelandic local ingredients with Middle Eastern cooking style, uniquely creative. Owners have deep understanding of ingredients, dishes are both healthy and delicious. Warm atmosphere and friendly service make it popular with locals and tourists.",
+      "cuisine_types": ["FUSION", "MIDDLE_EASTERN", "HEALTHY"],
+      "meal_types": ["LUNCH", "DINNER"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 4500,
+        "description": "人均 ISK 4,500 (~$35-40 USD) - 不含酒水"
+      },
+      "operating_hours": {
+        "monday": "CLOSED",
+        "tuesday": "11:30-22:00",
+        "wednesday": "11:30-22:00",
+        "thursday": "11:30-22:00",
+        "friday": "11:30-23:00",
+        "saturday": "12:00-23:00",
+        "sunday": "12:00-22:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "创意融合菜肴",
+        "冰岛食材+中东风味",
+        "健康美味",
+        "温暖友好的氛围",
+        "当地人推荐"
+      ],
+      "specialties": [
+        "Lamb hummus with Icelandic lamb（冰岛羊肉鹰嘴豆泥）",
+        "Grilled fish with sumac（撒玛克烤鱼）",
+        "Vegetable skewers（蔬菜串）",
+        "Falafel（炸豆球）",
+        "Homemade flatbread（自制面饼）"
+      ],
+      "dietary_options": ["VEGETARIAN", "VEGAN", "GLUTEN_FREE"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Full bar",
+        "Casual dining",
+        "Warm decor",
+        "Local artwork"
+      ],
+      "metadata": {
+        "established_year": 2015,
+        "concept": "Icelandic-Middle Eastern fusion",
+        "instagram": "@sumacreykjavik",
+        "awards": [
+          "Best Fusion Restaurant",
+          "Local favorite"
+        ],
+        "alcohol_license": true,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Street parking nearby"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 70,
+        "bar_seats": 8,
+        "table_count": 12,
+        "wheelchair_accessible": true,
+        "restroom_count": 2,
+        "has_private_room": false,
+        "ambiance": "Warm, casual, colorful, welcoming"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.7,
+        "total_reviews": 2124,
+        "pros": [
+          "创意菜肴令人印象深刻",
+          "冰岛食材+中东风味完美融合",
+          "健康美味",
+          "服务员友好热情",
+          "价格合理"
+        ],
+        "cons": [
+          "店面较小",
+          "高峰时段可能等位",
+          "菜单选择不如大餐厅多"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "creative_eaters, healthy_food_lovers, mid_budget",
+        "avoid_if": "prefer_traditional, large_restaurant_feel",
+        "route_context": "West harbor area, near Reykjavik",
+        "travel_type": "foodie, casual, adventurous"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 1008,
+      "uuid": "b1e6c3f9-a4d7-4b2e-c8f1-9d5a3e7b2c0f",
+      "nameCN": "Svarta Kötturinn咖啡馆（阿克雷里）",
+      "nameEN": "Svarta Kötturinn Café (Akureyri)",
+      "category": "CASUAL",
+      "subcategory": "TRADITIONAL_ICELANDIC_CAFE",
+      "location": {
+        "type": "Point",
+        "coordinates": [-18.0894, 65.6839]
+      },
+      "address": "阿克雷里, Brekkugata 12, Akureyri",
+      "phoneNumber": "+354 461 2200",
+      "website": "https://www.svartakotturinn.is",
+      "cityId": 2,
+      "cityName": "Akureyri",
+      "googlePlaceId": "ChIJo...",
+      "michelin_stars": 0,
+      "rating": 4.6,
+      "review_count": 1845,
+      "price_level": "$",
+      "description": "Svarta Kötturinn（黑猫）是北冰岛阿克雷里最受欢迎的咖啡馆。供应传统冰岛食物、新鲜面包、美味蛋糕和咖啡。装修古朴，氛围温暖，是北线旅途中必停歇点。",
+      "description_en": "Svarta Kötturinn (Black Cat) is the most popular café in Akureyri, North Iceland. Serves traditional Icelandic food, fresh bread, delicious cakes and coffee. Simple decoration, warm atmosphere, a must-stop on the north route.",
+      "cuisine_types": ["ICELANDIC_TRADITIONAL", "CAFE"],
+      "meal_types": ["BREAKFAST", "LUNCH", "COFFEE"],
+      "avg_price": {
+        "currency": "ISK",
+        "value": 2000,
+        "description": "人均 ISK 2,000 (~$15-18 USD)"
+      },
+      "operating_hours": {
+        "monday": "09:00-18:00",
+        "tuesday": "09:00-18:00",
+        "wednesday": "09:00-18:00",
+        "thursday": "09:00-18:00",
+        "friday": "09:00-18:00",
+        "saturday": "10:00-18:00",
+        "sunday": "10:00-18:00"
+      },
+      "reservation_required": false,
+      "walk_in_friendly": true,
+      "highlights": [
+        "北冰岛必停点",
+        "传统冰岛食物",
+        "新鲜面包和蛋糕",
+        "温暖舒适",
+        "当地人聚集地"
+      ],
+      "specialties": [
+        "Traditional Icelandic soup（传统冰岛汤）",
+        "Fresh bread（新鲜面包）",
+        "Cakes and pastries（蛋糕和糕点）",
+        "Coffee（咖啡）",
+        "Icelandic pancakes（冰岛煎饼）"
+      ],
+      "dietary_options": ["VEGETARIAN"],
+      "languages_spoken": ["ICELANDIC", "ENGLISH"],
+      "amenities": [
+        "Cozy seating",
+        "Coffee bar",
+        "Bakery items",
+        "Casual atmosphere"
+      ],
+      "metadata": {
+        "established_year": 2007,
+        "location_region": "North Iceland (Akureyri)",
+        "instagram": "@svartakotturinn",
+        "concept": "Local café and bakery",
+        "alcohol_license": false,
+        "kid_friendly": true,
+        "outdoor_seating": false,
+        "parking": "Street parking nearby"
+      },
+      "physicalMetadata": {
+        "seating_capacity": 60,
+        "bar_seats": 5,
+        "table_count": 10,
+        "wheelchair_accessible": true,
+        "restroom_count": 1,
+        "has_private_room": false,
+        "ambiance": "Cozy, casual, friendly, bakery smell"
+      },
+      "user_reviews_summary": {
+        "avg_rating": 4.6,
+        "total_reviews": 1845,
+        "pros": [
+          "北线完美停歇点",
+          "面包和蛋糕新鲜好吃",
+          "当地人集聚地",
+          "氛围温暖友好",
+          "价格合理"
+        ],
+        "cons": [
+          "高峰时段可能拥挤",
+          "只营业到18点",
+          "夏季游客众多"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "north_route_travelers, coffee_lovers, casual",
+        "avoid_if": "need_dinner, prefer_fine_dining",
+        "route_context": "Akureyri city center, north ring road",
+        "travel_type": "casual, road_trip, cultural_explorer"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    }
+  ]
+}

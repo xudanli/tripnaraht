@@ -183,14 +183,14 @@ model ItineraryItem {
   paidBy        String? // 支付人ID
 
   // ========== 交通信息字段 ==========
-  travelFromPreviousDuration Int?    // 从上一地点的时间（分钟）
-  travelFromPreviousDistance Int?    // 从上一地点的距离（米）
+  travelFromPreviousDuration Int? // 从上一地点的时间（分钟）
+  travelFromPreviousDistance Int? // 从上一地点的距离（米）
   travelMode                 String? // 交通方式: DRIVING, WALKING, TRANSIT, FLIGHT, TRAIN, FERRY, BICYCLE, TAXI
 
   // ========== 预订信息字段 ==========
-  bookingStatus       String?   // 预订状态: BOOKED, NEED_BOOKING, NO_BOOKING
-  bookingConfirmation String?   // 预订确认号
-  bookingUrl          String?   // 预订链接
+  bookingStatus       String? // 预订状态: BOOKED, NEED_BOOKING, NO_BOOKING
+  bookingConfirmation String? // 预订确认号
+  bookingUrl          String? // 预订链接
   bookedAt            DateTime? // 预订时间
 
   Place       Place?       @relation(fields: [placeId], references: [id])
@@ -376,6 +376,9 @@ model ReadinessPack {
   createdAt      DateTime @default(now())
   updatedAt      DateTime
 
+  // 关联的用户决策记录
+  TripReadinessDecision TripReadinessDecision[]
+
   @@index([countryCode])
   @@index([countryCode, isActive])
   @@index([destinationId])
@@ -383,6 +386,46 @@ model ReadinessPack {
   @@index([packId])
   @@index([displayNameCN])
   @@index([displayNameEN])
+}
+
+// 用户准备度决策记录表
+model TripReadinessDecision {
+  id     String  @id @default(uuid()) @db.Uuid
+  tripId String  @map("trip_id")
+  ruleId String  @map("rule_id")
+  packId String? @map("pack_id") // 关联的 Pack ID（可选，用于快速查找）
+  userId String? @map("user_id") @db.Uuid // 用户 ID（可选，用于多用户场景）
+
+  // 用户回答
+  answers Json // 用户回答的原始数据 { questionId: answer }
+
+  // 决策结果
+  decisionResult  Json    @map("decision_result") // UserDecisionService.processUserDecision 的完整结果
+  matchedBranchId String? @map("matched_branch_id") // 匹配的分支 ID（如果有）
+  blockTrip       Boolean @default(false) @map("block_trip") // 是否阻止行程
+  updatedAction   Json?   @map("updated_action") // 更新后的 Action（如果有）
+
+  // 元数据
+  category String? // 规则类别（safety_hazards, gear_packing 等）
+  severity String? // 规则严重程度
+  level    String? // 规则级别（blocker, must, should, optional）
+
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联的 Trip（可选，如果 Trip 表存在）
+  // Trip             Trip?    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  readinessPack   ReadinessPack? @relation(fields: [readinessPackId], references: [id])
+  readinessPackId String?
+
+  @@unique([tripId, ruleId]) // 唯一约束：一个行程的同一个规则只能有一个决策记录
+  @@index([tripId])
+  @@index([ruleId])
+  @@index([packId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("trip_readiness_decision")
 }
 
 model ReservationTask {
@@ -530,27 +573,27 @@ model TrailWaypoint {
 }
 
 model Trip {
-  id                  String                @id
-  destination         String
-  startDate           DateTime
-  endDate             DateTime
-  status              String?               @default("PLANNING") // PLANNING, IN_PROGRESS, COMPLETED, CANCELLED
-  budgetConfig        Json?
-  pacingConfig        Json?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime
-  metadata            Json?
-  RailPassProfile     RailPassProfile?
-  TripCollaborator    TripCollaborator[]
-  TripCollection      TripCollection[]
-  TripDay             TripDay[]
-  TripLike            TripLike[]
-  TripShare           TripShare[]
-  TripChecklistStatus      TripChecklistStatus[]
-  TripFindingMark          TripFindingMark[]
-  TripCapabilityPackItem   TripCapabilityPackItem[]
-  TripPackingListItem      TripPackingListItem[]
-  PlanningPlan        PlanningPlan[]
+  id                     String                   @id
+  destination            String
+  startDate              DateTime
+  endDate                DateTime
+  status                 String?                  @default("PLANNING") // PLANNING, IN_PROGRESS, COMPLETED, CANCELLED
+  budgetConfig           Json?
+  pacingConfig           Json?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime
+  metadata               Json?
+  RailPassProfile        RailPassProfile?
+  TripCollaborator       TripCollaborator[]
+  TripCollection         TripCollection[]
+  TripDay                TripDay[]
+  TripLike               TripLike[]
+  TripShare              TripShare[]
+  TripChecklistStatus    TripChecklistStatus[]
+  TripFindingMark        TripFindingMark[]
+  TripCapabilityPackItem TripCapabilityPackItem[]
+  TripPackingListItem    TripPackingListItem[]
+  PlanningPlan           PlanningPlan[]
 
   @@index([status])
 }
@@ -1251,25 +1294,10 @@ model QueryHistory {
   @@map("query_history")
 }
 
-// ===== 文档索引表（已废弃，保留用于兼容性，新数据使用 Chunk 表）=====
-model DocumentIndex {
-  id          String                 @id @default(uuid()) @db.Uuid
-  collection  String                 @db.VarChar(50) // 'rail_pass_rules' | 'travel_guides' | 'local_insights'
-  title       String                 @db.VarChar(255)
-  content     String                 @db.Text
-  embedding   Unsupported("vector")? // pgvector embedding
-  source      String?                @db.VarChar(255) // 来源 URL 或文件名
-  countryCode String?                @map("country_code") @db.VarChar(2)
-  tags        String[] // 标签，如 ['eurail', 'iceland', 'f-road']
-  metadata    Json? // 额外元数据
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @default(now()) @updatedAt @map("updated_at")
-
-  @@index([collection])
-  @@index([countryCode])
-  @@index([tags])
-  @@map("document_index")
-}
+// ===== 文档索引表（已删除，新系统使用 Chunk 表）=====
+// DocumentIndex模型已删除，表已删除
+// 新系统使用 KnowledgeFile + Chunks 表
+// 推荐使用 ChunkRetrievalService 进行检索
 
 // 合规证据表（从 RAG 提取的结构化规则）
 model ComplianceEvidence {
@@ -1651,4 +1679,139 @@ model RagKnowledgeGap {
   @@index([category], name: "idx_rag_knowledge_gaps_category")
   @@index([timestamp(sort: Desc)], name: "idx_rag_knowledge_gaps_timestamp")
   @@map("rag_knowledge_gaps")
+}
+
+// ========== Decision Draft Models ==========
+// Decision-First Agent 引擎的数据库模型
+
+model DecisionDraft {
+  id                String   @id @default(uuid()) @db.Uuid
+  draftId           String   @unique @map("draft_id") @db.VarChar(255)
+  workflowId        String   @unique @map("workflow_id") @db.VarChar(255)
+  version           String   @default("v1.0") @db.VarChar(50)
+  
+  // Step Draft 关联（JSON 存储）
+  stepDraftId       String?  @map("step_draft_id") @db.VarChar(255)
+  stepDraftData     Json?    @map("step_draft_data")
+  
+  // 执行结果（可选）
+  executionResultId String?  @map("execution_result_id") @db.VarChar(255)
+  executionResultData Json?  @map("execution_result_data")
+  
+  // 用户模式
+  userMode          String   @default("toc") @map("user_mode") @db.VarChar(20) // 'toc' | 'expert' | 'studio'
+  
+  // Studio 模式特有字段（调试信息）
+  debugInfo         Json?    @map("debug_info") // DecisionDebugInfo
+  
+  // 元数据
+  decisionCount     Int      @default(0) @map("decision_count")
+  stepCount         Int      @default(0) @map("step_count")
+  createdBy        String   @default("system") @map("created_by") @db.VarChar(255)
+  
+  // 时间戳
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // 关联
+  decisionSteps    DecisionStep[]
+  
+  @@index([workflowId])
+  @@index([draftId])
+  @@index([createdAt(sort: Desc)])
+  @@map("decision_drafts")
+}
+
+model DecisionStep {
+  id                String   @id @default(uuid()) @db.Uuid
+  decisionDraftId   String   @map("decision_draft_id") @db.Uuid
+  
+  // 基本信息
+  stepId            String   @map("step_id") @db.VarChar(255)
+  title             String   @db.VarChar(500)
+  description       String?  @db.Text
+  decisionType      String   @map("decision_type") @db.VarChar(50) // 'transport-decision' | 'pace-decision' | ...
+  status            String   @default("pending") @db.VarChar(20) // 'pending' | 'approved' | 'rejected' | 'modified'
+  confidence        Float    @default(0.7)
+  
+  // 输入输出（JSON 存储）
+  inputs            Json     @default("[]")
+  outputs           Json     @default("[]")
+  
+  // 证据（JSON 存储）
+  evidence          Json     @default("[]")
+  
+  // 决策日志（JSON 存储）
+  decisionLog       Json     @default("[]") @map("decision_log")
+  
+  // Step Draft 关联
+  stepDraftIds      String[] @default([]) @map("step_draft_ids")
+  
+  // 三人格评审（JSON 存储）
+  guardianReview    Json?    @map("guardian_review")
+  
+  // 用户反馈（JSON 存储）
+  userFeedback      Json?    @map("user_feedback")
+  
+  // 时间戳
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // 关联
+  decisionDraft     DecisionDraft @relation(fields: [decisionDraftId], references: [id], onDelete: Cascade)
+  
+  @@unique([decisionDraftId, stepId])
+  @@index([decisionDraftId])
+  @@index([stepId])
+  @@index([status])
+  @@index([decisionType])
+  @@map("decision_steps")
+}
+
+model DecisionDraftVersion {
+  id                  String   @id @default(uuid()) @db.Uuid
+  versionId           String   @unique @map("version_id") @db.VarChar(255)
+  workflowId          String   @map("workflow_id") @db.VarChar(255)
+  version             String   @db.VarChar(50) // 'v1.0', 'v1.1', ...
+  
+  // Decision Draft 数据（JSON 存储）
+  decisionDraftData   Json     @map("decision_draft_data")
+  
+  // Step Draft 数据（JSON 存储）
+  stepDraftData       Json     @map("step_draft_data")
+  
+  // 执行结果（可选，JSON 存储）
+  executionResultData Json?    @map("execution_result_data")
+  
+  // 版本差异（JSON 存储）
+  diffData            Json?    @map("diff_data")
+  
+  // 元数据
+  createdBy           String   @default("system") @map("created_by") @db.VarChar(255)
+  description         String?  @db.Text
+  
+  // 时间戳
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@index([workflowId])
+  @@index([workflowId, version])
+  @@index([createdAt(sort: Desc)])
+  @@map("decision_draft_versions")
+}
+
+model DestinationClarificationConfig {
+  id                String   @id @default(uuid()) @db.Uuid
+  destinationCode   String   @unique @map("destination_code") @db.VarChar(2)
+  destinationName   String   @map("destination_name") @db.VarChar(255)
+  enabled           Boolean  @default(false)
+  config            Json     // 完整的 DestinationClarificationConfig JSON
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdBy         String?  @map("created_by") @db.VarChar(255)
+  updatedBy         String?  @map("updated_by") @db.VarChar(255)
+  
+  @@index([destinationCode])
+  @@index([enabled])
+  @@map("destination_clarification_configs")
 }

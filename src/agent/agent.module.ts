@@ -1,5 +1,5 @@
 // src/agent/agent.module.ts
-import { Module, Optional } from '@nestjs/common';
+import { Module, Optional, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import { AgentService } from './services/agent.service';
 import { RouterService } from './services/router.service';
@@ -81,6 +81,7 @@ import { RouteDirectionsModule } from '../route-directions/route-directions.modu
 import { DataModelingModule } from '../data-modeling/data-modeling.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TrainingModule } from './training/training.module';
+import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 
 /**
  * Agent Module
@@ -90,8 +91,8 @@ import { TrainingModule } from './training/training.module';
 @Module({
   imports: [
     LlmModule,
-    PlacesModule,
-    TripsModule,
+    forwardRef(() => PlacesModule), // 使用 forwardRef 避免循环依赖（PlacesModule <-> RagModule -> SkillsModule -> AgentModule）
+    forwardRef(() => TripsModule), // 使用 forwardRef 避免循环依赖（TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule）
     ItineraryItemsModule,
     ItineraryOptimizationModule,
     TransportModule,
@@ -100,15 +101,16 @@ import { TrainingModule } from './training/training.module';
     ReadinessModule,
     DecisionModule,
     MemoryModule,
-    RagModule, // RAG 模块（用于增强对话）
+    forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
-    SkillsModule, // Skills 模块（用于 Claude 编排）
+    forwardRef(() => SkillsModule), // Skills 模块（用于 Claude 编排），使用 forwardRef 避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule -> AgentModule）
     AssistantsModule, // 智能体助手模块（规划助手、行程助手）
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
     TrainingModule, // Iterative Deployment 训练模块
+    forwardRef(() => DecisionDraftModule), // 使用 forwardRef 避免循环依赖
   ],
   controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
   providers: [

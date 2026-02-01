@@ -325,7 +325,7 @@ export class EnhancedRiskAssessmentService {
     route: RouteDirectionData,
     context?: { travelerCount?: number },
   ): CostRiskFactors['hiddenCosts'] {
-    const items: CostRiskFactors['hiddenCosts']['items'] = [];
+    const items: NonNullable<CostRiskFactors['hiddenCosts']>['items'] = [];
     const travelerCount = context?.travelerCount || 1;
 
     // 停车费
@@ -361,7 +361,7 @@ export class EnhancedRiskAssessmentService {
     }
 
     const totalEstimated = items.reduce(
-      (sum, item) => sum + item.estimatedCost * item.probability,
+      (sum: number, item: { estimatedCost: number; probability: number }) => sum + item.estimatedCost * item.probability,
       0,
     );
 
@@ -616,7 +616,7 @@ export class EnhancedRiskAssessmentService {
     route: RouteDirectionData,
     context?: { travelerPreferences?: string[] },
   ): ExperienceRiskFactors['expectationGap'] {
-    const potentialGaps: ExperienceRiskFactors['expectationGap']['potentialGaps'] = [];
+    const potentialGaps: NonNullable<ExperienceRiskFactors['expectationGap']>['potentialGaps'] = [];
     const probability = 0.2; // 基础概率
 
     // 检查路线描述与实际可能存在的偏差

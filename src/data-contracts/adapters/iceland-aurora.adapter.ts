@@ -79,7 +79,7 @@ export class IcelandAuroraAdapter extends BaseAdapter {
     return this.safeRequest(
       async () => {
         // 使用 OpenWeather API 获取云层覆盖
-        const apiKey = this.configService.get<string>('OPENWEATHER_API_KEY');
+        const apiKey = this.configService?.get<string>('OPENWEATHER_API_KEY');
         if (!apiKey) {
           this.logger.warn('OPENWEATHER_API_KEY 未配置，无法获取云层覆盖');
           return 50; // 默认值

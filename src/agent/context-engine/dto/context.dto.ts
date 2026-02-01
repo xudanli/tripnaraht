@@ -22,15 +22,15 @@ export class BuildContextPackageDto {
 
   @ApiProperty({ description: '规划阶段', example: 'planning' })
   @IsString()
-  phase: string;
+  phase!: string;
 
   @ApiProperty({ description: '当前 Agent', example: 'PLANNER' })
   @IsString()
-  agent: string;
+  agent!: string;
 
   @ApiProperty({ description: '用户请求', example: '帮我规划冰岛7天行程' })
   @IsString()
-  userQuery: string;
+  userQuery!: string;
 
   @ApiPropertyOptional({ description: 'Token 预算（默认 3600）', default: 3600 })
   @IsOptional()
@@ -83,7 +83,7 @@ export class BuildContextPackageDto {
  */
 export class BuildContextPackageResponseDto {
   @ApiProperty({ description: 'Context Package' })
-  contextPackage: ContextPackage;
+  contextPackage!: ContextPackage;
 }
 
 /**
@@ -92,13 +92,13 @@ export class BuildContextPackageResponseDto {
 export class CompressContextDto {
   @ApiProperty({ description: '需要压缩的块列表', type: [Object] })
   @IsArray()
-  blocks: ContextBlock[];
+  blocks!: ContextBlock[];
 
   @ApiProperty({ description: 'Token 预算' })
   @IsNumber()
   @Min(100)
   @Max(100000)
-  tokenBudget: number;
+  tokenBudget!: number;
 
   @ApiPropertyOptional({ 
     description: '压缩策略', 
@@ -121,10 +121,10 @@ export class CompressContextDto {
  */
 export class CompressContextResponseDto {
   @ApiProperty({ description: '压缩后的块列表', type: [Object] })
-  compressedBlocks: ContextBlock[];
+  compressedBlocks!: ContextBlock[];
 
   @ApiProperty({ description: '压缩统计' })
-  stats: {
+  stats!: {
     originalBlocks: number;
     compressedBlocks: number;
     originalTokens: number;
@@ -174,7 +174,7 @@ export class ProjectStateDto {
  */
 export class ProjectStateResponseDto {
   @ApiProperty({ description: '状态投影结果' })
-  projection: StateProjection;
+  projection!: StateProjection;
 }
 
 /**
@@ -183,16 +183,16 @@ export class ProjectStateResponseDto {
 export class WriteBackDto {
   @ApiProperty({ description: 'Trip Run ID' })
   @IsString()
-  tripRunId: string;
+  tripRunId!: string;
 
   @ApiProperty({ description: '尝试次数' })
   @IsNumber()
   @Min(1)
-  attemptNumber: number;
+  attemptNumber!: number;
 
   @ApiProperty({ description: 'Scratchpad 内容' })
   @IsObject()
-  scratchpad: {
+  scratchpad!: {
     planOutline?: string;
     openQuestions?: string[];
     constraintsAssumed?: string[];
@@ -253,7 +253,7 @@ export class GetMetricsQueryDto {
  */
 export class GetMetricsResponseDto {
   @ApiProperty({ description: '指标摘要' })
-  summary: ContextMetricsSummary;
+  summary!: ContextMetricsSummary;
 
   @ApiPropertyOptional({ description: '最近的指标记录（如果请求了 limit）', type: [Object] })
   recent?: ContextMetricsRecord[];

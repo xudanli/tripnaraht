@@ -30,6 +30,7 @@ import { PersonaShellService, PersonaShellOutput } from './persona-shell.service
 import { PrismaService } from '../../prisma/prisma.service';
 import { StateStoreService } from '../infra/state-store.service';
 import { TripRunManagerService } from './trip-run-manager.service';
+import { DecisionDraftStorageService } from '../../decision-draft/storage/decision-draft-storage.service';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -94,6 +95,7 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly stateStore?: StateStoreService,
     @Optional() private readonly tripRunManager?: TripRunManagerService,
+    @Optional() private readonly decisionDraftStorage?: DecisionDraftStorageService,
   ) {}
 
   /**
@@ -805,6 +807,11 @@ export class PlanningWorkbenchAgentService {
       summary?: string;
     }>;
     workbenchStatus: 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED';
+    decisionProcess?: {
+      draftId: string;
+      decisionSteps: any[]; // DecisionStep[]
+      userMode: 'toc' | 'expert' | 'studio';
+    };
   }> {
     this.logger.debug(`获取行程工作台数据: tripId=${tripId}`);
 
@@ -877,11 +884,38 @@ export class PlanningWorkbenchAgentService {
     // 4. 确定工作台状态
     const workbenchStatus = currentPlan?.status || metadata.workbenchStatus || 'DRAFT';
 
+    // 5. 加载决策过程（如果存在决策草案）
+    let decisionProcess: {
+      draftId: string;
+      decisionSteps: any[];
+      userMode: 'toc' | 'expert' | 'studio';
+    } | undefined = undefined;
+
+    if (this.decisionDraftStorage) {
+      try {
+        const decisionDraft = await this.decisionDraftStorage.loadDecisionDraftByTripId(tripId);
+        if (decisionDraft) {
+          decisionProcess = {
+            draftId: decisionDraft.draft_id,
+            decisionSteps: decisionDraft.decision_steps || [],
+            userMode: decisionDraft.user_mode || 'toc',
+          };
+          this.logger.debug(`加载决策过程: draftId=${decisionDraft.draft_id}, steps=${decisionDraft.decision_steps?.length || 0}`);
+        } else {
+          this.logger.debug(`行程 ${tripId} 没有关联的决策草案`);
+        }
+      } catch (error: any) {
+        this.logger.warn(`加载决策草案失败: ${error.message}`, error.stack);
+        // 不阻塞主流程，继续返回其他数据
+      }
+    }
+
     return {
       tripId,
       currentPlan: currentPlan || undefined,
       planHistory,
       workbenchStatus: workbenchStatus as any,
+      decisionProcess,
     };
   }
 

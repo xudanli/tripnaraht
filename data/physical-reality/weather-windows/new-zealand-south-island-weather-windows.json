@@ -1,0 +1,1269 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "new-zealand-south-island",
+    "regionName": "新西兰南岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "metservice",
+    "description": "新西兰南岛天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "nz-south-island-fiordland",
+      "regionName": "峡湾地区",
+      "regionNameEN": "Fiordland",
+      "coordinates": {
+        "center": {
+          "lat": -45.0,
+          "lng": 167.0
+        },
+        "bounds": {
+          "north": -44.0,
+          "south": -46.0,
+          "east": 168.0,
+          "west": 166.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，Great Walks开放，但降雨仍多",
+          "temperature": {
+            "avg": 15,
+            "min": 10,
+            "max": 22,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 200,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但降雨更多",
+          "temperature": {
+            "avg": 12,
+            "min": 7,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 250,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 14,
+            "max": 35,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "降雨量大（年均7000mm）",
+            "几乎每天下雨",
+            "天气变化快",
+            "能见度低"
+          ],
+          "typicalDays": {
+            "sunny": 5,
+            "cloudy": 15,
+            "rainy": 10,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端降雪",
+            "雪崩风险高",
+            "道路封闭",
+            "Great Walks关闭"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "snowy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "道路封闭",
+            "Great Walks关闭"
+          ],
+          "recommendation": "不推荐旅行，道路和步道关闭"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "大量降雨",
+            "天气变化快",
+            "河流水位可能上涨"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化和河流水位"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "道路封闭",
+            "Great Walks关闭"
+          ],
+          "recommendation": "不推荐旅行，道路和步道关闭"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "heavy_rain",
+          "severity": "very_high",
+          "description": "强降雨",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "几乎每天",
+          "impact": "年均降雨7000mm，河流水位快速上涨，能见度低",
+          "historicalExample": {
+            "date": "2024-01-15",
+            "description": "2024年1月15日强降雨，Milford Road因洪水封闭"
+          }
+        },
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "冬季和春季常见",
+          "impact": "道路封闭，致命风险",
+          "historicalExample": {
+            "date": "2023-07-20",
+            "description": "2023年7月20日雪崩，Milford Road封闭数周"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "nz-south-island-west-coast",
+      "regionName": "西海岸",
+      "regionNameEN": "West Coast",
+      "coordinates": {
+        "center": {
+          "lat": -42.5,
+          "lng": 171.0
+        },
+        "bounds": {
+          "north": -41.5,
+          "south": -43.5,
+          "east": 172.0,
+          "west": 170.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，但降雨仍多",
+          "temperature": {
+            "avg": 16,
+            "min": 11,
+            "max": 23,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 150,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但降雨更多",
+          "temperature": {
+            "avg": 13,
+            "min": 8,
+            "max": 19,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 180,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "降雨量大（年均5000mm+）",
+            "天气变化快",
+            "西风带影响"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 14,
+            "rainy": 8,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "道路可能封闭"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 17,
+            "snowy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "high",
+          "risks": [
+            "降雪",
+            "强风",
+            "道路可能封闭"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "大量降雨",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 7,
+          "riskLevel": "high",
+          "risks": [
+            "降雪",
+            "强风",
+            "道路可能封闭"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "heavy_rain",
+          "severity": "high",
+          "description": "强降雨",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "常见",
+          "impact": "年均降雨5000mm+，河流水位快速上涨",
+          "historicalExample": {
+            "date": "2024-02-10",
+            "description": "2024年2月10日强降雨，西海岸多条道路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "nz-south-island-queenstown",
+      "regionName": "皇后镇地区",
+      "regionNameEN": "Queenstown Area",
+      "coordinates": {
+        "center": {
+          "lat": -45.0,
+          "lng": 168.7
+        },
+        "bounds": {
+          "north": -44.5,
+          "south": -45.5,
+          "east": 169.2,
+          "west": 168.2
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，适合户外活动",
+          "temperature": {
+            "avg": 18,
+            "min": 12,
+            "max": 25,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 70,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低",
+          "temperature": {
+            "avg": 14,
+            "min": 8,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 85,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "天气变化快"
+          ],
+          "typicalDays": {
+            "sunny": 15,
+            "cloudy": 10,
+            "rainy": 5,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风较频繁",
+            "适合滑雪",
+            "道路可能封闭"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 12,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "medium",
+          "risks": [
+            "降雪",
+            "强风",
+            "道路可能封闭"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，适合户外活动"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "降雪",
+            "强风",
+            "道路可能封闭"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "heavy_rain",
+          "severity": "medium",
+          "description": "强降雨",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "常见",
+          "impact": "天气变化快，可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-01-25",
+            "description": "2024年1月25日强降雨，部分户外活动取消"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "nz-south-island-mt-cook",
+      "regionName": "库克山地区",
+      "regionNameEN": "Mt Cook / Aoraki Region",
+      "coordinates": {
+        "center": {
+          "lat": -43.6,
+          "lng": 170.1
+        },
+        "bounds": {
+          "north": -43.3,
+          "south": -43.9,
+          "east": 170.4,
+          "west": 169.8
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，适合冰川徒步和登山",
+          "temperature": {
+            "avg": 10,
+            "min": 5,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低，可能有降雪",
+          "temperature": {
+            "avg": 6,
+            "min": 1,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 120,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 14,
+            "max": 35,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气变化快",
+            "降雨量适中",
+            "风速较强",
+            "高海拔地区天气变化剧烈"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 5,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端降雪",
+            "强风频繁",
+            "雪崩风险高",
+            "高海拔地区极低温"
+          ],
+          "typicalDays": {
+            "sunny": 6,
+            "cloudy": 15,
+            "snowy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "强风",
+            "极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "强风",
+            "天气变化快",
+            "高海拔地区天气变化剧烈"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化，高海拔地区需谨慎"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "强风",
+            "极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，高海拔地区雪崩风险极高",
+          "historicalExample": {
+            "date": "2023-08-15",
+            "description": "2023年8月15日雪崩，Aoraki/Mt Cook周边多条路线封闭"
+          }
+        },
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "高海拔地区强风频繁，可能影响活动",
+          "historicalExample": {
+            "date": "2024-01-30",
+            "description": "2024年1月30日强风，Aoraki/Mt Cook地区风速达35m/s"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "nz-south-island-otago",
+      "regionName": "奥塔哥地区",
+      "regionNameEN": "Otago Region",
+      "coordinates": {
+        "center": {
+          "lat": -45.0,
+          "lng": 170.0
+        },
+        "bounds": {
+          "north": -44.5,
+          "south": -46.0,
+          "east": 171.0,
+          "west": 168.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，中奥塔哥是新西兰最干燥的地区",
+          "temperature": {
+            "avg": 18,
+            "min": 10,
+            "max": 28,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 30,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低",
+          "temperature": {
+            "avg": 14,
+            "min": 6,
+            "max": 22,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 40,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "中奥塔哥是新西兰最干燥的地区（年降雨<400mm）",
+            "内陆地区夏季温度可超过30°C",
+            "频繁的干燥期（持续超过2周）",
+            "沿海地区日照较少",
+            "天气相对稳定"
+          ],
+          "typicalDays": {
+            "sunny": 20,
+            "cloudy": 8,
+            "rainy": 2,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "温度低于全国平均水平",
+            "频繁的霜冻和降雪",
+            "冬季是最少风的季节",
+            "内陆地区寒冷"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 4,
+            "snowy": 3,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "medium",
+          "risks": [
+            "频繁霜冻",
+            "降雪",
+            "温度较低"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "高温（内陆地区）"
+          ],
+          "recommendation": "最佳旅行时间，中奥塔哥最干燥"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "频繁霜冻",
+            "降雪",
+            "温度较低"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "drought",
+          "severity": "medium",
+          "description": "干旱",
+          "typicalMonths": [12, 1, 2, 3],
+          "frequency": "夏季常见",
+          "impact": "中奥塔哥频繁的干燥期，持续超过2周",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日，中奥塔哥连续干燥期超过3周"
+          }
+        },
+        {
+          "type": "extreme_heat",
+          "severity": "medium",
+          "description": "极端高温",
+          "typicalMonths": [12, 1, 2],
+          "frequency": "夏季偶尔发生",
+          "impact": "内陆地区温度可超过30°C",
+          "historicalExample": {
+            "date": "2024-02-05",
+            "description": "2024年2月5日，中奥塔哥内陆地区温度达32°C"
+          }
+        }
+      ],
+      "notes": "奥塔哥是新西兰气候最多样化的地区，中奥塔哥是新西兰最干燥的地区（年降雨<400mm），夏季内陆温度可超过30°C，冬季频繁霜冻和降雪。12-2月是最佳旅行时间。"
+    },
+    {
+      "regionId": "nz-south-island-marlborough",
+      "regionName": "马尔堡地区",
+      "regionNameEN": "Marlborough Region",
+      "coordinates": {
+        "center": {
+          "lat": -41.5,
+          "lng": 173.5
+        },
+        "bounds": {
+          "north": -41.0,
+          "south": -42.0,
+          "east": 174.0,
+          "west": 173.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，炎热干燥，Blenheim是新西兰最阳光的城镇之一",
+          "temperature": {
+            "avg": 22,
+            "min": 14,
+            "max": 28,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 40,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低",
+          "temperature": {
+            "avg": 17,
+            "min": 9,
+            "max": 23,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 28,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "炎热干燥的夏季",
+            "频繁的夏季干旱",
+            "温暖干燥的西北风",
+            "Blenheim是新西兰最阳光的城镇之一",
+            "大陆性气候（内陆）"
+          ],
+          "typicalDays": {
+            "sunny": 22,
+            "cloudy": 6,
+            "rainy": 2,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "寒冷的冬季",
+            "沿海地区较温和",
+            "主要作物区（东海岸附近）降雪罕见",
+            "天气相对稳定"
+          ],
+          "typicalDays": {
+            "sunny": 15,
+            "cloudy": 10,
+            "rainy": 4,
+            "snowy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雪（主要作物区罕见）",
+            "温度较低"
+          ],
+          "recommendation": "可旅行，沿海地区较温和"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "高温"
+          ],
+          "recommendation": "最佳旅行时间，炎热干燥，阳光充足"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雪（主要作物区罕见）",
+            "温度较低"
+          ],
+          "recommendation": "可旅行，沿海地区较温和"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "drought",
+          "severity": "medium",
+          "description": "干旱",
+          "typicalMonths": [12, 1, 2, 3],
+          "frequency": "夏季常见",
+          "impact": "频繁的夏季干旱，温暖干燥的西北风",
+          "historicalExample": {
+            "date": "2024-01-15",
+            "description": "2024年1月15日，马尔堡地区连续干旱超过4周"
+          }
+        },
+        {
+          "type": "tropical_depression",
+          "severity": "low",
+          "description": "热带低气压",
+          "typicalMonths": [1, 2, 3],
+          "frequency": "相对罕见",
+          "impact": "可能导致强降雨和强风",
+          "historicalExample": {
+            "date": "2023-02-20",
+            "description": "2023年2月20日，热带低气压带来强降雨和强风"
+          }
+        }
+      ],
+      "notes": "马尔堡地区以干燥为特征，频繁的夏季干旱和温暖干燥的西北风。大陆性气候，炎热干燥的夏季和寒冷的冬季（但沿海地区较温和）。Blenheim是新西兰最阳光的城镇之一。主要作物区（东海岸附近）降雪罕见。12-2月是最佳旅行时间。"
+    },
+    {
+      "regionId": "nz-south-island-canterbury",
+      "regionName": "坎特伯雷地区",
+      "regionNameEN": "Canterbury Region",
+      "coordinates": {
+        "center": {
+          "lat": -43.5,
+          "lng": 172.0
+        },
+        "bounds": {
+          "north": -42.5,
+          "south": -44.5,
+          "east": 173.0,
+          "west": 170.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，天气相对稳定",
+          "temperature": {
+            "avg": 17,
+            "min": 10,
+            "max": 24,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低",
+          "temperature": {
+            "avg": 13,
+            "min": 6,
+            "max": 19,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 26,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "内陆地区较干燥",
+            "沿海地区较温和"
+          ],
+          "typicalDays": {
+            "sunny": 18,
+            "cloudy": 9,
+            "rainy": 3,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "温度较低",
+            "频繁的霜冻",
+            "内陆地区降雪",
+            "沿海地区较温和",
+            "强风较常见"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 5,
+            "snowy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "medium",
+          "risks": [
+            "频繁霜冻",
+            "降雪（内陆地区）",
+            "温度较低",
+            "强风"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "强风"
+          ],
+          "recommendation": "最佳旅行时间，天气相对稳定"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "频繁霜冻",
+            "降雪（内陆地区）",
+            "温度较低",
+            "强风"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合滑雪"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "medium",
+          "description": "强风",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "冬季常见",
+          "impact": "强风可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-07-15",
+            "description": "2024年7月15日，坎特伯雷地区强风，风速达25m/s"
+          }
+        },
+        {
+          "type": "frost",
+          "severity": "medium",
+          "description": "霜冻",
+          "typicalMonths": [5, 6, 7, 8, 9],
+          "frequency": "冬季常见",
+          "impact": "频繁的霜冻可能影响道路和户外活动",
+          "historicalExample": {
+            "date": "2024-06-20",
+            "description": "2024年6月20日，坎特伯雷地区严重霜冻"
+          }
+        }
+      ],
+      "notes": "坎特伯雷地区包括基督城（Christchurch）和周边地区。内陆地区较干燥，沿海地区较温和。冬季频繁霜冻和降雪（内陆地区），夏季天气相对稳定。12-2月是最佳旅行时间。"
+    },
+    {
+      "regionId": "nz-south-island-southland",
+      "regionName": "南地地区",
+      "regionNameEN": "Southland Region",
+      "coordinates": {
+        "center": {
+          "lat": -46.0,
+          "lng": 168.0
+        },
+        "bounds": {
+          "north": -45.5,
+          "south": -47.0,
+          "east": 169.0,
+          "west": 167.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，但降雨仍多",
+          "temperature": {
+            "avg": 15,
+            "min": 9,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 28,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但降雨更多，温度较低",
+          "temperature": {
+            "avg": 11,
+            "min": 5,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 120,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 13,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "降雨量较高",
+            "天气变化快",
+            "风速较强",
+            "受南大洋影响",
+            "温度相对温和"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 14,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "温度较低",
+            "天气变化剧烈",
+            "受南大洋影响"
+          ],
+          "typicalDays": {
+            "sunny": 6,
+            "cloudy": 16,
+            "rainy": 6,
+            "snowy": 3,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "high",
+          "risks": [
+            "降雪",
+            "强风频繁",
+            "温度较低",
+            "天气变化剧烈"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "大量降雨",
+            "强风",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 7,
+          "riskLevel": "high",
+          "risks": [
+            "降雪",
+            "强风频繁",
+            "温度较低",
+            "天气变化剧烈"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [5, 6, 7, 8, 9, 10],
+          "frequency": "冬季和春季常见",
+          "impact": "强风频繁，可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-07-10",
+            "description": "2024年7月10日，南地地区强风，风速达30m/s"
+          }
+        },
+        {
+          "type": "heavy_rain",
+          "severity": "high",
+          "description": "强降雨",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "常见",
+          "impact": "降雨量较高，可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日，南地地区强降雨，多条道路封闭"
+          }
+        }
+      ],
+      "notes": "南地地区包括Invercargill和周边地区，是新西兰最南端的地区。受南大洋影响，天气变化快，强风频繁，降雨量较高。冬季降雪量大，强风频繁。12-2月是最佳旅行时间，但需注意天气变化。"
+    }
+  ]
+}

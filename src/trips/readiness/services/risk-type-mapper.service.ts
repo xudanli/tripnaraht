@@ -165,8 +165,12 @@ export class RiskTypeMapperService {
    * 获取风险类型说明
    */
   getTypeDescription(type: string, lang: 'en' | 'zh' = 'zh'): string {
-    const key = lang === 'zh' ? 'description' : 'descriptionEn';
-    return this.TYPE_LABELS[type]?.[key] || this.TYPE_LABELS[type]?.description || '';
+    const riskType = this.TYPE_LABELS[type];
+    if (!riskType) return '';
+    if (lang === 'en') {
+      return riskType.en || riskType.description || '';
+    }
+    return riskType.zh || riskType.description || '';
   }
 
   /**

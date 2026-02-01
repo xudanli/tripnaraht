@@ -436,13 +436,13 @@ export class TripAdjustmentService {
           
           // 更新下一个活动的开始时间
           await this.itineraryItemsService.update(nextItem.id, {
-            startTime: newNextStart.toISO(),
+            startTime: newNextStart.toISO() ?? undefined,
             // 如果结束时间也需要调整，保持活动时长不变
             endTime: nextItem.endTime 
               ? DateTime.fromJSDate(nextItem.endTime)
                   .plus({ minutes: bufferDuration - gapMinutes })
-                  .toISO()
-              : newNextStart.plus({ hours: 2 }).toISO(),
+                  .toISO() ?? undefined
+              : newNextStart.plus({ hours: 2 }).toISO() ?? undefined,
           });
 
           affectedItemIds.push(nextItem.id);

@@ -42,7 +42,7 @@ import {
   emergencyPack,
 } from './packs';
 import { TripContext } from './types/trip-context.types';
-import { ReadinessCheckResult } from './types/readiness-findings.types';
+import { ReadinessCheckResult, ReadinessFindingItem } from './types/readiness-findings.types';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../common/dto/api-response.dto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -86,6 +86,10 @@ import { TripConflictsService } from '../services/trip-conflicts.service';
 import { ConflictType } from '../dto/trip-conflicts.dto';
 import { PackStorageService } from './storage/pack-storage.service';
 import { GetReadinessPacksQueryDto, ReadinessPackListResponseDto, CreateReadinessPackDto, UpdateReadinessPackDto } from './dto/admin-pack.dto';
+import { UserDecisionService } from './services/user-decision.service';
+import { ReadinessToConstraintsCompiler } from './compilers/readiness-to-constraints.compiler';
+import { serializePackForAdmin } from './utils/pack-serializer.util';
+import { deserializePackFromAdmin } from './utils/pack-deserializer.util';
 
 class TravelerDto {
   @IsOptional()
@@ -300,6 +304,8 @@ export class ReadinessController {
     private readonly readinessAIService: ReadinessAIService,
     private readonly featureFlagsService: ReadinessFeatureFlagsService,
     private readonly capabilityPackChecklistService: CapabilityPackChecklistService,
+    private readonly userDecisionService: UserDecisionService,
+    private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
     private readonly coverageMapService: CoverageMapService,
     private readonly riskTypeMapperService: RiskTypeMapperService,
     private readonly moduleRef: ModuleRef,
@@ -1475,6 +1481,8 @@ export class ReadinessController {
             summary: conflict.description, // 添加summary字段
             mitigation: conflict.suggestions?.map((s) => s.description) || [],
             emergencyContacts: [],
+        affectedPois: [],
+        sources: {},
           }));
 
           // 将时间冲突风险添加到风险列表中
@@ -2544,9 +2552,10 @@ export class ReadinessController {
   @Get('admin/packs/:id')
   @ApiOperation({
     summary: '获取准备度Pack详情（管理接口）',
-    description: '根据Pack ID获取完整的Pack数据。需要管理员权限。',
+    description: '根据Pack ID获取完整的Pack数据，包含打包模板和指南。需要管理员权限。',
   })
   @ApiParam({ name: 'id', description: 'Pack ID（packId）', type: String })
+  @ApiQuery({ name: 'includePacking', required: false, type: Boolean, description: '是否包含打包模板和指南，默认 true' })
   @ApiResponse({
     status: 200,
     description: '成功返回Pack详情',
@@ -2557,9 +2566,14 @@ export class ReadinessController {
     description: 'Pack不存在',
     type: ApiErrorResponseDto,
   })
-  async getReadinessPackById(@ParamDecorator('id') packId: string): Promise<any> {
+  async getReadinessPackById(
+    @ParamDecorator('id') packId: string,
+    @Query('includePacking') includePacking?: string,
+  ): Promise<any> {
     try {
-      const pack = await this.packStorageService.loadPack(packId);
+      // 默认包含打包数据，除非明确指定不包含
+      const shouldIncludePacking = includePacking !== 'false';
+      const pack = await this.packStorageService.loadPack(packId, shouldIncludePacking);
       if (!pack) {
         throw new NotFoundException(`Readiness pack not found: ${packId}`);
       }
@@ -2569,12 +2583,17 @@ export class ReadinessController {
         where: { packId },
       });
 
+      // 🆕 序列化 Pack 用于管理界面显示（提供友好的格式）
+      const serializedPack = serializePackForAdmin(pack, 'zh');
+
       return successResponse({
-        ...pack,
+        ...serializedPack,
         id: record?.id,
         isActive: record?.isActive,
         createdAt: record?.createdAt,
         updatedAt: record?.updatedAt,
+        // 🆕 同时提供原始数据供编辑使用
+        _raw: pack, // 原始 Pack 对象（包含完整的 LocalizedString）
       });
     } catch (error) {
       const err = error as Error;
@@ -2605,13 +2624,33 @@ export class ReadinessController {
   })
   async createReadinessPack(@Body() dto: CreateReadinessPackDto): Promise<any> {
     try {
-      const success = await this.packStorageService.savePack(dto.pack);
-      if (!success) {
+      // 🆕 反序列化前端传来的数据（处理 messageRaw、titleRaw 等字段）
+      const deserializedPack = deserializePackFromAdmin(dto.pack);
+      
+      const saveSuccess = await this.packStorageService.savePack(deserializedPack);
+      if (!saveSuccess) {
         return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to save pack');
       }
 
-      const pack = await this.packStorageService.loadPack(dto.pack.packId);
-      return successResponse(pack);
+      const pack = await this.packStorageService.loadPack(deserializedPack.packId);
+      if (!pack) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to load pack after creation');
+      }
+      
+      // 🆕 返回序列化后的数据（包含友好的显示格式）
+      const serializedPack = serializePackForAdmin(pack, 'zh');
+      const record = await this.prisma.readinessPack.findUnique({
+        where: { packId: pack.packId },
+      });
+
+      return successResponse({
+        ...serializedPack,
+        id: record?.id,
+        isActive: record?.isActive,
+        createdAt: record?.createdAt,
+        updatedAt: record?.updatedAt,
+        _raw: pack, // 原始 Pack 对象
+      });
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to create readiness pack: ${err.message}`, err.stack);
@@ -2652,7 +2691,10 @@ export class ReadinessController {
 
       // 如果提供了pack数据，更新pack
       if (dto.pack) {
-        const success = await this.packStorageService.savePack(dto.pack);
+        // 🆕 反序列化前端传来的数据（处理 messageRaw、titleRaw 等字段）
+        const deserializedPack = deserializePackFromAdmin(dto.pack);
+        
+        const success = await this.packStorageService.savePack(deserializedPack);
         if (!success) {
           return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to update pack');
         }
@@ -2667,7 +2709,24 @@ export class ReadinessController {
       }
 
       const pack = await this.packStorageService.loadPack(packId);
-      return successResponse(pack);
+      if (!pack) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Failed to load pack after update');
+      }
+      
+      // 🆕 返回序列化后的数据（包含友好的显示格式）
+      const serializedPack = serializePackForAdmin(pack, 'zh');
+      const record = await this.prisma.readinessPack.findUnique({
+        where: { packId },
+      });
+
+      return successResponse({
+        ...serializedPack,
+        id: record?.id,
+        isActive: record?.isActive,
+        createdAt: record?.createdAt,
+        updatedAt: record?.updatedAt,
+        _raw: pack, // 原始 Pack 对象
+      });
     } catch (error) {
       const err = error as Error;
       if (err instanceof NotFoundException) {
@@ -2721,424 +2780,344 @@ export class ReadinessController {
     }
   }
 
-  // ==================== 打包模板管理接口 ====================
-
   @Public()
-  @Get('admin/packing-templates')
-  @ApiOperation({
-    summary: '获取打包清单模板列表（管理接口）',
-    description: '获取所有打包清单模板，支持分页、筛选、搜索。需要管理员权限。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
-  @ApiQuery({ name: 'version', required: false, type: String, description: '版本筛选' })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: '是否激活' })
-  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（版本、元数据）' })
+  /**
+   * 获取规则的用户决策问题列表（包含分组和进度信息）
+   */
+  @Get('trips/:tripId/decisions/:ruleId/questions')
+  @ApiOperation({ summary: '获取规则的用户决策问题列表' })
+  @ApiParam({ name: 'tripId', description: '行程ID' })
+  @ApiParam({ name: 'ruleId', description: '规则ID' })
   @ApiResponse({
     status: 200,
-    description: '成功返回模板列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getPackingTemplates(@Query() query: any): Promise<any> {
-    try {
-      const page = query.page || 1;
-      const limit = query.limit || 20;
-      const skip = (page - 1) * limit;
-
-      let whereClause = 'WHERE 1=1';
-      const params: any[] = [];
-      let paramIndex = 1;
-
-      if (query.version) {
-        whereClause += ` AND version = $${paramIndex}`;
-        params.push(query.version);
-        paramIndex++;
-      }
-
-      if (query.isActive !== undefined) {
-        whereClause += ` AND is_active = $${paramIndex}`;
-        params.push(query.isActive);
-        paramIndex++;
-      } else {
-        // 默认只返回激活的
-        whereClause += ` AND is_active = $${paramIndex}`;
-        params.push(true);
-        paramIndex++;
-      }
-
-      if (query.search) {
-        whereClause += ` AND (version ILIKE $${paramIndex} OR template_data::text ILIKE $${paramIndex})`;
-        params.push(`%${query.search}%`);
-        paramIndex++;
-      }
-
-      // 查询总数
-      const countResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-        `SELECT COUNT(*)::bigint as count FROM packing_checklist_templates ${whereClause}`,
-        ...params,
-      );
-      const total = Number(countResult[0]?.count || 0);
-
-      // 查询列表
-      const listResult = await this.prisma.$queryRawUnsafe<Array<{
-        id: string;
-        version: string;
-        last_updated: Date;
-        template_data: any;
-        is_active: boolean;
-        created_at: Date;
-        updated_at: Date;
-      }>>(
-        `SELECT id, version, last_updated, template_data, is_active, created_at, updated_at 
-         FROM packing_checklist_templates 
-         ${whereClause} 
-         ORDER BY last_updated DESC 
-         LIMIT $${paramIndex}::int OFFSET $${paramIndex + 1}::int`,
-        ...params,
-        limit,
-        skip,
-      );
-
-      const templates = listResult.map((row) => ({
-        id: row.id,
-        version: row.version,
-        lastUpdated: row.last_updated,
-        templateData: row.template_data,
-        isActive: row.is_active,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        // 提取元数据用于显示
-        metadata: row.template_data?.metadata || {},
-      }));
-
-      return successResponse({
-        templates,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      });
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Failed to get packing templates: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/packing-templates/:id')
-  @ApiOperation({
-    summary: '获取打包清单模板详情（管理接口）',
-    description: '根据模板ID获取完整的模板数据。需要管理员权限。',
-  })
-  @ApiParam({ name: 'id', description: '模板ID', type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回模板详情',
+    description: '成功返回问题列表',
     type: ApiSuccessResponseDto,
   })
   @ApiResponse({
     status: 404,
-    description: '模板不存在',
+    description: '行程或规则不存在',
     type: ApiErrorResponseDto,
   })
-  async getPackingTemplateById(@Param('id') id: string): Promise<any> {
+  async getUserDecisionQuestions(
+    @ParamDecorator('tripId') tripId: string,
+    @ParamDecorator('ruleId') ruleId: string,
+    @Query('answeredQuestionIds') answeredQuestionIds?: string, // 逗号分隔的已回答问题ID列表
+  ): Promise<any> {
     try {
-      const result = await this.prisma.$queryRawUnsafe<Array<{
-        id: string;
-        version: string;
-        last_updated: Date;
-        template_data: any;
-        is_active: boolean;
-        created_at: Date;
-        updated_at: Date;
-      }>>(
-        `SELECT id, version, last_updated, template_data, is_active, created_at, updated_at 
-         FROM packing_checklist_templates 
-         WHERE id = $1::uuid`,
-        id,
-      );
+      // 1. 验证行程存在
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: {
+          id: true,
+          destination: true,
+        },
+      });
 
-      if (!result || result.length === 0) {
-        return errorResponse(ErrorCode.NOT_FOUND, `打包清单模板 ${id} 不存在`);
+      if (!trip) {
+        throw new NotFoundException(`行程 ${tripId} 不存在`);
       }
 
-      const template = result[0];
+      // 2. 加载 Pack 和规则
+      const pack = await this.packStorageService.findPackByDestination(trip.destination);
+      if (!pack) {
+        throw new NotFoundException(`未找到目的地 ${trip.destination} 的准备度 Pack`);
+      }
+
+      const rule = pack.rules.find(r => r.id === ruleId);
+      if (!rule) {
+        throw new NotFoundException(`规则 ${ruleId} 不存在`);
+      }
+
+      // 3. 验证规则是否需要用户决策
+      if (!this.userDecisionService.requiresUserDecision(rule)) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          `规则 ${ruleId} 不需要用户决策`,
+        );
+      }
+
+      // 4. 解析已回答的问题ID列表
+      const answeredIds = answeredQuestionIds
+        ? answeredQuestionIds.split(',').map(id => id.trim()).filter(id => id.length > 0)
+        : [];
+
+      // 5. 获取问题分组和进度信息
+      const questionGroups = this.userDecisionService.getQuestionGroups(rule, answeredIds);
+      const nextQuestion = this.userDecisionService.getNextQuestion(rule, answeredIds);
+
+      // 6. 返回结果
       return successResponse({
-        id: template.id,
-        version: template.version,
-        lastUpdated: template.last_updated,
-        templateData: template.template_data,
-        isActive: template.is_active,
-        createdAt: template.created_at,
-        updatedAt: template.updated_at,
-        metadata: template.template_data?.metadata || {},
+        ruleId,
+        questions: rule.then.userDecision?.questions || [],
+        groups: questionGroups.groups,
+        progress: {
+          answered: questionGroups.answeredQuestions,
+          total: questionGroups.totalQuestions,
+          percentage: Math.round(questionGroups.overallProgress * 100),
+        },
+        currentGroupIndex: questionGroups.currentGroupIndex,
+        nextQuestion: nextQuestion || undefined,
       });
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Failed to get packing template: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    } catch (error: any) {
+      this.logger.error(`获取用户决策问题失败: ${error?.message}`, error?.stack);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `获取用户决策问题失败: ${error?.message}`);
     }
   }
 
-  @Public()
-  @Get('admin/packing-templates/stats')
+  @Post('trips/:tripId/decisions/:ruleId/answer')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: '获取打包清单模板统计信息（管理接口）',
-    description: '获取打包清单模板的统计信息。需要管理员权限。',
+    summary: '回答用户决策问题',
+    description: '用户回答准备度规则中的决策问题，系统根据回答评估决策分支并返回更新后的准备度检查结果。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程ID', type: String })
+  @ApiParam({ name: 'ruleId', description: '规则ID', type: String })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        answers: {
+          type: 'object',
+          description: '用户回答（questionId -> answer）',
+          example: {
+            'q1': true,
+            'q2': 'option1',
+            'q3': ['option1', 'option2'],
+            'q4': 100000,
+          },
+        },
+      },
+      required: ['answers'],
+    },
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回统计信息',
-    type: ApiSuccessResponseDto,
-  })
-  async getPackingTemplatesStats(): Promise<any> {
-    try {
-      const statsResult = await this.prisma.$queryRawUnsafe<Array<{
-        total: bigint;
-        active: bigint;
-        inactive: bigint;
-        latest_version: string;
-        latest_updated: Date;
-      }>>(
-        `SELECT 
-          COUNT(*)::bigint as total,
-          COUNT(*) FILTER (WHERE is_active = true)::bigint as active,
-          COUNT(*) FILTER (WHERE is_active = false)::bigint as inactive,
-          MAX(version) as latest_version,
-          MAX(last_updated) as latest_updated
-         FROM packing_checklist_templates`,
-      );
-
-      const stats = statsResult[0] || {
-        total: 0,
-        active: 0,
-        inactive: 0,
-        latest_version: null,
-        latest_updated: null,
-      };
-
-      return successResponse({
-        total: Number(stats.total),
-        active: Number(stats.active),
-        inactive: Number(stats.inactive),
-        latestVersion: stats.latest_version,
-        latestUpdated: stats.latest_updated,
-      });
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Failed to get packing templates stats: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/packing-guides')
-  @ApiOperation({
-    summary: '获取打包指南列表（管理接口）',
-    description: '获取所有打包指南，支持分页、筛选、搜索。需要管理员权限。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码', example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量', example: 20 })
-  @ApiQuery({ name: 'version', required: false, type: String, description: '版本筛选' })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: '是否激活' })
-  @ApiQuery({ name: 'search', required: false, type: String, description: '搜索关键词（版本、元数据）' })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回指南列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getPackingGuides(@Query() query: any): Promise<any> {
-    try {
-      const page = query.page || 1;
-      const limit = query.limit || 20;
-      const skip = (page - 1) * limit;
-
-      let whereClause = 'WHERE 1=1';
-      const params: any[] = [];
-      let paramIndex = 1;
-
-      if (query.version) {
-        whereClause += ` AND version = $${paramIndex}`;
-        params.push(query.version);
-        paramIndex++;
-      }
-
-      if (query.isActive !== undefined) {
-        whereClause += ` AND is_active = $${paramIndex}`;
-        params.push(query.isActive);
-        paramIndex++;
-      } else {
-        // 默认只返回激活的
-        whereClause += ` AND is_active = $${paramIndex}`;
-        params.push(true);
-        paramIndex++;
-      }
-
-      if (query.search) {
-        whereClause += ` AND (version ILIKE $${paramIndex} OR guide_data::text ILIKE $${paramIndex})`;
-        params.push(`%${query.search}%`);
-        paramIndex++;
-      }
-
-      // 查询总数
-      const countResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-        `SELECT COUNT(*)::bigint as count FROM packing_guides ${whereClause}`,
-        ...params,
-      );
-      const total = Number(countResult[0]?.count || 0);
-
-      // 查询列表
-      const listResult = await this.prisma.$queryRawUnsafe<Array<{
-        id: string;
-        version: string;
-        last_updated: Date;
-        guide_data: any;
-        is_active: boolean;
-        created_at: Date;
-        updated_at: Date;
-      }>>(
-        `SELECT id, version, last_updated, guide_data, is_active, created_at, updated_at 
-         FROM packing_guides 
-         ${whereClause} 
-         ORDER BY last_updated DESC 
-         LIMIT $${paramIndex}::int OFFSET $${paramIndex + 1}::int`,
-        ...params,
-        limit,
-        skip,
-      );
-
-      const guides = listResult.map((row) => ({
-        id: row.id,
-        version: row.version,
-        lastUpdated: row.last_updated,
-        guideData: row.guide_data,
-        isActive: row.is_active,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        // 提取元数据用于显示
-        metadata: row.guide_data?.metadata || {},
-      }));
-
-      return successResponse({
-        guides,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      });
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Failed to get packing guides: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/packing-guides/:id')
-  @ApiOperation({
-    summary: '获取打包指南详情（管理接口）',
-    description: '根据指南ID获取完整的指南数据。需要管理员权限。',
-  })
-  @ApiParam({ name: 'id', description: '指南ID', type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回指南详情',
+    description: '成功处理用户回答',
     type: ApiSuccessResponseDto,
   })
   @ApiResponse({
     status: 404,
-    description: '指南不存在',
+    description: '行程或规则不存在',
     type: ApiErrorResponseDto,
   })
-  async getPackingGuideById(@Param('id') id: string): Promise<any> {
+  async answerUserDecision(
+    @ParamDecorator('tripId') tripId: string,
+    @ParamDecorator('ruleId') ruleId: string,
+    @Body() body: { answers: Record<string, any> },
+  ): Promise<any> {
     try {
-      const result = await this.prisma.$queryRawUnsafe<Array<{
-        id: string;
-        version: string;
-        last_updated: Date;
-        guide_data: any;
-        is_active: boolean;
-        created_at: Date;
-        updated_at: Date;
-      }>>(
-        `SELECT id, version, last_updated, guide_data, is_active, created_at, updated_at 
-         FROM packing_guides 
-         WHERE id = $1::uuid`,
-        id,
-      );
+      // 1. 验证行程存在
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: {
+          id: true,
+          destination: true,
+        },
+      });
 
-      if (!result || result.length === 0) {
-        return errorResponse(ErrorCode.NOT_FOUND, `打包指南 ${id} 不存在`);
+      if (!trip) {
+        throw new NotFoundException(`行程 ${tripId} 不存在`);
       }
 
-      const guide = result[0];
-      return successResponse({
-        id: guide.id,
-        version: guide.version,
-        lastUpdated: guide.last_updated,
-        guideData: guide.guide_data,
-        isActive: guide.is_active,
-        createdAt: guide.created_at,
-        updatedAt: guide.updated_at,
-        metadata: guide.guide_data?.metadata || {},
-      });
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Failed to get packing guide: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
-    }
-  }
+      // 2. 加载 Pack 和规则
+      const pack = await this.packStorageService.findPackByDestination(trip.destination);
+      if (!pack) {
+        throw new NotFoundException(`未找到目的地 ${trip.destination} 的准备度 Pack`);
+      }
 
-  @Public()
-  @Get('admin/packing-guides/stats')
-  @ApiOperation({
-    summary: '获取打包指南统计信息（管理接口）',
-    description: '获取打包指南的统计信息。需要管理员权限。',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回统计信息',
-    type: ApiSuccessResponseDto,
-  })
-  async getPackingGuidesStats(): Promise<any> {
-    try {
-      const statsResult = await this.prisma.$queryRawUnsafe<Array<{
-        total: bigint;
-        active: bigint;
-        inactive: bigint;
-        latest_version: string;
-        latest_updated: Date;
-      }>>(
-        `SELECT 
-          COUNT(*)::bigint as total,
-          COUNT(*) FILTER (WHERE is_active = true)::bigint as active,
-          COUNT(*) FILTER (WHERE is_active = false)::bigint as inactive,
-          MAX(version) as latest_version,
-          MAX(last_updated) as latest_updated
-         FROM packing_guides`,
+      const rule = pack.rules.find(r => r.id === ruleId);
+      if (!rule) {
+        throw new NotFoundException(`规则 ${ruleId} 不存在`);
+      }
+
+      // 3. 验证规则是否需要用户决策
+      if (!this.userDecisionService.requiresUserDecision(rule)) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          `规则 ${ruleId} 不需要用户决策`,
+        );
+      }
+
+      // 4. 处理用户决策
+      const decisionResult = await this.userDecisionService.processUserDecision(
+        rule,
+        body.answers,
       );
 
-      const stats = statsResult[0] || {
-        total: 0,
-        active: 0,
-        inactive: 0,
-        latest_version: null,
-        latest_updated: null,
+      // 5. 保存用户决策到数据库
+      try {
+        // 检查是否已存在该行程和规则的决策记录
+        const existingDecision = await (this.prisma as any).tripReadinessDecision.findUnique({
+          where: {
+            tripId_ruleId: {
+              tripId: tripId,
+              ruleId: ruleId,
+            },
+          },
+        });
+
+        const decisionData = {
+          tripId,
+          ruleId,
+          packId: pack.packId,
+          userId: undefined, // 可以从 request 中提取
+          answers: body.answers,
+          decisionResult: {
+            updatedAction: decisionResult.updatedAction,
+            blockTrip: decisionResult.blockTrip,
+            nextQuestions: decisionResult.nextQuestions,
+            matchedBranch: decisionResult.matchedBranch,
+          },
+          matchedBranchId: (decisionResult.matchedBranch as any)?.id || undefined,
+          blockTrip: decisionResult.blockTrip,
+          updatedAction: decisionResult.updatedAction,
+          category: rule.category,
+          severity: rule.severity,
+          level: decisionResult.updatedAction.level,
+        };
+
+        if (existingDecision) {
+          // 更新现有记录
+          await (this.prisma as any).tripReadinessDecision.update({
+            where: {
+              id: existingDecision.id,
+            },
+            data: decisionData,
+          });
+          this.logger.debug(`更新行程 ${tripId} 规则 ${ruleId} 的用户决策记录`);
+        } else {
+          // 创建新记录
+          await (this.prisma as any).tripReadinessDecision.create({
+            data: decisionData,
+          });
+          this.logger.debug(`创建行程 ${tripId} 规则 ${ruleId} 的用户决策记录`);
+        }
+      } catch (error: any) {
+        // 如果数据库操作失败，记录日志但不影响主流程
+        this.logger.warn(`保存用户决策到数据库失败: ${error?.message}`, error?.stack);
+        // 仍然记录到日志作为备份
+        this.logger.log(`行程 ${tripId} 回答规则 ${ruleId} 的问题: ${JSON.stringify(body.answers)}`);
+      }
+
+      // 6. 重新评估准备度（使用更新后的规则）
+      // 注意：这里我们需要构建一个临时的规则，使用更新后的 Action
+      const updatedRule: typeof rule = {
+        ...rule,
+        then: decisionResult.updatedAction,
       };
 
+      // 构建 TripContext（简化版，实际应该从 trip 数据构建）
+      const tripContext: TripContext = {
+        traveler: {
+          nationality: undefined,
+          residencyCountry: undefined,
+          tags: [],
+        },
+        trip: {
+          startDate: undefined,
+          endDate: undefined,
+        },
+        itinerary: {
+          countries: [],
+          activities: [],
+          season: undefined,
+        },
+      };
+
+      // 重新加载 pack 并替换规则
+      const packWithUpdatedRule = {
+        ...pack,
+        rules: pack.rules.map(r => (r.id === ruleId ? updatedRule : r)),
+      };
+
+      // 使用 ReadinessChecker 重新评估（这里简化处理，实际应该调用完整的检查流程）
+      // 注意：这里我们只返回更新后的 finding，不重新执行完整的检查
+      // 完整的重新检查应该在 GATE_EVAL 阶段进行
+
+      // 7. 将 Action 转换为 ReadinessFindingItem
+      const findingItem: ReadinessFindingItem = {
+        id: rule.id,
+        category: rule.category,
+        severity: rule.severity,
+        level: decisionResult.updatedAction.level,
+        message: typeof decisionResult.updatedAction.message === 'string' 
+          ? decisionResult.updatedAction.message 
+          : decisionResult.updatedAction.message.en || decisionResult.updatedAction.message.zh || '',
+        tasks: decisionResult.updatedAction.tasks,
+        evidence: rule.evidence?.map(e => ({
+          sourceId: e.sourceId,
+          sectionId: e.sectionId,
+          quote: e.quote,
+        })),
+      };
+
+      // 8. 编译约束（如果 blockTrip = true）
+      let constraints: any[] = [];
+      if (decisionResult.blockTrip || decisionResult.updatedAction.level === 'blocker') {
+        // 创建一个临时的 ReadinessCheckResult
+        const tempResult: ReadinessCheckResult = {
+          findings: [
+            {
+              destinationId: pack.destinationId,
+              packId: pack.packId,
+              packVersion: pack.version,
+              blockers: decisionResult.blockTrip ? [findingItem] : [],
+              must: decisionResult.updatedAction.level === 'must' ? [findingItem] : [],
+              should: decisionResult.updatedAction.level === 'should' ? [findingItem] : [],
+              optional: decisionResult.updatedAction.level === 'optional' ? [findingItem] : [],
+              risks: [],
+            },
+          ],
+          summary: {
+            totalBlockers: decisionResult.blockTrip ? 1 : 0,
+            totalMust: decisionResult.updatedAction.level === 'must' ? 1 : 0,
+            totalShould: decisionResult.updatedAction.level === 'should' ? 1 : 0,
+            totalOptional: decisionResult.updatedAction.level === 'optional' ? 1 : 0,
+            totalRisks: 0,
+          },
+        };
+        constraints = await this.constraintsCompiler.compile(tempResult);
+      }
+
+      // 8. 获取问题分组和进度信息
+      const answeredQuestionIds = Object.keys(body.answers);
+      const questionGroups = this.userDecisionService.getQuestionGroups(rule, answeredQuestionIds);
+      const nextQuestion = this.userDecisionService.getNextQuestion(rule, answeredQuestionIds);
+
+      // 9. 返回结果
       return successResponse({
-        total: Number(stats.total),
-        active: Number(stats.active),
-        inactive: Number(stats.inactive),
-        latestVersion: stats.latest_version,
-        latestUpdated: stats.latest_updated,
+        updatedFinding: {
+          id: ruleId,
+          level: decisionResult.updatedAction.level,
+          message: decisionResult.updatedAction.message,
+          tasks: decisionResult.updatedAction.tasks,
+          blockTrip: decisionResult.blockTrip,
+        },
+        gateResult: decisionResult.blockTrip ? 'BLOCK' : decisionResult.updatedAction.level === 'must' ? 'ADJUST_REQUIRED' : 'ALLOW',
+        constraints,
+        nextQuestions: decisionResult.nextQuestions || [],
+        // 新增：问题分组和进度信息
+        questionGroups: questionGroups.groups,
+        progress: {
+          answered: questionGroups.answeredQuestions,
+          total: questionGroups.totalQuestions,
+          percentage: Math.round(questionGroups.overallProgress * 100),
+        },
+        currentGroupIndex: questionGroups.currentGroupIndex,
+        nextQuestion: nextQuestion || undefined,
       });
     } catch (error) {
       const err = error as Error;
-      this.logger.error(`Failed to get packing guides stats: ${err.message}`, err.stack);
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`处理用户决策失败: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }
+
 }
 

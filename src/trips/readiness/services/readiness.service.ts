@@ -6,11 +6,12 @@
  * 整合规则引擎、编译器，提供统一的准备度检查接口
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
 import { ReadinessCheckResult, ReadinessDisclaimer, ReadinessFinding } from '../types/readiness-findings.types';
+import { TrustMetricsService } from './trust-metrics.service';
 import { ReadinessChecker } from '../engine/readiness-checker';
 import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compiler';
 import type { CountryFacts } from '../compilers/facts-to-readiness.compiler';
@@ -36,7 +37,8 @@ export class ReadinessService {
     private readonly factsCompiler: FactsToReadinessCompiler,
     private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
     private readonly packStorage: PackStorageService,
-    private readonly geoFactsService?: GeoFactsService // 可选，如果未注入则不使用地理特征
+    private readonly geoFactsService?: GeoFactsService, // 可选，如果未注入则不使用地理特征
+    @Optional() private readonly trustMetricsService?: TrustMetricsService // 可选，信任指标服务
   ) {}
 
   /**
@@ -303,9 +305,25 @@ export class ReadinessService {
     if (pack) {
       this.logger.debug(`Found pack by exact destinationId: ${destinationId} -> ${pack.packId}`);
       const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+      
+      // 计算信任指标（如果服务可用）
+      let trustMetrics;
+      if (this.trustMetricsService) {
+        try {
+          const tempResult: ReadinessCheckResult = {
+            ...result,
+            disclaimer: this.generateDisclaimer(result.findings, lang),
+          };
+          trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+        } catch (error) {
+          this.logger.warn(`计算信任指标失败: ${error}`);
+        }
+      }
+
       return {
         ...result,
         disclaimer: this.generateDisclaimer(result.findings, lang),
+        trustMetrics,
       };
     }
 
@@ -320,7 +338,27 @@ export class ReadinessService {
       pack = await this.packStorage.findPackByCity(cityOrRegion, countryCode);
       if (pack) {
         this.logger.debug(`Found pack by city: ${cityOrRegion} -> ${pack.packId}`);
-        return this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+        const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+        
+        // 计算信任指标（如果服务可用）
+        let trustMetrics;
+        if (this.trustMetricsService) {
+          try {
+            const tempResult: ReadinessCheckResult = {
+              ...result,
+              disclaimer: this.generateDisclaimer(result.findings, lang),
+            };
+            trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+          } catch (error) {
+            this.logger.warn(`计算信任指标失败: ${error}`);
+          }
+        }
+
+        return {
+          ...result,
+          disclaimer: this.generateDisclaimer(result.findings, lang),
+          trustMetrics,
+        };
       }
 
       // 尝试匹配城市名的变体（例如 "ROVANIEMI" vs "Rovaniemi"）
@@ -336,9 +374,25 @@ export class ReadinessService {
         if (pack) {
           this.logger.debug(`Found pack by city variant: ${variant} -> ${pack.packId}`);
           const result = await this.readinessChecker.checkMultipleDestinations([pack], enhancedContext, lang);
+          
+          // 计算信任指标（如果服务可用）
+          let trustMetrics;
+          if (this.trustMetricsService) {
+            try {
+              const tempResult: ReadinessCheckResult = {
+                ...result,
+                disclaimer: this.generateDisclaimer(result.findings, lang),
+              };
+              trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+            } catch (error) {
+              this.logger.warn(`计算信任指标失败: ${error}`);
+            }
+          }
+
           return {
             ...result,
             disclaimer: this.generateDisclaimer(result.findings, lang),
+            trustMetrics,
           };
         }
       }
@@ -350,9 +404,25 @@ export class ReadinessService {
       if (regionPacks.length > 0) {
         this.logger.debug(`Found ${regionPacks.length} pack(s) by region: ${cityOrRegion}`);
         const result = await this.readinessChecker.checkMultipleDestinations(regionPacks, enhancedContext, lang);
+        
+        // 计算信任指标（如果服务可用）
+        let trustMetrics;
+        if (this.trustMetricsService) {
+          try {
+            const tempResult: ReadinessCheckResult = {
+              ...result,
+              disclaimer: this.generateDisclaimer(result.findings, lang),
+            };
+            trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+          } catch (error) {
+            this.logger.warn(`计算信任指标失败: ${error}`);
+          }
+        }
+
         return {
           ...result,
           disclaimer: this.generateDisclaimer(result.findings, lang),
+          trustMetrics,
         };
       }
 
@@ -402,9 +472,25 @@ export class ReadinessService {
         // 如果有多个国家级别的 packs，返回所有（让规则引擎处理）
         // 或者可以选择最通用的 pack（如果有优先级标记）
         const result = await this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
+        
+        // 计算信任指标（如果服务可用）
+        let trustMetrics;
+        if (this.trustMetricsService) {
+          try {
+            const tempResult: ReadinessCheckResult = {
+              ...result,
+              disclaimer: this.generateDisclaimer(result.findings, lang),
+            };
+            trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+          } catch (error) {
+            this.logger.warn(`计算信任指标失败: ${error}`);
+          }
+        }
+
         return {
           ...result,
           disclaimer: this.generateDisclaimer(result.findings, lang),
+          trustMetrics,
         };
       }
     }
@@ -501,10 +587,26 @@ export class ReadinessService {
       totalRisks: allFindings.reduce((sum, f) => sum + f.risks.length, 0),
     };
 
+    // 计算信任指标（如果服务可用）
+    let trustMetrics;
+    if (this.trustMetricsService) {
+      try {
+        const tempResult: ReadinessCheckResult = {
+          findings: allFindings,
+          summary,
+          disclaimer: this.generateDisclaimer(allFindings, lang),
+        };
+        trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+      } catch (error) {
+        this.logger.warn(`计算信任指标失败: ${error}`);
+      }
+    }
+
     return {
       findings: allFindings,
       summary,
       disclaimer: this.generateDisclaimer(allFindings, lang),
+      trustMetrics,
     };
   }
 
@@ -557,8 +659,14 @@ export class ReadinessService {
       return {
         latitude: coords.lat,
         longitude: coords.lng,
-        rivers: geoFeatures.rivers,
-        mountains: geoFeatures.mountains,
+        rivers: {
+          ...geoFeatures.rivers,
+          nearestRiverDistanceM: geoFeatures.rivers.nearestRiverDistanceM ?? undefined,
+        },
+        mountains: {
+          ...geoFeatures.mountains,
+          mountainElevationAvg: geoFeatures.mountains.mountainElevationAvg ?? undefined,
+        },
         roads: geoFeatures.roads,
         coastlines: geoFeatures.coastlines,
         pois: geoFeatures.pois as any,
@@ -567,6 +675,106 @@ export class ReadinessService {
       this.logger.warn(`Failed to get geo facts for ${destinationId}: ${(error as Error).message}`);
       return null;
     }
+  }
+
+  /**
+   * 映射准备度类别到三人格（用于决策日志）
+   * 
+   * 映射规则：
+   * - safety_hazards, entry_transit, health_insurance → ABU (Gatekeeper)
+   * - gear_packing, activities_bookings → DR_DRE (Pace)
+   * - logistics → NEPTUNE (LocalInsight)
+   */
+  mapCategoryToPersona(category: string): 'ABU' | 'DR_DRE' | 'NEPTUNE' {
+    switch (category) {
+      case 'safety_critical':
+      case 'safety_hazards':
+      case 'entry_transit':
+      case 'health_insurance':
+        return 'ABU';
+      case 'gear_packing':
+      case 'activities_bookings':
+        return 'DR_DRE';
+      case 'logistics':
+      case 'logistics_critical':
+        return 'NEPTUNE';
+      default:
+        return 'ABU'; // 默认映射到 ABU
+    }
+  }
+
+  /**
+   * 从 ReadinessCheckResult 生成决策日志条目
+   * 
+   * 用于集成到三人格系统的决策日志中
+   */
+  generateDecisionLogEntries(
+    result: ReadinessCheckResult,
+    requestId: string
+  ): Array<{
+    request_id: string;
+    step: 'GATE_EVAL';
+    actor: 'Gatekeeper';
+    inputs_summary: string;
+    outputs_summary: string;
+    evidence_refs: string[];
+    timestamp: string;
+    metadata?: Record<string, any>;
+  }> {
+    const entries: any[] = [];
+    const timestamp = new Date().toISOString();
+
+    for (const finding of result.findings) {
+      // 处理 blocker
+      for (const blocker of finding.blockers) {
+        const explanation = typeof blocker.message === 'string' 
+          ? blocker.message 
+          : (blocker.message as any)?.zh || (blocker.message as any)?.en || '';
+        
+        entries.push({
+          request_id: requestId,
+          step: 'GATE_EVAL' as const,
+          actor: 'Gatekeeper' as const,
+          inputs_summary: `准备度检查：规则 ${blocker.id} (${blocker.category})`,
+          outputs_summary: `BLOCK: ${explanation.substring(0, 100)}${explanation.length > 100 ? '...' : ''}`,
+          evidence_refs: blocker.evidence?.map((e: any) => e.sourceId) || [],
+          timestamp,
+          metadata: {
+            ruleId: blocker.id,
+            category: blocker.category,
+            severity: blocker.severity,
+            level: blocker.level,
+            userDecision: (blocker as any).userDecision, // 如果有用户决策（类型断言）
+          },
+        });
+      }
+
+      // 处理 must
+      for (const must of finding.must) {
+        const explanation = typeof must.message === 'string'
+          ? must.message
+          : (must.message as any)?.zh || (must.message as any)?.en || '';
+        
+        entries.push({
+          request_id: requestId,
+          step: 'GATE_EVAL' as const,
+          actor: 'Gatekeeper' as const,
+          inputs_summary: `准备度检查：规则 ${must.id} (${must.category})`,
+          outputs_summary: `ADJUST: ${explanation.substring(0, 100)}${explanation.length > 100 ? '...' : ''}`,
+          evidence_refs: must.evidence?.map((e: any) => e.sourceId) || [],
+          timestamp,
+          metadata: {
+            ruleId: must.id,
+            category: must.category,
+            severity: must.severity,
+            level: must.level,
+            userDecision: (must as any).userDecision, // 如果有用户决策（类型断言）
+          },
+        });
+      }
+    }
+
+    return entries;
   }
 }
 

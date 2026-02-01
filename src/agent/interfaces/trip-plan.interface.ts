@@ -341,6 +341,7 @@ export interface OrchestratorState {
   };
   evidence_registry: Map<string, EvidenceRef>; // evidence_id -> EvidenceRef
   decision_log: DecisionLogEntry[];
+  decision_steps?: any[]; // Decision Steps（业务层决策，来自 Decision-First Engine）
   errors: Array<{
     step: OrchestrationStep;
     error_code: string;

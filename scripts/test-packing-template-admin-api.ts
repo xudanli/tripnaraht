@@ -1,13 +1,13 @@
 #!/usr/bin/env ts-node
 
 /**
- * 测试打包清单模板管理接口
+ * ⚠️ 已废弃：打包模板和指南管理接口已删除
  * 
- * 测试管理后台需要的所有接口：
- * 1. GET /api/readiness/admin/packing-templates - 获取模板列表
- * 2. GET /api/readiness/admin/packing-templates/stats - 获取模板统计
- * 3. GET /api/readiness/admin/packing-guides - 获取指南列表
- * 4. GET /api/readiness/admin/packing-guides/stats - 获取指南统计
+ * 打包模板和指南已集成到 ReadinessPack 中。
+ * 请使用 ReadinessPack 接口获取打包数据：
+ * - GET /api/readiness/admin/packs/:id?includePacking=true
+ * 
+ * 此测试脚本保留用于历史参考，但接口已不再可用。
  */
 
 import axios, { AxiosInstance } from 'axios';
@@ -246,13 +246,18 @@ async function testSearch() {
 
 // 主测试函数
 async function main() {
-  console.log(`${colors.cyan}
+  console.log(`${colors.yellow}
 ╔══════════════════════════════════════════════════════════════════════╗
-║           打包清单模板管理接口测试                                    ║
-║           测试管理后台需要的所有接口                                 ║
+║           ⚠️  打包清单模板管理接口已删除                              ║
+║           请使用 ReadinessPack 接口获取打包数据                       ║
 ╚══════════════════════════════════════════════════════════════════════╝${colors.reset}\n`);
 
   logInfo(`API Base URL: ${API_BASE_URL}`);
+  logError('这些接口已被删除，请使用 ReadinessPack 接口代替');
+  console.log(`\n${colors.cyan}推荐使用:`);
+  console.log(`  GET /api/readiness/admin/packs/:id?includePacking=true${colors.reset}\n`);
+  
+  process.exit(0);
 
   const results = {
     templates: false,

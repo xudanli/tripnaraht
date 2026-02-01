@@ -12,6 +12,14 @@ export class CreateTripFromNaturalLanguageDto {
   text!: string;
 
   @ApiPropertyOptional({
+    description: '会话 ID（用于恢复对话上下文），不提供则创建新会话',
+    example: 'nl_user123_abc12345',
+  })
+  @IsString()
+  @IsOptional()
+  sessionId?: string;
+
+  @ApiPropertyOptional({
     description: 'LLM 提供商',
     enum: LlmProvider,
   })

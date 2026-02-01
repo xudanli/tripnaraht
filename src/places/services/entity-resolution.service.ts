@@ -219,11 +219,11 @@ export class EntityResolutionService {
             // 创建 Place 记录
             const createdPlace = await this.placesService.createPlace({
               nameCN: externalResult.nameCN || externalResult.name,
-              nameEN: externalResult.nameEN || null,
+              nameEN: externalResult.nameEN || undefined,
               category: externalResult.category as any,
               lat: externalResult.lat,
               lng: externalResult.lng,
-              address: externalResult.address || null,
+              address: externalResult.address || undefined,
               cityId: cityId || 0, // 如果找不到城市，使用 0（允许为空）
               metadata: {
                 ...externalResult.metadata,

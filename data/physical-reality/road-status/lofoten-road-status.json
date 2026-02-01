@@ -1,0 +1,387 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "lofoten",
+    "regionName": "罗弗敦群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "vegvesen.no",
+    "description": "罗弗敦群岛道路状态数据 - 包含E10公路和主要桥梁的天气影响信息"
+  },
+  "roads": [
+    {
+      "roadId": "lofoten-e10",
+      "roadName": "E10国家景观公路",
+      "roadNameEN": "E10 National Tourist Route",
+      "roadNameLocal": "E10 Nasjonal turistveg",
+      "roadType": "highway",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "全年开放，但冬季条件恶劣，需要冬季轮胎"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "winterTires": "studded_tires_required",
+        "notes": "标准车辆可通行，但冬季必须使用防滑钉轮胎，标准冬季轮胎不够"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.0,
+          "lng": 13.4,
+          "name": "Å"
+        },
+        "end": {
+          "lat": 68.4,
+          "lng": 14.5,
+          "name": "Svolvær"
+        }
+      },
+      "hazards": [
+        {
+          "type": "ice",
+          "severity": "very_high",
+          "description": "冬季主要危险是冰，不是雪。道路通常保持压实雪/冰层，而非完全清除",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4],
+          "notes": "防滑钉轮胎必需，标准冬季轮胎不够"
+        },
+        {
+          "type": "winter_rain",
+          "severity": "very_high",
+          "description": "冬季降雨在寒冷路面上形成特别危险的冰层，特别是在冷暖过渡期",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "snow_drifts",
+          "severity": "high",
+          "description": "暴风雪后，雪堆可能在盲弯后意外堆积",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        },
+        {
+          "type": "narrow_roads",
+          "severity": "medium",
+          "description": "道路狭窄，部分路段仅容一辆车通过，需要让行"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-gimsoystraumen-bridge",
+      "roadName": "Gimsøystraumen桥",
+      "roadNameEN": "Gimsøystraumen Bridge",
+      "roadNameLocal": "Gimsøystraumen bru",
+      "roadType": "bridge",
+      "status": "conditional",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放，但强风时关闭",
+        "notes": "强风时频繁关闭，无替代路线"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但强风时关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.3,
+          "lng": 14.2,
+          "name": "Gimsøy"
+        },
+        "end": {
+          "lat": 68.3,
+          "lng": 14.3,
+          "name": "Austvågøy"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风时频繁关闭，无替代路线，可能导致行程延误",
+          "windThreshold": 20,
+          "unit": "m/s",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "real-time",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-raftsundet-bridge",
+      "roadName": "Raftsundet桥",
+      "roadNameEN": "Raftsundet Bridge",
+      "roadNameLocal": "Raftsundet bru",
+      "roadType": "bridge",
+      "status": "conditional",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放，但强风时关闭",
+        "notes": "强风时频繁关闭，无替代路线"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但强风时关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.4,
+          "lng": 14.5,
+          "name": "Austvågøy"
+        },
+        "end": {
+          "lat": 68.5,
+          "lng": 14.6,
+          "name": "Hinnøya"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风时频繁关闭，无替代路线，可能导致行程延误",
+          "windThreshold": 20,
+          "unit": "m/s",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "real-time",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-lofast",
+      "roadName": "Lofoten大陆连接线 (Lofast)",
+      "roadNameEN": "Lofoten Mainland Connection (Lofast)",
+      "roadNameLocal": "Lofast",
+      "roadType": "highway",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "连接罗弗敦群岛和挪威大陆的重要路线，包括多个隧道和桥梁"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季建议使用防滑钉轮胎"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.5,
+          "lng": 14.6,
+          "name": "Hinnøya"
+        },
+        "end": {
+          "lat": 68.4,
+          "lng": 14.5,
+          "name": "Svolvær"
+        }
+      },
+      "hazards": [
+        {
+          "type": "ice",
+          "severity": "high",
+          "description": "冬季结冰，特别是在隧道出口和桥梁上",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "strong_winds",
+          "severity": "medium",
+          "description": "强风可能影响桥梁通行",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12]
+        }
+      ],
+      "tunnels": [
+        {
+          "name": "Sørdal Tunnel",
+          "length": 6300,
+          "unit": "meters",
+          "notes": "6.3公里长隧道"
+        },
+        {
+          "name": "Sløverfjord Tunnel",
+          "length": 3300,
+          "unit": "meters",
+          "notes": "3.3公里长隧道"
+        },
+        {
+          "name": "其他5条隧道",
+          "notes": "Lofast路线还包括其他5条隧道"
+        }
+      ],
+      "bridges": [
+        {
+          "name": "Raftsund Bridge",
+          "length": 700,
+          "unit": "meters",
+          "notes": "700米长桥梁，已单独记录"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-tjeldsund-bridge",
+      "roadName": "Tjeldsund桥",
+      "roadNameEN": "Tjeldsund Bridge",
+      "roadNameLocal": "Tjeldsundbrua",
+      "roadType": "bridge",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "连接Hinnøya岛和挪威大陆的最后一座桥梁"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，强风时需谨慎"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.6,
+          "lng": 16.1,
+          "name": "Hinnøya"
+        },
+        "end": {
+          "lat": 68.6,
+          "lng": 16.2,
+          "name": "Mainland"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "medium",
+          "description": "强风时需谨慎驾驶",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12],
+          "windThreshold": 18,
+          "unit": "m/s"
+        },
+        {
+          "type": "ice",
+          "severity": "medium",
+          "description": "冬季结冰，特别是在桥面上",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-nappstraum-tunnel",
+      "roadName": "Nappstraum隧道",
+      "roadNameEN": "Nappstraum Tunnel",
+      "roadNameLocal": "Nappstraumtunnelen",
+      "roadType": "tunnel",
+      "status": "conditional",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放，但夜间关闭",
+        "notes": "夜间关闭，需提前规划行程"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但需注意夜间关闭时间"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.2,
+          "lng": 13.8,
+          "name": "Flakstadøy"
+        },
+        "end": {
+          "lat": 68.2,
+          "lng": 13.9,
+          "name": "Vestvågøy"
+        }
+      },
+      "hazards": [
+        {
+          "type": "night_closure",
+          "severity": "medium",
+          "description": "夜间关闭，可能导致行程延误，需提前规划",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "vegvesen.no"
+    },
+    {
+      "roadId": "lofoten-henningsvaer-road",
+      "roadName": "Henningsvær道路",
+      "roadNameEN": "Henningsvær Road",
+      "roadNameLocal": "Henningsværveien",
+      "roadType": "scenic_road",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "notes": "通往Henningsvær渔村的风景道路，E10的支路"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但道路狭窄，需要经验丰富的司机"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 68.3,
+          "lng": 14.2,
+          "name": "E10 junction"
+        },
+        "end": {
+          "lat": 68.3,
+          "lng": 14.1,
+          "name": "Henningsvær"
+        }
+      },
+      "hazards": [
+        {
+          "type": "narrow_roads",
+          "severity": "high",
+          "description": "道路非常狭窄，部分路段仅容一辆车通过，需要让行"
+        },
+        {
+          "type": "rockslide",
+          "severity": "medium",
+          "description": "有落石风险，特别是在Rørvika附近（2025年4月曾发生大规模落石）",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "ice",
+          "severity": "high",
+          "description": "冬季结冰，需要防滑钉轮胎",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4]
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "vegvesen.no"
+    }
+  ]
+}

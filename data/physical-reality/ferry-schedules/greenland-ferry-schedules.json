@@ -1,0 +1,444 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "greenland",
+    "regionName": "格陵兰",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "arctic-umiaq-line",
+    "description": "格陵兰沿海渡轮时刻表 - Sarfaq Ittuk沿海渡轮服务"
+  },
+  "routes": [
+    {
+      "routeId": "greenland-sarfaq-ittuk",
+      "routeName": "Sarfaq Ittuk沿海渡轮",
+      "routeNameEN": "Sarfaq Ittuk Coastal Ferry",
+      "from": {
+        "portId": "qaqortoq",
+        "name": "Qaqortoq",
+        "nameEN": "Qaqortoq",
+        "coordinates": {
+          "lat": 60.7167,
+          "lng": -46.0333
+        }
+      },
+      "to": {
+        "portId": "ilulissat",
+        "name": "Ilulissat",
+        "nameEN": "Ilulissat",
+        "coordinates": {
+          "lat": 69.2167,
+          "lng": -51.1000
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月1日 - 1月10日",
+          "frequency": "weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 5040,
+              "daysOfWeek": [1],
+              "notes": "每周一班，完整循环，经停12个定居点"
+            }
+          ],
+          "notes": "夏季班次增加，7-8月为高峰期，需提前预订"
+        },
+        "winter": {
+          "period": "3月1日 - 4月30日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 5040,
+              "daysOfWeek": [1],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次有限，受天气影响大"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "7-8月高峰期必须提前2-4周预订",
+        "bookingUrl": "https://aul.gl/",
+        "phone": "+299-34-11-11",
+        "notes": "格陵兰唯一的客运渡轮，主要服务本地居民，游客需提前预订"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 1500,
+          "description": "成人单程（Qaqortoq到Ilulissat）"
+        },
+        "child": {
+          "amount": 750,
+          "description": "儿童单程（5-15岁）"
+        },
+        "notes": "价格因路线长度而异，完整循环约需7天"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，5月-1月完整服务，经停12个定居点",
+          "startDate": "2026-05-01",
+          "endDate": "2027-01-10"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，3-4月有限服务，受天气影响可能取消",
+          "startDate": "2026-03-01",
+          "endDate": "2026-04-30"
+        }
+      ],
+      "notes": "格陵兰唯一的客运渡轮，连接西海岸主要定居点，是体验格陵兰的重要方式。主要服务本地居民，游客需提前预订。7-8月为旅游高峰期。"
+    },
+    {
+      "routeId": "greenland-disko-line-ilulissat-qeqertarsuaq",
+      "routeName": "Disko Line - Ilulissat ↔ Qeqertarsuaq",
+      "routeNameEN": "Disko Line - Ilulissat to Qeqertarsuaq",
+      "from": {
+        "portId": "ilulissat",
+        "name": "Ilulissat",
+        "nameEN": "Ilulissat",
+        "coordinates": {
+          "lat": 69.2167,
+          "lng": -51.1000
+        }
+      },
+      "to": {
+        "portId": "qeqertarsuaq",
+        "name": "Qeqertarsuaq",
+        "nameEN": "Qeqertarsuaq",
+        "coordinates": {
+          "lat": 69.2500,
+          "lng": -53.5500
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 10月",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每周多班，连接Ilulissat和Qeqertarsuaq"
+            }
+          ],
+          "notes": "夏季班次较多，Disko Bay地区的主要交通方式"
+        },
+        "winter": {
+          "period": "11月 - 4月",
+          "frequency": "suspended",
+          "sailings": [],
+          "notes": "冬季不运营，改用直升机"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://diskoline.gl/",
+        "phone": "+299-94-53-00",
+        "email": "Info@diskoline.gl",
+        "notes": "Disko Bay地区的主要交通方式，建议提前预订"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 300,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 150,
+          "description": "儿童单程"
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季班次较多，连接Ilulissat和Qeqertarsuaq",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营，改用直升机",
+          "startDate": "2026-11-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能取消"
+      },
+      "notes": "Disko Line是格陵兰本地航运公司（2004年成立），运营Disko Bay地区的定期渡轮服务，连接Ilulissat和Qeqertarsuaq等多个定居点。运营7艘船只（10-60座），也提供观光游船服务。夏季（5-10月）运营，冬季（11-4月）改用直升机。"
+    },
+    {
+      "routeId": "greenland-disko-line-qaasuitsup",
+      "routeName": "Disko Line - Qasigiannguit ↔ Aasiaat",
+      "routeNameEN": "Disko Line - Qasigiannguit to Aasiaat",
+      "from": {
+        "portId": "qasigiannguit",
+        "name": "Qasigiannguit",
+        "nameEN": "Qasigiannguit",
+        "coordinates": {
+          "lat": 68.8167,
+          "lng": -51.1833
+        }
+      },
+      "to": {
+        "portId": "aasiaat",
+        "name": "Aasiaat",
+        "nameEN": "Aasiaat",
+        "coordinates": {
+          "lat": 68.7167,
+          "lng": -52.8667
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 10月",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 120,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每周多班，连接Qasigiannguit和Aasiaat"
+            }
+          ],
+          "notes": "夏季班次较多，Disko Bay地区的主要交通方式"
+        },
+        "winter": {
+          "period": "11月 - 4月",
+          "frequency": "suspended",
+          "sailings": [],
+          "notes": "冬季不运营，改用直升机"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://diskoline.gl/",
+        "phone": "+299-94-53-00",
+        "email": "Info@diskoline.gl",
+        "notes": "Disko Bay地区的主要交通方式，建议提前预订"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 250,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 125,
+          "description": "儿童单程"
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季班次较多，连接Qasigiannguit和Aasiaat",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营，改用直升机",
+          "startDate": "2026-11-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能取消"
+      },
+      "notes": "Disko Line运营的Disko Bay地区渡轮服务，连接Qasigiannguit和Aasiaat。夏季（5-10月）运营，冬季（11-4月）改用直升机。"
+    },
+    {
+      "routeId": "greenland-east-greenland-tasiilaq",
+      "routeName": "东格陵兰渡轮 - Tasiilaq连接",
+      "routeNameEN": "East Greenland Ferry - Tasiilaq Connection",
+      "from": {
+        "portId": "kulusuk",
+        "name": "Kulusuk",
+        "nameEN": "Kulusuk",
+        "coordinates": {
+          "lat": 65.5667,
+          "lng": -37.1833
+        }
+      },
+      "to": {
+        "portId": "tasiilaq",
+        "name": "Tasiilaq",
+        "nameEN": "Tasiilaq",
+        "coordinates": {
+          "lat": 65.6167,
+          "lng": -37.6333
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "6月 - 9月",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 60,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每周多班，连接Kulusuk机场和Tasiilaq"
+            }
+          ],
+          "notes": "夏季班次较多，连接Kulusuk机场（主要入口）和Tasiilaq（东格陵兰最大定居点）"
+        },
+        "winter": {
+          "period": "10月 - 5月",
+          "frequency": "suspended",
+          "sailings": [],
+          "notes": "冬季不运营，改用直升机或雪地摩托"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "必须提前预订，建议提前1-2周",
+        "bookingUrl": "https://www.eastgreenland.com/",
+        "phone": "+299-98-18-88",
+        "notes": "东格陵兰的主要交通方式，必须提前预订，班次有限"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 400,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 200,
+          "description": "儿童单程"
+        },
+        "notes": "价格可能因季节变化，东格陵兰交通成本较高"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季班次较多，连接Kulusuk机场和Tasiilaq",
+          "startDate": "2026-06-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营，改用直升机或雪地摩托",
+          "startDate": "2026-10-01",
+          "endDate": "2027-05-31"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "very_high",
+        "description": "受天气影响极大，恶劣天气时经常取消，海冰可能影响航行"
+      },
+      "notes": "连接Kulusuk机场（东格陵兰主要入口）和Tasiilaq（东格陵兰最大定居点，约2000人）的渡轮。东格陵兰交通困难，渡轮是主要交通方式之一。夏季（6-9月）运营，冬季（10-5月）改用直升机或雪地摩托。受天气影响极大，海冰可能影响航行。"
+    },
+    {
+      "routeId": "greenland-disko-line-uummannaq",
+      "routeName": "Disko Line - Uummannaq ↔ Qaarsut",
+      "routeNameEN": "Disko Line - Uummannaq to Qaarsut",
+      "from": {
+        "portId": "uummannaq",
+        "name": "Uummannaq",
+        "nameEN": "Uummannaq",
+        "coordinates": {
+          "lat": 70.6833,
+          "lng": -52.1333
+        }
+      },
+      "to": {
+        "portId": "qaarsut",
+        "name": "Qaarsut",
+        "nameEN": "Qaarsut",
+        "coordinates": {
+          "lat": 70.7333,
+          "lng": -52.6500
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 10月",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 45,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每周多班，连接Uummannaq和Qaarsut机场"
+            }
+          ],
+          "notes": "夏季班次较多，连接Uummannaq和Qaarsut机场"
+        },
+        "winter": {
+          "period": "11月 - 4月",
+          "frequency": "suspended",
+          "sailings": [],
+          "notes": "冬季不运营，改用直升机或雪地摩托"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://diskoline.gl/",
+        "phone": "+299-94-53-00",
+        "email": "Info@diskoline.gl",
+        "notes": "连接Uummannaq和Qaarsut机场的主要交通方式，建议提前预订"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 200,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 100,
+          "description": "儿童单程"
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季班次较多，连接Uummannaq和Qaarsut机场",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营，改用直升机或雪地摩托",
+          "startDate": "2026-11-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能取消"
+      },
+      "notes": "Disko Line运营的渡轮服务，连接Uummannaq和Qaarsut机场。Uummannaq是格陵兰北部的重要定居点，Qaarsut是附近的机场。夏季（5-10月）运营，冬季（11-4月）改用直升机或雪地摩托。"
+    }
+  ]
+}

@@ -77,23 +77,23 @@ export class PlaceListQueryDto {
 
 export class PlaceListResponseDto {
   @ApiPropertyOptional({ description: '地点列表' })
-  places: any[];
+  places!: any[];
 
   @ApiPropertyOptional({ description: '当前页码' })
-  page: number;
+  page!: number;
 
   @ApiPropertyOptional({ description: '每页数量' })
-  limit: number;
+  limit!: number;
 
   @ApiPropertyOptional({ description: '总记录数' })
-  total: number;
+  total!: number;
 
   @ApiPropertyOptional({ description: '总页数' })
-  totalPages: number;
+  totalPages!: number;
 
   @ApiPropertyOptional({ description: '是否有上一页' })
-  hasPrev: boolean;
+  hasPrev!: boolean;
 
   @ApiPropertyOptional({ description: '是否有下一页' })
-  hasNext: boolean;
+  hasNext!: boolean;
 }

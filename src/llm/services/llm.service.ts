@@ -39,16 +39,30 @@ export class LlmService {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
-    // 检查是否禁用代理（默认禁用，因为代理服务器可能未运行）
-    const disableProxy = this.configService?.get<string>('LLM_DISABLE_PROXY') === 'true' || true;
+    // 检查是否禁用代理（默认启用代理，如果配置了代理环境变量）
+    // 只有当 LLM_DISABLE_PROXY 明确设置为 'true' 时才禁用代理
+    const disableProxy = this.configService?.get<string>('LLM_DISABLE_PROXY') === 'true' || 
+                         process.env.LLM_DISABLE_PROXY === 'true';
     
     // 检查代理环境变量（用于创建共享的 httpsAgent）
     const proxyUrl = disableProxy
       ? undefined
-      : (process.env.HTTPS_PROXY ||
+      : (this.configService?.get<string>('HTTPS_PROXY') ||
+         this.configService?.get<string>('https_proxy') ||
+         this.configService?.get<string>('ALL_PROXY') ||
+         process.env.HTTPS_PROXY ||
          process.env.https_proxy ||
          process.env.ALL_PROXY ||
          process.env.all_proxy);
+    
+    // 记录代理配置状态
+    if (proxyUrl) {
+      this.logger.log(`[LLM] 使用代理: ${proxyUrl.replace(/\/\/.*@/, '//***@')}`); // 隐藏密码
+    } else if (disableProxy) {
+      this.logger.debug(`[LLM] 代理已禁用（LLM_DISABLE_PROXY=true）`);
+    } else {
+      this.logger.debug(`[LLM] 未配置代理环境变量`);
+    }
 
     // 创建共享的 HTTPS Agent（用于其他 LLM 提供商）
     // 注意：如果代理服务器未运行，会导致连接错误，因此默认禁用代理
@@ -143,12 +157,22 @@ export class LlmService {
     plannerReply?: string;
     suggestedQuestions?: string[];
     conversationContext?: Record<string, any>;
+    // 🆕 原始LLM输出（用于响应转换）
+    llmRawOutput?: any;
   }> {
     const provider = dto.provider || this.defaultProvider;
-    const prompt = this.buildTripCreationPrompt(dto.text);
+    // 🆕 如果提供了 destinationConfig，使用特化 Prompt
+    const prompt = this.buildTripCreationPrompt(
+      dto.text,
+      dto.contextBlocks,
+      dto.destinationCode,
+      dto.destinationConfig
+    );
 
     try {
-      const response = await this.callLlm(provider, prompt, this.getTripCreationSchema());
+      // 🆕 根据 destinationConfig 动态构建 schema（包含特化字段）
+      const schema = this.getTripCreationSchema(dto.destinationConfig);
+      const response = await this.callLlm(provider, prompt, schema);
       const parsed = this.extractJSON(response);
 
       // 添加调试日志
@@ -182,6 +206,8 @@ export class LlmService {
           plannerReply: clarification.reply,
           suggestedQuestions: clarification.suggestedQuestions,
           conversationContext: clarification.conversationContext,
+          // 🆕 原始LLM输出（用于响应转换）
+          llmRawOutput: clarification.llmRawOutput,
         };
       }
 
@@ -340,13 +366,18 @@ export class LlmService {
         error.message?.includes('network') || 
         error.message?.includes('aborted') ||
         error.message?.includes('timeout') ||
+        error.message?.includes('503') || // 503 错误也应该触发降级
+        error.response?.status === 503 || // 检查 HTTP 状态码
         error.code === 'ECONNREFUSED' ||
         error.code === 'ECONNRESET' ||
         error.code === 'ETIMEDOUT' ||
         error.code === 'ECONNABORTED';
       
       if (isNetworkError) {
-        this.logger.warn(`LLM API call failed (${error.message}), falling back to mock mode`);
+        const errorDetails = error.response?.status 
+          ? `HTTP ${error.response.status}: ${error.response?.data?.error?.message || error.message}`
+          : error.message;
+        this.logger.warn(`LLM API call failed (${errorDetails}), falling back to mock mode`);
         return this.getMockResponse(prompt, schema);
       }
       throw error;
@@ -774,24 +805,60 @@ ${JSON.stringify(schema, null, 2)}
 
     try {
       this.logger.debug(`[Anthropic] 调用 API: ${apiUrl}, model: ${model}`);
-      const response = await axios.post(apiUrl, body, {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        timeout: 60000, // 增加超时时间
-        proxy: false, // 关键：忽略 HTTP(S)_PROXY 环境变量
-        httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent
-      });
+      
+      // 使用重试机制调用 API
+      const response = await retryWithBackoff(
+        () => axios.post(apiUrl, body, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          timeout: 60000, // 增加超时时间
+          proxy: false, // 通过 httpsAgent 使用代理，不在这里设置 proxy
+          httpsAgent: this.httpsAgent, // 使用共享的 HTTPS Agent（包含代理配置）
+        }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 1000, // 初始延迟 1 秒
+          maxDelayMs: 5000, // 最大延迟 5 秒
+          retryCondition: (error: any) => {
+            // 503 错误应该重试（上游服务暂时不可用）
+            if (error.response?.status === 503) {
+              this.logger.warn(`[Anthropic] 收到 503 错误，将重试: ${error.response?.data?.error?.message || 'Service unavailable'}`);
+              return true;
+            }
+            // 其他可重试的错误
+            const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND'];
+            if (error.code && retryableCodes.includes(error.code)) {
+              return true;
+            }
+            // 网络超时错误
+            if (error.message?.includes('timeout') || error.message?.includes('ECONNRESET')) {
+              return true;
+            }
+            return false;
+          },
+        }
+      );
 
       const data = response.data as {
         content?: Array<{ text?: string }>;
       };
       return data.content?.[0]?.text || '';
     } catch (error: any) {
+      // 记录详细错误信息
       if (error.response) {
-        throw new Error(`Anthropic API error: ${error.response.status} ${JSON.stringify(error.response.data)}`);
+        const status = error.response.status;
+        const errorData = error.response.data;
+        const errorMsg = `Anthropic API error: ${status} ${JSON.stringify(errorData)}`;
+        
+        // 503 错误记录警告日志
+        if (status === 503) {
+          this.logger.warn(`[Anthropic] 上游服务不可用 (503): ${errorData?.error?.message || 'Service temporarily unavailable'}`);
+        }
+        
+        throw new Error(errorMsg);
       }
       throw new Error(`Anthropic API request failed: ${error.message}`);
     }
@@ -799,16 +866,49 @@ ${JSON.stringify(schema, null, 2)}
 
   // ========== Prompt 构建方法 ==========
 
-  private buildTripCreationPrompt(text: string): string {
+  private buildTripCreationPrompt(
+    text: string,
+    contextBlocks?: any[],
+    destinationCode?: string,
+    destinationConfig?: any
+  ): string {
     // 获取当前日期用于日期推算
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     const currentDate = now.toISOString().split('T')[0];
 
+    // 构建 Context Package 信息（如果有）
+    let contextSection = '';
+    if (contextBlocks && contextBlocks.length > 0) {
+      const contextInfo = contextBlocks
+        .map((block: any) => {
+          const type = block.type || 'UNKNOWN';
+          const content = block.content || '';
+          // 只提取关键信息，避免 token 过多
+          const summary = content.length > 500 ? content.substring(0, 500) + '...' : content;
+          return `### ${type}\n${summary}`;
+        })
+        .join('\n\n');
+      
+      contextSection = `\n## 目的地上下文信息（用于增强理解）
+
+以下信息来自目的地知识库，可以帮助你更好地理解用户需求：
+
+${contextInfo}
+
+**注意**：这些上下文信息仅供参考，优先使用用户明确提到的信息。`;
+    }
+
+    // 🆕 如果目的地有特化配置，添加特化提取规则
+    let specializedSection = '';
+    if (destinationConfig && destinationConfig.enabled && destinationConfig.fieldExtractionRules) {
+      specializedSection = this.buildDestinationSpecificPromptSection(destinationConfig, destinationCode);
+    }
+
     return `你是一位经验丰富的旅行规划师，正在帮助用户规划旅行。用户说："${text}"
 
-当前日期：${currentDate}
+当前日期：${currentDate}${contextSection}
 
 ## 你的任务
 从用户的自然语言中理解他们的旅行需求，并提取关键信息。
@@ -897,7 +997,31 @@ ${JSON.stringify(schema, null, 2)}
   },
   "needsClarification": false,
   "inferredFields": []
-}`;
+}${specializedSection ? `\n\n## 目的地特化提取规则（${destinationConfig.destinationName}）\n\n${specializedSection}` : ''}`;
+  }
+
+  /**
+   * 🆕 构建目的地特化 Prompt 片段
+   */
+  private buildDestinationSpecificPromptSection(
+    config: any,
+    destinationCode?: string
+  ): string {
+    let section = '';
+    
+    // 添加字段提取规则
+    if (config.fieldExtractionRules && config.fieldExtractionRules.length > 0) {
+      section += '### 特化字段提取\n\n';
+      for (const rule of config.fieldExtractionRules) {
+        section += `- **${rule.fieldName}** (${rule.fieldType}): ${rule.extractionPrompt}\n`;
+        if (rule.validation) {
+          section += `  - 验证规则: ${JSON.stringify(rule.validation)}\n`;
+        }
+      }
+      section += '\n';
+    }
+    
+    return section;
   }
 
   private buildHumanizePrompt(dataType: string, data: any): string {
@@ -959,8 +1083,8 @@ ${JSON.stringify(error, null, 2)}
 
   // ========== Schema 定义 ==========
 
-  private getTripCreationSchema(): any {
-    return {
+  private getTripCreationSchema(destinationConfig?: any): any {
+    const schema: any = {
       type: 'object',
       properties: {
         destination: { type: 'string' },
@@ -982,6 +1106,39 @@ ${JSON.stringify(error, null, 2)}
       },
       required: ['destination', 'startDate', 'endDate', 'totalBudget'],
     };
+    
+    // 🆕 如果提供了 destinationConfig，添加特化字段到 schema
+    if (destinationConfig && destinationConfig.enabled && destinationConfig.fieldExtractionRules) {
+      for (const rule of destinationConfig.fieldExtractionRules) {
+        let fieldType: any = { type: rule.fieldType };
+        
+        // 根据字段类型设置 schema
+        if (rule.fieldType === 'array') {
+          fieldType = {
+            type: 'array',
+            items: { type: 'string' },
+          };
+        } else if (rule.fieldType === 'object') {
+          fieldType = { type: 'object' };
+        } else if (rule.fieldType === 'number') {
+          fieldType = { type: 'number' };
+        } else if (rule.fieldType === 'boolean') {
+          fieldType = { type: 'boolean' };
+        }
+        
+        // 添加描述
+        fieldType.description = rule.extractionPrompt;
+        
+        schema.properties[rule.fieldName] = fieldType;
+        
+        // 如果字段是必填的，添加到 required 数组
+        if (rule.validation?.required) {
+          schema.required.push(rule.fieldName);
+        }
+      }
+    }
+    
+    return schema;
   }
 
   private getDecisionSupportSchema(): any {
@@ -1028,16 +1185,23 @@ ${JSON.stringify(error, null, 2)}
     reply: string;
     suggestedQuestions?: string[];
     conversationContext?: Record<string, any>;
+    // 🆕 原始LLM输出（用于响应转换）
+    llmRawOutput?: any;
   }> {
     const prompt = this.buildPlannerClarificationPrompt(userInput, parsed, inferredFields);
     
     try {
       const response = await this.callLlm(this.defaultProvider, prompt, this.getPlannerClarificationSchema());
       const result = this.extractJSON(response);
+      
+      // 🆕 保存原始LLM输出（用于响应转换）
+      const llmRawOutput = result;
+      
       return {
         reply: result.reply || '让我来帮您规划这趟旅程吧！',
         suggestedQuestions: result.suggestedQuestions,
         conversationContext: result.conversationContext,
+        llmRawOutput: llmRawOutput, // 🆕 返回原始输出
       };
     } catch (error: any) {
       this.logger.warn(`LLM clarification failed, using fallback: ${error.message}`);
@@ -1108,11 +1272,17 @@ ${inferredInfo.length > 0 ? `🤔 推断值（需确认）: ${inferredInfo.join(
 ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 
 ## 你的任务
-作为旅行规划师，生成一段自然、专业的回复，需要：
+作为旅行规划师，生成结构化的回复内容，需要：
 
-1. **开场要有温度** - 对用户的旅行想法表示兴趣和认可
+1. **开场要有温度** - 对用户的旅行想法表示兴趣和认可（使用paragraph类型）
 2. **专业引导** - 像真正的旅行顾问一样，用专业知识引导用户
-3. **不要机械地列问题** - 把需要了解的信息融入自然对话中
+3. **结构化展示** - 使用不同的内容块类型展示信息：
+   - paragraph: 普通段落文本
+   - heading: 标题（level: 1-3）
+   - list: 列表（title, items, ordered）
+   - summary_card: 摘要卡片（如果信息完整，展示目的地、天数、预算等）
+   - question_card: 问题卡片（关联到clarificationQuestions）
+   - highlight: 高亮信息（重要提示）
 4. **给出建议和洞察** - 如果有推断信息，可以解释为什么这样推断，并询问是否正确
 5. **引导而非审问** - 多用"您是更倾向于..."、"通常我会建议..."这样的句式
 
@@ -1120,30 +1290,245 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 ❌ 不好: "请告诉我您的出行日期？请告诉我您的预算范围？"
 ✅ 好: "带娃去东京，太棒了！东京确实是亲子游的天堂。我注意到您还没提到具体的时间，您是想趁寒假去还是有别的时间安排呢？另外，日本的消费层次很丰富，从经济型到奢华型都有很好的选择，您这趟大概想控制在什么预算范围内呢？"
 
-## 输出格式
-返回 JSON，包含：
-- reply: 你的回复文本（自然的对话，200-400字）
-- suggestedQuestions: 用户可能的回复选项（3-5个简短选项，帮助用户快速回复）
-- conversationContext: 对话上下文信息，包含你对用户需求的理解
+## 输出格式要求（重要）
+你必须返回结构化的JSON，包含：
 
-注意：reply 必须是流畅的自然语言，不要使用 markdown 格式或列表。`;
+### 1. responseBlocks（必填）
+这是一个数组，每个元素是一个内容块，类型可以是：
+- **paragraph**：普通段落文本
+  - 必需字段：type="paragraph", content="文本内容"
+- **heading**：标题
+  - 必需字段：type="heading", level=1|2|3, text="标题文本"
+- **list**：列表
+  - 必需字段：type="list", items=["项1", "项2"]
+  - 可选字段：title="列表标题", ordered=true|false
+- **summary_card**：摘要卡片（用于展示行程概览，如果信息完整）
+  - 必需字段：type="summary_card", summary={destination, duration, travelers, budget}
+- **question_card**：问题卡片（必须关联到clarificationQuestions）
+  - 必需字段：type="question_card", questionId="问题ID"
+- **highlight**：高亮信息
+  - 必需字段：type="highlight", highlightText="文本", highlightType="info|warning|success"
+
+### 2. clarificationQuestions（必填）
+这是一个数组，每个元素是一个结构化问题：
+- **id**：唯一标识（必须与question_card中的questionId匹配）
+- **text**：问题文本（使用question字段，兼容ClarificationQuestion接口）
+- **type**：输入类型（text|single_choice|multi_choice|date|number|boolean）
+- **options**：选项数组（type为single_choice/multiple_choice时必需）
+- **required**：是否必填
+- **hint**：提示信息（可选）
+- **metadata**：元数据（category, priority，可选）
+
+### 3. 关键约束
+- question_card的questionId必须在clarificationQuestions中存在
+- 每个clarificationQuestion必须有唯一的id
+- responseBlocks的顺序应该符合阅读逻辑（先段落，再标题，再列表，最后问题）
+- 如果信息完整，优先使用summary_card展示概览
+
+### 4. 向后兼容字段
+- reply: 简单文本回复（可选，用于向后兼容）
+
+## 示例输出
+{
+  "responseBlocks": [
+    {
+      "type": "paragraph",
+      "content": "带娃去东京，太棒了！东京确实是亲子游的天堂。"
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "核心思路"
+    },
+    {
+      "type": "list",
+      "title": "行程框架",
+      "items": [
+        "以雷克雅未克为起点和终点，沿环岛公路向东行驶",
+        "深入探索黄金圈、维克和杰古沙龙冰河湖"
+      ],
+      "ordered": false
+    },
+    {
+      "type": "question_card",
+      "questionId": "q1_date"
+    }
+  ],
+  "clarificationQuestions": [
+    {
+      "id": "q1_date",
+      "question": "您是想趁寒假去还是有别的时间安排呢？",
+      "type": "single_choice",
+      "options": ["寒假期间", "暑假期间", "其他时间"],
+      "required": true,
+      "metadata": {
+        "category": "dates",
+        "priority": "high"
+      }
+    }
+  ],
+  "reply": "带娃去东京，太棒了！东京确实是亲子游的天堂。我注意到您还没提到具体的时间..."
+}
+
+注意：responseBlocks和clarificationQuestions是必填字段，reply是可选字段（向后兼容）。`;
   }
 
   /**
    * 获取旅行规划师澄清对话的 Schema
+   * 🆕 支持结构化输出（responseBlocks和clarificationQuestions）
    */
   private getPlannerClarificationSchema(): any {
     return {
       type: 'object',
       properties: {
+        // 🆕 结构化回复块
+        responseBlocks: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          description: '结构化回复内容块数组',
+          items: {
+            oneOf: [
+              // paragraph 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['paragraph'] },
+                  content: { type: 'string', description: '段落文本内容' },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'content'],
+                additionalProperties: false,
+              },
+              // heading 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['heading'] },
+                  level: { type: 'number', enum: [1, 2, 3], description: '标题级别' },
+                  text: { type: 'string', description: '标题文本' },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'level', 'text'],
+                additionalProperties: false,
+              },
+              // list 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['list'] },
+                  title: { type: 'string', description: '列表标题（可选）' },
+                  items: { 
+                    type: 'array', 
+                    items: { type: 'string' },
+                    description: '列表项数组',
+                    minItems: 1,
+                  },
+                  ordered: { type: 'boolean', description: '是否有序列表' },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'items'],
+                additionalProperties: false,
+              },
+              // summary_card 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['summary_card'] },
+                  summary: {
+                    type: 'object',
+                    properties: {
+                      destination: { type: 'string' },
+                      duration: { type: 'string' },
+                      travelers: { type: 'string' },
+                      budget: {
+                        type: 'object',
+                        properties: {
+                          amount: { type: 'number' },
+                          currency: { type: 'string' },
+                          details: { type: 'array', items: { type: 'string' } },
+                        },
+                        required: ['amount', 'currency'],
+                      },
+                    },
+                  },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'summary'],
+                additionalProperties: false,
+              },
+              // question_card 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['question_card'] },
+                  questionId: { type: 'string', description: '关联到clarificationQuestions中的id' },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'questionId'],
+                additionalProperties: false,
+              },
+              // highlight 类型
+              {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['highlight'] },
+                  highlightText: { type: 'string', description: '高亮文本' },
+                  highlightType: { 
+                    type: 'string', 
+                    enum: ['info', 'warning', 'success'],
+                    description: '高亮类型',
+                  },
+                  id: { type: 'string', description: '可选：内容块ID' },
+                },
+                required: ['type', 'highlightText'],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+        // 🆕 结构化澄清问题
+        clarificationQuestions: {
+          type: 'array',
+          description: '结构化澄清问题数组',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: '唯一标识，必须与question_card中的questionId匹配' },
+              question: { type: 'string', description: '问题文本（兼容ClarificationQuestion接口）' },
+              type: {
+                type: 'string',
+                enum: ['text', 'single_choice', 'multi_choice', 'date', 'number', 'boolean'],
+                description: '输入类型（boolean会映射为single_choice）',
+              },
+              options: { 
+                type: 'array', 
+                items: { type: 'string' },
+                description: '选项列表（type为single_choice/multi_choice时必需）',
+              },
+              required: { type: 'boolean', description: '是否必填' },
+              hint: { type: 'string', description: '提示信息（可选）' },
+              metadata: {
+                type: 'object',
+                properties: {
+                  category: { type: 'string', description: '问题类别（如dates, budget, activities）' },
+                  priority: { type: 'string', enum: ['high', 'medium', 'low'], description: '优先级' },
+                },
+              },
+            },
+            required: ['id', 'question', 'type', 'required'],
+            additionalProperties: false,
+          },
+        },
+        // 保留原有字段（向后兼容）
         reply: {
           type: 'string',
-          description: '旅行规划师的自然语言回复',
+          description: '向后兼容：简单文本回复（可选）',
         },
         suggestedQuestions: {
           type: 'array',
           items: { type: 'string' },
-          description: '用户可能的快速回复选项',
+          description: '用户可能的快速回复选项（向后兼容）',
         },
         conversationContext: {
           type: 'object',
@@ -1156,7 +1541,8 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
           description: '对话上下文',
         },
       },
-      required: ['reply'],
+      required: ['responseBlocks', 'clarificationQuestions'],
+      additionalProperties: false,
     };
   }
 

@@ -1,0 +1,545 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "greenland",
+    "regionName": "格陵兰",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "danish-meteorological-institute",
+    "description": "格陵兰天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "greenland-west-coast",
+      "regionName": "格陵兰西海岸",
+      "regionNameEN": "West Greenland",
+      "coordinates": {
+        "center": {
+          "lat": 64.0,
+          "lng": -51.0
+        },
+        "bounds": {
+          "north": 70.0,
+          "south": 60.0,
+          "east": -45.0,
+          "west": -55.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，温度相对温和，极昼现象，渡轮服务正常",
+          "temperature": {
+            "avg": 5,
+            "min": -2,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 15,
+            "max": 60,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，温度较低但可接受，游客较少",
+          "temperature": {
+            "avg": 0,
+            "min": -5,
+            "max": 10,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 20,
+            "max": 80,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 18,
+            "description": "日照时间很长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "温度相对温和",
+            "降雨和冰雹混合",
+            "风速适中但可能有阵风",
+            "极昼现象",
+            "融冰导致河流危险"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 15,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端低温",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象",
+            "白风（Whiteout）风险"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 20,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-20°C至-35°C）",
+            "强风（>100km/h）",
+            "白风（Whiteout）",
+            "极夜",
+            "渡轮服务有限"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中",
+            "融冰风险"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风",
+            "白风（Whiteout）",
+            "极夜",
+            "渡轮服务有限"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "whiteout",
+          "severity": "extreme",
+          "description": "白风（Whiteout）- 暴风雪导致能见度为零",
+          "typicalMonths": [11, 12, 1, 2, 3, 4],
+          "frequency": "冬季常见",
+          "impact": "完全迷失方向，致命风险",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日白风，能见度为零，多起迷路事件"
+          }
+        },
+        {
+          "type": "foehn_winds",
+          "severity": "very_high",
+          "description": "焚风（Föhn winds）- 从冰盖吹下的强风",
+          "typicalMonths": [3, 4, 9, 10],
+          "frequency": "春季和秋季最常见",
+          "impact": "风速>150km/h，突然产生，极其危险",
+          "historicalExample": {
+            "date": "2024-03-15",
+            "description": "2024年3月15日焚风，风速达180km/h"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "greenland-east-coast",
+      "regionName": "格陵兰东海岸",
+      "regionNameEN": "East Greenland",
+      "coordinates": {
+        "center": {
+          "lat": 70.0,
+          "lng": -25.0
+        },
+        "bounds": {
+          "north": 75.0,
+          "south": 65.0,
+          "east": -20.0,
+          "west": -30.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "夏季（7-8月）",
+          "description": "最佳旅行时间，温度相对温和，极昼现象，但条件仍然极端",
+          "temperature": {
+            "avg": -5,
+            "min": -10,
+            "max": 5,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 10,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 20,
+            "max": 80,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，温度较低但可接受，需要专业准备",
+          "temperature": {
+            "avg": -10,
+            "min": -15,
+            "max": 0,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 8,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 25,
+            "max": 100,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "日照时间很长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "极端低温（即使在夏季）",
+            "极地冰盖气候",
+            "强风频繁",
+            "极昼现象",
+            "降水极少（年均9mm）",
+            "91%的日子完全干燥"
+          ],
+          "typicalDays": {
+            "sunny": 20,
+            "cloudy": 8,
+            "snowy": 2,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端低温（-34°C至-56°C）",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象",
+            "白风（Whiteout）风险极高"
+          ],
+          "typicalDays": {
+            "sunny": 1,
+            "cloudy": 25,
+            "snowy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "extreme",
+          "risks": [
+            "极端低温（-34°C至-56°C）",
+            "强风（>100km/h）",
+            "白风（Whiteout）",
+            "极夜",
+            "完全不适合旅行"
+          ],
+          "recommendation": "绝对不推荐旅行，除非是专业极地探险队"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-5°C）",
+            "强风",
+            "天气变化剧烈",
+            "需要专业装备和经验"
+          ],
+          "recommendation": "仅适合专业极地探险，需要充分准备和专业向导"
+        },
+        {
+          "month": 12,
+          "riskLevel": "extreme",
+          "risks": [
+            "极端低温（-34°C至-56°C）",
+            "强风",
+            "白风（Whiteout）",
+            "极夜",
+            "完全不适合旅行"
+          ],
+          "recommendation": "绝对不推荐旅行，除非是专业极地探险队"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "极端低温",
+          "typicalMonths": [11, 12, 1, 2, 3, 4],
+          "frequency": "冬季常见",
+          "impact": "温度可降至-56°C，致命风险，需要专业极地装备",
+          "historicalExample": {
+            "date": "2023-03-10",
+            "description": "2023年3月10日，东北格陵兰国家公园地区温度降至-56°C"
+          }
+        },
+        {
+          "type": "whiteout",
+          "severity": "extreme",
+          "description": "白风（Whiteout）- 暴风雪导致能见度为零",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4],
+          "frequency": "冬季常见",
+          "impact": "完全迷失方向，致命风险",
+          "historicalExample": {
+            "date": "2023-12-25",
+            "description": "2023年12月25日白风，能见度为零，多起迷路事件"
+          }
+        },
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "风速>100km/h，突然产生，极其危险",
+          "historicalExample": {
+            "date": "2024-07-20",
+            "description": "2024年7月20日强风，风速达100km/h"
+          }
+        }
+      ],
+      "notes": "格陵兰东海岸是世界上最极端的极地环境之一，年均温度-21°C，冬季温度可降至-56°C。仅适合专业极地探险队，需要专业装备、经验和充分准备。7-8月是最佳旅行时间，但条件仍然极端。"
+    },
+    {
+      "regionId": "greenland-north",
+      "regionName": "格陵兰北部",
+      "regionNameEN": "North Greenland",
+      "coordinates": {
+        "center": {
+          "lat": 77.5,
+          "lng": -69.0
+        },
+        "bounds": {
+          "north": 83.0,
+          "south": 76.0,
+          "east": -60.0,
+          "west": -75.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "夏季（7-8月）",
+          "description": "最佳旅行时间，温度相对温和，极昼现象，但条件仍然极端",
+          "temperature": {
+            "avg": 6,
+            "min": -4,
+            "max": 9,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 30,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 14,
+            "max": 50,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照（5-8月）"
+          }
+        },
+        {
+          "months": [6],
+          "period": "初夏（6月）",
+          "description": "次佳旅行时间，温度较低但可接受，需要专业准备",
+          "temperature": {
+            "avg": 2,
+            "min": -2,
+            "max": 6,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 20,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 16,
+            "max": 60,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "温度相对温和（但仍寒冷）",
+            "极昼现象（5-8月）",
+            "风速适中",
+            "降水较少（年均204mm）",
+            "天气相对稳定"
+          ],
+          "typicalDays": {
+            "sunny": 15,
+            "cloudy": 12,
+            "snowy": 3,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端低温（-25°C至-33°C）",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象",
+            "白风（Whiteout）风险"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 22,
+            "snowy": 5,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-25°C至-33°C）",
+            "强风（>80km/h）",
+            "白风（Whiteout）",
+            "极夜",
+            "渡轮服务有限"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        },
+        {
+          "month": 2,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-25°C至-33°C，最冷月份）",
+            "强风",
+            "白风（Whiteout）",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，2月是最冷月份"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "偶尔降雪",
+            "风速适中",
+            "温度较低但可接受"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化，需要专业准备"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-20°C至-24°C）",
+            "强风",
+            "白风（Whiteout）",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "extreme_cold",
+          "severity": "very_high",
+          "description": "极端低温",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "2月最冷，温度可降至-33°C，致命风险",
+          "historicalExample": {
+            "date": "2023-02-15",
+            "description": "2023年2月15日，Qaanaaq地区温度降至-33°C"
+          }
+        },
+        {
+          "type": "whiteout",
+          "severity": "very_high",
+          "description": "白风（Whiteout）- 暴风雪导致能见度为零",
+          "typicalMonths": [11, 12, 1, 2, 3, 4],
+          "frequency": "冬季常见",
+          "impact": "完全迷失方向，致命风险",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日白风，能见度为零"
+          }
+        },
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [11],
+          "frequency": "11月最频繁",
+          "impact": "风速>80km/h，突然产生，危险",
+          "historicalExample": {
+            "date": "2023-11-25",
+            "description": "2023年11月25日强风，风速达80km/h"
+          }
+        }
+      ],
+      "notes": "格陵兰北部（Qaanaaq/Thule地区）是世界上最北的定居点之一，冬季极端寒冷（-25°C至-33°C），夏季短暂但相对温和（6-9°C）。7-8月是最佳旅行时间，但需要专业准备。11月是最多风的月份。"
+    }
+  ]
+}

@@ -1,0 +1,287 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "lofoten",
+    "regionName": "罗弗敦群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "torghatten-nord",
+    "description": "罗弗敦群岛渡轮时刻表 - 连接大陆和群岛的主要渡轮服务"
+  },
+  "routes": [
+    {
+      "routeId": "lofoten-bodo-moskenes",
+      "routeName": "Bodø - Moskenes",
+      "routeNameEN": "Bodø to Moskenes",
+      "from": {
+        "portId": "bodo",
+        "name": "Bodø",
+        "nameEN": "Bodø",
+        "coordinates": {
+          "lat": 67.2800,
+          "lng": 14.4050
+        }
+      },
+      "to": {
+        "portId": "moskenes",
+        "name": "Moskenes",
+        "nameEN": "Moskenes",
+        "coordinates": {
+          "lat": 67.9333,
+          "lng": 13.0167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "6月1日 - 8月31日",
+          "frequency": "up_to_9_daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夏季班次最多，每日最多9班，但需排队"
+            }
+          ],
+          "notes": "夏季高峰期，需提前预订，车辆需排队"
+        },
+        "winter": {
+          "period": "9月1日 - 5月31日",
+          "frequency": "1-2_daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次有限，受天气影响大，可能因风暴取消"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "50%容量可提前预订，建议提前预订",
+        "bookingUrl": "https://www.torghatten-nord.no/",
+        "phone": "+47-75-50-00-00",
+        "notes": "夏季高峰期必须提前预订，车辆需排队"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 200,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 100,
+          "description": "儿童单程（4-15岁）"
+        },
+        "vehicle": {
+          "amount": 584,
+          "description": "标准车辆（<6米）",
+          "included": true,
+          "notes": "价格因车辆长度而异，6米以上车辆更贵（最高2537 NOK）"
+        },
+        "notes": "前往Værøy和Røst岛免费"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日最多9班，但需排队",
+          "startDate": "2026-06-01",
+          "endDate": "2026-08-31"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，每日1-2班，受天气影响可能取消",
+          "startDate": "2026-09-01",
+          "endDate": "2027-05-31"
+        }
+      ],
+      "notes": "连接大陆和罗弗敦群岛的主要渡轮，是进入群岛的主要方式。夏季高峰期需提前预订并排队。"
+    },
+    {
+      "routeId": "lofoten-bodo-rost-vaeroy-moskenes",
+      "routeName": "Bodø - Røst - Værøy - Moskenes",
+      "routeNameEN": "Bodø to Røst to Værøy to Moskenes",
+      "from": {
+        "portId": "bodo",
+        "name": "Bodø",
+        "nameEN": "Bodø",
+        "coordinates": {
+          "lat": 67.2800,
+          "lng": 14.4050
+        }
+      },
+      "to": {
+        "portId": "moskenes",
+        "name": "Moskenes",
+        "nameEN": "Moskenes",
+        "coordinates": {
+          "lat": 67.9333,
+          "lng": 13.0167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "全年",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 420,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "经停Røst和Værøy，总行程约7小时"
+            }
+          ],
+          "notes": "前往外围岛屿的路线"
+        },
+        "winter": {
+          "period": "全年",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 420,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "经停Røst和Værøy，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季受天气影响大"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://www.torghatten-nord.no/",
+        "phone": "+47-75-50-00-00",
+        "notes": "前往Værøy和Røst岛免费"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 200,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 100,
+          "description": "儿童单程（4-15岁）"
+        },
+        "vehicle": {
+          "amount": 584,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "前往Værøy和Røst岛免费"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次正常",
+          "startDate": "2026-06-01",
+          "endDate": "2026-08-31"
+        },
+        {
+          "season": "winter",
+          "changes": "受天气影响可能取消",
+          "startDate": "2026-09-01",
+          "endDate": "2027-05-31"
+        }
+      ],
+      "notes": "前往外围岛屿（Røst和Værøy）的路线，前往这些岛屿免费"
+    },
+    {
+      "routeId": "lofoten-skutvik-svolvaer",
+      "routeName": "Skutvik - Svolvær",
+      "routeNameEN": "Skutvik to Svolvær",
+      "from": {
+        "portId": "skutvik",
+        "name": "Skutvik",
+        "nameEN": "Skutvik",
+        "coordinates": {
+          "lat": 68.2333,
+          "lng": 15.4000
+        }
+      },
+      "to": {
+        "portId": "svolvaer",
+        "name": "Svolvær",
+        "nameEN": "Svolvær",
+        "coordinates": {
+          "lat": 68.2333,
+          "lng": 14.5667
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月1日 - 9月30日",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "季节性运营，仅夏季"
+            }
+          ],
+          "notes": "季节性渡轮，仅夏季运营"
+        },
+        "winter": {
+          "period": "10月1日 - 4月30日",
+          "frequency": "none",
+          "sailings": [],
+          "notes": "冬季不运营"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://www.torghatten-nord.no/",
+        "phone": "+47-75-50-00-00",
+        "notes": "季节性渡轮，仅夏季运营"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 150,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 75,
+          "description": "儿童单程（4-15岁）"
+        },
+        "vehicle": {
+          "amount": 400,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "季节性渡轮价格"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "季节性运营，仅夏季",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "notes": "季节性渡轮，连接Skutvik和Svolvær，仅夏季运营"
+    }
+  ]
+}

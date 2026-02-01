@@ -6,6 +6,7 @@ import {
   ModelVersion,
   ModelRegistryEntry,
   TrainingMetrics,
+  TrainingConfig,
 } from '../interfaces/training-platform.interface';
 import { MLflowClientService } from './mlflow-client.service';
 
@@ -97,15 +98,16 @@ export class ModelRegistryService {
   /**
    * 获取指定版本的模型
    */
-  async getModelVersion(version: string): Promise<ModelRegistryEntry | null> {
+  async getModelVersion(version: string): Promise<ModelRegistryEntry | undefined> {
     // 先从本地注册表查找
     let entry = this.registry.get(version);
 
     if (!entry) {
       // 如果本地没有，从MLflow获取
       try {
-        entry = await this.getFromMLflow(version);
-        if (entry) {
+        const mlflowEntry = await this.getFromMLflow(version);
+        if (mlflowEntry) {
+          entry = mlflowEntry;
           this.registry.set(version, entry);
         }
       } catch (error: any) {
@@ -115,7 +117,7 @@ export class ModelRegistryService {
       }
     }
 
-    return entry || null;
+    return entry;
   }
 
   /**
@@ -290,8 +292,8 @@ export class ModelRegistryService {
 
     // 对比训练配置
     const trainingConfigDiff: Record<string, any> = {};
-    const config1 = v1.training_config;
-    const config2 = v2.training_config;
+    const config1 = v1.training_config as Record<string, any>;
+    const config2 = v2.training_config as Record<string, any>;
     const allConfigKeys = new Set([
       ...Object.keys(config1),
       ...Object.keys(config2),

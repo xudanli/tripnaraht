@@ -287,6 +287,9 @@ export class TripDraftService {
 
   /**
    * 根据风格获取类别过滤
+   * 
+   * 注意：默认情况下包含 ATTRACTION 和 RESTAURANT，但不包含 HOTEL
+   * HOTEL 需要单独处理（因为酒店是住宿地点，不是游玩地点）
    */
   private getCategoryFilterByStyle(style: TravelStyle): string[] {
     const styleMap: Record<TravelStyle, string[]> = {
@@ -297,6 +300,7 @@ export class TripDraftService {
       [TravelStyle.PHOTOGRAPHY]: ['ATTRACTION'],
       [TravelStyle.ADVENTURE]: ['ATTRACTION'],
     };
+    // 默认包含景点和餐厅，但不包含酒店（酒店需要单独推荐）
     return styleMap[style] || ['ATTRACTION', 'RESTAURANT'];
   }
 
@@ -485,10 +489,17 @@ ${candidatesJson}
 要求：
 1. 每天至少安排 morning, lunch, afternoon, dinner 四个时段
 2. 每个时段选择一个地点（placeId 必须来自候选列表）
-3. lunch 和 dinner 优先选择 RESTAURANT 类别
-4. 考虑地理位置连续性（相邻时段的地点不要太远）
-5. 考虑用户的风格偏好和强度要求
-6. 为每个选择提供简短的原因（reason）
+3. **每天内不能重复选择同一个地点（同一个 placeId 在同一天只能出现一次）**
+4. **整个行程中，同一个地点最多出现 2 次（允许跨天重复，但不应过度）**
+5. **餐厅（RESTAURANT 类别）在同一天内不能重复（午餐和晚餐不能选择同一家餐厅，除非只有一家餐厅可选）**
+6. **lunch 和 dinner 时段必须选择 RESTAURANT 类别的地点（确保包含具体的餐厅）**
+7. 考虑地理位置连续性（相邻时段的地点不要太远）
+8. 考虑用户的风格偏好和强度要求
+9. 为每个选择提供简短的原因（reason）
+
+注意：
+- **候选列表中包含餐厅（RESTAURANT），lunch 和 dinner 时段必须从 RESTAURANT 类别中选择**
+- **酒店（HOTEL）不在候选列表中，因为酒店是住宿地点，需要根据行程中的景点位置单独推荐**
 
 请返回 JSON 格式，包含每天的时段安排。`;
   }
@@ -503,6 +514,11 @@ ${candidatesJson}
     warnings: string[]
   ): Promise<DraftDay[]> {
     const validatedDays: DraftDay[] = [];
+    
+    // 🆕 记录每天使用的 placeId（用于去重）
+    const dailyPlaceIds = new Map<number, Set<number>>(); // day -> Set<placeId>
+    const globalPlaceIds = new Map<number, number>(); // placeId -> count
+    const dailyRestaurantIds = new Map<number, Set<number>>(); // day -> Set<restaurant placeId>（用于餐厅去重）
 
     for (const dayData of days) {
       const llmDay = llmResult.days?.find((d: any) => d.day === dayData.day);
@@ -512,6 +528,8 @@ ${candidatesJson}
       }
 
       const slots: DraftDaySlots = {};
+      const dayPlaceIds = new Set<number>(); // 记录当天使用的 placeId
+      const dayRestaurantIds = new Set<number>(); // 记录当天使用的餐厅 placeId
 
       // 验证每个时段
       for (const [slotKey, slotValue] of Object.entries(llmDay.slots || {})) {
@@ -525,6 +543,42 @@ ${candidatesJson}
         if (!candidate) {
           warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段的 placeId ${item.placeId} 不在候选中`);
           continue;
+        }
+
+        // 🆕 检查当天是否已使用该 placeId
+        if (dayPlaceIds.has(item.placeId)) {
+          warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段重复选择了地点 ${item.placeId}（${candidate.nameCN}），已跳过`);
+          continue; // 跳过重复项
+        }
+
+        // 🆕 检查餐厅重复（午餐和晚餐时段）
+        const isRestaurant = candidate.category === 'RESTAURANT';
+        const isMealSlot = slot === TimeSlot.LUNCH || slot === TimeSlot.DINNER;
+        
+        if (isRestaurant && isMealSlot && dayRestaurantIds.has(item.placeId)) {
+          // 特殊情况：如果当天只有一家餐厅候选，允许重复
+          const restaurantCandidates = candidates.filter(c => c.category === 'RESTAURANT');
+          if (restaurantCandidates.length > 1) {
+            warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段重复选择了餐厅 ${item.placeId}（${candidate.nameCN}），已跳过`);
+            continue; // 跳过重复餐厅（除非只有一家）
+          } else {
+            warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段重复选择餐厅 ${item.placeId}（${candidate.nameCN}），但当天只有一家餐厅候选，允许重复`);
+          }
+        }
+
+        // 🆕 检查全局重复次数（允许跨天重复，但限制次数）
+        const globalCount = globalPlaceIds.get(item.placeId) || 0;
+        if (globalCount >= 2) {
+          warnings.push(`地点 ${item.placeId}（${candidate.nameCN}）在整个行程中已出现 ${globalCount} 次，跳过重复`);
+          continue; // 跳过过度重复项
+        }
+
+        // 记录已使用的 placeId
+        dayPlaceIds.add(item.placeId);
+        globalPlaceIds.set(item.placeId, globalCount + 1);
+        
+        if (isRestaurant) {
+          dayRestaurantIds.add(item.placeId);
         }
 
         // 构建时段项
@@ -556,6 +610,16 @@ ${candidatesJson}
         slots[slot] = draftItem;
       }
 
+      dailyPlaceIds.set(dayData.day, dayPlaceIds);
+      dailyRestaurantIds.set(dayData.day, dayRestaurantIds);
+      
+      // 🆕 检查去重后某天是否缺少行程项，如果缺少则尝试填充
+      const slotCount = Object.keys(slots).length;
+      if (slotCount < 3) {
+        warnings.push(`第 ${dayData.day} 天去重后只有 ${slotCount} 个行程项，尝试从候选列表填充`);
+        await this.fillMissingSlots(dayData, slots, candidates, dayPlaceIds, dayRestaurantIds, warnings);
+      }
+
       validatedDays.push({
         day: dayData.day,
         date: dayData.date,
@@ -564,6 +628,86 @@ ${candidatesJson}
     }
 
     return validatedDays;
+  }
+
+  /**
+   * 🆕 填充缺失的时段（去重后某天行程项不足时调用）
+   */
+  private async fillMissingSlots(
+    dayData: { day: number; date: string },
+    slots: DraftDaySlots,
+    candidates: CandidatePlace[],
+    dayPlaceIds: Set<number>,
+    dayRestaurantIds: Set<number>,
+    warnings: string[]
+  ): Promise<void> {
+    const requiredSlots: TimeSlot[] = [TimeSlot.MORNING, TimeSlot.LUNCH, TimeSlot.AFTERNOON, TimeSlot.DINNER];
+    const missingSlots = requiredSlots.filter(slot => !slots[slot]);
+
+    if (missingSlots.length === 0) return;
+
+    for (const slot of missingSlots) {
+      const isMealSlot = slot === TimeSlot.LUNCH || slot === TimeSlot.DINNER;
+      
+      // 过滤候选：排除已使用的，优先选择餐厅（如果是用餐时段）
+      let filteredCandidates = candidates.filter(c => {
+        if (dayPlaceIds.has(c.id)) return false; // 排除已使用的
+        
+        // 用餐时段优先选择餐厅
+        if (isMealSlot) {
+          if (c.category === 'RESTAURANT') {
+            // 检查餐厅是否已使用（除非只有一家）
+            if (dayRestaurantIds.has(c.id)) {
+              const restaurantCandidates = candidates.filter(c => c.category === 'RESTAURANT');
+              return restaurantCandidates.length === 1; // 只有一家时允许重复
+            }
+            return true;
+          }
+          return false; // 用餐时段只选择餐厅
+        }
+        
+        // 非用餐时段排除餐厅
+        return c.category !== 'RESTAURANT';
+      });
+
+      if (filteredCandidates.length === 0) {
+        warnings.push(`第 ${dayData.day} 天 ${slot} 时段无法找到合适的候选地点`);
+        continue;
+      }
+
+      // 按评分和地理位置排序（简化：只按评分）
+      filteredCandidates.sort((a, b) => {
+        const ratingA = a.rating || 0;
+        const ratingB = b.rating || 0;
+        return ratingB - ratingA;
+      });
+
+      const bestCandidate = filteredCandidates[0];
+      const slotTime = this.SLOT_TIMES[slot];
+      const startDateTime = DateTime.fromISO(`${dayData.date}T${slotTime.start.toString().padStart(2, '0')}:00:00`);
+      const endDateTime = DateTime.fromISO(`${dayData.date}T${slotTime.end.toString().padStart(2, '0')}:00:00`);
+
+      slots[slot] = {
+        placeId: bestCandidate.id,
+        slot: slot,
+        startTime: startDateTime.toISO() || new Date().toISOString(),
+        endTime: endDateTime.toISO() || new Date().toISOString(),
+        reason: `自动填充：${bestCandidate.nameCN}`,
+        alternatives: filteredCandidates.slice(1, 4).map(c => c.id),
+        evidence: {
+          openingHours: this.formatOpeningHours(bestCandidate.openingHours),
+          rating: bestCandidate.rating,
+          source: 'database',
+        },
+      };
+
+      dayPlaceIds.add(bestCandidate.id);
+      if (bestCandidate.category === 'RESTAURANT') {
+        dayRestaurantIds.add(bestCandidate.id);
+      }
+
+      warnings.push(`第 ${dayData.day} 天 ${slot} 时段已自动填充：${bestCandidate.nameCN}`);
+    }
   }
 
   /**
@@ -676,12 +820,17 @@ ${candidatesJson}
       note: string | null;
     }> = [];
 
+    // 🆕 二次去重检查（兜底）：记录每天已创建的 placeId
+    const dailyPlaceIds = new Map<number, Set<number>>(); // day -> Set<placeId>
+
     for (const draftDay of draft.draftDays) {
       const tripDayId = dateToTripDay.get(draftDay.date);
       if (!tripDayId) {
         this.logger.warn(`找不到日期 ${draftDay.date} 对应的 TripDay`);
         continue;
       }
+
+      const dayPlaceIds = new Set<number>(); // 记录当天已创建的 placeId
 
       // 处理每个时段
       for (const [slotKey, slotValue] of Object.entries(draftDay.slots)) {
@@ -690,6 +839,14 @@ ${candidatesJson}
         // 检查是否被删除
         const itemKey = `${draftDay.day}-${slotKey}`;
         if (userEdits?.removedItems?.includes(itemKey)) continue;
+
+        // 🆕 二次去重检查（兜底）
+        if (dayPlaceIds.has(slotValue.placeId)) {
+          this.logger.warn(`跳过重复项：第 ${draftDay.day} 天 ${slotKey} 时段，placeId ${slotValue.placeId}`);
+          continue;
+        }
+
+        dayPlaceIds.add(slotValue.placeId);
 
         itemsToCreate.push({
           tripDayId,
@@ -700,6 +857,8 @@ ${candidatesJson}
           note: slotValue.reason || null,
         });
       }
+
+      dailyPlaceIds.set(draftDay.day, dayPlaceIds);
     }
 
     // 添加用户新增的项

@@ -2,7 +2,7 @@
 /**
  * RAG 服务（通用检索服务）
  * 
- * ⚠️ 注意：此服务基于 DocumentIndex 表（旧系统）
+ * ✅ 统一使用新系统：KnowledgeFile + Chunks 表
  * ✅ 推荐使用 ChunkRetrievalService（基于 Chunk 表，支持 Hybrid Search）
  * 
  * 提供文档索引、向量检索、相似度搜索等功能
@@ -24,25 +24,49 @@ export class RagService {
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
   ) {
-    this.logger.warn('⚠️ RagService 使用 DocumentIndex 表（旧系统），建议迁移到 ChunkRetrievalService');
+    this.logger.log('✅ RagService 已统一使用新系统：KnowledgeFile + Chunks');
   }
 
   /**
    * 检索相关文档
    * 
-   * ⚠️ 基于 DocumentIndex 表（旧系统）
-   * ✅ 推荐使用 ChunkRetrievalService.retrieve()（支持 Hybrid Search）
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 推荐使用 ChunkRetrievalService.retrieve()（基于chunks表，支持 Hybrid Search）
    * 
-   * @deprecated 新代码应使用 ChunkRetrievalService
+   * @deprecated document_index表已删除，此方法不再可用，请使用ChunkRetrievalService
    */
   async retrieve(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
+    // document_index表已删除，直接返回空结果
+    this.logger.warn(
+      '⚠️  document_index表已删除，RagService.retrieve()不再可用。请使用ChunkRetrievalService（基于chunks表）'
+    );
+    return [];
+    
+    /* 原实现已注释（document_index表已删除）
+    async retrieve_OLD(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
     const { query, collection, limit = 10, countryCode, tags, minScore = 0.5 } = params;
 
     this.logger.debug(`RAG 检索: collection=${collection}, query="${query.substring(0, 50)}..."`);
+    
+    // 警告：document_index表已清空，建议使用ChunkRetrievalService
+    this.logger.warn(
+      '⚠️  document_index表已清空，RagService.retrieve()将返回空结果。建议使用ChunkRetrievalService（基于chunks表）'
+    );
 
     try {
-      // 1. 生成查询的 embedding
+      // 1. 生成查询的 embedding（强制使用1024维，BGE-M3）
       const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+      
+      // 验证embedding维度（必须为1024维）
+      const embeddingDimension = queryEmbedding.length;
+      if (embeddingDimension !== 1024) {
+        this.logger.warn(
+          `Embedding维度不匹配: 期望1024维，实际${embeddingDimension}维。请确保使用BGE-M3（python provider）`
+        );
+      }
+      
+      // 注意：document_index表可能仍使用旧维度（1536维），如果维度不匹配会报错
+      // 建议使用ChunkRetrievalService（基于chunks表，1024维，新系统）
 
       // 2. 构建查询条件
       const where: any = {
@@ -58,40 +82,69 @@ export class RagService {
       }
 
       // 3. 向量相似度搜索（使用 pgvector）
-      // 注意：这里需要先确保 DocumentIndex 表有 embedding 字段和索引
+      // 注意：document_index表可能仍使用旧维度（1536），需要检查并匹配
       // 将 embedding 数组转换为 PostgreSQL vector 格式字符串
       const queryEmbeddingStr = `[${queryEmbedding.join(',')}]`;
       
-      let whereClause = Prisma.sql`WHERE collection = ${collection} AND embedding IS NOT NULL`;
+      // 检查document_index表中的实际向量维度
+      // 如果维度不匹配，会抛出错误，需要迁移数据或使用ChunkRetrievalService
+      
+      // 构建WHERE子句和参数
+      const whereConditions: string[] = ['embedding IS NOT NULL'];
+      const queryParams: any[] = [];
+      let paramIndex = 1;
+      
+      // collection参数
+      whereConditions.push(`collection = $${paramIndex}`);
+      queryParams.push(collection);
+      paramIndex++;
       
       if (countryCode) {
-        whereClause = Prisma.sql`${whereClause} AND "country_code" = ${countryCode}`;
+        whereConditions.push(`"country_code" = $${paramIndex}`);
+        queryParams.push(countryCode);
+        paramIndex++;
       }
       
       if (tags && tags.length > 0) {
-        whereClause = Prisma.sql`${whereClause} AND tags && ${tags}::text[]`;
+        whereConditions.push(`tags && $${paramIndex}::text[]`);
+        queryParams.push(tags);
+        paramIndex++;
       }
+      
+      // embedding向量参数（用于相似度计算）
+      const embeddingParamIndex = paramIndex;
+      queryParams.push(queryEmbeddingStr);
+      paramIndex++;
+      
+      // limit参数
+      const limitParamIndex = paramIndex;
+      queryParams.push(limit);
+      
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
-      const results = await this.prisma.$queryRaw<Array<{
-        id: string;
-        title: string;
-        content: string;
-        source: string | null;
-        metadata: any;
-        score: number;
-      }>>`
+      // 使用 $queryRawUnsafe 来构建动态SQL查询
+      const querySql = `
         SELECT 
           id,
           title,
           content,
           source,
           metadata,
-          1 - (embedding <=> ${queryEmbeddingStr}::vector) as score
+          1 - (embedding <=> $${embeddingParamIndex}::vector) as score
         FROM "document_index"
         ${whereClause}
-        ORDER BY embedding <=> ${queryEmbeddingStr}::vector
-        LIMIT ${limit}
+        ORDER BY embedding <=> $${embeddingParamIndex}::vector
+        LIMIT $${limitParamIndex}
       `;
+
+      const results = await this.prisma.$queryRawUnsafe<Array<{
+        id: string;
+        title: string;
+        content: string;
+        source: string | null;
+        metadata: any;
+        score: number;
+      }>>(querySql, ...queryParams);
 
       // 4. 过滤低分结果
       const filteredResults = results
@@ -109,176 +162,101 @@ export class RagService {
 
       return filteredResults;
     } catch (error: any) {
+      // 检查是否是维度不匹配错误
+      if (error.message?.includes('different vector dimensions')) {
+        const errorMsg = `向量维度不匹配: document_index表可能仍使用1536维（旧数据），但系统已统一使用1024维（BGE-M3）。建议使用ChunkRetrievalService（基于chunks表，1024维）`;
+        this.logger.error(errorMsg);
+        // 不降级到关键词搜索，直接抛出错误，让调用方知道问题
+        throw new Error(errorMsg);
+      }
+      
       this.logger.error(`RAG 检索失败: ${error.message}`, error.stack);
       
       // 降级策略：使用关键词搜索
       return await this.fallbackKeywordSearch(params);
     }
+    */
   }
 
   /**
    * 降级策略：关键词搜索
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * 
+   * @deprecated document_index表已删除，此方法不再可用
    */
   private async fallbackKeywordSearch(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
-    const { query, collection, limit = 10, countryCode, tags } = params;
-
-    this.logger.warn('使用降级策略：关键词搜索');
-
-    const where: any = {
-      collection,
-      OR: [
-        { title: { contains: query, mode: 'insensitive' } },
-        { content: { contains: query, mode: 'insensitive' } },
-      ],
-    };
-
-    if (countryCode) {
-      where.countryCode = countryCode;
-    }
-
-    if (tags && tags.length > 0) {
-      where.tags = { hasSome: tags };
-    }
-
-    const documents = await this.prisma.documentIndex.findMany({
-      where,
-      take: limit,
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    return documents.map(doc => ({
-      id: doc.id,
-      content: doc.content,
-      title: doc.title,
-      source: doc.source || undefined,
-      score: 0.5, // 关键词搜索没有相似度分数
-      metadata: doc.metadata as Record<string, any> | undefined,
-    }));
+    // document_index表已删除，返回空结果
+    this.logger.warn('document_index表已删除，降级策略不再可用');
+    return [];
   }
 
   /**
    * 索引文档（添加文档到索引库）
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 推荐使用新系统（KnowledgeFile + Chunks）
+   * 
+   * @deprecated document_index表已删除，此方法不再可用
    */
   async indexDocument(item: DocumentIndexItem): Promise<string> {
-    this.logger.debug(`索引文档: collection=${item.collection}, title="${item.title?.substring(0, 50) || 'untitled'}..."`);
-
-    try {
-      // 1. 生成 embedding
-      const textToEmbed = `${item.title || ''}\n\n${item.content}`;
-      const embedding = await this.embeddingService.generateEmbedding(textToEmbed);
-
-      // 2. 将 embedding 数组转换为 PostgreSQL vector 格式字符串
-      // 格式: '[0.1, 0.2, 0.3, ...]'
-      const embeddingStr = `[${embedding.join(',')}]`;
-
-      // 3. 保存到数据库
-      // 注意：使用字符串格式传递 vector，避免类型推断问题
-      const result = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        INSERT INTO "document_index" (
-          id, collection, title, content, embedding, source, "country_code", tags, metadata, "created_at", "updated_at"
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${item.collection},
-          ${item.title || 'Untitled'},
-          ${item.content},
-          ${embeddingStr}::vector,
-          ${item.source || null},
-          ${item.countryCode || null},
-          ${item.tags || []}::text[],
-          ${item.metadata ? JSON.stringify(item.metadata) : null}::jsonb,
-          NOW(),
-          NOW()
-        )
-        RETURNING id
-      `;
-
-      const id = result[0]?.id;
-      this.logger.debug(`文档索引完成: id=${id}`);
-
-      return id || '';
-    } catch (error: any) {
-      this.logger.error(`文档索引失败: ${error.message}`, error.stack);
-      throw error;
-    }
+    this.logger.warn(
+      '⚠️  document_index表已删除，RagService.indexDocument()不再可用。请使用新系统（KnowledgeFile + Chunks）'
+    );
+    throw new Error('document_index表已删除，请使用新系统（KnowledgeFile + Chunks）进行索引');
+    
+    /* 原实现已注释（document_index表已删除）
+    async indexDocument_OLD(item: DocumentIndexItem): Promise<string> {
+      // ... 原实现代码 ...
+    */
   }
 
   /**
    * 批量索引文档
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 推荐使用新系统（KnowledgeFile + Chunks）
+   * 
+   * @deprecated document_index表已删除，此方法不再可用
    */
   async indexDocuments(items: DocumentIndexItem[]): Promise<string[]> {
-    const ids: string[] = [];
-
-    for (const item of items) {
-      try {
-        const id = await this.indexDocument(item);
-        ids.push(id);
-      } catch (error: any) {
-        this.logger.error(`批量索引文档失败: ${error.message}`);
-      }
-    }
-
-    return ids;
+    this.logger.warn(
+      '⚠️  document_index表已删除，RagService.indexDocuments()不再可用。请使用新系统（KnowledgeFile + Chunks）'
+    );
+    throw new Error('document_index表已删除，请使用新系统（KnowledgeFile + Chunks）进行索引');
   }
 
   /**
    * 删除文档索引
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * 
+   * @deprecated document_index表已删除，此方法不再可用
    */
   async deleteDocument(id: string): Promise<void> {
-    await this.prisma.documentIndex.delete({
-      where: { id },
-    });
+    this.logger.warn(
+      '⚠️  document_index表已删除，RagService.deleteDocument()不再可用'
+    );
+    throw new Error('document_index表已删除');
   }
 
   /**
    * 更新文档索引
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * 
+   * @deprecated document_index表已删除，此方法不再可用
    */
   async updateDocument(id: string, item: Partial<DocumentIndexItem>): Promise<void> {
-    const updateData: any = {};
-
-    if (item.title) updateData.title = item.title;
-    if (item.content) {
-      updateData.content = item.content;
-      // 如果内容更新，重新生成 embedding
-      const textToEmbed = `${item.title || ''}\n\n${item.content}`;
-      const embedding = await this.embeddingService.generateEmbedding(textToEmbed);
-      updateData.embedding = embedding;
-    }
-    if (item.source !== undefined) updateData.source = item.source;
-    if (item.countryCode !== undefined) updateData.countryCode = item.countryCode;
-    if (item.tags) updateData.tags = item.tags;
-    if (item.metadata) updateData.metadata = item.metadata;
-
-    updateData.updatedAt = new Date();
-
-    // 使用原始 SQL 更新（因为 embedding 字段）
-    if (updateData.embedding) {
-      // 将 embedding 数组转换为 PostgreSQL vector 格式字符串
-      const embeddingStr = `[${updateData.embedding.join(',')}]`;
-      
-      await this.prisma.$executeRaw`
-        UPDATE "document_index"
-        SET 
-          title = COALESCE(${updateData.title}, title),
-          content = COALESCE(${updateData.content}, content),
-          embedding = ${embeddingStr}::vector,
-          source = COALESCE(${updateData.source}, source),
-          "country_code" = COALESCE(${updateData.countryCode}, "country_code"),
-          tags = COALESCE(${updateData.tags}::text[], tags),
-          metadata = COALESCE(${updateData.metadata}::jsonb, metadata),
-          "updated_at" = NOW()
-        WHERE id = ${id}
-      `;
-    } else {
-      await this.prisma.documentIndex.update({
-        where: { id },
-        data: updateData,
-      });
-    }
+    this.logger.warn(
+      '⚠️  document_index表已删除，RagService.updateDocument()不再可用'
+    );
+    throw new Error('document_index表已删除');
   }
 
   /**
    * 获取文档列表（后台管理）
+   * 统一使用新系统：KnowledgeFile + Chunks
    */
   async getDocuments(params: {
     collection?: string;
@@ -299,6 +277,8 @@ export class RagService {
       metadata: any;
       createdAt: Date;
       updatedAt: Date;
+      fileId?: string;
+      chunksCount?: number;
     }>;
     pagination: {
       page: number;
@@ -310,40 +290,78 @@ export class RagService {
     const { collection, countryCode, tags, search, page = 1, pageSize = 20 } = params;
     const skip = (page - 1) * pageSize;
 
+    // 使用新系统：KnowledgeFile表
     const where: any = {};
-    if (collection) where.collection = collection;
-    if (countryCode) where.countryCode = countryCode;
-    if (tags && tags.length > 0) {
-      where.tags = { hasSome: tags };
+    
+    // collection映射到category
+    if (collection) {
+      where.category = collection;
     }
+    
+    // search搜索文件名和路径
     if (search) {
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { content: { contains: search, mode: 'insensitive' } },
+        { filename: { contains: search, mode: 'insensitive' } },
+        { filepath: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    const [documents, total] = await Promise.all([
-      this.prisma.documentIndex.findMany({
+    const [files, total] = await Promise.all([
+      this.prisma.knowledgeFile.findMany({
         where,
         skip,
         take: pageSize,
         orderBy: { updatedAt: 'desc' },
-        select: {
-          id: true,
-          collection: true,
-          title: true,
-          content: true,
-          source: true,
-          countryCode: true,
-          tags: true,
-          metadata: true,
-          createdAt: true,
-          updatedAt: true,
+        include: {
+          _count: {
+            select: { chunks: true },
+          },
+          chunks: {
+            take: 3, // 列表接口只取前3个chunks用于预览
+            orderBy: { createdAt: 'asc' },
+            select: {
+              content: true,
+              type: true,
+            },
+          },
         },
       }),
-      this.prisma.documentIndex.count({ where }),
+      this.prisma.knowledgeFile.count({ where }),
     ]);
+
+    // 转换为文档格式（兼容旧API格式）
+    const documents = files.map(file => {
+      // 聚合chunks内容作为文档内容预览（列表接口）
+      const contentPreview = file.chunks.length > 0
+        ? file.chunks
+            .map(chunk => `[${chunk.type}] ${chunk.content}`)
+            .join('\n\n---\n\n')
+            .substring(0, 500) + (file.chunks.length > 0 ? '...' : '')
+        : `文件: ${file.filename}\n路径: ${file.filepath}\n类别: ${file.category}`;
+      
+      return {
+        id: file.id,
+        collection: file.category, // category映射到collection
+        title: file.filename,
+        content: contentPreview, // 使用chunks的实际内容
+        source: file.filepath,
+        countryCode: null, // KnowledgeFile表没有countryCode字段
+        tags: file.dataSources || [],
+        metadata: {
+          version: file.version,
+          language: file.language,
+          credibilityScore: file.credibilityScore,
+          dataSources: file.dataSources,
+          category: file.category,
+          filepath: file.filepath,
+          filename: file.filename,
+        },
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+        fileId: file.id,
+        chunksCount: file._count.chunks,
+      };
+    });
 
     return {
       documents,
@@ -358,6 +376,7 @@ export class RagService {
 
   /**
    * 获取文档详情（后台管理）
+   * 统一使用新系统：KnowledgeFile + Chunks
    */
   async getDocument(id: string): Promise<{
     id: string;
@@ -370,26 +389,78 @@ export class RagService {
     metadata: any;
     createdAt: Date;
     updatedAt: Date;
+    fileId?: string;
+    chunksCount?: number;
+    chunks?: Array<{
+      id: string;
+      chunkId: string;
+      content: string;
+      type: string;
+      similarity?: number;
+    }>;
   } | null> {
-    return this.prisma.documentIndex.findUnique({
+    // 使用新系统：KnowledgeFile表
+    const file = await this.prisma.knowledgeFile.findUnique({
       where: { id },
-      select: {
-        id: true,
-        collection: true,
-        title: true,
-        content: true,
-        source: true,
-        countryCode: true,
-        tags: true,
-        metadata: true,
-        createdAt: true,
-        updatedAt: true,
+      include: {
+        chunks: {
+          take: 10, // 返回前10个chunks作为预览
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            chunkId: true,
+            content: true,
+            type: true,
+          },
+        },
+        _count: {
+          select: { chunks: true },
+        },
       },
     });
+
+    if (!file) {
+      return null;
+    }
+
+    // 聚合chunks内容作为文档内容
+    const content = file.chunks
+      .map(chunk => `[${chunk.type}] ${chunk.content.substring(0, 500)}`)
+      .join('\n\n---\n\n') || `文件: ${file.filename}\n路径: ${file.filepath}`;
+
+    return {
+      id: file.id,
+      collection: file.category,
+      title: file.filename,
+      content,
+      source: file.filepath,
+      countryCode: null,
+      tags: file.dataSources || [],
+      metadata: {
+        version: file.version,
+        language: file.language,
+        credibilityScore: file.credibilityScore,
+        dataSources: file.dataSources,
+        category: file.category,
+        filepath: file.filepath,
+        filename: file.filename,
+      },
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+      fileId: file.id,
+      chunksCount: file._count.chunks,
+      chunks: file.chunks.map(chunk => ({
+        id: chunk.id,
+        chunkId: chunk.chunkId,
+        content: chunk.content,
+        type: chunk.type,
+      })),
+    };
   }
 
   /**
    * 获取 RAG 统计信息
+   * 统一使用新系统：KnowledgeFile + Chunks
    */
   async getStats(collection?: string): Promise<{
     totalDocuments: number;
@@ -406,38 +477,36 @@ export class RagService {
     };
   }> {
     try {
+      // 使用新系统：KnowledgeFile表
+      const where = collection ? { category: collection } : undefined;
+      
       // 获取总文档数
-      const totalCount = await this.prisma.documentIndex.count({
-        where: collection ? { collection } : undefined,
+      const totalCount = await this.prisma.knowledgeFile.count({
+        where,
       });
 
-      // 获取集合统计
-      const collectionStats = await this.prisma.$queryRaw<Array<{
-        collection: string;
+      // 获取类别统计
+      const categoryStats = await this.prisma.$queryRaw<Array<{
+        category: string;
         count: bigint;
-        countries: string[];
-        tags: string[];
+        chunks_count: bigint;
       }>>`
         SELECT 
-          d.collection,
-          COUNT(*)::bigint as count,
-          ARRAY_AGG(DISTINCT d."country_code") FILTER (WHERE d."country_code" IS NOT NULL) as countries,
-          (
-            SELECT ARRAY_AGG(DISTINCT t.tag)
-            FROM "document_index" d2, LATERAL unnest(d2.tags) AS t(tag)
-            WHERE d2.collection = d.collection
-          ) as tags
-        FROM "document_index" d
-        ${collection ? Prisma.sql`WHERE d.collection = ${collection}` : Prisma.empty}
-        GROUP BY d.collection
-        ORDER BY d.collection
+          kf.category,
+          COUNT(DISTINCT kf.id)::bigint as count,
+          COUNT(c.id)::bigint as chunks_count
+        FROM knowledge_files kf
+        LEFT JOIN chunks c ON c.file_id = kf.id
+        ${collection ? Prisma.sql`WHERE kf.category = ${collection}` : Prisma.empty}
+        GROUP BY kf.category
+        ORDER BY kf.category
       `;
 
-      const collections = collectionStats.map((stat) => ({
-        name: stat.collection,
+      const collections = categoryStats.map((stat) => ({
+        name: stat.category,
         count: Number(stat.count),
-        countries: stat.countries || [],
-        tags: stat.tags || [],
+        countries: [], // KnowledgeFile表没有countryCode字段
+        tags: [], // 可以从dataSources提取
       }));
 
       const result: any = {

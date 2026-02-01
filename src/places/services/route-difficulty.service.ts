@@ -336,9 +336,9 @@ print(json.dumps(result, ensure_ascii=False))
       if (request.provider === 'google') {
         // 支持多种环境变量名
         const apiKey = 
-          this.configService.get<string>('GOOGLE_MAPS_API_KEY') ||
-          this.configService.get<string>('GOOGLE_ROUTES_API_KEY') ||
-          this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+          this.configService?.get<string>('GOOGLE_MAPS_API_KEY') ||
+          this.configService?.get<string>('GOOGLE_ROUTES_API_KEY') ||
+          this.configService?.get<string>('GOOGLE_PLACES_API_KEY');
         if (apiKey) {
           env.GOOGLE_MAPS_API_KEY = apiKey;
         }
@@ -576,17 +576,17 @@ print(json.dumps(result, ensure_ascii=False))
     if (provider === 'google') {
       // 支持多种环境变量名
       const apiKey = 
-        this.configService.get<string>('GOOGLE_MAPS_API_KEY') ||
-        this.configService.get<string>('GOOGLE_ROUTES_API_KEY') ||
-        this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+        this.configService?.get<string>('GOOGLE_MAPS_API_KEY') ||
+        this.configService?.get<string>('GOOGLE_ROUTES_API_KEY') ||
+        this.configService?.get<string>('GOOGLE_PLACES_API_KEY');
       if (!apiKey) {
         throw new ServiceUnavailableException('GOOGLE_MAPS_API_KEY 或 GOOGLE_ROUTES_API_KEY 未配置');
       }
     } else if (provider === 'mapbox') {
       // 支持多种环境变量名
       const accessToken = 
-        this.configService.get<string>('MAPBOX_ACCESS_TOKEN') ||
-        this.configService.get<string>('VITE_MAPBOX_ACCESS_TOKEN');
+        this.configService?.get<string>('MAPBOX_ACCESS_TOKEN') ||
+        this.configService?.get<string>('VITE_MAPBOX_ACCESS_TOKEN');
       if (!accessToken) {
         throw new ServiceUnavailableException('MAPBOX_ACCESS_TOKEN 或 VITE_MAPBOX_ACCESS_TOKEN 未配置');
       }

@@ -264,6 +264,9 @@ export class QualityScorerService {
       };
 
       // 调用 LlmService
+      if (!this.llmService) {
+        throw new Error('LlmService 未注入，无法进行质量评分');
+      }
       const provider = this.llmService.getDefaultProvider();
       const response = await this.llmService.callLlmWithSchema(
         provider,

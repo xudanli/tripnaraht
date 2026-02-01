@@ -1,0 +1,268 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "svalbard",
+    "regionName": "斯瓦尔巴",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "polarcruising.no, goarctica.com, visitsvalbard.com",
+    "description": "斯瓦尔巴渡轮时刻表数据 - 包含定居点之间的渡轮服务"
+  },
+  "routes": [
+    {
+      "routeId": "svalbard-spitsbergen-express",
+      "routeName": "Spitsbergen Express渡轮",
+      "routeNameEN": "Spitsbergen Express Ferry",
+      "from": {
+        "portId": "longyearbyen",
+        "name": "朗伊尔城",
+        "nameEN": "Longyearbyen",
+        "coordinates": {
+          "lat": 78.2232,
+          "lng": 15.6267
+        }
+      },
+      "to": {
+        "portId": "barentsburg",
+        "name": "巴伦支堡",
+        "nameEN": "Barentsburg",
+        "coordinates": {
+          "lat": 78.0667,
+          "lng": 14.2167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 10月",
+          "frequency": "flexible",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "10:30",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "灵活出发时间，可预订往返行程"
+            }
+          ],
+          "notes": "使用Wegar Viking船只，提供多种往返选项"
+        },
+        "winter": {
+          "period": "11月 - 4月",
+          "frequency": "suspended",
+          "notes": "冬季服务暂停，改用雪地摩托"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://polarcruising.no",
+        "notes": "包含SAR保险，提供酒店接送服务"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 1500,
+          "description": "成人单程（价格可能变化）"
+        },
+        "notes": "价格因季节和路线而异，包含SAR保险"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "5-10月运营，灵活出发时间",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "11-4月服务暂停，改用雪地摩托",
+          "startDate": "2026-11-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "iceConditions": "海冰条件可能影响服务",
+        "visibility": "浓雾可能影响服务",
+        "notes": "受极地天气条件影响，可能因恶劣天气取消"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "polarcruising.no"
+    },
+    {
+      "routeId": "svalbard-longyearbyen-pyramiden",
+      "routeName": "朗伊尔城 - 金字塔城渡轮",
+      "routeNameEN": "Longyearbyen - Pyramiden Ferry",
+      "from": {
+        "portId": "longyearbyen",
+        "name": "朗伊尔城",
+        "nameEN": "Longyearbyen",
+        "coordinates": {
+          "lat": 78.2232,
+          "lng": 15.6267
+        }
+      },
+      "to": {
+        "portId": "pyramiden",
+        "name": "金字塔城",
+        "nameEN": "Pyramiden",
+        "coordinates": {
+          "lat": 78.6500,
+          "lng": 16.3333
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 10月",
+          "frequency": "charter",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "12:00",
+              "durationMinutes": 180,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "包船服务，需提前预订"
+            }
+          ],
+          "notes": "使用RIB快艇（10人）或游船（11人），可包船"
+        },
+        "winter": {
+          "period": "2月 - 5月",
+          "frequency": "snowmobile",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "14:00",
+              "durationMinutes": 300,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "雪地摩托，3月中旬-5月初，5-8小时"
+            }
+          ],
+          "notes": "冬季使用雪地摩托，最多20人"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "必须提前预订",
+        "bookingUrl": "https://goarctica.com",
+        "phone": "+47 94154156",
+        "email": "booking@goarctica.com",
+        "notes": "可通过Grumant Travel预订住宿和活动"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 2000,
+          "description": "成人单程（价格可能变化）"
+        },
+        "notes": "价格因季节和交通方式而异"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "5-10月使用船只",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "2-5月使用雪地摩托",
+          "startDate": "2027-02-01",
+          "endDate": "2027-05-31"
+        }
+      ],
+      "weatherImpact": {
+        "iceConditions": "海冰条件可能影响服务",
+        "visibility": "浓雾可能影响服务",
+        "notes": "受极地天气条件影响，可能因恶劣天气取消"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "goarctica.com"
+    },
+    {
+      "routeId": "svalbard-fjordcruise",
+      "routeName": "Fjordcruise渡轮",
+      "routeNameEN": "Fjordcruise Ferry",
+      "from": {
+        "portId": "longyearbyen",
+        "name": "朗伊尔城",
+        "nameEN": "Longyearbyen",
+        "coordinates": {
+          "lat": 78.2232,
+          "lng": 15.6267
+        }
+      },
+      "to": {
+        "portId": "barentsburg-pyramiden",
+        "name": "巴伦支堡/金字塔城",
+        "nameEN": "Barentsburg/Pyramiden",
+        "coordinates": {
+          "lat": 78.0667,
+          "lng": 14.2167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "夏季",
+          "frequency": "tour",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "17:00",
+              "durationMinutes": 480,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "观光游船，停靠巴伦支堡和金字塔城"
+            }
+          ],
+          "notes": "由Henningsen Transport & Guiding AS运营"
+        },
+        "winter": {
+          "period": "冬季",
+          "frequency": "suspended",
+          "notes": "冬季服务暂停"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "notes": "观光游船服务"
+      },
+      "price": {
+        "currency": "NOK",
+        "currencyCode": "NOK",
+        "adult": {
+          "amount": 1800,
+          "description": "成人（价格可能变化）"
+        },
+        "notes": "价格因季节和路线而异"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季运营",
+          "startDate": "2026-05-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季服务暂停",
+          "startDate": "2026-11-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "iceConditions": "海冰条件可能影响服务",
+        "visibility": "浓雾可能影响服务",
+        "notes": "受极地天气条件影响，可能因恶劣天气取消"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "visitsvalbard.com"
+    }
+  ]
+}

@@ -1,0 +1,791 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "alps",
+    "regionName": "阿尔卑斯",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "alpine-clubs",
+    "description": "阿尔卑斯主要山路和山口状态数据 - 包含季节性开放、雪崩风险、难度要求"
+  },
+  "roads": [
+    {
+      "roadId": "alps-gotthard-pass",
+      "roadName": "圣哥达山口",
+      "roadNameEN": "Gotthard Pass",
+      "roadNameLocal": {
+        "de": "Gotthardpass",
+        "fr": "Col du Saint-Gothard",
+        "it": "Passo del San Gottardo"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [5, 6, 7, 8, 9, 10],
+        "openPeriod": "5月-10月",
+        "typicalOpenDate": "5月中旬",
+        "typicalCloseDate": "10月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询官方信息"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但需注意天气和路况"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5583,
+          "lng": 8.5611,
+          "name": "Airolo"
+        },
+        "end": {
+          "lat": 46.5583,
+          "lng": 8.5611,
+          "name": "Andermatt"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "冬季和春季有雪崩风险"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季和早春有积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-stelvio-pass",
+      "roadName": "斯泰尔维奥山口",
+      "roadNameEN": "Stelvio Pass",
+      "roadNameLocal": {
+        "de": "Stilfser Joch",
+        "it": "Passo dello Stelvio"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "6月-9月",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "9月底",
+        "notes": "欧洲最高的铺装山路之一，开放时间较短"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，路况复杂"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5281,
+          "lng": 10.4547,
+          "name": "Bormio"
+        },
+        "end": {
+          "lat": 46.5281,
+          "lng": 10.4547,
+          "name": "Prato allo Stelvio"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "高海拔地区，冬季和春季雪崩风险高"
+        },
+        {
+          "type": "steep_curves",
+          "severity": "medium",
+          "description": "48个急转弯，需要谨慎驾驶"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-furka-pass",
+      "roadName": "富尔卡山口",
+      "roadNameEN": "Furka Pass",
+      "roadNameLocal": {
+        "de": "Furkapass",
+        "fr": "Col de la Furka"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "6月-9月",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "9月底",
+        "notes": "10月-5月关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5667,
+          "lng": 8.4167,
+          "name": "Andermatt"
+        },
+        "end": {
+          "lat": 46.5667,
+          "lng": 8.4167,
+          "name": "Gletsch"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-albula-pass",
+      "roadName": "阿尔布拉山口",
+      "roadNameEN": "Albula Pass",
+      "roadNameLocal": {
+        "de": "Albulapass",
+        "it": "Passo dell'Albula"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "6月-9月",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "9月底",
+        "notes": "10月-5月关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5833,
+          "lng": 9.8500,
+          "name": "Tiefencastel"
+        },
+        "end": {
+          "lat": 46.5833,
+          "lng": 9.8500,
+          "name": "La Punt"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-fluela-pass",
+      "roadName": "弗吕埃拉山口",
+      "roadNameEN": "Flüela Pass",
+      "roadNameLocal": {
+        "de": "Flüelapass"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "6月-12月",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "12月底",
+        "notes": "1月-5月关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.8000,
+          "lng": 9.8667,
+          "name": "Davos"
+        },
+        "end": {
+          "lat": 46.8000,
+          "lng": 9.8667,
+          "name": "Susch"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-brenner-pass",
+      "roadName": "布伦纳山口",
+      "roadNameEN": "Brenner Pass",
+      "roadNameLocal": {
+        "de": "Brennerpass",
+        "it": "Passo del Brennero"
+      },
+      "roadType": "mountain_pass",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但冬季可能需要防滑链"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季需防滑链"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 47.0000,
+          "lng": 11.5000,
+          "name": "Innsbruck"
+        },
+        "end": {
+          "lat": 46.7000,
+          "lng": 11.4000,
+          "name": "Brixen"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季有积雪和结冰，需要防滑链"
+        },
+        {
+          "type": "heavy_traffic",
+          "severity": "medium",
+          "description": "主要交通要道，交通繁忙"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-simplon-pass",
+      "roadName": "辛普朗山口",
+      "roadNameEN": "Simplon Pass",
+      "roadNameLocal": {
+        "de": "Simplonpass",
+        "it": "Passo del Sempione",
+        "fr": "Col du Simplon"
+      },
+      "roadType": "mountain_pass",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但冬季可能有临时关闭，可通过铁路隧道替代"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季需防滑链，恶劣天气可能关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.3167,
+          "lng": 7.9833,
+          "name": "Brig"
+        },
+        "end": {
+          "lat": 46.2000,
+          "lng": 8.0333,
+          "name": "Domodossola"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季有积雪和结冰，需要防滑链"
+        },
+        {
+          "type": "avalanche",
+          "severity": "low",
+          "description": "有防护措施，但仍有雪崩风险"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-great-st-bernard-pass",
+      "roadName": "大圣伯纳德山口",
+      "roadNameEN": "Great St Bernard Pass",
+      "roadNameLocal": {
+        "de": "Grosser Sankt Bernhard",
+        "fr": "Col du Grand-Saint-Bernard",
+        "it": "Colle del Gran San Bernardo"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9, 10],
+        "openPeriod": "6月-10月",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "10月底",
+        "notes": "冬季关闭，6月初可能仍关闭，建议查询最新状态"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需要经验丰富的司机，冬季关闭"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 45.8667,
+          "lng": 7.1667,
+          "name": "Martigny"
+        },
+        "end": {
+          "lat": 45.8667,
+          "lng": 7.1667,
+          "name": "Aosta"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有大量积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "alps-mont-blanc-tunnel",
+      "roadName": "勃朗峰隧道",
+      "roadNameEN": "Mont Blanc Tunnel",
+      "roadNameLocal": {
+        "fr": "Tunnel du Mont-Blanc",
+        "it": "Traforo del Monte Bianco"
+      },
+      "roadType": "tunnel",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但11月1日-3月31日需要冬季装备（防滑链或冬季轮胎）"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "winterEquipment": "required_nov_mar",
+        "notes": "标准车辆可通行，但11月1日-3月31日必须配备防滑链（至少两个驱动轮）或四个冬季轮胎。Euro 0、Euro 1和Euro 2车辆禁止通行。危险品车辆禁止通行。"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 45.8667,
+          "lng": 6.9167,
+          "name": "Chamonix (法国)"
+        },
+        "end": {
+          "lat": 45.8000,
+          "lng": 6.9500,
+          "name": "Courmayeur (意大利)"
+        }
+      },
+      "hazards": [
+        {
+          "type": "toll_required",
+          "severity": "low",
+          "description": "收费隧道，单程36.70-73.40欧元（2026年价格），往返票7天有效，返程75%折扣"
+        },
+        {
+          "type": "winter_equipment",
+          "severity": "high",
+          "description": "11月1日-3月31日必须配备防滑链（至少两个驱动轮）或四个冬季轮胎",
+          "typicalMonths": [11, 12, 1, 2, 3]
+        },
+        {
+          "type": "vehicle_restrictions",
+          "severity": "medium",
+          "description": "Euro 0、Euro 1和Euro 2车辆禁止通行，危险品车辆禁止通行，重型车辆需要授权"
+        },
+        {
+          "type": "maintenance",
+          "severity": "low",
+          "description": "可能因维护临时关闭，但通常提前通知"
+        }
+      ],
+      "tunnelInfo": {
+        "lengthKm": 11.6,
+        "lengthMiles": 7.2,
+        "elevation": 1381,
+        "unit": "meters",
+        "notes": "连接法国和意大利的重要隧道，全长11.6公里，海拔1381米"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "tunnelmb.net"
+    },
+    {
+      "roadId": "alps-gotthard-tunnel",
+      "roadName": "圣哥达隧道",
+      "roadNameEN": "Gotthard Tunnel",
+      "roadNameLocal": {
+        "de": "Gotthard-Tunnel",
+        "it": "Galleria del San Gottardo"
+      },
+      "roadType": "tunnel",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但每年26个夜晚因维护关闭（主要在3-4月、6月、9-10月），周三/周四23:00-01:00"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但需注意维护关闭时间。5月中旬-10月有CUPRA优先车道（09:00-21:00）。"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5583,
+          "lng": 8.5611,
+          "name": "Airolo (意大利)"
+        },
+        "end": {
+          "lat": 46.5583,
+          "lng": 8.5611,
+          "name": "Göschenen (瑞士)"
+        }
+      },
+      "hazards": [
+        {
+          "type": "maintenance_closure",
+          "severity": "medium",
+          "description": "每年26个夜晚因维护关闭（主要在3-4月、6月、9-10月），周三/周四23:00-01:00，重型车辆提前30分钟停止通行",
+          "typicalMonths": [3, 4, 6, 9, 10],
+          "closureTimes": "周三/周四23:00-01:00"
+        },
+        {
+          "type": "pass_alternative",
+          "severity": "low",
+          "description": "维护关闭时，客车可改道圣哥达山口（5-11月开放）",
+          "typicalMonths": [5, 6, 7, 8, 9, 10, 11]
+        },
+        {
+          "type": "heavy_vehicle_restrictions",
+          "severity": "medium",
+          "description": "重型车辆（>3.5吨）在维护关闭前30分钟停止通行",
+          "typicalMonths": [3, 4, 6, 9, 10]
+        }
+      ],
+      "tunnelInfo": {
+        "lengthKm": 16.9,
+        "lengthMiles": 10.5,
+        "elevation": 1106,
+        "unit": "meters",
+        "notes": "连接瑞士和意大利的重要隧道，全长16.9公里，海拔1106米"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "gotthard-traffic.ch"
+    },
+    {
+      "roadId": "alps-grossglockner-pass",
+      "roadName": "格罗斯格洛克纳山口",
+      "roadNameEN": "Grossglockner Pass",
+      "roadNameLocal": {
+        "de": "Großglockner Hochalpenstraße",
+        "it": "Strada del Grossglockner"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [5, 6, 7, 8, 9, 10],
+        "openPeriod": "5月-10月",
+        "typicalOpenDate": "5月初",
+        "typicalCloseDate": "10月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询官方网站"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但需注意天气和路况，高海拔地区"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 47.0833,
+          "lng": 12.8333,
+          "name": "Bruck"
+        },
+        "end": {
+          "lat": 47.0833,
+          "lng": 12.8333,
+          "name": "Heiligenblut"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高",
+          "typicalMonths": [11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "snow_closure",
+          "severity": "high",
+          "description": "冬季因积雪封闭",
+          "typicalMonths": [11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化快，可能突然封闭"
+        }
+      ],
+      "tunnelInfo": {
+        "lengthKm": 48,
+        "lengthMiles": 30,
+        "elevation": 2504,
+        "unit": "meters",
+        "notes": "奥地利最高山口之一，海拔2504米，全长48公里，是著名的景观公路"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "grossglockner.at"
+    },
+    {
+      "roadId": "alps-timor-pass",
+      "roadName": "蒂莫尔山口",
+      "roadNameEN": "Timor Pass",
+      "roadNameLocal": {
+        "de": "Timorpass",
+        "it": "Passo del Timor"
+      },
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [5, 6, 7, 8, 9, 10],
+        "openPeriod": "5月-10月",
+        "typicalOpenDate": "5月中旬",
+        "typicalCloseDate": "10月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询官方信息"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，但需注意天气和路况"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.8333,
+          "lng": 10.3333,
+          "name": "Reschenpass附近"
+        },
+        "end": {
+          "lat": 46.9167,
+          "lng": 10.4167,
+          "name": "Timor山口"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "冬季和春季雪崩风险",
+          "typicalMonths": [11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "snow_closure",
+          "severity": "high",
+          "description": "冬季因积雪封闭",
+          "typicalMonths": [11, 12, 1, 2, 3, 4]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "medium",
+          "description": "天气变化快，可能突然封闭"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "weekly",
+      "source": "local-authorities"
+    },
+    {
+      "roadId": "alps-semmering-pass",
+      "roadName": "塞默灵山口",
+      "roadNameEN": "Semmering Pass",
+      "roadNameLocal": {
+        "de": "Semmeringpass",
+        "it": "Passo del Semmering"
+      },
+      "roadType": "mountain_pass",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年开放",
+        "notes": "全年开放，但冬季可能需要防滑链"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季建议携带防滑链"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 47.6333,
+          "lng": 15.8333,
+          "name": "Gloggnitz"
+        },
+        "end": {
+          "lat": 47.6667,
+          "lng": 15.8667,
+          "name": "Mürzzuschlag"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_chain_required",
+          "severity": "medium",
+          "description": "冬季可能需要防滑链",
+          "typicalMonths": [11, 12, 1, 2, 3]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "medium",
+          "description": "天气变化快，冬季可能临时封闭"
+        }
+      ],
+      "tunnelInfo": {
+        "lengthKm": 27.3,
+        "lengthMiles": 17.0,
+        "elevation": 985,
+        "unit": "meters",
+        "notes": "连接奥地利下奥地利州和施蒂利亚州，海拔985米，有塞默灵基础隧道（27.3公里）"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "asfinag.at"
+    },
+    {
+      "roadId": "alps-gotthard-base-tunnel",
+      "roadName": "圣哥达基础隧道",
+      "roadNameEN": "Gotthard Base Tunnel",
+      "roadNameLocal": {
+        "de": "Gotthard-Basistunnel",
+        "fr": "Tunnel de base du Saint-Gothard",
+        "it": "Galleria di base del San Gottardo"
+      },
+      "roadType": "tunnel",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年开放",
+        "notes": "全年开放，但定期维护可能关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，主要用于铁路，但公路隧道也重要"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 46.5833,
+          "lng": 8.5833,
+          "name": "Erstfeld"
+        },
+        "end": {
+          "lat": 46.5000,
+          "lng": 9.0000,
+          "name": "Bodio"
+        }
+      },
+      "hazards": [
+        {
+          "type": "maintenance_closure",
+          "severity": "low",
+          "description": "定期维护可能关闭，通常提前通知",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "emergency_closure",
+          "severity": "low",
+          "description": "紧急情况可能临时关闭"
+        }
+      ],
+      "tunnelInfo": {
+        "lengthKm": 57.1,
+        "lengthMiles": 35.5,
+        "elevation": 549,
+        "unit": "meters",
+        "notes": "世界最长铁路隧道，全长57.1公里，海拔549米，2016年开通，主要用于高速铁路"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "sbb.ch"
+    }
+  ]
+}

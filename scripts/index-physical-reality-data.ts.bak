@@ -1,0 +1,487 @@
+#!/usr/bin/env tsx
+/**
+ * Physical Reality 数据索引脚本
+ * 自动扫描 data/physical-reality/ 目录下的JSON文件，进行细粒度chunking并导入RAG系统
+ */
+
+import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
+import axios from 'axios';
+import https from 'https';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const prisma = new PrismaClient();
+
+// 使用 Python AI Service 生成 embedding（BGE-M3, 1024维）
+class SimpleEmbeddingService {
+  private httpClient: any;
+  private baseUrl: string;
+
+  constructor() {
+    this.baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://121.43.192.56:8001';
+    
+    this.httpClient = axios.create({
+      baseURL: this.baseUrl,
+      timeout: 30000,
+      proxy: false,
+      httpsAgent: new https.Agent({
+        keepAlive: true,
+        family: 4,
+      }),
+    });
+  }
+
+  async generateEmbeddingsBatch(texts: string[], batchSize: number = 10): Promise<number[][]> {
+    const results: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize);
+      
+      try {
+        const response = await this.httpClient.post(
+          '/api/v1/embeddings',
+          {
+            texts: batch,
+            model: 'bge-m3',
+            return_sparse: false,
+          }
+        );
+
+        if (response.data && response.data.embeddings) {
+          const embeddings = response.data.embeddings.map((e: any) => e.dense || e);
+          results.push(...embeddings);
+          
+          if (results.length % 10 === 0) {
+            console.log(`  📊 向量化进度: ${results.length}/${texts.length}`);
+          }
+        } else {
+          throw new Error('批量embedding返回格式错误');
+        }
+      } catch (error: any) {
+        console.error(`  ⚠️  批次 ${i}-${i + batch.length} 向量化失败:`, error.message);
+        // 生成零向量作为降级
+        batch.forEach(() => {
+          const zeroVector = new Array(1024).fill(0);
+          results.push(zeroVector);
+        });
+      }
+      
+      // 批次间延迟
+      if (i + batchSize < texts.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    return results;
+  }
+}
+
+const embeddingService = new SimpleEmbeddingService();
+
+// 检测数据类型和区域
+function detectDataType(filepath: string): { type: string; region: string } {
+  const filename = path.basename(filepath);
+  const dirname = path.dirname(filepath);
+  
+  // 检测数据类型
+  let type = 'unknown';
+  if (filepath.includes('road-status')) type = 'road_status';
+  else if (filepath.includes('ferry-schedules')) type = 'ferry_schedules';
+  else if (filepath.includes('weather-windows')) type = 'weather_windows';
+  
+  // 检测区域（从文件名或路径）
+  let region = 'unknown';
+  const regionMatch = filename.match(/(iceland|greenland|svalbard|faroe|alps|argentina)/i);
+  if (regionMatch) {
+    region = regionMatch[1].toLowerCase();
+  } else {
+    // 从路径推断
+    const pathParts = dirname.split(path.sep);
+    const regionIndex = pathParts.findIndex(p => ['iceland', 'greenland', 'svalbard', 'faroe', 'alps', 'argentina'].includes(p.toLowerCase()));
+    if (regionIndex >= 0) {
+      region = pathParts[regionIndex].toLowerCase();
+    }
+  }
+  
+  return { type, region };
+}
+
+// 提取关键词
+function extractKeywords(data: any, type: string): string[] {
+  const keywords: string[] = [];
+  
+  if (type === 'road_status') {
+    // 道路状态关键词
+    if (data.roadId) keywords.push(data.roadId);
+    if (data.roadName) keywords.push(data.roadName);
+    if (data.roadNameEN) keywords.push(data.roadNameEN);
+    if (data.roadType) keywords.push(data.roadType);
+    if (data.status) keywords.push(data.status);
+    if (data.requirements?.vehicleType) keywords.push(data.requirements.vehicleType);
+    if (data.hazards) {
+      data.hazards.forEach((h: any) => {
+        if (h.type) keywords.push(h.type);
+      });
+    }
+    keywords.push('道路状态', 'road status', 'F-road', '4x4');
+  } else if (type === 'ferry_schedules') {
+    // 渡轮时刻表关键词
+    if (data.routeId) keywords.push(data.routeId);
+    if (data.routeName) keywords.push(data.routeName);
+    if (data.routeNameEN) keywords.push(data.routeNameEN);
+    if (data.from?.name) keywords.push(data.from.name);
+    if (data.to?.name) keywords.push(data.to.name);
+    if (data.booking?.required) keywords.push('需要预订', 'booking required');
+    keywords.push('渡轮', 'ferry', '时刻表', 'schedule', '轮渡');
+  } else if (type === 'weather_windows') {
+    // 天气窗口关键词
+    if (data.regionId) keywords.push(data.regionId);
+    if (data.regionName) keywords.push(data.regionName);
+    if (data.regionNameEN) keywords.push(data.regionNameEN);
+    if (data.bestWindows) {
+      data.bestWindows.forEach((w: any) => {
+        if (w.period) keywords.push(w.period);
+        if (w.months) keywords.push(...w.months.map((m: number) => `${m}月`));
+      });
+    }
+    keywords.push('天气', 'weather', '最佳旅行时间', 'best travel time', '季节', 'season');
+  }
+  
+  return [...new Set(keywords)]; // 去重
+}
+
+// 创建chunk内容
+function createChunkContent(data: any, type: string): string {
+  let content = '';
+  
+  if (type === 'road_status') {
+    content = `道路: ${data.roadName || data.roadNameEN || data.roadId}\n`;
+    if (data.roadNameEN) content += `Road: ${data.roadNameEN}\n`;
+    if (data.roadType) content += `类型: ${data.roadType}\n`;
+    if (data.status) content += `状态: ${data.status}\n`;
+    if (data.currentStatus) content += `当前状态: ${data.currentStatus}\n`;
+    if (data.season) {
+      content += `开放季节: ${data.season.openPeriod || data.season.openMonths?.join(',')}\n`;
+      if (data.season.notes) content += `备注: ${data.season.notes}\n`;
+    }
+    if (data.requirements) {
+      content += `车辆要求: ${data.requirements.vehicleType || '无特殊要求'}\n`;
+      if (data.requirements.notes) content += `要求说明: ${data.requirements.notes}\n`;
+    }
+    if (data.hazards && data.hazards.length > 0) {
+      content += `风险: ${data.hazards.map((h: any) => h.type || h.description).join(', ')}\n`;
+    }
+  } else if (type === 'ferry_schedules') {
+    content = `渡轮路线: ${data.routeName || data.routeNameEN || data.routeId}\n`;
+    if (data.routeNameEN) content += `Route: ${data.routeNameEN}\n`;
+    if (data.from) content += `出发: ${data.from.name}\n`;
+    if (data.to) content += `到达: ${data.to.name}\n`;
+    if (data.schedule) {
+      if (data.schedule.summer) {
+        content += `夏季时刻表: ${data.schedule.summer.period}\n`;
+        if (data.schedule.summer.sailings) {
+          data.schedule.summer.sailings.forEach((s: any, i: number) => {
+            content += `  班次${i + 1}: ${s.departureTime} - ${s.arrivalTime} (${s.durationMinutes}分钟)\n`;
+          });
+        }
+      }
+      if (data.schedule.winter) {
+        content += `冬季时刻表: ${data.schedule.winter.period}\n`;
+        if (data.schedule.winter.sailings) {
+          data.schedule.winter.sailings.forEach((s: any, i: number) => {
+            content += `  班次${i + 1}: ${s.departureTime} - ${s.arrivalTime} (${s.durationMinutes}分钟)\n`;
+          });
+        }
+      }
+    }
+    if (data.booking) {
+      content += `预订: ${data.booking.required ? '需要' : '不需要'}\n`;
+      if (data.booking.advanceBooking) content += `预订建议: ${data.booking.advanceBooking}\n`;
+    }
+    if (data.price) {
+      content += `价格: 成人 ${data.price.adult?.amount} ${data.price.currency || 'ISK'}, 车辆 ${data.price.vehicle?.amount} ${data.price.currency || 'ISK'}\n`;
+    }
+  } else if (type === 'weather_windows') {
+    content = `区域: ${data.regionName || data.regionNameEN || data.regionId}\n`;
+    if (data.regionNameEN) content += `Region: ${data.regionNameEN}\n`;
+    if (data.bestWindows && data.bestWindows.length > 0) {
+      content += `最佳旅行窗口:\n`;
+      data.bestWindows.forEach((w: any) => {
+        content += `  ${w.period}: ${w.description}\n`;
+        if (w.temperature) {
+          content += `    温度: ${w.temperature.avg}°C (${w.temperature.min}-${w.temperature.max})\n`;
+        }
+        if (w.wind) {
+          content += `    风速: 平均 ${w.wind.avg} m/s, 最大 ${w.wind.max} m/s\n`;
+        }
+      });
+    }
+    if (data.riskLevels && data.riskLevels.length > 0) {
+      content += `风险等级:\n`;
+      data.riskLevels.forEach((r: any) => {
+        content += `  ${r.month}月: ${r.riskLevel} - ${r.recommendation}\n`;
+      });
+    }
+    if (data.extremeEvents && data.extremeEvents.length > 0) {
+      content += `极端天气事件:\n`;
+      data.extremeEvents.forEach((e: any) => {
+        content += `  ${e.type}: ${e.description} (${e.typicalMonths?.join(',')}月)\n`;
+      });
+    }
+  }
+  
+  return content.trim();
+}
+
+// 细粒度chunking：按条目创建chunks
+function chunkPhysicalRealityData(data: any, type: string, filepath: string): Array<{ content: string; keywords: string[]; metadata: any }> {
+  const chunks: Array<{ content: string; keywords: string[]; metadata: any }> = [];
+  const metadata = data.metadata || {};
+  
+  if (type === 'road_status' && data.roads) {
+    // 每条道路一个chunk
+    data.roads.forEach((road: any, index: number) => {
+      const content = createChunkContent(road, type);
+      const keywords = extractKeywords(road, type);
+      chunks.push({
+        content,
+        keywords,
+        metadata: {
+          ...metadata,
+          roadId: road.roadId,
+          roadName: road.roadName,
+          roadType: road.roadType,
+          status: road.status,
+          currentStatus: road.currentStatus,
+          season: road.season?.openPeriod,
+          requirements: road.requirements?.vehicleType,
+        }
+      });
+    });
+  } else if (type === 'ferry_schedules' && data.routes) {
+    // 每条路线一个chunk
+    data.routes.forEach((route: any, index: number) => {
+      const content = createChunkContent(route, type);
+      const keywords = extractKeywords(route, type);
+      chunks.push({
+        content,
+        keywords,
+        metadata: {
+          ...metadata,
+          routeId: route.routeId,
+          routeName: route.routeName,
+          from: route.from?.name,
+          to: route.to?.name,
+          bookingRequired: route.booking?.required,
+        }
+      });
+    });
+  } else if (type === 'weather_windows' && data.regions) {
+    // 每个区域一个chunk
+    data.regions.forEach((region: any, index: number) => {
+      const content = createChunkContent(region, type);
+      const keywords = extractKeywords(region, type);
+      chunks.push({
+        content,
+        keywords,
+        metadata: {
+          ...metadata,
+          regionId: region.regionId,
+          regionName: region.regionName,
+        }
+      });
+    });
+  }
+  
+  return chunks;
+}
+
+// 加载所有Physical Reality JSON文件
+function loadPhysicalRealityFiles(dirPath: string): Array<{ path: string; filename: string }> {
+  const files: Array<{ path: string; filename: string }> = [];
+  
+  if (!fs.existsSync(dirPath)) {
+    console.log(`⚠️  目录不存在: ${dirPath}`);
+    return files;
+  }
+  
+  function scanDir(currentPath: string) {
+    const items = fs.readdirSync(currentPath);
+    
+    items.forEach(item => {
+      const itemPath = path.join(currentPath, item);
+      const stat = fs.statSync(itemPath);
+      
+      if (stat.isDirectory()) {
+        // 跳过template文件
+        if (!item.includes('template')) {
+          scanDir(itemPath);
+        }
+      } else if (item.endsWith('.json') && !item.includes('template')) {
+        files.push({
+          path: itemPath,
+          filename: item,
+        });
+      }
+    });
+  }
+  
+  scanDir(dirPath);
+  return files;
+}
+
+// 主函数
+async function indexPhysicalRealityData() {
+  try {
+    console.log('🚀 开始索引 Physical Reality 数据...\n');
+    
+    const dataDir = path.join(process.cwd(), 'data', 'physical-reality');
+    const files = loadPhysicalRealityFiles(dataDir);
+    
+    if (files.length === 0) {
+      console.log('⚠️  未找到任何数据文件');
+      console.log(`   请确保数据文件位于: ${dataDir}`);
+      console.log('   参考模板文件创建数据: data/physical-reality/*/template.json');
+      return;
+    }
+    
+    console.log(`📁 找到 ${files.length} 个数据文件\n`);
+    
+    let totalChunks = 0;
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const file of files) {
+      try {
+        console.log(`\n📄 处理文件: ${file.filename}`);
+        
+        // 读取JSON文件
+        const fileContent = fs.readFileSync(file.path, 'utf-8');
+        const data = JSON.parse(fileContent);
+        
+        // 检测数据类型和区域
+        const { type, region } = detectDataType(file.path);
+        console.log(`   类型: ${type}, 区域: ${region}`);
+        
+        // 创建细粒度chunks
+        const chunks = chunkPhysicalRealityData(data, type, file.path);
+        console.log(`   生成 ${chunks.length} 个chunks`);
+        
+        if (chunks.length === 0) {
+          console.log(`   ⚠️  未生成chunks，跳过`);
+          failCount++;
+          continue;
+        }
+        
+        // 准备文件记录
+        const metadata = data.metadata || {};
+        const filename = `${region}-${type}-${path.basename(file.filename, '.json')}`;
+        
+        // 检查文件是否已存在
+        const existingFile = await prisma.knowledgeFile.findUnique({
+          where: { filename },
+        });
+        
+        if (existingFile) {
+          console.log(`   🔄 文件已存在，删除旧chunks...`);
+          await prisma.chunk.deleteMany({
+            where: { fileId: existingFile.id },
+          });
+        }
+        
+        // 创建或更新文件记录
+        const knowledgeFile = await prisma.knowledgeFile.upsert({
+          where: { filename },
+          create: {
+            filename,
+            filepath: file.path,
+            category: type,
+            version: metadata.version || '1.0.0',
+            language: metadata.language || 'zh-CN',
+            credibilityScore: 0.95, // Physical Reality数据可信度高
+            dataSources: metadata.dataSource ? [metadata.dataSource] : [],
+            lastUpdated: metadata.lastUpdated ? new Date(metadata.lastUpdated) : new Date(),
+          },
+          update: {
+            filepath: file.path,
+            version: metadata.version || '1.0.0',
+            lastUpdated: metadata.lastUpdated ? new Date(metadata.lastUpdated) : new Date(),
+          },
+        });
+        
+        console.log(`   ✅ 文件记录: ${knowledgeFile.id}`);
+        
+        // 批量生成embeddings
+        const contents = chunks.map(c => c.content);
+        console.log(`   🔄 生成embeddings...`);
+        const embeddings = await embeddingService.generateEmbeddingsBatch(contents);
+        
+        // 批量插入chunks
+        console.log(`   💾 插入chunks...`);
+          const chunkRecords = chunks.map((chunk, index) => {
+          const chunkId = `${knowledgeFile.filename}_${index + 1}`;
+          return {
+            chunkId,
+            knowledgeFileId: knowledgeFile.id,
+            content: chunk.content,
+            keywords: chunk.keywords,
+            credibilityScore: 0.95,
+            metadata: chunk.metadata,
+            type: type, // 添加type字段
+          };
+        });
+        
+        // 使用原始SQL批量插入（因为embedding是Unsupported类型）
+        for (let i = 0; i < chunkRecords.length; i++) {
+          const record = chunkRecords[i];
+          const embedding = embeddings[i];
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO chunks (id, chunk_id, file_id, content, keywords, credibility_score, metadata, embedding, type)
+             VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4, $5, $6::jsonb, $7::vector(1024), $8)
+             ON CONFLICT (chunk_id) DO UPDATE SET
+               content = EXCLUDED.content,
+               keywords = EXCLUDED.keywords,
+               credibility_score = EXCLUDED.credibility_score,
+               metadata = EXCLUDED.metadata,
+               embedding = EXCLUDED.embedding,
+               type = EXCLUDED.type,
+               section = EXCLUDED.section`,
+            record.chunkId,
+            record.knowledgeFileId,
+            record.content,
+            record.keywords,
+            record.credibilityScore,
+            JSON.stringify(record.metadata),
+            JSON.stringify(embedding),
+            record.type
+          );
+        }
+        
+        totalChunks += chunks.length;
+        successCount++;
+        console.log(`   ✅ 完成: ${chunks.length} 个chunks已索引`);
+        
+      } catch (error: any) {
+        console.error(`   ❌ 处理失败: ${error.message}`);
+        failCount++;
+      }
+    }
+    
+    console.log(`\n\n📊 索引完成统计:`);
+    console.log(`   总文件数: ${files.length}`);
+    console.log(`   成功: ${successCount}`);
+    console.log(`   失败: ${failCount}`);
+    console.log(`   总chunks: ${totalChunks}`);
+    
+  } catch (error: any) {
+    console.error('❌ 索引过程出错:', error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// 运行
+indexPhysicalRealityData().catch(console.error);

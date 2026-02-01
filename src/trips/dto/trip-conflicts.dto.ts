@@ -28,13 +28,13 @@ export enum ConflictSeverity {
  */
 export class ConflictSuggestionDto {
   @ApiProperty({ description: '建议操作' })
-  action: string;
+  action!: string;
 
   @ApiProperty({ description: '建议描述' })
-  description: string;
+  description!: string;
 
   @ApiProperty({ description: '影响说明' })
-  impact: string;
+  impact!: string;
 }
 
 /**
@@ -42,25 +42,25 @@ export class ConflictSuggestionDto {
  */
 export class ConflictDto {
   @ApiProperty({ description: '冲突 ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '冲突类型', enum: ConflictType })
-  type: ConflictType;
+  type!: ConflictType;
 
   @ApiProperty({ description: '严重程度', enum: ConflictSeverity })
-  severity: ConflictSeverity;
+  severity!: ConflictSeverity;
 
   @ApiProperty({ description: '标题' })
-  title: string;
+  title!: string;
 
   @ApiProperty({ description: '描述' })
-  description: string;
+  description!: string;
 
   @ApiProperty({ description: '受影响的日期数组' })
-  affectedDays: string[];
+  affectedDays!: string[];
 
   @ApiProperty({ description: '受影响的行程项 ID 数组' })
-  affectedItemIds: string[];
+  affectedItemIds!: string[];
 
   @ApiPropertyOptional({ description: '建议列表', type: [ConflictSuggestionDto] })
   suggestions?: ConflictSuggestionDto[];
@@ -71,12 +71,12 @@ export class ConflictDto {
  */
 export class ConflictsResponseDto {
   @ApiProperty({ description: '行程 ID' })
-  tripId: string;
+  tripId!: string;
 
   @ApiProperty({ description: '冲突列表', type: [ConflictDto] })
-  conflicts: ConflictDto[];
+  conflicts!: ConflictDto[];
 
   @ApiProperty({ description: '冲突总数' })
-  total: number;
+  total!: number;
 }
 

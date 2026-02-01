@@ -259,7 +259,7 @@ export class TrainingDataPreparationService {
       input.compliance_result.risk_warnings.length > 0
     ) {
       const warnings = input.compliance_result.risk_warnings
-        .map((w) => `[${w.level}] ${w.message}`)
+        .map((w: { level: string; message: string }) => `[${w.level}] ${w.message}`)
         .join('\n');
       parts.push(`\n合规警告:\n${warnings}`);
     }

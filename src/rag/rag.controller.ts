@@ -146,28 +146,37 @@ export class RagController {
 
   /**
    * 索引文档
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 推荐使用新系统（KnowledgeFile + Chunks）
+   * 
+   * @deprecated document_index表已删除，此端点不再可用
    */
   @Public()
   @Post('index')
   @ApiOperation({
-    summary: '索引文档',
-    description: '将文档添加到 RAG 知识库索引',
+    summary: '索引文档（已废弃）',
+    description: '⚠️ document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）',
   })
   @ApiBody({ type: Object, description: '文档索引项' })
-  @ApiResponse({ status: 200, description: '索引成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async indexDocument(@Body() item: DocumentIndexItem) {
-    const id = await this.ragService.indexDocument(item);
-    return { id, success: true };
+    throw new Error('document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）');
   }
 
   /**
    * 批量索引文档
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 推荐使用新系统（KnowledgeFile + Chunks）
+   * 
+   * @deprecated document_index表已删除，此端点不再可用
    */
   @Public()
   @Post('index/batch')
   @ApiOperation({
-    summary: '批量索引文档',
-    description: '批量将文档添加到 RAG 知识库索引。支持两种格式：1) DocumentIndexItem数组；2) 路线JSON对象（会自动转换为文档）',
+    summary: '批量索引文档（已废弃）',
+    description: '⚠️ document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）',
   })
   @ApiBody({ 
     schema: {
@@ -184,30 +193,9 @@ export class RagController {
       ]
     }
   })
-  @ApiResponse({ status: 200, description: '批量索引成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async indexDocuments(@Body() body: DocumentIndexItem[] | any) {
-    // 处理路线JSON格式：如果body是对象且包含route字段，则转换为文档数组
-    let items: DocumentIndexItem[];
-    
-    if (!Array.isArray(body)) {
-      // 检查是否是路线JSON格式
-      if (body && typeof body === 'object' && body.route) {
-        items = this.convertRouteToDocuments(body);
-      } else {
-        // 如果不是数组也不是路线格式，尝试将其包装为数组
-        items = Array.isArray(body) ? body : [body];
-      }
-    } else {
-      items = body;
-    }
-
-    // 验证items是数组且不为空
-    if (!Array.isArray(items) || items.length === 0) {
-      throw new Error('请求体必须是DocumentIndexItem数组或路线JSON对象');
-    }
-
-    const ids = await this.ragService.indexDocuments(items);
-    return { ids, success: true, count: ids.length };
+    throw new Error('document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）');
   }
 
   /**
@@ -1169,10 +1157,12 @@ export class RagController {
         pageSize: size,
       });
 
-      // 截断内容预览
+      // 添加内容预览（如果content太长，截断用于预览）
       const documentsWithPreview = result.documents.map(doc => ({
         ...doc,
-        contentPreview: doc.content.substring(0, 200) + (doc.content.length > 200 ? '...' : ''),
+        contentPreview: doc.content.length > 200 
+          ? doc.content.substring(0, 200) + '...' 
+          : doc.content,
       }));
 
       return successResponse({
@@ -1233,40 +1223,31 @@ export class RagController {
       },
     },
   })
-  @ApiResponse({ status: 200, description: '更新成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async updateDocument(
     @Param('id') id: string,
     @Body() item: Partial<DocumentIndexItem>,
   ) {
-    try {
-      await this.ragService.updateDocument(id, item);
-      return successResponse({ id, message: '文档更新成功' });
-    } catch (error: any) {
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
+    throw new Error('document_index表已删除，此端点不再可用');
   }
 
   /**
    * 删除文档（后台管理）
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * 
+   * @deprecated document_index表已删除，此端点不再可用
    */
   @Public()
   @Delete('documents/:id')
   @ApiOperation({
-    summary: '删除文档（后台管理）',
-    description: '从 RAG 知识库中删除指定文档',
+    summary: '删除文档（已废弃）',
+    description: '⚠️ document_index表已删除，此端点不再可用',
   })
   @ApiParam({ name: 'id', description: '文档 ID' })
-  @ApiResponse({ status: 200, description: '删除成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async deleteDocument(@Param('id') id: string) {
-    try {
-      await this.ragService.deleteDocument(id);
-      return successResponse({ id, message: '文档删除成功' });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
-      }
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
+    throw new Error('document_index表已删除，此端点不再可用');
   }
 
   // ==================== RAG 检索质量评估 ====================

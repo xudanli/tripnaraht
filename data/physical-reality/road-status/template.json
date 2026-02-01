@@ -1,0 +1,68 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "iceland",
+    "regionName": "冰岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "road.is",
+    "description": "道路状态数据模板 - 用于记录道路开放状态、季节性限制、4x4要求等信息"
+  },
+  "roads": [
+    {
+      "roadId": "F208",
+      "roadName": "Landmannalaugar入口",
+      "roadNameEN": "Landmannalaugar Access",
+      "roadNameLocal": "Landmannalaugar",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9330,
+          "lng": -21.0023,
+          "name": "Selfoss"
+        },
+        "end": {
+          "lat": 63.9833,
+          "lng": -19.0667,
+          "name": "Landmannalaugar"
+        },
+        "keyPoints": [
+          {
+            "lat": 63.9500,
+            "lng": -20.5000,
+            "name": "关键节点1",
+            "description": "河流穿越点"
+          }
+        ]
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "location": {
+            "lat": 63.9500,
+            "lng": -20.5000
+          },
+          "description": "需要穿越多条河流，水位变化大"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "weekly",
+      "source": "road.is"
+    }
+  ]
+}

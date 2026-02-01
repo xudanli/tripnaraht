@@ -25,6 +25,30 @@ export class NaturalLanguageToParamsDto {
   @IsEnum(LlmProvider)
   @IsOptional()
   provider?: LlmProvider;
+
+  @ApiPropertyOptional({
+    description: 'Context Package 块列表（用于增强理解用户意图）',
+    type: [Object],
+  })
+  @IsOptional()
+  @IsObject({ each: true })
+  contextBlocks?: any[];
+
+  @ApiPropertyOptional({
+    description: '目的地代码（用于特化配置）',
+    example: 'GL',
+  })
+  @IsString()
+  @IsOptional()
+  destinationCode?: string;
+
+  @ApiPropertyOptional({
+    description: '目的地特化配置（用于特化 Prompt 构建）',
+    type: Object,
+  })
+  @IsObject()
+  @IsOptional()
+  destinationConfig?: any; // 使用 any 避免循环依赖，实际类型是 DestinationClarificationConfig
 }
 
 export class TripCreationParams {

@@ -1,0 +1,473 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "faroe-islands",
+    "regionName": "法罗群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "smyril-line",
+    "description": "法罗群岛渡轮时刻表 - Smyril Line连接冰岛和丹麦"
+  },
+  "routes": [
+    {
+      "routeId": "faroe-smyril-line-iceland",
+      "routeName": "Smyril Line - 冰岛航线",
+      "routeNameEN": "Smyril Line - Iceland Route",
+      "from": {
+        "portId": "torshavn",
+        "name": "Tórshavn",
+        "nameEN": "Tórshavn",
+        "coordinates": {
+          "lat": 62.0097,
+          "lng": -6.7719
+        }
+      },
+      "to": {
+        "portId": "seyðisfjörður",
+        "name": "Seyðisfjörður",
+        "nameEN": "Seyðisfjörður",
+        "coordinates": {
+          "lat": 65.2600,
+          "lng": -14.0000
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "3月中旬 - 11月底",
+          "frequency": "weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 1080,
+              "daysOfWeek": [1],
+              "notes": "每周一班，连接法罗群岛和冰岛"
+            }
+          ],
+          "notes": "夏季班次正常，受天气影响可能调整"
+        },
+        "winter": {
+          "period": "12月 - 3月中旬",
+          "frequency": "none",
+          "sailings": [],
+          "notes": "冬季不运营"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前1-2周预订",
+        "bookingUrl": "https://www.smyril-line.com/",
+        "phone": "+298-345-900",
+        "notes": "受天气影响大，建议提前预订并关注天气"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 800,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 400,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 2000,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每周一班，连接法罗群岛和冰岛",
+          "startDate": "2026-03-15",
+          "endDate": "2026-11-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营",
+          "startDate": "2026-12-01",
+          "endDate": "2027-03-14"
+        }
+      ],
+      "notes": "连接法罗群岛和冰岛的重要渡轮，仅在夏季运营，受天气影响大"
+    },
+    {
+      "routeId": "faroe-smyril-line-denmark",
+      "routeName": "Smyril Line - 丹麦航线",
+      "routeNameEN": "Smyril Line - Denmark Route",
+      "from": {
+        "portId": "torshavn",
+        "name": "Tórshavn",
+        "nameEN": "Tórshavn",
+        "coordinates": {
+          "lat": 62.0097,
+          "lng": -6.7719
+        }
+      },
+      "to": {
+        "portId": "hirtshals",
+        "name": "Hirtshals",
+        "nameEN": "Hirtshals",
+        "coordinates": {
+          "lat": 57.5883,
+          "lng": 9.9583
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "3月中旬 - 11月底",
+          "frequency": "twice_weekly",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 2160,
+              "daysOfWeek": [1, 5],
+              "notes": "夏季每周2班，连接法罗群岛和丹麦"
+            }
+          ],
+          "notes": "夏季班次增加，受天气影响可能调整"
+        },
+        "winter": {
+          "period": "12月 - 3月中旬",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 2160,
+              "daysOfWeek": [1],
+              "notes": "冬季每周1班，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响大"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前1-2周预订",
+        "bookingUrl": "https://www.smyril-line.com/",
+        "phone": "+298-345-900",
+        "notes": "受天气影响大，建议提前预订并关注天气"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 1200,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 600,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 2500,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每周2班，连接法罗群岛和丹麦",
+          "startDate": "2026-03-15",
+          "endDate": "2026-11-30"
+        },
+        {
+          "season": "winter",
+          "changes": "每周1班，受天气影响可能取消",
+          "startDate": "2026-12-01",
+          "endDate": "2027-03-14"
+        }
+      ],
+      "notes": "连接法罗群岛和丹麦的重要渡轮，夏季每周2班，冬季每周1班，受天气影响大"
+    },
+    {
+      "routeId": "faroe-torshavn-suduroy",
+      "routeName": "Tórshavn - Suðuroy渡轮",
+      "routeNameEN": "Tórshavn - Suðuroy Ferry",
+      "from": {
+        "portId": "torshavn",
+        "name": "Tórshavn",
+        "nameEN": "Tórshavn",
+        "coordinates": {
+          "lat": 62.0097,
+          "lng": -6.7719
+        }
+      },
+      "to": {
+        "portId": "krambatangi",
+        "name": "Krambatangi",
+        "nameEN": "Krambatangi",
+        "coordinates": {
+          "lat": 61.5167,
+          "lng": -6.8167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "全年",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 125,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日2-3班，连接Tórshavn和Suðuroy岛"
+            }
+          ],
+          "notes": "全年运营，每日2-3班，受天气影响可能调整"
+        },
+        "winter": {
+          "period": "全年",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 125,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日2-3班，受天气影响可能取消"
+            }
+          ],
+          "notes": "全年运营，但冬季受天气影响可能取消"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订，特别是车辆",
+        "bookingUrl": "https://www.ssl.fo/",
+        "phone": "+298-343-030",
+        "notes": "车辆建议提前预订，受天气影响大"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 150,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 75,
+          "description": "儿童单程"
+        },
+        "vehicle": {
+          "amount": 300,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每日2-3班，连接Tórshavn和Suðuroy岛",
+          "startDate": "2026-01-01",
+          "endDate": "2026-12-31"
+        },
+        {
+          "season": "winter",
+          "changes": "每日2-3班，但受天气影响可能取消",
+          "startDate": "2026-01-01",
+          "endDate": "2026-12-31"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能取消"
+      },
+      "notes": "连接法罗群岛主岛（Streymoy）和Suðuroy岛的重要内部渡轮，由Strandfaraskip Landsins (SSL)运营，每日2-3班，航程2小时5分钟。全年运营，但受天气影响大。"
+    },
+    {
+      "routeId": "faroe-torshavn-nolsoy",
+      "routeName": "Tórshavn - Nólsoy渡轮",
+      "routeNameEN": "Tórshavn - Nólsoy Ferry",
+      "from": {
+        "portId": "torshavn",
+        "name": "Tórshavn",
+        "nameEN": "Tórshavn",
+        "coordinates": {
+          "lat": 62.0097,
+          "lng": -6.7719
+        }
+      },
+      "to": {
+        "portId": "nolsoy",
+        "name": "Nólsoy",
+        "nameEN": "Nólsoy",
+        "coordinates": {
+          "lat": 62.0167,
+          "lng": -6.6667
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "全年",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 30,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日多班，连接Tórshavn和Nólsoy岛"
+            }
+          ],
+          "notes": "全年运营，每日多班，工作日班次更多"
+        },
+        "winter": {
+          "period": "全年",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 30,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日多班，但周末班次减少"
+            }
+          ],
+          "notes": "全年运营，但周末班次减少，受天气影响可能取消"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": false,
+        "advanceBooking": "通常不需要提前预订",
+        "bookingUrl": "https://www.ssl.fo/",
+        "phone": "+298-343-030",
+        "notes": "短途渡轮，通常不需要提前预订"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 50,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 25,
+          "description": "儿童单程"
+        },
+        "vehicle": {
+          "amount": 100,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每日多班，工作日班次更多",
+          "startDate": "2026-01-01",
+          "endDate": "2026-12-31"
+        },
+        {
+          "season": "winter",
+          "changes": "每日多班，但周末班次减少",
+          "startDate": "2026-01-01",
+          "endDate": "2026-12-31"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "medium",
+        "description": "受天气影响，恶劣天气时可能取消"
+      },
+      "notes": "连接法罗群岛主岛（Streymoy）和Nólsoy岛的短途渡轮，由Strandfaraskip Landsins (SSL)运营，每日多班，航程30分钟。全年运营，工作日班次更多，周末班次减少。"
+    },
+    {
+      "routeId": "faroe-sorvagur-mykines",
+      "routeName": "Sørvágur - Mykines渡轮",
+      "routeNameEN": "Sørvágur - Mykines Ferry",
+      "from": {
+        "portId": "sorvagur",
+        "name": "Sørvágur",
+        "nameEN": "Sørvágur",
+        "coordinates": {
+          "lat": 62.0667,
+          "lng": -7.3167
+        }
+      },
+      "to": {
+        "portId": "mykines",
+        "name": "Mykines",
+        "nameEN": "Mykines",
+        "coordinates": {
+          "lat": 62.1000,
+          "lng": -7.6500
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 9月",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 45,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夏季每日运营，连接Sørvágur和Mykines岛"
+            }
+          ],
+          "notes": "夏季每日运营，受天气影响可能取消"
+        },
+        "winter": {
+          "period": "10月 - 4月",
+          "frequency": "suspended",
+          "sailings": [],
+          "notes": "冬季不运营"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "必须提前预订，建议提前1-2周",
+        "bookingUrl": "https://www.ssl.fo/",
+        "phone": "+298-343-030",
+        "notes": "前往Mykines必须提前预订，受天气影响大"
+      },
+      "price": {
+        "currency": "DKK",
+        "currencyCode": "DKK",
+        "adult": {
+          "amount": 200,
+          "description": "成人往返"
+        },
+        "child": {
+          "amount": 100,
+          "description": "儿童往返"
+        },
+        "notes": "价格包含往返，前往Mykines的专用渡轮"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季每日运营，连接Sørvágur和Mykines岛",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "very_high",
+        "description": "受天气影响极大，恶劣天气时经常取消，前往Mykines必须提前预订并关注天气"
+      },
+      "notes": "连接Sørvágur和Mykines岛的渡轮，由Strandfaraskip Landsins (SSL)运营，仅在夏季（5-9月）运营，航程45分钟。Mykines是法罗群岛最偏远的岛屿之一，以海鸟和自然风光闻名。受天气影响极大，必须提前预订。"
+    }
+  ]
+}

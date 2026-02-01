@@ -96,6 +96,9 @@ export class RerankingService {
 ${prompt}`;
 
       // 获取默认provider
+      if (!this.llmService) {
+        throw new Error('LlmService 未注入，无法进行 LLM 重排序');
+      }
       const provider = this.llmService.getDefaultProvider();
       const response = await this.llmService.callLlmWithSchema(
         provider,

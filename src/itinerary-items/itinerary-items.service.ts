@@ -605,7 +605,7 @@ export class ItineraryItemsService {
       if (!tripDay) {
         throw new NotFoundException(`找不到指定的行程日期 (ID: ${targetTripDayId})`);
       }
-    } else if (updateDto.startTime) {
+    } else if (updateDto.startTime && start) {
       // 如果更新了 startTime 但未提供 tripDayId，根据新的 startTime 找到对应的 TripDay
       const startDate = DateTime.fromJSDate(start, { zone: 'utc' });
       const dayStart = startDate.startOf('day').toJSDate();
@@ -638,7 +638,7 @@ export class ItineraryItemsService {
     // 如果更新了时间，需要重新校验和计算
     if (updateDto.startTime || updateDto.endTime) {
       // 如果关联了地点，重新校验营业时间
-      if (existing.placeId && existing.Place) {
+      if (existing.placeId && existing.Place && start) {
         const meta = existing.Place?.metadata as any;
         const timezone = meta?.timezone || 'Atlantic/Reykjavik';
         const hoursStr = OpeningHoursUtil.getHoursForDate(meta, start, timezone);
@@ -677,7 +677,7 @@ export class ItineraryItemsService {
             })
           : existing.TripDay;
 
-        if (targetTripDay) {
+        if (targetTripDay && start) {
           await this.adjustSubsequentItemsBasedOnTravelTime(
             existing,
             start,

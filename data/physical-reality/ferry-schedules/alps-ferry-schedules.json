@@ -1,0 +1,298 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "alps",
+    "regionName": "阿尔卑斯",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "navigazionelaghi.it, lakelucerne.ch, bls-schiff.ch",
+    "description": "阿尔卑斯湖泊渡轮时刻表数据 - 包含意大利和瑞士主要湖泊的渡轮服务"
+  },
+  "routes": [
+    {
+      "routeId": "alps-lake-garda-ferry",
+      "routeName": "加尔达湖渡轮",
+      "routeNameEN": "Lake Garda Ferry",
+      "from": {
+        "portId": "desenzano",
+        "name": "Desenzano",
+        "nameEN": "Desenzano",
+        "coordinates": {
+          "lat": 45.4667,
+          "lng": 10.5333
+        }
+      },
+      "to": {
+        "portId": "riva-del-garda",
+        "name": "Riva del Garda",
+        "nameEN": "Riva del Garda",
+        "coordinates": {
+          "lat": 45.8833,
+          "lng": 10.8333
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "4月13日 - 10月5日",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "08:00",
+              "arrivalTime": "12:00",
+              "durationMinutes": 240,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夏季班次频繁，每小时多班"
+            }
+          ]
+        },
+        "winter": {
+          "period": "10月6日 - 3月31日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "13:00",
+              "durationMinutes": 240,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ]
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订，特别是夏季",
+        "bookingUrl": "https://www.navigazionelaghi.it",
+        "phone": "800-551801",
+        "notes": "可在出发前20分钟在售票处购买，或在没有售票处的港口船上购买"
+      },
+      "price": {
+        "currency": "EUR",
+        "currencyCode": "EUR",
+        "adult": {
+          "amount": 15,
+          "description": "成人单程（价格因路线而异）"
+        },
+        "vehicle": {
+          "amount": 30,
+          "description": "车辆（仅限Traghetto渡轮）",
+          "included": true
+        },
+        "notes": "价格因路线和季节而异，车辆运输仅限特定渡轮"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日多班",
+          "startDate": "2026-04-13",
+          "endDate": "2026-10-05"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，受天气影响可能取消",
+          "startDate": "2026-10-06",
+          "endDate": "2027-03-31"
+        }
+      ],
+      "weatherImpact": {
+        "strongWaves": "强风和大浪可能导致服务暂停",
+        "visibility": "浓雾可能影响服务"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "navigazionelaghi.it"
+    },
+    {
+      "routeId": "alps-lake-lucerne-ferry",
+      "routeName": "卢塞恩湖渡轮",
+      "routeNameEN": "Lake Lucerne Ferry",
+      "from": {
+        "portId": "lucerne",
+        "name": "Lucerne",
+        "nameEN": "Lucerne",
+        "coordinates": {
+          "lat": 47.0500,
+          "lng": 8.3000
+        }
+      },
+      "to": {
+        "portId": "fluelen",
+        "name": "Flüelen",
+        "nameEN": "Flüelen",
+        "coordinates": {
+          "lat": 46.9000,
+          "lng": 8.6167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月23日 - 9月6日",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "08:00",
+              "arrivalTime": "11:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夏季班次频繁"
+            }
+          ]
+        },
+        "spring": {
+          "period": "4月18日 - 5月22日",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "12:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7]
+            }
+          ]
+        },
+        "autumn": {
+          "period": "9月7日 - 10月18日",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "12:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7]
+            }
+          ]
+        },
+        "winter": {
+          "period": "10月19日 - 4月17日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "10:00",
+              "arrivalTime": "13:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少"
+            }
+          ]
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://www.lakelucerne.ch",
+        "notes": "可在船上、卢塞恩、Weggis和Brunnen车站购买，接受多种瑞士通票"
+      },
+      "price": {
+        "currency": "CHF",
+        "currencyCode": "CHF",
+        "adult": {
+          "amount": 25,
+          "description": "成人单程（价格因路线而异）"
+        },
+        "notes": "接受GA travelcard、Swiss Travel Pass、Half Fare travelcard"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日多班",
+          "startDate": "2026-05-23",
+          "endDate": "2026-09-06"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少",
+          "startDate": "2026-10-19",
+          "endDate": "2027-04-17"
+        }
+      ],
+      "weatherImpact": {
+        "strongWaves": "强风和大浪可能导致服务暂停",
+        "visibility": "浓雾可能影响服务"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "lakelucerne.ch"
+    },
+    {
+      "routeId": "alps-lake-thun-brienz-ferry",
+      "routeName": "图恩湖和布里恩茨湖渡轮",
+      "routeNameEN": "Lake Thun and Brienz Ferry",
+      "from": {
+        "portId": "interlaken",
+        "name": "Interlaken",
+        "nameEN": "Interlaken",
+        "coordinates": {
+          "lat": 46.6833,
+          "lng": 7.8667
+        }
+      },
+      "to": {
+        "portId": "thun",
+        "name": "Thun",
+        "nameEN": "Thun",
+        "coordinates": {
+          "lat": 46.7500,
+          "lng": 7.6167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "3月 - 10月",
+          "frequency": "seasonal",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "11:00",
+              "durationMinutes": 120,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "班次因船只和路线而异"
+            }
+          ]
+        },
+        "winter": {
+          "period": "11月 - 2月",
+          "frequency": "suspended",
+          "notes": "冬季服务暂停"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://www.bls-schiff.ch",
+        "notes": "可在船上购买"
+      },
+      "price": {
+        "currency": "CHF",
+        "currencyCode": "CHF",
+        "adult": {
+          "amount": 20,
+          "description": "成人单程（价格因路线而异）"
+        },
+        "notes": "价格因路线和季节而异"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "3-10月运营",
+          "startDate": "2026-03-01",
+          "endDate": "2026-10-31"
+        },
+        {
+          "season": "winter",
+          "changes": "11-2月服务暂停",
+          "startDate": "2026-11-01",
+          "endDate": "2027-02-28"
+        }
+      ],
+      "weatherImpact": {
+        "strongWaves": "强风和大浪可能导致服务暂停",
+        "visibility": "浓雾可能影响服务"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "bls-schiff.ch"
+    }
+  ]
+}

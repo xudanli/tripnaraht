@@ -1,0 +1,1126 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "iceland",
+    "regionName": "冰岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "icelandic-meteorological-office",
+    "description": "冰岛天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "iceland-south",
+      "regionName": "冰岛南部",
+      "regionNameEN": "South Iceland",
+      "coordinates": {
+        "center": {
+          "lat": 64.0,
+          "lng": -19.0
+        },
+        "bounds": {
+          "north": 65.0,
+          "south": 63.0,
+          "east": -18.0,
+          "west": -22.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，日照时间长，极昼现象",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 15,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，价格相对较低",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 14,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量较少",
+            "风速适中",
+            "极昼现象",
+            "温度适宜"
+          ],
+          "typicalDays": {
+            "sunny": 15,
+            "cloudy": 10,
+            "rainy": 6,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象",
+            "温度低"
+          ],
+          "typicalDays": {
+            "sunny": 5,
+            "cloudy": 15,
+            "snowy": 8,
+            "stormy": 3,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年2-3次",
+          "impact": "道路封闭、航班取消、户外活动危险",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日极端风暴，全国道路封闭"
+          }
+        },
+        {
+          "type": "heavy_snow",
+          "severity": "high",
+          "description": "强降雪",
+          "typicalMonths": [12, 1, 2, 3],
+          "frequency": "每月1-2次",
+          "impact": "道路封闭、能见度低",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日强降雪，南部道路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-westfjords",
+      "regionName": "西峡湾",
+      "regionNameEN": "Westfjords",
+      "coordinates": {
+        "center": {
+          "lat": 65.8,
+          "lng": -22.0
+        },
+        "bounds": {
+          "north": 66.5,
+          "south": 65.0,
+          "east": -20.0,
+          "west": -24.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气最稳定，所有山路和渡轮路线开放",
+          "temperature": {
+            "avg": 11,
+            "min": 7,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 16,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，但部分山路可能仍关闭",
+          "temperature": {
+            "avg": 7,
+            "min": 3,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 70,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 19,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "极昼现象"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 7,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "山路封闭",
+            "极夜现象"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "snowy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "山路封闭",
+            "渡轮班次减少",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间，所有路线开放"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "山路封闭",
+            "渡轮班次减少",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年2-3次",
+          "impact": "山路封闭、渡轮取消、户外活动危险",
+          "historicalExample": {
+            "date": "2023-12-10",
+            "description": "2023年12月10日极端风暴，西峡湾所有山路封闭"
+          }
+        },
+        {
+          "type": "heavy_snow",
+          "severity": "high",
+          "description": "强降雪",
+          "typicalMonths": [12, 1, 2, 3, 4],
+          "frequency": "每月1-2次",
+          "impact": "山路封闭、能见度低",
+          "historicalExample": {
+            "date": "2024-01-15",
+            "description": "2024年1月15日强降雪，西峡湾山路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-highlands",
+      "regionName": "冰岛高地",
+      "regionNameEN": "Iceland Highlands",
+      "coordinates": {
+        "center": {
+          "lat": 64.5,
+          "lng": -18.5
+        },
+        "bounds": {
+          "north": 65.5,
+          "south": 63.5,
+          "east": -17.0,
+          "west": -20.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，F路开放，天气相对稳定",
+          "temperature": {
+            "avg": 10,
+            "min": 5,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 40,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 16,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，部分F路可能仍关闭，天气变化较大",
+          "temperature": {
+            "avg": 7,
+            "min": 2,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 18,
+            "description": "日照时间很长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气变化快",
+            "降雨量较少",
+            "风速适中",
+            "极昼现象",
+            "F路开放"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 12,
+            "rainy": 6,
+            "stormy": 3,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "F路全部封闭",
+            "极夜现象"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 20,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "F路全部封闭",
+            "极夜",
+            "救援困难"
+          ],
+          "recommendation": "不推荐旅行，F路全部封闭"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，F路开放"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "F路全部封闭",
+            "极夜",
+            "救援困难"
+          ],
+          "recommendation": "不推荐旅行，F路全部封闭"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "每年3-4次",
+          "impact": "F路封闭、救援困难、户外活动极度危险",
+          "historicalExample": {
+            "date": "2023-11-20",
+            "description": "2023年11月20日极端风暴，高地所有F路提前封闭"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "突然天气变化",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "每月2-3次",
+          "impact": "F路可能突然封闭，需要密切关注天气预报",
+          "historicalExample": {
+            "date": "2024-08-15",
+            "description": "2024年8月15日突然强风，F26临时封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-north",
+      "regionName": "冰岛北部",
+      "regionNameEN": "North Iceland",
+      "coordinates": {
+        "center": {
+          "lat": 65.7,
+          "lng": -18.1
+        },
+        "bounds": {
+          "north": 66.5,
+          "south": 65.0,
+          "east": -16.0,
+          "west": -20.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，极昼现象，适合户外活动",
+          "temperature": {
+            "avg": 11,
+            "min": 7,
+            "max": 17,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 45,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 16,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少",
+          "temperature": {
+            "avg": 7,
+            "min": 3,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 55,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 19,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量较少",
+            "风速适中",
+            "极昼现象"
+          ],
+          "typicalDays": {
+            "sunny": 14,
+            "cloudy": 11,
+            "rainy": 5,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 16,
+            "snowy": 9,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年2-3次",
+          "impact": "道路封闭、航班取消、户外活动危险",
+          "historicalExample": {
+            "date": "2023-12-18",
+            "description": "2023年12月18日极端风暴，北部道路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-east",
+      "regionName": "冰岛东部",
+      "regionNameEN": "East Iceland",
+      "coordinates": {
+        "center": {
+          "lat": 65.3,
+          "lng": -14.4
+        },
+        "bounds": {
+          "north": 66.0,
+          "south": 64.0,
+          "east": -13.0,
+          "west": -16.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，极昼现象",
+          "temperature": {
+            "avg": 10,
+            "min": 6,
+            "max": 16,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 19,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少",
+          "temperature": {
+            "avg": 6,
+            "min": 2,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 70,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "极昼现象"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 13,
+            "rainy": 5,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "snowy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年2-3次",
+          "impact": "道路封闭、航班取消、户外活动危险",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日极端风暴，东部道路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-reykjavik",
+      "regionName": "雷克雅未克地区",
+      "regionNameEN": "Reykjavik Area",
+      "coordinates": {
+        "center": {
+          "lat": 64.1470,
+          "lng": -21.9408
+        },
+        "bounds": {
+          "north": 64.3,
+          "south": 63.9,
+          "east": -21.5,
+          "west": -22.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，极昼现象，适合城市游览",
+          "temperature": {
+            "avg": 13,
+            "min": 9,
+            "max": 19,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 55,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 7,
+            "max": 14,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少",
+          "temperature": {
+            "avg": 9,
+            "min": 5,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 65,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 17,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "极昼现象",
+            "城市环境相对温和"
+          ],
+          "typicalDays": {
+            "sunny": 16,
+            "cloudy": 10,
+            "rainy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化较快",
+            "强风较频繁",
+            "降雪量适中",
+            "极夜现象",
+            "城市环境相对温和"
+          ],
+          "typicalDays": {
+            "sunny": 6,
+            "cloudy": 17,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "强风",
+            "降雪",
+            "极夜"
+          ],
+          "recommendation": "可旅行，但需注意天气变化"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "medium",
+          "risks": [
+            "强风",
+            "降雪",
+            "极夜"
+          ],
+          "recommendation": "可旅行，但需注意天气变化"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "high",
+          "description": "强风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年1-2次",
+          "impact": "户外活动受限，航班可能延误",
+          "historicalExample": {
+            "date": "2023-12-22",
+            "description": "2023年12月22日强风暴，雷克雅未克户外活动受限"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "iceland-snaefellsnes",
+      "regionName": "斯奈山半岛",
+      "regionNameEN": "Snaefellsnes Peninsula",
+      "coordinates": {
+        "center": {
+          "lat": 64.8,
+          "lng": -23.7
+        },
+        "bounds": {
+          "north": 65.0,
+          "south": 64.6,
+          "east": -23.0,
+          "west": -24.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，日照时间长，降水较少，风速较低",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 7,
+            "max": 14,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，但温度较低",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 70,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降水较少（2-3.5英寸/月）",
+            "风速较低（16-18mph）",
+            "极昼现象",
+            "温度适中（最高53°F/12°C）"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "寒冷海洋性气候",
+            "降水较多（12月最湿，4.29英寸）",
+            "强风频繁（2月最风，25mph）",
+            "极夜现象",
+            "温度较低（平均33°F/1°C）"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 18,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "寒冷温度（平均33°F）",
+            "强风（平均25mph）",
+            "降水较多",
+            "极夜"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，适合极光观测"
+        },
+        {
+          "month": 2,
+          "riskLevel": "medium",
+          "risks": [
+            "最风月份（平均25mph）",
+            "寒冷温度",
+            "降水较多"
+          ],
+          "recommendation": "可旅行，但需注意强风，适合极光观测"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间，天气相对稳定"
+        },
+        {
+          "month": 12,
+          "riskLevel": "medium",
+          "risks": [
+            "最湿月份（4.29英寸）",
+            "强风",
+            "极夜"
+          ],
+          "recommendation": "可旅行，但需注意降水，适合极光观测"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [1, 2, 12],
+          "frequency": "全年常见，2月最频繁",
+          "impact": "年均风速21mph，2月平均25mph，可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-02-15",
+            "description": "2024年2月15日强风，斯奈山半岛风速达30mph"
+          }
+        },
+        {
+          "type": "heavy_rain",
+          "severity": "medium",
+          "description": "强降雨",
+          "typicalMonths": [12],
+          "frequency": "12月最湿",
+          "impact": "12月降雨4.29英寸，可能影响道路和户外活动",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日强降雨，斯奈山半岛道路部分封闭"
+          }
+        }
+      ],
+      "notes": "斯奈山半岛是冰岛西部的重要旅游目的地，以斯奈菲尔冰川和多样化的自然景观闻名。寒冷海洋性气候，全年风速较高（年均21mph），但夏季（6-8月）天气相对稳定，降水较少，风速较低，是最佳旅行时间。冬季适合极光观测，但需注意强风和降水。"
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "argentina",
+    "regionName": "阿根廷",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "transbordadora-broom.com",
+    "description": "阿根廷渡轮时刻表数据 - 包含火地岛的主要渡轮路线"
+  },
+  "routes": [
+    {
+      "routeId": "argentina-primera-angostura",
+      "routeName": "Primera Angostura渡轮",
+      "routeNameEN": "Primera Angostura Ferry",
+      "from": {
+        "portId": "punta-delgada",
+        "name": "Punta Delgada",
+        "nameEN": "Punta Delgada",
+        "coordinates": {
+          "lat": -52.4167,
+          "lng": -69.0833
+        }
+      },
+      "to": {
+        "portId": "bahia-azul",
+        "name": "Bahía Azul",
+        "nameEN": "Bahía Azul",
+        "coordinates": {
+          "lat": -52.4167,
+          "lng": -69.0833
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "夏季（12月-3月）",
+          "frequency": "hourly",
+          "sailings": [
+            {
+              "departureTime": "08:30",
+              "arrivalTime": "09:00",
+              "durationMinutes": 30,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每小时一班，从08:30到22:15",
+              "lastDeparture": "22:15"
+            }
+          ]
+        },
+        "winter": {
+          "period": "冬季（4月-11月）",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "09:30",
+              "durationMinutes": 30,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ]
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": false,
+        "advanceBooking": "不需要预订",
+        "notes": "直接到达港口即可，无需预订"
+      },
+      "price": {
+        "currency": "USD",
+        "currencyCode": "USD",
+        "adult": {
+          "amount": 3,
+          "description": "成人单程"
+        },
+        "vehicle": {
+          "amount": 24,
+          "description": "小型车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每小时一班",
+          "startDate": "2026-12-01",
+          "endDate": "2027-03-31"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，受天气影响可能取消",
+          "startDate": "2026-04-01",
+          "endDate": "2026-11-30"
+        }
+      ],
+      "weatherImpact": {
+        "badWeather": "恶劣天气时服务暂停",
+        "strongWinds": "强风可能导致服务暂停",
+        "notes": "这是最常用的渡轮路线，但受天气影响较大"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "monthly",
+      "source": "transbordadora-broom.com"
+    },
+    {
+      "routeId": "argentina-punta-arenas-puerto-porvenir",
+      "routeName": "Punta Arenas - Puerto Porvenir渡轮",
+      "routeNameEN": "Punta Arenas - Puerto Porvenir Ferry",
+      "from": {
+        "portId": "punta-arenas",
+        "name": "Punta Arenas",
+        "nameEN": "Punta Arenas",
+        "coordinates": {
+          "lat": -53.1638,
+          "lng": -70.9171
+        }
+      },
+      "to": {
+        "portId": "puerto-porvenir",
+        "name": "Puerto Porvenir",
+        "nameEN": "Puerto Porvenir",
+        "coordinates": {
+          "lat": -53.3000,
+          "lng": -70.3667
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "夏季（12月-3月）",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "11:30",
+              "durationMinutes": 150,
+              "daysOfWeek": [2, 3, 4, 5, 6],
+              "notes": "周二-周六09:00出发"
+            },
+            {
+              "departureTime": "09:30",
+              "arrivalTime": "12:00",
+              "durationMinutes": 150,
+              "daysOfWeek": [7],
+              "notes": "周日09:30出发"
+            },
+            {
+              "departureTime": "14:00",
+              "arrivalTime": "16:30",
+              "durationMinutes": 150,
+              "daysOfWeek": [2, 3, 4, 6],
+              "notes": "返程：周二-周四和周六14:00"
+            },
+            {
+              "departureTime": "15:30",
+              "arrivalTime": "18:00",
+              "durationMinutes": 150,
+              "daysOfWeek": [5],
+              "notes": "返程：周五15:30"
+            },
+            {
+              "departureTime": "17:00",
+              "arrivalTime": "19:30",
+              "durationMinutes": 150,
+              "daysOfWeek": [7],
+              "notes": "返程：周日17:00"
+            }
+          ],
+          "notes": "夏季班次较多，周二-周六和周日有不同时刻表"
+        },
+        "winter": {
+          "period": "冬季（4月-11月）",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 150,
+              "daysOfWeek": [2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响可能取消"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订",
+        "bookingUrl": "https://www.transbordadorabroom.com/",
+        "phone": "+56-61-728100",
+        "notes": "建议提前预订，特别是车辆"
+      },
+      "price": {
+        "currency": "USD",
+        "currencyCode": "USD",
+        "adult": {
+          "amount": 15,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 8,
+          "description": "儿童单程"
+        },
+        "vehicle": {
+          "amount": 50,
+          "description": "小型车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，周二-周六和周日有不同时刻表",
+          "startDate": "2026-12-01",
+          "endDate": "2027-03-31"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，受天气影响可能取消",
+          "startDate": "2026-04-01",
+          "endDate": "2026-11-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时服务暂停"
+      },
+      "notes": "连接智利Punta Arenas和火地岛Puerto Porvenir的渡轮，由Transbordadora Broom运营，航程2.5小时。夏季班次较多，建议提前预订。受天气影响大。"
+    }
+  ]
+}

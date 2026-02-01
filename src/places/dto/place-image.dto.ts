@@ -79,7 +79,7 @@ export class PlaceImageRequestDto {
     example: '富士山',
   })
   @IsString()
-  placeName: string;
+  placeName!: string;
 
   @ApiPropertyOptional({
     description: '地点英文名称（优先用于搜索，提高匹配度）',
@@ -125,7 +125,7 @@ export class BatchPlaceImageRequestDto {
   @Type(() => PlaceImageRequestDto)
   @ArrayMinSize(1)
   @ArrayMaxSize(20)
-  places: PlaceImageRequestDto[];
+  places!: PlaceImageRequestDto[];
 }
 
 /**
@@ -134,23 +134,23 @@ export class BatchPlaceImageRequestDto {
 export class UnsplashUrlsDto {
   @ApiProperty({ description: '原始图片 URL（最高质量）' })
   @IsString()
-  raw: string;
+  raw!: string;
 
   @ApiProperty({ description: '全尺寸图片 URL' })
   @IsString()
-  full: string;
+  full!: string;
 
   @ApiProperty({ description: '常规尺寸（1080px 宽）', example: 'https://images.unsplash.com/photo-xxx?w=1080' })
   @IsString()
-  regular: string;
+  regular!: string;
 
   @ApiProperty({ description: '小尺寸（400px 宽）' })
   @IsString()
-  small: string;
+  small!: string;
 
   @ApiProperty({ description: '缩略图（200px 宽）' })
   @IsString()
-  thumb: string;
+  thumb!: string;
 }
 
 /**
@@ -159,15 +159,15 @@ export class UnsplashUrlsDto {
 export class UnsplashAttributionDto {
   @ApiProperty({ description: '摄影师名称', example: 'John Doe' })
   @IsString()
-  photographerName: string;
+  photographerName!: string;
 
   @ApiProperty({ description: '摄影师主页', example: 'https://unsplash.com/@johndoe' })
   @IsString()
-  photographerUrl: string;
+  photographerUrl!: string;
 
   @ApiProperty({ description: 'Unsplash 图片页面', example: 'https://unsplash.com/photos/xxx' })
   @IsString()
-  unsplashUrl: string;
+  unsplashUrl!: string;
 }
 
 /**
@@ -176,15 +176,15 @@ export class UnsplashAttributionDto {
 export class UnsplashUserDto {
   @ApiProperty({ description: '摄影师名称' })
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiProperty({ description: '用户名' })
   @IsString()
-  username: string;
+  username!: string;
 
   @ApiProperty({ description: '主页链接' })
   @IsString()
-  link: string;
+  link!: string;
 }
 
 /**
@@ -193,23 +193,23 @@ export class UnsplashUserDto {
 export class UnsplashPhotoDto {
   @ApiProperty({ description: '图片 ID', example: 'abc123' })
   @IsString()
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '图片宽度', example: 4000 })
   @IsNumber()
-  width: number;
+  width!: number;
 
   @ApiProperty({ description: '图片高度', example: 3000 })
   @IsNumber()
-  height: number;
+  height!: number;
 
   @ApiProperty({ description: '主色调（HEX）', example: '#4A90D9' })
   @IsString()
-  color: string;
+  color!: string;
 
   @ApiProperty({ description: 'BlurHash（用于占位符）', example: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' })
   @IsString()
-  blurHash: string;
+  blurHash!: string;
 
   @ApiPropertyOptional({ description: '图片描述' })
   @IsOptional()
@@ -224,12 +224,12 @@ export class UnsplashPhotoDto {
   @ApiProperty({ description: '图片 URL 集合', type: UnsplashUrlsDto })
   @ValidateNested()
   @Type(() => UnsplashUrlsDto)
-  urls: UnsplashUrlsDto;
+  urls!: UnsplashUrlsDto;
 
   @ApiProperty({ description: '摄影师信息', type: UnsplashUserDto })
   @ValidateNested()
   @Type(() => UnsplashUserDto)
-  user: UnsplashUserDto;
+  user!: UnsplashUserDto;
 
   @ApiProperty({
     description: '归属信息（Unsplash API 要求必须展示）',
@@ -237,7 +237,7 @@ export class UnsplashPhotoDto {
   })
   @ValidateNested()
   @Type(() => UnsplashAttributionDto)
-  attribution: UnsplashAttributionDto;
+  attribution!: UnsplashAttributionDto;
 }
 
 /**
@@ -248,13 +248,13 @@ export class PlaceImageResultDto {
   placeId?: string;
 
   @ApiProperty({ description: '地点名称' })
-  placeName: string;
+  placeName!: string;
 
   @ApiPropertyOptional({ description: '图片数据（如果找到）', type: UnsplashPhotoDto })
-  photo: UnsplashPhotoDto | null;
+  photo!: UnsplashPhotoDto | null;
 
   @ApiProperty({ description: '是否来自缓存' })
-  cached: boolean;
+  cached!: boolean;
 
   @ApiPropertyOptional({ description: '错误信息（如果失败）' })
   error?: string;
@@ -265,16 +265,16 @@ export class PlaceImageResultDto {
  */
 export class BatchStatsDto {
   @ApiProperty({ description: '请求总数', example: 10 })
-  total: number;
+  total!: number;
 
   @ApiProperty({ description: '成功获取数', example: 8 })
-  found: number;
+  found!: number;
 
   @ApiProperty({ description: '缓存命中数', example: 3 })
-  cached: number;
+  cached!: number;
 
   @ApiProperty({ description: '失败数', example: 2 })
-  failed: number;
+  failed!: number;
 }
 
 /**
@@ -282,16 +282,16 @@ export class BatchStatsDto {
  */
 export class BatchPlaceImageResponseDto {
   @ApiProperty({ description: '是否整体成功' })
-  success: boolean;
+  success!: boolean;
 
   @ApiProperty({ description: '结果列表', type: [PlaceImageResultDto] })
-  results: PlaceImageResultDto[];
+  results!: PlaceImageResultDto[];
 
   @ApiProperty({ description: '统计信息', type: BatchStatsDto })
-  stats: BatchStatsDto;
+  stats!: BatchStatsDto;
 
   @ApiProperty({ description: '处理耗时（毫秒）', example: 1234 })
-  processingTimeMs: number;
+  processingTimeMs!: number;
 }
 
 /**
@@ -305,7 +305,7 @@ export class SavePlaceImageRequestDto {
   })
   @IsNumber()
   @Type(() => Number)
-  placeId: number;
+  placeId!: number;
 
   @ApiProperty({
     description: 'Unsplash 图片数据（从批量接口返回的 photo 字段）',
@@ -313,7 +313,7 @@ export class SavePlaceImageRequestDto {
   })
   @ValidateNested()
   @Type(() => UnsplashPhotoDto)
-  photo: UnsplashPhotoDto;
+  photo!: UnsplashPhotoDto;
 
   @ApiPropertyOptional({
     description: '是否设为主图（如果地点没有其他图片，会自动设为主图）',
@@ -329,16 +329,16 @@ export class SavePlaceImageRequestDto {
  */
 export class SavePlaceImageResponseDto {
   @ApiProperty({ description: '是否成功' })
-  success: boolean;
+  success!: boolean;
 
   @ApiProperty({ description: '地点 ID' })
-  placeId: number;
+  placeId!: number;
 
   @ApiProperty({ description: '地点名称' })
-  placeName: string;
+  placeName!: string;
 
   @ApiProperty({ description: '保存的图片信息' })
-  savedImage: {
+  savedImage!: {
     url: string;
     caption: string;
     source: string;
@@ -348,5 +348,5 @@ export class SavePlaceImageResponseDto {
   };
 
   @ApiProperty({ description: '地点总图片数' })
-  totalImages: number;
+  totalImages!: number;
 }

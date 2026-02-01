@@ -34,7 +34,7 @@ export class LlmExtractionService {
       throw new Error('OPENAI_API_KEY not configured');
     }
 
-    const model = this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
+    const model = this.configService?.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
 
     const body: any = {
       model,

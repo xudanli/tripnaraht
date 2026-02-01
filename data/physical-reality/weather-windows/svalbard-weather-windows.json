@@ -1,0 +1,510 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "svalbard",
+    "regionName": "斯瓦尔巴",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "norwegian-meteorological-institute",
+    "description": "斯瓦尔巴天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "svalbard-main",
+      "regionName": "斯瓦尔巴主岛",
+      "regionNameEN": "Svalbard Main Island",
+      "coordinates": {
+        "center": {
+          "lat": 78.0,
+          "lng": 16.0
+        },
+        "bounds": {
+          "north": 81.0,
+          "south": 74.0,
+          "east": 30.0,
+          "west": 10.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，温度相对温和，极昼现象，大多数活动可进行",
+          "temperature": {
+            "avg": 5,
+            "min": 2,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 20,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，温度较低但可接受，游客较少，可体验极地过渡期",
+          "temperature": {
+            "avg": -2,
+            "min": -10,
+            "max": 5,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 25,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "温度相对温和（4-6°C）",
+            "降水量少（极地荒漠）",
+            "风速适中",
+            "极昼现象",
+            "天气变化快"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 15,
+            "rainy": 4,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端低温（-14°C至-30°C）",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象（10月26日-2月15日）",
+            "体感温度可达-50°C"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 20,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（-14°C至-30°C）",
+            "强风",
+            "极夜（太阳不升起）",
+            "体感温度可达-50°C",
+            "冻伤风险极高"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和极地装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风",
+            "极夜",
+            "体感温度极低",
+            "冻伤风险极高"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和极地装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "极端低温",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "暴露皮肤在-30°C下10分钟内可能冻伤，体感温度可达-50°C",
+          "historicalExample": {
+            "date": "2023-01-15",
+            "description": "2023年1月15日极端低温，温度-28°C，体感温度-52°C"
+          }
+        },
+        {
+          "type": "polar_night",
+          "severity": "high",
+          "description": "极夜",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年10月26日-2月15日",
+          "impact": "太阳不升起，24小时黑暗，生理压力大",
+          "historicalExample": {
+            "date": "2024-12-21",
+            "description": "2024年12月21日极夜期间，24小时黑暗"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "svalbard-west-coast",
+      "regionName": "斯瓦尔巴西海岸",
+      "regionNameEN": "Svalbard West Coast",
+      "coordinates": {
+        "center": {
+          "lat": 78.5,
+          "lng": 14.0
+        },
+        "bounds": {
+          "north": 80.0,
+          "south": 77.0,
+          "east": 16.0,
+          "west": 12.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，温度相对温和，受北大西洋暖流影响，极昼现象",
+          "temperature": {
+            "avg": 6,
+            "min": 3,
+            "max": 10,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 25,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，温度较低但可接受，受暖流影响相对温和",
+          "temperature": {
+            "avg": 0,
+            "min": -5,
+            "max": 5,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 30,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "受北大西洋暖流影响，温度相对温和",
+            "降水量少（极地荒漠）",
+            "风速适中",
+            "极昼现象",
+            "天气变化快",
+            "海冰较少"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 14,
+            "rainy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "受暖流影响，冬季温度相对温和（比同纬度高20°C）",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象",
+            "海冰较少"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 19,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "低温（但比东海岸温和）",
+            "强风",
+            "极夜",
+            "体感温度低"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，受暖流影响相对温和"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，受暖流影响温度相对温和"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "低温（但比东海岸温和）",
+            "强风",
+            "极夜",
+            "体感温度低"
+          ],
+          "recommendation": "可旅行，但需注意天气变化，受暖流影响相对温和"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "风速>25m/s，可能影响户外活动",
+          "historicalExample": {
+            "date": "2023-12-25",
+            "description": "2023年12月25日强风，西海岸风速达30m/s"
+          }
+        },
+        {
+          "type": "weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气变化快，数小时内从晴天变为暴风雪",
+          "historicalExample": {
+            "date": "2024-07-15",
+            "description": "2024年7月15日天气快速变化，从晴天变为暴风雪"
+          }
+        }
+      ],
+      "notes": "斯瓦尔巴西海岸受北大西洋暖流（West Spitsbergen Current）影响，温度相对温和，比同纬度地区高20°C。冬季温度很少低于-25°C，夏季日平均温度高于0°C。海冰较少，适合海上活动。6-8月是最佳旅行时间。"
+    },
+    {
+      "regionId": "svalbard-east-coast",
+      "regionName": "斯瓦尔巴东海岸",
+      "regionNameEN": "Svalbard East Coast",
+      "coordinates": {
+        "center": {
+          "lat": 78.5,
+          "lng": 22.0
+        },
+        "bounds": {
+          "north": 80.0,
+          "south": 77.0,
+          "east": 30.0,
+          "west": 18.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，温度相对温和，但比西海岸寒冷，海冰较多",
+          "temperature": {
+            "avg": 4,
+            "min": 1,
+            "max": 8,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 20,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "极昼，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，温度较低，海冰较多",
+          "temperature": {
+            "avg": -2,
+            "min": -8,
+            "max": 2,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 25,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "受北极冷流（East Spitsbergen Current）影响，温度较低",
+            "降水量少（极地荒漠）",
+            "风速适中",
+            "极昼现象",
+            "天气变化快",
+            "海冰较多"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 15,
+            "rainy": 4,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "受冷流影响，冬季温度较低",
+            "强风频繁",
+            "降雪和吹雪",
+            "极夜现象",
+            "海冰较多"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 21,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（比西海岸低5°C）",
+            "强风",
+            "极夜",
+            "体感温度极低",
+            "海冰较多"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和极地装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "偶尔降雨",
+            "风速适中",
+            "天气变化快",
+            "海冰较多"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化和海冰"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温（比西海岸低5°C）",
+            "强风",
+            "极夜",
+            "体感温度极低",
+            "海冰较多"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和极地装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "extreme_cold",
+          "severity": "very_high",
+          "description": "极端低温",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "比西海岸低5°C，暴露皮肤在-30°C下10分钟内可能冻伤",
+          "historicalExample": {
+            "date": "2023-01-20",
+            "description": "2023年1月20日极端低温，东海岸温度-33°C，比西海岸低8°C"
+          }
+        },
+        {
+          "type": "sea_ice",
+          "severity": "high",
+          "description": "海冰",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4, 5],
+          "frequency": "冬季和春季常见",
+          "impact": "海冰显著多于西海岸，可能影响海上交通",
+          "historicalExample": {
+            "date": "2024-02-10",
+            "description": "2024年2月10日，东海岸海冰覆盖率达80%"
+          }
+        }
+      ],
+      "notes": "斯瓦尔巴东海岸受北极冷流（East Spitsbergen Current）影响，温度比西海岸低约5°C（冬季）和3°C（夏季）。海冰显著多于西海岸，可能影响海上交通。6-8月是最佳旅行时间，但需注意海冰和较低的温度。"
+    }
+  ]
+}

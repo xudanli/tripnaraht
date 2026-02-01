@@ -1,0 +1,539 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "iceland",
+    "regionName": "冰岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "ferry-company-official",
+    "description": "冰岛主要渡轮时刻表数据 - 包含路线、时刻表、季节性变化、预订要求"
+  },
+  "routes": [
+    {
+      "routeId": "iceland-westfjords-ferry-baldur",
+      "routeName": "西峡湾渡轮 - Baldur",
+      "routeNameEN": "Westfjords Ferry - Baldur",
+      "from": {
+        "portId": "stykkisholmur",
+        "name": "Stykkishólmur",
+        "nameEN": "Stykkishólmur",
+        "coordinates": {
+          "lat": 65.0750,
+          "lng": -22.7333
+        }
+      },
+      "to": {
+        "portId": "brjanslaekur",
+        "name": "Brjánslækur",
+        "nameEN": "Brjánslækur",
+        "coordinates": {
+          "lat": 65.5167,
+          "lng": -23.2500
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月15日 - 9月15日",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "10:30",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "经停Flatey岛"
+            },
+            {
+              "departureTime": "14:00",
+              "arrivalTime": "15:30",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "经停Flatey岛"
+            }
+          ]
+        },
+        "winter": {
+          "period": "9月16日 - 5月14日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "12:00",
+              "arrivalTime": "13:30",
+              "durationMinutes": 90,
+              "daysOfWeek": [1, 3, 5],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响可能取消，建议提前确认"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前1-2周预订，夏季高峰期必须提前预订",
+        "bookingUrl": "https://www.seatours.is/",
+        "phone": "+354-433-2254",
+        "notes": "车辆必须提前预订，夏季高峰期经常满员"
+      },
+      "price": {
+        "currency": "ISK",
+        "currencyCode": "ISK",
+        "adult": {
+          "amount": 5000,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 2500,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 15000,
+          "description": "标准车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，车辆价格包含司机"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日2班，经停Flatey岛",
+          "startDate": "2026-05-15",
+          "endDate": "2026-09-15"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，每周3班（周一、周三、周五），受天气影响可能取消",
+          "startDate": "2026-09-16",
+          "endDate": "2027-05-14"
+        }
+      ],
+      "notes": "连接西峡湾和斯奈山半岛的重要渡轮，是前往西峡湾的主要交通方式之一"
+    },
+    {
+      "routeId": "iceland-hornstrandir-ferry",
+      "routeName": "Hornstrandir自然保护区渡轮",
+      "routeNameEN": "Hornstrandir Nature Reserve Ferry",
+      "from": {
+        "portId": "isafjordur",
+        "name": "Ísafjörður",
+        "nameEN": "Ísafjörður",
+        "coordinates": {
+          "lat": 66.0750,
+          "lng": -23.1333
+        }
+      },
+      "to": {
+        "portId": "hornstrandir",
+        "name": "Hornstrandir",
+        "nameEN": "Hornstrandir",
+        "coordinates": {
+          "lat": 66.4000,
+          "lng": -22.5000
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "6月1日 - 8月31日",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "11:00",
+              "durationMinutes": 120,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "前往Hornstrandir自然保护区的每日班次"
+            }
+          ]
+        },
+        "winter": {
+          "period": "9月1日 - 5月31日",
+          "frequency": "none",
+          "sailings": [],
+          "notes": "冬季不运营"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "必须提前预订，建议提前1-2周",
+        "bookingUrl": "https://www.borea.is/",
+        "phone": "+354-456-3322",
+        "notes": "前往Hornstrandir必须提前预订，不接受现场购票"
+      },
+      "price": {
+        "currency": "ISK",
+        "currencyCode": "ISK",
+        "adult": {
+          "amount": 12000,
+          "description": "成人往返"
+        },
+        "child": {
+          "amount": 6000,
+          "description": "儿童往返（5-15岁）"
+        },
+        "notes": "价格包含往返，前往Hornstrandir的专用渡轮"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每日运营，前往Hornstrandir自然保护区",
+          "startDate": "2026-06-01",
+          "endDate": "2026-08-31"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季不运营",
+          "startDate": "2026-09-01",
+          "endDate": "2027-05-31"
+        }
+      ],
+      "notes": "前往Hornstrandir自然保护区的专用渡轮，仅在夏季运营"
+    },
+    {
+      "routeId": "iceland-vestmannaeyjar-ferry-herjolfur",
+      "routeName": "韦斯特曼群岛渡轮 - Herjólfur",
+      "routeNameEN": "Vestmannaeyjar Ferry - Herjólfur",
+      "from": {
+        "portId": "landeyjahofn",
+        "name": "Landeyjahöfn",
+        "nameEN": "Landeyjahöfn",
+        "coordinates": {
+          "lat": 63.4167,
+          "lng": -20.2833
+        }
+      },
+      "to": {
+        "portId": "vestmannaeyjar",
+        "name": "Vestmannaeyjar (Heimaey)",
+        "nameEN": "Vestmannaeyjar (Heimaey)",
+        "coordinates": {
+          "lat": 63.4333,
+          "lng": -20.2667
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "4月 - 9月",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "07:00",
+              "arrivalTime": "07:40",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班，从Vestmannaeyjar出发时间：07:00, 09:30, 12:00, 14:30, 17:00, 19:30, 22:00"
+            },
+            {
+              "departureTime": "09:30",
+              "arrivalTime": "10:10",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            },
+            {
+              "departureTime": "12:00",
+              "arrivalTime": "12:40",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            },
+            {
+              "departureTime": "14:30",
+              "arrivalTime": "15:10",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            },
+            {
+              "departureTime": "17:00",
+              "arrivalTime": "17:40",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            },
+            {
+              "departureTime": "19:30",
+              "arrivalTime": "20:10",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            },
+            {
+              "departureTime": "22:00",
+              "arrivalTime": "22:40",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日7班"
+            }
+          ],
+          "notes": "夏季每日7班，4-9月为高峰期，经常满员，必须提前预订"
+        },
+        "winter": {
+          "period": "10月 - 3月",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 40,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消或改道"
+            }
+          ],
+          "notes": "冬季班次减少，恶劣天气时可能改道至Þorlákshöfn（3小时航程）"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "4-9月高峰期必须提前预订，建议提前1-2周",
+        "bookingUrl": "https://herjolfur.is/",
+        "phone": "+354-481-2800",
+        "notes": "4-9月经常满员，车辆必须提前预订，建议提前1-2周预订"
+      },
+      "price": {
+        "currency": "ISK",
+        "currencyCode": "ISK",
+        "adult": {
+          "amount": 2400,
+          "description": "成人单程（16-66岁）"
+        },
+        "teen": {
+          "amount": 1250,
+          "description": "青少年单程（12-15岁）"
+        },
+        "child": {
+          "amount": 0,
+          "description": "儿童免费（0-11岁）"
+        },
+        "vehicle": {
+          "amount": 2500,
+          "description": "标准车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，车辆价格因尺寸而异（2,500-10,000+ ISK），居民享受50%折扣"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "每日7班，从Landeyjahöfn出发，4-9月为高峰期",
+          "startDate": "2026-04-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，恶劣天气时可能改道至Þorlákshöfn（3小时航程）",
+          "startDate": "2026-10-01",
+          "endDate": "2027-03-31"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能改道至Þorlákshöfn（3小时航程），冬季班次可能取消"
+      },
+      "notes": "连接冰岛主岛和韦斯特曼群岛（Vestmannaeyjar）的重要渡轮，是前往Heimaey岛的主要交通方式。4-9月为旅游高峰期，经常满员，必须提前预订。恶劣天气时可能改道至Þorlákshöfn。"
+    },
+    {
+      "routeId": "iceland-grimsey-ferry",
+      "routeName": "Grímsey渡轮",
+      "routeNameEN": "Grímsey Ferry",
+      "from": {
+        "portId": "dalvik",
+        "name": "Dalvík",
+        "nameEN": "Dalvík",
+        "coordinates": {
+          "lat": 65.9667,
+          "lng": -18.5333
+        }
+      },
+      "to": {
+        "portId": "grimsey",
+        "name": "Grímsey",
+        "nameEN": "Grímsey",
+        "coordinates": {
+          "lat": 66.5500,
+          "lng": -18.0000
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 9月",
+          "frequency": "multiple_weekly",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "11:30",
+              "durationMinutes": 150,
+              "daysOfWeek": [1, 3, 5],
+              "notes": "每周3班（周一、周三、周五），夏季可能增加班次"
+            }
+          ],
+          "notes": "夏季班次较多，连接冰岛北部和Grímsey岛（北极圈上的岛屿）"
+        },
+        "winter": {
+          "period": "10月 - 4月",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "varies",
+              "arrivalTime": "varies",
+              "durationMinutes": 150,
+              "daysOfWeek": [1, 3],
+              "notes": "冬季班次减少，每周2班（周一、周三），受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响大，可能因恶劣天气取消"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前预订，夏季高峰期必须提前预订",
+        "bookingUrl": "https://www.saefari.is/",
+        "phone": "+354-458-8970",
+        "notes": "前往Grímsey岛必须提前预订，车辆空间有限"
+      },
+      "price": {
+        "currency": "ISK",
+        "currencyCode": "ISK",
+        "adult": {
+          "amount": 5000,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 2500,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 8000,
+          "description": "标准车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，车辆空间有限，需提前预订"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季班次增加，每周3班，可能增加额外班次",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季班次减少，每周2班，受天气影响可能取消",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "high",
+        "description": "受天气影响大，恶劣天气时可能取消，冬季尤其常见"
+      },
+      "notes": "连接冰岛北部Dalvík和Grímsey岛的重要渡轮。Grímsey岛位于北极圈上，是冰岛唯一跨越北极圈的定居点。夏季班次较多，冬季受天气影响大。"
+    },
+    {
+      "routeId": "iceland-flatey-ferry",
+      "routeName": "Flatey渡轮",
+      "routeNameEN": "Flatey Ferry",
+      "from": {
+        "portId": "stykkisholmur",
+        "name": "Stykkishólmur",
+        "nameEN": "Stykkishólmur",
+        "coordinates": {
+          "lat": 65.0750,
+          "lng": -22.7333
+        }
+      },
+      "to": {
+        "portId": "flatey",
+        "name": "Flatey",
+        "nameEN": "Flatey",
+        "coordinates": {
+          "lat": 65.3667,
+          "lng": -22.9167
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "5月 - 9月",
+          "frequency": "daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "10:00",
+              "durationMinutes": 60,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日1-2班，连接Stykkishólmur和Flatey岛"
+            },
+            {
+              "departureTime": "14:00",
+              "arrivalTime": "15:00",
+              "durationMinutes": 60,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夏季每日2班"
+            }
+          ],
+          "notes": "夏季每日2班，Flatey岛是西峡湾的一个小岛，以其历史和文化而闻名"
+        },
+        "winter": {
+          "period": "10月 - 4月",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "12:00",
+              "arrivalTime": "13:00",
+              "durationMinutes": 60,
+              "daysOfWeek": [1, 3, 5],
+              "notes": "冬季班次减少，每周3班（周一、周三、周五）"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响可能取消"
+        }
+      },
+      "booking": {
+        "required": false,
+        "recommended": true,
+        "advanceBooking": "建议提前预订，夏季高峰期建议提前预订",
+        "bookingUrl": "https://www.seatours.is/",
+        "phone": "+354-433-2254",
+        "notes": "可以现场购票，但建议提前预订以确保有位置"
+      },
+      "price": {
+        "currency": "ISK",
+        "currencyCode": "ISK",
+        "adult": {
+          "amount": 3000,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 1500,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 5000,
+          "description": "标准车辆（<5米）",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，车辆空间有限"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "夏季每日2班，连接Stykkishólmur和Flatey岛",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        },
+        {
+          "season": "winter",
+          "changes": "冬季班次减少，每周3班，受天气影响可能取消",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        }
+      ],
+      "weatherImpact": {
+        "severity": "medium",
+        "description": "受天气影响，恶劣天气时可能取消"
+      },
+      "notes": "连接Stykkishólmur和Flatey岛的渡轮。Flatey岛是西峡湾的一个小岛，以其历史和文化而闻名，曾是重要的贸易中心。夏季班次较多，冬季受天气影响。"
+    }
+  ]
+}

@@ -25,11 +25,13 @@
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/auth/login` | POST | 用户登录 |
-| `/auth/register` | POST | 用户注册 |
-| `/auth/logout` | POST | 退出登录 |
+| `/auth/google/code` | POST | Google OAuth Code 登录（主方案） |
+| `/auth/google/id-token` | POST | Google OAuth ID Token 登录（快速登录） |
+| `/auth/email/send-code` | POST | 发送邮箱验证码 |
+| `/auth/email/register` | POST | 邮箱注册 |
+| `/auth/email/login` | POST | 邮箱登录 |
 | `/auth/refresh` | POST | 刷新 Token |
-| `/auth/me` | GET | 获取当前用户信息 |
+| `/auth/logout` | POST | 退出登录 |
 
 ### 1.2 用户相关 `/api/users`
 

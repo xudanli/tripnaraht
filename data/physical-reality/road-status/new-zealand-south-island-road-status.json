@@ -1,0 +1,491 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "new-zealand-south-island",
+    "regionName": "新西兰南岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "nzta",
+    "description": "新西兰南岛主要道路状态数据 - 包含季节性关闭、雪崩风险、难度要求"
+  },
+  "roads": [
+    {
+      "roadId": "nz-sh94-milford-road",
+      "roadName": "Milford Road (SH94)",
+      "roadNameEN": "Milford Road State Highway 94",
+      "roadType": "state_highway",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4],
+        "openPeriod": "10月-4月（夏季）",
+        "typicalOpenDate": "10月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季常因雪崩关闭，每年多次临时关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季需防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -45.4167,
+          "lng": 168.3667,
+          "name": "Te Anau"
+        },
+        "end": {
+          "lat": -44.6667,
+          "lng": 167.9333,
+          "name": "Milford Sound"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高，道路可能突然封闭"
+        },
+        {
+          "type": "heavy_rain",
+          "severity": "high",
+          "description": "年均降雨7000mm，几乎每天下雨，能见度低"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季和早春有积雪和结冰"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-crown-range-road",
+      "roadName": "Crown Range Road",
+      "roadNameEN": "Crown Range Road",
+      "roadType": "mountain_road",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "新西兰最高公路，冬季需防滑链"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季必须携带防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -44.9667,
+          "lng": 168.8333,
+          "name": "Queenstown"
+        },
+        "end": {
+          "lat": -44.7000,
+          "lng": 169.0167,
+          "name": "Wanaka"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰，必须使用防滑链"
+        },
+        {
+          "type": "steep_curves",
+          "severity": "medium",
+          "description": "陡峭弯道，需要谨慎驾驶"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-arthurs-pass",
+      "roadName": "Arthur's Pass (SH73)",
+      "roadNameEN": "Arthur's Pass State Highway 73",
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4],
+        "openPeriod": "10月-4月（夏季）",
+        "typicalOpenDate": "10月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季可能因雪崩和恶劣天气关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季需防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -43.5667,
+          "lng": 172.6333,
+          "name": "Christchurch"
+        },
+        "end": {
+          "lat": -42.9500,
+          "lng": 171.5667,
+          "name": "Greymouth"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高，道路可能突然封闭"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰"
+        },
+        {
+          "type": "strong_winds",
+          "severity": "medium",
+          "description": "强风频繁，特别是高海拔路段"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-haast-pass",
+      "roadName": "Haast Pass (SH6)",
+      "roadNameEN": "Haast Pass State Highway 6",
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4],
+        "openPeriod": "10月-4月（夏季）",
+        "typicalOpenDate": "10月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季可能因雪崩和恶劣天气关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季需防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -44.0167,
+          "lng": 169.3500,
+          "name": "Wanaka"
+        },
+        "end": {
+          "lat": -43.8833,
+          "lng": 169.0500,
+          "name": "Haast"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "high",
+          "description": "冬季和春季雪崩风险高，道路可能突然封闭"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰，必须使用防滑链"
+        },
+        {
+          "type": "heavy_rain",
+          "severity": "medium",
+          "description": "降雨频繁，能见度低"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-lewis-pass",
+      "roadName": "Lewis Pass (SH7)",
+      "roadNameEN": "Lewis Pass State Highway 7",
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4],
+        "openPeriod": "10月-4月（夏季）",
+        "typicalOpenDate": "10月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季可能因雪崩和恶劣天气关闭，山顶积雪可达10cm"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季必须携带防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -42.4500,
+          "lng": 172.7167,
+          "name": "Reefton"
+        },
+        "end": {
+          "lat": -42.3833,
+          "lng": 172.8167,
+          "name": "Hammer Springs"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰，山顶积雪可达10cm，必须使用防滑链"
+        },
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "冬季和春季有雪崩风险"
+        },
+        {
+          "type": "black_ice",
+          "severity": "high",
+          "description": "冬季有黑冰，非常危险"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-lindis-pass",
+      "roadName": "Lindis Pass (SH8)",
+      "roadNameEN": "Lindis Pass State Highway 8",
+      "roadType": "mountain_pass",
+      "status": "seasonal",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [10, 11, 12, 1, 2, 3, 4],
+        "openPeriod": "10月-4月（夏季）",
+        "typicalOpenDate": "10月初",
+        "typicalCloseDate": "4月底",
+        "notes": "冬季可能因雪崩和恶劣天气关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但冬季必须携带防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -44.7000,
+          "lng": 169.6167,
+          "name": "Omarama"
+        },
+        "end": {
+          "lat": -44.7333,
+          "lng": 169.2833,
+          "name": "Tarras"
+        }
+      },
+      "hazards": [
+        {
+          "type": "snow_ice",
+          "severity": "high",
+          "description": "冬季和早春有积雪和结冰，必须使用防滑链"
+        },
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "冬季和春季有雪崩风险"
+        },
+        {
+          "type": "black_ice",
+          "severity": "high",
+          "description": "冬季有黑冰，非常危险"
+        },
+        {
+          "type": "fog",
+          "severity": "medium",
+          "description": "冬季和早春有雾，能见度低"
+        }
+      ]
+    },
+    {
+      "roadId": "nz-sh60-takaka-hill",
+      "roadName": "Takaka Hill (SH60)",
+      "roadNameEN": "Takaka Hill State Highway 60",
+      "roadType": "state_highway",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年开放",
+        "notes": "全年开放，但冬季可能需要防滑链，偶尔因天气临时关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季建议携带防滑链，需谨慎驾驶"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -41.2833,
+          "lng": 173.0167,
+          "name": "Motueka"
+        },
+        "end": {
+          "lat": -40.8500,
+          "lng": 172.8000,
+          "name": "Takaka"
+        }
+      },
+      "hazards": [
+        {
+          "type": "steep_gradient",
+          "severity": "high",
+          "description": "陡峭坡度，需要谨慎驾驶"
+        },
+        {
+          "type": "snow_chain_required",
+          "severity": "medium",
+          "description": "冬季可能需要防滑链",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "medium",
+          "description": "天气变化快，可能临时封闭"
+        },
+        {
+          "type": "fog",
+          "severity": "medium",
+          "description": "冬季和早春有雾，能见度低"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "nzta.govt.nz"
+    },
+    {
+      "roadId": "nz-sh73-porters-pass",
+      "roadName": "Porters Pass (SH73)",
+      "roadNameEN": "Porters Pass State Highway 73",
+      "roadType": "state_highway",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年开放",
+        "notes": "全年开放，但冬季可能需要防滑链，偶尔因雪崩临时关闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，冬季需防滑链，需有雪地驾驶经验"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -43.3833,
+          "lng": 171.7500,
+          "name": "Springfield"
+        },
+        "end": {
+          "lat": -43.3333,
+          "lng": 171.9167,
+          "name": "Porters Pass"
+        }
+      },
+      "hazards": [
+        {
+          "type": "avalanche",
+          "severity": "medium",
+          "description": "冬季和春季雪崩风险，道路可能临时封闭",
+          "typicalMonths": [6, 7, 8, 9]
+        },
+        {
+          "type": "snow_chain_required",
+          "severity": "high",
+          "description": "冬季必须携带防滑链",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "black_ice",
+          "severity": "high",
+          "description": "冬季有黑冰，非常危险"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化快，可能突然封闭"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "nzta.govt.nz"
+    },
+    {
+      "roadId": "nz-sh1-dunedin-invercargill",
+      "roadName": "Dunedin - Invercargill (SH1)",
+      "roadNameEN": "Dunedin - Invercargill State Highway 1",
+      "roadType": "state_highway",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年开放",
+        "notes": "全年开放，但冬季可能有雪和黑冰，需谨慎驾驶"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，冬季建议携带防滑链"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -45.8667,
+          "lng": 170.5000,
+          "name": "Dunedin"
+        },
+        "end": {
+          "lat": -46.4167,
+          "lng": 168.3500,
+          "name": "Invercargill"
+        }
+      },
+      "hazards": [
+        {
+          "type": "black_ice",
+          "severity": "medium",
+          "description": "冬季有黑冰，需要谨慎驾驶",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "snow",
+          "severity": "medium",
+          "description": "冬季可能有降雪",
+          "typicalMonths": [6, 7, 8]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "low",
+          "description": "天气变化可能影响路况"
+        },
+        {
+          "type": "strong_winds",
+          "severity": "medium",
+          "description": "强风可能影响驾驶，特别是沿海路段"
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "daily",
+      "source": "nzta.govt.nz"
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "greenland",
+    "regionName": "格陵兰",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "scienceservices.gl, visitgreenland.com",
+    "description": "格陵兰道路状态数据 - 包含冰盖公路等主要道路信息"
+  },
+  "roads": [
+    {
+      "roadId": "greenland-ice-sheet-road",
+      "roadName": "冰盖公路",
+      "roadNameEN": "Ice Sheet Road",
+      "roadNameLocal": "Isblinkvejen",
+      "roadType": "gravel_road",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但冬季条件恶劣，需要4x4车辆"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验。也可使用ATV或雪地摩托（冬季）"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 67.0167,
+          "lng": -50.6833,
+          "name": "Kangerlussuaq"
+        },
+        "end": {
+          "lat": 67.1833,
+          "lng": -50.0167,
+          "name": "Ice Sheet Edge"
+        }
+      },
+      "hazards": [
+        {
+          "type": "extreme_cold",
+          "severity": "very_high",
+          "description": "接近冰盖时温度显著下降，持续的'冰风'从冰川吹来",
+          "typicalMonths": [1, 2, 3, 4, 10, 11, 12],
+          "notes": "需要准备防寒装备"
+        },
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "非常偏远，38.3公里无服务，需要自给自足",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "gravel_road",
+          "severity": "medium",
+          "description": "碎石路面，相对平坦但需要谨慎驾驶",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "winter_conditions",
+          "severity": "high",
+          "description": "冬季条件恶劣，可能需要雪地摩托而非车辆",
+          "typicalMonths": [12, 1, 2, 3, 4]
+        }
+      ],
+      "roadInfo": {
+        "lengthKm": 38.3,
+        "lengthMiles": 23.79,
+        "surface": "gravel",
+        "elevationGain": "minimal",
+        "notes": "格陵兰唯一直接通往冰盖的公路，1999-2001年由大众集团建造用于车辆测试，2004年后由Qeqqata市政府维护"
+      },
+      "maintenance": {
+        "lastMajorRepair": "2024",
+        "repairHistory": [
+          {
+            "year": 2021,
+            "section": "前20公里"
+          },
+          {
+            "year": "2022-2023",
+            "section": "接下来8公里"
+          },
+          {
+            "year": 2024,
+            "section": "最后7公里（包括两座小桥）"
+          }
+        ],
+        "notes": "2021-2024年进行了重大维修，改善了卡车和巴士的通行能力"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "quarterly",
+      "source": "scienceservices.gl"
+    },
+    {
+      "roadId": "greenland-arctic-circle-road",
+      "roadName": "北极圈公路",
+      "roadNameEN": "Arctic Circle Road",
+      "roadNameLocal": "Polarcirkelvejen",
+      "roadType": "gravel_road",
+      "status": "open",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月初",
+        "typicalCloseDate": "9月底",
+        "notes": "2025年夏季开放，170公里碎石路，连接Kangerlussuaq和Sisimiut"
+      },
+      "requirements": {
+        "vehicleType": "4x4_recommended",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "建议4x4车辆，高底盘，需要经验丰富的司机。也可使用ATV/UTV"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 67.0167,
+          "lng": -50.6833,
+          "name": "Kangerlussuaq"
+        },
+        "end": {
+          "lat": 66.9333,
+          "lng": -53.6833,
+          "name": "Sisimiut"
+        }
+      },
+      "hazards": [
+        {
+          "type": "gravel_road",
+          "severity": "medium",
+          "description": "170公里碎石路，需要谨慎驾驶",
+          "typicalMonths": [6, 7, 8, 9]
+        },
+        {
+          "type": "remote_area",
+          "severity": "very_high",
+          "description": "非常偏远，170公里无服务，需要自给自足",
+          "typicalMonths": [6, 7, 8, 9]
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "受天气影响大，恶劣天气时可能封闭",
+          "typicalMonths": [6, 7, 8, 9]
+        },
+        {
+          "type": "winter_closure",
+          "severity": "high",
+          "description": "冬季（10月-5月）封闭，无法通行",
+          "typicalMonths": [10, 11, 12, 1, 2, 3, 4, 5]
+        }
+      ],
+      "roadInfo": {
+        "lengthKm": 170,
+        "lengthMiles": 105.6,
+        "surface": "gravel",
+        "elevationGain": "varies",
+        "notes": "格陵兰第一条连接两个主要城镇的公路，2025年夏季开放，是格陵兰交通基础设施的重要里程碑"
+      },
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "quarterly",
+      "source": "visitgreenland.com"
+    }
+  ]
+}

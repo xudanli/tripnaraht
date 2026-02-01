@@ -12,11 +12,12 @@
  * - 氛围 & 细节 & 软知识 = RAG 加持
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RagService } from './rag.service';
 import { RouteKnowledgeCurator } from './route-knowledge-curator.service';
 import { LocalInsightService } from './local-insight.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegratedRAGKPUService } from '../../kpu/services/integrated-rag-kpu.service';
 
 /**
  * 路线问答上下文
@@ -56,6 +57,7 @@ export class EnhancedChatService {
     private readonly routeKnowledgeCurator: RouteKnowledgeCurator,
     private readonly localInsightService: LocalInsightService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly integratedRAGKPU?: IntegratedRAGKPUService, // KPU服务（可选，如果未注入则不使用）
   ) {}
 
   /**
@@ -159,23 +161,102 @@ export class EnhancedChatService {
 
   /**
    * 使用 RAG 回答（结合结构化数据和 RAG 内容）
+   * 
+   * 如果KPU服务可用，使用KPU的检索和验证功能
    */
   private async answerWithRAG(
     question: string,
     context: RouteQuestionContext,
     structuredAnswer?: string
   ): Promise<EnhancedAnswer> {
-    // 1. RAG 检索相关文档（添加错误处理）
+    // 1. RAG 检索相关文档（如果KPU可用，使用KPU的检索和验证）
     let ragSnippets: Array<{ content: string; source?: string; score: number }> = [];
+    let validationResult: any = null;
+
     try {
-      const retrieved = await this.ragService.retrieve({
-        query: question,
-        collection: 'travel_guides',
-        countryCode: context.countryCode,
-        limit: 5,
-      });
-      // 确保返回的是数组
-      ragSnippets = Array.isArray(retrieved) ? retrieved : [];
+      // 如果KPU服务可用，使用KPU的检索和验证
+      if (this.integratedRAGKPU) {
+        this.logger.debug('使用KPU进行检索和验证');
+        
+        const { results: validatedResults } = await this.integratedRAGKPU.retrieveAndValidate({
+          query: question,
+          limit: 5,
+          enableSnippetValidation: true, // 启用片段验证
+          minValidationScore: 0.6, // 最低验证得分
+          validationOptions: {
+            enableFactCheck: true,
+            enableConsistencyCheck: true,
+            enableCitationCheck: true,
+          },
+          context: {
+            countryCode: context.countryCode,
+            routeDirectionId: context.routeDirectionId,
+          },
+        });
+
+        // 转换为EnhancedAnswer格式
+        ragSnippets = validatedResults.map(r => ({
+          content: r.content,
+          source: r.sourceFile,
+          score: r.validation.overallScore,
+        }));
+
+        // 如果启用生成验证，使用KPU生成并验证
+        if (validatedResults.length > 0) {
+          const generationResult = await this.integratedRAGKPU.generateWithValidation({
+            query: question,
+            validatedResults,
+            retryOnFailure: true,
+            context: {
+              countryCode: context.countryCode,
+              routeDirectionId: context.routeDirectionId,
+            },
+          });
+
+          // 使用KPU生成的结果
+          const answer = generationResult.answer;
+          validationResult = generationResult.validation;
+
+          // 获取当地洞察
+          let localInsights: Array<{ content: string; tags: string[] }> = [];
+          if (context.countryCode) {
+            try {
+              const insights = await this.localInsightService.getLocalInsight(
+                context.countryCode,
+                this.extractTagsFromQuestion(question)
+              );
+              localInsights = Array.isArray(insights) ? insights.map(insight => ({
+                content: insight.content || '',
+                tags: Array.isArray(insight.tags) ? insight.tags : [],
+              })) : [];
+            } catch (error: any) {
+              this.logger.warn(`获取当地洞察失败: ${error?.message || 'unknown error'}`);
+            }
+          }
+
+          return {
+            answer: structuredAnswer ? `${structuredAnswer}\n\n${answer}` : answer,
+            source: structuredAnswer ? 'HYBRID' : 'RAG',
+            structuredData: structuredAnswer ? { answer: structuredAnswer } : undefined,
+            ragSnippets,
+            localInsights,
+            // 扩展：添加验证信息（如果前端需要）
+            // @ts-ignore
+            validation: validationResult,
+          };
+        }
+      } else {
+        // 降级到原有RAG服务
+        this.logger.debug('KPU服务不可用，使用原有RAG服务');
+        const retrieved = await this.ragService.retrieve({
+          query: question,
+          collection: 'travel_guides',
+          countryCode: context.countryCode,
+          limit: 5,
+        });
+        // 确保返回的是数组
+        ragSnippets = Array.isArray(retrieved) ? retrieved : [];
+      }
     } catch (error: any) {
       this.logger.warn(`RAG 检索失败: ${error?.message || 'unknown error'}`);
       ragSnippets = [];

@@ -42,6 +42,8 @@ import { DataModelingModule } from './data-modeling/data-modeling.module';
 import { DataArchitectureModule } from './data-architecture/data-architecture.module';
 import { ContentStrategyModule } from './content-strategy/content-strategy.module';
 import { ContextEngineModule } from './agent/context-engine/context-engine.module';
+import { ChainOfWorkModule } from './chain-of-work/chain-of-work.module';
+import { DecisionDraftModule } from './decision-draft/decision-draft.module';
 
 @Module({
   imports: [
@@ -101,6 +103,8 @@ import { ContextEngineModule } from './agent/context-engine/context-engine.modul
     ContextEngineModule, // Context Engine 模块（上下文编译器）
     // SkillsModule, // Skills 模块（能力颗粒层）
     UploadModule, // 图片上传模块（阿里云 OSS）
+    ChainOfWorkModule, // Chain-of-Work 引擎模块（步骤草案显性化）
+    DecisionDraftModule, // Decision-First Agent 引擎模块（决策草案生成）
   ],
 })
 export class AppModule {}

@@ -16,14 +16,13 @@ export type EmbeddingProvider = 'python' | 'openai';
 /**
  * Embedding 服务
  * 
- * 支持多提供商:
- * - python: BGE-M3 (1024维) - 通过 Python AI 服务，本地部署，零成本
- * - openai: text-embedding-3-small (1536维) - OpenAI API
+ * 使用 BGE-M3 (1024维) - 通过 Python AI 服务，本地部署，零成本
  * 
- * 智能降级策略:
- * 1. 优先使用 Python AI 服务（如果启用且可用）
- * 2. Python 服务不可用时自动降级到 OpenAI
- * 3. 所有提供商失败时返回零向量（最终降级）
+ * 注意：已移除OpenAI支持，统一使用1024维（BGE-M3）
+ * 
+ * 失败处理:
+ * - Python AI 服务失败时返回错误（不再降级到OpenAI）
+ * - 所有提供商失败时返回零向量（最终降级）
  * 
  * 缓存优化：使用Redis缓存查询embedding，减少API调用和延迟
  */
@@ -71,10 +70,13 @@ export class EmbeddingService {
   /**
    * 生成文本的 embedding
    * 
-   * 智能路由策略：
-   * 1. 优先使用 Python AI 服务（BGE-M3，本地部署，零成本）
-   * 2. Python 不可用时降级到 OpenAI
-   * 3. 所有提供商失败时返回零向量
+   * 使用 BGE-M3 (1024维) - Python AI 服务
+   * 
+   * 注意：已移除OpenAI降级，只使用Python AI服务
+   * 
+   * 失败处理：
+   * - Python AI 服务失败时返回错误（不再降级到OpenAI）
+   * - 所有提供商失败时返回零向量（最终降级）
    * 
    * 缓存优化：优先从缓存获取，未命中时生成并缓存
    * 并发去重：如果多个请求同时请求相同文本，复用同一个生成任务
@@ -168,10 +170,10 @@ export class EmbeddingService {
       }
     }
 
-    // 策略3：所有提供商都失败，返回零向量
+    // Python AI 服务失败，返回零向量（最终降级）
     if (!embedding) {
-      const dimension = this.getEmbeddingDimension();
-      this.logger.error(`所有 embedding 提供商都失败，返回零向量（维度: ${dimension}）`);
+      const dimension = 1024; // BGE-M3 固定1024维
+      this.logger.error(`Python AI 服务失败，返回零向量（维度: ${dimension}）`);
       return new Array(dimension).fill(0);
     }
 
@@ -320,9 +322,11 @@ export class EmbeddingService {
 
   /**
    * 获取配置的默认维度
+   * 
+   * 固定返回1024维（BGE-M3）
    */
   getConfiguredDimension(): number {
-    return this.embeddingDimension;
+    return 1024; // 固定1024维，忽略配置
   }
 
   /**

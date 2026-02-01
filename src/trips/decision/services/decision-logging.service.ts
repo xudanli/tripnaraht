@@ -83,7 +83,7 @@ export class DecisionLoggingService {
                 rationale: systemAnalysis.topRecommendation.rationale,
                 recommendationRationale: systemAnalysis.recommendationRationale,
               }
-            : null,
+            : undefined,
           alignmentScore,
         },
       });

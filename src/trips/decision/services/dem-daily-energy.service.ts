@@ -99,6 +99,26 @@ export class DEMDailyEnergyService {
     }
 
     // 2. 使用DEM服务计算体力消耗元数据
+    if (!this.demEffortService) {
+      // 如果DEM服务不可用，返回基于距离的简单计算
+      let totalDistance = 0;
+      for (let i = 1; i < routePoints.length; i++) {
+        const prev = routePoints[i - 1];
+        const curr = routePoints[i];
+        const dx = curr.lng - prev.lng;
+        const dy = curr.lat - prev.lat;
+        totalDistance += Math.sqrt(dx * dx + dy * dy) * 111; // 粗略转换为公里
+      }
+      return {
+        maxEnergyCost: maxDailyBudget,
+        baseEnergyCost: totalDistance * baseCostPerKm,
+        ascentEnergyCost: 0,
+        slopePenalty: 0,
+        altitudePenalty: 0,
+        totalEnergyCost: totalDistance * baseCostPerKm,
+        remainingBudget: Math.max(0, maxDailyBudget - totalDistance * baseCostPerKm),
+      };
+    }
     const effortMetadata = await this.demEffortService.calculateEffortMetadata(
       routePoints,
       {

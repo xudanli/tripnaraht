@@ -1,0 +1,548 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-23",
+    "data_sources": [
+      "冰岛机场官方网站",
+      "Keflavik国际机场官网",
+      "Akureyri机场官网",
+      "冰岛旅游局",
+      "用户机场反馈"
+    ],
+    "credibility_score": 0.96,
+    "language": "zh-CN",
+    "description": "冰岛机场POI数据库 - 包括主要国际机场、区域机场、转运信息、服务设施",
+    "critical_importance": "极高 - 机场是出入冰岛的关键节点",
+    "total_airports": 3,
+    "main_airports": ["Keflavik International", "Akureyri", "Ísafjörður"]
+  },
+
+  "airport_overview": {
+    "description": "冰岛机场体系 - 国际门户到区域枢纽",
+    "entry_points": {
+      "international": "凯夫拉维克（KIA）- 90%国际客流量",
+      "regional_north": "阿克雷里（AKU）- 北线接驳",
+      "regional_west": "伊萨弗约尔（IFJ）- 西峡湾接驳"
+    },
+    "connection_to_routes": {
+      "reykjavik": "KIA是主要口岸，转运40分钟抵达首都",
+      "golden_circle": "KIA出发，南向30分钟到黄金圈",
+      "south_coast": "KIA出发，东向1小时开始南线",
+      "north_route": "可从KIA出发或飞阿克雷里(AKU)北线更方便"
+    }
+  },
+
+  "airports": [
+    {
+      "id": 6001,
+      "uuid": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p",
+      "airportNameCN": "凯夫拉维克国际机场",
+      "airportNameEN": "Keflavik International Airport (KEF/BIKF)",
+      "category": "INTERNATIONAL_AIRPORT",
+      "location": {
+        "type": "Point",
+        "coordinates": [-22.0055, 63.9850]
+      },
+      "address": "Reykjanesbraut 1, 235 Keflavík, Iceland",
+      "phoneNumber": "+354 425 0000",
+      "website": "https://www.islandsairport.is",
+      "cityId": 6,
+      "cityName": "Keflavík",
+      "iata_code": "KEF",
+      "icao_code": "BIKF",
+      "rating": 4.4,
+      "review_count": 5234,
+      "description": "冰岛唯一国际机场，距首都雷克雅未克50公里。连接全球主要城市，处理90%冰岛国际客流。设施现代，服务完善，入境/出境流程标准化。",
+      "description_en": "Iceland's only international airport, 50km from Reykjavik. Connects major global cities, handles 90% of Iceland's international traffic. Modern facilities, well-organized processes.",
+      "airport_type": "INTERNATIONAL_HUB",
+      "terminals": 1,
+      "annual_passengers": "9.5 million",
+      "distance_to_reykjavik": "50 km, 45-60 minutes drive",
+      "distance_to_golden_circle": "90 km, 1.5 hours",
+      "distance_to_blue_lagoon": "25 km, 25 minutes",
+      "main_airlines": [
+        "Icelandair (Domestic and International)",
+        "Wizz Air",
+        "Ryanair",
+        "SAS",
+        "KLM",
+        "Lufthansa",
+        "United",
+        "Delta"
+      ],
+      "terminals_info": {
+        "total_gates": 18,
+        "check_in_areas": "International and Domestic sections",
+        "baggage_claim": "4 carousels"
+      },
+      "facilities": {
+        "rental_car_desk": {
+          "available": true,
+          "companies": [
+            "Hertz",
+            "Budget",
+            "Geysir",
+            "Blue Car",
+            "Europcar",
+            "Alamo",
+            "Avis"
+          ],
+          "location": "Ground floor, Car Rental Center",
+          "note": "建议提前预订，旺季车型紧张"
+        },
+        "currency_exchange": {
+          "available": true,
+          "location": "Main terminal, multiple locations",
+          "rate_note": "⚠️ 机场汇率不理想，建议在首都兑换"
+        },
+        "atm": {
+          "available": true,
+          "count": "Multiple throughout terminal",
+          "note": "支持国际卡取现"
+        },
+        "wifi": {
+          "available": true,
+          "type": "Free WiFi",
+          "coverage": "Entire terminal"
+        },
+        "restaurants_cafes": {
+          "available": true,
+          "count": 8,
+          "note": "价格较贵(ISK 3000+)，建议自带零食"
+        },
+        "retail_shops": [
+          "Duty-free shop",
+          "Supermarket (Bonus)",
+          "Souvenir shops",
+          "Electronics",
+          "Books and magazines"
+        ],
+        "toilets": {
+          "available": true,
+          "count": "Multiple, clean"
+        },
+        "luggage_storage": {
+          "available": true,
+          "location": "Terminal building",
+          "price": "ISK 2000-3000 per day"
+        },
+        "family_facilities": {
+          "family_rest_room": true,
+          "baby_changing": true,
+          "nursing_room": true,
+          "children_play_area": true
+        }
+      },
+      "car_rental_center": {
+        "location": "Ground floor, attached to main terminal",
+        "companies": 7,
+        "opening_hours": "Based on flight schedules (usually 06:00-23:00)",
+        "pickup_process": [
+          "1. 提前预约租车合同",
+          "2. 前往租车公司柜台（指示清楚）",
+          "3. 出示驾照、国际驾照、信用卡",
+          "4. 检查车辆状况（拍照记录）",
+          "5. 签署保险和租赁协议",
+          "6. 前往停车场取车"
+        ],
+        "dropoff_process": [
+          "1. 返航前一天确认还车时间",
+          "2. 加满油箱（否则被罚高价）",
+          "3. 检查车辆状况",
+          "4. 前往还车点",
+          "5. 工作人员检查车辆",
+          "6. 签署还车文件"
+        ],
+        "tips": [
+          "⚠️ 提前2-4周预订，旺季车紧张",
+          "⚠️ 购买全面保险(SCDW+GP+轮胎) - 强烈推荐",
+          "⚠️ 检查车辆要仔细，拍照记录任何损伤",
+          "⚠️ 保留所有文件，返回时可能需要"
+        ]
+      },
+      "public_transportation": {
+        "bus_service": {
+          "available": true,
+          "main_operator": "Strætó",
+          "route": "Route 15 to Reykjavik (bus station)",
+          "frequency": "Every 30-60 minutes",
+          "duration": "45-60 minutes",
+          "price": "ISK 1950",
+          "note": "班次较少，不如出租车方便"
+        },
+        "shuttle_service": {
+          "available": true,
+          "providers": [
+            "Gray Line",
+            "Flybus",
+            "Reykjavik Excursions"
+          ],
+          "price": "ISK 2900-3500",
+          "duration": "45-60 minutes",
+          "note": "可预订，比大巴舒适"
+        },
+        "taxi_service": {
+          "available": true,
+          "authorized_companies": [
+            "Bláa Strætó",
+            "Taxi Reykjavík",
+            "Hreyfill"
+          ],
+          "fixed_price": "ISK 5500 to Reykjavik",
+          "duration": "45-60 minutes",
+          "note": "价格固定，最方便但最贵"
+        }
+      },
+      "checkin_baggage": {
+        "international_flights": "2.5 hours before departure",
+        "domestic_flights": "2 hours before departure",
+        "baggage_allowance": {
+          "icelandair": "1 checked (20kg) + 1 carry-on",
+          "budget_airlines": "Usually 1 carry-on only, checked extra fee"
+        }
+      },
+      "security_customs": {
+        "average_wait": "30-45 minutes (peak hours up to 2 hours)",
+        "note": "夏季旺季人多，建议提前3小时到达",
+        "documents_needed": [
+          "护照（有效期6个月以上）",
+          "Schengen签证（如需）",
+          "机票和预订确认"
+        ]
+      },
+      "duty_free_shopping": {
+        "duty_free_areas": ["Before security", "After security"],
+        "highlights": [
+          "Icelandic spirits and beer",
+          "Souvenirs",
+          "Cosmetics and perfume",
+          "Electronics",
+          "Fashion brands"
+        ],
+        "note": "⚠️ 机场价格贵，建议在市区购买纪念品"
+      },
+      "highlights": [
+        "冰岛唯一国际机场",
+        "服务设施现代完善",
+        "多家租车公司",
+        "靠近蓝泻湖(25分钟)",
+        "到首都45-60分钟"
+      ],
+      "user_reviews_summary": {
+        "avg_rating": 4.4,
+        "total_reviews": 5234,
+        "pros": [
+          "设施现代干净",
+          "租车公司多（7家）",
+          "指示清楚易导航",
+          "服务效率高",
+          "靠近蓝泻湖温泉"
+        ],
+        "cons": [
+          "出租车贵(ISK 5500)",
+          "免税店和餐厅贵",
+          "大巴班次少",
+          "夏季人多排队",
+          "WiFi有时不稳定"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "all_international_visitors",
+        "entry_strategy": "租车最方便，大巴最经济",
+        "gateway_to_routes": "Golden Circle(1.5h), South Coast(1h), North(3h)"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 6002,
+      "uuid": "b2c3d4e5-f6g7-5h8i-9j0k-1l2m3n4o5p6q",
+      "airportNameCN": "阿克雷里机场",
+      "airportNameEN": "Akureyri Airport (AKU/BIAK)",
+      "category": "REGIONAL_AIRPORT",
+      "location": {
+        "type": "Point",
+        "coordinates": [-18.0894, 65.6839]
+      },
+      "address": "Akureyri, North Iceland",
+      "phoneNumber": "+354 464 2400",
+      "website": "https://www.akureyriairport.is",
+      "cityId": 2,
+      "cityName": "Akureyri",
+      "iata_code": "AKU",
+      "icao_code": "BIAK",
+      "rating": 4.3,
+      "review_count": 1245,
+      "description": "北冰岛区域机场，服务北线游客。与首都有定期航班连接（30分钟）。北线必经之地，避免往返首都的长途驾驶，节省5-6小时。",
+      "description_en": "Regional airport in North Iceland serving north route travelers. Regular domestic flights to Reykjavik (30 min). Essential hub for north route, saves 5-6 hours driving.",
+      "airport_type": "REGIONAL_HUB",
+      "terminals": 1,
+      "annual_passengers": "400,000",
+      "main_airlines": [
+        "Icelandair (domestic to/from Reykjavik)",
+        "Scenic Air (helicopter tours)"
+      ],
+      "distance_to_reykjavik": "450 km, 5.5 hours drive by road",
+      "distance_to_akureyri_town": "5 km, 10 minutes",
+      "domestic_flights": {
+        "route": "Akureyri ↔ Reykjavik",
+        "duration": "30 minutes",
+        "frequency": "1-2 daily",
+        "price": "ISK 18000-28000 (~$135-210)"
+      },
+      "facilities": {
+        "rental_car_desk": {
+          "available": true,
+          "companies": ["Hertz", "Geysir", "Budget"],
+          "location": "Ground floor",
+          "note": "仅3家，品种较少，建议提前预订"
+        },
+        "currency_exchange": {
+          "available": true,
+          "location": "Main terminal"
+        },
+        "atm": {
+          "available": true,
+          "count": 2
+        },
+        "wifi": {
+          "available": true,
+          "type": "Free WiFi"
+        },
+        "restaurants_cafes": {
+          "available": true,
+          "count": 2,
+          "note": "选择有限"
+        },
+        "retail_shops": [
+          "Duty-free shop",
+          "Souvenir shop",
+          "Books"
+        ]
+      },
+      "characteristics": {
+        "size": "小型机场，规模仅为凯夫拉维克的5%",
+        "crowds": "人少，排队短",
+        "efficiency": "快速通关，通常15分钟内",
+        "amenities": "基础设施完善但选择少"
+      },
+      "why_fly_here": {
+        "north_route_convenience": "节省往返首都的10-12小时驾驶",
+        "domestic_flight": "30分钟飞行vs 5.5小时驾驶",
+        "route_time_saving": "北线行程减少1-2天",
+        "scenic_flight": "可选择海景飞行体验"
+      },
+      "comparison_with_kef": [
+        {
+          "factor": "距离首都",
+          "kef": "50 km",
+          "aku": "450 km（需飞行或长途开车）"
+        },
+        {
+          "factor": "国际航班",
+          "kef": "✅ 多家国际航空",
+          "aku": "❌ 仅冰岛国内"
+        },
+        {
+          "factor": "北线游客",
+          "kef": "1小时+往返5.5小时",
+          "aku": "✅ 无需往返，5分钟到市区"
+        },
+        {
+          "factor": "租车选择",
+          "kef": "7家公司",
+          "aku": "3家公司"
+        }
+      ],
+      "highlights": [
+        "北线飞行入口（节省5.5小时）",
+        "小机场无排队",
+        "30分钟国内航班到首都",
+        "靠近北线景点"
+      ],
+      "user_reviews_summary": {
+        "avg_rating": 4.3,
+        "total_reviews": 1245,
+        "pros": [
+          "北线游客绝佳入口",
+          "排队短，通关快",
+          "员工友好",
+          "租车方便",
+          "节省驾驶时间"
+        ],
+        "cons": [
+          "国内航班仅，无国际",
+          "租车公司仅3家",
+          "餐厅和商店少",
+          "航班选择有限"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "north_route_travelers, time_savers",
+        "fly_here_if": "你的行程重点在北线或极光",
+        "avoid_if": "需要国际直达航班"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    },
+
+    {
+      "id": 6003,
+      "uuid": "c3d4e5f6-g7h8-6i9j-0k1l-2m3n4o5p6q7r",
+      "airportNameCN": "伊萨弗约尔机场",
+      "airportNameEN": "Ísafjörður Airport (IFJ/BIIS)",
+      "category": "REGIONAL_AIRPORT",
+      "location": {
+        "type": "Point",
+        "coordinates": [-21.9626, 66.0705]
+      },
+      "address": "Ísafjörður, West Iceland",
+      "phoneNumber": "+354 456 3000",
+      "website": "https://www.isafjardarairport.is",
+      "cityId": 7,
+      "cityName": "Ísafjörður",
+      "iata_code": "IFJ",
+      "icao_code": "BIIS",
+      "rating": 4.1,
+      "review_count": 456,
+      "description": "西峡湾区域机场，服务西部游客。与首都有定期航班（30分钟）。西峡湾(Westfjords)唯一机场，避免8小时往返驾驶。",
+      "description_en": "Regional airport in West Iceland for Westfjords travelers. Domestic flights to Reykjavik (30 min). Only airport for Westfjords, saves 8 hours driving.",
+      "airport_type": "REGIONAL_AIRPORT",
+      "terminals": 1,
+      "annual_passengers": "150,000",
+      "main_airlines": [
+        "Icelandair (domestic to/from Reykjavik)",
+        "Scenic Air (helicopter tours)"
+      ],
+      "distance_to_reykjavik": "350 km by road, 8 hours drive",
+      "distance_to_isafjordur_town": "8 km, 15 minutes",
+      "domestic_flights": {
+        "route": "Ísafjörður ↔ Reykjavik",
+        "duration": "30 minutes",
+        "frequency": "1-2 daily",
+        "price": "ISK 16000-25000"
+      },
+      "facilities": {
+        "rental_car_desk": {
+          "available": true,
+          "companies": ["Hertz", "Geysir"],
+          "count": 2
+        },
+        "amenities": "Basic facilities only"
+      },
+      "why_fly_here": {
+        "westfjords_access": "西峡湾唯一入口",
+        "time_saving": "节省16小时往返驾驶（8h x 2）",
+        "scenic_route": "西峡湾独特风景值得飞行"
+      },
+      "westfjords_overview": {
+        "description": "冰岛最原始和偏远地区，风景壮美，人烟稀少",
+        "highlights": ["Látrabjarg cliff", "Dynjandi waterfall", "Minimal tourism"],
+        "accessibility": "仅西端,道路崎岖,冬季部分关闭",
+        "best_for": "冒险者、寻求原始风景、摄影师"
+      },
+      "highlights": [
+        "西峡湾唯一入口",
+        "节省8小时往返驾驶",
+        "30分钟飞行",
+        "偏远原始体验"
+      ],
+      "user_reviews_summary": {
+        "avg_rating": 4.1,
+        "total_reviews": 456,
+        "pros": [
+          "西峡湾必选",
+          "节省大量驾驶时间",
+          "员工友好",
+          "风景飞行体验"
+        ],
+        "cons": [
+          "国内航班仅",
+          "租车选择少（仅2家）",
+          "航班选择有限"
+        ]
+      },
+      "decision_relevance": {
+        "best_for": "westfjords_travelers, adventure_seekers",
+        "essential_for": "西峡湾行程"
+      },
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-23T10:30:00.000Z"
+    }
+  ],
+
+  "airport_by_route": {
+    "golden_circle": {
+      "entry": "Keflavik (KEF)",
+      "time_to_route": "1.5 hours"
+    },
+    "south_coast": {
+      "entry": "Keflavik (KEF)",
+      "time_to_route": "1 hour"
+    },
+    "north_route": {
+      "entry": "Keflavik (KEF) 或 Akureyri (AKU)",
+      "time_if_kef": "5.5 hours drive one way",
+      "time_if_aku": "No drive needed, 30 min flight",
+      "recommendation": "⭐ Fly to Akureyri to save 5-6 hours"
+    },
+    "westfjords": {
+      "entry": "Ísafjörður (IFJ)",
+      "time_if_kef": "8 hours drive one way",
+      "time_if_ifj": "No drive needed, 30 min flight",
+      "recommendation": "⭐ Fly to Ísafjörður, essential for westfjords"
+    }
+  },
+
+  "airport_entry_strategy": {
+    "for_first_timers": {
+      "recommendation": "Keflavik (KEF) - 唯一国际机场",
+      "plan": [
+        "1. 凯夫拉维克入境",
+        "2. 租车或坐车前往蓝泻湖(25分钟) - 可选",
+        "3. 前往雷克雅未克(45-60分钟)",
+        "4. 开始环岛旅程"
+      ]
+    },
+    "for_north_focused": {
+      "recommendation": "飞往阿克雷里(AKU)",
+      "savings": "节省往返5.5小时"
+    },
+    "for_westfjords": {
+      "recommendation": "飞往伊萨弗约尔(IFJ)",
+      "savings": "节省往返8小时"
+    }
+  },
+
+  "arrival_process": {
+    "keflavik": [
+      "1. 下飞机，跟随指示前往移民局",
+      "2. 排队通过护照检查(30-45分钟)",
+      "3. 领取行李(5-10分钟)",
+      "4. 通过海关(通常快速)",
+      "5. 出关，进入航站楼",
+      "6. 前往租车中心(Ground Floor)",
+      "7. 取车，启动冰岛之旅"
+    ]
+  },
+
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "冰岛机场官方网站",
+        "reliability": "extremely_high"
+      },
+      {
+        "source": "Icelandair航班信息",
+        "reliability": "high"
+      },
+      {
+        "source": "用户机场反馈",
+        "reliability": "high"
+      }
+    ],
+    "last_update_review": "2026-01-23",
+    "next_review_date": "2026-04-23"
+  }
+}

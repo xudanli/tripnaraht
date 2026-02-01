@@ -27,13 +27,20 @@ import { EvidenceFilteringService } from './services/evidence-filtering.service'
 import { EvidenceCompletenessChecker } from './services/evidence-completeness-checker.service';
 import { EvidenceTriggerService } from './services/evidence-trigger.service';
 import { EvidenceFetchTaskService } from './services/evidence-fetch-task.service';
+import { NLConversationContextService } from './services/nl-conversation-context.service';
 import { LlmModule } from '../llm/llm.module';
 import { DecisionModule } from './decision/decision.module';
 import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
 import { AuthModule } from '../auth/auth.module';
+import { RedisModule } from '../redis/redis.module';
+import { ContextEngineModule } from '../agent/context-engine/context-engine.module';
+import { SkillsModule } from '../skills/skills.module';
+import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
+import { PlacesModule } from '../places/places.module';
+import { DestinationClarificationModule } from './nl-clarification/destination-clarification.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule], // 必需：TripsService 需要 DecisionLogStorageService, TripsController 需要 JwtService
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule], // 必需：TripsService 需要 DecisionLogStorageService, TripsController 需要 JwtService, NLConversationContextService 需要 RedisService, ContextEngineerService 用于构建 Context Package, DecisionDraftModule 用于生成决策草案, PlacesModule 用于酒店推荐（使用 forwardRef 避免循环依赖：TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule，以及 TripsModule -> PlacesModule -> RagModule -> SkillsModule -> TripsModule），DestinationClarificationModule 用于目的地特化澄清
   controllers: [TripsController],
   providers: [
     TripsService, 
@@ -62,6 +69,7 @@ import { AuthModule } from '../auth/auth.module';
     EvidenceCompletenessChecker,
     EvidenceTriggerService,
     EvidenceFetchTaskService,
+    NLConversationContextService,
   ],
   exports: [
     TripsService, 
@@ -84,6 +92,7 @@ import { AuthModule } from '../auth/auth.module';
     BudgetEvaluationService,
     EvidenceManagementService,
     EvidenceFetchTaskService,
+    NLConversationContextService,
   ], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}

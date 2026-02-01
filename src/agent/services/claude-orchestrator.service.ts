@@ -57,6 +57,11 @@ import { SKILL_VALIDATION_RULES } from './skill-validation-rules.config';
 import { SkillInputValidatorService } from './skill-input-validator.service';
 import { HallucinationDetectionService } from './hallucination-detection.service';
 import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
+import { ReadinessService } from '../../trips/readiness/services/readiness.service';
+import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
+import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
+import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
+import { DecisionStep } from '../../decision-draft/interfaces/decision-draft.interface';
 
 /**
  * Claude Orchestrator Service
@@ -84,6 +89,9 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
     @Optional() private hallucinationDetection?: HallucinationDetectionService,
     @Optional() private trajectoryCollection?: TrajectoryCollectionService,
+    @Optional() private readonly readinessService?: ReadinessService,
+    @Optional() private readonly userDecisionService?: UserDecisionService,
+    @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] 已初始化`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -1833,6 +1841,12 @@ ${JSON.stringify(routingDecision, null, 2)}
       '美国': 'US',
       'United States': 'US',
       'USA': 'US',
+      // 阿尔卑斯（跨越多国）
+      '阿尔卑斯': 'AL',
+      '阿尔卑斯山': 'AL',
+      'Alps': 'AL',
+      'alps': 'AL',
+      'AL': 'AL',
       // 城市名映射到国家
       '东京': 'JP',
       'Tokyo': 'JP',
@@ -2091,6 +2105,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       current_step: 'INTAKE',
       evidence_registry: new Map(),
       decision_log: [],
+      decision_steps: [], // Decision Steps（业务层决策，来自 Decision-First Engine）
       errors: [],
       metadata: {
         started_at: new Date().toISOString(),
@@ -2398,6 +2413,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       }
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'INTAKE', 'Planner');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] INTAKE 步骤失败: ${error?.message}`);
       throw error;
@@ -2592,6 +2610,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'RESEARCH', 'LocalInsight');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] RESEARCH 步骤失败: ${error?.message}`);
       throw error;
@@ -2615,30 +2636,219 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 GATE_EVAL 步骤...`);
 
     try {
-      // 调用 Gatekeeper Agent 执行 Gate 评估
+      // ========== 1. 准备度检查（新增） ==========
+      let readinessCheckResult: any = null;
+      let readinessBlockers: any[] = [];
+      let readinessMust: any[] = [];
+      let rulesNeedingDecision: any[] = [];
+
+      if (this.readinessService && state.trip_plan_request) {
+        try {
+          const destination = typeof state.trip_plan_request.destination === 'string'
+            ? state.trip_plan_request.destination
+            : `${state.trip_plan_request.destination.lat},${state.trip_plan_request.destination.lng}`;
+
+          // 构建 TripContext
+          const tripContext = this.extractTripContextFromState(state);
+
+          // 提取坐标（如果有）
+          const geoLat = typeof state.trip_plan_request.destination === 'object'
+            ? state.trip_plan_request.destination.lat
+            : undefined;
+          const geoLng = typeof state.trip_plan_request.destination === 'object'
+            ? state.trip_plan_request.destination.lng
+            : undefined;
+
+          // 执行准备度检查
+          readinessCheckResult = await this.readinessService.checkFromDestination(
+            destination,
+            tripContext,
+            {
+              enhanceWithGeo: !!(geoLat && geoLng),
+              geoLat,
+              geoLng,
+              lang: 'zh', // 默认使用中文
+            }
+          );
+
+          // 提取 blocker 和 must
+          readinessBlockers = readinessCheckResult.findings.flatMap((f: any) => f.blockers || []);
+          readinessMust = readinessCheckResult.findings.flatMap((f: any) => f.must || []);
+
+          // 检查是否有需要用户决策的规则
+          if (this.userDecisionService) {
+            rulesNeedingDecision = [...readinessBlockers, ...readinessMust].filter((item: any) => {
+              // 检查是否有 userDecision 且有问题列表
+              return item.userDecision?.questions && item.userDecision.questions.length > 0;
+            });
+          }
+
+          this.logger.debug(
+            `[Claude Orchestrator] 准备度检查完成: ` +
+            `blockers=${readinessBlockers.length}, ` +
+            `must=${readinessMust.length}, ` +
+            `需要用户决策=${rulesNeedingDecision.length}`
+          );
+        } catch (error: any) {
+          this.logger.warn(`[Claude Orchestrator] 准备度检查失败: ${error?.message}`, error?.stack);
+          // 准备度检查失败不影响 Gate 评估，继续执行
+        }
+      }
+
+      // ========== 2. 根据准备度检查结果决定 Gate 结果 ==========
+      // 如果有 blocker 且不需要用户决策，直接 BLOCK
+      if (readinessBlockers.length > 0 && rulesNeedingDecision.length === 0) {
+        state.gate_result = {
+          gate_result: 'BLOCK',
+          violations: readinessBlockers.map((item: any) => ({
+            type: 'SAFETY' as const,
+            severity: 'HARD' as const,
+            detail: typeof item.message === 'string' ? item.message : item.message.zh || item.message.en || '',
+            evidence_refs: item.evidence?.map((e: any) => e.sourceId) || [],
+          })),
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: readinessBlockers.flatMap((item: any) => item.evidence?.map((e: any) => e.sourceId) || []),
+        };
+
+        // 生成准备度检查的决策日志条目（按三人格分类）
+        const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
+          readinessCheckResult,
+          state.request_id
+        );
+        state.decision_log.push(...readinessDecisionLogs);
+
+        // 添加汇总日志
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'GATE_EVAL',
+          actor: 'Gatekeeper',
+          inputs_summary: '评估行程可行性（准备度检查）',
+          outputs_summary: `Gate 结果: BLOCK（准备度检查发现 ${readinessBlockers.length} 个阻塞项）`,
+          evidence_refs: state.gate_result.evidence_refs || [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            duration_ms: Date.now() - stepStartTime,
+            readiness_blockers: readinessBlockers,
+            guardian: 'ABU' as GuardianType,
+          },
+        });
+
+        state.metadata.last_updated_at = new Date().toISOString();
+        return;
+      }
+
+      // 如果有需要用户决策的规则，返回 NEED_USER_CONFIRM
+      if (rulesNeedingDecision.length > 0) {
+        state.gate_result = {
+          gate_result: 'NEED_USER_CONFIRM',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.8,
+          evidence_refs: [],
+        };
+
+        // 将用户决策问题添加到 state 中（前端可以访问）
+        (state.gate_result as any).readiness_questions = rulesNeedingDecision.map((item: any) => ({
+          ruleId: item.id,
+          questions: item.userDecision.questions,
+          category: item.category,
+          severity: item.severity,
+        }));
+
+        // 生成准备度检查的决策日志条目（按三人格分类）
+        if (readinessCheckResult) {
+          const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
+            readinessCheckResult,
+            state.request_id
+          );
+          state.decision_log.push(...readinessDecisionLogs);
+        }
+
+        // 添加用户决策汇总日志
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'GATE_EVAL',
+          actor: 'Gatekeeper',
+          inputs_summary: '评估行程可行性（准备度检查）',
+          outputs_summary: `Gate 结果: NEED_USER_CONFIRM（需要用户回答 ${rulesNeedingDecision.length} 个规则的问题）`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            duration_ms: Date.now() - stepStartTime,
+            readiness_questions: rulesNeedingDecision.map((item: any) => ({
+              ruleId: item.id,
+              questionCount: item.userDecision.questions.length,
+              category: item.category,
+            })),
+            guardian: 'ABU' as GuardianType,
+          },
+        });
+
+        state.metadata.last_updated_at = new Date().toISOString();
+        return;
+      }
+
+      // ========== 3. 调用 Gatekeeper Agent 执行其他 Gate 评估 ==========
       if (this.gatekeeperAgent && state.trip_plan_request) {
         const gateResult = await this.gatekeeperAgent.evaluateGate(
           state.trip_plan_request,
           state.research_data || {},
           state,
         );
+
+        // 合并准备度检查的 must 项到 required_adjustments
+        if (readinessMust.length > 0) {
+          gateResult.required_adjustments = [
+            ...gateResult.required_adjustments,
+            ...readinessMust.map((item: any) => ({
+              action: 'REPLACE_SEGMENT' as const, // 默认操作，实际应该根据规则类型调整
+              why: typeof item.message === 'string' ? item.message : item.message.zh || item.message.en || '',
+              alternatives: [],
+            })),
+          ];
+
+          // 如果有 must 项，确保 gate_result 是 ADJUST_REQUIRED
+          if (gateResult.gate_result === 'ALLOW' && readinessMust.length > 0) {
+            gateResult.gate_result = 'ADJUST_REQUIRED';
+          }
+        }
+
         state.gate_result = gateResult;
       } else {
         // 降级：使用默认 GateResult
         state.gate_result = {
-          gate_result: 'ALLOW',
+          gate_result: readinessMust.length > 0 ? 'ADJUST_REQUIRED' : 'ALLOW',
           violations: [],
-          required_adjustments: [],
+          required_adjustments: readinessMust.map((item: any) => ({
+            action: 'REPLACE_SEGMENT' as const,
+            why: typeof item.message === 'string' ? item.message : item.message.zh || item.message.en || '',
+            alternatives: [],
+          })),
           confidence: 0.8,
           evidence_refs: [],
         };
       }
 
+      // ========== 4. 记录决策日志（包含准备度检查信息） ==========
+      // 生成准备度检查的决策日志条目（按三人格分类）
+      if (readinessCheckResult && this.readinessService) {
+        const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
+          readinessCheckResult,
+          state.request_id
+        );
+        state.decision_log.push(...readinessDecisionLogs);
+      }
+
+      const readinessSummary = readinessCheckResult
+        ? `准备度: blockers=${readinessBlockers.length}, must=${readinessMust.length}`
+        : '';
+
       state.decision_log.push({
         request_id: state.request_id,
         step: 'GATE_EVAL',
         actor: 'Gatekeeper',
-        inputs_summary: '评估行程可行性',
+        inputs_summary: `评估行程可行性${readinessSummary ? `（${readinessSummary}）` : ''}`,
         outputs_summary: `Gate 结果: ${state.gate_result.gate_result}, 置信度: ${state.gate_result.confidence}, 违规数: ${state.gate_result.violations.length}`,
         evidence_refs: state.gate_result.evidence_refs || [],
         timestamp: new Date().toISOString(),
@@ -2646,14 +2856,103 @@ ${JSON.stringify(routingDecision, null, 2)}
           duration_ms: Date.now() - stepStartTime,
           violations: state.gate_result.violations,
           adjustments: state.gate_result.required_adjustments,
-          guardian: 'ABU' as GuardianType, // P1 改进：三人格映射（Gatekeeper → Abu）
+          guardian: 'ABU' as GuardianType, // 三人格映射（Gatekeeper → Abu）
+          readiness_check: readinessCheckResult
+            ? {
+                totalBlockers: readinessCheckResult.summary.totalBlockers,
+                totalMust: readinessCheckResult.summary.totalMust,
+                totalShould: readinessCheckResult.summary.totalShould,
+                totalOptional: readinessCheckResult.summary.totalOptional,
+              }
+            : undefined,
         },
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'GATE_EVAL', 'Gatekeeper');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] GATE_EVAL 步骤失败: ${error?.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * 从 OrchestratorState 提取 TripContext
+   * 
+   * 用于准备度检查
+   */
+  private extractTripContextFromState(state: OrchestratorState): TripContext {
+    const request = state.trip_plan_request;
+    if (!request) {
+      // 返回最小化的 TripContext
+      return {
+        traveler: {},
+        trip: {},
+        itinerary: {
+          countries: [],
+        },
+      };
+    }
+
+    // 提取目的地国家代码
+    const destination = typeof request.destination === 'string'
+      ? request.destination
+      : 'UNKNOWN';
+    
+    const countryCode = destination.split('-')[0] || destination.split(',')[0] || 'UNKNOWN';
+
+    // 构建 TravelerProfile
+    const traveler: TravelerProfile = {
+      nationality: undefined, // 可以从 request 或其他地方提取
+      residencyCountry: undefined,
+      tags: [],
+      budgetLevel: request.constraints?.budget?.total
+        ? request.constraints.budget.total > 5000
+          ? 'high'
+          : request.constraints.budget.total > 2000
+          ? 'medium'
+          : 'low'
+        : undefined,
+      riskTolerance: undefined,
+    };
+
+    // 构建 ItineraryInfo
+    const itinerary: ItineraryInfo = {
+      countries: [countryCode],
+      activities: [], // 可以从 research_data 或其他地方提取
+      season: request.date_range?.start_date
+        ? this.extractSeason(request.date_range.start_date)
+        : undefined,
+    };
+
+    // 构建 TripContext
+    return {
+      traveler,
+      trip: {
+        startDate: request.date_range?.start_date || request.start_date,
+        endDate: request.date_range?.end_date,
+      },
+      itinerary,
+    };
+  }
+
+  /**
+   * 从日期提取季节
+   */
+  private extractSeason(dateStr: string): string {
+    try {
+      const date = new Date(dateStr);
+      const month = date.getMonth() + 1; // 0-11 -> 1-12
+
+      // 简化版季节判断（北半球）
+      if (month >= 3 && month <= 5) return 'spring';
+      if (month >= 6 && month <= 8) return 'summer';
+      if (month >= 9 && month <= 11) return 'autumn';
+      return 'winter';
+    } catch {
+      return 'all';
     }
   }
 
@@ -2729,6 +3028,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
 
       // Iterative Deployment: 收集轨迹（PLAN_GEN 完成后）
       if (this.trajectoryCollection && state.itinerary && state.gate_result) {
@@ -2855,6 +3157,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'VERIFY', 'CoreDecision');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] VERIFY 步骤失败: ${error?.message}`);
       state.errors.push({
@@ -2943,6 +3248,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
 
       state.metadata.last_updated_at = new Date().toISOString();
+
+      // P0: 生成 Decision Step（Decision-First Engine 集成）
+      await this.generateDecisionStepForStep(state, 'REPAIR', 'LocalInsight');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] REPAIR 步骤失败: ${error?.message}`);
       state.errors.push({
@@ -3092,6 +3400,42 @@ ${JSON.stringify(routingDecision, null, 2)}
         message: error?.message || '防幻觉检测失败',
         timestamp: new Date().toISOString(),
       });
+    }
+  }
+
+  /**
+   * 生成 Decision Step（P0: Decision-First Engine 集成）
+   * 
+   * 在每个状态机步骤执行后调用，生成对应的业务层决策步骤
+   */
+  private async generateDecisionStepForStep(
+    state: OrchestratorState,
+    orchestrationStep: OrchestrationStep,
+    subAgent?: SubAgentType,
+  ): Promise<void> {
+    if (!this.decisionDraftGenerator) {
+      // DecisionDraftGenerator 未注入时静默跳过
+      return;
+    }
+
+    try {
+      const decisionStep = await this.decisionDraftGenerator.generateDecisionStepFromOrchestrationState(
+        state,
+        orchestrationStep,
+        subAgent,
+      );
+
+      if (decisionStep) {
+        // 初始化 decision_steps 数组（如果不存在）
+        if (!state.decision_steps) {
+          state.decision_steps = [];
+        }
+        state.decision_steps.push(decisionStep);
+        this.logger.debug(`[Claude Orchestrator] 生成 Decision Step: type=${decisionStep.type}, step=${orchestrationStep}`);
+      }
+    } catch (error: any) {
+      // Decision Step 生成失败不应阻塞主流程
+      this.logger.warn(`[Claude Orchestrator] Decision Step 生成失败，跳过: ${error?.message}`);
     }
   }
 

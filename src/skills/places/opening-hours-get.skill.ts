@@ -60,6 +60,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
       }
 
       // 并行获取所有 POI 的详情
+      const placesService = this.placesService!; // 已在上方检查，使用非空断言
       const results = await Promise.allSettled(
         input.poi_ids.map(async (poiId) => {
           try {
@@ -71,7 +72,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
             if (!isNaN(placeIdNum)) {
               try {
                 // 先尝试从数据库获取
-                const place = await this.placesService.findOne(placeIdNum);
+                const place = await placesService.findOne(placeIdNum);
                 if (place) {
                   const metadata = (place.metadata as any) || {};
                   openingHours = metadata.openingHours || metadata.opening_hours;
@@ -80,8 +81,8 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
                 } else {
                   // 如果不存在，尝试通过 enrichPlaceFromAmap 获取并创建
                   try {
-                    await this.placesService.enrichPlaceFromAmap(placeIdNum);
-                    const updatedPlace = await this.placesService.findOne(placeIdNum);
+                    await placesService.enrichPlaceFromAmap(placeIdNum);
+                    const updatedPlace = await placesService.findOne(placeIdNum);
                     if (updatedPlace) {
                       const metadata = (updatedPlace.metadata as any) || {};
                       openingHours = metadata.openingHours || metadata.opening_hours;

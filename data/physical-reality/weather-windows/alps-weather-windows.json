@@ -1,0 +1,827 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "alps",
+    "regionName": "阿尔卑斯",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "meteo-swiss",
+    "description": "阿尔卑斯天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "alps-western",
+      "regionName": "西阿尔卑斯",
+      "regionNameEN": "Western Alps",
+      "coordinates": {
+        "center": {
+          "lat": 45.8,
+          "lng": 6.9
+        },
+        "bounds": {
+          "north": 46.5,
+          "south": 44.0,
+          "east": 8.0,
+          "west": 5.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，天气稳定，山路开放，适合徒步和登山",
+          "temperature": {
+            "avg": 15,
+            "min": 8,
+            "max": 25,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，天气较稳定，部分高海拔路线可能仍有积雪",
+          "temperature": {
+            "avg": 12,
+            "min": 5,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "高海拔地区天气变化快"
+          ],
+          "typicalDays": {
+            "sunny": 18,
+            "cloudy": 8,
+            "rainy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "山路封闭"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 12,
+            "snowy": 9,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔雷暴",
+            "高海拔地区天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [12, 1, 2, 3, 4],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，山路封闭，救援困难",
+          "historicalExample": {
+            "date": "2024-02-15",
+            "description": "2024年2月15日大规模雪崩，多条山路封闭"
+          }
+        },
+        {
+          "type": "sudden_storm",
+          "severity": "high",
+          "description": "突然风暴",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "夏季偶尔发生",
+          "impact": "高海拔地区天气突然变化，能见度降低",
+          "historicalExample": {
+            "date": "2024-07-20",
+            "description": "2024年7月20日突然风暴，高海拔地区能见度降至10米"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "alps-dolomites",
+      "regionName": "多洛米蒂",
+      "regionNameEN": "Dolomites",
+      "coordinates": {
+        "center": {
+          "lat": 46.5,
+          "lng": 11.8
+        },
+        "bounds": {
+          "north": 47.0,
+          "south": 46.0,
+          "east": 12.5,
+          "west": 11.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，天气稳定，缆车运营，适合徒步和登山",
+          "temperature": {
+            "avg": 18,
+            "min": 10,
+            "max": 26,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 90,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 7,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，但部分高海拔路线可能仍有积雪",
+          "temperature": {
+            "avg": 14,
+            "min": 7,
+            "max": 21,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 110,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "午后雷暴常见",
+            "高海拔地区天气变化快"
+          ],
+          "typicalDays": {
+            "sunny": 20,
+            "cloudy": 7,
+            "rainy": 3,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "山路封闭",
+            "但阳光充足（10天中有8天晴天）"
+          ],
+          "typicalDays": {
+            "sunny": 25,
+            "cloudy": 4,
+            "snowy": 1,
+            "stormy": 1,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "午后雷暴",
+            "高海拔地区天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意午后雷暴"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "afternoon_thunderstorm",
+          "severity": "high",
+          "description": "午后雷暴",
+          "typicalMonths": [6, 7, 8],
+          "frequency": "夏季几乎每日发生",
+          "impact": "14:00-20:00高发，山脊和峰顶极度危险，金属缆索导电",
+          "historicalExample": {
+            "date": "2021-08-12",
+            "description": "2021年8月12日午后雷暴，Tre Cime di Lavaredo山脊雷击事件"
+          }
+        },
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [12, 1, 2, 3, 4],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，山路封闭，救援困难",
+          "historicalExample": {
+            "date": "2024-02-20",
+            "description": "2024年2月20日大规模雪崩，多条山路封闭"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "alps-matterhorn",
+      "regionName": "马特洪峰地区",
+      "regionNameEN": "Matterhorn Region",
+      "coordinates": {
+        "center": {
+          "lat": 46.0,
+          "lng": 7.7
+        },
+        "bounds": {
+          "north": 46.2,
+          "south": 45.8,
+          "east": 7.9,
+          "west": 7.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，天气稳定，缆车运营，适合徒步和登山",
+          "temperature": {
+            "avg": 12,
+            "min": 5,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 85,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，但部分高海拔路线可能仍有积雪",
+          "temperature": {
+            "avg": 8,
+            "min": 2,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "高海拔地区天气变化快",
+            "午后雷暴常见"
+          ],
+          "typicalDays": {
+            "sunny": 17,
+            "cloudy": 9,
+            "rainy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "山路封闭",
+            "缆车运营（11月-5月）"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 13,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风",
+            "极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "午后雷暴",
+            "高海拔地区天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意午后雷暴"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风",
+            "极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "afternoon_thunderstorm",
+          "severity": "high",
+          "description": "午后雷暴",
+          "typicalMonths": [6, 7, 8],
+          "frequency": "夏季常见",
+          "impact": "14:00-20:00高发，山脊和峰顶极度危险",
+          "historicalExample": {
+            "date": "2019-07-23",
+            "description": "2019年7月23日午后雷暴，Eiger北壁雷击事件"
+          }
+        },
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "极端低温",
+          "typicalMonths": [12, 1, 2],
+          "frequency": "冬季常见",
+          "impact": "高海拔地区体感温度可达-50°C，失温风险极高",
+          "historicalExample": {
+            "date": "2023-01-10",
+            "description": "2023年1月10日极端低温，Mont Blanc峰顶体感温度-52°C"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "alps-eastern",
+      "regionName": "东阿尔卑斯",
+      "regionNameEN": "Eastern Alps",
+      "coordinates": {
+        "center": {
+          "lat": 47.2,
+          "lng": 12.5
+        },
+        "bounds": {
+          "north": 48.0,
+          "south": 46.5,
+          "east": 14.0,
+          "west": 11.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，天气稳定，山路开放，适合徒步和登山",
+          "temperature": {
+            "avg": 16,
+            "min": 9,
+            "max": 24,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 120,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 7,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，但部分高海拔路线可能仍有积雪",
+          "temperature": {
+            "avg": 13,
+            "min": 6,
+            "max": 19,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 130,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量较高（比西阿尔卑斯多）",
+            "风速适中",
+            "高海拔地区天气变化快",
+            "午后雷暴常见"
+          ],
+          "typicalDays": {
+            "sunny": 16,
+            "cloudy": 10,
+            "rainy": 4,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "山路封闭",
+            "适合滑雪"
+          ],
+          "typicalDays": {
+            "sunny": 9,
+            "cloudy": 13,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "午后雷暴",
+            "高海拔地区天气变化快",
+            "降雨较多"
+          ],
+          "recommendation": "最佳旅行时间，但需注意午后雷暴和降雨"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "afternoon_thunderstorm",
+          "severity": "high",
+          "description": "午后雷暴",
+          "typicalMonths": [6, 7, 8],
+          "frequency": "夏季常见",
+          "impact": "14:00-20:00高发，山脊和峰顶极度危险",
+          "historicalExample": {
+            "date": "2023-07-15",
+            "description": "2023年7月15日午后雷暴，东阿尔卑斯多条山脊路线封闭"
+          }
+        },
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [12, 1, 2, 3, 4],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，山路封闭，救援困难",
+          "historicalExample": {
+            "date": "2024-01-25",
+            "description": "2024年1月25日大规模雪崩，东阿尔卑斯多条山路封闭"
+          }
+        }
+      ],
+      "notes": "东阿尔卑斯包括奥地利、斯洛文尼亚和意大利东北部地区，降雨量比西阿尔卑斯更高，夏季午后雷暴常见。7-8月是最佳旅行时间。"
+    },
+    {
+      "regionId": "alps-central",
+      "regionName": "中阿尔卑斯",
+      "regionNameEN": "Central Alps",
+      "coordinates": {
+        "center": {
+          "lat": 46.5,
+          "lng": 9.5
+        },
+        "bounds": {
+          "north": 47.0,
+          "south": 46.0,
+          "east": 10.5,
+          "west": 8.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [7, 8],
+          "period": "盛夏（7-8月）",
+          "description": "最佳旅行时间，天气稳定，山路开放，适合徒步和登山",
+          "temperature": {
+            "avg": 14,
+            "min": 7,
+            "max": 22,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [6, 9],
+          "period": "初夏/初秋（6月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少，但部分高海拔路线可能仍有积雪",
+          "temperature": {
+            "avg": 11,
+            "min": 4,
+            "max": 17,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 110,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 24,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "风速适中",
+            "高海拔地区天气变化快",
+            "内阿尔卑斯山谷较干燥"
+          ],
+          "typicalDays": {
+            "sunny": 19,
+            "cloudy": 8,
+            "rainy": 3,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "山路封闭",
+            "内阿尔卑斯山谷较干燥（如Valais、Engadin）"
+          ],
+          "typicalDays": {
+            "sunny": 11,
+            "cloudy": 12,
+            "snowy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风",
+            "高海拔地区极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔雷暴",
+            "高海拔地区天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "山路封闭",
+            "强风",
+            "高海拔地区极低温"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [12, 1, 2, 3, 4],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，山路封闭，救援困难",
+          "historicalExample": {
+            "date": "2024-02-10",
+            "description": "2024年2月10日大规模雪崩，中阿尔卑斯多条山路封闭"
+          }
+        },
+        {
+          "type": "sudden_storm",
+          "severity": "high",
+          "description": "突然风暴",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "夏季偶尔发生",
+          "impact": "高海拔地区天气突然变化，能见度降低",
+          "historicalExample": {
+            "date": "2023-08-05",
+            "description": "2023年8月5日突然风暴，中阿尔卑斯高海拔地区能见度降至15米"
+          }
+        }
+      ],
+      "notes": "中阿尔卑斯包括瑞士中部和奥地利西部地区，内阿尔卑斯山谷（如Valais、Engadin）是瑞士最干燥的地区之一，但高海拔地区仍有降雪和强风风险。7-8月是最佳旅行时间。"
+    }
+  ]
+}

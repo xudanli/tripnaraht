@@ -126,7 +126,9 @@ export class RouteDirectionObservabilityService {
     // 限制内存中的 traces 数量
     if (this.traces.size > this.maxTracesInMemory) {
       const firstKey = this.traces.keys().next().value;
-      this.traces.delete(firstKey);
+      if (firstKey) {
+        this.traces.delete(firstKey);
+      }
     }
     
     return trace;
@@ -426,13 +428,15 @@ export class RouteDirectionObservabilityService {
       whySelected: trace.decisionContext
         ? {
             scoreBreakdown: trace.decisionContext.scoreBreakdown
-              ? {
-                  tagMatch: trace.decisionContext.scoreBreakdown.tagMatch,
-                  seasonMatch: trace.decisionContext.scoreBreakdown.seasonMatch,
-                  paceMatch: trace.decisionContext.scoreBreakdown.paceMatch,
-                  riskMatch: trace.decisionContext.scoreBreakdown.riskMatch,
-                  totalScore: trace.decisionContext.scoreBreakdown.totalScore,
-                }
+              ? Object.fromEntries(
+                  Object.entries({
+                    tagMatch: trace.decisionContext.scoreBreakdown.tagMatch,
+                    seasonMatch: trace.decisionContext.scoreBreakdown.seasonMatch,
+                    paceMatch: trace.decisionContext.scoreBreakdown.paceMatch,
+                    riskMatch: trace.decisionContext.scoreBreakdown.riskMatch,
+                    totalScore: trace.decisionContext.scoreBreakdown.totalScore,
+                  }).filter(([_, v]) => v !== undefined)
+                ) as Record<string, number>
               : undefined,
             matchedSignals: trace.decisionContext.matchedSignals,
           }

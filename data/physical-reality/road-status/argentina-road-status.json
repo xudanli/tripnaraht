@@ -1,0 +1,185 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "argentina",
+    "regionName": "阿根廷",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "argentina-highway-administration",
+    "description": "阿根廷（乌斯怀亚）主要道路状态数据 - 包含季节性限制、强风风险"
+  },
+  "roads": [
+    {
+      "roadId": "ar-ruta3-ushuaia",
+      "roadName": "Ruta 3 - 乌斯怀亚段",
+      "roadNameEN": "Ruta 3 - Ushuaia Section",
+      "roadType": "national_highway",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但受天气影响可能临时封闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需注意强风，冬季可能需要雪链"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -54.8,
+          "lng": -68.3,
+          "name": "Ushuaia"
+        },
+        "end": {
+          "lat": -54.3,
+          "lng": -67.7,
+          "name": "Rio Grande"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "巴塔哥尼亚强风，风速可达80-120km/h，可能吹动车辆"
+        },
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季和早春有积雪和结冰，可能需要雪链"
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化，数小时内可从晴天变为暴风雪"
+        }
+      ]
+    },
+    {
+      "roadId": "ar-ruta3-punta-delgada-ferry",
+      "roadName": "Ruta 3 - Punta Delgada渡轮段",
+      "roadNameEN": "Ruta 3 - Punta Delgada Ferry Section",
+      "roadType": "ferry_crossing",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年运营",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年运营，但受天气影响可能临时取消"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "standard",
+        "notes": "标准车辆可通行，需支付渡轮费用"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -52.4167,
+          "lng": -68.4333,
+          "name": "Punta Delgada"
+        },
+        "end": {
+          "lat": -52.3500,
+          "lng": -68.4167,
+          "name": "Bahia Azul"
+        }
+      },
+      "hazards": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风可能导致渡轮取消"
+        },
+        {
+          "type": "rough_seas",
+          "severity": "medium",
+          "description": "恶劣海况可能导致渡轮取消"
+        }
+      ],
+      "ferryInfo": {
+        "durationMinutes": 20,
+        "frequency": "每30分钟",
+        "vehiclePriceUSD": 30,
+        "notes": "穿越麦哲伦海峡的渡轮，连接大陆和火地岛"
+      }
+    },
+    {
+      "roadId": "ar-ruta40-patagonia",
+      "roadName": "Ruta 40 - 巴塔哥尼亚段",
+      "roadNameEN": "Ruta 40 - Patagonia Section",
+      "roadType": "national_highway",
+      "status": "year_round",
+      "currentStatus": "open",
+      "season": {
+        "openMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "openPeriod": "全年开放",
+        "typicalOpenDate": "全年",
+        "typicalCloseDate": "全年",
+        "notes": "全年开放，但12-3月是最佳通行时间，某些区域在冬季可能因雪封闭"
+      },
+      "requirements": {
+        "vehicleType": "standard",
+        "clearance": "standard",
+        "experience": "experienced_driver",
+        "notes": "标准车辆可通行，但需注意砂石路段，建议有经验司机，12-3月所有车辆可通行"
+      },
+      "coordinates": {
+        "start": {
+          "lat": -40.0,
+          "lng": -71.0,
+          "name": "Bariloche"
+        },
+        "end": {
+          "lat": -50.0,
+          "lng": -72.0,
+          "name": "El Calafate"
+        }
+      },
+      "hazards": [
+        {
+          "type": "gravel_road",
+          "severity": "medium",
+          "description": "部分路段为砂石路，需谨慎驾驶，速度不超过70km/h",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "potholes",
+          "severity": "medium",
+          "description": "砂石路段有坑洞，特别是River Mayo附近，需谨慎驾驶",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "巴塔哥尼亚强风，可能影响驾驶",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3]
+        },
+        {
+          "type": "snow_ice",
+          "severity": "medium",
+          "description": "冬季和早春可能有积雪和结冰，某些区域可能封闭",
+          "typicalMonths": [6, 7, 8, 9]
+        },
+        {
+          "type": "fuel_availability",
+          "severity": "medium",
+          "description": "偏远地区加油站可能关闭或缺油，需提前规划",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "type": "summer_floods",
+          "severity": "low",
+          "description": "北部地区夏季（雨季）可能有洪水",
+          "typicalMonths": [12, 1, 2, 3]
+        }
+      ],
+      "notes": "Ruta 40是阿根廷最长的公路，穿越巴塔哥尼亚。12-3月是最佳通行时间，所有车辆可通行。部分路段为砂石路，需谨慎驾驶，速度不超过70km/h。偏远地区加油站可能关闭或缺油，需提前规划。"
+    }
+  ]
+}

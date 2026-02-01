@@ -1,0 +1,839 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "argentina",
+    "regionName": "阿根廷",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "servicio-meteorologico-nacional",
+    "description": "阿根廷（乌斯怀亚）天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "argentina-ushuaia",
+      "regionName": "乌斯怀亚",
+      "regionNameEN": "Ushuaia",
+      "coordinates": {
+        "center": {
+          "lat": -54.8,
+          "lng": -68.3
+        },
+        "bounds": {
+          "north": -54.5,
+          "south": -55.0,
+          "east": -68.0,
+          "west": -68.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，日照时间长，但天气仍可能快速变化",
+          "temperature": {
+            "avg": 10,
+            "min": 5,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 25,
+            "max": 50,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 17,
+            "description": "日照时间很长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，温度较低但可接受，游客较少",
+          "temperature": {
+            "avg": 6,
+            "min": 2,
+            "max": 11,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 30,
+            "max": 60,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气变化极快",
+            "强风频繁",
+            "降雨量适中",
+            "一日四季是常态"
+          ],
+          "typicalDays": {
+            "sunny": 8,
+            "cloudy": 15,
+            "rainy": 6,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "极端低温",
+            "强风频繁",
+            "降雪量大",
+            "天气变化极快"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 18,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风（>50km/h）",
+            "降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "强风（30-50km/h）",
+            "天气快速变化",
+            "偶尔降雪"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化，始终携带完整装备"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风（>50km/h）",
+            "降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "patagonian_wind",
+          "severity": "very_high",
+          "description": "巴塔哥尼亚强风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段",
+          "impact": "风速>50km/h，行走困难，可能被吹倒，船游取消",
+          "historicalExample": {
+            "date": "2024-01-15",
+            "description": "2024年1月15日强风，风速达80km/h，所有户外活动取消"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "数小时内从晴天变为暴风雪，能见度丧失，失温风险",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日天气快速变化，从晴天变为暴风雪，多起被困事件"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "argentina-patagonia-andes",
+      "regionName": "巴塔哥尼亚安第斯地区",
+      "regionNameEN": "Andean Patagonia",
+      "coordinates": {
+        "center": {
+          "lat": -42.0,
+          "lng": -71.5
+        },
+        "bounds": {
+          "north": -40.0,
+          "south": -44.0,
+          "east": -70.0,
+          "west": -73.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，但降雨量大",
+          "temperature": {
+            "avg": 12,
+            "min": 5,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 200,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 20,
+            "max": 45,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，温度较低但可接受，游客较少",
+          "temperature": {
+            "avg": 8,
+            "min": 2,
+            "max": 15,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 150,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 25,
+            "max": 50,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "湿润气候（年降雨>2000mm）",
+            "凉爽夏季",
+            "强风频繁",
+            "天气变化快",
+            "降雨量大"
+          ],
+          "typicalDays": {
+            "sunny": 6,
+            "cloudy": 15,
+            "rainy": 8,
+            "stormy": 2,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "寒冷多雪",
+            "强风频繁",
+            "降雪量大",
+            "天气变化快",
+            "平均年温度8-10°C"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 16,
+            "snowy": 9,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风",
+            "大量降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "强风",
+            "大量降雨",
+            "天气快速变化"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化和降雨"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端低温",
+            "强风",
+            "大量降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和充分准备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "heavy_rain",
+          "severity": "very_high",
+          "description": "强降雨",
+          "typicalMonths": [12, 1, 2, 3],
+          "frequency": "夏季常见",
+          "impact": "年降雨>2000mm，可能导致洪水，道路封闭",
+          "historicalExample": {
+            "date": "2024-01-25",
+            "description": "2024年1月25日强降雨，巴塔哥尼亚安第斯地区多条道路封闭"
+          }
+        },
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段",
+          "impact": "风速>45m/s，行走困难，可能被吹倒",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日强风，风速达50m/s，所有户外活动取消"
+          }
+        }
+      ],
+      "notes": "巴塔哥尼亚安第斯地区是湿润气候，年降雨>2000mm，是巴塔哥尼亚最湿润的地区。凉爽夏季和寒冷多雪的冬季，平均年温度8-10°C。强风频繁，天气变化快。12-2月是最佳旅行时间，但需注意大量降雨和强风。"
+    },
+    {
+      "regionId": "argentina-patagonia-atlantic",
+      "regionName": "巴塔哥尼亚大西洋地区",
+      "regionNameEN": "Atlantic Patagonia",
+      "coordinates": {
+        "center": {
+          "lat": -45.0,
+          "lng": -67.0
+        },
+        "bounds": {
+          "north": -43.0,
+          "south": -47.0,
+          "east": -65.0,
+          "west": -69.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，但强风频繁",
+          "temperature": {
+            "avg": 18,
+            "min": 10,
+            "max": 28,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 20,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 25,
+            "max": 50,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，温度较低但可接受，游客较少",
+          "temperature": {
+            "avg": 14,
+            "min": 5,
+            "max": 22,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 15,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 30,
+            "max": 55,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "干旱气候（年降雨仅200mm）",
+            "炎热干燥的夏季",
+            "强风频繁（夏季增强）",
+            "天气变化快",
+            "昼夜温差大"
+          ],
+          "typicalDays": {
+            "sunny": 25,
+            "cloudy": 4,
+            "rainy": 1,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "寒冷冬季",
+            "强风频繁",
+            "降雪量少",
+            "天气变化快",
+            "昼夜温差大"
+          ],
+          "typicalDays": {
+            "sunny": 18,
+            "cloudy": 10,
+            "snowy": 2,
+            "stormy": 1,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "high",
+          "risks": [
+            "寒冷温度",
+            "强风",
+            "天气快速变化"
+          ],
+          "recommendation": "可旅行，但需注意天气变化和强风"
+        },
+        {
+          "month": 1,
+          "riskLevel": "medium",
+          "risks": [
+            "强风（夏季增强）",
+            "高温",
+            "天气快速变化"
+          ],
+          "recommendation": "最佳旅行时间，但需注意强风和高温"
+        },
+        {
+          "month": 7,
+          "riskLevel": "high",
+          "risks": [
+            "寒冷温度",
+            "强风",
+            "天气快速变化"
+          ],
+          "recommendation": "可旅行，但需注意天气变化和强风"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "very_high",
+          "description": "强风",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "几乎每日有强风时段，夏季增强",
+          "impact": "风速>50m/s，行走困难，可能被吹倒",
+          "historicalExample": {
+            "date": "2024-01-18",
+            "description": "2024年1月18日强风，风速达55m/s，所有户外活动取消"
+          }
+        },
+        {
+          "type": "extreme_temperature_swings",
+          "severity": "high",
+          "description": "极端温度变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "昼夜温差大，单日内温度变化可达20°C",
+          "historicalExample": {
+            "date": "2024-01-22",
+            "description": "2024年1月22日，单日温度从5°C升至25°C"
+          }
+        }
+      ],
+      "notes": "巴塔哥尼亚大西洋地区是干旱气候，年降雨仅200mm，是巴塔哥尼亚最干旱的地区。炎热干燥的夏季和寒冷的冬季，强风频繁（夏季增强），昼夜温差大。12-2月是最佳旅行时间，但需注意强风和高温。"
+    },
+    {
+      "regionId": "argentina-patagonia-north",
+      "regionName": "巴塔哥尼亚北部",
+      "regionNameEN": "Northern Patagonia",
+      "coordinates": {
+        "center": {
+          "lat": -42.0,
+          "lng": -71.0
+        },
+        "bounds": {
+          "north": -40.0,
+          "south": -44.0,
+          "east": -68.0,
+          "west": -73.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，天气相对稳定",
+          "temperature": {
+            "avg": 18,
+            "min": 10,
+            "max": 26,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 40,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 30,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 15,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低",
+          "temperature": {
+            "avg": 13,
+            "min": 5,
+            "max": 20,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 14,
+            "max": 32,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 13,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量适中",
+            "强风较常见",
+            "温度相对温和",
+            "天气变化快"
+          ],
+          "typicalDays": {
+            "sunny": 20,
+            "cloudy": 8,
+            "rainy": 2,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "寒冷冬季",
+            "强风频繁",
+            "降雪量适中",
+            "天气变化快",
+            "温度较低"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 4,
+            "snowy": 3,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "medium",
+          "risks": [
+            "寒冷温度",
+            "强风",
+            "降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "可旅行，但需注意天气变化和强风"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔强风",
+            "天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 7,
+          "riskLevel": "medium",
+          "risks": [
+            "寒冷温度",
+            "强风",
+            "降雪",
+            "天气快速变化"
+          ],
+          "recommendation": "可旅行，但需注意天气变化和强风"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "strong_winds",
+          "severity": "high",
+          "description": "强风",
+          "typicalMonths": [6, 7, 8, 9, 10, 11, 12, 1, 2],
+          "frequency": "常见",
+          "impact": "强风频繁，可能影响户外活动",
+          "historicalExample": {
+            "date": "2024-01-15",
+            "description": "2024年1月15日强风，风速达30m/s"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日天气快速变化，从晴天变为暴风雨"
+          }
+        }
+      ],
+      "notes": "巴塔哥尼亚北部包括Bariloche、San Martín de los Andes等地区。天气相对稳定，但强风较常见，天气变化快。12-2月是最佳旅行时间。"
+    },
+    {
+      "regionId": "argentina-andes-other",
+      "regionName": "安第斯山脉其他地区",
+      "regionNameEN": "Other Andean Regions",
+      "coordinates": {
+        "center": {
+          "lat": -32.0,
+          "lng": -69.0
+        },
+        "bounds": {
+          "north": -28.0,
+          "south": -36.0,
+          "east": -66.0,
+          "west": -71.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [12, 1, 2],
+          "period": "夏季（12月-2月）",
+          "description": "最佳旅行时间，温度相对温和，高海拔地区天气较稳定",
+          "temperature": {
+            "avg": 15,
+            "min": 8,
+            "max": 22,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 14,
+            "description": "日照时间长"
+          }
+        },
+        {
+          "months": [11, 3],
+          "period": "春末/初秋（11月、3月）",
+          "description": "次佳旅行时间，游客较少，但温度较低，可能有降雪",
+          "temperature": {
+            "avg": 10,
+            "min": 3,
+            "max": 17,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 100,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 28,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 12,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "高海拔地区天气变化快",
+            "降雨量适中",
+            "风速适中",
+            "午后雷暴常见",
+            "天气相对稳定"
+          ],
+          "typicalDays": {
+            "sunny": 18,
+            "cloudy": 9,
+            "rainy": 3,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "降雪量大",
+            "强风频繁",
+            "雪崩风险高",
+            "高海拔地区极低温",
+            "天气变化剧烈"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 13,
+            "rainy": 4,
+            "snowy": 4,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 6,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "强风",
+            "极低温",
+            "高海拔地区极度危险"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        },
+        {
+          "month": 1,
+          "riskLevel": "low",
+          "risks": [
+            "午后雷暴",
+            "高海拔地区天气变化快"
+          ],
+          "recommendation": "最佳旅行时间，但需注意午后雷暴和高海拔地区天气变化"
+        },
+        {
+          "month": 7,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端降雪",
+            "雪崩风险极高",
+            "强风",
+            "极低温",
+            "高海拔地区极度危险"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导和雪崩装备"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "avalanche",
+          "severity": "extreme",
+          "description": "雪崩",
+          "typicalMonths": [6, 7, 8, 9],
+          "frequency": "冬季和春季常见",
+          "impact": "致命风险，高海拔地区雪崩风险极高",
+          "historicalExample": {
+            "date": "2023-07-25",
+            "description": "2023年7月25日雪崩，安第斯山脉多条路线封闭"
+          }
+        },
+        {
+          "type": "afternoon_thunderstorm",
+          "severity": "high",
+          "description": "午后雷暴",
+          "typicalMonths": [12, 1, 2],
+          "frequency": "夏季常见",
+          "impact": "14:00-20:00高发，高海拔地区极度危险",
+          "historicalExample": {
+            "date": "2024-01-18",
+            "description": "2024年1月18日午后雷暴，安第斯山脉多条路线封闭"
+          }
+        },
+        {
+          "type": "extreme_cold",
+          "severity": "extreme",
+          "description": "极端低温",
+          "typicalMonths": [6, 7, 8],
+          "frequency": "冬季常见",
+          "impact": "高海拔地区体感温度可达-30°C，失温风险极高",
+          "historicalExample": {
+            "date": "2023-07-20",
+            "description": "2023年7月20日极端低温，高海拔地区体感温度-32°C"
+          }
+        }
+      ],
+      "notes": "安第斯山脉其他地区包括Mendoza、San Juan等地区。高海拔地区天气变化快，午后雷暴常见。冬季降雪量大，雪崩风险高，高海拔地区极低温。12-2月是最佳旅行时间，但需注意午后雷暴和高海拔地区天气变化。"
+    }
+  ]
+}

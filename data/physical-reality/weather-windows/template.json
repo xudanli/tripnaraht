@@ -1,0 +1,175 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "iceland",
+    "regionName": "冰岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "icelandic-meteorological-office",
+    "description": "天气窗口数据模板 - 用于记录最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "iceland-south",
+      "regionName": "冰岛南部",
+      "regionNameEN": "South Iceland",
+      "coordinates": {
+        "center": {
+          "lat": 64.0,
+          "lng": -19.0
+        },
+        "bounds": {
+          "north": 65.0,
+          "south": 63.0,
+          "east": -18.0,
+          "west": -22.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，天气相对稳定，日照时间长",
+          "temperature": {
+            "avg": 12,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 50,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 15,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 20,
+            "description": "极昼，几乎24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，天气较稳定，游客较少",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 14,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 16,
+            "description": "日照时间较长"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定",
+            "降雨量较少",
+            "风速适中",
+            "极昼现象"
+          ],
+          "typicalDays": {
+            "sunny": 15,
+            "cloudy": 10,
+            "rainy": 6,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象"
+          ],
+          "typicalDays": {
+            "sunny": 5,
+            "cloudy": 15,
+            "snowy": 8,
+            "stormy": 3,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "风速适中"
+          ],
+          "recommendation": "最佳旅行时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "道路封闭",
+            "极夜"
+          ],
+          "recommendation": "不推荐旅行，除非有专业向导"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2],
+          "frequency": "每年2-3次",
+          "impact": "道路封闭、航班取消、户外活动危险",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日极端风暴，全国道路封闭"
+          }
+        },
+        {
+          "type": "heavy_snow",
+          "severity": "high",
+          "description": "强降雪",
+          "typicalMonths": [12, 1, 2, 3],
+          "frequency": "每月1-2次",
+          "impact": "道路封闭、能见度低",
+          "historicalExample": {
+            "date": "2024-01-20",
+            "description": "2024年1月20日强降雪，南部道路封闭"
+          }
+        }
+      ],
+      "lastUpdated": "2026-01-28",
+      "updateFrequency": "quarterly",
+      "source": "icelandic-meteorological-office"
+    }
+  ]
+}

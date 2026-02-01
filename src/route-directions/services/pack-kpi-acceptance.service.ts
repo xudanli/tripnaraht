@@ -161,7 +161,7 @@ export class PackKPIAcceptanceService {
       });
 
       const rdTags = rd.tags || [];
-      const uniqueTags = rdTags.filter(tag => tagCounts.get(tag) === 1);
+      const uniqueTags = rdTags.filter((tag: string) => tagCounts.get(tag) === 1);
       const tagUniquenessScore = rdTags.length > 0
         ? Math.round((uniqueTags.length / rdTags.length) * 100)
         : 0;
@@ -384,7 +384,14 @@ export class PackKPIAcceptanceService {
         scenarios.push({
           scenarioId: scenario.scenarioId,
           description: scenario.description,
-          preferences: scenario.preferences,
+          preferences: {
+            ...scenario.preferences,
+            intents: scenario.preferences.intents
+              ? Object.fromEntries(
+                  Object.entries(scenario.preferences.intents).filter(([_, v]) => v !== undefined)
+                ) as Record<string, number>
+              : undefined,
+          },
           results,
           isDifferentiated,
           differentiationReason: isDifferentiated
@@ -396,7 +403,14 @@ export class PackKPIAcceptanceService {
         scenarios.push({
           scenarioId: scenario.scenarioId,
           description: scenario.description,
-          preferences: scenario.preferences,
+          preferences: {
+            ...scenario.preferences,
+            intents: scenario.preferences.intents
+              ? Object.fromEntries(
+                  Object.entries(scenario.preferences.intents).filter(([_, v]) => v !== undefined)
+                ) as Record<string, number>
+              : undefined,
+          },
           results: [],
           isDifferentiated: false,
           differentiationReason: `测试失败: ${error}`,

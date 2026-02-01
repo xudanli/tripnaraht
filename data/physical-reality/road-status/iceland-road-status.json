@@ -1,0 +1,1052 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "iceland",
+    "regionName": "冰岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "road.is",
+    "description": "冰岛主要F路道路状态数据 - 包含开放状态、季节性限制、4x4要求等信息"
+  },
+  "roads": [
+    {
+      "roadId": "F208",
+      "roadName": "Landmannalaugar入口",
+      "roadNameEN": "Landmannalaugar Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越多条河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9330,
+          "lng": -21.0023,
+          "name": "Selfoss"
+        },
+        "end": {
+          "lat": 63.9833,
+          "lng": -19.0667,
+          "name": "Landmannalaugar"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大，需要谨慎评估"
+        }
+      ]
+    },
+    {
+      "roadId": "F26",
+      "roadName": "Sprengisandur高地纵贯",
+      "roadNameEN": "Sprengisandur Route",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8],
+        "openPeriod": "夏季（6-8月）",
+        "typicalOpenDate": "6月底",
+        "typicalCloseDate": "8月底",
+        "notes": "冰岛最长的F路之一，穿越高地，开放时间最短，通常6月底才开放"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有丰富越野驾驶经验，路况复杂，偏远地区"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.2500,
+          "lng": -20.3000,
+          "name": "北部起点"
+        },
+        "end": {
+          "lat": 63.9330,
+          "lng": -19.0000,
+          "name": "南部终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难，必须做好充分准备"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F225",
+      "roadName": "Landmannalaugar → Þórsmörk",
+      "roadNameEN": "Landmannalaugar to Þórsmörk",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "连接Landmannalaugar和Þórsmörk的重要F路"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难，需要穿越河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9833,
+          "lng": -19.0667,
+          "name": "Landmannalaugar"
+        },
+        "end": {
+          "lat": 63.7833,
+          "lng": -19.6000,
+          "name": "Þórsmörk"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大"
+        }
+      ]
+    },
+    {
+      "roadId": "F910",
+      "roadName": "Askja火山",
+      "roadNameEN": "Askja Volcano",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8],
+        "openPeriod": "夏季（6-8月）",
+        "typicalOpenDate": "6月底",
+        "typicalCloseDate": "8月底",
+        "notes": "通往Askja火山的F路，开放时间较短"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难，偏远地区"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 65.0333,
+          "lng": -16.2167,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 65.0333,
+          "lng": -16.7500,
+          "name": "Askja"
+        }
+      },
+      "hazards": [
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        },
+        {
+          "type": "volcanic_area",
+          "severity": "medium",
+          "description": "火山活动区域，需要关注安全"
+        }
+      ]
+    },
+    {
+      "roadId": "F88",
+      "roadName": "Askja → 北部",
+      "roadNameEN": "Askja to North",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8],
+        "openPeriod": "夏季（6-8月）",
+        "typicalOpenDate": "6月底",
+        "typicalCloseDate": "8月底",
+        "notes": "连接Askja和北部的重要F路"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 65.0333,
+          "lng": -16.7500,
+          "name": "Askja"
+        },
+        "end": {
+          "lat": 65.6030,
+          "lng": -16.9963,
+          "name": "Mývatn"
+        }
+      },
+      "hazards": [
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        }
+      ]
+    },
+    {
+      "roadId": "F249",
+      "roadName": "Þórsmörk入口",
+      "roadNameEN": "Þórsmörk Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "通往Þórsmörk的重要F路"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，需要穿越河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.7833,
+          "lng": -19.6000,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 63.7833,
+          "lng": -19.6000,
+          "name": "Þórsmörk"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大"
+        }
+      ]
+    },
+    {
+      "roadId": "F35",
+      "roadName": "Kjölur高地路线",
+      "roadNameEN": "Kjölur Route",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "连接北部和南部的重要高地路线，相对其他F路路况较好"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，但相对其他F路路况较好"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.2500,
+          "lng": -20.3000,
+          "name": "北部起点"
+        },
+        "end": {
+          "lat": 64.0000,
+          "lng": -19.0000,
+          "name": "南部终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "weather_dependent",
+          "severity": "medium",
+          "description": "天气变化可能影响通行"
+        }
+      ]
+    },
+    {
+      "roadId": "F210",
+      "roadName": "Fjallabaksleið南线",
+      "roadNameEN": "Fjallabaksleið Syðri",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [7, 8, 9],
+        "openPeriod": "夏季（7-9月）",
+        "typicalOpenDate": "7月初",
+        "typicalCloseDate": "9月底",
+        "notes": "通常7月初开放，开放时间较短"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难，需要穿越多条河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9330,
+          "lng": -19.0000,
+          "name": "南部起点"
+        },
+        "end": {
+          "lat": 64.0000,
+          "lng": -19.5000,
+          "name": "北部终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大"
+        },
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        }
+      ]
+    },
+    {
+      "roadId": "F228",
+      "roadName": "Veiðivatnaleið",
+      "roadNameEN": "Veiðivatnaleið",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "通常6月中旬开放"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.2500,
+          "lng": -20.3000,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 64.5000,
+          "lng": -20.0000,
+          "name": "终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F261",
+      "roadName": "Þórsmörk另一入口",
+      "roadNameEN": "Þórsmörk Alternative Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "通往Þórsmörk的另一条F路"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，需要穿越河流，路况艰难"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.7833,
+          "lng": -19.6000,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 63.7833,
+          "lng": -19.6000,
+          "name": "Þórsmörk"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "very_high",
+          "description": "需要穿越多条深河流，水位变化大，非常危险"
+        }
+      ]
+    },
+    {
+      "roadId": "F337",
+      "roadName": "Hveravellir地热区",
+      "roadNameEN": "Hveravellir Geothermal Area",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "通往Hveravellir地热区的重要F路"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.8667,
+          "lng": -19.5500,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 64.8667,
+          "lng": -19.5500,
+          "name": "Hveravellir"
+        }
+      },
+      "hazards": [
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        }
+      ]
+    },
+    {
+      "roadId": "F821",
+      "roadName": "Eyjafjarðarleið",
+      "roadNameEN": "Eyjafjarðarleið",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [7, 8, 9],
+        "openPeriod": "夏季（7-9月）",
+        "typicalOpenDate": "7月初",
+        "typicalCloseDate": "9月底",
+        "notes": "通常7月初开放，开放时间较短"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难，需要穿越河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 65.2667,
+          "lng": -18.1000,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 65.5000,
+          "lng": -18.0000,
+          "name": "终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流"
+        },
+        {
+          "type": "remote_area",
+          "severity": "high",
+          "description": "偏远地区，救援困难"
+        }
+      ]
+    },
+    {
+      "roadId": "F862",
+      "roadName": "西峡湾F路",
+      "roadNameEN": "Westfjords F-Road",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "西峡湾地区的重要F路，通常6月中旬开放"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，路况艰难，西峡湾地区地形复杂"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 65.7500,
+          "lng": -23.5000,
+          "name": "起点"
+        },
+        "end": {
+          "lat": 66.0000,
+          "lng": -23.0000,
+          "name": "终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "steep_terrain",
+          "severity": "high",
+          "description": "陡峭地形，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F206",
+      "roadName": "Þórsmörk入口",
+      "roadNameEN": "Þórsmörk Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪和河流水位，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，需要穿越多条河流，包括Krossá河，水位变化大"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.7833,
+          "lng": -20.0833,
+          "name": "Seljalandsfoss附近"
+        },
+        "end": {
+          "lat": 63.6833,
+          "lng": -19.4833,
+          "name": "Þórsmörk"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "very_high",
+          "description": "需要穿越Krossá河等多条河流，水位变化极大，需要谨慎评估，建议跟随其他车辆或咨询当地向导"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，降雨可能导致河流水位快速上涨，道路可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F232",
+      "roadName": "Kerlingarfjöll入口",
+      "roadNameEN": "Kerlingarfjöll Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越河流和崎岖地形"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.6667,
+          "lng": -19.5000,
+          "name": "Kjölur (F35)附近"
+        },
+        "end": {
+          "lat": 64.6333,
+          "lng": -19.3167,
+          "name": "Kerlingarfjöll"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大，需要谨慎评估"
+        },
+        {
+          "type": "steep_terrain",
+          "severity": "medium",
+          "description": "崎岖地形，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F550",
+      "roadName": "Askja入口",
+      "roadNameEN": "Askja Access",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越河流和沙地"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 65.0333,
+          "lng": -16.3667,
+          "name": "Mývatn附近"
+        },
+        "end": {
+          "lat": 65.0333,
+          "lng": -16.7500,
+          "name": "Askja"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大，需要谨慎评估"
+        },
+        {
+          "type": "sand_traps",
+          "severity": "medium",
+          "description": "沙地路段，可能陷车，建议降低胎压"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭，高海拔地区天气变化快"
+        }
+      ]
+    },
+    {
+      "roadId": "F902",
+      "roadName": "Vatnajökull周边路",
+      "roadNameEN": "Vatnajökull Perimeter Road",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，高海拔地区，天气变化快"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.4167,
+          "lng": -16.1833,
+          "name": "Vatnajökull国家公园附近"
+        },
+        "end": {
+          "lat": 64.5000,
+          "lng": -16.0000,
+          "name": "Vatnajökull周边"
+        }
+      },
+      "hazards": [
+        {
+          "type": "glacier_proximity",
+          "severity": "high",
+          "description": "靠近冰川，地形复杂，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "very_high",
+          "description": "高海拔地区天气变化极快，可能突然封闭，能见度可能降至零"
+        },
+        {
+          "type": "steep_terrain",
+          "severity": "medium",
+          "description": "崎岖地形，需要谨慎驾驶"
+        }
+      ]
+    },
+    {
+      "roadId": "F985",
+      "roadName": "Landmannalaugar - Eldgjá",
+      "roadNameEN": "Landmannalaugar - Eldgjá",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越河流和崎岖地形"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9833,
+          "lng": -19.0667,
+          "name": "Landmannalaugar"
+        },
+        "end": {
+          "lat": 63.9667,
+          "lng": -18.3667,
+          "name": "Eldgjá"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大，需要谨慎评估"
+        },
+        {
+          "type": "steep_terrain",
+          "severity": "high",
+          "description": "陡峭地形，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F233",
+      "roadName": "Landmannalaugar - Eldgjá 连接路",
+      "roadNameEN": "Landmannalaugar - Eldgjá Connection",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越河流和崎岖地形"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 63.9833,
+          "lng": -19.0667,
+          "name": "Landmannalaugar"
+        },
+        "end": {
+          "lat": 63.9667,
+          "lng": -18.3667,
+          "name": "Eldgjá"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越多条河流，水位变化大，需要谨慎评估"
+        },
+        {
+          "type": "steep_terrain",
+          "severity": "high",
+          "description": "陡峭地形，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F347",
+      "roadName": "Þjórsárdalur",
+      "roadNameEN": "Þjórsárdalur",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪和河流水位，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，需要穿越河流"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.0833,
+          "lng": -19.8333,
+          "name": "Þjórsárdalur入口"
+        },
+        "end": {
+          "lat": 64.1667,
+          "lng": -19.6667,
+          "name": "Þjórsárdalur"
+        }
+      },
+      "hazards": [
+        {
+          "type": "river_crossing",
+          "severity": "high",
+          "description": "需要穿越Þjórsá河，水位变化大，需要谨慎评估"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        }
+      ]
+    },
+    {
+      "roadId": "F578",
+      "roadName": "Hveravellir - Kjalvegur",
+      "roadNameEN": "Hveravellir - Kjalvegur",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，高海拔地区"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.8667,
+          "lng": -19.5500,
+          "name": "Hveravellir"
+        },
+        "end": {
+          "lat": 65.0000,
+          "lng": -19.5000,
+          "name": "Kjalvegur (F35)"
+        }
+      },
+      "hazards": [
+        {
+          "type": "high_altitude",
+          "severity": "medium",
+          "description": "高海拔地区，天气变化快"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "high",
+          "description": "天气变化剧烈，可能突然封闭"
+        },
+        {
+          "type": "steep_terrain",
+          "severity": "medium",
+          "description": "崎岖地形，需要谨慎驾驶"
+        }
+      ]
+    },
+    {
+      "roadId": "F622",
+      "roadName": "Sprengisandur 支路",
+      "roadNameEN": "Sprengisandur Branch Road",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，Sprengisandur高地的支路"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.8333,
+          "lng": -18.5000,
+          "name": "Sprengisandur (F26)附近"
+        },
+        "end": {
+          "lat": 64.9167,
+          "lng": -18.3333,
+          "name": "Sprengisandur支路终点"
+        }
+      },
+      "hazards": [
+        {
+          "type": "high_altitude",
+          "severity": "high",
+          "description": "高海拔地区，天气变化极快"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "very_high",
+          "description": "天气变化剧烈，可能突然封闭，能见度可能降至零"
+        },
+        {
+          "type": "sand_traps",
+          "severity": "medium",
+          "description": "沙地路段，可能陷车"
+        }
+      ]
+    },
+    {
+      "roadId": "F980",
+      "roadName": "Vatnajökull 南侧路",
+      "roadNameEN": "Vatnajökull South Side Road",
+      "roadType": "F-road",
+      "status": "seasonal",
+      "currentStatus": "closed",
+      "season": {
+        "openMonths": [6, 7, 8, 9],
+        "openPeriod": "夏季（6-9月）",
+        "typicalOpenDate": "6月中旬",
+        "typicalCloseDate": "9月底",
+        "notes": "具体开放时间取决于积雪情况，建议查询road.is获取最新状态"
+      },
+      "requirements": {
+        "vehicleType": "4x4_required",
+        "clearance": "high",
+        "experience": "experienced_driver",
+        "notes": "必须4x4车辆，建议有越野驾驶经验，靠近冰川，地形复杂"
+      },
+      "coordinates": {
+        "start": {
+          "lat": 64.4167,
+          "lng": -16.1833,
+          "name": "Vatnajökull国家公园南侧"
+        },
+        "end": {
+          "lat": 64.3333,
+          "lng": -16.0000,
+          "name": "Vatnajökull南侧"
+        }
+      },
+      "hazards": [
+        {
+          "type": "glacier_proximity",
+          "severity": "high",
+          "description": "靠近冰川，地形复杂，需要谨慎驾驶"
+        },
+        {
+          "type": "weather_dependent",
+          "severity": "very_high",
+          "description": "高海拔地区天气变化极快，可能突然封闭，能见度可能降至零"
+        },
+        {
+          "type": "river_crossing",
+          "severity": "medium",
+          "description": "需要穿越冰川融水形成的河流，水位变化大"
+        }
+      ]
+    }
+  ]
+}

@@ -16,12 +16,9 @@ describe('RagService', () => {
   beforeEach(async () => {
     const mockPrisma = {
       $queryRaw: jest.fn(),
+      $queryRawUnsafe: jest.fn(),
       $executeRaw: jest.fn(),
-      documentIndex: {
-        findMany: jest.fn(),
-        delete: jest.fn(),
-        update: jest.fn(),
-      },
+      // documentIndex已删除，不再mock
     };
 
     const mockEmbeddingService = {
@@ -144,22 +141,7 @@ describe('RagService', () => {
       expect(results[0].score).toBe(0.6);
     });
 
-    it('应该在向量搜索失败时降级到关键词搜索', async () => {
-      prisma.$queryRaw.mockRejectedValue(new Error('向量搜索失败'));
-      prisma.documentIndex.findMany.mockResolvedValue([
-        {
-          id: '1',
-          title: '测试文档1',
-          content: '这是测试内容1',
-          source: 'test-source-1',
-          countryCode: null,
-          tags: [],
-          metadata: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ] as any);
-
+    it('应该返回空结果（document_index表已删除）', async () => {
       const params: RagRetrievalParams = {
         query: '测试查询',
         collection: 'travel_guides',
@@ -168,33 +150,13 @@ describe('RagService', () => {
 
       const results = await service.retrieve(params);
 
-      expect(prisma.documentIndex.findMany).toHaveBeenCalled();
-      expect(results).toHaveLength(1);
-      expect(results[0].score).toBe(0.5); // 关键词搜索默认分数
-    });
-
-    it('应该处理 embedding 生成失败', async () => {
-      embeddingService.generateEmbedding.mockRejectedValue(new Error('Embedding 生成失败'));
-      prisma.documentIndex.findMany.mockResolvedValue([]);
-
-      const params: RagRetrievalParams = {
-        query: '测试查询',
-        collection: 'travel_guides',
-        limit: 10,
-      };
-
-      const results = await service.retrieve(params);
-
-      expect(prisma.documentIndex.findMany).toHaveBeenCalled();
+      // document_index表已删除，应返回空结果
       expect(results).toEqual([]);
     });
   });
 
   describe('indexDocument', () => {
-    it('应该成功索引文档', async () => {
-      const mockResult = [{ id: 'new-doc-id' }];
-      prisma.$queryRaw.mockResolvedValue(mockResult);
-
+    it('应该抛出错误（document_index表已删除）', async () => {
       const item: DocumentIndexItem = {
         collection: 'travel_guides',
         title: '测试文档',
@@ -205,36 +167,12 @@ describe('RagService', () => {
         metadata: { test: true },
       };
 
-      const id = await service.indexDocument(item);
-
-      expect(embeddingService.generateEmbedding).toHaveBeenCalledWith('测试文档\n\n这是测试内容');
-      expect(prisma.$queryRaw).toHaveBeenCalled();
-      expect(id).toBe('new-doc-id');
-    });
-
-    it('应该处理索引失败', async () => {
-      prisma.$queryRaw.mockRejectedValue(new Error('索引失败'));
-
-      const item: DocumentIndexItem = {
-        collection: 'travel_guides',
-        title: '测试文档',
-        content: '这是测试内容',
-      };
-
-      await expect(service.indexDocument(item)).rejects.toThrow('索引失败');
+      await expect(service.indexDocument(item)).rejects.toThrow('document_index表已删除');
     });
   });
 
   describe('indexDocuments', () => {
-    it('应该批量索引文档', async () => {
-      const mockResults = [
-        [{ id: 'doc-1' }],
-        [{ id: 'doc-2' }],
-      ];
-      prisma.$queryRaw
-        .mockResolvedValueOnce(mockResults[0])
-        .mockResolvedValueOnce(mockResults[1]);
-
+    it('应该抛出错误（document_index表已删除）', async () => {
       const items: DocumentIndexItem[] = [
         {
           collection: 'travel_guides',
@@ -248,80 +186,22 @@ describe('RagService', () => {
         },
       ];
 
-      const ids = await service.indexDocuments(items);
-
-      expect(ids).toHaveLength(2);
-      expect(ids).toEqual(['doc-1', 'doc-2']);
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
-    });
-
-    it('应该处理部分文档索引失败', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ id: 'doc-1' }])
-        .mockRejectedValueOnce(new Error('索引失败'));
-
-      const items: DocumentIndexItem[] = [
-        {
-          collection: 'travel_guides',
-          title: '文档1',
-          content: '内容1',
-        },
-        {
-          collection: 'travel_guides',
-          title: '文档2',
-          content: '内容2',
-        },
-      ];
-
-      const ids = await service.indexDocuments(items);
-
-      // 应该返回成功索引的文档 ID
-      expect(ids).toHaveLength(1);
-      expect(ids[0]).toBe('doc-1');
+      await expect(service.indexDocuments(items)).rejects.toThrow('document_index表已删除');
     });
   });
 
   describe('deleteDocument', () => {
-    it('应该成功删除文档', async () => {
-      prisma.documentIndex.delete.mockResolvedValue({} as any);
-
-      await service.deleteDocument('doc-id');
-
-      expect(prisma.documentIndex.delete).toHaveBeenCalledWith({
-        where: { id: 'doc-id' },
-      });
+    it('应该抛出错误（document_index表已删除）', async () => {
+      await expect(service.deleteDocument('doc-id')).rejects.toThrow('document_index表已删除');
     });
   });
 
   describe('updateDocument', () => {
-    it('应该成功更新文档（不更新内容）', async () => {
-      prisma.documentIndex.update.mockResolvedValue({} as any);
-
-      await service.updateDocument('doc-id', {
+    it('应该抛出错误（document_index表已删除）', async () => {
+      await expect(service.updateDocument('doc-id', {
         title: '新标题',
         tags: ['new-tag'],
-      });
-
-      expect(prisma.documentIndex.update).toHaveBeenCalledWith({
-        where: { id: 'doc-id' },
-        data: expect.objectContaining({
-          title: '新标题',
-          tags: ['new-tag'],
-        }),
-      });
-    });
-
-    it('应该在更新内容时重新生成 embedding', async () => {
-      const mockResult = {};
-      prisma.$executeRaw.mockResolvedValue(mockResult);
-
-      await service.updateDocument('doc-id', {
-        title: '新标题',
-        content: '新内容',
-      });
-
-      expect(embeddingService.generateEmbedding).toHaveBeenCalledWith('新标题\n\n新内容');
-      expect(prisma.$executeRaw).toHaveBeenCalled();
+      })).rejects.toThrow('document_index表已删除');
     });
   });
 });

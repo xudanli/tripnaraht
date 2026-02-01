@@ -118,7 +118,7 @@ export class DEMRiskScoringService {
 
     // 1. 获取活动海拔
     let elevation: number | null = null;
-    if (activity.location?.point) {
+    if (activity.location?.point && this.demElevationService) {
       elevation = await this.demElevationService.getElevation(
         activity.location.point.lat,
         activity.location.point.lng

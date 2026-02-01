@@ -1,0 +1,214 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "new-zealand-south-island",
+    "regionName": "新西兰南岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "interislander-bluebridge",
+    "description": "新西兰南岛渡轮时刻表 - Cook Strait连接南北岛"
+  },
+  "routes": [
+    {
+      "routeId": "nz-cook-strait-interislander",
+      "routeName": "Cook Strait - Interislander",
+      "routeNameEN": "Cook Strait - Interislander",
+      "from": {
+        "portId": "wellington",
+        "name": "Wellington",
+        "nameEN": "Wellington",
+        "coordinates": {
+          "lat": -41.2865,
+          "lng": 174.7762
+        }
+      },
+      "to": {
+        "portId": "picton",
+        "name": "Picton",
+        "nameEN": "Picton",
+        "coordinates": {
+          "lat": -41.2906,
+          "lng": 174.0081
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "10月1日 - 4月30日",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "08:00",
+              "arrivalTime": "11:25",
+              "durationMinutes": 205,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日多班，受天气影响可能取消"
+            },
+            {
+              "departureTime": "14:00",
+              "arrivalTime": "17:25",
+              "durationMinutes": 205,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日多班，受天气影响可能取消"
+            }
+          ],
+          "notes": "夏季班次增加，但受天气影响可能取消"
+        },
+        "winter": {
+          "period": "5月1日 - 9月30日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "08:00",
+              "arrivalTime": "11:25",
+              "durationMinutes": 205,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响大，Cook Strait以强风闻名"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前1-2周预订，特别是车辆",
+        "bookingUrl": "https://www.interislander.co.nz/",
+        "phone": "+64-4-498-3302",
+        "notes": "Cook Strait以强风闻名，受天气影响大，建议预订灵活取消政策"
+      },
+      "price": {
+        "currency": "NZD",
+        "currencyCode": "NZD",
+        "adult": {
+          "amount": 75,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 38,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 200,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，车辆价格包含司机"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日多班，但受天气影响可能取消",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，受天气影响大，Cook Strait以强风闻名",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        }
+      ],
+      "notes": "Cook Strait连接新西兰南北岛的重要渡轮，以强风闻名，受天气影响大，建议预订灵活取消政策"
+    },
+    {
+      "routeId": "nz-cook-strait-bluebridge",
+      "routeName": "Cook Strait - Bluebridge",
+      "routeNameEN": "Cook Strait - Bluebridge",
+      "from": {
+        "portId": "wellington",
+        "name": "Wellington",
+        "nameEN": "Wellington",
+        "coordinates": {
+          "lat": -41.2865,
+          "lng": 174.7762
+        }
+      },
+      "to": {
+        "portId": "picton",
+        "name": "Picton",
+        "nameEN": "Picton",
+        "coordinates": {
+          "lat": -41.2906,
+          "lng": 174.0081
+        }
+      },
+      "schedule": {
+        "summer": {
+          "period": "10月1日 - 4月30日",
+          "frequency": "multiple_daily",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "12:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "每日多班，受天气影响可能取消"
+            },
+            {
+              "departureTime": "20:00",
+              "arrivalTime": "23:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "夜间班次，受天气影响可能取消"
+            }
+          ],
+          "notes": "夏季班次增加，但受天气影响可能取消"
+        },
+        "winter": {
+          "period": "5月1日 - 9月30日",
+          "frequency": "reduced",
+          "sailings": [
+            {
+              "departureTime": "09:00",
+              "arrivalTime": "12:30",
+              "durationMinutes": 210,
+              "daysOfWeek": [1, 2, 3, 4, 5, 6, 7],
+              "notes": "冬季班次减少，受天气影响可能取消"
+            }
+          ],
+          "notes": "冬季班次减少，受天气影响大"
+        }
+      },
+      "booking": {
+        "required": true,
+        "recommended": true,
+        "advanceBooking": "建议提前1-2周预订，特别是车辆",
+        "bookingUrl": "https://www.bluebridge.co.nz/",
+        "phone": "+64-4-471-6188",
+        "notes": "Cook Strait以强风闻名，受天气影响大，建议预订灵活取消政策"
+      },
+      "price": {
+        "currency": "NZD",
+        "currencyCode": "NZD",
+        "adult": {
+          "amount": 70,
+          "description": "成人单程"
+        },
+        "child": {
+          "amount": 35,
+          "description": "儿童单程（5-15岁）"
+        },
+        "vehicle": {
+          "amount": 180,
+          "description": "标准车辆",
+          "included": true
+        },
+        "notes": "价格可能因季节变化，通常比Interislander略便宜"
+      },
+      "seasonalChanges": [
+        {
+          "season": "summer",
+          "changes": "班次增加，每日多班，但受天气影响可能取消",
+          "startDate": "2026-10-01",
+          "endDate": "2027-04-30"
+        },
+        {
+          "season": "winter",
+          "changes": "班次减少，受天气影响大",
+          "startDate": "2026-05-01",
+          "endDate": "2026-09-30"
+        }
+      ],
+      "notes": "Cook Strait的另一个渡轮运营商，通常比Interislander略便宜，但同样受天气影响大"
+    }
+  ]
+}

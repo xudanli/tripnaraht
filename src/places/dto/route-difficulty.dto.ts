@@ -22,21 +22,21 @@ export class RouteDifficultyRequestDto {
     example: 'google',
   })
   @IsEnum(RouteProvider)
-  provider: RouteProvider;
+  provider!: RouteProvider;
 
   @ApiProperty({
     description: '起点坐标（格式：lat,lon 或 lon,lat，Mapbox使用后者）',
     example: '39.9042,116.4074',
   })
   @IsString()
-  origin: string;
+  origin!: string;
 
   @ApiProperty({
     description: '终点坐标（格式：lat,lon 或 lon,lat，Mapbox使用后者）',
     example: '39.914,116.403',
   })
   @IsString()
-  destination: string;
+  destination!: string;
 
   @ApiPropertyOptional({
     description: '路线模式',
@@ -222,22 +222,22 @@ export class RouteDifficultyRequestDto {
 
 export class RouteDifficultyResponseDto {
   @ApiProperty({ description: '距离（公里）', example: 10.8 })
-  distance_km: number;
+  distance_km!: number;
 
   @ApiProperty({ description: '累计爬升（米）', example: 720 })
-  elevation_gain_m: number;
+  elevation_gain_m!: number;
 
   @ApiProperty({ description: '平均坡度（0-1之间）', example: 0.067 })
-  slope_avg: number;
+  slope_avg!: number;
 
   @ApiProperty({ description: '难度等级', enum: ['EASY', 'MODERATE', 'HARD', 'EXTREME'], example: 'HARD' })
-  label: string;
+  label!: string;
 
   @ApiProperty({ description: '等效强度距离（公里）', example: 18.0 })
-  S_km: number;
+  S_km!: number;
 
   @ApiProperty({ description: '说明列表', example: ['altitude: ×1.3', 'slope: bump one level (≥15%)'] })
-  notes: string[];
+  notes!: string[];
 
   @ApiPropertyOptional({ description: 'GeoJSON（如果请求时includeGeoJson=true）' })
   geojson?: any;

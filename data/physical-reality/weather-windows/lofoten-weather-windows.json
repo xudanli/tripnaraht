@@ -1,0 +1,859 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "region": "lofoten",
+    "regionName": "罗弗敦群岛",
+    "lastUpdated": "2026-01-28",
+    "dataSource": "norwegian-meteorological-institute",
+    "description": "罗弗敦群岛天气窗口数据 - 包含最佳旅行窗口、极端天气风险、季节性变化"
+  },
+  "regions": [
+    {
+      "regionId": "lofoten-main",
+      "regionName": "罗弗敦群岛",
+      "regionNameEN": "Lofoten Islands",
+      "coordinates": {
+        "center": {
+          "lat": 68.0,
+          "lng": 13.5
+        },
+        "bounds": {
+          "north": 68.5,
+          "south": 67.5,
+          "east": 15.0,
+          "west": 12.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，午夜太阳，温度最温和，渡轮班次最多",
+          "temperature": {
+            "avg": 13,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "午夜太阳，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，价格较低，但天气变化较大",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "天气相对稳定但仍可能快速变化",
+            "降雨量适中",
+            "风速适中",
+            "午夜太阳现象",
+            "温度相对温和（受北大西洋暖流影响）"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈且不可预测",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象",
+            "渡轮可能因风暴取消"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 18,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "天气可能快速变化"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "very_high",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "渡轮取消、户外活动危险、能见度低",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日极端风暴，所有渡轮取消"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨，需随时准备",
+          "historicalExample": {
+            "date": "2024-06-20",
+            "description": "2024年6月20日天气快速变化，从晴天变为暴风雨"
+          }
+        }
+      ]
+    },
+    {
+      "regionId": "lofoten-northern",
+      "regionName": "罗弗敦群岛北部",
+      "regionNameEN": "Northern Lofoten",
+      "coordinates": {
+        "center": {
+          "lat": 68.3,
+          "lng": 14.5
+        },
+        "bounds": {
+          "north": 68.5,
+          "south": 68.1,
+          "east": 15.0,
+          "west": 14.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，午夜太阳，温度最温和，包括Svolvær等主要城镇",
+          "temperature": {
+            "avg": 13,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 55,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 7,
+            "max": 18,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "午夜太阳，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，价格较低，但天气变化较大",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 75,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 23,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "北部岛屿相对更受保护（Austvågøy）",
+            "天气相对稳定但仍可能快速变化",
+            "降雨量适中",
+            "风速适中",
+            "午夜太阳现象",
+            "温度相对温和（受北大西洋暖流影响）"
+          ],
+          "typicalDays": {
+            "sunny": 13,
+            "cloudy": 11,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈且不可预测",
+            "强风较频繁但比南部稍弱",
+            "降雪量大",
+            "极夜现象",
+            "渡轮可能因风暴取消"
+          ],
+          "typicalDays": {
+            "sunny": 5,
+            "cloudy": 17,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "天气可能快速变化"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "very_high",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "渡轮取消、户外活动危险、能见度低",
+          "historicalExample": {
+            "date": "2023-12-18",
+            "description": "2023年12月18日极端风暴，Svolvær地区渡轮取消"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨，需随时准备",
+          "historicalExample": {
+            "date": "2024-06-22",
+            "description": "2024年6月22日天气快速变化，北部地区从晴天变为暴风雨"
+          }
+        }
+      ],
+      "notes": "罗弗敦群岛北部包括Austvågøy岛，主要城镇包括Svolvær。相对更受保护，风力稍弱，但仍需注意天气快速变化。6-8月是最佳旅行时间。"
+    },
+    {
+      "regionId": "lofoten-central",
+      "regionName": "罗弗敦群岛中部",
+      "regionNameEN": "Central Lofoten",
+      "coordinates": {
+        "center": {
+          "lat": 68.1,
+          "lng": 13.5
+        },
+        "bounds": {
+          "north": 68.3,
+          "south": 67.9,
+          "east": 14.0,
+          "west": 13.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，午夜太阳，温度最温和，包括主要旅游区域",
+          "temperature": {
+            "avg": 13,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 60,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 8,
+            "max": 20,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "午夜太阳，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，价格较低，但天气变化较大",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 80,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 25,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "中部岛屿（Vestvågøy、Flakstadøy）",
+            "天气相对稳定但仍可能快速变化",
+            "降雨量适中",
+            "风速适中",
+            "午夜太阳现象",
+            "温度相对温和（受北大西洋暖流影响）"
+          ],
+          "typicalDays": {
+            "sunny": 12,
+            "cloudy": 12,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈且不可预测",
+            "强风频繁",
+            "降雪量大",
+            "极夜现象",
+            "渡轮可能因风暴取消"
+          ],
+          "typicalDays": {
+            "sunny": 4,
+            "cloudy": 18,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "天气可能快速变化"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化"
+        },
+        {
+          "month": 12,
+          "riskLevel": "high",
+          "risks": [
+            "极端天气",
+            "强风",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，除非有充分准备和灵活计划"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "very_high",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "渡轮取消、户外活动危险、能见度低",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日极端风暴，所有渡轮取消"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨，需随时准备",
+          "historicalExample": {
+            "date": "2024-06-20",
+            "description": "2024年6月20日天气快速变化，从晴天变为暴风雨"
+          }
+        }
+      ],
+      "notes": "罗弗敦群岛中部包括Vestvågøy和Flakstadøy等主要岛屿，是主要旅游区域。天气模式与整体罗弗敦相似，6-8月是最佳旅行时间。"
+    },
+    {
+      "regionId": "lofoten-southern",
+      "regionName": "罗弗敦群岛南部",
+      "regionNameEN": "Southern Lofoten",
+      "coordinates": {
+        "center": {
+          "lat": 67.8,
+          "lng": 13.0
+        },
+        "bounds": {
+          "north": 67.9,
+          "south": 67.5,
+          "east": 13.5,
+          "west": 12.5
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，午夜太阳，温度最温和，包括Reine和Å等标志性地点",
+          "temperature": {
+            "avg": 13,
+            "min": 8,
+            "max": 18,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 65,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 9,
+            "max": 22,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "午夜太阳，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，价格较低，但天气变化较大",
+          "temperature": {
+            "avg": 8,
+            "min": 4,
+            "max": 13,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 85,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 11,
+            "max": 26,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "南部岛屿（Moskenesøy）更暴露",
+            "天气相对稳定但仍可能快速变化",
+            "降雨量适中",
+            "风速稍强",
+            "午夜太阳现象",
+            "温度相对温和（受北大西洋暖流影响）"
+          ],
+          "typicalDays": {
+            "sunny": 11,
+            "cloudy": 13,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈且不可预测",
+            "强风更频繁（更暴露）",
+            "降雪量大",
+            "极夜现象",
+            "渡轮可能因风暴取消"
+          ],
+          "typicalDays": {
+            "sunny": 3,
+            "cloudy": 19,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风更频繁",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，南部更暴露，风险更高"
+        },
+        {
+          "month": 6,
+          "riskLevel": "low",
+          "risks": [
+            "偶尔降雨",
+            "天气可能快速变化",
+            "风力稍强"
+          ],
+          "recommendation": "最佳旅行时间，但需注意天气变化和风力"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风更频繁",
+            "降雪",
+            "极夜",
+            "渡轮可能取消"
+          ],
+          "recommendation": "不推荐旅行，南部更暴露，风险更高"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见，南部更严重",
+          "impact": "渡轮取消、户外活动危险、能见度低",
+          "historicalExample": {
+            "date": "2023-12-15",
+            "description": "2023年12月15日极端风暴，Moskenes渡轮取消，Reine地区道路封闭"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "very_high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨，需随时准备",
+          "historicalExample": {
+            "date": "2024-06-20",
+            "description": "2024年6月20日天气快速变化，南部地区从晴天变为暴风雨"
+          }
+        }
+      ],
+      "notes": "罗弗敦群岛南部包括Moskenesøy岛，包括Reine和Å等标志性地点。更暴露于大西洋，风力通常更强，天气变化更剧烈。6-8月是最佳旅行时间，但需注意风力。"
+    },
+    {
+      "regionId": "lofoten-outer-islands",
+      "regionName": "罗弗敦外围岛屿",
+      "regionNameEN": "Outer Lofoten Islands",
+      "coordinates": {
+        "center": {
+          "lat": 67.5,
+          "lng": 12.0
+        },
+        "bounds": {
+          "north": 68.0,
+          "south": 67.0,
+          "east": 13.0,
+          "west": 11.0
+        }
+      },
+      "bestWindows": [
+        {
+          "months": [6, 7, 8],
+          "period": "夏季（6-8月）",
+          "description": "最佳旅行时间，午夜太阳，温度最温和，但外围岛屿更暴露，需注意渡轮时刻表",
+          "temperature": {
+            "avg": 12,
+            "min": 7,
+            "max": 17,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 70,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 10,
+            "max": 23,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": 24,
+            "description": "午夜太阳，24小时日照"
+          }
+        },
+        {
+          "months": [5, 9],
+          "period": "春末/初秋（5月、9月）",
+          "description": "次佳旅行时间，游客较少，但天气变化较大，渡轮可能因天气取消",
+          "temperature": {
+            "avg": 7,
+            "min": 3,
+            "max": 12,
+            "unit": "celsius"
+          },
+          "precipitation": {
+            "avg": 90,
+            "unit": "mm/month"
+          },
+          "wind": {
+            "avg": 12,
+            "max": 28,
+            "unit": "m/s"
+          },
+          "daylight": {
+            "hours": "varies",
+            "description": "过渡期，日照时间变化大"
+          }
+        }
+      ],
+      "weatherPatterns": {
+        "summer": {
+          "description": "夏季天气模式",
+          "characteristics": [
+            "外围岛屿（Røst、Værøy）最暴露",
+            "天气变化快",
+            "降雨量稍多",
+            "风速较强",
+            "午夜太阳现象",
+            "温度相对温和（受北大西洋暖流影响）",
+            "渡轮依赖性强"
+          ],
+          "typicalDays": {
+            "sunny": 10,
+            "cloudy": 14,
+            "rainy": 6,
+            "stormy": 1,
+            "total": 31
+          }
+        },
+        "winter": {
+          "description": "冬季天气模式",
+          "characteristics": [
+            "天气变化剧烈且不可预测",
+            "强风非常频繁（最暴露）",
+            "降雪量大",
+            "极夜现象",
+            "渡轮经常因风暴取消",
+            "可能被困在岛上"
+          ],
+          "typicalDays": {
+            "sunny": 2,
+            "cloudy": 20,
+            "snowy": 7,
+            "stormy": 2,
+            "total": 31
+          }
+        }
+      },
+      "riskLevels": [
+        {
+          "month": 1,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风非常频繁",
+            "降雪",
+            "极夜",
+            "渡轮经常取消",
+            "可能被困在岛上"
+          ],
+          "recommendation": "不推荐旅行，外围岛屿最暴露，风险极高，可能被困"
+        },
+        {
+          "month": 6,
+          "riskLevel": "medium",
+          "risks": [
+            "降雨较多",
+            "天气可能快速变化",
+            "风力较强",
+            "渡轮可能因天气取消"
+          ],
+          "recommendation": "可旅行，但需注意天气变化和渡轮时刻表，预留额外时间"
+        },
+        {
+          "month": 12,
+          "riskLevel": "very_high",
+          "risks": [
+            "极端天气",
+            "强风非常频繁",
+            "降雪",
+            "极夜",
+            "渡轮经常取消",
+            "可能被困在岛上"
+          ],
+          "recommendation": "不推荐旅行，外围岛屿最暴露，风险极高，可能被困"
+        }
+      ],
+      "extremeEvents": [
+        {
+          "type": "storm",
+          "severity": "extreme",
+          "description": "极端风暴",
+          "typicalMonths": [11, 12, 1, 2, 3],
+          "frequency": "冬季常见，外围岛屿最严重",
+          "impact": "渡轮取消、可能被困在岛上、户外活动极度危险、能见度低",
+          "historicalExample": {
+            "date": "2023-12-20",
+            "description": "2023年12月20日极端风暴，Røst和Værøy渡轮连续3天取消，游客被困"
+          }
+        },
+        {
+          "type": "sudden_weather_change",
+          "severity": "very_high",
+          "description": "天气快速变化",
+          "typicalMonths": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          "frequency": "全年常见",
+          "impact": "天气可在数小时内从晴天变为暴风雨，需随时准备",
+          "historicalExample": {
+            "date": "2024-06-25",
+            "description": "2024年6月25日天气快速变化，外围岛屿从晴天变为暴风雨"
+          }
+        },
+        {
+          "type": "ferry_cancellation",
+          "severity": "very_high",
+          "description": "渡轮取消",
+          "typicalMonths": [9, 10, 11, 12, 1, 2, 3],
+          "frequency": "冬季常见",
+          "impact": "Røst和Værøy渡轮可能因恶劣天气取消，游客可能被困在岛上数天",
+          "historicalExample": {
+            "date": "2023-12-22",
+            "description": "2023年12月22日，外围岛屿渡轮连续5天取消"
+          }
+        }
+      ],
+      "notes": "罗弗敦外围岛屿包括Røst和Værøy等岛屿，最暴露于大西洋，风力最强，天气变化最剧烈。渡轮依赖性强，可能因恶劣天气取消，游客可能被困在岛上。建议仅在夏季旅行，并预留额外时间应对可能的渡轮取消。"
+    }
+  ]
+}

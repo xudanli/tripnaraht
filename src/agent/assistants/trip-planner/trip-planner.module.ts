@@ -25,7 +25,7 @@ import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-z
     PrismaModule,
     LlmModule,
     DemModule, // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要 DEMElevationService 和 DEMEffortMetadataService）
-    RagModule, // 导入 RagModule 以使用 RAG 服务（LLM 失败时的降级策略）
+    forwardRef(() => RagModule), // 导入 RagModule 以使用 RAG 服务（LLM 失败时的降级策略），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule -> AssistantsModule -> TripPlannerModule）
     // 引入 AgentModule 获取 StateStore, Orchestrator, Sub-Agents
     forwardRef(() => AgentModule),
   ],

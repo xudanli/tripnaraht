@@ -8,7 +8,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { ReadinessPack } from '../types/readiness-pack.types';
+import { ReadinessPack, UserDecision, UserQuestion, DecisionBranch } from '../types/readiness-pack.types';
 import { PackStorageService } from './pack-storage.service';
 
 export interface ValidationResult {
@@ -176,6 +176,11 @@ export class PackValidatorService {
             message: 'Action message is required',
             code: 'MISSING_FIELD',
           });
+        }
+
+        // 验证 userDecision（如果存在）
+        if (rule.then.userDecision) {
+          this.validateUserDecision(rule.then.userDecision, `${basePath}.then.userDecision`, errors, warnings);
         }
       }
 
@@ -383,6 +388,230 @@ export class PackValidatorService {
           path: 'geo.lng',
           message: 'longitude must be between -180 and 180',
           code: 'INVALID_RANGE',
+        });
+      }
+    }
+  }
+
+  /**
+   * 验证用户决策配置
+   */
+  private validateUserDecision(
+    userDecision: UserDecision,
+    path: string,
+    errors: ValidationError[],
+    warnings: ValidationWarning[]
+  ): void {
+    // 1. 验证 questions
+    if (!userDecision.questions || userDecision.questions.length === 0) {
+      errors.push({
+        path: `${path}.questions`,
+        message: 'userDecision.questions is required and cannot be empty',
+        code: 'MISSING_FIELD',
+      });
+      return;
+    }
+
+    // 2. 验证每个问题
+    userDecision.questions.forEach((question, index) => {
+      const questionPath = `${path}.questions[${index}]`;
+      
+      if (!question.id) {
+        errors.push({
+          path: `${questionPath}.id`,
+          message: 'Question id is required',
+          code: 'MISSING_FIELD',
+        });
+      }
+
+      if (!question.type) {
+        errors.push({
+          path: `${questionPath}.type`,
+          message: 'Question type is required',
+          code: 'MISSING_FIELD',
+        });
+      } else {
+        const validTypes = ['yes_no', 'single_choice', 'multiple_choice', 'text', 'number', 'date', 'rating'];
+        if (!validTypes.includes(question.type)) {
+          errors.push({
+            path: `${questionPath}.type`,
+            message: `Question type must be one of: ${validTypes.join(', ')}`,
+            code: 'INVALID_TYPE',
+          });
+        }
+      }
+
+      if (!question.question) {
+        errors.push({
+          path: `${questionPath}.question`,
+          message: 'Question text is required',
+          code: 'MISSING_FIELD',
+        });
+      }
+
+      // 验证 single_choice 和 multiple_choice 的选项
+      if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+        if (!question.options || question.options.length === 0) {
+          errors.push({
+            path: `${questionPath}.options`,
+            message: 'Options are required for single_choice and multiple_choice questions',
+            code: 'MISSING_FIELD',
+          });
+        } else if (question.options.length > 10) {
+          warnings.push({
+            path: `${questionPath}.options`,
+            message: 'Too many options (>10), consider reducing to avoid choice overload',
+            code: 'TOO_MANY_OPTIONS',
+          });
+        }
+      }
+
+      // 验证 rating 的 min 和 max
+      if (question.type === 'rating') {
+        if (question.validation?.min !== undefined && question.validation?.max !== undefined) {
+          if (question.validation.min >= question.validation.max) {
+            errors.push({
+              path: `${questionPath}.validation.min`,
+              message: 'rating min must be less than max',
+              code: 'INVALID_RANGE',
+            });
+          }
+        }
+      }
+    });
+
+    // 3. 验证 branches（如果存在）
+    if (userDecision.branches && userDecision.branches.length > 0) {
+      userDecision.branches.forEach((branch, index) => {
+        const branchPath = `${path}.branches[${index}]`;
+        this.validateDecisionBranch(branch, branchPath, userDecision.questions, errors, warnings);
+      });
+    }
+
+    // 4. 验证 defaultBranch（如果存在）
+    if (userDecision.defaultBranch) {
+      // defaultBranch 的结构验证在 DecisionBranch 验证中已经覆盖
+      // 这里只需要检查是否有 branches（如果没有 branches，defaultBranch 是必需的）
+      if (!userDecision.branches || userDecision.branches.length === 0) {
+        warnings.push({
+          path: `${path}.defaultBranch`,
+          message: 'defaultBranch is provided but no branches exist, defaultBranch will always be used',
+          code: 'UNNECESSARY_DEFAULT_BRANCH',
+        });
+      }
+    } else if (userDecision.branches && userDecision.branches.length > 0) {
+      warnings.push({
+        path: `${path}.defaultBranch`,
+        message: 'branches exist but no defaultBranch, if no branch matches, original action will be used',
+        code: 'MISSING_DEFAULT_BRANCH',
+      });
+    }
+  }
+
+  /**
+   * 验证决策分支
+   */
+  private validateDecisionBranch(
+    branch: DecisionBranch,
+    path: string,
+    questions: UserQuestion[],
+    errors: ValidationError[],
+    warnings: ValidationWarning[]
+  ): void {
+    // 1. 验证 condition
+    if (!branch.condition) {
+      errors.push({
+        path: `${path}.condition`,
+        message: 'Branch condition is required',
+        code: 'MISSING_FIELD',
+      });
+      return;
+    }
+
+    const { questionId, operator, value } = branch.condition;
+
+    if (!questionId) {
+      errors.push({
+        path: `${path}.condition.questionId`,
+        message: 'condition.questionId is required',
+        code: 'MISSING_FIELD',
+      });
+    } else {
+      // 验证 questionId 是否存在于 questions 中
+      const questionExists = questions.some(q => q.id === questionId);
+      if (!questionExists) {
+        errors.push({
+          path: `${path}.condition.questionId`,
+          message: `questionId "${questionId}" does not exist in questions`,
+          code: 'INVALID_QUESTION_ID',
+        });
+      }
+    }
+
+    if (!operator) {
+      errors.push({
+        path: `${path}.condition.operator`,
+        message: 'condition.operator is required',
+        code: 'MISSING_FIELD',
+      });
+    } else {
+      const validOperators = ['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'in', 'not_in'];
+      if (!validOperators.includes(operator)) {
+        errors.push({
+          path: `${path}.condition.operator`,
+          message: `operator must be one of: ${validOperators.join(', ')}`,
+          code: 'INVALID_OPERATOR',
+        });
+      }
+    }
+
+    if (value === undefined) {
+      errors.push({
+        path: `${path}.condition.value`,
+        message: 'condition.value is required',
+        code: 'MISSING_FIELD',
+      });
+    }
+
+    // 2. 验证 then
+    if (!branch.then) {
+      errors.push({
+        path: `${path}.then`,
+        message: 'Branch then action is required',
+        code: 'MISSING_FIELD',
+      });
+    } else {
+      // 验证 then 中的字段
+      if (branch.then.level) {
+        const validLevels = ['blocker', 'must', 'should', 'optional'];
+        if (!validLevels.includes(branch.then.level)) {
+          errors.push({
+            path: `${path}.then.level`,
+            message: `level must be one of: ${validLevels.join(', ')}`,
+            code: 'INVALID_LEVEL',
+          });
+        }
+      }
+
+      // 验证 additionalQuestions（如果存在）
+      if (branch.then.additionalQuestions) {
+        branch.then.additionalQuestions.forEach((question, index) => {
+          const questionPath = `${path}.then.additionalQuestions[${index}]`;
+          // 复用问题验证逻辑（简化版）
+          if (!question.id) {
+            errors.push({
+              path: `${questionPath}.id`,
+              message: 'Question id is required',
+              code: 'MISSING_FIELD',
+            });
+          }
+          if (!question.type) {
+            errors.push({
+              path: `${questionPath}.type`,
+              message: 'Question type is required',
+              code: 'MISSING_FIELD',
+            });
+          }
         });
       }
     }

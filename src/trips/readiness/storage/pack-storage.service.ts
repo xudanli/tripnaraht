@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ReadinessPack } from '../types/readiness-pack.types';
+import { PackingChecklistTemplate, PackingGuide } from '../types/packing-template.types';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -26,9 +27,81 @@ export class PackStorageService {
   }
 
   /**
-   * 从数据库加载单个 Pack
+   * 加载全局打包模板（从数据库）
    */
-  async loadPack(packId: string): Promise<ReadinessPack | null> {
+  private async loadGlobalPackingTemplate(): Promise<PackingChecklistTemplate | null> {
+    try {
+      const template = await this.prisma.$queryRawUnsafe<Array<{
+        template_data: any;
+        version: string;
+        last_updated: Date;
+      }>>(
+        `SELECT template_data, version, last_updated 
+         FROM packing_checklist_templates 
+         WHERE is_active = true 
+         ORDER BY last_updated DESC 
+         LIMIT 1`
+      );
+
+      if (template.length === 0) {
+        this.logger.warn('No active packing template found in database');
+        return null;
+      }
+
+      return {
+        ...template[0].template_data,
+        metadata: {
+          ...template[0].template_data.metadata,
+          version: template[0].version,
+          lastUpdated: template[0].last_updated.toISOString(),
+        },
+      } as PackingChecklistTemplate;
+    } catch (error: any) {
+      this.logger.warn(`Failed to load global packing template: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 加载全局打包指南（从数据库）
+   */
+  private async loadGlobalPackingGuide(): Promise<PackingGuide | null> {
+    try {
+      const guide = await this.prisma.$queryRawUnsafe<Array<{
+        guide_data: any;
+        version: string;
+        last_updated: Date;
+      }>>(
+        `SELECT guide_data, version, last_updated 
+         FROM packing_guides 
+         WHERE is_active = true 
+         ORDER BY last_updated DESC 
+         LIMIT 1`
+      );
+
+      if (guide.length === 0) {
+        this.logger.warn('No active packing guide found in database');
+        return null;
+      }
+
+      return {
+        ...guide[0].guide_data,
+        metadata: {
+          ...guide[0].guide_data.metadata,
+          version: guide[0].version,
+          lastUpdated: guide[0].last_updated.toISOString(),
+        },
+      } as PackingGuide;
+    } catch (error: any) {
+      this.logger.warn(`Failed to load global packing guide: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 从数据库加载单个 Pack（包含打包模板和指南）
+   */
+  async loadPack(packId: string, includePackingData: boolean = true): Promise<ReadinessPack | null> {
     try {
       const record = await this.prisma.readinessPack.findUnique({
         where: { packId, isActive: true },
@@ -41,6 +114,39 @@ export class PackStorageService {
 
       // 从 packData JSON 字段恢复 Pack 对象
       const pack = record.packData as unknown as ReadinessPack;
+
+      // 如果 Pack 中已有打包数据，直接返回
+      if (pack.packing) {
+        return pack;
+      }
+
+      // 如果需要包含打包数据，且 Pack 中没有，则加载全局模板
+      if (includePackingData) {
+        const [template, guide] = await Promise.all([
+          this.loadGlobalPackingTemplate(),
+          this.loadGlobalPackingGuide(),
+        ]);
+
+        if (template || guide) {
+          pack.packing = {
+            ...(template && {
+              packingTemplate: {
+                version: template.metadata?.version || '1.0.0',
+                lastUpdated: template.metadata?.lastUpdated || new Date().toISOString(),
+                data: template,
+              },
+            }),
+            ...(guide && {
+              packingGuide: {
+                version: guide.metadata?.version || '1.0.0',
+                lastUpdated: guide.metadata?.lastUpdated || new Date().toISOString(),
+                data: guide,
+              },
+            }),
+          };
+        }
+      }
+
       return pack;
     } catch (error: any) {
       this.logger.error(`Failed to load pack ${packId}: ${error.message}`);

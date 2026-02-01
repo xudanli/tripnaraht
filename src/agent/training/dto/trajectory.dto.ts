@@ -11,7 +11,7 @@ import { ComplianceResult } from '../interfaces/trajectory.interface';
 export class CollectTrajectoryDto {
   @ApiProperty({ description: '请求ID' })
   @IsString()
-  requestId: string;
+  requestId!: string;
 
   @ApiPropertyOptional({ description: '行程ID' })
   @IsOptional()
@@ -20,23 +20,23 @@ export class CollectTrajectoryDto {
 
   @ApiProperty({ description: '生成的计划' })
   @IsObject()
-  plan: Itinerary;
+  plan!: Itinerary;
 
   @ApiProperty({ description: '决策链' })
   @IsArray()
-  decisionTrace: DecisionLogEntry[];
+  decisionTrace!: DecisionLogEntry[];
 
   @ApiProperty({ description: '研究数据' })
   @IsObject()
-  researchData: Record<string, any>;
+  researchData!: Record<string, any>;
 
   @ApiProperty({ description: 'Gate评估结果' })
   @IsObject()
-  gateResult: GateResult;
+  gateResult!: GateResult;
 
   @ApiProperty({ description: 'Compliance评估结果' })
   @IsObject()
-  complianceResult: ComplianceResult;
+  complianceResult!: ComplianceResult;
 
   @ApiPropertyOptional({ description: '模型版本', default: 'v1.0' })
   @IsOptional()
@@ -82,10 +82,10 @@ export class ValidateTrajectoryDto {
  */
 export class CollectTrajectoryResponseDto {
   @ApiProperty({ description: '轨迹ID' })
-  trajectoryId: string;
+  trajectoryId!: string;
 
   @ApiProperty({ description: '状态' })
-  status: string;
+  status!: string;
 
   @ApiPropertyOptional({ description: '验证分数' })
   validationScore?: number;
@@ -96,14 +96,14 @@ export class CollectTrajectoryResponseDto {
  */
 export class ValidateTrajectoryResponseDto {
   @ApiProperty({ description: '是否有效' })
-  isValid: boolean;
+  isValid!: boolean;
 
   @ApiProperty({ description: '验证分数（0-1）' })
-  score: number;
+  score!: number;
 
   @ApiProperty({ description: '验证原因' })
-  reasons: string[];
+  reasons!: string[];
 
   @ApiProperty({ description: '验证状态' })
-  validationStatus: 'VALIDATED' | 'REJECTED';
+  validationStatus!: 'VALIDATED' | 'REJECTED';
 }
