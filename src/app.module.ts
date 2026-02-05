@@ -25,6 +25,7 @@ import { TrailsModule } from './trails/trails.module';
 import { AgentModule } from './agent/agent.module';
 import { RailPassModule } from './railpass/railpass.module';
 import { ReadinessModule } from './trips/readiness/readiness.module';
+import { DemModule } from './trips/dem/dem.module';
 import { DataContractsModule } from './data-contracts/data-contracts.module';
 import { RouteDirectionsModule } from './route-directions/route-directions.module';
 import { RagModule } from './rag/rag.module';
@@ -44,6 +45,7 @@ import { ContentStrategyModule } from './content-strategy/content-strategy.modul
 import { ContextEngineModule } from './agent/context-engine/context-engine.module';
 import { ChainOfWorkModule } from './chain-of-work/chain-of-work.module';
 import { DecisionDraftModule } from './decision-draft/decision-draft.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -96,6 +98,7 @@ import { DecisionDraftModule } from './decision-draft/decision-draft.module';
     TripsModule, // 恢复：已确认问题在 TripsModule 或其依赖链
     // 第七批：智能体和技能（可能有问题）
     RailPassModule, // RailPass 合规与订座决策模块（测试中）
+    DemModule, // DEM 地形数据模块（独立导入，确保 DEM 服务可用）
     // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
     RagModule, // 恢复：RAG 模块（用于增强对话）
@@ -105,6 +108,7 @@ import { DecisionDraftModule } from './decision-draft/decision-draft.module';
     UploadModule, // 图片上传模块（阿里云 OSS）
     ChainOfWorkModule, // Chain-of-Work 引擎模块（步骤草案显性化）
     DecisionDraftModule, // Decision-First Agent 引擎模块（决策草案生成）
+    AdminModule, // Admin模块（数据质量管理等）
   ],
 })
 export class AppModule {}

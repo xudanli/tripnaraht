@@ -1,0 +1,341 @@
+{
+  "dashboard": {
+    "title": "TripNARA Context Engine Monitoring",
+    "tags": ["context-engine", "cache", "performance", "learning"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "type": "graph",
+        "title": "Context Package Build Rate",
+        "targets": [
+          {
+            "expr": "rate(context_package_build_total[5m])",
+            "legendFormat": "{{phase}}/{{agent}} builds/s",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "type": "graph",
+        "title": "Context Package Build Duration (P50/P95/P99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(context_package_build_duration_ms_bucket[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(context_package_build_duration_ms_bucket[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(context_package_build_duration_ms_bucket[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "type": "graph",
+        "title": "Context Package Cache Hit Rate",
+        "targets": [
+          {
+            "expr": "rate(context_package_build_cache_hits_total[5m]) / (rate(context_package_build_cache_hits_total[5m]) + rate(context_package_build_cache_misses_total[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} {{cache_level}} hit rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "type": "graph",
+        "title": "Context Cache Hit Rate by Level",
+        "targets": [
+          {
+            "expr": "rate(context_cache_hits_total[5m]) / (rate(context_cache_hits_total[5m]) + rate(context_cache_misses_total[5m]))",
+            "legendFormat": "{{cache_level}} hit rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "type": "graph",
+        "title": "Context Cache Size",
+        "targets": [
+          {
+            "expr": "context_cache_size",
+            "legendFormat": "{{cache_level}} size",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "type": "graph",
+        "title": "Context Cache Operation Duration (P95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(context_cache_operation_duration_ms_bucket[5m]))",
+            "legendFormat": "{{cache_level}} {{operation}} p95",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 7,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "type": "graph",
+        "title": "Token Usage vs Budget",
+        "targets": [
+          {
+            "expr": "context_token_usage",
+            "legendFormat": "{{phase}}/{{agent}} usage",
+            "refId": "A"
+          },
+          {
+            "expr": "context_token_budget",
+            "legendFormat": "{{phase}}/{{agent}} budget",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "type": "graph",
+        "title": "Token Over Budget Rate",
+        "targets": [
+          {
+            "expr": "rate(context_token_over_budget_total[5m])",
+            "legendFormat": "{{phase}}/{{agent}} over budget/s",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 9,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+        "type": "graph",
+        "title": "Context Block Count",
+        "targets": [
+          {
+            "expr": "context_block_count",
+            "legendFormat": "{{phase}}/{{agent}} {{visibility}} blocks",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+        "type": "graph",
+        "title": "Context Block Type Distribution",
+        "targets": [
+          {
+            "expr": "rate(context_block_type_total[5m])",
+            "legendFormat": "{{phase}}/{{agent}} {{block_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 11,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+        "type": "graph",
+        "title": "Context Block Priority Distribution",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(context_block_priority_bucket[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(context_block_priority_bucket[5m]))",
+            "legendFormat": "{{phase}}/{{agent}} p95",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "min": 0, "max": 100 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 12,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+        "type": "stat",
+        "title": "Cache Hit Rate Summary",
+        "targets": [
+          {
+            "expr": "rate(context_package_build_cache_hits_total[5m]) / (rate(context_package_build_cache_hits_total[5m]) + rate(context_package_build_cache_misses_total[5m]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 0.8, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 13,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+        "type": "graph",
+        "title": "Context Learning Events Rate",
+        "targets": [
+          {
+            "expr": "rate(context_learning_events_total[5m])",
+            "legendFormat": "{{event_type}} {{phase}}/{{agent}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 14,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+        "type": "graph",
+        "title": "Context Learning Processing Duration (P95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(context_learning_processing_duration_ms_bucket[5m]))",
+            "legendFormat": "{{event_type}} {{phase}}/{{agent}} p95",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ms", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 15,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+        "type": "graph",
+        "title": "Context Learning Confidence",
+        "targets": [
+          {
+            "expr": "context_learning_confidence",
+            "legendFormat": "{{phase}}/{{agent}} {{block_key}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "min": 0, "max": 1 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 16,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+        "type": "graph",
+        "title": "Context Learning Sample Size",
+        "targets": [
+          {
+            "expr": "context_learning_sample_size",
+            "legendFormat": "{{phase}}/{{agent}} {{block_key}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 17,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+        "type": "graph",
+        "title": "Priority Updates Rate",
+        "targets": [
+          {
+            "expr": "rate(context_learning_updated_priorities_total[5m])",
+            "legendFormat": "{{phase}}/{{agent}} {{block_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "min": 0 },
+          { "format": "short" }
+        ]
+      }
+    ]
+  }
+}

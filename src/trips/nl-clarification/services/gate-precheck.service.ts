@@ -27,18 +27,22 @@ export class GatePrecheckService {
   ): Promise<GatePrecheckResult> {
     this.logger.debug(`执行 Gate 预检查: destinationCode=${destinationCode}, params=${JSON.stringify(currentParams)}`);
     
+    // 🆕 修复：统一日期与季节推断
+    // 如果存在日期，优先使用基于日期计算的季节，而不是LLM推断的travelSeason
+    const normalizedParams = this.normalizeSeasonFromDate(currentParams, destinationCode);
+    
     for (const precheck of prechecks) {
-      // 检查触发条件
-      const shouldTrigger = this.checkTriggerConditions(precheck.triggerConditions, currentParams);
+      // 检查触发条件（使用标准化后的参数）
+      const shouldTrigger = this.checkTriggerConditions(precheck.triggerConditions, normalizedParams);
       this.logger.debug(`Gate 预检查 ${precheck.checkId}: 触发条件检查结果=${shouldTrigger}`);
       
       if (!shouldTrigger) {
         continue; // 跳过未触发的检查
       }
       
-      // 执行检查
+      // 执行检查（使用标准化后的参数）
       this.logger.debug(`执行 Gate 预检查: ${precheck.checkId}`);
-      const checkResult = await this.executeCheck(precheck, currentParams, destinationCode);
+      const checkResult = await this.executeCheck(precheck, normalizedParams, destinationCode);
       this.logger.debug(`Gate 预检查 ${precheck.checkId} 结果: passed=${checkResult.passed}, reason=${checkResult.reason}`);
       
       if (!checkResult.passed) {
@@ -56,6 +60,78 @@ export class GatePrecheckService {
     
     this.logger.debug('所有 Gate 预检查通过');
     return { blocked: false };
+  }
+
+  /**
+   * 🆕 统一日期与季节推断
+   * 
+   * 如果存在日期，优先使用基于日期计算的季节，而不是LLM推断的travelSeason
+   * 这样可以避免日期（9月）和季节推断（winter）不一致的问题
+   */
+  private normalizeSeasonFromDate(params: Record<string, any>, destinationCode?: string): Record<string, any> {
+    const normalized = { ...params };
+    
+    // 检查是否有日期
+    const startDate = params.startDate || params.start_date;
+    
+    if (startDate) {
+      // 基于日期计算季节
+      const calculatedSeason = this.calculateSeasonFromDate(startDate, destinationCode);
+      
+      // 映射季节值（如果配置使用不同的枚举值）
+      let mappedSeason = calculatedSeason;
+      if (destinationCode === 'IS' && calculatedSeason === 'shoulder') {
+        mappedSeason = 'spring_autumn'; // 冰岛配置使用 spring_autumn
+      }
+      
+      // 如果LLM推断的travelSeason与日期计算的季节不一致，使用日期计算的季节
+      if (params.travelSeason && params.travelSeason !== mappedSeason) {
+        this.logger.warn(
+          `季节推断不一致: travelSeason=${params.travelSeason}, 日期=${startDate}, 计算的季节=${mappedSeason}。使用基于日期的季节。`
+        );
+        normalized.travelSeason = mappedSeason;
+        normalized.seasonSource = 'date_calculated'; // 标记季节来源
+      } else if (!params.travelSeason) {
+        // 如果没有travelSeason，使用计算的季节
+        normalized.travelSeason = mappedSeason;
+        normalized.seasonSource = 'date_calculated';
+      }
+    }
+    
+    return normalized;
+  }
+
+  /**
+   * 基于日期计算季节
+   * 
+   * 规则（标准季节划分）：
+   * - 12月、1月、2月：winter（冬季）
+   * - 6月、7月、8月：summer（夏季）
+   * - 3月-5月、9月-11月：spring_autumn（过渡季）
+   * 
+   * 注意：对于冰岛等极地地区，虽然9月-3月是极光季，但9月仍属于过渡季（spring_autumn），
+   * 只有11月-3月才是真正的冬季（winter）。这样可以避免日期和季节推断不一致的问题。
+   */
+  private calculateSeasonFromDate(dateStr: string, destinationCode?: string): 'winter' | 'summer' | 'spring_autumn' | 'shoulder' {
+    try {
+      // 处理ISO格式日期
+      const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00Z');
+      const month = date.getUTCMonth() + 1; // 1-12
+      
+      // 标准季节划分
+      if (month >= 12 || month <= 2) {
+        return 'winter';
+      } else if (month >= 6 && month <= 8) {
+        return 'summer';
+      } else {
+        // 3月-5月、9月-11月：过渡季
+        // 对于冰岛配置，使用 spring_autumn；其他配置使用 shoulder
+        return destinationCode === 'IS' ? 'spring_autumn' : 'shoulder';
+      }
+    } catch (error) {
+      this.logger.warn(`日期解析失败: ${dateStr}, 使用默认季节`);
+      return 'shoulder';
+    }
   }
 
   /**

@@ -1,6 +1,6 @@
 // src/agent/training/services/eval-suite.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   TestCase,
   TestCaseResult,
@@ -27,7 +27,9 @@ export class EvalSuiteService {
   private readonly logger = new Logger(EvalSuiteService.name);
   private readonly testCases: Map<string, TestCase[]> = new Map();
 
-  constructor(private readonly policyService: PolicyServiceManagerService) {
+  constructor(
+    @Optional() private readonly policyService?: PolicyServiceManagerService,
+  ) {
     // 初始化测试集
     this.initializeTestCases();
   }

@@ -707,11 +707,21 @@ export class PlanningAssistantService {
     
     if (this.prisma && selectedPlan) {
       try {
+        // 生成默认行程名称
+        const { generateDefaultTripName } = require('../../../../trips/utils/trip-name.util');
+        const destination = state.selectedDestination || selectedPlan.destination;
+        const startDate = state.preferences.dateRange?.startDate || this.getDefaultStartDate();
+        const tripName = generateDefaultTripName({
+          destination,
+          startDate: new Date(startDate),
+        });
+
         const trip = await this.prisma.trip.create({
           data: {
             id: tripId,
-            destination: state.selectedDestination || selectedPlan.destination,
-            startDate: new Date(state.preferences.dateRange?.startDate || this.getDefaultStartDate()),
+            name: tripName, // 新增：行程名称
+            destination: destination,
+            startDate: new Date(startDate),
             endDate: new Date(state.preferences.dateRange?.endDate || this.getDefaultEndDate()),
             status: 'PLANNING',
             updatedAt: new Date(),

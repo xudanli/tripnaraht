@@ -782,9 +782,17 @@ export class LlmService {
       ? baseUrl 
       : `${baseUrl.replace(/\/$/, '')}/v1/messages`;
     
+    // 根据 prompt 长度和 schema 复杂度动态调整 max_tokens
+    // 对于复杂的骨架方案生成，需要更多的 tokens
+    const promptLength = prompt.length;
+    const estimatedOutputTokens = schema 
+      ? Math.max(4096, Math.ceil(promptLength * 0.5)) // 复杂输出需要更多 tokens
+      : 4096;
+    const maxTokens = Math.min(8192, estimatedOutputTokens); // 限制最大为 8192
+    
     const body: any = {
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     };
 
@@ -944,7 +952,7 @@ ${contextInfo}
 - "寒假"：1月中~2月
 - "樱花季"（日本）：3月下旬~4月中旬
 - "枫叶季"（日本）：11月
-- "极光季"（冰岛/北欧）：9月~3月
+- "极光季"（冰岛/北欧）：9月~3月（但注意：如果用户明确提到9月日期，季节应该是过渡季，不是冬季）
 
 ### 预算参考（人民币/人）
 - 东南亚5天：5000-15000
@@ -980,6 +988,14 @@ ${contextInfo}
 4. **保守原则**
    - 宁可标记需要确认，也不要擅自做重大假设
    - 目的地是必须的，如果不清楚则 destination 留空
+
+5. **日期与季节一致性**（重要）
+   - 如果推断出了startDate，季节必须与日期一致：
+     - 9月 → 过渡季/初秋，不是冬季（即使用户说"看极光"）
+     - 12月-2月 → 冬季
+     - 6月-8月 → 夏季
+   - 不要因为活动偏好（如"看极光"）而忽略日期推断的季节
+   - 如果日期和活动偏好矛盾，优先使用日期推断的季节
 
 ## 输出格式
 返回纯 JSON，示例：
@@ -1286,6 +1302,20 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 4. **给出建议和洞察** - 如果有推断信息，可以解释为什么这样推断，并询问是否正确
 5. **引导而非审问** - 多用"您是更倾向于..."、"通常我会建议..."这样的句式
 
+**🆕 问题生成要求（重要）**：
+- **问题分组**：必须为每个问题标记group字段（required=必需问题，optional=可选问题）
+  - 必需问题（required）：缺失的关键信息（目的地、日期、预算等），用户必须回答才能继续
+  - 可选问题（optional）：补充信息（偏好、安全等），用户可以选择跳过
+- **问题数量限制**：
+  - 必需问题（required）：不超过5个
+  - 可选问题（optional）：不超过3个
+  - 如果问题超过限制，请按优先级排序（metadata.priority: high > medium > low），只返回高优先级问题
+- **选项设计要求**：
+  - 选项应该清晰表达用户意图，避免语义重复
+  - 使用具体动作（如"补充偏好信息"、"补充安全信息"、"暂不补充"）
+  - 避免使用模糊的选项（如"是，我想补充"、"否，信息已完整"）
+  - 每个选项应该明确表达用户的选择意图
+
 ## 对话风格示例
 ❌ 不好: "请告诉我您的出行日期？请告诉我您的预算范围？"
 ✅ 好: "带娃去东京，太棒了！东京确实是亲子游的天堂。我注意到您还没提到具体的时间，您是想趁寒假去还是有别的时间安排呢？另外，日本的消费层次很丰富，从经济型到奢华型都有很好的选择，您这趟大概想控制在什么预算范围内呢？"
@@ -1312,18 +1342,59 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 ### 2. clarificationQuestions（必填）
 这是一个数组，每个元素是一个结构化问题：
 - **id**：唯一标识（必须与question_card中的questionId匹配）
-- **text**：问题文本（使用question字段，兼容ClarificationQuestion接口）
+- **question**：问题文本（使用question字段，兼容ClarificationQuestion接口）
 - **type**：输入类型（text|single_choice|multi_choice|date|number|boolean）
 - **options**：选项数组（type为single_choice/multiple_choice时必需）
 - **required**：是否必填
 - **hint**：提示信息（可选）
 - **metadata**：元数据（category, priority，可选）
+- **group**：问题分组（required=必需问题，optional=可选问题）🆕 **新增字段**
+- **conditionalInputs**：条件输入字段（可选）🆕 **HCI优化：新增字段**
+
+**🆕 条件输入字段（重要）**：
+当问题类型为 single_choice 或 multi_choice 时，如果某个选项需要用户进一步输入信息，应该添加 conditionalInputs 字段：
+- **triggerValue**：触发此输入字段的选项值（必须与options中的某个选项完全匹配）
+- **inputType**：输入字段类型（text|date|number|date_range）
+  - text：文本输入框（用于需要用户输入文本的情况）
+  - date：日期选择框（用于需要用户选择日期的情况）
+  - date_range：日期范围选择框（用于需要用户选择日期范围的情况）
+  - number：数字输入框（用于需要用户输入数字的情况）
+- **label**：输入字段标签（可选，如"请选择正确的日期"）
+- **placeholder**：占位符（可选，如"请输入日期"）
+- **required**：是否必填（默认true）
+- **validation**：验证规则（可选）
+- **hint**：提示文本（可选）
+
+**示例**：
+- 日期确认问题：选项"不准确，需要修改" → 应添加 conditionalInputs，inputType: "date_range"
+- 预算确认问题：选项"需要调整，我的预算是____元" → 应添加 conditionalInputs，inputType: "number"
+
+**🆕 问题分组要求（重要）**：
+- **必需问题（required）**：缺失的关键信息（目的地、日期、预算等），用户必须回答才能继续
+- **可选问题（optional）**：补充信息（偏好、安全等），用户可以选择跳过
+- 每个clarificationQuestion必须包含group字段（required或optional）
+- 必需问题应该优先生成，可选问题放在后面
+
+**🆕 问题数量限制（重要）**：
+- **必需问题（required）**：不超过5个
+- **可选问题（optional）**：不超过3个
+- 如果问题超过限制，请按优先级排序（metadata.priority: high > medium > low），只返回高优先级问题
+- 优先生成缺失的关键信息问题（目的地、日期、预算）
+
+**🆕 选项设计要求（重要）**：
+- 选项应该清晰表达用户意图，避免语义重复
+- 使用具体动作（如"补充偏好信息"、"补充安全信息"、"暂不补充"）
+- 避免使用模糊的选项（如"是，我想补充"、"否，信息已完整"）
+- 每个选项应该明确表达用户的选择意图
 
 ### 3. 关键约束
 - question_card的questionId必须在clarificationQuestions中存在
 - 每个clarificationQuestion必须有唯一的id
 - responseBlocks的顺序应该符合阅读逻辑（先段落，再标题，再列表，最后问题）
 - 如果信息完整，优先使用summary_card展示概览
+- 🆕 **问题分组约束**：必需问题（required）必须在前，可选问题（optional）必须在后
+- 🆕 **问题数量约束**：必需问题不超过5个，可选问题不超过3个
+- 🆕 **选项设计约束**：选项必须清晰具体，避免语义重复
 
 ### 4. 向后兼容字段
 - reply: 简单文本回复（可选，用于向后兼容）
@@ -1361,8 +1432,68 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
       "type": "single_choice",
       "options": ["寒假期间", "暑假期间", "其他时间"],
       "required": true,
+      "group": "required",  // 🆕 必需问题
       "metadata": {
         "category": "dates",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "q2_preferences",
+      "question": "是否需要补充其他偏好信息？（如旅行风格、兴趣点、节奏等）",
+      "type": "single_choice",
+      "options": ["补充偏好信息", "暂不补充"],  // 🆕 使用具体动作
+      "required": false,
+      "group": "optional",  // 🆕 可选问题
+      "metadata": {
+        "category": "preferences",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "q3_date_confirm",
+      "question": "我注意到一个可能的时间段是2026年2月3日至9日 (共7天), 这个时间准确吗?",
+      "type": "single_choice",
+      "options": ["是的, 时间准确", "不准确, 需要修改"],
+      "required": true,
+      "group": "required",
+      "conditionalInputs": [  // 🆕 HCI优化：条件输入字段
+        {
+          "triggerValue": "不准确, 需要修改",
+          "inputType": "date_range",
+          "label": "请选择正确的日期范围",
+          "placeholder": "请选择出发日期和结束日期",
+          "required": true,
+          "hint": "确认日期是规划机票、酒店和活动的前提。"
+        }
+      ],
+      "metadata": {
+        "category": "dates",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "q4_budget_confirm",
+      "question": "关于旅行预算, 我初步推断您的人均预算可能在15000元左右, 这个预算范围是否符合您的预期?",
+      "type": "single_choice",
+      "options": ["符合, 预算范围正常", "需要调整, 我的预算是____元"],
+      "required": true,
+      "group": "required",
+      "conditionalInputs": [  // 🆕 HCI优化：条件输入字段
+        {
+          "triggerValue": "需要调整, 我的预算是____元",
+          "inputType": "number",
+          "label": "请输入您的预算金额",
+          "placeholder": "请输入预算金额（元）",
+          "required": true,
+          "validation": {
+            "min": 0
+          },
+          "hint": "预算将决定住宿、交通和活动的档次选择。"
+        }
+      ],
+      "metadata": {
+        "category": "budget",
         "priority": "high"
       }
     }
@@ -1490,7 +1621,9 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
         // 🆕 结构化澄清问题
         clarificationQuestions: {
           type: 'array',
-          description: '结构化澄清问题数组',
+          // 🆕 P1优化：限制问题数量
+          maxItems: 8, // 必需问题≤5 + 可选问题≤3 = 最多8个
+          description: '结构化澄清问题数组（必需问题不超过5个，可选问题不超过3个）',
           items: {
             type: 'object',
             properties: {
@@ -1504,7 +1637,7 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
               options: { 
                 type: 'array', 
                 items: { type: 'string' },
-                description: '选项列表（type为single_choice/multi_choice时必需）',
+                description: '选项列表（type为single_choice/multi_choice时必需，选项应清晰具体，避免语义重复）',
               },
               required: { type: 'boolean', description: '是否必填' },
               hint: { type: 'string', description: '提示信息（可选）' },
@@ -1512,7 +1645,57 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
                 type: 'object',
                 properties: {
                   category: { type: 'string', description: '问题类别（如dates, budget, activities）' },
-                  priority: { type: 'string', enum: ['high', 'medium', 'low'], description: '优先级' },
+                  priority: { type: 'string', enum: ['high', 'medium', 'low'], description: '优先级（用于排序，high > medium > low）' },
+                },
+              },
+              // 🆕 P0优化：问题分组字段
+              group: {
+                type: 'string',
+                enum: ['required', 'optional'],
+                description: '问题分组（required=必需问题，缺失的关键信息；optional=可选问题，补充信息）',
+              },
+              // 🆕 HCI优化：条件输入字段
+              conditionalInputs: {
+                type: 'array',
+                description: '条件输入字段配置（当用户选择特定选项时显示后续输入字段）',
+                items: {
+                  type: 'object',
+                  properties: {
+                    triggerValue: {
+                      type: 'string',
+                      description: '触发此输入字段的选项值（必须与options中的某个选项完全匹配）',
+                    },
+                    inputType: {
+                      type: 'string',
+                      enum: ['text', 'date', 'number', 'date_range'],
+                      description: '输入字段类型（text=文本输入框，date=日期选择框，date_range=日期范围选择框，number=数字输入框）',
+                    },
+                    label: {
+                      type: 'string',
+                      description: '输入字段标签（可选）',
+                    },
+                    placeholder: {
+                      type: 'string',
+                      description: '占位符（可选）',
+                    },
+                    required: {
+                      type: 'boolean',
+                      description: '是否必填（默认true）',
+                    },
+                    validation: {
+                      type: 'object',
+                      properties: {
+                        min: { type: 'number' },
+                        max: { type: 'number' },
+                        pattern: { type: 'string' },
+                      },
+                    },
+                    hint: {
+                      type: 'string',
+                      description: '提示文本（可选）',
+                    },
+                  },
+                  required: ['triggerValue', 'inputType'],
                 },
               },
             },

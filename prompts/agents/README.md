@@ -1,90 +1,200 @@
-# 系统 Agent 文档
+# TripNARA Agent 架构
 
-## 概述
+## AI-Native 决策系统
 
-本目录包含 **TripNARA 系统运行时使用的 Agent**（系统 Agent），这些 Agent 是系统架构的一部分，在运行时被调用执行具体任务。
+TripNARA 是一个以「旅行决策」为核心的 AI-native 系统，**不是**内容生成型旅行助手。
 
-**位置**：`prompts/agents/`
+### 核心差异
 
-## 系统 Agent 列表
+| 维度 | 传统 AI 旅行产品 | TripNARA |
+|------|-----------------|----------|
+| 核心单位 | Prompt | **Decision Node** |
+| 学习对象 | 文本 | 决策结果 |
+| 护城河 | 模型 | 决策闭环 |
+| UI | 对话 | 判断 |
+| 迁移能力 | 低 | 极高 |
 
-### 核心决策 Agent
+> **关键理念**：LLM 不在架构中心，它只是被调用的"推理器官"。
 
-1. **Planner** (`Planner.md`)
-   - 任务拆解、缺口清单识别、候选方案结构设计
-   - 在 INTAKE 阶段被调用
-   - 实现位置：`src/agent/services/sub-agents/planner-agent.service.ts`
+---
 
-2. **Gatekeeper** (`Gatekeeper.md`)
-   - 安全与现实守门（Should-Exist Gate）
-   - 在 GATE_EVAL 阶段被调用
-   - 映射到三人格：**Abu**
-   - 实现位置：`src/agent/services/sub-agents/gatekeeper-agent.service.ts`
+## 五层架构
 
-3. **CoreDecision** (`CoreDecision.md`)
-   - 节奏与体感（人体可执行性）
-   - 在 VERIFY 阶段被调用
-   - 映射到三人格：**Dr.Dre**
-   - 实现位置：`src/agent/services/sub-agents/core-decision-agent.service.ts`
+```
+┌──────────────────────────────────────────────┐
+│           Decision Experience Layer          │
+│   决策体验层（非页面 / 非表单 / 非对话）       │
+│   - 决策理由可视化                           │
+│   - 方案对比 / 回放 / 反事实模拟               │
+├──────────────────────────────────────────────┤
+│        Decision Orchestration Layer          │
+│   决策编排层（Multi-Agent + CoW）             │
+│   - 问题拆解 / 并行推理 / 冲突解决              │
+│   - Plan A/B/C 生成与权重调整                  │
+├──────────────────────────────────────────────┤
+│          Decision Core Engine                │
+│   决策内核（TripNARA 的"心脏"）               │
+│   - 约束系统（Hard / Soft）                   │
+│   - 权衡模型（时间/成本/体验/风险）            │
+│   - 不确定性评估                              │
+├──────────────────────────────────────────────┤
+│       World Model & Context Layer            │
+│   世界模型层（结构化现实）                     │
+│   - 地理 / 气候 / 交通 / 成本波动               │
+│   - 风险 / 情绪 / 体力消耗模型                  │
+├──────────────────────────────────────────────┤
+│        Signal & Feedback Loop                │
+│   信号与学习层（RLHF / 行为反馈）               │
+│   - 行为信号 / 决策结果 / 执行偏差               │
+│   - 决策质量自学习                            │
+└──────────────────────────────────────────────┘
+```
 
-4. **LocalInsight** (`LocalInsight.md`)
-   - 空间结构修复（路线哲学与自洽）
-   - 在 REPAIR 阶段被调用
-   - 映射到三人格：**Neptune**
-   - 实现位置：`src/agent/services/sub-agents/local-insight-agent.service.ts`
+---
 
-### 辅助 Agent
+## 最小原子：Decision Node
 
-5. **Compliance** (`Compliance.md`)
-   - 合规检查（RAG + 文档库）
-   - 实现位置：`src/agent/services/sub-agents/compliance-agent.service.ts`
+TripNARA 的最小单位**不是**页面、表单或功能按钮，而是 **Decision Node**。
 
-6. **Narrator** (`Narrator.md`)
-   - 结果润色、故事层文案
-   - 在 NARRATE 阶段被调用
-   - 实现位置：`src/agent/services/sub-agents/narrator-agent.service.ts`
+```typescript
+interface DecisionNode {
+  context: WorldState;           // 世界状态（地理/天气/交通/成本）
+  constraints: HardConstraint[]; // 不能违反的事实
+  preferences: SoftPreference[]; // 可妥协的偏好
+  options: Option[];             // 可选方案集合
+  tradeOff: TradeOffModel;       // 权衡逻辑
+  confidence: number;            // 置信度 (0..1)
+  uncertainty: UncertaintyProfile; // 不确定性分布
+}
+```
 
-### 场景 Agent
+> **UI 只是 Decision Node 的"投影"**
 
-7. **PlanningWorkbench** (`PlanningWorkbench.md`)
-   - 规划工作台的主 Agent
-   - 负责编排所有规划技能
-   - 实现位置：`src/agent/services/planning-workbench-agent.service.ts`
+---
 
-8. **Execution** (`Execution.md`)
-   - 执行阶段的 Agent
-   - 负责提醒、变更与兜底
-   - 实现位置：`src/agent/services/execution-agent.service.ts`
+## Decision Core Engine（护城河）
 
-9. **TripDetail** (`TripDetail.md`)
-   - 行程详情页的 Agent
-   - 负责理解与掌控旅行现状
-   - 实现位置：`src/agent/services/trip-detail-agent.service.ts`
+### 三类决策元素
 
-## 与辅助角色的区别
+#### 1. Hard Constraints（不可违背）
+- 签证 / 封路 / 航班不可达
+- 天气阈值（风速、降雪）
+- 体力极限
+- 营业时间硬限制
 
-### 系统 Agent（本目录）
+#### 2. Soft Preferences（可调节）
+- 风景 vs 舒适
+- 自驾 vs 公交
+- 冒险 vs 安全
+- 预算敏感度
 
-- **用途**：系统运行时执行具体任务
-- **位置**：`prompts/agents/`
-- **特点**：
-  - 是系统架构的一部分
-  - 在运行时被调用
-  - 有具体的实现代码（`src/agent/services/sub-agents/`）
-  - 映射到三人格系统（Abu、Dr.Dre、Neptune）
+#### 3. Trade-off 模型（TripNARA 独有）
+- 用「损失函数」而不是排序
+- 每个方案都带「代价说明」
+- 量化「你在为哪种风险付费」
 
-### 辅助角色（`.claude/roles/`）
+### 不确定性是一等公民
 
-- **用途**：帮助用户写代码、做设计、做决策
-- **位置**：`.claude/roles/`
-- **特点**：
-  - 是开发协作工具
-  - 在开发时被调用
-  - 没有具体的实现代码
-  - 包括：产品经理、架构师、工程师等
+TripNARA 不追求"确定答案"，而是输出多方案 + 风险分布：
+
+```
+Plan A：最优体验（风险 30%）
+Plan B：稳妥方案（风险 12%）
+Plan C：保底方案（风险 5%）
+```
+
+UI 展示的是：**「你在为哪种风险付费」**
+
+---
+
+## Agent 分工
+
+### Conductor Agent（编排层）
+
+| Agent | 职责 |
+|-------|------|
+| **PlanningWorkbench** | Conductor - 拆问题、聚合冲突、输出可解释决策 |
+
+### Domain Agents（世界模型层）
+
+| Agent | 职责 |
+|-------|------|
+| **GeoAgent** | 地理结构 & 路线可行性 |
+| **WeatherAgent** | 气象条件 & 封路概率 |
+| **CostAgent** | 价格曲线 & 预算优化 |
+| **ExperienceAgent** | 体验密度 & 节奏优化 |
+
+### Core Decision Agents（决策内核）
+
+| Agent | 职责 | 映射人格 |
+|-------|------|----------|
+| **Planner** | Decision Node 拆解、缺口识别、方案结构设计 | - |
+| **Gatekeeper** | 约束守门（Hard/Soft）、Should-Exist Gate | Abu |
+| **CoreDecision** | 权衡模型、多方案评估、不确定性量化 | Dr.Dre |
+| **LocalInsight** | 世界模型注入、替代方案、空间修复 | Neptune |
+| **Compliance** | 风险分类、合规检查、免责留痕 | - |
+
+### Experience Agents（体验层）
+
+| Agent | 职责 |
+|-------|------|
+| **Narrator** | 决策理由可视化、排除过程展示 |
+| **TripDetail** | 决策回放、反事实模拟（What-if）、历史风格建模 |
+| **Execution** | 执行信号采集、偏差反馈、RLHF 闭环 |
+
+---
+
+## Decision Experience 原则
+
+### 原则 1：展示"排除过程"而非"结果"
+
+```
+❌「这是你的行程」
+✅「我排除了 4 个方案，原因是……」
+```
+
+### 原则 2：用户是裁判，不是输入员
+
+不是填偏好，而是做判断：
+- 「你更讨厌哪种失败？」
+- 「你愿意为确定性牺牲多少体验？」
+
+### 原则 3：决策可回放、可反悔、可学习
+
+- 决策 replay（时间轴回溯）
+- 假设模拟（What if）
+- 历史决策风格建模
+
+---
+
+## Agent 文件清单
+
+### Core Decision Agents
+
+1. **Planner** (`Planner.md`) - Decision Node 拆解
+2. **Gatekeeper** (`Gatekeeper.md`) - 约束守门（Abu）
+3. **CoreDecision** (`CoreDecision.md`) - 权衡与选择（Dr.Dre）
+4. **LocalInsight** (`LocalInsight.md`) - 世界模型注入（Neptune）
+5. **Compliance** (`Compliance.md`) - 风险与合规
+
+### Domain Agents
+
+6. **GeoAgent** (`GeoAgent.md`) - 地理 & 路线
+7. **WeatherAgent** (`WeatherAgent.md`) - 气象 & 封路
+8. **CostAgent** (`CostAgent.md`) - 价格 & 预算
+9. **ExperienceAgent** (`ExperienceAgent.md`) - 体验 & 节奏
+
+### Orchestration & Experience
+
+10. **PlanningWorkbench** (`PlanningWorkbench.md`) - Conductor Agent
+11. **Narrator** (`Narrator.md`) - 决策可视化
+12. **TripDetail** (`TripDetail.md`) - 决策回放
+13. **Execution** (`Execution.md`) - 信号与反馈
+
+---
 
 ## 参考文档
 
-- `.claude/roles/AGENT_COLLABORATION.md` - Agent 协作机制（技术层面）
+- `.claude/roles/AGENT_COLLABORATION.md` - Agent 协作机制
 - `.claude/roles/MULTI_AGENT_COLLABORATION.md` - 多角色协作机制
-- `docs/ROLES_AND_COLLABORATION.md` - 角色定义与协作关系文档
+- `docs/ROLES_AND_COLLABORATION.md` - 角色定义与协作关系

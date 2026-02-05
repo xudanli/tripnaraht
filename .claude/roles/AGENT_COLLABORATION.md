@@ -2,7 +2,67 @@
 
 ## 概述
 
-本文档描述 TripNARA 项目中各个 Agent 的协作机制，基于项目实际架构（统一入口、三种编排模式、状态机流程、三人格系统）。
+本文档描述 TripNARA 项目中各个 Agent 的协作机制，基于 **AI-Native 决策系统架构**（五层架构、Decision Node、多 Agent 协作）。
+
+> **核心理念**：TripNARA 是一个以「旅行决策」为核心的 AI-native 系统。LLM 不在架构中心，它只是被调用的"推理器官"。
+
+## AI-Native 五层架构
+
+```
+┌──────────────────────────────────────────────┐
+│           Decision Experience Layer          │
+│   决策体验层 - Narrator, TripDetail          │
+├──────────────────────────────────────────────┤
+│        Decision Orchestration Layer          │
+│   决策编排层 - PlanningWorkbench (Conductor)  │
+├──────────────────────────────────────────────┤
+│          Decision Core Engine                │
+│   决策内核 - Planner, Gatekeeper, CoreDecision│
+├──────────────────────────────────────────────┤
+│       World Model & Context Layer            │
+│   世界模型层 - GeoAgent, WeatherAgent, etc.   │
+├──────────────────────────────────────────────┤
+│        Signal & Feedback Loop                │
+│   信号与学习层 - Execution Agent              │
+└──────────────────────────────────────────────┘
+```
+
+## Agent 分工总览
+
+### Conductor Agent（编排层）
+
+| Agent | 职责 |
+|-------|------|
+| **PlanningWorkbench** | Conductor - 拆问题、聚合冲突、输出可解释决策 |
+
+### Core Decision Agents（决策内核）
+
+| Agent | 职责 | 人格映射 |
+|-------|------|----------|
+| **Planner** | Decision Node 拆解、缺口识别、方案结构设计 | - |
+| **Gatekeeper** | 约束守门（Hard/Soft）、Should-Exist Gate | **Abu** |
+| **CoreDecision** | 权衡模型、多方案评估、不确定性量化 | **Dr.Dre** |
+| **LocalInsight** | 世界模型注入、替代方案、空间修复 | **Neptune** |
+| **Compliance** | 风险分类、合规检查、免责留痕 | - |
+
+### Domain Agents（世界模型层）
+
+| Agent | 职责 |
+|-------|------|
+| **GeoAgent** | 地理结构 & 路线可行性 |
+| **WeatherAgent** | 气象条件 & 封路概率 |
+| **CostAgent** | 价格曲线 & 预算优化 |
+| **ExperienceAgent** | 体验密度 & 节奏优化 |
+
+### Experience Agents（体验层）
+
+| Agent | 职责 |
+|-------|------|
+| **Narrator** | 决策理由可视化、排除过程展示 |
+| **TripDetail** | 决策回放、反事实模拟（What-if）、历史风格建模 |
+| **Execution** | 执行信号采集、偏差反馈、RLHF 闭环 |
+
+**详细 Agent 定义**：`prompts/agents/README.md`
 
 ## 统一入口架构
 
@@ -308,6 +368,30 @@ state.metadata.total_duration_ms = Date.now() - startTime;
 
 ## 数据流
 
+### Decision Node 流转
+
+所有 Agent 的协作围绕 **Decision Node** 进行：
+
+```typescript
+interface DecisionNode {
+  nodeId: string;
+  context: WorldState;           // 世界状态
+  constraints: HardConstraint[]; // 硬约束
+  preferences: SoftPreference[]; // 软偏好
+  options: Option[];             // 候选方案
+  tradeOff: TradeOffModel;       // 权衡逻辑
+  confidence: number;            // 置信度
+  uncertainty: UncertaintyProfile; // 不确定性分布
+}
+```
+
+**Decision Node 流转**：
+1. **Planner** 拆解用户请求 → 生成 Decision Node 树
+2. **Domain Agents** 填充世界模型数据 → 更新 `context`
+3. **Gatekeeper** 评估约束 → 更新 `constraints` 状态
+4. **CoreDecision** 执行权衡 → 更新 `options` 评分和 `tradeOff`
+5. **Narrator** 可视化 → 将 Decision Node 投影为用户可理解的展示
+
 ### 状态共享
 
 所有 Sub-Agents 通过 `OrchestratorState` 共享状态：
@@ -316,6 +400,18 @@ state.metadata.total_duration_ms = Date.now() - startTime;
 interface OrchestratorState {
   request_id: string;
   current_step: OrchestrationStep;
+  
+  // Decision Node 相关
+  decision_tree?: {
+    root: DecisionNode;
+    nodes: Map<string, DecisionNode>;
+  };
+  constraint_system?: {
+    hard_constraints: HardConstraint[];
+    soft_preferences: SoftPreference[];
+  };
+  
+  // 传统字段
   trip_plan_request?: TripPlanRequest;
   gaps?: Array<{...}>;
   research_data?: Record<string, any>;  // RESEARCH 步骤收集
@@ -377,10 +473,143 @@ state.decision_log.push({
 - 记录错误到 `state.errors`
 - 返回失败结果
 
+## Conductor Agent 编排流程
+
+PlanningWorkbench 作为 **Conductor Agent**，负责编排所有其他 Agent 的协作：
+
+### 编排 Phase
+
+```
+Phase 1: INTAKE（问题拆解）
+    Planner → Decision Node 拆解、约束识别、缺口识别
+         ↓
+Phase 2: RESEARCH（并行研究）
+    GeoAgent + WeatherAgent + CostAgent + ExperienceAgent
+    并行执行，填充世界模型数据
+         ↓
+Phase 3: GATE_EVAL（门控评估）
+    Gatekeeper (Abu) → 硬门控 + 软门控
+         ↓
+Phase 4: PLAN_GEN（方案生成）
+    CoreDecision (Dr.Dre) → 多方案评估、权衡分析、不确定性量化
+    LocalInsight (Neptune) → 替代方案、空间修复
+         ↓
+Phase 5: VERIFY（验证与合规）
+    Compliance → 风险评估、免责声明、用户确认设计
+         ↓
+Phase 6: NARRATE（可视化）
+    Narrator → 排除过程可视化、权衡代价可视化、不确定性可视化
+```
+
+### 冲突解决策略
+
+| 冲突类型 | 解决策略 |
+|----------|----------|
+| Hard vs Hard | 报错，请求用户修改输入 |
+| Hard vs Soft | Hard 优先 |
+| Soft vs Soft | 权衡计算或升级为用户判断 |
+
+## Decision Replay 集成
+
+Decision Replay 服务允许回溯和模拟决策过程：
+
+### 快照时机
+
+| 时机 | 触发方式 | 用途 |
+|------|----------|------|
+| 每个 Phase 完成 | AUTO | 时间线追踪 |
+| 关键决策点 | CHECKPOINT | 回放起点 |
+| 用户交互 | USER_ACTION | What-If 基准 |
+
+### API 端点
+
+```
+GET  /api/v1/decision-replay/timeline/:tripRunId       - 获取时间线
+GET  /api/v1/decision-replay/snapshot/:tripRunId/:id   - 获取快照
+POST /api/v1/decision-replay/replay/:tripRunId/:id     - 回放到快照
+POST /api/v1/decision-replay/what-if                   - What-If 模拟
+GET  /api/v1/decision-replay/style/:userId             - 获取决策风格
+```
+
+### 集成点
+
+```typescript
+// 在 PLAN_GEN 步骤完成后创建快照
+decisionReplayService.createSnapshot(state, 'CHECKPOINT', decisionNode, decisionOutput);
+
+// 用户探索 What-If
+const whatIfResult = decisionReplayService.simulateWhatIf(input, decisionOutput);
+```
+
+## RLHF Signal 收集
+
+RLHF Signal Collector 收集用户反馈用于持续学习：
+
+### 信号类型
+
+| 类型 | 收集方式 | 示例 |
+|------|----------|------|
+| **行为信号** | 被动收集 | 查看时长、点击、展开详情 |
+| **执行信号** | 行程执行 | 偏差、跳过、延迟 |
+| **反馈信号** | 显式反馈 | 接受、拒绝、评分、评论 |
+
+### API 端点
+
+```
+POST /api/v1/rlhf/behavior              - 记录行为信号
+POST /api/v1/rlhf/execution             - 记录执行信号
+POST /api/v1/rlhf/feedback              - 记录反馈信号
+POST /api/v1/rlhf/quality/:tripRunId/:decisionPointId - 质量评估
+GET  /api/v1/rlhf/learning/:tripRunId   - 生成学习信号
+GET  /api/v1/rlhf/summary/:tripRunId    - 信号摘要
+```
+
+### 信号流
+
+```
+用户交互 → 行为信号收集
+     ↓
+决策接受/拒绝 → 反馈信号收集
+     ↓
+行程执行 → 执行信号收集
+     ↓
+质量评估 → 改进信号生成
+     ↓
+模型调优 ← 学习信号
+```
+
+### 集成点
+
+```typescript
+// 用户查看方案
+rlhfService.recordPlanViewTime(tripRunId, planId, durationMs);
+
+// 用户接受推荐
+rlhfService.recordAcceptance(tripRunId, decisionPointId, chosenOptionId);
+
+// 行程执行偏差
+rlhfService.recordDeviation(tripRunId, itemId, plannedTime, actualTime, reason);
+
+// 评估决策质量
+const assessment = rlhfService.assessDecisionQuality(tripRunId, decisionPointId, decisionOutput);
+
+// 生成学习信号
+const learningSignals = rlhfService.generateLearningSignals(tripRunId);
+```
+
 ## 参考文件
 
+- `prompts/agents/README.md` - AI-native 决策系统架构
+- `prompts/agents/*.md` - 各 Agent 详细定义
 - `src/agent/services/claude-orchestrator.service.ts` - 状态机实现
 - `src/agent/services/sub-agents/*` - Sub-Agents 实现
+- `src/agent/services/domain-agents/*` - Domain Agents 实现
+- `src/agent/services/decision-replay.service.ts` - Decision Replay 服务
+- `src/agent/services/rlhf-signal-collector.service.ts` - RLHF Signal 服务
+- `src/agent/controllers/decision-replay.controller.ts` - Decision Replay API
+- `src/agent/controllers/rlhf-signal.controller.ts` - RLHF Signal API
 - `src/agent/interfaces/trip-plan.interface.ts` - 数据合同
 - `src/agent/interfaces/sub-agent.interface.ts` - Sub-Agent 接口
+- `src/agent/interfaces/decision-node.interface.ts` - Decision Node 接口
+- `src/agent/AI_NATIVE_API_REFERENCE.md` - API 文档
 - `docs/AGENT_CALL_SEQUENCE.md` - 详细调用顺序

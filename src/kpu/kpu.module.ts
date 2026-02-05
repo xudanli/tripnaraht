@@ -25,9 +25,12 @@ import { ValidationCacheService } from './services/validation-cache.service';
 import { KPUMonitoringService } from './services/kpu-monitoring.service';
 import { KPUConfigService } from './services/kpu-config.service';
 import { KPUHealthService } from './services/kpu-health.service';
-import { KPUController } from './kpu.controller';
 import kpuConfig from './config/kpu.config';
 
+/**
+ * ⚠️ 控制器已删除（2026-02-03）
+ * KPU 是 RAG 系统的内部组件，前端应通过 /rag 接口访问知识检索能力。
+ */
 @Module({
   imports: [
     ConfigModule.forFeature(kpuConfig), // KPU配置
@@ -36,7 +39,6 @@ import kpuConfig from './config/kpu.config';
     LlmModule, // LLM服务（用于事实检查和生成）
     RedisModule, // Redis缓存（用于验证结果缓存）
   ],
-  controllers: [KPUController],
   providers: [
     IntegratedRAGKPUService,
     KnowledgeValidationService,

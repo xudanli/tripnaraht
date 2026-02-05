@@ -6,6 +6,14 @@ import { SourceAnnotationService } from './services/source-annotation.service';
 import { ConfidenceAnnotationService } from './services/confidence-annotation.service';
 import { DataLineageService } from './services/data-lineage.service';
 import { DataImprovementService } from './services/data-improvement.service';
+import { GeographicDataValidatorService } from './services/geographic-data-validator.service'; // 🔴 P0 新增
+import { DataQualityMonitoringService } from './services/data-quality-monitoring.service'; // 🔴 Phase 2 新增
+import { DataQualityAlertService } from './services/data-quality-alert.service'; // 🔴 Phase 2 新增
+import { GeographicDataQualityMonitoringService } from './services/geographic-data-quality-monitoring.service'; // 🔴 Phase 2 新增
+import { GeographicDataAssessmentService } from './services/geographic-data-assessment.service'; // 🔴 Phase 2 新增
+import { DataUpdateSchedulerService } from './services/data-update-scheduler.service'; // 🔴 Phase 3 新增
+import { DataCollectionService } from './services/data-collection.service'; // 🔴 Phase 3 新增
+import { DEMResolutionCacheService } from './services/dem-resolution-cache.service'; // 🔴 P0 新增：DEM分辨率缓存
 import { PrismaModule } from '../prisma/prisma.module';
 import { DecisionModule } from '../trips/decision/decision.module';
 
@@ -41,13 +49,25 @@ import { DecisionModule } from '../trips/decision/decision.module';
  */
 @Global()
 @Module({
-  imports: [PrismaModule, forwardRef(() => DecisionModule)],
+  imports: [
+    PrismaModule,
+    forwardRef(() => DecisionModule),
+    // ScheduleModule已在AppModule中全局导入，无需重复导入
+  ],
   providers: [
     DataQualityFrameworkService,
     SourceAnnotationService,
     ConfidenceAnnotationService,
     DataLineageService,
     DataImprovementService,
+    GeographicDataValidatorService, // 🔴 P0 新增
+    DataQualityMonitoringService, // 🔴 Phase 2 新增
+    DataQualityAlertService, // 🔴 Phase 2 新增
+    GeographicDataQualityMonitoringService, // 🔴 Phase 2 新增
+    GeographicDataAssessmentService, // 🔴 Phase 2 新增
+    DataUpdateSchedulerService, // 🔴 Phase 3 新增
+    DataCollectionService, // 🔴 Phase 3 新增
+    DEMResolutionCacheService, // 🔴 P0 新增：DEM分辨率缓存
   ],
   exports: [
     DataQualityFrameworkService,
@@ -55,6 +75,14 @@ import { DecisionModule } from '../trips/decision/decision.module';
     ConfidenceAnnotationService,
     DataLineageService,
     DataImprovementService,
+    GeographicDataValidatorService, // 🔴 P0 新增
+    DataQualityMonitoringService, // 🔴 Phase 2 新增
+    DataQualityAlertService, // 🔴 Phase 2 新增
+    GeographicDataQualityMonitoringService, // 🔴 Phase 2 新增
+    GeographicDataAssessmentService, // 🔴 Phase 2 新增
+    DataUpdateSchedulerService, // 🔴 Phase 3 新增
+    DataCollectionService, // 🔴 Phase 3 新增
+    DEMResolutionCacheService, // 🔴 P0 新增：DEM分辨率缓存
   ],
 })
 export class DataQualityModule {}

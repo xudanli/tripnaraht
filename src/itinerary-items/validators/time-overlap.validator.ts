@@ -31,9 +31,18 @@ export class TimeOverlapValidator extends BaseValidator {
     const newStart = DateTime.fromJSDate(newItem.startTime);
     const newEnd = DateTime.fromJSDate(newItem.endTime);
 
-    for (const existing of existingItems) {
+    // 🆕 过滤掉 REST 类型的住宿项（酒店可以与其他活动时间重叠，因为住宿是跨天的）
+    const nonRestItems = existingItems.filter(item => item.type !== 'REST');
+    const newItemIsRest = newItem.type === 'REST';
+
+    for (const existing of nonRestItems) {
       const existStart = DateTime.fromJSDate(existing.startTime);
       const existEnd = DateTime.fromJSDate(existing.endTime);
+
+      // 🆕 如果新项是 REST 类型（酒店），跳过时间重叠检测（酒店可以与其他活动重叠）
+      if (newItemIsRest) {
+        continue;
+      }
 
       // 检查时间重叠：新项开始 < 现有结束 AND 新项结束 > 现有开始
       if (newStart < existEnd && newEnd > existStart) {

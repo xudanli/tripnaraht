@@ -11,11 +11,13 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { DEMElevationService } from './services/dem-elevation.service';
 import { DEMEffortMetadataService } from './services/dem-effort-metadata.service';
+import { DemController } from './dem.controller';
 
 @Module({
   imports: [
     PrismaModule, // DEM 服务需要访问数据库
   ],
+  controllers: [DemController],
   providers: [
     DEMElevationService,
     DEMEffortMetadataService,

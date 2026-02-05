@@ -1,0 +1,44 @@
+# TripNARA LLM Judge 服务
+# 轻量级 Python 服务，用于 LLM 质量评分
+
+FROM python:3.11-slim
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建工作目录
+WORKDIR /app
+
+# 升级 pip
+RUN pip install --upgrade pip
+
+# 安装 Python 依赖
+RUN pip install \
+    fastapi==0.110.0 \
+    uvicorn[standard]==0.29.0 \
+    pydantic==2.6.4 \
+    httpx==0.27.0 \
+    anthropic==0.25.0 \
+    openai==1.23.0 \
+    structlog==24.1.0 \
+    prometheus-client==0.20.0
+
+# 复制服务代码
+COPY python/judge /app/judge
+
+# 暴露端口
+EXPOSE 8003
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8003/health || exit 1
+
+# 默认命令
+CMD ["python", "-m", "uvicorn", "judge.llm_judge_service:app", "--host", "0.0.0.0", "--port", "8003"]

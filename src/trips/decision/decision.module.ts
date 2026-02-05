@@ -22,6 +22,12 @@ import { LearningService } from './learning/learning.service';
 import { AdvancedConstraintsService } from './constraints/advanced-constraints.service';
 import { ConstraintChecker } from './constraints/constraint-checker';
 import { RouteDirectionConstraintsService } from './constraints/route-direction-constraints.service';
+import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
+import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { MultiPlanGenerator } from './services/multi-plan-generator.service';
+import { FeedbackCollectorService } from './feedback/feedback-collector.service';
+import { QualityAssessorService } from './feedback/quality-assessor.service';
+import { MemoryUpdaterService } from './feedback/memory-updater.service';
 import { DecisionCacheService } from './performance/cache.service';
 import { BatchProcessingService } from './performance/batch.service';
 import { MonitoringService } from './monitoring/monitoring.service';
@@ -146,7 +152,13 @@ try {
     // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
     // LearningService,
     // AdvancedConstraintsService,
-    // ConstraintChecker,
+    ConstraintChecker, // 恢复：约束检查器（集成冲突检测）
+    ConstraintDSLCompiler, // 新增：约束DSL编译器
+    ConstraintConflictResolver, // 新增：约束冲突解析器
+    MultiPlanGenerator, // 新增：多方案生成器
+    FeedbackCollectorService, // P2：反馈收集服务
+    QualityAssessorService, // P2：质量评估服务
+    MemoryUpdaterService, // P2：记忆更新服务
     // RouteDirectionConstraintsService,
     // DecisionCacheService,
     // BatchProcessingService,
@@ -209,7 +221,13 @@ try {
     // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
     // LearningService,
     // AdvancedConstraintsService,
-    // ConstraintChecker,
+    ConstraintChecker, // 恢复：约束检查器（集成冲突检测）
+    ConstraintDSLCompiler, // 新增：约束DSL编译器
+    ConstraintConflictResolver, // 新增：约束冲突解析器
+    MultiPlanGenerator, // 新增：多方案生成器
+    FeedbackCollectorService, // P2：反馈收集服务
+    QualityAssessorService, // P2：质量评估服务
+    MemoryUpdaterService, // P2：记忆更新服务
     // RouteDirectionConstraintsService,
     // DecisionCacheService,
     // BatchProcessingService,

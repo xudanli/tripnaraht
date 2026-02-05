@@ -1,7 +1,7 @@
 // src/agent/assistants/trip-planner/trip-planner.module.ts
 
 import { Module, forwardRef } from '@nestjs/common';
-import { TripPlannerController } from './trip-planner.controller';
+// TripPlannerController 已删除（功能合并到 planning-assistant）
 import { TripPlannerService } from './services/trip-planner.service';
 import { ContextAnalyzerService } from './services/context-analyzer.service';
 import { IntentDisambiguatorService } from './services/intent-disambiguator.service';
@@ -29,7 +29,7 @@ import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-z
     // 引入 AgentModule 获取 StateStore, Orchestrator, Sub-Agents
     forwardRef(() => AgentModule),
   ],
-  controllers: [TripPlannerController],
+  controllers: [], // TripPlannerController 已删除，兼容性控制器也已删除
   providers: [
     TripPlannerService,
     ContextAnalyzerService,

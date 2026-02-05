@@ -6,11 +6,77 @@ import { Itinerary, GateResult, DecisionLogEntry, OrchestratorState } from '../.
 import { NarratorAgentService as LangGraphNarratorAgentService } from '../../../trips/decision/orchestration/narrator-agent.service';
 import { DecisionExplainForHumanSkill } from '../../../skills/decision/decision-explain-for-human.skill';
 import { LlmService } from '../../../llm/services/llm.service';
+import { DecisionOutput, ComparisonMatrix, TradeoffDimension } from '../../interfaces/decision-node.interface';
+
+/**
+ * 决策故事输出
+ */
+export interface DecisionStory {
+  elimination_narrative: {
+    title: string;
+    eliminated_options: Array<{
+      name: string;
+      reason: string;
+      what_you_would_lose: string;
+    }>;
+    summary: string;
+  };
+  finalist_narrative: {
+    title: string;
+    finalists: Array<{
+      name: string;
+      strengths: string[];
+      weaknesses: string[];
+      best_for: string;
+    }>;
+    comparison_summary: string;
+  };
+  recommendation_narrative: {
+    title: string;
+    recommended: string;
+    confidence: string;
+    reasoning: string;
+    what_you_pay_for: string;
+    what_you_get: string;
+  };
+}
+
+/**
+ * 可视化输出
+ */
+export interface DecisionVisualization {
+  comparison_visualization: {
+    type: 'radar' | 'bar' | 'table';
+    data: ComparisonMatrix;
+    highlights: Array<{ dimension: string; winner: string; margin: string }>;
+  };
+  risk_visualization: {
+    type: 'gauge' | 'bar';
+    overall_risk: number;
+    risk_breakdown: Array<{ category: string; level: number; description: string }>;
+  };
+  uncertainty_visualization: {
+    type: 'range' | 'distribution';
+    confidence_level: number;
+    confidence_label: string;
+    uncertainty_factors: Array<{ factor: string; impact: string }>;
+  };
+}
 
 /**
  * Narrator Agent Service (Claude Orchestration)
  * 
- * 职责：用户可读输出（不得更改硬字段与证据字段）
+ * AI-Native 决策可视化 Agent
+ * 
+ * 职责：
+ * - 用户可读输出（不得更改硬字段与证据字段）
+ * - 展示"排除过程"而非仅展示"结果"
+ * - 权衡代价可视化
+ * - 不确定性展示
+ * 
+ * 设计原则：
+ * - 用户是"裁判"，不是"输入者"
+ * - 可回溯、可逆、可学习的决策展示
  */
 @Injectable()
 export class ClaudeNarratorAgentService implements NarratorAgent {
@@ -372,5 +438,330 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
     }
 
     return warnings.length > 0 ? warnings : undefined;
+  }
+
+  // ============================================================================
+  // AI-Native 决策可视化增强
+  // ============================================================================
+
+  /**
+   * 生成决策故事（展示排除过程）
+   * 
+   * AI-Native 核心原则：展示"为什么排除其他选项"而非仅展示"推荐哪个"
+   */
+  generateDecisionStory(decisionOutput: DecisionOutput): DecisionStory {
+    const { ranked_plans, comparison, user_judgment_required } = decisionOutput;
+
+    // 1. 生成排除叙事
+    const eliminatedOptions = ranked_plans.slice(2).map(plan => ({
+      name: plan.plan.name,
+      reason: this.generateEliminationReason(plan, ranked_plans[0]),
+      what_you_would_lose: plan.what_you_get,
+    }));
+
+    const eliminationNarrative = {
+      title: 'Why we narrowed it down',
+      eliminated_options: eliminatedOptions,
+      summary: eliminatedOptions.length > 0
+        ? `We evaluated ${ranked_plans.length} options and narrowed down to ${Math.min(2, ranked_plans.length)} finalists based on your preferences.`
+        : 'All options passed initial screening.',
+    };
+
+    // 2. 生成决赛叙事
+    const finalists = ranked_plans.slice(0, 2).map(plan => ({
+      name: plan.plan.name,
+      strengths: this.extractStrengths(plan),
+      weaknesses: this.extractWeaknesses(plan),
+      best_for: this.generateBestForStatement(plan),
+    }));
+
+    const finalistNarrative = {
+      title: 'Your top choices',
+      finalists,
+      comparison_summary: this.generateComparisonSummary(ranked_plans.slice(0, 2)),
+    };
+
+    // 3. 生成推荐叙事
+    const recommended = ranked_plans[0];
+    const recommendationNarrative = {
+      title: 'Our recommendation',
+      recommended: recommended?.plan.name || 'No recommendation',
+      confidence: this.getConfidenceLabel(recommended?.uncertainty.confidence || 0),
+      reasoning: recommended ? this.generateRecommendationReasoning(recommended, ranked_plans) : 'No candidates available',
+      what_you_pay_for: recommended?.what_you_pay_for || 'N/A',
+      what_you_get: recommended?.what_you_get || 'N/A',
+    };
+
+    return {
+      elimination_narrative: eliminationNarrative,
+      finalist_narrative: finalistNarrative,
+      recommendation_narrative: recommendationNarrative,
+    };
+  }
+
+  /**
+   * 生成决策可视化数据
+   */
+  generateDecisionVisualization(decisionOutput: DecisionOutput): DecisionVisualization {
+    const { ranked_plans, comparison } = decisionOutput;
+
+    // 1. 比较可视化
+    const highlights = this.extractComparisonHighlights(comparison);
+    const comparisonVisualization = {
+      type: 'radar' as const,
+      data: comparison,
+      highlights,
+    };
+
+    // 2. 风险可视化
+    const overallRisk = ranked_plans.length > 0
+      ? ranked_plans[0].tradeoffs.RISK.value
+      : 0;
+    const riskBreakdown = this.generateRiskBreakdown(ranked_plans[0]);
+    const riskVisualization = {
+      type: 'gauge' as const,
+      overall_risk: overallRisk,
+      risk_breakdown: riskBreakdown,
+    };
+
+    // 3. 不确定性可视化
+    const confidence = ranked_plans.length > 0
+      ? ranked_plans[0].uncertainty.confidence
+      : 0;
+    const uncertaintyVisualization = {
+      type: 'range' as const,
+      confidence_level: confidence,
+      confidence_label: this.getConfidenceLabel(confidence),
+      uncertainty_factors: ranked_plans.length > 0
+        ? ranked_plans[0].uncertainty.uncertainty_sources.map(s => ({
+            factor: s.source,
+            impact: s.impact,
+          }))
+        : [],
+    };
+
+    return {
+      comparison_visualization: comparisonVisualization,
+      risk_visualization: riskVisualization,
+      uncertainty_visualization: uncertaintyVisualization,
+    };
+  }
+
+  /**
+   * 生成完整的决策展示（供前端使用）
+   */
+  generateFullDecisionPresentation(
+    decisionOutput: DecisionOutput,
+    itinerary: Itinerary,
+    gateResult: GateResult,
+  ): {
+    story: DecisionStory;
+    visualization: DecisionVisualization;
+    narrative: {
+      user_friendly_summary: string;
+      day_by_day_narrative: Array<{ day: number; date: string; narrative: string }>;
+      highlights: string[];
+      tips: string[];
+      warnings?: string[];
+    };
+    user_actions: Array<{
+      action_id: string;
+      label: string;
+      description: string;
+      impact: string;
+    }>;
+  } {
+    const story = this.generateDecisionStory(decisionOutput);
+    const visualization = this.generateDecisionVisualization(decisionOutput);
+
+    // 生成用户可执行的动作
+    const userActions = this.generateUserActions(decisionOutput, gateResult);
+
+    return {
+      story,
+      visualization,
+      narrative: {
+        user_friendly_summary: story.recommendation_narrative.reasoning,
+        day_by_day_narrative: [],
+        highlights: story.finalist_narrative.finalists.flatMap(f => f.strengths),
+        tips: [],
+        warnings: visualization.risk_visualization.overall_risk > 60
+          ? ['This plan has elevated risk factors']
+          : undefined,
+      },
+      user_actions: userActions,
+    };
+  }
+
+  // ============================================================================
+  // 决策可视化辅助方法
+  // ============================================================================
+
+  private generateEliminationReason(
+    eliminated: DecisionOutput['ranked_plans'][0],
+    winner: DecisionOutput['ranked_plans'][0],
+  ): string {
+    const scoreDiff = winner.plan.score - eliminated.plan.score;
+    if (scoreDiff > 20) return 'Significantly lower overall score';
+    if (eliminated.tradeoffs.RISK.value > 70) return 'Higher risk profile';
+    if (eliminated.tradeoffs.COST.value < 40) return 'Less cost-effective';
+    return 'Lower match with your preferences';
+  }
+
+  private extractStrengths(plan: DecisionOutput['ranked_plans'][0]): string[] {
+    const strengths: string[] = [];
+    if (plan.tradeoffs.TIME.value > 60) strengths.push('Efficient time management');
+    if (plan.tradeoffs.COST.value > 60) strengths.push('Good value for money');
+    if (plan.tradeoffs.EXPERIENCE.value > 60) strengths.push('Rich experience variety');
+    if (plan.tradeoffs.RISK.value < 40) strengths.push('Low risk profile');
+    return strengths.length > 0 ? strengths : ['Balanced overall approach'];
+  }
+
+  private extractWeaknesses(plan: DecisionOutput['ranked_plans'][0]): string[] {
+    const weaknesses: string[] = [];
+    if (plan.tradeoffs.TIME.value < 40) weaknesses.push('May feel rushed');
+    if (plan.tradeoffs.COST.value < 40) weaknesses.push('Higher budget required');
+    if (plan.tradeoffs.EXPERIENCE.value < 40) weaknesses.push('Limited variety');
+    if (plan.tradeoffs.RISK.value > 60) weaknesses.push('Some uncertainties');
+    return weaknesses;
+  }
+
+  private generateBestForStatement(plan: DecisionOutput['ranked_plans'][0]): string {
+    const scores = plan.tradeoffs;
+    if (scores.EXPERIENCE.value > scores.COST.value && scores.EXPERIENCE.value > scores.TIME.value) {
+      return 'Travelers prioritizing unique experiences';
+    }
+    if (scores.COST.value > scores.EXPERIENCE.value) {
+      return 'Budget-conscious travelers';
+    }
+    if (scores.TIME.value > 60) {
+      return 'Travelers with limited time';
+    }
+    return 'Travelers seeking balance';
+  }
+
+  private generateComparisonSummary(finalists: DecisionOutput['ranked_plans']): string {
+    if (finalists.length < 2) return 'Single option available';
+    const [first, second] = finalists;
+    const scoreDiff = Math.abs(first.plan.score - second.plan.score);
+    if (scoreDiff < 5) {
+      return 'Both options are very close in overall score. Your personal preference should guide the final choice.';
+    }
+    return `${first.plan.name} scores ${scoreDiff.toFixed(0)} points higher overall, but ${second.plan.name} may better suit specific needs.`;
+  }
+
+  private generateRecommendationReasoning(
+    recommended: DecisionOutput['ranked_plans'][0],
+    allPlans: DecisionOutput['ranked_plans'],
+  ): string {
+    const parts: string[] = [];
+    parts.push(`${recommended.plan.name} offers ${recommended.what_you_get}`);
+    if (allPlans.length > 1) {
+      parts.push(`compared to ${allPlans.length - 1} other option(s)`);
+    }
+    const confidence = recommended.uncertainty.confidence;
+    if (confidence > 0.7) {
+      parts.push('with high confidence');
+    } else if (confidence > 0.4) {
+      parts.push('with moderate confidence');
+    } else {
+      parts.push('though some aspects remain uncertain');
+    }
+    return parts.join(' ') + '.';
+  }
+
+  private getConfidenceLabel(confidence: number): string {
+    if (confidence > 0.8) return 'Very High';
+    if (confidence > 0.6) return 'High';
+    if (confidence > 0.4) return 'Moderate';
+    if (confidence > 0.2) return 'Low';
+    return 'Very Low';
+  }
+
+  private extractComparisonHighlights(
+    comparison: ComparisonMatrix,
+  ): Array<{ dimension: string; winner: string; margin: string }> {
+    return comparison.matrix.map(row => {
+      const best = row.values.find(v => v.is_best);
+      const others = row.values.filter(v => !v.is_best);
+      const maxOther = others.length > 0 ? Math.max(...others.map(v => v.value)) : 0;
+      const margin = best ? Math.abs(best.value - maxOther) : 0;
+
+      return {
+        dimension: row.dimension,
+        winner: best?.plan_id || 'N/A',
+        margin: margin > 20 ? 'Significant' : margin > 10 ? 'Moderate' : 'Slight',
+      };
+    });
+  }
+
+  private generateRiskBreakdown(
+    plan?: DecisionOutput['ranked_plans'][0],
+  ): Array<{ category: string; level: number; description: string }> {
+    if (!plan) return [];
+    
+    const factors = plan.plan.tradeoffs.risk.factors;
+    return factors.slice(0, 3).map((factor, idx) => ({
+      category: `Risk Factor ${idx + 1}`,
+      level: Math.min(100, 30 + idx * 20),
+      description: factor,
+    }));
+  }
+
+  private generateUserActions(
+    decisionOutput: DecisionOutput,
+    gateResult: GateResult,
+  ): Array<{
+    action_id: string;
+    label: string;
+    description: string;
+    impact: string;
+  }> {
+    const actions: Array<{
+      action_id: string;
+      label: string;
+      description: string;
+      impact: string;
+    }> = [];
+
+    // 确认推荐
+    if (decisionOutput.ranked_plans.length > 0) {
+      actions.push({
+        action_id: 'accept_recommendation',
+        label: 'Accept Recommendation',
+        description: `Proceed with ${decisionOutput.ranked_plans[0].plan.name}`,
+        impact: 'Confirms the suggested plan',
+      });
+    }
+
+    // 查看备选
+    if (decisionOutput.ranked_plans.length > 1) {
+      actions.push({
+        action_id: 'view_alternatives',
+        label: 'View Alternatives',
+        description: 'Compare with other options',
+        impact: 'Shows detailed comparison',
+      });
+    }
+
+    // 调整偏好
+    actions.push({
+      action_id: 'adjust_preferences',
+      label: 'Adjust Preferences',
+      description: 'Change priority weights',
+      impact: 'Recalculates recommendations',
+    });
+
+    // 如果有用户判断点
+    if (decisionOutput.user_judgment_required.length > 0) {
+      actions.push({
+        action_id: 'answer_questions',
+        label: 'Answer Questions',
+        description: `${decisionOutput.user_judgment_required.length} question(s) need your input`,
+        impact: 'Improves recommendation accuracy',
+      });
+    }
+
+    return actions;
   }
 }

@@ -1,0 +1,104 @@
+# Prometheus 告警规则配置
+# TripNARA Context Engine & RAG 监控告警
+
+groups:
+  - name: context_engine_alerts
+    interval: 30s
+    rules:
+      # Context Package 构建延迟告警
+      - alert: ContextPackageBuildSlow
+        expr: histogram_quantile(0.95, rate(context_package_build_duration_ms_bucket[5m])) > 2000
+        for: 5m
+        labels:
+          severity: warning
+          service: context-engine
+        annotations:
+          summary: "Context Package 构建延迟过高"
+          description: "{{ $labels.phase }}/{{ $labels.agent }} 的 P95 构建延迟为 {{ $value }}ms，超过 2000ms 阈值"
+
+      # Context Package 构建失败告警
+      - alert: ContextPackageBuildFailure
+        expr: rate(context_package_build_cache_misses_total[5m]) > 10 and rate(context_package_build_total[5m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: context-engine
+        annotations:
+          summary: "Context Package 构建失败"
+          description: "{{ $labels.phase }}/{{ $labels.agent }} 在 2 分钟内没有成功构建"
+
+      # 缓存命中率过低告警
+      - alert: ContextCacheHitRateLow
+        expr: |
+          (
+            rate(context_package_build_cache_hits_total[5m]) /
+            (rate(context_package_build_cache_hits_total[5m]) + rate(context_package_build_cache_misses_total[5m]))
+          ) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          service: context-engine
+        annotations:
+          summary: "Context Package 缓存命中率过低"
+          description: "{{ $labels.phase }}/{{ $labels.agent }} 的缓存命中率为 {{ $value | humanizePercentage }}，低于 50% 阈值"
+
+      # Token 使用超预算告警
+      - alert: ContextTokenOverBudget
+        expr: rate(context_token_over_budget_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: context-engine
+        annotations:
+          summary: "Context Package Token 使用超预算"
+          description: "{{ $labels.phase }}/{{ $labels.agent }} 的 Token 超预算率为 {{ $value }} 次/秒"
+
+      # 缓存大小异常告警
+      - alert: ContextCacheSizeHigh
+        expr: context_cache_size > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: context-engine
+        annotations:
+          summary: "Context 缓存大小异常"
+          description: "{{ $labels.cache_level }} 缓存大小为 {{ $value }}，超过 10000 阈值"
+
+  - name: rag_alerts
+    interval: 30s
+    rules:
+      # RAG 查询延迟告警
+      - alert: RAGQuerySlow
+        expr: histogram_quantile(0.95, rate(rag_query_duration_ms_bucket[5m])) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          service: rag
+        annotations:
+          summary: "RAG 查询延迟过高"
+          description: "{{ $labels.category }} 的 P95 查询延迟为 {{ $value }}ms，超过 5000ms 阈值"
+
+      # RAG 错误率告警
+      - alert: RAGErrorRateHigh
+        expr: |
+          rate(rag_api_errors_total[5m]) / rate(rag_api_calls_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: rag
+        annotations:
+          summary: "RAG API 错误率过高"
+          description: "{{ $labels.api_type }} 的错误率为 {{ $value | humanizePercentage }}，超过 5% 阈值"
+
+      # RAG 缓存命中率过低告警
+      - alert: RAGCacheHitRateLow
+        expr: |
+          rate(rag_cache_hits_total[5m]) /
+          (rate(rag_cache_hits_total[5m]) + rate(rag_cache_misses_total[5m])) < 0.3
+        for: 10m
+        labels:
+          severity: warning
+          service: rag
+        annotations:
+          summary: "RAG 缓存命中率过低"
+          description: "{{ $labels.cache_type }} 的缓存命中率为 {{ $value | humanizePercentage }}，低于 30% 阈值"

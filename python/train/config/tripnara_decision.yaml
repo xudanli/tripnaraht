@@ -1,0 +1,56 @@
+# TripNARA 决策能力微调配置
+# 专注于旅行决策推理能力的训练
+
+# 继承基础配置
+_base_: base_config.yaml
+
+# ============================================
+# 模型配置
+# ============================================
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+
+# ============================================
+# 数据集配置 (TripNARA 决策数据)
+# ============================================
+dataset: tripnara_decision
+dataset_dir: /app/data
+
+# 数据增强
+# - 原始轨迹数据
+# - Query 改写增强
+# - 角色扮演数据
+mix_strategy: concat
+
+# ============================================
+# LoRA 配置 (针对决策任务优化)
+# ============================================
+lora_rank: 64
+lora_alpha: 128
+lora_dropout: 0.05
+# 重点训练注意力层和 FFN
+lora_target: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj
+
+# ============================================
+# 训练参数 (决策任务调优)
+# ============================================
+num_train_epochs: 3
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 1.5e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+
+# 更长的上下文用于复杂决策
+cutoff_len: 6144
+
+# ============================================
+# 评估配置
+# ============================================
+do_eval: true
+eval_steps: 100
+eval_strategy: steps
+
+# 评估指标
+# - 决策质量分数
+# - 工具调用准确率
+# - 解释合理性

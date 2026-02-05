@@ -16,6 +16,18 @@ export class DecisionLogStorageService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * 验证 UUID 格式
+   */
+  private isValidUUID(str: string | null | undefined): boolean {
+    if (!str) {
+      return false;
+    }
+    // UUID 格式：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  }
+
+  /**
    * 保存单个决策日志条目
    */
   async saveLogEntry(
@@ -28,9 +40,22 @@ export class DecisionLogStorageService {
     }
   ): Promise<void> {
     try {
+      // 验证 tripId 是否为有效的 UUID，如果不是则设置为 null
+      const validTripId = options?.tripId && this.isValidUUID(options.tripId) 
+        ? options.tripId 
+        : null;
+
+      // 如果 tripId 不是有效的 UUID，记录警告
+      if (options?.tripId && !this.isValidUUID(options.tripId)) {
+        this.logger.warn(
+          `tripId "${options.tripId}" 不是有效的 UUID 格式，将设置为 null。` +
+          `有效的 UUID 格式应为：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+        );
+      }
+
       await this.prisma.decisionLog.create({
         data: {
-          tripId: options?.tripId,
+          tripId: validTripId,
           countryCode: options?.countryCode,
           routeDirectionId: options?.routeDirectionId,
           persona: entry.persona,
@@ -44,7 +69,7 @@ export class DecisionLogStorageService {
           metadata: options?.metadata || {},
         },
       });
-      this.logger.debug(`Saved decision log: ${entry.persona} ${entry.action} (${entry.decisionSource})`);
+      this.logger.debug(`Saved decision log: ${entry.persona} ${entry.action} (${entry.decisionSource})${validTripId ? ` for tripId: ${validTripId}` : ''}`);
     } catch (error) {
       this.logger.error(`Failed to save decision log: ${error}`, error instanceof Error ? error.stack : undefined);
       // 不抛出错误，避免影响主流程
@@ -68,9 +93,22 @@ export class DecisionLogStorageService {
     }
 
     try {
+      // 验证 tripId 是否为有效的 UUID，如果不是则设置为 null
+      const validTripId = options?.tripId && this.isValidUUID(options.tripId) 
+        ? options.tripId 
+        : null;
+
+      // 如果 tripId 不是有效的 UUID，记录警告
+      if (options?.tripId && !this.isValidUUID(options.tripId)) {
+        this.logger.warn(
+          `tripId "${options.tripId}" 不是有效的 UUID 格式，将设置为 null。` +
+          `有效的 UUID 格式应为：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+        );
+      }
+
       await this.prisma.decisionLog.createMany({
         data: entries.map(entry => ({
-          tripId: options?.tripId,
+          tripId: validTripId,
           countryCode: options?.countryCode,
           routeDirectionId: options?.routeDirectionId,
           persona: entry.persona,
@@ -84,7 +122,7 @@ export class DecisionLogStorageService {
           metadata: options?.metadata || {},
         })),
       });
-      this.logger.debug(`Saved ${entries.length} decision logs`);
+      this.logger.debug(`Saved ${entries.length} decision logs${validTripId ? ` for tripId: ${validTripId}` : ' (no tripId)'}`);
     } catch (error) {
       this.logger.error(`Failed to save decision logs: ${error}`, error instanceof Error ? error.stack : undefined);
       // 不抛出错误，避免影响主流程
@@ -108,8 +146,18 @@ export class DecisionLogStorageService {
   }): Promise<DecisionLogEntry[]> {
     const where: any = {};
 
+    // 验证 tripId 是否为有效的 UUID，如果不是则跳过该查询条件
     if (filters.tripId) {
-      where.tripId = filters.tripId;
+      if (this.isValidUUID(filters.tripId)) {
+        where.tripId = filters.tripId;
+      } else {
+        // 如果 tripId 不是有效的 UUID，记录警告并返回空结果
+        this.logger.warn(
+          `queryLogs: tripId "${filters.tripId}" 不是有效的 UUID 格式，将跳过该查询条件。` +
+          `有效的 UUID 格式应为：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+        );
+        return [];
+      }
     }
     if (filters.countryCode) {
       where.countryCode = filters.countryCode;

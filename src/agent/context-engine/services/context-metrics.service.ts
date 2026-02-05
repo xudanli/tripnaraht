@@ -62,6 +62,7 @@ export interface ContextMetricsRecord {
   performance: {
     buildTimeMs: number;
     cacheHit: boolean;
+    cacheLevel?: 'L1' | 'L2' | 'L3' | 'none'; // Phase 1 优化：缓存层级
     skillsCalled: string[];
   };
   
@@ -145,6 +146,7 @@ export class ContextMetricsService {
       agent: string;
       buildTimeMs: number;
       cacheHit: boolean;
+      cacheLevel?: 'L1' | 'L2' | 'L3' | 'none'; // Phase 1 优化：缓存层级
       skillsCalled: string[];
       usedBlockKeys?: string[];
       userQuery?: string;
@@ -224,6 +226,7 @@ export class ContextMetricsService {
         performance: {
           buildTimeMs: metadata.buildTimeMs,
           cacheHit: metadata.cacheHit,
+          cacheLevel: metadata.cacheLevel || (metadata.cacheHit ? 'L1' : 'none'), // Phase 1 优化：记录缓存层级
           skillsCalled: metadata.skillsCalled,
         },
         blockTypeDistribution,

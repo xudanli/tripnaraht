@@ -108,6 +108,369 @@ export class DecisionDraftController {
   }
 
   /**
+   * 获取统计信息
+   * 
+   * 获取决策草案的统计信息（需要管理员权限）
+   * 
+   * ⚠️ 注意：此路由必须放在 :draftId 参数路由之前，否则 'stats' 会被当作 draftId
+   */
+  @Get('stats')
+  @ApiOperation({
+    summary: '获取统计信息',
+    description: '获取决策草案的统计信息（总数、平均决策数、平均生成时间等）',
+  })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: '统计信息获取成功' })
+  async getStats(@Query('workflow_id') workflowId?: string): Promise<{
+    total_drafts: number;
+    avg_decision_count: number;
+    avg_generation_time_ms: number;
+  }> {
+    this.logger.log(`[DecisionDraftController] 获取统计信息: workflow_id=${workflowId || 'all'}`);
+
+    // TODO: 从数据库查询统计信息
+    return {
+      total_drafts: 0,
+      avg_decision_count: 0,
+      avg_generation_time_ms: 0,
+    };
+  }
+
+  // ============================================================================
+  // 管理后台接口（Admin APIs）
+  // ============================================================================
+
+  /**
+   * 🆕 [Admin] 决策草案分页列表
+   * 
+   * 管理后台专用：获取所有决策草案的分页列表，支持筛选和排序
+   */
+  @Get('admin/list')
+  @ApiOperation({
+    summary: '[Admin] 决策草案分页列表',
+    description: '管理后台专用：获取所有决策草案，支持分页、筛选、排序',
+  })
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number, description: '每页数量，默认 20，最大 100' })
+  @ApiQuery({ name: 'status', required: false, type: String, description: '状态筛选: draft, completed, failed' })
+  @ApiQuery({ name: 'destination', required: false, type: String, description: '目的地筛选' })
+  @ApiQuery({ name: 'startDate', required: false, type: String, description: '创建时间起始（ISO格式）' })
+  @ApiQuery({ name: 'endDate', required: false, type: String, description: '创建时间结束（ISO格式）' })
+  @ApiQuery({ name: 'sortBy', required: false, type: String, description: '排序字段: created_at, updated_at, step_count' })
+  @ApiQuery({ name: 'sortOrder', required: false, type: String, description: '排序方向: asc, desc' })
+  @ApiResponse({ status: 200, description: '分页列表获取成功' })
+  async adminListDecisionDrafts(
+    @Query('page') page?: number,
+    @Query('pageSize') pageSize?: number,
+    @Query('status') status?: string,
+    @Query('destination') destination?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+  ): Promise<{
+    items: Array<{
+      draft_id: string;
+      trip_id?: string;
+      plan_id?: string;
+      destination?: string;
+      status: string;
+      step_count: number;
+      user_mode: string;
+      created_at: string;
+      updated_at?: string;
+    }>;
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+    filters: {
+      status?: string;
+      destination?: string;
+      dateRange?: { start: string; end: string };
+    };
+  }> {
+    this.logger.log(`[DecisionDraftController] [Admin] 获取决策草案列表: page=${page}, pageSize=${pageSize}`);
+
+    const currentPage = Math.max(1, page || 1);
+    const size = Math.min(100, Math.max(1, pageSize || 20));
+
+    // 从存储服务获取分页数据
+    const result = await this.storageService.listDecisionDrafts({
+      page: currentPage,
+      pageSize: size,
+      status,
+      destination,
+      startDate,
+      endDate,
+      sortBy: sortBy || 'created_at',
+      sortOrder: (sortOrder as 'asc' | 'desc') || 'desc',
+    });
+
+    return {
+      items: result.items.map(draft => {
+        const metadata = draft.metadata as any;
+        return {
+          draft_id: draft.draft_id,
+          trip_id: draft.trip_id,
+          plan_id: draft.plan_id,
+          destination: metadata?.destination,
+          status: metadata?.status || 'draft',
+          step_count: draft.decision_steps?.length || 0,
+          user_mode: draft.user_mode,
+          created_at: metadata?.created_at || new Date().toISOString(),
+          updated_at: metadata?.updated_at,
+        };
+      }),
+      pagination: {
+        page: currentPage,
+        pageSize: size,
+        total: result.total,
+        totalPages: Math.ceil(result.total / size),
+      },
+      filters: {
+        status,
+        destination,
+        dateRange: startDate || endDate ? { start: startDate || '', end: endDate || '' } : undefined,
+      },
+    };
+  }
+
+  /**
+   * 🆕 [Admin] 全局决策质量统计
+   * 
+   * 管理后台专用：获取全局的决策质量指标，用于 AI 质量监控
+   */
+  @Get('admin/quality-stats')
+  @ApiOperation({
+    summary: '[Admin] 全局决策质量统计',
+    description: '管理后台专用：获取决策系统的全局质量指标，包括成功率、用户满意度、平均决策时间等',
+  })
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'timeRange', required: false, type: String, description: '时间范围: today, week, month, all' })
+  @ApiQuery({ name: 'destination', required: false, type: String, description: '目的地筛选' })
+  @ApiResponse({ status: 200, description: '质量统计获取成功' })
+  async adminGetQualityStats(
+    @Query('timeRange') timeRange?: string,
+    @Query('destination') destination?: string,
+  ): Promise<{
+    overview: {
+      total_decisions: number;
+      success_rate: number;
+      avg_decision_time_ms: number;
+      avg_steps_per_draft: number;
+    };
+    quality_metrics: {
+      user_acceptance_rate: number;
+      user_modification_rate: number;
+      user_rejection_rate: number;
+      avg_user_rating: number;
+    };
+    decision_types: Array<{
+      type: string;
+      count: number;
+      success_rate: number;
+    }>;
+    trends: {
+      period: string;
+      data: Array<{
+        date: string;
+        total: number;
+        success: number;
+        failed: number;
+      }>;
+    };
+    top_issues: Array<{
+      issue: string;
+      count: number;
+      percentage: number;
+    }>;
+  }> {
+    this.logger.log(`[DecisionDraftController] [Admin] 获取决策质量统计: timeRange=${timeRange}, destination=${destination}`);
+
+    // 从存储服务获取质量统计
+    const stats = await this.storageService.getQualityStats({
+      timeRange: timeRange || 'week',
+      destination,
+    });
+
+    return {
+      overview: {
+        total_decisions: stats.total_decisions || 0,
+        success_rate: stats.success_rate || 0,
+        avg_decision_time_ms: stats.avg_decision_time_ms || 0,
+        avg_steps_per_draft: stats.avg_steps_per_draft || 0,
+      },
+      quality_metrics: {
+        user_acceptance_rate: stats.user_acceptance_rate || 0,
+        user_modification_rate: stats.user_modification_rate || 0,
+        user_rejection_rate: stats.user_rejection_rate || 0,
+        avg_user_rating: stats.avg_user_rating || 0,
+      },
+      decision_types: stats.decision_types || [],
+      trends: {
+        period: timeRange || 'week',
+        data: stats.trends || [],
+      },
+      top_issues: stats.top_issues || [],
+    };
+  }
+
+  /**
+   * 🆕 [Admin] 用户决策风格汇总
+   * 
+   * 管理后台专用：获取用户决策风格的汇总分析，用于了解用户偏好
+   */
+  @Get('admin/user-styles')
+  @ApiOperation({
+    summary: '[Admin] 用户决策风格汇总',
+    description: '管理后台专用：获取用户决策风格的汇总分析，包括偏好分布、行为模式等',
+  })
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number, description: '每页数量，默认 20' })
+  @ApiQuery({ name: 'styleType', required: false, type: String, description: '风格类型筛选: adventurous, cautious, balanced' })
+  @ApiResponse({ status: 200, description: '用户风格汇总获取成功' })
+  async adminGetUserStyles(
+    @Query('page') page?: number,
+    @Query('pageSize') pageSize?: number,
+    @Query('styleType') styleType?: string,
+  ): Promise<{
+    summary: {
+      total_users_analyzed: number;
+      style_distribution: Array<{
+        style: string;
+        count: number;
+        percentage: number;
+      }>;
+      avg_decision_confidence: number;
+    };
+    users: Array<{
+      user_id: string;
+      style_type: string;
+      decision_count: number;
+      acceptance_rate: number;
+      avg_modification_count: number;
+      top_preferences: string[];
+      last_active: string;
+    }>;
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+    behavior_patterns: Array<{
+      pattern: string;
+      description: string;
+      user_count: number;
+      examples: string[];
+    }>;
+  }> {
+    this.logger.log(`[DecisionDraftController] [Admin] 获取用户决策风格汇总: page=${page}, styleType=${styleType}`);
+
+    const currentPage = Math.max(1, page || 1);
+    const size = Math.min(100, Math.max(1, pageSize || 20));
+
+    // 从存储服务获取用户风格数据
+    const result = await this.storageService.getUserStylesSummary({
+      page: currentPage,
+      pageSize: size,
+      styleType,
+    });
+
+    return {
+      summary: {
+        total_users_analyzed: result.total_users || 0,
+        style_distribution: result.style_distribution || [
+          { style: 'adventurous', count: 0, percentage: 0 },
+          { style: 'cautious', count: 0, percentage: 0 },
+          { style: 'balanced', count: 0, percentage: 0 },
+        ],
+        avg_decision_confidence: result.avg_confidence || 0,
+      },
+      users: result.users || [],
+      pagination: {
+        page: currentPage,
+        pageSize: size,
+        total: result.total_users || 0,
+        totalPages: Math.ceil((result.total_users || 0) / size),
+      },
+      behavior_patterns: result.behavior_patterns || [],
+    };
+  }
+
+  /**
+   * 🆕 [Admin] 决策异常监控
+   * 
+   * 管理后台专用：获取决策异常和错误的监控数据
+   */
+  @Get('admin/anomalies')
+  @ApiOperation({
+    summary: '[Admin] 决策异常监控',
+    description: '管理后台专用：获取决策过程中的异常、错误和警告信息',
+  })
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'severity', required: false, type: String, description: '严重程度: error, warning, info' })
+  @ApiQuery({ name: 'timeRange', required: false, type: String, description: '时间范围: hour, day, week' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '返回数量，默认 50' })
+  @ApiResponse({ status: 200, description: '异常监控数据获取成功' })
+  async adminGetAnomalies(
+    @Query('severity') severity?: string,
+    @Query('timeRange') timeRange?: string,
+    @Query('limit') limit?: number,
+  ): Promise<{
+    summary: {
+      total_anomalies: number;
+      errors: number;
+      warnings: number;
+      infos: number;
+    };
+    anomalies: Array<{
+      id: string;
+      severity: 'error' | 'warning' | 'info';
+      type: string;
+      message: string;
+      draft_id?: string;
+      trip_id?: string;
+      user_id?: string;
+      timestamp: string;
+      context?: Record<string, any>;
+      resolved: boolean;
+    }>;
+    trending_issues: Array<{
+      type: string;
+      count: number;
+      trend: 'increasing' | 'stable' | 'decreasing';
+    }>;
+  }> {
+    this.logger.log(`[DecisionDraftController] [Admin] 获取决策异常监控: severity=${severity}, timeRange=${timeRange}`);
+
+    const maxLimit = Math.min(200, Math.max(1, limit || 50));
+
+    // 从存储服务获取异常数据
+    const result = await this.storageService.getAnomalies({
+      severity,
+      timeRange: timeRange || 'day',
+      limit: maxLimit,
+    });
+
+    return {
+      summary: {
+        total_anomalies: result.total || 0,
+        errors: result.errors || 0,
+        warnings: result.warnings || 0,
+        infos: result.infos || 0,
+      },
+      anomalies: result.anomalies || [],
+      trending_issues: result.trending_issues || [],
+    };
+  }
+
+  /**
    * 获取决策草案
    * 
    * 用户端接口：只读，返回决策草案（根据用户模式返回 ToC 或 Expert 视图）
@@ -266,11 +629,12 @@ export class DecisionDraftController {
       throw new Error(`决策草案不存在: ${draftId}`);
     }
 
-    const versions = await this.versionService.getVersions(decisionDraft.workflow_id);
+    const workflowId = decisionDraft.workflow_id || decisionDraft.plan_id || draftId;
+    const versions = await this.versionService.getVersions(workflowId);
     return {
       versions: versions.map((v) => ({
         version_id: v.version_id,
-        version: v.version,
+        version: v.version || 'v1.0',
         created_by: v.created_by,
         description: v.description,
         created_at: v.created_at,
@@ -305,8 +669,9 @@ export class DecisionDraftController {
       throw new Error(`决策草案不存在: ${draftId}`);
     }
 
+    const workflowId = decisionDraft.workflow_id || decisionDraft.plan_id || draftId;
     const version = await this.versionService.getVersion(
-      decisionDraft.workflow_id,
+      workflowId,
       versionId,
     );
     if (!version) {
@@ -316,7 +681,7 @@ export class DecisionDraftController {
       // 根据用户模式返回不同详细程度的数据
     const response: any = {
       version_id: version.version_id,
-      version: version.version,
+      version: version.version || 'v1.0',
       decision_draft: {
         ...version.decision_draft,
       },
@@ -366,8 +731,9 @@ export class DecisionDraftController {
       throw new Error(`决策草案不存在: ${draftId}`);
     }
 
+    const workflowId = decisionDraft.workflow_id || decisionDraft.plan_id || draftId;
     return this.versionService.compareVersions(
-      decisionDraft.workflow_id,
+      workflowId,
       versionId1,
       versionId2,
     );
@@ -660,7 +1026,7 @@ export class DecisionDraftController {
 
     return {
       version_id: version.version_id,
-      version: version.version,
+      version: version.version || 'v1.0',
       saved_at: version.created_at,
     };
   }
@@ -694,8 +1060,9 @@ export class DecisionDraftController {
       throw new Error(`决策草案不存在: ${draftId}`);
     }
 
+    const workflowId = decisionDraft.workflow_id || decisionDraft.plan_id || draftId;
     const version = await this.versionService.rollbackToVersion(
-      decisionDraft.workflow_id,
+      workflowId,
       versionId,
     );
 
@@ -736,8 +1103,9 @@ export class DecisionDraftController {
       throw new Error(`决策草案不存在: ${draftId}`);
     }
 
+    const workflowId = decisionDraft.workflow_id || decisionDraft.plan_id || draftId;
     const version = await this.versionService.forkVersion(
-      decisionDraft.workflow_id,
+      workflowId,
       versionId,
       dto.new_workflow_id,
       {
@@ -752,35 +1120,6 @@ export class DecisionDraftController {
     return {
       version: { ...version, decision_draft: savedDraft },
       new_draft_id: savedDraft.draft_id,
-    };
-  }
-
-  /**
-   * 获取统计信息
-   * 
-   * 获取决策草案的统计信息（需要管理员权限）
-   */
-  @Get('stats')
-  @ApiOperation({
-    summary: '获取统计信息',
-    description: '获取决策草案的统计信息（总数、平均决策数、平均生成时间等）',
-  })
-  @ApiBearerAuth()
-  @ApiResponse({ status: 200, description: '统计信息获取成功' })
-  // @Public() // TODO: 临时开放测试
-  async getStats(@Query('workflow_id') workflowId?: string): Promise<{
-    total_drafts: number;
-    avg_decision_count: number;
-    avg_generation_time_ms: number;
-    // TODO: 更多统计信息
-  }> {
-    this.logger.log(`[DecisionDraftController] 获取统计信息: workflow_id=${workflowId || 'all'}`);
-
-    // TODO: 从数据库查询统计信息
-    return {
-      total_drafts: 0,
-      avg_decision_count: 0,
-      avg_generation_time_ms: 0,
     };
   }
 
@@ -823,6 +1162,205 @@ export class DecisionDraftController {
     return {
       draft_id: decisionDraft.draft_id,
       debug_info: debugInfo,
+    };
+  }
+
+  /**
+   * 预览编辑影响
+   * 
+   * 预览对决策步骤的编辑会产生什么影响（不实际执行）
+   */
+  @Post(':draftId/preview-impact')
+  @ApiOperation({
+    summary: '预览编辑影响',
+    description: '预览对决策步骤的编辑会产生什么影响，包括受影响的步骤、预估变更等（不实际执行修改）',
+  })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: '影响预览成功' })
+  @ApiResponse({ status: 404, description: '决策草案不存在' })
+  async previewImpact(
+    @Param('draftId') draftId: string,
+    @Body() body: {
+      step_id: string;
+      proposed_changes: {
+        action?: 'accept' | 'reject' | 'modify';
+        modifications?: Record<string, any>;
+      };
+    },
+  ): Promise<{
+    draft_id: string;
+    step_id: string;
+    impact: {
+      affected_steps: string[];
+      estimated_changes: Array<{
+        step_id: string;
+        change_type: 'modified' | 'regenerated' | 'removed';
+        description: string;
+      }>;
+      risk_level: 'low' | 'medium' | 'high';
+      warnings: string[];
+    };
+  }> {
+    this.logger.log(`[DecisionDraftController] 预览编辑影响: draft_id=${draftId}, step_id=${body.step_id}`);
+
+    const decisionDraft = await this.storageService.loadDecisionDraft(draftId);
+    if (!decisionDraft) {
+      throw new Error(`决策草案不存在: ${draftId}`);
+    }
+
+    // 查找目标步骤
+    const targetStep = decisionDraft.decision_steps?.find(
+      (s: any) => s.id === body.step_id,
+    );
+    if (!targetStep) {
+      throw new Error(`决策步骤不存在: ${body.step_id}`);
+    }
+
+    // 分析影响（简化实现）
+    const affectedSteps: string[] = [];
+    const estimatedChanges: Array<{
+      step_id: string;
+      change_type: 'modified' | 'regenerated' | 'removed';
+      description: string;
+    }> = [];
+    const warnings: string[] = [];
+
+    // 根据操作类型分析影响
+    if (body.proposed_changes.action === 'reject') {
+      // 拒绝操作可能影响后续步骤
+      const stepIndex = decisionDraft.decision_steps?.findIndex(
+        (s: any) => s.id === body.step_id,
+      );
+      if (stepIndex !== undefined && stepIndex >= 0) {
+        const subsequentSteps = decisionDraft.decision_steps?.slice(stepIndex + 1) || [];
+        for (const step of subsequentSteps) {
+          const stepAny = step as any;
+          if (stepAny.dependencies?.includes(body.step_id)) {
+            affectedSteps.push(step.id);
+            estimatedChanges.push({
+              step_id: step.id,
+              change_type: 'regenerated',
+              description: `依赖被拒绝的步骤，需要重新生成`,
+            });
+          }
+        }
+      }
+      warnings.push('拒绝此步骤可能导致后续依赖步骤需要重新生成');
+    } else if (body.proposed_changes.action === 'modify') {
+      estimatedChanges.push({
+        step_id: body.step_id,
+        change_type: 'modified',
+        description: '步骤将按照您的修改进行更新',
+      });
+    }
+
+    // 计算风险等级
+    const riskLevel: 'low' | 'medium' | 'high' =
+      affectedSteps.length > 3 ? 'high' :
+      affectedSteps.length > 0 ? 'medium' : 'low';
+
+    return {
+      draft_id: draftId,
+      step_id: body.step_id,
+      impact: {
+        affected_steps: affectedSteps,
+        estimated_changes: estimatedChanges,
+        risk_level: riskLevel,
+        warnings,
+      },
+    };
+  }
+
+  /**
+   * 获取决策回放数据
+   *
+   * 获取决策草案的回放数据，包括决策时间线、快照和可视化数据
+   */
+  @Get(':draftId/replay')
+  @ApiOperation({
+    summary: '获取决策回放数据',
+    description: '获取决策草案的回放数据，用于前端决策可视化和回放功能',
+  })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: '回放数据获取成功' })
+  @ApiResponse({ status: 404, description: '决策草案不存在' })
+  async getReplayData(@Param('draftId') draftId: string): Promise<{
+    draft_id: string;
+    timeline: Array<{
+      step_id: string;
+      timestamp: string;
+      decision_type: string;
+      summary: string;
+      status: string;
+    }>;
+    snapshots: Array<{
+      snapshot_id: string;
+      step_id: string;
+      state: any;
+      created_at: string;
+    }>;
+    visualization: {
+      nodes: Array<{ id: string; type: string; label: string; data: any }>;
+      edges: Array<{ source: string; target: string; label?: string }>;
+    };
+  }> {
+    this.logger.log(`[DecisionDraftController] 获取决策回放数据: draft_id=${draftId}`);
+
+    const decisionDraft = await this.storageService.loadDecisionDraft(draftId);
+    if (!decisionDraft) {
+      throw new Error(`决策草案不存在: ${draftId}`);
+    }
+
+    // 构建时间线
+    const timeline = (decisionDraft.decision_steps || []).map((step, index) => ({
+      step_id: step.id || `step-${index}`,
+      timestamp: decisionDraft.metadata?.created_at || new Date().toISOString(),
+      decision_type: step.type || 'unknown',
+      summary: step.title || step.description || `步骤 ${index + 1}`,
+      status: step.status || 'completed',
+    }));
+
+    // 构建快照
+    const snapshots = (decisionDraft.decision_steps || []).map((step, index) => ({
+      snapshot_id: `snapshot-${step.id || index}`,
+      step_id: step.id || `step-${index}`,
+      state: {
+        inputs: step.inputs || [],
+        outputs: step.outputs || [],
+        evidence: step.evidence || [],
+      },
+      created_at: decisionDraft.metadata?.created_at || new Date().toISOString(),
+    }));
+
+    // 构建可视化数据（节点和边）
+    const nodes = (decisionDraft.decision_steps || []).map((step, index) => ({
+      id: step.id || `step-${index}`,
+      type: step.type || 'decision',
+      label: step.title || `决策 ${index + 1}`,
+      data: {
+        status: step.status,
+        confidence: step.confidence,
+        description: step.description,
+      },
+    }));
+
+    const edges: Array<{ source: string; target: string; label?: string }> = [];
+    for (let i = 1; i < nodes.length; i++) {
+      edges.push({
+        source: nodes[i - 1].id,
+        target: nodes[i].id,
+        label: `→`,
+      });
+    }
+
+    return {
+      draft_id: decisionDraft.draft_id,
+      timeline,
+      snapshots,
+      visualization: {
+        nodes,
+        edges,
+      },
     };
   }
 }

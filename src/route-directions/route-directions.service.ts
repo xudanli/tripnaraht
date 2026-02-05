@@ -396,6 +396,87 @@ export class RouteDirectionsService {
   }
 
   /**
+   * 检查路线模板的迁移状态
+   * @param templateId 路线模板ID
+   */
+  async getTemplateMigrationStatus(templateId: number): Promise<{
+    templateId: number;
+    templateName: string;
+    usesOldFormat: boolean;
+    dayPlans: Array<{
+      day: number;
+      theme?: string;
+      hasRequiredNodes: boolean;
+      requiredNodesCount: number;
+      hasPois: boolean;
+      poisCount: number;
+      needsMigration: boolean;
+      missingPoiIds?: number[];
+    }>;
+    needsMigration: boolean;
+  }> {
+    const template = await this.findRouteTemplateById(templateId);
+    const dayPlans = this.normalizeDayPlans(template.dayPlans) as any[];
+
+    const dayPlanStatuses = await Promise.all(
+      dayPlans.map(async (plan: any) => {
+        const day = plan.day || 1;
+        const requiredNodes = plan.requiredNodes || [];
+        const pois = plan.pois || [];
+        
+        const hasRequiredNodes = Array.isArray(requiredNodes) && requiredNodes.length > 0;
+        const hasPois = Array.isArray(pois) && pois.length > 0;
+        const needsMigration = hasRequiredNodes && !hasPois;
+
+        // 如果需要迁移，检查哪些POI ID在数据库中不存在
+        let missingPoiIds: number[] = [];
+        if (needsMigration) {
+          const nodeIds = requiredNodes
+            .map((id: any) => {
+              if (typeof id === 'number') return id;
+              if (typeof id === 'string') {
+                const numId = parseInt(id, 10);
+                return isNaN(numId) ? null : numId;
+              }
+              return null;
+            })
+            .filter((id: any): id is number => id !== null);
+
+          if (nodeIds.length > 0) {
+            const existingPlaces = await this.prisma.place.findMany({
+              where: { id: { in: nodeIds } },
+              select: { id: true },
+            });
+            const existingIds = new Set(existingPlaces.map(p => p.id));
+            missingPoiIds = nodeIds.filter(id => !existingIds.has(id));
+          }
+        }
+
+        return {
+          day,
+          theme: plan.theme,
+          hasRequiredNodes,
+          requiredNodesCount: requiredNodes.length,
+          hasPois,
+          poisCount: pois.length,
+          needsMigration,
+          ...(missingPoiIds.length > 0 && { missingPoiIds }),
+        };
+      })
+    );
+
+    const needsMigration = dayPlanStatuses.some(status => status.needsMigration);
+
+    return {
+      templateId: template.id,
+      templateName: template.nameCN || template.name || 'Unnamed',
+      usesOldFormat: needsMigration,
+      dayPlans: dayPlanStatuses,
+      needsMigration,
+    };
+  }
+
+  /**
    * 根据路线模板获取可用POI列表
    * @param templateId 路线模板ID
    * @param options 查询选项（类别、搜索关键词、分页）
@@ -754,7 +835,15 @@ export class RouteDirectionsService {
    */
   async addPoiToTemplate(
     templateId: number,
-    dto: { day: number; poiId: number; required?: boolean; order?: number; durationMinutes?: number },
+    dto: { 
+      day: number; 
+      poiId: number; 
+      required?: boolean; 
+      priority?: 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+      order?: number; 
+      durationMinutes?: number;
+      priorityReason?: string;
+    },
   ): Promise<any> {
     // 1. 检查模板是否存在
     const template = await this.prisma.routeTemplate.findUnique({
@@ -805,20 +894,30 @@ export class RouteDirectionsService {
     }
 
     // 5. 添加 POI
+    // 处理优先级：如果设置了 priority，根据 priority 推断 required
+    // 如果设置了 required 但没有 priority，根据 required 推断 priority（向后兼容）
+    const priority = dto.priority || (dto.required ? 'MUST_SEE' : 'MEDIUM');
+    const required = dto.required ?? (priority === 'MUST_SEE');
+
     const newPoi: any = {
       id: place.id,
       uuid: place.uuid,
       nameCN: place.nameCN,
       nameEN: place.nameEN || undefined,
       category: place.category,
-      required: dto.required || false,
+      required,
+      priority,
       order: dto.order || existingPois.length + 1,
     };
 
     if (place.address) newPoi.address = place.address;
     if (place.rating) newPoi.rating = place.rating;
     if (place.description) newPoi.description = place.description;
+    // 🆕 保存时间字段
+    if (dto.startTime) newPoi.startTime = dto.startTime;
+    if (dto.endTime) newPoi.endTime = dto.endTime;
     if (dto.durationMinutes) newPoi.durationMinutes = dto.durationMinutes;
+    if (dto.priorityReason) newPoi.priorityReason = dto.priorityReason;
 
     existingPois.push(newPoi);
 
@@ -838,7 +937,7 @@ export class RouteDirectionsService {
     });
 
     // 标准化返回的 dayPlans 格式
-    updated.dayPlans = this.normalizeDayPlans(updated.dayPlans);
+    updatedTemplate.dayPlans = this.normalizeDayPlans(updatedTemplate.dayPlans);
 
     // 8. 更新 RouteDirection 的 signaturePois.examples
     const routeDirection = await this.prisma.routeDirection.findUnique({
@@ -950,6 +1049,175 @@ export class RouteDirectionsService {
     return {
       template: updatedTemplate,
       removedPoi: poiToRemove,
+    };
+  }
+
+  /**
+   * 更新路线模板中的 POI（支持优先级更新）
+   */
+  async updatePoiInTemplate(
+    templateId: number,
+    dto: { 
+      day: number; 
+      poiId: number; 
+      required?: boolean;
+      priority?: 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+      startTime?: string;
+      endTime?: string;
+      durationMinutes?: number;
+      priorityReason?: string;
+    },
+  ): Promise<any> {
+    // 1. 检查模板是否存在
+    const template = await this.prisma.routeTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException(`Route template with ID ${templateId} not found`);
+    }
+
+    // 2. 解析 dayPlans（标准化格式）
+    const dayPlans = this.normalizeDayPlans(template.dayPlans);
+    const dayPlan = dayPlans.find((dp: any) => dp.day === dto.day);
+
+    if (!dayPlan) {
+      throw new NotFoundException(`Day ${dto.day} not found in route template`);
+    }
+
+    // 3. 查找要更新的 POI
+    const existingPois = dayPlan.pois || [];
+    const poiIndex = existingPois.findIndex((p: any) => p.id === dto.poiId);
+
+    if (poiIndex === -1) {
+      throw new NotFoundException(
+        `POI with ID ${dto.poiId} not found in day ${dto.day}`,
+      );
+    }
+
+    const existingPoi = existingPois[poiIndex];
+
+    // 4. 更新 POI 字段
+    if (dto.priority !== undefined) {
+      existingPoi.priority = dto.priority;
+      // 同步更新 required 字段以保持一致性
+      if (dto.required === undefined) {
+        existingPoi.required = dto.priority === 'MUST_SEE';
+      }
+    }
+    if (dto.required !== undefined) {
+      existingPoi.required = dto.required;
+      // 如果只设置了 required 但没有 priority，推断 priority
+      if (dto.priority === undefined && existingPoi.priority === undefined) {
+        existingPoi.priority = dto.required ? 'MUST_SEE' : 'MEDIUM';
+      }
+    }
+    // 🆕 更新开始和结束时间
+    if (dto.startTime !== undefined) {
+      existingPoi.startTime = dto.startTime;
+    }
+    if (dto.endTime !== undefined) {
+      existingPoi.endTime = dto.endTime;
+    }
+    if (dto.durationMinutes !== undefined) {
+      existingPoi.durationMinutes = dto.durationMinutes;
+    }
+    if (dto.priorityReason !== undefined) {
+      existingPoi.priorityReason = dto.priorityReason;
+    }
+
+    // 5. 更新 dayPlan
+    dayPlan.pois = existingPois;
+
+    // 6. 更新模板
+    const updatedTemplate = await this.prisma.routeTemplate.update({
+      where: { id: templateId },
+      data: {
+        dayPlans: dayPlans as any,
+        updatedAt: new Date(),
+      },
+      include: {
+        routeDirection: true,
+      },
+    });
+
+    // 标准化返回的 dayPlans 格式
+    updatedTemplate.dayPlans = this.normalizeDayPlans(updatedTemplate.dayPlans);
+
+    return {
+      template: updatedTemplate,
+      updatedPoi: existingPoi,
+    };
+  }
+
+  /**
+   * 批量更新路线模板中的 POI 优先级
+   */
+  async bulkUpdatePoiPriority(
+    templateId: number,
+    updates: Array<{
+      day: number;
+      poiId: number;
+      priority: 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+      priorityReason?: string;
+    }>,
+  ): Promise<any> {
+    // 1. 检查模板是否存在
+    const template = await this.prisma.routeTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException(`Route template with ID ${templateId} not found`);
+    }
+
+    // 2. 解析 dayPlans（标准化格式）
+    const dayPlans = this.normalizeDayPlans(template.dayPlans);
+    const updatedPois: any[] = [];
+    const errors: string[] = [];
+
+    // 3. 批量更新
+    for (const update of updates) {
+      const dayPlan = dayPlans.find((dp: any) => dp.day === update.day);
+      if (!dayPlan) {
+        errors.push(`Day ${update.day} not found`);
+        continue;
+      }
+
+      const existingPois = dayPlan.pois || [];
+      const poi = existingPois.find((p: any) => p.id === update.poiId);
+      if (!poi) {
+        errors.push(`POI ${update.poiId} not found in day ${update.day}`);
+        continue;
+      }
+
+      poi.priority = update.priority;
+      poi.required = update.priority === 'MUST_SEE';
+      if (update.priorityReason) {
+        poi.priorityReason = update.priorityReason;
+      }
+      updatedPois.push({ day: update.day, poi });
+    }
+
+    // 4. 更新模板
+    const updatedTemplate = await this.prisma.routeTemplate.update({
+      where: { id: templateId },
+      data: {
+        dayPlans: dayPlans as any,
+        updatedAt: new Date(),
+      },
+      include: {
+        routeDirection: true,
+      },
+    });
+
+    // 标准化返回的 dayPlans 格式
+    updatedTemplate.dayPlans = this.normalizeDayPlans(updatedTemplate.dayPlans);
+
+    return {
+      template: updatedTemplate,
+      updatedPois,
+      errors: errors.length > 0 ? errors : undefined,
     };
   }
 
@@ -1163,11 +1431,18 @@ export class RouteDirectionsService {
     );
 
     // 5. 创建行程（使用事务）
+    // 生成行程名称（如果未提供，使用默认名称）
+    const tripName = dto.name?.trim() || this.generateDefaultTripName({
+      destination: countryCode,
+      startDate: dto.startDate,
+    });
+
     return await this.prisma.$transaction(async (tx) => {
       // 5.1 创建 Trip
       const trip = await tx.trip.create({
         data: {
           id: randomUUID(),
+          name: tripName, // 新增：行程名称
           destination: countryCode,
           startDate: startDate,
           endDate: endDate,
@@ -1261,18 +1536,69 @@ export class RouteDirectionsService {
       // 调试日志
       this.logger.debug(`Saved dayThemes to Trip metadata:`, JSON.stringify(dayThemes));
 
-      // 5.3 批量创建 ItineraryItem
+      // 5.3 批量创建 ItineraryItem（考虑交通时间）
       const itemsToCreate = [];
       let placesMatched = 0;
       let placesMissing = 0;
 
+      // 🆕 获取所有candidates的坐标信息（用于计算交通时间）
+      const candidateIds = candidates.map(c => c.id);
+      const candidateCoordsMap = new Map<number, { lat: number; lng: number }>();
+      
+      if (candidateIds.length > 0) {
+        try {
+          const locationResults = await tx.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+            SELECT 
+              id,
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ANY(${candidateIds}::int[]) AND location IS NOT NULL
+          `;
+          
+          locationResults.forEach(result => {
+            candidateCoordsMap.set(result.id, {
+              lat: Number(result.lat),
+              lng: Number(result.lng),
+            });
+          });
+        } catch (error: any) {
+          this.logger.warn(`批量提取坐标失败: ${error.message}`);
+        }
+      }
+
+      // 🆕 跟踪前一个行程项的信息（用于计算交通时间）
+      let previousItemEndTime: Date | null = null;
+      let previousPlaceCoords: { lat: number; lng: number } | null = null;
+      
       for (const dayResult of llmResult.days || []) {
         const tripDay = tripDays[dayResult.day - 1];
         if (!tripDay) continue;
 
         const dayDate = new Date(tripDay.date);
+        const slots = dayResult.slots || {};
         
-        for (const [slot, slotData] of Object.entries(dayResult.slots || {})) {
+        // 🆕 每天开始时重置前一个行程项信息（跨天时）
+        if (previousItemEndTime && new Date(previousItemEndTime).toDateString() !== dayDate.toDateString()) {
+          previousItemEndTime = null;
+          previousPlaceCoords = null;
+        }
+        
+        // 🆕 收集当天的所有行程项，然后按 startTime 排序
+        const dayItems: Array<{
+          id: string;
+          tripDayId: string;
+          placeId: number;
+          type: string;
+          startTime: Date;
+          endTime: Date;
+          note: string | null;
+        }> = [];
+        
+        // 按照固定的slot顺序处理
+        const slotOrder = ['morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+        for (const slot of slotOrder) {
+          const slotData = slots[slot];
           if (!slotData || !slotData.placeId) {
             if (slotData?.required) {
               placesMissing++;
@@ -1290,8 +1616,97 @@ export class RouteDirectionsService {
 
           placesMatched++;
 
-          // 计算时间
-          const { startTime, endTime } = this.calculateSlotTime(dayDate, slot);
+          // 🆕 优先使用模板中的时间，如果没有则计算时间
+          let startTime: Date;
+          let endTime: Date;
+          
+          // 如果模板中提供了 startTime 和 endTime，直接使用
+          if (slotData.startTime && slotData.endTime) {
+            // 将模板中的时间字符串转换为 Date 对象
+            // 模板中的时间可能是相对时间（如 "09:00"）或绝对时间（ISO 8601）
+            const templateStartTime = new Date(slotData.startTime);
+            const templateEndTime = new Date(slotData.endTime);
+            
+            // 如果时间是相对时间（只有时间部分），需要结合日期
+            if (isNaN(templateStartTime.getTime()) || isNaN(templateEndTime.getTime())) {
+              // 尝试解析为 HH:mm 格式
+              const startMatch = slotData.startTime.match(/(\d{1,2}):(\d{2})/);
+              const endMatch = slotData.endTime.match(/(\d{1,2}):(\d{2})/);
+              
+              if (startMatch && endMatch) {
+                const [, startHour, startMin] = startMatch.map(Number);
+                const [, endHour, endMin] = endMatch.map(Number);
+                startTime = new Date(dayDate);
+                startTime.setHours(startHour, startMin, 0, 0);
+                endTime = new Date(dayDate);
+                endTime.setHours(endHour, endMin, 0, 0);
+              } else {
+                // 解析失败，使用默认计算逻辑
+                const slotDefaultTime = this.calculateSlotTime(dayDate, slot);
+                startTime = slotDefaultTime.startTime;
+                endTime = slotDefaultTime.endTime;
+              }
+            } else {
+              // 是有效的 Date 对象，直接使用
+              startTime = templateStartTime;
+              endTime = templateEndTime;
+            }
+          } else {
+            // 模板中没有提供时间，使用计算逻辑（考虑交通时间）
+            const slotDefaultTime = this.calculateSlotTime(dayDate, slot);
+            const currentPlaceCoords = candidateCoordsMap.get(slotData.placeId);
+            
+            if (previousItemEndTime && previousPlaceCoords && currentPlaceCoords) {
+              // 计算从前一个地点到当前地点的交通时间
+              const travelTimeMinutes = this.calculateTravelTimeBetweenPlaces(
+                previousPlaceCoords,
+                currentPlaceCoords
+              );
+              
+              // 开始时间 = 前一个行程项结束时间 + 交通时间 + 缓冲时间（15分钟）
+              const bufferMinutes = 15;
+              const calculatedStartTime = new Date(
+                previousItemEndTime.getTime() + (travelTimeMinutes + bufferMinutes) * 60 * 1000
+              );
+              
+              // 确保开始时间不早于slot的默认开始时间
+              if (calculatedStartTime < slotDefaultTime.startTime) {
+                startTime = slotDefaultTime.startTime;
+              } else if (calculatedStartTime >= slotDefaultTime.endTime) {
+                this.logger.warn(
+                  `Calculated start time ${calculatedStartTime.toISOString()} exceeds slot end time for ${slot}, using slot default start time`
+                );
+                startTime = slotDefaultTime.startTime;
+              } else {
+                startTime = calculatedStartTime;
+              }
+              
+              // 计算结束时间：优先使用模板的 durationMinutes，否则根据POI类型和slot确定
+              const durationMinutes = slotData.durationMinutes 
+                || this.getActivityDuration(slot, candidate.category);
+              endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+              
+              // 确保结束时间不超过slot的默认结束时间
+              if (endTime > slotDefaultTime.endTime) {
+                const maxDuration = (slotDefaultTime.endTime.getTime() - startTime.getTime()) / (60 * 1000);
+                if (maxDuration > 30) {
+                  endTime = slotDefaultTime.endTime;
+                } else {
+                  startTime = slotDefaultTime.startTime;
+                  endTime = slotDefaultTime.endTime;
+                }
+              }
+            } else {
+              // 第一个行程项或没有坐标信息，使用slot的默认时间
+              startTime = slotDefaultTime.startTime;
+              endTime = slotDefaultTime.endTime;
+              
+              // 如果模板提供了 durationMinutes，调整结束时间
+              if (slotData.durationMinutes) {
+                endTime = new Date(startTime.getTime() + slotData.durationMinutes * 60 * 1000);
+              }
+            }
+          }
 
           // 构建note，包含reason和isRequired信息
           let note = slotData.reason || null;
@@ -1299,7 +1714,8 @@ export class RouteDirectionsService {
             note = note ? `${note} [必游]` : '[必游]';
           }
 
-          itemsToCreate.push({
+          // 先收集到当天的数组中
+          dayItems.push({
             id: randomUUID(),
             tripDayId: tripDay.id,
             placeId: slotData.placeId,
@@ -1307,9 +1723,18 @@ export class RouteDirectionsService {
             startTime: startTime,
             endTime: endTime,
             note: note,
-            // 注意：isRequired字段不在schema中，我们通过note标记来标识
           });
+          
+          // 🆕 更新前一个行程项信息（用于计算下一个的时间）
+          previousItemEndTime = endTime;
+          // 更新为当前地点的坐标（用于下一个行程项的计算）
+          const currentPlaceCoordsForNext = candidateCoordsMap.get(slotData.placeId);
+          previousPlaceCoords = currentPlaceCoordsForNext || null;
         }
+        
+        // 🆕 按 startTime 排序后添加到 itemsToCreate
+        dayItems.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+        itemsToCreate.push(...dayItems);
       }
 
       // 批量创建
@@ -1811,13 +2236,25 @@ export class RouteDirectionsService {
     const attractions = candidates.filter(c => c.category === 'ATTRACTION');
     const hotels = candidates.filter(c => c.category === 'HOTEL');
     
-    // 获取模板中定义的POI（按order排序）
-    const getTemplatePOIs = (dayPlan: DayPlan | undefined): Array<{ id: number; required: boolean; order: number }> => {
+    // 🆕 获取模板中定义的POI（按 startTime 排序，如果没有则按数组顺序）
+    const getTemplatePOIs = (dayPlan: DayPlan | undefined): Array<{ 
+      id: number; 
+      required: boolean; 
+      startTime?: string;
+      endTime?: string;
+      durationMinutes?: number;
+    }> => {
       if (!dayPlan?.pois || dayPlan.pois.length === 0) {
         return [];
       }
       
-      const templatePois: Array<{ id: number; required: boolean; order: number }> = [];
+      const templatePois: Array<{ 
+        id: number; 
+        required: boolean; 
+        startTime?: string;
+        endTime?: string;
+        durationMinutes?: number;
+      }> = [];
       for (const poi of dayPlan.pois) {
         if (poi.id) {
           // 验证POI在候选列表中
@@ -1826,7 +2263,9 @@ export class RouteDirectionsService {
             templatePois.push({
               id: candidate.id,
               required: poi.required || false,
-              order: poi.order || templatePois.length + 1,
+              startTime: poi.startTime,
+              endTime: poi.endTime,
+              durationMinutes: poi.durationMinutes,
             });
           } else {
             this.logger.warn(`Template POI ${poi.id} (${poi.uuid || 'no uuid'}) not found in candidates for day ${dayPlan.day}`);
@@ -1834,8 +2273,15 @@ export class RouteDirectionsService {
         }
       }
       
-      // 按order排序
-      return templatePois.sort((a, b) => a.order - b.order);
+      // 🆕 按 startTime 排序（如果有），否则保持数组顺序
+      return templatePois.sort((a, b) => {
+        if (a.startTime && b.startTime) {
+          return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+        }
+        if (a.startTime) return -1;
+        if (b.startTime) return 1;
+        return 0; // 保持原顺序
+      });
     };
     
     // 根据主题匹配POI（简单关键词匹配）
@@ -1902,13 +2348,16 @@ export class RouteDirectionsService {
         evening: null,
       };
       
-      // 如果模板中有POI，严格按照顺序分配
+      // 🆕 如果模板中有POI，严格按照模板顺序分配（保持数据结构一致）
       if (templatePOIs.length > 0) {
-        // 按order排序（已经在getTemplatePOIs中排序）
-        let slotIndex = 0;
         const slotOrder = ['morning', 'lunch', 'afternoon', 'dinner', 'evening'];
         
-        for (const templatePOI of templatePOIs) {
+        // 🆕 如果模板POI有 startTime，根据时间分配到对应的slot
+        // 否则，严格按照模板POI的顺序依次分配
+        const poisWithSlots: Array<{ poi: typeof templatePOIs[0]; slotName: string }> = [];
+        
+        for (let i = 0; i < templatePOIs.length; i++) {
+          const templatePOI = templatePOIs[i];
           const candidate = candidates.find(c => c.id === templatePOI.id);
           if (!candidate) {
             this.logger.warn(`Template POI ${templatePOI.id} not found in candidates for day ${day}`);
@@ -1921,31 +2370,76 @@ export class RouteDirectionsService {
             continue;
           }
           
-          // 根据POI类别选择合适的slot
           let slotName: string | null = null;
-          if (candidate.category === 'ATTRACTION') {
-            // ATTRACTION优先分配到morning或afternoon
-            slotName = slotIndex % 2 === 0 ? 'morning' : 'afternoon';
-          } else if (candidate.category === 'RESTAURANT') {
-            // RESTAURANT优先分配到lunch或dinner
-            slotName = slotIndex % 2 === 0 ? 'lunch' : 'dinner';
+          
+          // 🆕 如果模板POI有 startTime，根据时间确定slot
+          if (templatePOI.startTime) {
+            try {
+              const startTimeStr = templatePOI.startTime;
+              let hour: number;
+              
+              // 解析时间（支持 ISO 8601 或 HH:mm）
+              if (startTimeStr.includes('T')) {
+                // ISO 8601 格式
+                const date = new Date(startTimeStr);
+                hour = date.getHours();
+              } else {
+                // HH:mm 格式
+                const match = startTimeStr.match(/(\d{1,2}):(\d{2})/);
+                if (match) {
+                  hour = parseInt(match[1], 10);
+                } else {
+                  // 解析失败，使用顺序分配
+                  slotName = slotOrder[i % slotOrder.length];
+                }
+              }
+              
+              // 根据时间确定slot
+              if (hour !== undefined) {
+                if (hour >= 6 && hour < 12) {
+                  slotName = 'morning';
+                } else if (hour >= 12 && hour < 14) {
+                  slotName = 'lunch';
+                } else if (hour >= 14 && hour < 18) {
+                  slotName = 'afternoon';
+                } else if (hour >= 18 && hour < 20) {
+                  slotName = 'dinner';
+                } else {
+                  slotName = 'evening';
+                }
+              }
+            } catch (error) {
+              // 解析失败，使用顺序分配
+              slotName = slotOrder[i % slotOrder.length];
+            }
           } else {
-            // 其他类别按顺序分配
-            slotName = slotOrder[slotIndex % slotOrder.length];
+            // 🆕 没有 startTime，严格按照模板顺序依次分配slot
+            slotName = slotOrder[i % slotOrder.length];
           }
           
-          // 如果slot已被占用，找下一个可用slot
-          if (slots[slotName]) {
-            for (const nextSlot of slotOrder) {
-              if (!slots[nextSlot]) {
-                slotName = nextSlot;
+          // 如果slot已被占用，找下一个可用slot（但保持相对顺序）
+          if (slots[slotName!]) {
+            // 从当前slot开始，找下一个可用slot
+            const currentSlotIndex = slotOrder.indexOf(slotName!);
+            for (let j = currentSlotIndex + 1; j < slotOrder.length; j++) {
+              if (!slots[slotOrder[j]]) {
+                slotName = slotOrder[j];
                 break;
+              }
+            }
+            // 如果后面没有可用slot，从前面找
+            if (slots[slotName!]) {
+              for (let j = 0; j < currentSlotIndex; j++) {
+                if (!slots[slotOrder[j]]) {
+                  slotName = slotOrder[j];
+                  break;
+                }
               }
             }
           }
           
           // 如果所有slot都被占用，跳过这个POI（除非是required）
-          if (slots[slotName]) {
+          if (slots[slotName!]) {
             if (templatePOI.required) {
               // required POI必须分配，替换已占用的slot
               this.logger.warn(`Required POI ${templatePOI.id} replacing existing slot ${slotName}`);
@@ -1955,6 +2449,14 @@ export class RouteDirectionsService {
             }
           }
           
+          poisWithSlots.push({ poi: templatePOI, slotName: slotName! });
+        }
+        
+        // 🆕 按照模板POI的顺序分配slot（保持数据结构一致）
+        for (const { poi: templatePOI, slotName } of poisWithSlots) {
+          const candidate = candidates.find(c => c.id === templatePOI.id);
+          if (!candidate) continue;
+          
           usedPlaceIds.add(templatePOI.id);
           slots[slotName] = {
             placeId: templatePOI.id,
@@ -1962,8 +2464,11 @@ export class RouteDirectionsService {
               ? `模板要求的必游景点：${candidate.nameCN || ''}`
               : `模板推荐的景点：${candidate.nameCN || ''}`,
             required: templatePOI.required,
+            // 🆕 传递模板中的时间信息
+            startTime: templatePOI.startTime,
+            endTime: templatePOI.endTime,
+            durationMinutes: templatePOI.durationMinutes,
           };
-          slotIndex++;
         }
       }
       
@@ -2101,6 +2606,113 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
       return 'REST';
     }
     return 'ACTIVITY';
+  }
+
+  /**
+   * 🆕 计算两个地点之间的交通时间（分钟）
+   * 使用Haversine公式计算直线距离，然后估算交通时间
+   */
+  private calculateTravelTimeBetweenPlaces(
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number }
+  ): number {
+    // 计算直线距离（公里）
+    const distanceKm = this.calculateHaversineDistance(
+      from.lat,
+      from.lng,
+      to.lat,
+      to.lng
+    );
+
+    // 根据距离估算交通时间
+    if (distanceKm < 1) {
+      // 步行：约 12 分钟/km
+      return Math.ceil(distanceKm * 12);
+    } else if (distanceKm < 50) {
+      // 驾车：约 2 分钟/km（考虑市区交通）
+      return Math.ceil(distanceKm * 2);
+    } else {
+      // 长途：约 1 分钟/km
+      return Math.ceil(distanceKm * 1);
+    }
+  }
+
+  /**
+   * 🆕 使用Haversine公式计算两点间距离（公里）
+   */
+  private calculateHaversineDistance(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371; // 地球半径（公里）
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLng = this.toRadians(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(lat1)) *
+        Math.cos(this.toRadians(lat2)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /**
+   * 🆕 角度转弧度
+   */
+  private toRadians(degrees: number): number {
+    return degrees * (Math.PI / 180);
+  }
+
+  /**
+   * 🆕 根据slot和category获取活动持续时间（分钟）
+   */
+  private getActivityDuration(slot: string, category: string): number {
+    // 根据slot确定基础持续时间
+    const slotDurations: Record<string, number> = {
+      morning: 180,    // 3小时
+      lunch: 60,       // 1小时
+      afternoon: 240,  // 4小时
+      dinner: 90,      // 1.5小时
+      evening: 120,    // 2小时
+    };
+
+    let duration = slotDurations[slot] || 120; // 默认2小时
+
+    // 根据category调整
+    if (category === 'RESTAURANT') {
+      duration = slot === 'lunch' ? 60 : 90; // 午餐1小时，晚餐1.5小时
+    } else if (category === 'ATTRACTION') {
+      // 景点通常需要更长时间
+      if (slot === 'morning' || slot === 'afternoon') {
+        duration = 180; // 3小时
+      }
+    }
+
+    return duration;
+  }
+
+  /**
+   * 生成默认行程名称
+   * 格式：{目的地名称} {开始日期}
+   * 例如：冰岛 2025-06-01
+   */
+  private generateDefaultTripName(params: {
+    destination: string;
+    startDate: string;
+  }): string {
+    const { generateDefaultTripName } = require('../trips/utils/trip-name.util');
+    return generateDefaultTripName(params);
+  }
+
+  /**
+   * 从国家代码获取目的地名称（中文）
+   */
+  private getDestinationName(countryCode: string): string {
+    const { getDestinationName } = require('../trips/utils/trip-name.util');
+    return getDestinationName(countryCode);
   }
 }
 

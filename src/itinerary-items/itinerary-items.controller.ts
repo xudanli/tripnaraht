@@ -450,11 +450,15 @@ export class ItineraryItemsController {
 
   // ========== 数据修复接口 ==========
 
+  /**
+   * ⚠️ 管理/维护接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/itinerary-items/fix-dates
+   */
   @Public()
   @Post('trip/:tripId/fix-dates')
   @ApiOperation({ 
-    summary: '修复行程项日期一致性',
-    description: '修复行程项的 startTime/endTime 与所属 TripDay.date 不一致的问题。会自动将日期调整为正确的日期，同时保留时间部分'
+    summary: '[Admin] 修复行程项日期一致性',
+    description: '⚠️ 管理/维护接口。修复行程项的 startTime/endTime 与所属 TripDay.date 不一致的问题。会自动将日期调整为正确的日期，同时保留时间部分'
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiResponse({ 

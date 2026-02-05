@@ -28,6 +28,27 @@ export interface ClarificationValidation {
 }
 
 /**
+ * 🆕 HCI优化：条件输入字段配置
+ * 当用户选择特定选项时，显示后续输入字段
+ */
+export interface ConditionalInputField {
+  /** 触发此输入字段的选项值（当用户选择此选项时显示输入字段） */
+  triggerValue: string;
+  /** 输入字段类型 */
+  inputType: 'text' | 'date' | 'number' | 'date_range';
+  /** 输入字段标签 */
+  label?: string;
+  /** 占位符 */
+  placeholder?: string;
+  /** 是否必填 */
+  required?: boolean;
+  /** 验证规则 */
+  validation?: ClarificationValidation;
+  /** 提示文本 */
+  hint?: string;
+}
+
+/**
  * 澄清问题数据结构
  * 
  * 用于在用户输入信息不足时，通过结构化问题收集必要信息
@@ -51,6 +72,8 @@ export interface ClarificationQuestion {
   default?: string | string[];
   /** 验证规则（可选） */
   validation?: ClarificationValidation;
+  /** 🆕 HCI优化：条件输入字段（当用户选择特定选项时显示后续输入字段） */
+  conditionalInputs?: ConditionalInputField[];
 }
 
 /**

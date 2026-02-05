@@ -1,7 +1,7 @@
 // src/places/places.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { PlacesController } from './places.controller';
-import { PlacesV5Controller } from './places-v5.controller';
+// PlacesV5Controller 已删除 - 使用 PlacesController 替代
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
 import { AmapPOIService } from './services/amap-poi.service';
@@ -32,7 +32,7 @@ import { LlmModule } from '../llm/llm.module';
     forwardRef(() => RagModule), // 导入RAG模块以使用EmbeddingCacheService（使用forwardRef避免循环依赖）
     LlmModule, // 导入LLM模块以使用 PythonAIService
   ],
-  controllers: [PlacesController, PlacesV5Controller],
+  controllers: [PlacesController],
   providers: [
     PlacesService,
     HotelRecommendationService,

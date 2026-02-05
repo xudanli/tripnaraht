@@ -4,6 +4,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Query,
@@ -182,6 +183,36 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         'Failed to get available pois by template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Get('templates/:id/migration-status')
+  @ApiOperation({ 
+    summary: '检查路线模板迁移状态', 
+    description: '检查路线模板是否使用旧格式（只有requiredNodes）或新格式（包含pois数组）' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiResponse({ status: 200, description: '成功返回迁移状态' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async getTemplateMigrationStatus(@Param('id', ParseIntPipe) id: number) {
+    try {
+      const result = await this.routeDirectionsService.getTemplateMigrationStatus(id);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to get template migration status', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        'Failed to get template migration status',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }
@@ -494,6 +525,131 @@ export class RouteDirectionsController {
     }
   }
 
+  @Public()
+  @Patch('templates/:id/pois')
+  @ApiOperation({ 
+    summary: '更新路线模板中的 POI', 
+    description: '更新指定路线模板中的 POI 信息，包括优先级、顺序、停留时间等' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ 
+    schema: {
+      type: 'object',
+      properties: {
+        day: { type: 'number', description: '第几天（从1开始）' },
+        poiId: { type: 'number', description: 'POI ID' },
+        priority: { type: 'string', enum: ['MUST_SEE', 'HIGH', 'MEDIUM', 'LOW', 'OPTIONAL'], description: 'POI优先级' },
+        startTime: { type: 'string', description: '开始时间（ISO 8601 或 HH:mm 格式）' },
+        endTime: { type: 'string', description: '结束时间（ISO 8601 或 HH:mm 格式）' },
+        durationMinutes: { type: 'number', description: '停留时间（分钟）' },
+        priorityReason: { type: 'string', description: '优先级原因说明' },
+      },
+      required: ['day', 'poiId'],
+    }
+  })
+  @ApiResponse({ status: 200, description: '成功更新 POI' })
+  @ApiResponse({ status: 404, description: '路线模板或 POI 不存在' })
+  async updatePoiInTemplate(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: {
+      day: number;
+      poiId: number;
+      required?: boolean;
+      priority?: 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+      startTime?: string;
+      endTime?: string;
+      durationMinutes?: number;
+      priorityReason?: string;
+    },
+  ) {
+    try {
+      const result = await this.routeDirectionsService.updatePoiInTemplate(templateId, dto);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          error.message,
+          { statusCode: 400 }
+        );
+      }
+      this.logger.error('Failed to update POI in template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to update POI in template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  @Public()
+  @Patch('templates/:id/pois/bulk-priority')
+  @ApiOperation({ 
+    summary: '批量更新 POI 优先级', 
+    description: '批量更新路线模板中多个 POI 的优先级' 
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ 
+    schema: {
+      type: 'object',
+      properties: {
+        updates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              day: { type: 'number', description: '第几天（从1开始）' },
+              poiId: { type: 'number', description: 'POI ID' },
+              priority: { type: 'string', enum: ['MUST_SEE', 'HIGH', 'MEDIUM', 'LOW', 'OPTIONAL'] },
+              priorityReason: { type: 'string', description: '优先级原因说明' },
+            },
+            required: ['day', 'poiId', 'priority'],
+          }
+        }
+      },
+      required: ['updates'],
+    }
+  })
+  @ApiResponse({ status: 200, description: '成功批量更新 POI 优先级' })
+  @ApiResponse({ status: 404, description: '路线模板不存在' })
+  async bulkUpdatePoiPriority(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: {
+      updates: Array<{
+        day: number;
+        poiId: number;
+        priority: 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+        priorityReason?: string;
+      }>;
+    },
+  ) {
+    try {
+      const result = await this.routeDirectionsService.bulkUpdatePoiPriority(templateId, dto.updates);
+      return successResponse(result);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to bulk update POI priority', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to bulk update POI priority',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
   @Public() // 临时公开，用于测试
   @Post('templates/:id/create-trip')
   @ApiOperation({
@@ -568,10 +724,14 @@ export class RouteDirectionsController {
     }
   }
 
+  /**
+   * ⚠️ 内部调试接口 - 不应暴露给普通用户
+   * @deprecated 建议移到 /admin/route-directions/observability
+   */
   @Get('observability/trace/:requestId')
   @ApiOperation({
-    summary: '获取请求 trace 报告',
-    description: '获取指定请求的完整 trace 报告，用于回答"慢在哪""为什么选了这条 RD""为什么 POI pool 变小"',
+    summary: '[Internal] 获取请求 trace 报告',
+    description: '⚠️ 内部调试接口。获取指定请求的完整 trace 报告，用于回答"慢在哪""为什么选了这条 RD""为什么 POI pool 变小"',
   })
   @ApiParam({ name: 'requestId', description: '请求 ID', type: String })
   @ApiResponse({ status: 200, description: '成功返回 trace 报告' })
@@ -588,10 +748,14 @@ export class RouteDirectionsController {
     }
   }
 
+  /**
+   * ⚠️ 内部调试接口 - 不应暴露给普通用户
+   * @deprecated 建议移到 /admin/route-directions/observability
+   */
   @Get('observability/metrics')
   @ApiOperation({
-    summary: '获取聚合 metrics',
-    description: '获取 RouteDirection 相关的聚合 metrics（延迟、质量、错误）',
+    summary: '[Internal] 获取聚合 metrics',
+    description: '⚠️ 内部调试接口。获取 RouteDirection 相关的聚合 metrics（延迟、质量、错误）',
   })
   @ApiResponse({ status: 200, description: '成功返回 metrics' })
   async getMetrics() {
@@ -607,10 +771,16 @@ export class RouteDirectionsController {
     }
   }
 
+  /**
+   * @deprecated 请使用 GET /route-directions/interactions 接口
+   * interactions 接口提供更完整的信息（分数+解释+whyNotOthers）
+   * 
+   * 计划删除时间：下个版本
+   */
   @Get('cards')
   @ApiOperation({
-    summary: '获取路线方向卡片列表',
-    description: '获取面向前端/LLM 的路线方向卡片，用于在生成行程前展示',
+    summary: '[Deprecated] 获取路线方向卡片列表',
+    description: '⚠️ 已废弃，请使用 GET /interactions。获取面向前端/LLM 的路线方向卡片，用于在生成行程前展示',
   })
   @ApiQuery({ name: 'countryCode', required: true, description: '国家代码' })
   @ApiQuery({ name: 'month', required: false, description: '月份（1-12）', type: Number })
@@ -656,10 +826,16 @@ export class RouteDirectionsController {
     }
   }
 
+  /**
+   * @deprecated 请使用 GET /route-directions/:id 获取完整信息，
+   * 或使用 GET /route-directions/interactions 获取带分数的卡片列表
+   * 
+   * 计划删除时间：下个版本
+   */
   @Get(':id/card')
   @ApiOperation({
-    summary: '获取单个路线方向卡片',
-    description: '根据 ID 获取路线方向卡片',
+    summary: '[Deprecated] 获取单个路线方向卡片',
+    description: '⚠️ 已废弃，请使用 GET /:id 或 GET /interactions。根据 ID 获取路线方向卡片',
   })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
   @ApiResponse({ status: 200, description: '成功返回路线方向卡片', type: RouteDirectionCardDto })

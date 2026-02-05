@@ -143,6 +143,39 @@
   - 输入：已验证轨迹 + Reward信号
   - 输出：训练批次（trajectories, stats）
 
+### 8. LoRA 训练数据管道（新增）
+
+**核心要求**：
+- 为 LoRA 微调准备高质量训练数据
+- 支持多种数据格式（ShareGPT、Alpaca、TripNARA）
+- 集成到 FineTuneService 的数据上传流程
+
+**LoRA 训练数据流**：
+1. **数据收集**：从 ValidatedTrajectory 表提取高质量轨迹
+2. **数据转换**：转换为 LoRA 训练格式（conversations/instruction-response）
+3. **数据验证**：验证格式正确性和内容质量
+4. **数据上传**：通过 FineTuneService.uploadTrainingData() 上传到训练服务
+
+**数据格式**：
+```json
+{
+  "conversations": [
+    { "role": "user", "content": "用户输入" },
+    { "role": "assistant", "content": "模型输出" }
+  ]
+}
+```
+
+**关键约束**：
+- ✅ **只使用高质量轨迹**：validation_score >= 0.85
+- ✅ **数据格式标准化**：ShareGPT 格式（conversations）
+- ✅ **数据来源可追溯**：关联 trajectory_id、request_id
+
+**参考**：
+- `src/agent/training/services/fine-tune.service.ts` - LoRA 微调服务（prepareTrainingData、uploadTrainingData）
+- `python/train/train_lora.py` - LoRA 训练脚本（数据加载逻辑）
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调指南
+
 **参考**：
 - `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 - `.claude/roles/architect.md` - Iterative Deployment架构设计
@@ -377,6 +410,13 @@
 - `src/agent/services/agent.service.ts` - Agent 服务（包含 Metrics 记录）
 - `prisma/schema.prisma` - Prisma Schema
 - `docs/ROLES_AND_COLLABORATION.md` - 角色协作关系文档
+
+### LoRA 训练相关（新增）
+
+- `src/agent/training/services/fine-tune.service.ts` - **LoRA 微调服务**
+- `src/agent/training/services/training-data-preparation.service.ts` - 训练数据准备
+- `python/train/train_lora.py` - **LoRA 训练脚本**
+- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南**
 
 ## 常见问题
 

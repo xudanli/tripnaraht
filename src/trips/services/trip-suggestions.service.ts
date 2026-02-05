@@ -203,6 +203,136 @@ export class TripSuggestionsService {
   }
 
   /**
+   * 批量应用高优先级建议（Auto综合功能）
+   * 
+   * 决策：只应用高优先级建议（severity === BLOCKER）
+   * 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
+   */
+  async applyHighPrioritySuggestions(
+    tripId: string,
+    options?: {
+      preview?: boolean;
+      limit?: number;
+    }
+  ): Promise<{
+    success: boolean;
+    appliedCount: number;
+    suggestions: Array<{
+      id: string;
+      title: string;
+      severity: SuggestionSeverity;
+      applied: boolean;
+      error?: string;
+    }>;
+    impact?: ApplySuggestionResponseDto['impact'];
+  }> {
+    // 获取所有高优先级建议（BLOCKER = high priority）
+    const allSuggestions = await this.getSuggestions(tripId, { 
+      severity: SuggestionSeverity.BLOCKER,
+      status: SuggestionStatus.NEW,
+      limit: options?.limit || 100
+    });
+
+    const highPrioritySuggestions = allSuggestions.items.filter(s => {
+      const status = this.suggestionStatuses.get(s.id) || SuggestionStatus.NEW;
+      return status === SuggestionStatus.NEW && s.severity === SuggestionSeverity.BLOCKER;
+    });
+
+    if (highPrioritySuggestions.length === 0) {
+      return {
+        success: true,
+        appliedCount: 0,
+        suggestions: [],
+      };
+    }
+
+    // 如果是预览模式，只返回影响分析
+    if (options?.preview) {
+      return {
+        success: true,
+        appliedCount: highPrioritySuggestions.length,
+        suggestions: highPrioritySuggestions.map(s => ({
+          id: s.id,
+          title: s.title,
+          severity: s.severity,
+          applied: false,
+        })),
+        impact: {
+          metrics: {
+            fatigue: -highPrioritySuggestions.length * 5,
+            buffer: highPrioritySuggestions.length * 30,
+            cost: highPrioritySuggestions.length * 50,
+          },
+          risks: [],
+        },
+      };
+    }
+
+    // 批量应用高优先级建议
+    const results: Array<{
+      id: string;
+      title: string;
+      severity: SuggestionSeverity;
+      applied: boolean;
+      error?: string;
+    }> = [];
+
+    let successCount = 0;
+    for (const suggestion of highPrioritySuggestions) {
+      try {
+        // 使用默认操作（第一个主要操作）
+        const primaryAction = suggestion.actions.find(a => a.primary) || suggestion.actions[0];
+        if (!primaryAction) {
+          results.push({
+            id: suggestion.id,
+            title: suggestion.title,
+            severity: suggestion.severity,
+            applied: false,
+            error: '没有可执行的操作',
+          });
+          continue;
+        }
+
+        await this.applySuggestion(tripId, suggestion.id, {
+          actionId: primaryAction.id,
+          preview: false,
+        });
+
+        results.push({
+          id: suggestion.id,
+          title: suggestion.title,
+          severity: suggestion.severity,
+          applied: true,
+        });
+        successCount++;
+      } catch (error: any) {
+        this.logger.warn(`应用建议失败: ${suggestion.id}, error=${error.message}`);
+        results.push({
+          id: suggestion.id,
+          title: suggestion.title,
+          severity: suggestion.severity,
+          applied: false,
+          error: error.message,
+        });
+      }
+    }
+
+    return {
+      success: successCount > 0,
+      appliedCount: successCount,
+      suggestions: results,
+      impact: {
+        metrics: {
+          fatigue: -successCount * 5,
+          buffer: successCount * 30,
+          cost: successCount * 50,
+        },
+        risks: [],
+      },
+    };
+  }
+
+  /**
    * 应用建议
    */
   async applySuggestion(

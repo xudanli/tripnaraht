@@ -912,19 +912,46 @@ ${candidatesJson}
     }
 
     if (itemsToCreate.length > 0) {
+      // 🆕 按 tripDayId 分组，为每个 day 的 items 设置递增的 order
+      const itemsByDay = new Map<string, typeof itemsToCreate>();
+      for (const item of itemsToCreate) {
+        if (!itemsByDay.has(item.tripDayId)) {
+          itemsByDay.set(item.tripDayId, []);
+        }
+        itemsByDay.get(item.tripDayId)!.push(item);
+      }
+
       await this.prisma.$transaction(async (tx) => {
-        for (const item of itemsToCreate) {
-          await tx.itineraryItem.create({
-            data: {
-              id: randomUUID(),
-              tripDayId: item.tripDayId,
-              placeId: item.placeId,
-              type: item.type as any,
-              startTime: item.startTime,
-              endTime: item.endTime,
-              note: item.note,
-            } as any,
+        for (const [tripDayId, dayItems] of itemsByDay.entries()) {
+          // 查询当天最大的 order 值
+          const maxOrderItem = await tx.itineraryItem.findFirst({
+            where: { tripDayId },
+            orderBy: { order: 'desc' },
+            select: { order: true },
           });
+          let baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+            ? maxOrderItem.order + 1 
+            : 1;
+
+          // 按 startTime 排序，确保顺序正确
+          dayItems.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+          // 创建 items，设置递增的 order
+          for (let i = 0; i < dayItems.length; i++) {
+            const item = dayItems[i];
+            await tx.itineraryItem.create({
+              data: {
+                id: randomUUID(),
+                tripDayId: item.tripDayId,
+                placeId: item.placeId,
+                type: item.type as any,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                note: item.note,
+                order: baseOrder + i, // 🆕 设置显示顺序
+              } as any,
+            });
+          }
         }
       });
     }

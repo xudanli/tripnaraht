@@ -1,25 +1,57 @@
 # RL Infrastructure Python Services
 
-本目录包含RL Infrastructure的Python服务。
+本目录包含 RL Infrastructure 的传统 Python 服务。
 
-## 服务列表
+> ⚠️ **注意**：新的 LoRA 微调框架已在 `docker/` 和 `python/` 目录下实现，推荐使用新框架。
 
-### 1. Training Service (训练服务)
+## 服务架构对比
+
+| 服务 | 传统架构 (本目录) | 新 LoRA 框架 (推荐) |
+|------|-------------------|---------------------|
+| **训练服务** | `training_service.py` (端口 8001) | `python/train/api.py` (端口 8000) |
+| **推理服务** | `policy-service.ts` (端口 8002) | **vLLM** (端口 8080) |
+| **评分服务** | `llm_judge_service.py` (端口 8003) | `python/judge/llm_judge_service.py` (端口 8003) |
+| **训练框架** | Ray 分布式 | **LLaMA-Factory + LoRA** |
+| **模型管理** | 自定义 | **MLflow** |
+
+## 推荐：使用新 LoRA 微调框架
+
+```bash
+# 启动新框架（推荐）
+cd docker
+docker-compose -f docker-compose.train.yml up -d
+
+# 服务端口：
+# - 8000: LoRA 训练 API
+# - 8080: vLLM 推理
+# - 8003: LLM Judge
+# - 5000: MLflow
+# - 6380: Redis
+```
+
+详见：`docs/LORA_FINETUNE_GUIDE.md`
+
+---
+
+## 传统服务列表（向后兼容）
+
+### 1. Training Service (训练服务) ⚠️ 建议迁移到新框架
 - **端口**: 8001
 - **职责**: 管理训练任务，与Ray/MLflow集成
 - **文件**: `training_service.py`
+- **替代方案**: `python/train/api.py` + `docker/Dockerfile.train`
 
-### 2. Policy Service (策略服务) ✅ **已迁移到 TypeScript**
+### 2. Policy Service (策略服务) ⚠️ 建议使用 vLLM
 - **端口**: 8002
 - **职责**: 在线策略推理
 - **文件**: `policy-service.ts` (TypeScript)
-- **说明**: Python 版本已删除，使用 TypeScript 版本
+- **替代方案**: vLLM + `src/agent/training/services/vllm-client.service.ts`
 
-### 3. LLM Judge Service (LLM评分服务) ✅ **已集成到 TypeScript**
-- **状态**: 已集成到 `QualityScorerService`
+### 3. LLM Judge Service (LLM评分服务) ✅ **已整合到新框架**
+- **端口**: 8003
 - **职责**: 使用LLM进行质量评分
-- **说明**: 不再需要独立服务，直接使用内置 `LlmService`
-- **向后兼容**: 可通过 `USE_EXTERNAL_LLM_JUDGE=true` 使用外部服务
+- **新位置**: `python/judge/llm_judge_service.py`
+- **增强功能**: LoRA 模型评估、真实 LLM 调用
 
 ## 快速开始
 
@@ -183,11 +215,43 @@ black .
 isort .
 ```
 
-## TODO
+## 迁移指南
 
-- [ ] 实现Ray分布式训练
-- [ ] 实现MLflow集成
-- [ ] 实现实际的LLM API调用
+### 从传统架构迁移到新 LoRA 框架
+
+| 传统服务 | 新框架对应 |
+|----------|-----------|
+| `training_service.py` | `python/train/api.py` |
+| `policy-service.ts` | `VllmClientService` + vLLM |
+| `llm_judge_service.py` | `python/judge/llm_judge_service.py` |
+| Ray 训练 | LLaMA-Factory LoRA |
+| 自定义模型管理 | MLflow Model Registry |
+
+### NestJS 服务集成
+
+```typescript
+// 新服务
+import { FineTuneService } from './services/fine-tune.service';
+import { VllmClientService } from './services/vllm-client.service';
+import { LlmJudgeClientService } from './services/llm-judge-client.service';
+
+// 训练 API
+POST /api/training/start        // LoRA 训练
+POST /api/training/vllm/generate  // vLLM 推理
+POST /api/training/judge/score    // 质量评分
+POST /api/training/judge/evaluate-lora  // LoRA 评估
+```
+
+## 参考文档
+
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调指南
+- `docker/docker-compose.train.yml` - 新框架服务编排
+- `.claude/roles/rl-infra/` - RL 基础设施角色文档
+
+## TODO (传统架构)
+
+- [x] ~~实现MLflow集成~~ → 已在新框架实现
+- [x] ~~实现实际的LLM API调用~~ → 已在新框架实现
 - [ ] 添加认证和授权
 - [ ] 添加更完善的错误处理
 - [ ] 添加单元测试

@@ -12,6 +12,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts.yml:/etc/prometheus/alerts.yml
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -36,6 +37,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana-dashboard-rag.json:/etc/grafana/provisioning/dashboards/rag.json
+      - ./grafana-dashboard-context-engine.json:/etc/grafana/provisioning/dashboards/context-engine.json
       - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
     restart: unless-stopped
     networks:

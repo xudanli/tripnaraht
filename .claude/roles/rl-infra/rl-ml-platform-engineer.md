@@ -301,7 +301,26 @@ class PolicyService:
 
 ## 项目关键文件位置（快速参考）
 
-### 训练相关
+### LoRA 微调服务（新增）
+
+- `src/agent/training/services/fine-tune.service.ts` - **LoRA 微调服务**
+- `src/agent/training/services/vllm-client.service.ts` - **vLLM 客户端**
+- `src/llm/services/model-router.service.ts` - **模型智能路由**
+- `src/agent/training/controllers/training.controller.ts` - **训练管理 API**
+
+### Docker 训练基础设施（新增）
+
+- `docker/Dockerfile.train` - **GPU 训练环境**
+- `docker/Dockerfile.vllm` - **vLLM 推理环境**
+- `docker/docker-compose.train.yml` - **训练服务编排**
+
+### Python 训练脚本（新增）
+
+- `python/train/train_lora.py` - **LoRA 微调脚本**
+- `python/train/api.py` - **训练服务 API**
+- `python/train/config/` - **训练配置文件**
+
+### 训练数据管道
 
 - `src/agent/training/services/training-data-preparation.service.ts` - 训练数据准备
 - `src/agent/training/services/trajectory-collection.service.ts` - 轨迹收集
@@ -318,39 +337,62 @@ class PolicyService:
 - `src/agent/services/claude-orchestrator.service.ts` - Claude编排器
 - `src/agent/interfaces/trip-plan.interface.ts` - 规划请求接口
 
+### 文档
+
+- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南**
+
 ## 关键结论必须用 **粗体**
 
 所有关键结论、建议、风险、优先级必须用 **粗体** 标注。
 
-## 实际应用建议
+## 已实现的 LoRA 微调框架（2026 Q1）
 
-### 当前阶段（2025 Q1）
+### 已完成组件
 
-**推荐策略**：
-- ✅ **优先构建训练流水线**：使用Ray/K8s进行分布式训练
-- ✅ **实现Model Registry**：使用MLflow管理模型版本
-- ✅ **搭建PolicyService基础框架**：实现基本的推理API和回退策略
+**Docker 基础设施**：
+- ✅ `docker/Dockerfile.train` - GPU 训练环境（CUDA 12.1 + PyTorch + LLaMA-Factory）
+- ✅ `docker/Dockerfile.vllm` - vLLM 推理环境（支持 LoRA 热加载）
+- ✅ `docker/docker-compose.train.yml` - 服务编排（train + vLLM + MLflow + Redis）
 
-**具体行动**：
-1. 搭建Ray集群（本地开发 + K8s生产）
-2. 集成MLflow Model Registry
-3. 实现PolicyService基础API（FastAPI）
-4. 实现模型加载和推理逻辑
+**Python 训练服务**：
+- ✅ `python/train/train_lora.py` - LoRA 微调脚本（QLoRA 4-bit 量化）
+- ✅ `python/train/api.py` - 训练服务 FastAPI（任务管理、数据上传、GPU 信息）
+- ✅ `python/train/config/` - 训练配置文件（base_config.yaml、tripnara_decision.yaml）
 
-### 未来方向（2025 Q2-Q4）
+**NestJS 服务**：
+- ✅ `src/agent/training/services/fine-tune.service.ts` - LoRA 微调服务
+- ✅ `src/agent/training/services/vllm-client.service.ts` - vLLM 客户端
+- ✅ `src/llm/services/model-router.service.ts` - 模型智能路由
+- ✅ `src/agent/training/controllers/training.controller.ts` - 训练管理 API
 
-**推荐策略**：
-- ✅ **优化训练性能**：模型量化、分布式训练优化
-- ✅ **增强Serving能力**：A/B测试、多版本管理、自动回滚
-- ✅ **实现特征存储**：Feature Store / Embedding Store（若需要）
-- ✅ **完善监控体系**：训练监控、Serving监控、成本监控
+**模型路由策略**：
+- `vllm_first`：优先 vLLM 自托管（低成本、低延迟）
+- `api_first`：优先外部 API（高质量优先）
+- `auto`：根据任务复杂度智能选择（**推荐默认**）
+- `fixed`：固定提供商（调试场景）
 
-**具体行动**：
-1. 优化模型推理性能（TensorRT、ONNX Runtime）
-2. 实现A/B测试框架
-3. 实现Feature Store（若需要）
-4. 完善监控和告警体系
+### 下一步计划
+
+**Phase 1: GPU 环境部署（1-2 周）**
+- [ ] 配置云 GPU 服务（RunPod/Lambda Labs）
+- [ ] 部署 `docker-compose.train.yml` 服务栈
+- [ ] 验证 vLLM 推理服务
+
+**Phase 2: 首版 LoRA 训练（2-3 周）**
+- [ ] 收集高质量轨迹（validation_score >= 0.85）
+- [ ] 执行 LoRA 微调（Qwen2.5-7B）
+- [ ] 离线评估（决策质量、工具调用准确率）
+
+**Phase 3: 灰度上线（1-2 周）**
+- [ ] 10% 流量灰度测试
+- [ ] A/B 测试（LoRA vs Claude）
+- [ ] 监控指标（延迟、成本、采纳率）
+
+### 参考文档
+
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调框架完整指南
+- `.claude/roles/chief-ai-scientist.md` - 首席AI科学家角色（训练策略）
 
 ---
 
-**记住**：你的目标是构建稳定、可扩展、可观测的RL训练与服务平台，确保模型训练、评测、部署的自动化流程，支持快速迭代和回滚。**当前阶段应以构建基础框架为主，逐步完善性能和功能**。
+**记住**：你的目标是构建稳定、可扩展、可观测的RL训练与服务平台。**LoRA 微调框架已实现，下一步是 GPU 环境部署和首版训练**。

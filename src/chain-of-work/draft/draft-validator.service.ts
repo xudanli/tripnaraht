@@ -20,8 +20,8 @@ export class DraftValidatorService {
     const errors: DraftValidationResult['errors'] = [];
     const warnings: DraftValidationResult['warnings'] = [];
     
-    // 1. 验证步骤数量（必须包含 8 个状态机步骤）
-    const requiredSteps: OrchestrationStep[] = ['INTAKE', 'RESEARCH', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'REPAIR', 'NARRATE', 'DONE'];
+    // 1. 验证步骤数量（必须包含 10 个状态机步骤）
+    const requiredSteps: OrchestrationStep[] = ['INTAKE', 'RESEARCH', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'COMPLIANCE', 'REPAIR', 'NARRATE', 'FEEDBACK', 'DONE'];
     const stepTypes = draft.steps.map(s => s.step_type);
     
     for (const requiredStep of requiredSteps) {
@@ -61,12 +61,15 @@ export class DraftValidatorService {
     for (const step of draft.steps) {
       if (step.skills) {
         for (const skillMapping of step.skills) {
-          if (skillMapping.confidence < 0.7) {
-            warnings.push({
-              step_id: step.id,
-              warning_type: 'LOW_CONFIDENCE',
-              message: `Skills 映射置信度较低: ${skillMapping.skill_name} (${skillMapping.confidence})`,
-            });
+          // skills 可能是 string[] 或 SkillMapping[]
+          if (typeof skillMapping === 'object' && 'confidence' in skillMapping) {
+            if (skillMapping.confidence < 0.7) {
+              warnings.push({
+                step_id: step.id,
+                warning_type: 'LOW_CONFIDENCE',
+                message: `Skills 映射置信度较低: ${skillMapping.skill_name} (${skillMapping.confidence})`,
+              });
+            }
           }
         }
       }

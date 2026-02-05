@@ -155,6 +155,7 @@ server.registerTool(
 
       return formatResponse({
         id: trip.id,
+        name: trip.name, // 新增：行程名称
         destination: trip.destination,
         startDate: trip.startDate,
         endDate: trip.endDate,

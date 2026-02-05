@@ -68,6 +68,43 @@ export interface ChangeHandlingResult {
   }>;
   recommendations: string[];
   requiresConfirmation: boolean;
+  success?: boolean; // 新增：是否成功
+  message?: string; // 新增：消息
+  updatedSchedule?: { // 新增：更新后的时间线
+    date: string;
+    schedule: {
+      items: Array<{
+        placeId: number;
+        placeName: string;
+        startTime: string;
+        endTime: string;
+        status?: 'upcoming' | 'in_progress' | 'completed' | 'cancelled';
+        [key: string]: any;
+      }>;
+    };
+  };
+}
+
+/**
+ * 修复方案
+ */
+export interface FallbackSolution {
+  id: string;
+  type: 'minimal' | 'experience' | 'safety';
+  title: string;
+  description: string;
+  changes: Array<{
+    itemId: string;
+    action: 'modify' | 'remove' | 'add';
+    newTime?: string;
+    newPlace?: any;
+  }>;
+  impact: {
+    arrivalTime: string; // 如："10:15 (+15分钟)"
+    missingPlaces: number;
+    riskChange: 'low' | 'medium' | 'high';
+  };
+  recommended?: boolean;
 }
 
 /**
@@ -77,7 +114,8 @@ export interface FallbackPlan {
   id: string;
   triggerReason: string;
   originalPlan: any;
-  fallbackPlan: any;
+  fallbackPlan?: any; // 向后兼容：保留单个方案
+  solutions?: FallbackSolution[]; // 新增：多个修复方案
   explanation: string;
   impact: {
     schedule?: string;

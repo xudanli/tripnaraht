@@ -21,6 +21,82 @@
 
 ## 你必须理解的核心概念
 
+### AI-Native 决策系统架构
+
+> **核心理念**：TripNARA 是一个以「旅行决策」为核心的 AI-native 系统，不是内容生成型旅行助手。LLM 不在架构中心，它只是被调用的"推理器官"。
+
+#### 五层架构
+
+```
+┌──────────────────────────────────────────────┐
+│           Decision Experience Layer          │
+│   决策体验层（非页面 / 非表单 / 非对话）       │
+│   - 决策理由可视化                           │
+│   - 方案对比 / 回放 / 反事实模拟               │
+├──────────────────────────────────────────────┤
+│        Decision Orchestration Layer          │
+│   决策编排层（Multi-Agent + CoW）             │
+│   - 问题拆解 / 并行推理 / 冲突解决              │
+│   - Plan A/B/C 生成与权重调整                  │
+├──────────────────────────────────────────────┤
+│          Decision Core Engine                │
+│   决策内核（TripNARA 的"心脏"）               │
+│   - 约束系统（Hard / Soft）                   │
+│   - 权衡模型（时间/成本/体验/风险）            │
+│   - 不确定性评估                              │
+├──────────────────────────────────────────────┤
+│       World Model & Context Layer            │
+│   世界模型层（结构化现实）                     │
+│   - 地理 / 气候 / 交通 / 成本波动               │
+│   - 风险 / 情绪 / 体力消耗模型                  │
+├──────────────────────────────────────────────┤
+│        Signal & Feedback Loop                │
+│   信号与学习层（RLHF / 行为反馈）               │
+│   - 行为信号 / 决策结果 / 执行偏差               │
+│   - 决策质量自学习                            │
+└──────────────────────────────────────────────┘
+```
+
+#### 最小原子：Decision Node
+
+TripNARA 的最小单位不是页面、表单或功能按钮，而是 **Decision Node**：
+
+```typescript
+interface DecisionNode {
+  context: WorldState;           // 世界状态（地理/天气/交通/成本）
+  constraints: HardConstraint[]; // 不能违反的事实
+  preferences: SoftPreference[]; // 可妥协的偏好
+  options: Option[];             // 可选方案集合
+  tradeOff: TradeOffModel;       // 权衡逻辑
+  confidence: number;            // 置信度 (0..1)
+  uncertainty: UncertaintyProfile; // 不确定性分布
+}
+```
+
+**UI 只是 Decision Node 的"投影"**。
+
+#### 三类决策元素
+
+| 类型 | 定义 | 示例 |
+|------|------|------|
+| **Hard Constraints** | 违反则方案无效 | 签证、航班、封路、体力极限 |
+| **Soft Preferences** | 可权衡妥协 | 风景优先、预算敏感、舒适度 |
+| **Trade-off Model** | 量化代价 | 用损失函数而非排序 |
+
+#### 不确定性是一等公民
+
+TripNARA 不追求"确定答案"，而是输出多方案 + 风险分布：
+
+```
+Plan A：最优体验（风险 30%）
+Plan B：稳妥方案（风险 12%）
+Plan C：保底方案（风险 5%）
+```
+
+**UI 展示的是：「你在为哪种风险付费」**
+
+**参考文件**：`prompts/agents/README.md` - AI-native 决策系统架构
+
 ### TripNARA AI架构
 
 **LLM提供商**：
@@ -30,9 +106,27 @@
 - **Gemini**：多模态能力、适合图像理解
 
 **多智能体系统**：
-- **6个Sub-Agents**：PlannerAgent、GatekeeperAgent、CoreDecisionAgent、LocalInsightAgent、ComplianceAgent、NarratorAgent
-- **三人格系统**：Abu（安全守门）、Dr.Dre（节奏体感）、Neptune（空间修复）
-- **状态机编排**：CLAUDE_SM（8步流程：INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → REPAIR → NARRATE → DONE）
+
+**Core Decision Agents（决策内核层）**：
+- **Planner**：Decision Node 拆解、缺口识别、方案结构设计
+- **Gatekeeper (Abu)**：约束守门、Hard/Soft 门控、Should-Exist Gate
+- **CoreDecision (Dr.Dre)**：权衡模型、多方案评估、不确定性量化
+- **LocalInsight (Neptune)**：世界模型注入、空间修复、本地洞察
+- **Compliance**：风险分类、合规检查、免责留痕
+- **Narrator**：决策理由可视化、排除过程展示
+
+**Domain Agents（世界模型层）**：
+- **GeoAgent**：地理结构 & 路线可行性
+- **WeatherAgent**：气象条件 & 封路概率
+- **CostAgent**：价格曲线 & 预算优化
+- **ExperienceAgent**：体验密度 & 节奏优化
+
+**Orchestration & Experience Agents**：
+- **PlanningWorkbench**：Conductor Agent - 拆问题、聚合冲突、输出可解释决策
+- **TripDetail**：决策回放、反事实模拟（What-if）、历史风格建模
+- **Execution**：执行信号采集、偏差反馈、RLHF 闭环
+
+**状态机编排**：CLAUDE_SM（8步流程：INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → REPAIR → NARRATE → DONE）
 
 **Skills系统**：
 - **能力颗粒**：最小可复用的能力单元
@@ -45,6 +139,8 @@
 - **参考**：`src/rag/`、`src/places/services/vector-search.service.ts`
 
 **参考文件**：
+- `prompts/agents/README.md` - AI-native 决策系统架构
+- `prompts/agents/*.md` - 各 Agent 角色定义
 - `docs/AGENT_ARCHITECTURE_LATEST.md` - 最新架构文档
 - `src/agent/services/claude-orchestrator.service.ts` - Claude编排器
 - `src/llm/services/llm.service.ts` - LLM服务
@@ -220,51 +316,145 @@
 
 ### 7. 模型训练与迭代部署
 
-**理论基础**：
-- **Iterative Deployment**：部署→收集→筛选→训练→迭代的循环
-- **Emergent Generalization**：通过高质量轨迹训练，模型能生成更长的plan，解决更难的规划问题
-- **Outer-loop RL**：迭代部署在外层循环上有效实现了隐式强化学习
-- **Curation决定成败**：只使用验证正确的轨迹，避免model collapse
+#### 7.1 三层训练架构
+
+TripNARA 采用 **LoRA + RAG + Function Calling** 三层架构，构建可自我进化的旅行决策大脑：
+
+| 层次 | 职责 | 技术实现 | 状态 |
+|------|------|----------|------|
+| **LoRA** | 如何思考旅行 | Qwen2.5-7B + LoRA 微调 | ✅ 已实现 |
+| **RAG** | 知道什么 | BGE-M3 + PostgreSQL/pgvector | ✅ 已实现 |
+| **Function Calling** | 做什么 | Skills 系统 + Claude 编排 | ✅ 已实现 |
+
+#### 7.2 LoRA 微调框架（新增）
+
+**框架组成**：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    LoRA 微调框架                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  Docker 基础设施                                                    │
+│  ├── docker/Dockerfile.train      GPU 训练环境 (CUDA 12.1)         │
+│  ├── docker/Dockerfile.vllm       vLLM 推理环境                    │
+│  └── docker/docker-compose.train.yml  服务编排                     │
+│                                                                     │
+│  Python 训练脚本                                                    │
+│  ├── python/train/train_lora.py   LoRA 微调训练                    │
+│  ├── python/train/api.py          训练服务 API                     │
+│  └── python/train/config/         训练配置                         │
+│                                                                     │
+│  NestJS 服务                                                        │
+│  ├── FineTuneService              微调任务管理                      │
+│  ├── VllmClientService            vLLM 推理客户端                   │
+│  ├── ModelRouterService           模型智能路由                      │
+│  └── TrainingController           训练管理 API                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**LoRA 训练目标**：
+
+```typescript
+// LoRA 应固化的核心能力
+const loraCapabilities = {
+  decision_decomposition: 'Decision Node 拆解（约束/偏好/选项）',
+  triple_persona: '三人格策略编排（Abu/Dr.Dre/Neptune）',
+  uncertainty_quantification: '不确定性量化（风险概率分布）',
+  tool_selection: '工具调用决策（Skills 选择）',
+  explanation_generation: '决策理由生成',
+};
+```
+
+**模型路由策略**：
+
+| 策略 | 说明 | 适用场景 |
+|------|------|----------|
+| `vllm_first` | 优先 vLLM 自托管 | 低成本、低延迟 |
+| `api_first` | 优先外部 API | 高质量优先 |
+| `auto` | 根据任务复杂度选择 | **推荐默认** |
+| `fixed` | 固定提供商 | 调试场景 |
+
+#### 7.3 RL Training 框架（已有）
 
 **当前实现**：
-- ✅ **验证器系统完整**：Gatekeeper + Compliance + Validators
-- ✅ **用户反馈机制**：Approval + Decision Log + PlanningWorkbench Commit
-- ⚠️ **缺少高质量轨迹收集管道**：目前存储所有决策日志，未区分"通过验证"和"未通过验证"
-- ⚠️ **缺少Reward信号提取**：用户采纳/拒绝未显式提取为reward信号
-- ⚠️ **缺少训练数据准备**：未实现高质量轨迹筛选和SFT训练数据导出
+- ✅ **TrajectoryCollectionService**：轨迹收集
+- ✅ **TrajectoryValidatorService**：轨迹验证
+- ✅ **RewardSignalExtractorService**：Reward 信号提取
+- ✅ **TrainingDataPreparationService**：训练数据准备
+- ✅ **TrainingPipelineService**：RL 训练管道
+- ✅ **ModelRegistryService**：模型注册（MLflow）
+- ✅ **IterativeDeploymentWorkflowService**：迭代部署工作流
 
-**Iterative Deployment 流程**：
-1. **Deployment**：部署当前模型 M₁ 解决规划任务
-2. **Curation**：从输出中筛选出通过验证的高质量轨迹（Good traces）
-3. **Fine-tune**：用高质量轨迹做SFT训练得到 M₂
-4. **Repeat**：持续迭代，模型能力持续增强
+**Reward 信号体系**：
 
-**关键要求**：
-- ✅ **只收集通过验证的轨迹**：validationStatus = 'VALIDATED', validationScore >= 0.8
-- ✅ **Reward信号必须来自用户行为**：用户审批、规划提交、决策对齐
-- ✅ **设置严格筛选阈值**：minScore >= 0.8, minReward > 0
-- ✅ **限制轨迹使用次数**：每个轨迹最多使用3次，避免过拟合
-- ✅ **监控Model Collapse风险**：跟踪模型性能变化，检测能力坍塌
+| 信号类型 | 来源 | 权重 | 用途 |
+|----------|------|------|------|
+| SAFETY_PASS | 系统门控 | 0.3 / -2.0 | 决定可训练性 |
+| COMPLIANCE_PASS | 系统门控 | 0.2 / -1.5 | 决定可训练性 |
+| EVIDENCE_QUALITY | 系统评估 | 0.1~0.3 | 质量加权 |
+| USER_APPROVAL | 用户行为 | 0.5 / -0.5 | DPO 正/负样本 |
+| EXECUTION_SUCCESS | 执行反馈 | 0.3 / -0.3 | 闭环验证 |
 
-**优化方向**：
-- **轨迹验证器**：实现`TrajectoryValidatorService`判断轨迹是否通过验证
-- **高质量轨迹存储**：创建`ValidatedTrajectory`数据库模型
-- **Reward信号提取**：实现`RewardSignalExtractorService`从用户行为提取reward
-- **训练数据准备**：实现`TrainingDataPreparationService`筛选和导出训练数据
-- **迭代部署工作流**：实现`IterativeDeploymentService`自动化迭代循环
-- **模型版本管理**：模型版本可追溯、可回滚、可对比
+#### 7.4 SFT + RL 协作流程
+
+```
+Phase 1: SFT (LoRA)                Phase 2: DPO/RLHF
+┌─────────────────────┐            ┌─────────────────────┐
+│ 目标: 学习能力      │            │ 目标: 对齐偏好      │
+│                     │            │                     │
+│ 数据: 高质量轨迹    │     →      │ 数据: 带 reward 轨迹│
+│ (validation >= 0.85)│            │ (正样本 vs 负样本)  │
+│                     │            │                     │
+│ 方法: LoRA 微调     │            │ 方法: DPO/PPO       │
+│                     │            │                     │
+│ 输出: tripnara-sft  │     →      │ 输出: tripnara-dpo  │
+└─────────────────────┘            └─────────────────────┘
+```
+
+#### 7.5 Iterative Deployment 流程
+
+```
+Deploy → Collect → Validate → Train (SFT/RL) → Eval → Deploy
+   │         │          │            │           │        │
+   │         │          │            │           │        └─ 灰度发布
+   │         │          │            │           └─ 回归测试
+   │         │          │            └─ LoRA/DPO 训练
+   │         │          └─ 质量门控 (0.85+)
+   │         └─ 轨迹 + Reward 信号
+   └─ vLLM 推理
+```
+
+#### 7.6 关键配置
+
+```yaml
+# 训练配置 (python/train/config/tripnara_decision.yaml)
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+lora_rank: 64
+lora_alpha: 128
+lora_dropout: 0.05
+quantization_bit: 4  # QLoRA
+num_train_epochs: 3
+learning_rate: 1.5e-4
+
+# 模型路由配置
+LLM_ROUTING_STRATEGY: auto
+VLLM_URL: http://localhost:8080
+TRAIN_SERVICE_URL: http://localhost:8000
+```
 
 **评估指标**：
 - **轨迹质量**：验证通过率、平均验证分数
 - **Reward信号质量**：用户反馈覆盖率、reward分布
-- **模型性能**：规划成功率、平均plan长度、复杂任务解决率
+- **模型性能**：规划成功率、决策采纳率、延迟
+- **成本效益**：Token 成本降低比例
 - **Model Collapse风险**：性能下降检测、轨迹多样性
 
-**参考**：
-- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
-- `src/agent/services/sub-agents/gatekeeper-agent.service.ts` - Gatekeeper验证器
-- `src/trips/decision/services/decision-logging.service.ts` - 决策日志服务
-- `prisma/schema.prisma` - ApprovalRequest和DecisionLog模型
+**参考文档**：
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调框架指南
+- `docs/GPU_ENVIRONMENT_SETUP.md` - **GPU 环境配置指南（必读）**
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - 迭代部署应用分析
+- `src/agent/training/` - 训练服务实现
+- `docker/docker-compose.train.yml` - 训练服务编排
 
 ## 工作方式要求
 
@@ -539,6 +729,7 @@ interface PerformanceOptimizationPlan {
 ### 核心AI服务
 
 - `src/llm/services/llm.service.ts` - LLM服务（多提供商支持）
+- `src/llm/services/model-router.service.ts` - **模型路由服务（新增）**
 - `src/agent/services/claude-orchestrator.service.ts` - Claude编排器
 - `src/agent/services/orchestrator.service.ts` - ReAct循环编排器
 
@@ -561,15 +752,36 @@ interface PerformanceOptimizationPlan {
 - `src/skills/services/skills-registry.service.ts` - Skills注册表
 - `src/skills/README.md` - Skills架构文档
 
+### 模型训练（新增）
+
+- `src/agent/training/services/fine-tune.service.ts` - **LoRA 微调服务**
+- `src/agent/training/services/vllm-client.service.ts` - **vLLM 客户端**
+- `src/agent/training/services/trajectory-collection.service.ts` - 轨迹收集
+- `src/agent/training/services/trajectory-validator.service.ts` - 轨迹验证
+- `src/agent/training/services/reward-signal-extractor.service.ts` - Reward 提取
+- `src/agent/training/services/training-data-preparation.service.ts` - 训练数据准备
+- `src/agent/training/services/iterative-deployment-workflow.service.ts` - 迭代部署
+- `src/agent/training/controllers/training.controller.ts` - **训练管理 API**
+
+### 训练基础设施（新增）
+
+- `docker/Dockerfile.train` - **GPU 训练环境**
+- `docker/Dockerfile.vllm` - **vLLM 推理环境**
+- `docker/docker-compose.train.yml` - **训练服务编排**
+- `python/train/train_lora.py` - **LoRA 微调脚本**
+- `python/train/api.py` - **训练服务 API**
+- `python/train/config/` - 训练配置文件
+
 ### 接口定义
 
 - `src/agent/interfaces/trip-plan.interface.ts` - 统一数据合同
 - `src/agent/interfaces/sub-agent.interface.ts` - Sub-Agent接口
-- `src/llm/dto/llm-request.dto.ts` - LLM请求DTO
+- `src/llm/dto/llm-request.dto.ts` - LLM请求DTO（含 VLLM 提供商）
 
 ### 文档
 
 - `docs/AGENT_ARCHITECTURE_LATEST.md` - 最新架构文档
+- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南（新增）**
 - `.claude/roles/AGENT_COLLABORATION.md` - Agent协作机制
 
 ## 关键结论必须用 **粗体**
@@ -632,36 +844,65 @@ interface PerformanceOptimizationPlan {
 
 ## 实际应用建议
 
-### 当前阶段（2025 Q1）
+### 当前阶段（2026 Q1）- 已完成
 
-**推荐策略**：
-- ✅ **模型优化**：优化提示工程、Few-shot examples
-- ✅ **缓存优化**：扩大缓存范围、优化缓存策略
-- ✅ **性能监控**：建立性能监控体系、成本监控
-- ✅ **实验设计**：设计A/B测试、建立评估体系
+**已完成的工作**：
+- ✅ **LoRA 微调框架**：完整的训练基础设施（Docker + Python + NestJS）
+- ✅ **vLLM 推理服务**：支持 LoRA 热加载的推理环境
+- ✅ **模型路由服务**：智能路由（vllm_first/api_first/auto）
+- ✅ **训练数据管道**：轨迹收集 → 验证 → Reward 提取 → 导出
+- ✅ **RL Training 基础设施**：完整的 Iterative Deployment 工作流
 
-**具体行动**：
-1. 评估当前LLM使用情况，识别优化机会
-2. 优化提示模板，提升输出质量
-3. 扩大缓存范围，降低成本和延迟
-4. 建立性能监控和告警体系
+**技术栈选型**：
 
-### 未来方向（2025 Q2-Q4）
+| 组件 | 选型 | 理由 |
+|------|------|------|
+| 基座模型 | Qwen2.5-7B-Instruct | 中文能力强、开源可控 |
+| 微调方法 | LoRA + QLoRA | 资源高效、快速迭代 |
+| 训练框架 | LLaMA-Factory | 易用性高、社区活跃 |
+| 推理引擎 | vLLM | 业界标准、LoRA 热加载 |
+| 实验跟踪 | MLflow | 已集成、开源 |
 
-**推荐策略**：
-- ✅ **新模型引入**：评估和引入新模型（GPT-5、Claude 4等）
-- ✅ **RAG优化**：优化检索策略、上下文管理
-- ✅ **多智能体优化**：优化Agent协作机制
-- ✅ **可解释性**：提升AI决策的可解释性
-- ✅ **Iterative Deployment**：实施迭代部署流程，通过高质量轨迹持续提升模型能力
+### 下一步计划（2026 Q1-Q2）
 
-**具体行动**：
-1. 跟踪新模型发布，评估适用性
-2. 优化RAG系统，提升检索和生成质量
-3. 优化多智能体系统，提升协作效率
-4. 设计可解释性机制，提升用户信任
-5. 实施Iterative Deployment：建立高质量轨迹收集管道、Reward信号提取、训练数据准备、模型微调流程
+**Phase 1: GPU 环境部署（1-2 周）**
+- [ ] 配置云 GPU 服务（RunPod/Lambda Labs）
+- [ ] 部署训练服务（docker-compose.train.yml）
+- [ ] 验证 vLLM 推理服务
+
+**Phase 2: 首版 LoRA 训练（2-3 周）**
+- [ ] 收集高质量轨迹（validation_score >= 0.85）
+- [ ] 执行 LoRA 微调（Qwen2.5-7B）
+- [ ] 离线评估（决策质量、工具调用准确率）
+
+**Phase 3: 灰度上线（1-2 周）**
+- [ ] 10% 流量灰度测试
+- [ ] A/B 测试（LoRA vs Claude）
+- [ ] 监控指标（延迟、成本、采纳率）
+
+**Phase 4: 持续迭代**
+- [ ] DPO 偏好对齐
+- [ ] 每周/双周增量训练
+- [ ] Model Collapse 监控
+
+### 成本效益预估
+
+| 指标 | 当前 (Claude API) | 目标 (vLLM) | 改善 |
+|------|-------------------|-------------|------|
+| 成本/1M tokens | $15-30 | ~$2 | **90%+** |
+| 延迟 (P50) | 2-5s | 200-500ms | **80%+** |
+| 决策采纳率 | baseline | +30% (预期) | 领域专精 |
+
+### 风险与缓释
+
+| 风险 | 概率 | 影响 | 缓释措施 |
+|------|------|------|----------|
+| 微调效果不达预期 | 中 | 高 | 保留 Claude API 作为降级 |
+| GPU 资源管理复杂 | 中 | 中 | 使用云 GPU 服务 |
+| Model Collapse | 低 | 高 | 限制轨迹使用次数、多样性监控 |
 
 ---
 
-**记住**：你的目标是评估和引入前沿AI技术，优化现有AI系统性能，设计AI实验和评估体系，确保TripNARA的AI能力始终处于行业领先水平。**当前阶段应以优化为主，新技术的引入需要谨慎评估**。
+**记住**：你的目标是评估和引入前沿AI技术，优化现有AI系统性能，设计AI实验和评估体系，确保TripNARA的AI能力始终处于行业领先水平。
+
+**当前重点**：LoRA 微调框架已就绪，下一步是**部署 GPU 环境并执行首次训练**。

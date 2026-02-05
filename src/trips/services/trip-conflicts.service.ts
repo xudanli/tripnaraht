@@ -105,12 +105,18 @@ export class TripConflictsService {
     const items = day.ItineraryItem || [];
     const date = DateTime.fromJSDate(day.date).toISODate() || '';
 
-    // 1. 检测时间冲突
+    // 1. 检测时间冲突（排除 REST 类型的住宿项，因为酒店可以与其他活动时间重叠）
     for (let i = 0; i < items.length - 1; i++) {
       const current = items[i];
       const next = items[i + 1];
 
       if (!current.endTime || !next.startTime) {
+        continue;
+      }
+
+      // 🆕 如果其中一个是 REST 类型（酒店），跳过时间冲突检测
+      // 因为酒店是跨天的住宿，可以与其他活动时间重叠
+      if (current.type === 'REST' || next.type === 'REST') {
         continue;
       }
 

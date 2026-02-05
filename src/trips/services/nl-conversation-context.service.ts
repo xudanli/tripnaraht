@@ -60,38 +60,55 @@ export interface NLConversationContext {
  * 功能：
  * 1. 存储和管理自然语言创建行程时的对话历史
  * 2. 支持会话恢复和上下文传递
- * 3. 使用 Redis 缓存，TTL 24 小时
+ * 3. 会话退出时清空（前端调用 delete 接口）
+ * 4. 非活动超时 30 分钟自动清空（防止残留数据）
+ * 
+ * 清理策略：
+ * - 前端退出对话界面时应调用 DELETE /api/trips/nl/conversation/:sessionId
+ * - 非活动 30 分钟后自动过期（作为兜底）
  */
 @Injectable()
 export class NLConversationContextService {
   private readonly logger = new Logger(NLConversationContextService.name);
   private readonly cachePrefix = 'nl_conversation:';
-  private readonly defaultTtl = 24 * 60 * 60; // 24 小时（秒）
+  private readonly defaultTtl = 30 * 60; // 30 分钟（非活动超时，秒）
   
-  // 内存缓存降级（当 Redis 不可用时）
+  // 内存缓存（主存储，会话退出时清空）
   private readonly memoryCache = new Map<string, { context: NLConversationContext; expires: number }>();
+  
+  // 用户清空标记：记录哪些用户已清空所有会话
+  private readonly userClearedFlags = new Set<string>();
 
   constructor(
     @Optional() private readonly redisService?: RedisService,
   ) {
     if (this.redisService) {
-      this.logger.log('自然语言对话上下文缓存已启用（Redis）');
+      this.logger.log('自然语言对话上下文已启用（Redis + 内存，30分钟非活动超时）');
     } else {
-      this.logger.warn('Redis 不可用，使用内存缓存（数据将在服务重启后丢失）');
+      this.logger.log('自然语言对话上下文已启用（仅内存，30分钟非活动超时）');
     }
   }
 
   /**
    * 创建或获取会话上下文
+   * 
+   * 🆕 修复：如果用户已设置清空标记，清除标记（新会话已创建）
    */
   async getOrCreateSession(sessionId: string | undefined, userId: string): Promise<string> {
     if (sessionId) {
-      // 验证会话是否存在
-      const exists = await this.sessionExists(sessionId, userId);
-      if (exists) {
-        return sessionId;
+      // 🆕 如果用户已设置清空标记，说明这是旧会话，应该创建新会话
+      if (this.userClearedFlags.has(userId)) {
+        this.logger.debug(`用户 ${userId} 已清空所有会话，忽略旧 sessionId ${sessionId}，创建新会话`);
+        this.userClearedFlags.delete(userId); // 清除标记
+        sessionId = undefined; // 强制创建新会话
+      } else {
+        // 验证会话是否存在
+        const exists = await this.sessionExists(sessionId, userId);
+        if (exists) {
+          return sessionId;
+        }
+        this.logger.warn(`会话 ${sessionId} 不存在或已过期，创建新会话`);
       }
-      this.logger.warn(`会话 ${sessionId} 不存在或已过期，创建新会话`);
     }
     
     // 创建新会话
@@ -105,17 +122,39 @@ export class NLConversationContextService {
       expiresAt: new Date(Date.now() + this.defaultTtl * 1000).toISOString(),
     };
     
+    // 🆕 清除清空标记（新会话已创建）
+    this.userClearedFlags.delete(userId);
+    
     await this.saveContext(context);
     return newSessionId;
   }
 
   /**
    * 获取会话上下文
+   * 
+   * 🆕 修复：如果用户已设置清空标记，不从未知 sessionId 的 Redis 读取数据
    */
   async getContext(sessionId: string, userId: string): Promise<NLConversationContext | null> {
     const cacheKey = this.buildCacheKey(sessionId, userId);
     
-    // 优先从 Redis 获取
+    // 1. 先检查内存缓存
+    const memoryEntry = this.memoryCache.get(cacheKey);
+    if (memoryEntry && memoryEntry.expires > Date.now()) {
+      if (memoryEntry.context.userId !== userId) {
+        this.logger.warn(`用户 ${userId} 尝试访问其他用户的会话 ${sessionId}`);
+        return null;
+      }
+      return memoryEntry.context;
+    }
+    
+    // 2. 🆕 如果用户已设置清空标记，不从未知 sessionId 的 Redis 读取数据
+    // 这样可以防止读取到旧会话数据
+    if (this.userClearedFlags.has(userId)) {
+      this.logger.debug(`用户 ${userId} 已清空所有会话，不从未知 sessionId ${sessionId} 的 Redis 读取数据`);
+      return null;
+    }
+    
+    // 3. 从 Redis 获取（如果内存缓存中没有且未设置清空标记）
     if (this.redisService) {
       try {
         const context = await this.redisService.get<NLConversationContext>(cacheKey);
@@ -125,6 +164,11 @@ export class NLConversationContextService {
             this.logger.warn(`用户 ${userId} 尝试访问其他用户的会话 ${sessionId}`);
             return null;
           }
+          // 🆕 同步到内存缓存
+          this.memoryCache.set(cacheKey, {
+            context,
+            expires: Date.now() + this.defaultTtl * 1000,
+          });
           return context;
         }
       } catch (error: any) {
@@ -132,33 +176,26 @@ export class NLConversationContextService {
       }
     }
     
-    // 降级到内存缓存
-    const memoryEntry = this.memoryCache.get(cacheKey);
-    if (memoryEntry && memoryEntry.expires > Date.now()) {
-      if (memoryEntry.context.userId !== userId) {
-        return null;
-      }
-      return memoryEntry.context;
-    }
-    
     return null;
   }
 
   /**
    * 保存会话上下文
-   * 🆕 P2: 每次保存时刷新 TTL（24小时）
+   * 
+   * 每次交互刷新 TTL（30分钟非活动超时）
+   * 前端退出时应主动调用 deleteSession 清空
    */
   async saveContext(context: NLConversationContext): Promise<void> {
     const cacheKey = this.buildCacheKey(context.sessionId, context.userId);
     context.updatedAt = new Date().toISOString();
-    // 🆕 P2: 刷新过期时间（每次交互时重置为24小时后）
+    // 刷新过期时间（每次交互时重置为30分钟后）
     context.expiresAt = new Date(Date.now() + this.defaultTtl * 1000).toISOString();
     
-    // 优先保存到 Redis
+    // 保存到 Redis（作为跨实例共享和持久化备份）
     if (this.redisService) {
       try {
         await this.redisService.set(cacheKey, context, this.defaultTtl);
-        this.logger.debug(`对话上下文已保存到 Redis: ${context.sessionId}, TTL=${this.defaultTtl}秒`);
+        this.logger.debug(`对话上下文已保存: ${context.sessionId}, TTL=${this.defaultTtl}秒`);
       } catch (error: any) {
         this.logger.warn(`保存到 Redis 失败: ${error.message}`);
       }
@@ -246,7 +283,13 @@ export class NLConversationContextService {
   }
 
   /**
-   * 删除会话
+   * 删除会话（会话退出时调用）
+   * 
+   * ⚠️ 重要：前端在以下场景应调用此方法：
+   * - 用户点击"结束对话"
+   * - 用户关闭对话界面
+   * - 用户切换到其他功能
+   * - 行程创建成功后
    */
   async deleteSession(sessionId: string, userId: string): Promise<void> {
     const cacheKey = this.buildCacheKey(sessionId, userId);
@@ -254,16 +297,128 @@ export class NLConversationContextService {
     // 从 Redis 删除
     if (this.redisService) {
       try {
-        const deleted = await this.redisService.del(cacheKey);
-        this.logger.debug(`从 Redis 删除会话: ${cacheKey}, 结果: ${deleted}`);
+        await this.redisService.del(cacheKey);
       } catch (error: any) {
         this.logger.warn(`从 Redis 删除失败: ${error.message}`);
       }
     }
     
     // 从内存缓存删除
-    const memoryDeleted = this.memoryCache.delete(cacheKey);
-    this.logger.debug(`从内存缓存删除会话: ${cacheKey}, 结果: ${memoryDeleted}`);
+    this.memoryCache.delete(cacheKey);
+    this.logger.log(`会话已清空: ${sessionId}`);
+  }
+
+  /**
+   * 🆕 删除用户的所有会话
+   * 
+   * 用于开始新对话时清空所有旧上下文
+   * 
+   * 关键修复：
+   * 1. 清空内存缓存中该用户的所有会话
+   * 2. 设置"清空标记"，防止后续从 Redis 读取旧数据
+   * 3. 由于 Redis cache-manager 不支持模式匹配，无法直接删除 Redis 中所有匹配的键
+   *    但通过清空标记，可以防止旧数据被读取
+   */
+  async deleteAllUserSessions(userId: string): Promise<number> {
+    let deletedCount = 0;
+    
+    // 1. 先获取内存缓存中的所有会话（包括已过期的）
+    const memorySessions: string[] = [];
+    const keysToDelete: string[] = [];
+    
+    for (const [key, entry] of this.memoryCache.entries()) {
+      if (entry.context.userId === userId) {
+        memorySessions.push(entry.context.sessionId);
+        keysToDelete.push(key);
+      }
+    }
+    
+    this.logger.debug(`删除用户 ${userId} 的所有会话，内存缓存中找到 ${memorySessions.length} 个`);
+    
+    // 2. 删除每个会话（包括 Redis 和内存缓存）
+    for (const sessionId of memorySessions) {
+      try {
+        await this.deleteSession(sessionId, userId);
+        deletedCount++;
+      } catch (error: any) {
+        this.logger.warn(`删除会话 ${sessionId} 失败: ${error.message}`);
+      }
+    }
+    
+    // 3. 清理内存缓存中该用户的所有剩余会话（确保完全清空）
+    for (const key of keysToDelete) {
+      this.memoryCache.delete(key);
+    }
+    
+    // 4. 🆕 设置"清空标记"，防止后续从 Redis 读取旧数据
+    // 这个标记会在新会话创建后自动清除（通过 getOrCreateSession）
+    this.userClearedFlags.add(userId);
+    this.logger.debug(`已设置用户 ${userId} 的清空标记，防止从 Redis 读取旧数据`);
+    
+    // 5. 如果 Redis 可用，尝试删除已知的会话
+    // 注意：由于 cache-manager 不支持模式匹配，无法删除 Redis 中所有匹配的键
+    // 但通过清空标记，可以防止旧数据被读取
+    if (this.redisService && memorySessions.length > 0) {
+      this.logger.debug(`尝试从 Redis 删除 ${memorySessions.length} 个已知会话`);
+    }
+    
+    this.logger.debug(`已删除用户 ${userId} 的 ${deletedCount} 个会话（内存缓存），并设置清空标记`);
+    return deletedCount;
+  }
+
+  /**
+   * 🆕 获取所有会话（用于管理/清理）
+   * 
+   * 返回所有用户的会话，用于批量操作
+   */
+  async getAllSessions(): Promise<Array<{ userId: string; sessionId: string }>> {
+    const sessions: Array<{ userId: string; sessionId: string }> = [];
+    
+    for (const [key, entry] of this.memoryCache.entries()) {
+      if (entry.expires > Date.now() && entry.context.userId) {
+        sessions.push({
+          userId: entry.context.userId,
+          sessionId: entry.context.sessionId,
+        });
+      }
+    }
+    
+    return sessions;
+  }
+
+  /**
+   * 🆕 清空所有会话（用于数据清理）
+   * 
+   * 清空内存缓存和 Redis 中的所有会话数据
+   */
+  async clearAllSessions(): Promise<number> {
+    let deletedCount = 0;
+    
+    // 1. 获取所有会话
+    const allSessions = await this.getAllSessions();
+    const sessionsByUser = new Map<string, string[]>();
+    
+    for (const session of allSessions) {
+      if (!sessionsByUser.has(session.userId)) {
+        sessionsByUser.set(session.userId, []);
+      }
+      sessionsByUser.get(session.userId)!.push(session.sessionId);
+    }
+    
+    this.logger.debug(`清空所有会话，共 ${sessionsByUser.size} 个用户，${allSessions.length} 个会话`);
+    
+    // 2. 删除每个用户的所有会话
+    for (const [userId, sessionIds] of sessionsByUser.entries()) {
+      const deleted = await this.deleteAllUserSessions(userId);
+      deletedCount += deleted;
+    }
+    
+    // 3. 清空内存缓存和清空标记
+    this.memoryCache.clear();
+    this.userClearedFlags.clear();
+    
+    this.logger.debug(`已清空所有会话，共删除 ${deletedCount} 个会话`);
+    return deletedCount;
   }
 
   /**
@@ -316,9 +471,25 @@ export class NLConversationContextService {
       throw new Error(`会话 ${sessionId} 不存在或已过期`);
     }
     
-    const message = context.messages.find(m => m.id === messageId);
+    // 查找消息（支持多种ID格式）
+    let message = context.messages.find(m => m.id === messageId);
+    
+    // 如果找不到，尝试查找最后一条 assistant 消息（可能是前端使用了错误的ID）
     if (!message) {
-      throw new Error(`消息 ${messageId} 不存在`);
+      const lastAssistantMessage = context.messages
+        .filter(m => m.role === 'assistant')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      
+      if (lastAssistantMessage) {
+        this.logger.warn(
+          `消息 ${messageId} 不存在，使用最后一条 assistant 消息 ${lastAssistantMessage.id} 代替`
+        );
+        message = lastAssistantMessage;
+      }
+    }
+    
+    if (!message) {
+      throw new Error(`消息 ${messageId} 不存在，且会话中没有可用的 assistant 消息`);
     }
     
     // 更新消息的 questionAnswers
@@ -390,8 +561,9 @@ export class NLConversationContextService {
 
   /**
    * 检查会话是否存在
+   * 🆕 改为 public，供外部调用
    */
-  private async sessionExists(sessionId: string, userId: string): Promise<boolean> {
+  async sessionExists(sessionId: string, userId: string): Promise<boolean> {
     const context = await this.getContext(sessionId, userId);
     return context !== null;
   }

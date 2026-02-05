@@ -1,5 +1,5 @@
 // src/trips/decision/decision.controller.ts
-import { Controller, Post, Get, Body, Param, Query, Logger, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
@@ -11,6 +11,22 @@ import { DecisionLogStorageService } from './services/decision-log-storage.servi
 import { DecisionStatsService } from './services/decision-stats.service';
 import { DecisionLogClusteringService } from './evaluation/decision-log-clustering.service';
 import { AdminDecisionLogListQueryDto, AdminDecisionStatsQueryDto } from './dto/admin-decision.dto';
+import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { ConstraintChecker } from './constraints/constraint-checker';
+import { MultiPlanGenerator } from './services/multi-plan-generator.service';
+import { ConstraintDSLDto, DetectConflictsRequestDto, GenerateMultiplePlansRequestDto } from './dto/constraint-dsl.dto';
+import { TripWorldState } from './world-model';
+import { TripPlan } from './plan-model';
+import { FeedbackCollectorService } from './feedback/feedback-collector.service';
+import { QualityAssessorService } from './feedback/quality-assessor.service';
+import { MemoryUpdaterService } from './feedback/memory-updater.service';
+import {
+  PlanVariantFeedbackDto,
+  ConflictFeedbackDto,
+  DecisionQualityFeedbackDto,
+  BatchFeedbackDto,
+  FeedbackStatsQueryDto,
+} from './dto/feedback.dto';
 
 @ApiTags('decision')
 @Controller('decision')
@@ -23,6 +39,12 @@ export class DecisionController {
     private readonly decisionLogStorage: DecisionLogStorageService,
     private readonly decisionStats: DecisionStatsService,
     private readonly clusteringService: DecisionLogClusteringService,
+    @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
+    @Optional() private readonly constraintChecker?: ConstraintChecker,
+    @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
+    @Optional() private readonly feedbackCollector?: FeedbackCollectorService,
+    @Optional() private readonly qualityAssessor?: QualityAssessorService,
+    @Optional() private readonly memoryUpdater?: MemoryUpdaterService,
   ) {}
 
   @Post('validate-safety')
@@ -670,6 +692,368 @@ export class DecisionController {
       }
     } catch (error: any) {
       this.logger.error(`导出决策日志失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('detect-conflicts')
+  @ApiOperation({
+    summary: '检测约束冲突',
+    description: '检测约束DSL中的冲突，生成权衡选项和修复建议',
+  })
+  @ApiBody({ type: DetectConflictsRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '冲突检测完成',
+    type: ApiSuccessResponseDto,
+  })
+  async detectConflicts(@Body() body: DetectConflictsRequestDto) {
+    try {
+      if (!this.conflictResolver) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintConflictResolver 不可用');
+      }
+
+      if (!body.constraints) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'constraints 是必需的参数');
+      }
+
+      const conflictResult = await this.conflictResolver.detectAndExplainConflicts(
+        body.constraints as any,
+        body.plan || null,
+        body.state || ({} as TripWorldState)
+      );
+
+      return successResponse({
+        conflicts: conflictResult.conflicts,
+        has_conflicts: conflictResult.has_conflicts,
+        summary: {
+          critical: conflictResult.critical_count,
+          high: conflictResult.high_count,
+          medium: conflictResult.medium_count,
+          low: conflictResult.low_count,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`冲突检测失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('check-constraints-with-explanation')
+  @ApiOperation({
+    summary: '检查约束并获取不可行性解释',
+    description: '检查计划的约束违规情况，并提供详细的不可行性解释和修复建议',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['state', 'plan'],
+      properties: {
+        state: { type: 'object', description: '世界状态' },
+        plan: { type: 'object', description: '行程计划' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '约束检查完成',
+    type: ApiSuccessResponseDto,
+  })
+  async checkConstraintsWithExplanation(
+    @Body() body: { state: TripWorldState; plan: TripPlan }
+  ) {
+    try {
+      if (!this.constraintChecker) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintChecker 不可用');
+      }
+
+      if (!body.state || !body.plan) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
+      }
+
+      const checkResult = await this.constraintChecker.checkPlan(body.state, body.plan);
+
+      return successResponse({
+        isValid: checkResult.isValid,
+        violations: checkResult.violations,
+        summary: checkResult.summary,
+        conflicts: checkResult.conflicts,
+        infeasibilityExplanation: checkResult.infeasibilityExplanation,
+      });
+    } catch (error: any) {
+      this.logger.error(`约束检查失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('generate-multiple-plans')
+  @ApiOperation({
+    summary: '生成多个方案变体',
+    description: '并行生成多个方案（保守、平衡、激进），每个方案包含评分和权衡分析',
+  })
+  @ApiBody({ type: GenerateMultiplePlansRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '多方案生成完成',
+    type: ApiSuccessResponseDto,
+  })
+  async generateMultiplePlans(@Body() body: GenerateMultiplePlansRequestDto) {
+    try {
+      if (!this.multiPlanGenerator) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'MultiPlanGenerator 不可用');
+      }
+
+      if (!body.state || !body.constraints) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 constraints 是必需的参数');
+      }
+
+      const { variants, log } = await this.decisionEngine.generateMultiplePlans(
+        body.state as TripWorldState
+      );
+
+      return successResponse({
+        variants: variants.map(v => ({
+          id: v.id,
+          score: v.score,
+          tradeoffs: v.tradeoffs,
+          feasibility: v.feasibility,
+          planSummary: {
+            days: v.plan.days.length,
+            totalActivities: v.plan.days.reduce(
+              (sum, day) => sum + day.timeSlots.filter(s => s.type !== 'rest' && s.type !== 'transport').length,
+              0
+            ),
+          },
+        })),
+        log: {
+          runId: log.runId,
+          explanation: log.explanation,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`多方案生成失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('feedback/plan-variant')
+  @ApiOperation({
+    summary: '提交计划变体反馈',
+    description: '收集用户对计划变体的反馈（选择、拒绝、修改等）',
+  })
+  @ApiBody({ type: PlanVariantFeedbackDto })
+  @ApiResponse({
+    status: 200,
+    description: '反馈提交成功',
+    type: ApiSuccessResponseDto,
+  })
+  async submitPlanVariantFeedback(@Body() dto: PlanVariantFeedbackDto) {
+    try {
+      if (!this.feedbackCollector) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FeedbackCollectorService 不可用');
+      }
+
+      await this.feedbackCollector.collectPlanVariantFeedback({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: dto.runId,
+        variantId: dto.variantId,
+        variantStrategy: dto.variantStrategy,
+        userChoice: dto.userChoice,
+        rating: dto.rating,
+        reason: dto.reason,
+        tripId: dto.tripId,
+        userId: dto.userId,
+        feedbackAt: new Date(),
+      });
+
+      return successResponse({ message: '反馈提交成功' });
+    } catch (error: any) {
+      this.logger.error(`提交计划变体反馈失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('feedback/conflict')
+  @ApiOperation({
+    summary: '提交约束冲突反馈',
+    description: '收集用户对约束冲突解释和权衡选项的反馈',
+  })
+  @ApiBody({ type: ConflictFeedbackDto })
+  @ApiResponse({
+    status: 200,
+    description: '反馈提交成功',
+    type: ApiSuccessResponseDto,
+  })
+  async submitConflictFeedback(@Body() dto: ConflictFeedbackDto) {
+    try {
+      if (!this.feedbackCollector) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FeedbackCollectorService 不可用');
+      }
+
+      await this.feedbackCollector.collectConflictFeedback({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: dto.runId,
+        conflictId: dto.conflictId,
+        conflictType: dto.conflictType,
+        understood: dto.understood,
+        explanationClear: dto.explanationClear,
+        tradeoffOptionsUseful: dto.tradeoffOptionsUseful,
+        selectedTradeoffOption: dto.selectedTradeoffOption,
+        tripId: dto.tripId,
+        userId: dto.userId,
+        feedbackAt: new Date(),
+      });
+
+      return successResponse({ message: '反馈提交成功' });
+    } catch (error: any) {
+      this.logger.error(`提交约束冲突反馈失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('feedback/decision-quality')
+  @ApiOperation({
+    summary: '提交决策质量反馈',
+    description: '收集用户对整体决策质量的反馈',
+  })
+  @ApiBody({ type: DecisionQualityFeedbackDto })
+  @ApiResponse({
+    status: 200,
+    description: '反馈提交成功',
+    type: ApiSuccessResponseDto,
+  })
+  async submitDecisionQualityFeedback(@Body() dto: DecisionQualityFeedbackDto) {
+    try {
+      if (!this.feedbackCollector) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FeedbackCollectorService 不可用');
+      }
+
+      await this.feedbackCollector.collectDecisionQualityFeedback({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: dto.runId,
+        overallSatisfaction: dto.overallSatisfaction,
+        planQuality: dto.planQuality,
+        conflictExplanationQuality: dto.conflictExplanationQuality,
+        tradeoffOptionsQuality: dto.tradeoffOptionsQuality,
+        decisionSpeed: dto.decisionSpeed,
+        additionalFeedback: dto.additionalFeedback,
+        tripId: dto.tripId,
+        userId: dto.userId,
+        feedbackAt: new Date(),
+      });
+
+      return successResponse({ message: '反馈提交成功' });
+    } catch (error: any) {
+      this.logger.error(`提交决策质量反馈失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('feedback/batch')
+  @ApiOperation({
+    summary: '批量提交反馈',
+    description: '批量提交多种类型的反馈',
+  })
+  @ApiBody({ type: BatchFeedbackDto })
+  @ApiResponse({
+    status: 200,
+    description: '反馈提交成功',
+    type: ApiSuccessResponseDto,
+  })
+  async submitBatchFeedback(@Body() dto: BatchFeedbackDto) {
+    try {
+      if (!this.feedbackCollector) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FeedbackCollectorService 不可用');
+      }
+
+      const planVariantFeedbacks = dto.planVariantFeedbacks?.map(f => ({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: f.runId,
+        variantId: f.variantId,
+        variantStrategy: f.variantStrategy,
+        userChoice: f.userChoice,
+        rating: f.rating,
+        reason: f.reason,
+        tripId: f.tripId,
+        userId: f.userId,
+        feedbackAt: new Date(),
+      }));
+
+      const conflictFeedbacks = dto.conflictFeedbacks?.map(f => ({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: f.runId,
+        conflictId: f.conflictId,
+        conflictType: f.conflictType,
+        understood: f.understood,
+        explanationClear: f.explanationClear,
+        tradeoffOptionsUseful: f.tradeoffOptionsUseful,
+        selectedTradeoffOption: f.selectedTradeoffOption,
+        tripId: f.tripId,
+        userId: f.userId,
+        feedbackAt: new Date(),
+      }));
+
+      const decisionQualityFeedbacks = dto.decisionQualityFeedbacks?.map(f => ({
+        feedbackId: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        runId: f.runId,
+        overallSatisfaction: f.overallSatisfaction,
+        planQuality: f.planQuality,
+        conflictExplanationQuality: f.conflictExplanationQuality,
+        tradeoffOptionsQuality: f.tradeoffOptionsQuality,
+        decisionSpeed: f.decisionSpeed,
+        additionalFeedback: f.additionalFeedback,
+        tripId: f.tripId,
+        userId: f.userId,
+        feedbackAt: new Date(),
+      }));
+
+      await this.feedbackCollector.collectBatchFeedback(
+        planVariantFeedbacks,
+        conflictFeedbacks,
+        decisionQualityFeedbacks
+      );
+
+      return successResponse({ message: '批量反馈提交成功' });
+    } catch (error: any) {
+      this.logger.error(`批量提交反馈失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('feedback/stats')
+  @ApiOperation({
+    summary: '获取反馈统计',
+    description: '获取用户反馈的统计信息',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '反馈统计',
+    type: ApiSuccessResponseDto,
+  })
+  async getFeedbackStats(@Query() query: FeedbackStatsQueryDto) {
+    try {
+      if (!this.feedbackCollector) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FeedbackCollectorService 不可用');
+      }
+
+      const stats = await this.feedbackCollector.getFeedbackStats(
+        query.userId,
+        query.tripId,
+        query.startDate ? new Date(query.startDate) : undefined,
+        query.endDate ? new Date(query.endDate) : undefined
+      );
+
+      return successResponse(stats);
+    } catch (error: any) {
+      this.logger.error(`获取反馈统计失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

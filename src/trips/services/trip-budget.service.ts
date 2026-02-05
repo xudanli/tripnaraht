@@ -511,11 +511,15 @@ export class TripBudgetService {
    * 获取预算约束
    * 
    * @param tripId 行程 ID
-   * @returns 预算约束
+   * @param userId 用户 ID（可选，用于从准备度接口获取 budgetLevel）
+   * @returns 预算约束（如果未设置，则根据准备度接口的 budgetLevel 提供默认建议）
    */
-  async getBudgetConstraint(tripId: string): Promise<BudgetConstraint | null> {
+  async getBudgetConstraint(tripId: string, userId?: string): Promise<BudgetConstraint | null> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
+      include: {
+        TripDay: true,
+      },
     });
 
     if (!trip) {
@@ -524,6 +528,15 @@ export class TripBudgetService {
 
     const budgetConfig = (trip.budgetConfig as any) || {};
     if (!budgetConfig.totalBudget && !budgetConfig.total) {
+      // 🆕 如果没有设置预算约束，尝试从准备度接口获取 budgetLevel 并提供默认建议
+      const recommendedBudget = await this.getRecommendedBudgetFromReadiness(tripId, trip, userId);
+      if (recommendedBudget) {
+        return {
+          ...recommendedBudget,
+          // 标记为推荐预算（非用户设置）
+          _isRecommended: true,
+        } as any;
+      }
       return null;
     }
 
@@ -536,6 +549,85 @@ export class TripBudgetService {
       createdAt: budgetConfig.createdAt,
       updatedAt: budgetConfig.updatedAt,
     };
+  }
+
+  /**
+   * 从准备度接口获取 budgetLevel 并计算推荐预算
+   * 
+   * @param tripId 行程 ID
+   * @param trip 行程对象
+   * @param userId 用户 ID（可选）
+   * @returns 推荐的预算约束
+   */
+  private async getRecommendedBudgetFromReadiness(
+    tripId: string,
+    trip: any,
+    userId?: string
+  ): Promise<BudgetConstraint | null> {
+    try {
+      // 计算行程天数
+      const startDate = DateTime.fromJSDate(trip.startDate);
+      const endDate = DateTime.fromJSDate(trip.endDate);
+      const durationDays = Math.ceil(endDate.diff(startDate, 'days').days) + 1;
+
+      // 获取用户偏好信息（如果提供了 userId）
+      let budgetLevel: 'low' | 'medium' | 'high' = 'medium';
+      if (userId) {
+        try {
+          const userProfile = await this.prisma.userProfile.findUnique({
+            where: { userId },
+          });
+          if (userProfile?.preferences) {
+            const prefs = userProfile.preferences as any;
+            budgetLevel = prefs.budgetLevel || prefs.travelPreferences?.budget?.toLowerCase() || 'medium';
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to get user profile for userId ${userId}: ${error}`);
+        }
+      }
+
+      // 从行程 metadata 中获取 budgetLevel（如果存在）
+      const metadata = trip.metadata as any || {};
+      const preferences = metadata.preferences || {};
+      if (preferences.budgetLevel) {
+        budgetLevel = preferences.budgetLevel;
+      }
+
+      // 根据 budgetLevel 和行程天数计算推荐预算
+      // 基准：中等预算水平，每人每天约 500 CNY
+      const baseDailyPerPerson = 500;
+      const travelers = (trip.metadata as any)?.travelers || 1;
+      
+      let dailyMultiplier = 1.0;
+      if (budgetLevel === 'low') {
+        dailyMultiplier = 0.6; // 低预算：60% 基准
+      } else if (budgetLevel === 'high') {
+        dailyMultiplier = 1.8; // 高预算：180% 基准
+      }
+
+      const recommendedDaily = baseDailyPerPerson * dailyMultiplier * travelers;
+      const recommendedTotal = recommendedDaily * durationDays;
+
+      // 计算分类预算分配（基于常见比例）
+      const categoryLimits = {
+        accommodation: Math.round(recommendedTotal * 0.35), // 35% 住宿
+        transportation: Math.round(recommendedTotal * 0.25), // 25% 交通
+        food: Math.round(recommendedTotal * 0.20), // 20% 餐饮
+        activities: Math.round(recommendedTotal * 0.15), // 15% 活动
+        other: Math.round(recommendedTotal * 0.05), // 5% 其他
+      };
+
+      return {
+        total: Math.round(recommendedTotal),
+        currency: 'CNY',
+        dailyBudget: Math.round(recommendedDaily),
+        categoryLimits,
+        alertThreshold: this.DEFAULT_ALERT_THRESHOLD,
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to get recommended budget from readiness: ${error}`);
+      return null;
+    }
   }
 
   /**

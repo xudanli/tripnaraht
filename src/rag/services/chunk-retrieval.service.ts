@@ -1,12 +1,14 @@
 // src/rag/services/chunk-retrieval.service.ts
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
 import { RerankingService } from './reranking.service';
 import { RAGMonitoringService } from './rag-monitoring.service';
 import { QueryExpansionService } from './query-expansion.service';
 import { QueryIntentService } from './query-intent.service';
+import { RedisService } from '../../redis/redis.service';
+import { ParallelExecutorService } from './parallel-executor.service';
 
 export interface ChunkRetrievalResult {
   id: string;
@@ -55,6 +57,25 @@ export interface ChunkRetrievalParams {
 export class ChunkRetrievalService {
   private readonly logger = new Logger(ChunkRetrievalService.name);
 
+  /**
+   * Phase 1.2 优化: RAG 结果缓存
+   * L1: 内存缓存（快速，5分钟TTL）
+   * L2: Redis 缓存（持久化，15分钟TTL）
+   */
+  private readonly resultCache = new Map<string, {
+    results: ChunkRetrievalResult[];
+    timestamp: number;
+  }>();
+  private readonly l1CacheTtl = 5 * 60 * 1000; // 5分钟
+  private readonly l2CacheTtl = 15 * 60 * 1000; // 15分钟
+  private readonly cacheKeyPrefix = 'rag_result:';
+
+  /**
+   * Phase 1.2 优化: In-Flight Request Deduplication
+   * 避免并发请求重复检索
+   */
+  private readonly inFlightRetrievals = new Map<string, Promise<ChunkRetrievalResult[]>>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
@@ -62,10 +83,26 @@ export class ChunkRetrievalService {
     @Optional() private readonly monitoringService?: RAGMonitoringService,
     @Optional() private readonly queryExpansionService?: QueryExpansionService,
     @Optional() private readonly queryIntentService?: QueryIntentService,
-  ) {}
+    @Optional() private readonly redisService?: RedisService,
+    @Optional() private readonly parallelExecutor?: ParallelExecutorService,
+  ) {
+    if (this.redisService) {
+      this.logger.log('✅ RAG 结果缓存已启用（Redis）');
+    } else {
+      this.logger.log('⚠️ RAG 结果缓存使用内存缓存（Redis 不可用）');
+    }
+    
+    if (this.parallelExecutor) {
+      this.logger.log('✅ 批量检索优化已启用');
+    }
+  }
 
   /**
    * 从 Chunk 表检索相关文档
+   * 
+   * Phase 1.2 优化:
+   * - 结果缓存（L1内存 + L2Redis）
+   * - In-Flight Request Deduplication
    * 
    * 支持：
    * - 纯向量检索（Dense retrieval）
@@ -73,6 +110,46 @@ export class ChunkRetrievalService {
    * - 重排序（Reranking: 对Top-K结果重新排序）
    */
   async retrieve(params: ChunkRetrievalParams): Promise<ChunkRetrievalResult[]> {
+    const cacheKey = this.buildCacheKey(params);
+    
+    // Phase 1.2 优化: In-Flight Request Deduplication
+    const inFlightRetrieval = this.inFlightRetrievals.get(cacheKey);
+    if (inFlightRetrieval) {
+      this.logger.debug(`🔄 复用正在进行的 RAG 检索: ${cacheKey}`);
+      return inFlightRetrieval;
+    }
+
+    // Phase 1.2 优化: 检查缓存
+    const cached = await this.getCachedResult(cacheKey);
+    if (cached) {
+      this.logger.debug(`✅ RAG 缓存命中: ${cacheKey}`);
+      return cached;
+    }
+
+    // 创建新的检索任务
+    const retrievalPromise = this.doRetrieve(params, cacheKey);
+    this.inFlightRetrievals.set(cacheKey, retrievalPromise);
+
+    try {
+      const results = await retrievalPromise;
+      
+      // 写入缓存
+      await this.writeToCache(cacheKey, results);
+      
+      return results;
+    } finally {
+      // 完成后从 In-Flight 映射中移除
+      this.inFlightRetrievals.delete(cacheKey);
+    }
+  }
+
+  /**
+   * Phase 1.2 优化: 实际执行检索（内部方法）
+   */
+  private async doRetrieve(
+    params: ChunkRetrievalParams,
+    cacheKey: string,
+  ): Promise<ChunkRetrievalResult[]> {
     let {
       query,
       limit = 10,
@@ -862,5 +939,201 @@ export class ChunkRetrievalService {
     // 如果需要，也可以查询 DocumentIndex（向后兼容）
     // 这里暂时只返回 Chunk 结果
     return chunkResults;
+  }
+
+  /**
+   * Phase 1.2 优化: 构建缓存 key
+   */
+  private buildCacheKey(params: ChunkRetrievalParams): string {
+    const {
+      query,
+      limit = 10,
+      credibilityMin = 0.5,
+      type,
+      category,
+      chunkCategory,
+      fileId,
+      useHybridSearch = true,
+      denseWeight = 0.6,
+      sparseWeight = 0.4,
+      useReranking = false,
+      rerankTopK = 20,
+      useQueryExpansion = false,
+      maxQueryVariants = 3,
+      useIntentClassification = false,
+    } = params;
+
+    // 计算 query hash（前100字符）
+    const queryHash = this.simpleHash(query.substring(0, 100).trim().toLowerCase());
+
+    return `query:${queryHash}:limit:${limit}:credibilityMin:${credibilityMin}:type:${type || 'none'}:category:${category || 'none'}:chunkCategory:${chunkCategory || 'none'}:fileId:${fileId || 'none'}:hybrid:${useHybridSearch}:denseWeight:${denseWeight}:sparseWeight:${sparseWeight}:rerank:${useReranking}:rerankTopK:${rerankTopK}:expansion:${useQueryExpansion}:maxVariants:${maxQueryVariants}:intent:${useIntentClassification}`;
+  }
+
+  /**
+   * Phase 1.2 优化: 简单的 hash 函数
+   */
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Phase 1.2 优化: 从缓存获取结果
+   */
+  private async getCachedResult(cacheKey: string): Promise<ChunkRetrievalResult[] | null> {
+    // L1: 检查内存缓存
+    const memoryCached = this.resultCache.get(cacheKey);
+    if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
+      this.logger.debug(`✅ L1缓存命中: ${cacheKey}`);
+      return memoryCached.results;
+    }
+
+    // L2: 检查 Redis 缓存
+    if (this.redisService) {
+      try {
+        const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
+        const cached = await this.redisService.get<ChunkRetrievalResult[]>(redisKey);
+        if (cached) {
+          this.logger.debug(`✅ L2缓存命中: ${cacheKey}`);
+          
+          // 回填 L1 缓存
+          this.resultCache.set(cacheKey, {
+            results: cached,
+            timestamp: Date.now(),
+          });
+          
+          return cached;
+        }
+      } catch (error: any) {
+        this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Phase 1.2 优化: 写入缓存
+   */
+  private async writeToCache(
+    cacheKey: string,
+    results: ChunkRetrievalResult[],
+  ): Promise<void> {
+    // L1: 写入内存缓存（同步，立即可用）
+    this.resultCache.set(cacheKey, {
+      results,
+      timestamp: Date.now(),
+    });
+
+    // 清理过期内存缓存
+    this.cleanExpiredCache();
+
+    // L2: 写入 Redis 缓存（异步，不阻塞）
+    if (this.redisService) {
+      try {
+        const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
+        const ttlSeconds = Math.floor(this.l2CacheTtl / 1000);
+        await this.redisService.set(redisKey, results, ttlSeconds);
+        this.logger.debug(`✅ RAG 结果已存入 L2 Redis: ${cacheKey} (TTL: ${ttlSeconds}s)`);
+      } catch (error: any) {
+        this.logger.warn(`存入 L2 Redis 失败: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Phase 1.2 优化: 清理过期缓存
+   */
+  private cleanExpiredCache(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    for (const [key, value] of this.resultCache.entries()) {
+      if (now - value.timestamp >= this.l1CacheTtl) {
+        expiredKeys.push(key);
+      }
+    }
+
+    for (const key of expiredKeys) {
+      this.resultCache.delete(key);
+    }
+
+    // 如果内存缓存太大（超过 500 个），清理最旧的 20%
+    if (this.resultCache.size > 500) {
+      const entries = Array.from(this.resultCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toRemove = Math.floor(entries.length * 0.2);
+      for (let i = 0; i < toRemove; i++) {
+        this.resultCache.delete(entries[i][0]);
+      }
+      this.logger.debug(`RAG 结果缓存过大，清理了最旧的 ${toRemove} 个条目`);
+    }
+  }
+
+  /**
+   * Phase 1.2 优化: 批量检索
+   * 
+   * 并行执行多个检索请求，提高性能
+   */
+  async batchRetrieve(
+    queries: ChunkRetrievalParams[],
+    options?: {
+      maxConcurrency?: number;
+      taskTimeout?: number;
+    }
+  ): Promise<Map<string, ChunkRetrievalResult[]>> {
+    if (!this.parallelExecutor) {
+      this.logger.warn('ParallelExecutor 不可用，使用顺序执行');
+      const results = new Map<string, ChunkRetrievalResult[]>();
+      for (const query of queries) {
+        const cacheKey = this.buildCacheKey(query);
+        const result = await this.retrieve(query);
+        results.set(cacheKey, result);
+      }
+      return results;
+    }
+
+    const maxConcurrency = options?.maxConcurrency || 10;
+    const taskTimeout = options?.taskTimeout || 5000;
+
+    const tasks = queries.map((query) => ({
+      id: this.buildCacheKey(query),
+      operation: async () => this.retrieve(query),
+      timeout: taskTimeout,
+    }));
+
+    const results = await this.parallelExecutor.executeAll(tasks, {
+      maxConcurrency,
+      taskTimeout,
+      delayMs: 50, // 任务间 50ms 延迟，避免 API 限流
+    });
+
+    const resultMap = new Map<string, ChunkRetrievalResult[]>();
+    for (let i = 0; i < queries.length; i++) {
+      const task = tasks[i];
+      const result = results[i];
+      if (result.success && result.result) {
+        resultMap.set(task.id, result.result);
+      } else {
+        this.logger.error(`批量检索失败: ${task.id}, error: ${result.error?.message}`);
+        resultMap.set(task.id, []); // 失败时返回空数组
+      }
+    }
+
+    const stats = this.parallelExecutor.getStats(results);
+    // 计算总耗时（使用最大 duration 作为近似值，或使用 avgDuration * total）
+    const totalTimeMs = Math.round(stats.avgDuration * stats.total);
+    this.logger.log(
+      `批量检索完成: 总数=${queries.length}, 成功=${stats.success}, ` +
+      `失败=${stats.failed}, 总耗时≈${totalTimeMs}ms, ` +
+      `平均耗时=${Math.round(stats.avgDuration)}ms`
+    );
+
+    return resultMap;
   }
 }

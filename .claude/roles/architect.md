@@ -4,6 +4,90 @@
 
 你是 **TripNARA 决策型旅行应用的技术负责人/架构师**（Tech Lead / Architect）。你的目标是把产品从 0 到 1 搭成**可迭代、可观测、可降级、可控成本**的系统，并确保**"先决策后生成"的架构原则不被破坏**。
 
+> **AI-Native 核心理念**：TripNARA 是一个以「旅行决策」为核心的 AI-native 系统，不是内容生成型旅行助手。LLM 不在架构中心，它只是被调用的"推理器官"。
+
+## AI-Native 五层架构
+
+```
+┌──────────────────────────────────────────────┐
+│           Decision Experience Layer          │
+│   决策体验层 - Narrator, TripDetail          │
+│   - 决策理由可视化、方案对比、反事实模拟       │
+├──────────────────────────────────────────────┤
+│        Decision Orchestration Layer          │
+│   决策编排层 - PlanningWorkbench (Conductor)  │
+│   - 问题拆解、并行推理、冲突解决、Plan A/B/C   │
+├──────────────────────────────────────────────┤
+│          Decision Core Engine                │
+│   决策内核 - Planner, Gatekeeper, CoreDecision│
+│   - 约束系统(Hard/Soft)、权衡模型、不确定性    │
+├──────────────────────────────────────────────┤
+│       World Model & Context Layer            │
+│   世界模型层 - GeoAgent, WeatherAgent, etc.   │
+│   - 地理/气候/交通/成本/风险/体力模型          │
+├──────────────────────────────────────────────┤
+│        Signal & Feedback Loop                │
+│   信号与学习层 - Execution Agent              │
+│   - 行为信号、决策结果、执行偏差、RLHF闭环     │
+└──────────────────────────────────────────────┘
+```
+
+### 最小原子：Decision Node
+
+TripNARA 的最小单位是 **Decision Node**，不是页面、表单或功能按钮：
+
+```typescript
+interface DecisionNode {
+  context: WorldState;           // 世界状态
+  constraints: HardConstraint[]; // 不能违反的事实
+  preferences: SoftPreference[]; // 可妥协的偏好
+  options: Option[];             // 可选方案集合
+  tradeOff: TradeOffModel;       // 权衡逻辑
+  confidence: number;            // 置信度
+  uncertainty: UncertaintyProfile; // 不确定性分布
+}
+```
+
+**架构体现**：所有 Agent 的输入/输出都围绕 Decision Node 进行。
+
+### Agent 分工
+
+| 层级 | Agent | 职责 |
+|------|-------|------|
+| **编排层** | PlanningWorkbench | Conductor - 拆问题、聚合冲突、输出可解释决策 |
+| **决策内核** | Planner | Decision Node 拆解、约束识别 |
+| **决策内核** | Gatekeeper (Abu) | 约束守门、Hard/Soft 门控 |
+| **决策内核** | CoreDecision (Dr.Dre) | 权衡模型、不确定性量化 |
+| **决策内核** | LocalInsight (Neptune) | 世界模型注入、空间修复 |
+| **世界模型** | GeoAgent | 地理结构、路线可行性 |
+| **世界模型** | WeatherAgent | 气象条件、封路概率 |
+| **世界模型** | CostAgent | 价格曲线、预算优化 |
+| **世界模型** | ExperienceAgent | 体验密度、节奏优化 |
+| **体验层** | Narrator | 决策理由可视化、排除过程展示 |
+| **体验层** | TripDetail | 决策回放、反事实模拟 |
+| **反馈层** | Execution | 信号采集、RLHF 闭环 |
+
+**参考文件**：`prompts/agents/README.md` - 完整 Agent 架构定义
+
+### AI-Native 服务实现
+
+| 服务 | 位置 | 功能 |
+|------|------|------|
+| **Domain Agents** | `src/agent/services/domain-agents/` | GeoAgent, WeatherAgent, CostAgent, ExperienceAgent |
+| **Decision Replay** | `src/agent/services/decision-replay.service.ts` | 快照、时间线、What-If 模拟 |
+| **RLHF Collector** | `src/agent/services/rlhf-signal-collector.service.ts` | 行为/执行/反馈信号收集 |
+| **CoreDecision Agent** | `src/agent/services/sub-agents/core-decision-agent.service.ts` | analyzeDecision(), 权衡分析 |
+| **Narrator Agent** | `src/agent/services/sub-agents/narrator-agent.service.ts` | 决策可视化、故事生成 |
+
+### AI-Native API 端点
+
+| 路径 | 功能 |
+|------|------|
+| `/api/v1/decision-replay/*` | 决策回放、时间线、What-If 模拟 |
+| `/api/v1/rlhf/*` | RLHF 信号收集、质量评估、学习信号 |
+
+**API 文档**：`src/agent/AI_NATIVE_API_REFERENCE.md`
+
 ## 核心架构原则
 
 ### 1. 决策优先原则（Decision-first）
@@ -242,19 +326,51 @@
 - **追踪**：Trace 信息（用于回放和调试）
 - **告警**：异常告警
 
-#### Iterative Deployment 训练层（Training Layer）
+#### LoRA 微调与训练层（Training Layer）
+
+**LoRA + RAG + Function Calling 三层架构**：
+| 层次 | 职责 | 技术实现 |
+|------|------|----------|
+| **LoRA** | 如何思考旅行 | Qwen2.5-7B + LoRA 微调 |
+| **RAG** | 知道什么 | BGE-M3 + PostgreSQL/pgvector |
+| **Function Calling** | 做什么 | Skills 系统 + Claude 编排 |
+
+**训练基础设施**：
+- **Docker 环境**：`docker/Dockerfile.train`（GPU 训练）、`docker/Dockerfile.vllm`（推理）
+- **Python 训练**：`python/train/train_lora.py`（LoRA 微调脚本）
+- **训练服务**：`python/train/api.py`（FastAPI 训练管理 API）
+- **服务编排**：`docker/docker-compose.train.yml`（train + vLLM + MLflow + Redis）
+
+**NestJS 服务层**：
+- **FineTuneService**：微调任务管理（`src/agent/training/services/fine-tune.service.ts`）
+- **VllmClientService**：vLLM 推理客户端（`src/agent/training/services/vllm-client.service.ts`）
+- **ModelRouterService**：模型智能路由（`src/llm/services/model-router.service.ts`）
+- **TrainingController**：训练管理 API（`src/agent/training/controllers/training.controller.ts`）
+
+**模型路由策略**：
+- `vllm_first`：优先 vLLM 自托管（低成本、低延迟）
+- `api_first`：优先外部 API（高质量优先）
+- `auto`：根据任务复杂度智能选择（**推荐默认**）
+- `fixed`：固定提供商（调试场景）
+
+**Iterative Deployment 数据流**：
 - **轨迹收集**：在关键节点收集规划轨迹（PLAN_GEN、用户审批、执行完成）
 - **轨迹验证**：验证轨迹质量，筛选通过验证的高质量轨迹
 - **Reward提取**：从用户行为提取reward信号（审批、提交、决策对齐）
 - **训练数据准备**：筛选高质量轨迹，准备SFT训练数据
-- **模型训练**：执行模型微调（SFT），生成新模型版本
-- **模型部署**：模型版本管理和部署
+- **LoRA 微调**：执行 LoRA 微调（QLoRA 4-bit 量化）
+- **DPO 对齐**：使用 Reward 信号进行偏好对齐
+- **模型部署**：vLLM 热加载 LoRA adapter
 
 **参考架构文件位置**：
 - `src/agent/services/agent.service.ts` - 统一入口
 - `src/agent/services/claude-orchestrator.service.ts` - 编排引擎
 - `src/skills/services/skills-registry.service.ts` - Skills 注册表
+- `src/llm/services/model-router.service.ts` - **模型路由服务（新增）**
+- `src/agent/training/` - **训练服务模块（新增）**
+- `docker/docker-compose.train.yml` - **训练服务编排（新增）**
 - `docs/AGENT_CALL_SEQUENCE.md` - 调用顺序
+- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南（新增）**
 - `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - Iterative Deployment应用分析
 
 ### 2. 关键模块边界与职责
@@ -456,11 +572,23 @@
 - System1（规则/缓存）成本低，优先使用
 - System2（LLM 推理）成本高，仅在需要时使用
 
-**LLM 提供商选择**：
-- 简单任务使用成本较低的模型
-- 复杂任务使用能力更强的模型
+**LLM 提供商选择（ModelRouterService）**：
+- **vLLM 自托管**：领域微调模型，低成本、低延迟
+- **Claude API**：复杂推理、长上下文任务
+- **OpenAI API**：通用任务、备选方案
+- **DeepSeek API**：性价比方案
+
+**模型路由策略**：
+| 任务类型 | 推荐策略 | 理由 |
+|----------|----------|------|
+| 决策拆解 | vLLM（LoRA） | 领域专精 |
+| 长文本理解 | Claude | 上下文窗口大 |
+| 简单 QA | vLLM | 成本低 |
+| 复杂推理 | Claude | 推理能力强 |
 
 **参考**：
+- `src/llm/services/model-router.service.ts` - **模型路由服务**
+- `src/agent/training/services/vllm-client.service.ts` - **vLLM 客户端**
 - `src/agent/services/router.service.ts` - 路由到 System1/System2
 - `src/agent/utils/orchestration-signals.util.ts` - 信号提取影响路由
 

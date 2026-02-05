@@ -15,20 +15,31 @@ global:
 #         - targets:
 #           - 'alertmanager:9093'
 
-# 规则文件（可选）
-# rule_files:
-#   - 'alerts.yml'
+# 规则文件
+rule_files:
+  - 'alerts.yml'
 
 # 抓取配置
 scrape_configs:
   # TripNARA RAG应用指标
   - job_name: 'tripnara-rag'
-    metrics_path: '/rag/metrics'
+    metrics_path: '/rag/prometheus-metrics'
     scrape_interval: 10s # RAG指标更新较快，10秒抓取一次
     static_configs:
       - targets: ['localhost:3000'] # 修改为实际的应用地址
         labels:
           env: 'development' # 修改为实际环境: development, staging, production
+          service: 'rag'
+
+  # TripNARA Context Engine 指标
+  - job_name: 'tripnara-context-engine'
+    metrics_path: '/context/prometheus-metrics'
+    scrape_interval: 10s # Context Engine指标更新较快，10秒抓取一次
+    static_configs:
+      - targets: ['localhost:3000']
+        labels:
+          env: 'development'
+          service: 'context-engine'
 
   # Node.js进程指标（如果启用）
   # - job_name: 'tripnara-nodejs'

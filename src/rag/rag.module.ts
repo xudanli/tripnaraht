@@ -61,7 +61,7 @@ import { ParallelExecutorService } from './services/parallel-executor.service';
 import { QueryIntentService } from './services/query-intent.service';
 import { LlmModule } from '../llm/llm.module';
 import { RagController } from './rag.controller';
-import { RagMetricsController } from './rag-metrics.controller';
+// RagMetricsController 已删除 - metrics 端点合并到 RagController
 import { RagMetricsService } from './services/rag-metrics.service';
 import { SkillsModule } from '../skills/skills.module';
 import { KPUModule } from '../kpu/kpu.module';
@@ -78,7 +78,7 @@ import { KPUModule } from '../kpu/kpu.module';
     forwardRef(() => SkillsModule), // 使用forwardRef避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule）
     forwardRef(() => KPUModule), // KPU模块（知识处理单元，深度融合）
   ],
-  controllers: [RagController, RagMetricsController],
+  controllers: [RagController],
   providers: [
     RagService,
     ChunkRetrievalService,

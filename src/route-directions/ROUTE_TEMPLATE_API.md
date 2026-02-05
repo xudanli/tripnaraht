@@ -61,8 +61,9 @@ interface DayPlanPoi {
   rating?: number;                  // POI 评分（可选，0-5）
   description?: string;             // POI 描述（可选）
   required?: boolean;               // 是否为必游POI（默认false）
-  order?: number;                   // POI 顺序（用于排序，可选）
-  durationMinutes?: number;         // 预计停留时间（分钟，可选）
+  startTime?: string;                // 🆕 开始时间（ISO 8601 或 HH:mm 格式，可选）
+  endTime?: string;                  // 🆕 结束时间（ISO 8601 或 HH:mm 格式，可选）
+  durationMinutes?: number;         // 预计停留时间（分钟，可选。如果未提供 startTime/endTime，将使用此字段计算时间）
   metadata?: Record<string, any>;   // 其他元数据（可选）
 }
 ```

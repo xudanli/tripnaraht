@@ -161,6 +161,9 @@ export interface ContextPackageOptions {
   /** Trip ID */
   tripId?: string;
   
+  /** 用户 ID（Phase 2.2 优化: 用于个性化学习） */
+  userId?: string;
+  
   /** 规划阶段 */
   phase: string;
   

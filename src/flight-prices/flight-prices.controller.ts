@@ -172,10 +172,14 @@ export class FlightPricesController {
     }
   }
 
+  /**
+   * ⚠️ 管理后台接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/flight-prices
+   */
   @Get()
   @ApiOperation({
-    summary: '获取所有价格参考数据',
-    description: '返回所有已配置的机票价格参考数据列表。',
+    summary: '[Admin] 获取所有价格参考数据',
+    description: '⚠️ 管理后台接口。返回所有已配置的机票价格参考数据列表。',
   })
   @ApiResponse({
     status: 200,
@@ -296,10 +300,14 @@ export class FlightPricesController {
     return successResponse(trend);
   }
 
+  /**
+   * ⚠️ 配置数据接口 - 可考虑合并到 domestic/estimate 响应中
+   * @deprecated 建议移到 /admin/flight-prices/day-of-week-factors
+   */
   @Get('day-of-week-factors')
   @ApiOperation({
-    summary: '获取所有周内因子',
-    description: '返回周一至周日的周内因子（相对于总平均价的倍数）。',
+    summary: '[Admin] 获取所有周内因子',
+    description: '⚠️ 管理/调试接口。返回周一至周日的周内因子（相对于总平均价的倍数）。',
   })
   @ApiResponse({
     status: 200,
@@ -425,10 +433,14 @@ export class FlightPricesController {
     }
   }
 
+  /**
+   * ⚠️ 管理后台接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/flight-prices/:id
+   */
   @Get(':id')
   @ApiOperation({
-    summary: '根据 ID 获取价格参考数据',
-    description: '返回指定 ID 的价格参考数据详情。',
+    summary: '[Admin] 根据 ID 获取价格参考数据',
+    description: '⚠️ 管理后台接口。返回指定 ID 的价格参考数据详情。',
   })
   @ApiParam({
     name: 'id',
@@ -460,10 +472,14 @@ export class FlightPricesController {
     }
   }
 
+  /**
+   * ⚠️ 管理后台接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/flight-prices
+   */
   @Post()
   @ApiOperation({
-    summary: '创建价格参考数据',
-    description: '创建新的机票价格参考数据。系统会自动计算平均价格。',
+    summary: '[Admin] 创建价格参考数据',
+    description: '⚠️ 管理后台接口。创建新的机票价格参考数据。系统会自动计算平均价格。',
   })
   @ApiBody({ type: CreateFlightPriceDto })
   @ApiResponse({
@@ -488,10 +504,14 @@ export class FlightPricesController {
     }
   }
 
+  /**
+   * ⚠️ 管理后台接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/flight-prices/:id
+   */
   @Put(':id')
   @ApiOperation({
-    summary: '更新价格参考数据',
-    description: '更新指定 ID 的价格参考数据。如果更新了价格，系统会自动重新计算平均价格。',
+    summary: '[Admin] 更新价格参考数据',
+    description: '⚠️ 管理后台接口。更新指定 ID 的价格参考数据。如果更新了价格，系统会自动重新计算平均价格。',
   })
   @ApiParam({
     name: 'id',
@@ -531,10 +551,14 @@ export class FlightPricesController {
     }
   }
 
+  /**
+   * ⚠️ 管理后台接口 - 普通用户不应访问
+   * @deprecated 建议移到 /admin/flight-prices/:id
+   */
   @Delete(':id')
   @ApiOperation({
-    summary: '删除价格参考数据',
-    description: '删除指定 ID 的价格参考数据。',
+    summary: '[Admin] 删除价格参考数据',
+    description: '⚠️ 管理后台接口。删除指定 ID 的价格参考数据。',
   })
   @ApiParam({
     name: 'id',

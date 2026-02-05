@@ -21,7 +21,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         console.log('🔑 [AuthModule] JwtModule.registerAsync useFactory called');
-        const expiresIn = configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '15m';
+        const expiresIn = configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '48h';
         const secret = configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production';
         console.log('🔑 [AuthModule] JwtModule config created');
         return {

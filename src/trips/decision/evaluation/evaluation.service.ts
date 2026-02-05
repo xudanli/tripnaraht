@@ -291,7 +291,7 @@ export class EvaluationService {
     // 评估计划
     const constraintChecker = new (await import('../constraints'))
       .ConstraintChecker();
-    const constraintResult = constraintChecker.checkPlan(state, plan);
+    const constraintResult = await constraintChecker.checkPlan(state, plan);
 
     const metrics = this.evaluatePlan(state, plan, constraintResult);
 

@@ -1,184 +1,293 @@
-# Planner - 任务拆解Agent
+# Planner - Decision Node 拆解 Agent
 
-## 角色定位
-负责任务拆解、缺口清单识别、候选方案结构设计。在INTAKE阶段被Orchestrator调用，输出结构化的任务分解和需求分析。
+## 架构定位
+
+**所属层级**：Decision Orchestration Layer（决策编排层）
+
+Planner 负责将用户请求拆解为 **Decision Node 树**，识别约束系统、偏好系统和权衡点。这是 TripNARA 决策系统的入口，将模糊的用户意图转化为可执行的决策结构。
+
+> **核心理念**：不是"规划行程"，而是"构建决策树"
 
 **项目实现位置**：
-- 服务：`src/trips/decision/orchestration/planner-agent.service.ts` - `PlannerAgentService`
-- 接口：`src/trips/decision/orchestration/langgraph-orchestrator.interface.ts` - `IPlannerAgent`
-- 已集成：LLM 支持（通过 `LlmService.callLlmWithSchema()`），Context Engineer 支持
+- 服务：`src/trips/decision/orchestration/planner-agent.service.ts`
+- 接口：`src/trips/decision/orchestration/langgraph-orchestrator.interface.ts`
+
+---
 
 ## 核心职责
 
-1. **任务拆解**：将用户请求拆解为可执行的子任务
-2. **缺口识别**：识别数据缺失、约束冲突、需求不明确等问题
-3. **候选方案结构**：设计多个候选方案的结构框架
-4. **需求规范化**：将用户输入转换为标准化的TripPlanRequest
+### 1. Decision Node 拆解
 
-## 输入/输出Schema
+将用户请求拆解为结构化的 Decision Node：
 
-### 输入：TripPlanRequest（原始或部分）
+```typescript
+interface DecisionNode {
+  nodeId: string;
+  nodeType: 'ROOT' | 'ROUTE' | 'POI' | 'TRANSPORT' | 'TIMING' | 'BUDGET';
+  context: WorldState;           // 世界状态
+  constraints: HardConstraint[]; // 硬约束
+  preferences: SoftPreference[]; // 软偏好
+  options: Option[];             // 候选方案
+  tradeOff: TradeOffModel;       // 权衡逻辑
+  dependencies: string[];        // 依赖的其他 Node
+  confidence: number;            // 置信度
+}
+```
+
+### 2. 约束系统识别
+
+区分 Hard Constraints 和 Soft Preferences：
+
+| 类型 | 定义 | 示例 |
+|------|------|------|
+| **Hard Constraint** | 违反则方案无效 | 签证、航班、封路、体力极限 |
+| **Soft Preference** | 可权衡妥协 | 风景优先、预算敏感、舒适度 |
+
+### 3. 缺口（Gap）识别
+
+识别决策所需但缺失的信息：
+
+```typescript
+interface DecisionGap {
+  gapId: string;
+  gapType: 'DATA_MISSING' | 'CONSTRAINT_CONFLICT' | 'PREFERENCE_UNCLEAR' | 'UNCERTAINTY_HIGH';
+  severity: 'BLOCKING' | 'DEGRADING' | 'ACCEPTABLE';
+  affectedNodes: string[];
+  resolutionStrategy: string;
+}
+```
+
+### 4. 候选方案结构设计
+
+设计多个候选方案的框架（Plan A/B/C）：
+
+```typescript
+interface CandidateStructure {
+  structureId: string;
+  approach: 'OPTIMAL_EXPERIENCE' | 'SAFE_CONSERVATIVE' | 'BUDGET_OPTIMIZED';
+  riskProfile: {
+    overallRisk: number;  // 0..1
+    riskFactors: string[];
+  };
+  tradeOffSummary: string;  // "高体验 vs 高风险"
+  estimatedConfidence: number;
+}
+```
+
+---
+
+## 输入/输出 Schema
+
+### 输入：PlannerInput
+
 ```typescript
 {
   request_id: string;
-  origin: string | {lat: number, lng: number};
-  destination: string | {lat: number, lng: number};
-  // ... 其他字段（可能不完整）
+  raw_request: {
+    origin: string | { lat: number; lng: number };
+    destination: string | { lat: number; lng: number };
+    dateRange?: { start: string; end: string };
+    party?: { adults: number; children: number; fitness_level: string };
+    preferences?: Record<string, any>;
+    constraints?: Record<string, any>;
+  };
+  world_context?: {
+    weather_forecast?: WeatherData[];
+    road_conditions?: RoadCondition[];
+    current_prices?: PriceData[];
+  };
 }
 ```
 
 ### 输出：PlannerOutput
+
 ```typescript
 {
   request_id: string;
-  normalized_request: TripPlanRequest;  // 规范化后的完整请求
-  task_breakdown: Array<{
-    task_id: string;
-    task_type: 'RESEARCH' | 'VALIDATE' | 'GENERATE' | 'VERIFY';
-    description: string;
-    dependencies: string[];  // 依赖的其他task_id
-    required_skills: string[];  // 需要的skills
-    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  
+  // 核心：Decision Node 树
+  decision_tree: {
+    root: DecisionNode;
+    nodes: Map<string, DecisionNode>;
+    edges: Array<{ from: string; to: string; relationship: string }>;
+  };
+  
+  // 约束系统
+  constraint_system: {
+    hard_constraints: Array<{
+      constraint_id: string;
+      type: 'REACHABILITY' | 'SAFETY' | 'TIME' | 'LEGAL' | 'PHYSICAL';
+      description: string;
+      source: 'USER_EXPLICIT' | 'WORLD_MODEL' | 'INFERRED';
+      violation_consequence: string;
+    }>;
+    soft_preferences: Array<{
+      preference_id: string;
+      type: 'SCENIC' | 'EFFICIENCY' | 'COMFORT' | 'COST' | 'ADVENTURE';
+      weight: number;  // 0..1
+      tradeoff_willing: string;  // 用户愿意用什么交换
+    }>;
+  };
+  
+  // 缺口清单
+  gaps: DecisionGap[];
+  
+  // 候选方案结构
+  candidate_structures: CandidateStructure[];
+  
+  // 需要用户判断的点
+  user_judgment_required: Array<{
+    question_id: string;
+    question: string;  // "你更讨厌哪种失败？"
+    options: string[];
+    impact: string;    // 回答会影响什么
   }>;
-  gaps: Array<{
-    gap_id: string;
-    gap_type: 'DATA_MISSING' | 'CONSTRAINT_CONFLICT' | 'REQUIREMENT_UNCLEAR' | 'EVIDENCE_NEEDED';
-    severity: 'HARD' | 'SOFT';
-    description: string;
-    suggested_resolution: string;
-  }>;
-  candidate_structures: Array<{
-    structure_id: string;
-    approach: string;  // 方案描述
-    estimated_days: number;
-    estimated_segments: number;
-    key_characteristics: string[];
-  }>;
+  
+  // 假设清单
   assumptions: Array<{
     assumption_id: string;
     assumption_text: string;
     needs_verification: boolean;
+    default_if_unverified: string;
   }>;
 }
 ```
 
+---
+
+## Decision Node 拆解规则
+
+### 层级结构
+
+```
+ROOT（整体旅行决策）
+├── ROUTE（路线决策）
+│   ├── SEGMENT_1（路段决策）
+│   └── SEGMENT_2（路段决策）
+├── POI（景点决策）
+│   ├── MUST_VISIT（必去）
+│   └── NICE_TO_HAVE（可选）
+├── TRANSPORT（交通决策）
+│   ├── MODE（交通方式）
+│   └── SCHEDULE（班次选择）
+├── TIMING（时间决策）
+│   ├── DAILY_PACE（每日节奏）
+│   └── BUFFER（缓冲时间）
+└── BUDGET（预算决策）
+    ├── ACCOMMODATION（住宿）
+    └── ACTIVITIES（活动）
+```
+
+### 约束传播规则
+
+1. **向下传播**：父节点的约束传递给子节点
+2. **向上聚合**：子节点的不确定性聚合到父节点
+3. **横向冲突**：同层节点的约束可能冲突，需标记
+
+---
+
 ## 工作流程
 
-### 步骤1: 请求解析与规范化
-1. 解析原始请求，识别所有字段
-2. 调用 `intent.parse` 理解用户意图
-3. 调用 `constraints.normalize` 规范化约束条件
-4. 补全缺失的默认值（如mode、party等）
+### 步骤 1: 请求解析与意图识别
 
-### 步骤2: 任务拆解
-1. 识别需要执行的任务：
-   - **RESEARCH任务**：获取交通、POI、开放时间、DEM、风险数据
-   - **VALIDATE任务**：验证可达性、约束满足性
-   - **GENERATE任务**：生成行程方案
-   - **VERIFY任务**：验证行程可行性
-2. 建立任务依赖关系
-3. 分配优先级
+1. 解析原始请求，提取显式信息
+2. 识别隐含意图（"轻松"→低疲劳约束）
+3. 标记不确定/模糊的部分
 
-### 步骤3: 缺口识别
-1. 检查数据完整性：
-   - 起点/终点是否明确
-   - 时间范围是否确定
-   - 约束条件是否完整
-2. 识别约束冲突：
-   - 时间窗口与距离冲突
-   - 体力要求与路线难度冲突
-   - 预算与需求冲突
-3. 标记需要核验的假设
+### 步骤 2: 约束系统构建
 
-### 步骤4: 候选方案结构设计
-1. 设计多个候选方案框架：
-   - 效率优先方案
-   - 风景优先方案
-   - 安全保守方案
-2. 估算每个方案的基本参数（天数、段数等）
+1. 识别 Hard Constraints：
+   - 用户显式声明的硬约束
+   - 世界模型推导的硬约束（封路、天气）
+   - 物理规律硬约束（体力、时间）
+2. 识别 Soft Preferences：
+   - 用户偏好（风景、效率、舒适）
+   - 权衡意愿（愿意牺牲什么）
+
+### 步骤 3: Decision Node 树构建
+
+1. 创建 ROOT 节点
+2. 递归拆解子决策
+3. 建立节点间依赖关系
+4. 标记每个节点的置信度
+
+### 步骤 4: 缺口识别
+
+1. 遍历每个 Decision Node
+2. 检查所需数据是否完整
+3. 识别约束冲突
+4. 评估不确定性级别
+
+### 步骤 5: 候选方案结构设计
+
+设计至少 3 个候选方案框架：
+
+| 方案 | 定位 | 风险档位 | 目标用户 |
+|------|------|----------|----------|
+| Plan A | 最优体验 | 高（30%） | 愿意冒险换体验 |
+| Plan B | 平衡方案 | 中（15%） | 默认推荐 |
+| Plan C | 保底方案 | 低（5%） | 极度风险厌恶 |
+
+### 步骤 6: 用户判断点识别
+
+识别需要用户做出判断（而非输入）的点：
+
+```
+✅ "你更讨厌哪种失败：错过景点 vs 行程太赶？"
+✅ "你愿意为确定性牺牲多少体验？"
+❌ "请输入你的预算"（传统表单思维）
+```
+
+---
 
 ## 输出要求
 
-1. **必须输出**：规范化请求、任务拆解、缺口清单、至少1个候选方案结构
-2. **必须标注**：所有假设和待确认项
-3. **必须给出**：Top3风险与对策建议
+1. **必须输出**：Decision Node 树、约束系统、缺口清单、候选方案结构
+2. **必须区分**：Hard Constraints vs Soft Preferences
+3. **必须标注**：所有假设和不确定性
+4. **必须设计**：至少 3 个不同风险档位的候选方案
+
+---
 
 ## 限制条件
 
-1. **不允许跳过缺口识别**：必须明确列出所有数据缺失和约束冲突
-2. **不允许编造数据**：缺失的数据必须标记为GAP，不得假设
-3. **不允许缺少候选方案**：至少提供1个候选方案结构
+1. **不允许跳过约束识别**：必须明确区分硬约束和软偏好
+2. **不允许单一方案**：必须提供多个风险档位的选择
+3. **不允许忽略不确定性**：每个节点必须有置信度标注
+4. **不允许传统表单思维**：用户判断点必须是"选择题"而非"填空题"
 
-## 允许调用的Skills
+---
 
-**项目已实现的 Skills**：
-- `intent.parse` - 意图解析（通过 LLM 或规则匹配）
+## 允许调用的 Skills
+
+- `intent.parse` - 意图解析
 - `constraints.normalize` - 约束规范化
+- `constraints.detectConflicts` - 约束冲突检测
 - `scope.guard` - 范围检查
-- `task.breakdown` - 任务拆解
+- `world.queryState` - 查询世界状态
 
-**项目集成点**：
-- 使用 `LlmService` 进行 LLM 分析（支持 OpenAI/DeepSeek/Anthropic）
-- 支持 Context Engineer 集成（`buildContextForNode`）
-- 回退机制：LLM 失败时使用规则匹配（`analyzeQueryWithRules`）
+---
 
-## Claude快捷唤起
+## 与其他 Agent 的协作
 
-在Claude中，你可以使用以下方式唤起Planner：
+| 后继 Agent | 传递内容 |
+|------------|----------|
+| **Gatekeeper** | 约束系统 → 门控检查 |
+| **CoreDecision** | 候选方案结构 → 权衡评估 |
+| **Domain Agents** | 缺口清单 → 数据获取 |
 
-### 方式1: 直接请求任务拆解
+---
+
+## Claude 快捷唤起
+
 ```
-请帮我拆解这个行程规划任务：
-- 起点：北京
-- 终点：上海
-- 时间：3天
-- 识别所有缺口和约束冲突
+作为 TripNARA 的 Planner，请拆解这个旅行请求：
+[用户请求]
+
+要求：
+1. 构建 Decision Node 树
+2. 区分 Hard Constraints 和 Soft Preferences
+3. 识别数据缺口和不确定性
+4. 设计 Plan A/B/C 三个风险档位的候选方案
+5. 识别需要用户判断（而非填写）的点
 ```
-
-### 方式2: 使用@提及
-```
-@Planner 请拆解这个请求并识别缺口：[你的请求详情]
-```
-
-### 方式3: 明确指定使用Planner
-```
-作为TripNARA的Planner，请进行任务拆解和缺口识别：
-[你的TripPlanRequest]
-```
-
-**注意**：通常Planner由Orchestrator在INTAKE阶段自动调用，但也可以独立使用进行需求分析。
-
-## 项目集成说明
-
-### 当前实现状态
-- ✅ **已实现**：`PlannerAgentService.analyzeQuery()` 方法
-- ✅ **已集成**：LLM 支持（OpenAI/DeepSeek/Anthropic）
-- ✅ **已集成**：Context Engineer 支持（可选）
-- ✅ **回退机制**：LLM 失败时使用规则匹配
-
-### 需要适配到新接口
-当前 `PlannerAgentService` 的接口是：
-```typescript
-analyzeQuery(state: LangGraphState): Promise<{
-  intent: string;
-  extractedParams: LangGraphState['extractedParams'];
-  nextStep: 'CORE_DECISION' | 'COMPLIANCE_CHECK' | 'LOCAL_INSIGHT';
-}>
-```
-
-需要适配到新的 `PlannerAgent` 接口：
-```typescript
-analyzeRequest(
-  request: TripPlanRequest,
-  context: OrchestratorState
-): Promise<{
-  intent: string;
-  gaps: Array<{...}>;
-  candidate_structure?: {...};
-}>
-```
-
-### 集成建议
-1. 创建适配器方法，将 `TripPlanRequest` 转换为 `LangGraphState`
-2. 将 `analyzeQuery` 的输出转换为新的 `PlannerOutput` 格式
-3. 保持现有的 LLM 和 Context Engineer 集成

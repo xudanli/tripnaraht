@@ -1,0 +1,62 @@
+# TripNARA Embedding Service Dockerfile
+# 
+# 提供 BGE-M3 Embedding 和 BGE-Reranker 服务
+# GPU 需求: 4-8GB VRAM
+
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+# 环境变量
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建虚拟环境
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# 升级 pip
+RUN pip install --upgrade pip setuptools wheel
+
+# 安装 PyTorch (CUDA 12.1)
+RUN pip install torch==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+
+# 安装核心依赖
+RUN pip install \
+    transformers==4.40.0 \
+    sentence-transformers==2.6.1 \
+    FlagEmbedding==1.2.10 \
+    fastapi==0.110.0 \
+    uvicorn[standard]==0.29.0 \
+    pydantic==2.6.4 \
+    numpy==1.26.4
+
+# 工作目录
+WORKDIR /app
+
+# 复制代码
+COPY python/embedding /app/embedding
+
+# 预下载模型（可选，取消注释以加速启动）
+# 注意：这会显著增加镜像大小 (~5GB)
+# RUN python -c "from FlagEmbedding import BGEM3FlagModel; BGEM3FlagModel('BAAI/bge-m3')"
+# RUN python -c "from FlagEmbedding import FlagReranker; FlagReranker('BAAI/bge-reranker-v2-m3')"
+
+# 暴露端口
+EXPOSE 8001
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# 启动命令
+CMD ["python", "-m", "uvicorn", "embedding.embedding_service:app", "--host", "0.0.0.0", "--port", "8001"]

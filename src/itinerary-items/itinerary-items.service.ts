@@ -182,6 +182,22 @@ export class ItineraryItemsService {
     }
 
     // ============================================
+    // 步骤 3.9: 🆕 自动计算 order 值（如果未提供）
+    // ============================================
+    let orderValue = dto.order;
+    if (orderValue === undefined || orderValue === null) {
+      // 查询当天最大的 order 值
+      const maxOrderItem = await this.prisma.itineraryItem.findFirst({
+        where: { tripDayId: dto.tripDayId },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      });
+      orderValue = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+        ? maxOrderItem.order + 1 
+        : 1; // 如果没有现有项，从1开始
+    }
+
+    // ============================================
     // 步骤 4: 写入数据库
     // ============================================
     const newItem = await this.prisma.itineraryItem.create({
@@ -194,6 +210,7 @@ export class ItineraryItemsService {
         startTime: start,
         endTime: end,
         note: dto.note,
+        order: orderValue, // 🆕 设置显示顺序
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
         Place: {
@@ -372,6 +389,10 @@ export class ItineraryItemsService {
    * 🆕 支持跨天住宿显示：
    * - 返回当天的所有行程项
    * - 额外返回前一天跨到今天的住宿项（标记为退房）
+   * 
+   * 🆕 排序规则：
+   * - 如果是从路线模板创建的行程，按 startTime 排序
+   * - 否则，优先按 order 字段排序，如果没有 order 则按 startTime 排序
    */
   async findByTripDay(tripDayId: string) {
     // 获取当前 TripDay 信息
@@ -385,6 +406,7 @@ export class ItineraryItemsService {
     }
 
     // 查询当天的行程项
+    // 🆕 统一按 startTime 排序（移除 order 排序）
     const todayItems = await this.prisma.itineraryItem.findMany({
       where: { tripDayId },
       include: {
@@ -406,7 +428,7 @@ export class ItineraryItemsService {
         TripDay: true,
       },
       orderBy: {
-        startTime: 'asc',
+        startTime: 'asc', // 🆕 统一按时间排序
       },
     });
 
@@ -445,15 +467,76 @@ export class ItineraryItemsService {
       return [];
     }
 
-    // 查询前一天的住宿项（REST 类型），其结束时间在今天
+    // 🆕 查询前一天的住宿项（REST 类型），需要满足：
+    // 1. 是酒店（通过 Place.category === 'HOTEL' 或名称包含酒店关键词判断）
+    // 2. endTime 在今天或之后（表示今天需要退房），或者 endTime 为 null（跨多天的住宿）
     const checkoutItems = await this.prisma.itineraryItem.findMany({
       where: {
-        tripDayId: previousTripDay.id,
-        type: 'REST', // 住宿类型
-        endTime: {
-          gte: currentDayStart.toJSDate(),
-          lte: currentDayEnd.plus({ hours: 14 }).toJSDate(), // 退房时间通常在中午前
-        },
+        AND: [
+          {
+            tripDayId: previousTripDay.id,
+            type: 'REST', // 住宿类型
+          },
+          {
+            // 必须是酒店（通过 Place.category 或名称判断）
+            Place: {
+              OR: [
+                // 明确是酒店（通过 Place.category）
+                {
+                  category: 'HOTEL',
+                },
+                // 名称包含酒店关键词
+                {
+                  nameCN: { contains: '酒店', mode: 'insensitive' },
+                },
+                {
+                  nameCN: { contains: '旅馆', mode: 'insensitive' },
+                },
+                {
+                  nameCN: { contains: '民宿', mode: 'insensitive' },
+                },
+                {
+                  nameEN: { contains: 'hotel', mode: 'insensitive' },
+                },
+                {
+                  nameEN: { contains: 'hostel', mode: 'insensitive' },
+                },
+                {
+                  nameEN: { contains: 'resort', mode: 'insensitive' },
+                },
+                {
+                  nameEN: { contains: 'guesthouse', mode: 'insensitive' },
+                },
+                {
+                  nameEN: { contains: 'inn', mode: 'insensitive' },
+                },
+              ],
+            },
+          },
+          {
+            // endTime 在今天范围内（表示今天需要退房）
+            // 如果 endTime 为 null，也包含（可能是跨多天的住宿，但通常会在今天退房）
+            OR: [
+              {
+                endTime: {
+                  gte: currentDayStart.toJSDate(),
+                  lte: currentDayEnd.plus({ hours: 14 }).toJSDate(), // 退房时间通常在中午前（14:00）
+                },
+              },
+              {
+                // 如果 endTime 为 null，检查 startTime 是否在前一天，表示是跨天的住宿
+                AND: [
+                  { endTime: null },
+                  {
+                    startTime: {
+                      lt: currentDayStart.toJSDate(), // startTime 在前一天
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
       include: {
         Place: true,

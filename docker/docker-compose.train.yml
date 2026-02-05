@@ -1,0 +1,198 @@
+# TripNARA 训练与推理服务编排
+# 包含：训练服务、vLLM推理、MLflow、Redis
+
+version: '3.8'
+
+services:
+  # ============================================
+  # 训练服务 (GPU)
+  # ============================================
+  train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train
+    container_name: tripnara-train
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - REDIS_URL=redis://redis:6379
+      - HF_HOME=/app/models/huggingface
+      - WANDB_MODE=offline
+    volumes:
+      - ../python/train:/app/train:ro
+      - train-models:/app/models
+      - train-data:/app/data
+      - train-outputs:/app/outputs
+      - train-logs:/app/logs
+    ports:
+      - "8000:8000"  # 训练 API
+      - "6006:6006"  # TensorBoard
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - tripnara-train
+    depends_on:
+      - redis
+      - mlflow
+
+  # ============================================
+  # vLLM 推理服务 (GPU)
+  # ============================================
+  vllm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.vllm
+    container_name: tripnara-vllm
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=Qwen/Qwen2.5-7B-Instruct
+      - TENSOR_PARALLEL_SIZE=1
+      - GPU_MEMORY_UTILIZATION=0.85
+      - MAX_MODEL_LEN=8192
+      - ENABLE_LORA=true
+      - MAX_LORAS=4
+      - LORA_MODULES_PATH=/app/models/lora
+      - VLLM_API_KEY=${VLLM_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - vllm-models:/app/models
+      - vllm-logs:/app/logs
+    ports:
+      - "8080:8000"  # OpenAI 兼容 API
+      - "8081:8001"  # 管理 API
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - tripnara-train
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  # ============================================
+  # MLflow 跟踪服务器
+  # ============================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.12.1
+    container_name: tripnara-mlflow
+    restart: unless-stopped
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    networks:
+      - tripnara-train
+
+  # ============================================
+  # Redis (任务队列和缓存)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: tripnara-train-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6380:6379"  # 避免与主服务冲突
+    networks:
+      - tripnara-train
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================
+  # TensorBoard (可选)
+  # ============================================
+  tensorboard:
+    image: tensorflow/tensorflow:2.15.0
+    container_name: tripnara-tensorboard
+    restart: unless-stopped
+    volumes:
+      - train-logs:/logs:ro
+    ports:
+      - "6007:6006"
+    command: tensorboard --logdir=/logs --host=0.0.0.0 --port=6006
+    networks:
+      - tripnara-train
+
+  # ============================================
+  # LLM Judge 服务 (质量评分)
+  # ============================================
+  llm-judge:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.judge
+    container_name: tripnara-llm-judge
+    restart: unless-stopped
+    environment:
+      - LLM_JUDGE_SERVICE_PORT=8003
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - VLLM_URL=http://vllm:8000
+    volumes:
+      - ../python/judge:/app/judge:ro
+    ports:
+      - "8003:8003"
+    networks:
+      - tripnara-train
+    depends_on:
+      - vllm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# ============================================
+# 网络
+# ============================================
+networks:
+  tripnara-train:
+    driver: bridge
+
+# ============================================
+# 数据卷
+# ============================================
+volumes:
+  train-models:
+    driver: local
+  train-data:
+    driver: local
+  train-outputs:
+    driver: local
+  train-logs:
+    driver: local
+  vllm-models:
+    driver: local
+  vllm-logs:
+    driver: local
+  mlflow-data:
+    driver: local
+  redis-data:
+    driver: local

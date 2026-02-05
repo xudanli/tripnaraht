@@ -172,6 +172,7 @@ model ItineraryItem {
   tripDayId String
   note      String?
   trailId   Int?
+  order     Int? // 显示顺序（数字越小越靠前，用于控制行程项的显示顺序）
 
   // ========== 费用相关字段 ==========
   estimatedCost Float? // 预估费用
@@ -201,6 +202,7 @@ model ItineraryItem {
   @@index([costCategory])
   @@index([isPaid])
   @@index([bookingStatus])
+  @@index([tripDayId, order]) // 用于按顺序查询
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -574,6 +576,7 @@ model TrailWaypoint {
 
 model Trip {
   id                     String                   @id
+  name                   String?                  @db.VarChar(200) // 行程名称（可选，最大长度 200 字符）
   destination            String
   startDate              DateTime
   endDate                DateTime
@@ -1685,37 +1688,37 @@ model RagKnowledgeGap {
 // Decision-First Agent 引擎的数据库模型
 
 model DecisionDraft {
-  id                String   @id @default(uuid()) @db.Uuid
-  draftId           String   @unique @map("draft_id") @db.VarChar(255)
-  workflowId        String   @unique @map("workflow_id") @db.VarChar(255)
-  version           String   @default("v1.0") @db.VarChar(50)
-  
+  id         String @id @default(uuid()) @db.Uuid
+  draftId    String @unique @map("draft_id") @db.VarChar(255)
+  workflowId String @unique @map("workflow_id") @db.VarChar(255)
+  version    String @default("v1.0") @db.VarChar(50)
+
   // Step Draft 关联（JSON 存储）
-  stepDraftId       String?  @map("step_draft_id") @db.VarChar(255)
-  stepDraftData     Json?    @map("step_draft_data")
-  
+  stepDraftId   String? @map("step_draft_id") @db.VarChar(255)
+  stepDraftData Json?   @map("step_draft_data")
+
   // 执行结果（可选）
-  executionResultId String?  @map("execution_result_id") @db.VarChar(255)
-  executionResultData Json?  @map("execution_result_data")
-  
+  executionResultId   String? @map("execution_result_id") @db.VarChar(255)
+  executionResultData Json?   @map("execution_result_data")
+
   // 用户模式
-  userMode          String   @default("toc") @map("user_mode") @db.VarChar(20) // 'toc' | 'expert' | 'studio'
-  
+  userMode String @default("toc") @map("user_mode") @db.VarChar(20) // 'toc' | 'expert' | 'studio'
+
   // Studio 模式特有字段（调试信息）
-  debugInfo         Json?    @map("debug_info") // DecisionDebugInfo
-  
+  debugInfo Json? @map("debug_info") // DecisionDebugInfo
+
   // 元数据
-  decisionCount     Int      @default(0) @map("decision_count")
-  stepCount         Int      @default(0) @map("step_count")
-  createdBy        String   @default("system") @map("created_by") @db.VarChar(255)
-  
+  decisionCount Int    @default(0) @map("decision_count")
+  stepCount     Int    @default(0) @map("step_count")
+  createdBy     String @default("system") @map("created_by") @db.VarChar(255)
+
   // 时间戳
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
   // 关联
-  decisionSteps    DecisionStep[]
-  
+  decisionSteps DecisionStep[]
+
   @@index([workflowId])
   @@index([draftId])
   @@index([createdAt(sort: Desc)])
@@ -1723,43 +1726,43 @@ model DecisionDraft {
 }
 
 model DecisionStep {
-  id                String   @id @default(uuid()) @db.Uuid
-  decisionDraftId   String   @map("decision_draft_id") @db.Uuid
-  
+  id              String @id @default(uuid()) @db.Uuid
+  decisionDraftId String @map("decision_draft_id") @db.Uuid
+
   // 基本信息
-  stepId            String   @map("step_id") @db.VarChar(255)
-  title             String   @db.VarChar(500)
-  description       String?  @db.Text
-  decisionType      String   @map("decision_type") @db.VarChar(50) // 'transport-decision' | 'pace-decision' | ...
-  status            String   @default("pending") @db.VarChar(20) // 'pending' | 'approved' | 'rejected' | 'modified'
-  confidence        Float    @default(0.7)
-  
+  stepId       String  @map("step_id") @db.VarChar(255)
+  title        String  @db.VarChar(500)
+  description  String? @db.Text
+  decisionType String  @map("decision_type") @db.VarChar(50) // 'transport-decision' | 'pace-decision' | ...
+  status       String  @default("pending") @db.VarChar(20) // 'pending' | 'approved' | 'rejected' | 'modified'
+  confidence   Float   @default(0.7)
+
   // 输入输出（JSON 存储）
-  inputs            Json     @default("[]")
-  outputs           Json     @default("[]")
-  
+  inputs  Json @default("[]")
+  outputs Json @default("[]")
+
   // 证据（JSON 存储）
-  evidence          Json     @default("[]")
-  
+  evidence Json @default("[]")
+
   // 决策日志（JSON 存储）
-  decisionLog       Json     @default("[]") @map("decision_log")
-  
+  decisionLog Json @default("[]") @map("decision_log")
+
   // Step Draft 关联
-  stepDraftIds      String[] @default([]) @map("step_draft_ids")
-  
+  stepDraftIds String[] @default([]) @map("step_draft_ids")
+
   // 三人格评审（JSON 存储）
-  guardianReview    Json?    @map("guardian_review")
-  
+  guardianReview Json? @map("guardian_review")
+
   // 用户反馈（JSON 存储）
-  userFeedback      Json?    @map("user_feedback")
-  
+  userFeedback Json? @map("user_feedback")
+
   // 时间戳
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
   // 关联
-  decisionDraft     DecisionDraft @relation(fields: [decisionDraftId], references: [id], onDelete: Cascade)
-  
+  decisionDraft DecisionDraft @relation(fields: [decisionDraftId], references: [id], onDelete: Cascade)
+
   @@unique([decisionDraftId, stepId])
   @@index([decisionDraftId])
   @@index([stepId])
@@ -1769,30 +1772,30 @@ model DecisionStep {
 }
 
 model DecisionDraftVersion {
-  id                  String   @id @default(uuid()) @db.Uuid
-  versionId           String   @unique @map("version_id") @db.VarChar(255)
-  workflowId          String   @map("workflow_id") @db.VarChar(255)
-  version             String   @db.VarChar(50) // 'v1.0', 'v1.1', ...
-  
+  id         String @id @default(uuid()) @db.Uuid
+  versionId  String @unique @map("version_id") @db.VarChar(255)
+  workflowId String @map("workflow_id") @db.VarChar(255)
+  version    String @db.VarChar(50) // 'v1.0', 'v1.1', ...
+
   // Decision Draft 数据（JSON 存储）
-  decisionDraftData   Json     @map("decision_draft_data")
-  
+  decisionDraftData Json @map("decision_draft_data")
+
   // Step Draft 数据（JSON 存储）
-  stepDraftData       Json     @map("step_draft_data")
-  
+  stepDraftData Json @map("step_draft_data")
+
   // 执行结果（可选，JSON 存储）
-  executionResultData Json?    @map("execution_result_data")
-  
+  executionResultData Json? @map("execution_result_data")
+
   // 版本差异（JSON 存储）
-  diffData            Json?    @map("diff_data")
-  
+  diffData Json? @map("diff_data")
+
   // 元数据
-  createdBy           String   @default("system") @map("created_by") @db.VarChar(255)
-  description         String?  @db.Text
-  
+  createdBy   String  @default("system") @map("created_by") @db.VarChar(255)
+  description String? @db.Text
+
   // 时间戳
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
-  
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
   @@index([workflowId])
   @@index([workflowId, version])
   @@index([createdAt(sort: Desc)])
@@ -1800,18 +1803,206 @@ model DecisionDraftVersion {
 }
 
 model DestinationClarificationConfig {
-  id                String   @id @default(uuid()) @db.Uuid
-  destinationCode   String   @unique @map("destination_code") @db.VarChar(2)
-  destinationName   String   @map("destination_name") @db.VarChar(255)
-  enabled           Boolean  @default(false)
-  config            Json     // 完整的 DestinationClarificationConfig JSON
-  metadata          Json?
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  createdBy         String?  @map("created_by") @db.VarChar(255)
-  updatedBy         String?  @map("updated_by") @db.VarChar(255)
-  
+  id              String   @id @default(uuid()) @db.Uuid
+  destinationCode String   @unique @map("destination_code") @db.VarChar(2)
+  destinationName String   @map("destination_name") @db.VarChar(255)
+  enabled         Boolean  @default(false)
+  config          Json // 完整的 DestinationClarificationConfig JSON
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdBy       String?  @map("created_by") @db.VarChar(255)
+  updatedBy       String?  @map("updated_by") @db.VarChar(255)
+
   @@index([destinationCode])
   @@index([enabled])
   @@map("destination_clarification_configs")
+}
+
+// ========== 数据质量监控模型 ==========
+
+model ModelVersion {
+  id           String    @id @default(uuid()) @db.Uuid
+  version      String    @unique @db.VarChar(50) // 'v1.0', 'v1.1'
+  modelType    String    @map("model_type") @db.VarChar(50) // 'PLANNING', 'GATE', 'NARRATION'
+  description  String?   @db.Text
+  performance  Json? // { accuracy, latency, cost }
+  trainingData Json?     @map("training_data") // 训练数据统计
+  deployedAt   DateTime? @map("deployed_at")
+  isActive     Boolean   @default(false) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([modelType, isActive])
+  @@index([version])
+  @@map("model_versions")
+}
+
+model DataQualityMonitor {
+  id          String @id @default(uuid()) @db.Uuid
+  dataSource  String @map("data_source") @db.VarChar(100) // 'switzerland-road-status'
+  dataType    String @map("data_type") @db.VarChar(50) // 'road-status', 'ferry', 'weather'
+  countryCode String @map("country_code") @db.VarChar(2)
+
+  // 五维度质量分数
+  completeness Float @default(1.0) // 0-1
+  accuracy     Float @default(1.0) // 0-1
+  consistency  Float @default(1.0) // 0-1
+  timeliness   Float @default(1.0) // 0-1
+  traceability Float @default(1.0) // 0-1
+  overallScore Float @default(1.0) @map("overall_score") // 0-1
+
+  // 元数据
+  lastUpdated  DateTime @map("last_updated")
+  lastVerified DateTime @map("last_verified")
+  recordCount  Int      @default(0) @map("record_count")
+
+  // 状态
+  status String @default("HEALTHY") @db.VarChar(20) // 'HEALTHY', 'WARNING', 'CRITICAL'
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  alerts DataQualityAlert[]
+
+  @@unique([dataSource, dataType])
+  @@index([countryCode])
+  @@index([status])
+  @@index([overallScore])
+  @@map("data_quality_monitors")
+}
+
+model DataQualityAlert {
+  id                  String  @id @default(uuid()) @db.Uuid
+  monitorId           String? @map("monitor_id") @db.Uuid
+  geographicMonitorId String? @map("geographic_monitor_id") @db.Uuid
+  severity            String  @db.VarChar(20) // 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'
+  alertType           String  @map("alert_type") @db.VarChar(50) // 'QUALITY_LOW', 'DATA_EXPIRED', 'UPDATE_FAILED'
+  message             String  @db.Text
+  details             Json? // 详细问题信息
+
+  // 处理状态
+  status         String    @default("PENDING") @db.VarChar(20) // 'PENDING', 'ACKNOWLEDGED', 'RESOLVED', 'IGNORED'
+  acknowledgedBy String?   @map("acknowledged_by") @db.VarChar(255)
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  monitor           DataQualityMonitor?           @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  geographicMonitor GeographicDataQualityMonitor? @relation(fields: [geographicMonitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId])
+  @@index([geographicMonitorId])
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt(sort: Desc)])
+  @@map("data_quality_alerts")
+}
+
+// ========== 地理数据质量监控模型 🔴 P0 新增 ==========
+
+model GeographicDataQualityMonitor {
+  id          String @id @default(uuid()) @db.Uuid
+  dataSource  String @map("data_source") @db.VarChar(100) // 'switzerland-dem' | 'norway-rivers' | ...
+  dataType    String @map("data_type") @db.VarChar(50) // 'DEM' | 'RIVERS' | 'MOUNTAINS' | 'ROADS' | 'COASTLINES' | 'PORTS' | 'RAILWAYS'
+  countryCode String @map("country_code") @db.VarChar(2)
+
+  // 地理数据特有质量维度
+  spatialAccuracy             Float @default(1.0) @map("spatial_accuracy") // 0-1，空间精度（DEM分辨率、地理特征精度）
+  coordinateSystemConsistency Float @default(1.0) @map("coordinate_system_consistency") // 0-1，坐标系统一致性（WGS84）
+  spatialCompleteness         Float @default(1.0) @map("spatial_completeness") // 0-1，空间完整性（空间覆盖范围）
+  spatialConsistency          Float @default(1.0) @map("spatial_consistency") // 0-1，空间一致性（空间拓扑关系）
+
+  // 标准质量维度
+  completeness Float @default(1.0) // 0-1
+  accuracy     Float @default(1.0) // 0-1
+  consistency  Float @default(1.0) // 0-1
+  timeliness   Float @default(1.0) // 0-1
+  traceability Float @default(1.0) // 0-1
+  overallScore Float @default(1.0) @map("overall_score") // 0-1
+
+  // 空间查询性能
+  queryLatencyP50  Float? @map("query_latency_p50") // 毫秒，P50延迟
+  queryLatencyP95  Float? @map("query_latency_p95") // 毫秒，P95延迟
+  queryLatencyP99  Float? @map("query_latency_p99") // 毫秒，P99延迟
+  querySuccessRate Float? @default(1.0) @map("query_success_rate") // 0-1，查询成功率
+
+  // 空间数据覆盖
+  coverageRate   Float? @default(1.0) @map("coverage_rate") // 0-1，空间覆盖率
+  missingRegions Json?  @map("missing_regions") // 缺失区域列表 [{ countryCode, region, featureType }]
+
+  // 元数据
+  lastUpdated  DateTime @map("last_updated")
+  lastVerified DateTime @map("last_verified")
+  recordCount  Int      @default(0) @map("record_count")
+
+  // 状态
+  status String @default("HEALTHY") @db.VarChar(20) // 'HEALTHY', 'WARNING', 'CRITICAL'
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  alerts DataQualityAlert[]
+
+  @@unique([dataSource, dataType])
+  @@index([countryCode])
+  @@index([dataType])
+  @@index([status])
+  @@index([overallScore])
+  @@index([coverageRate])
+  @@map("geographic_data_quality_monitors")
+}
+
+// ========== Context学习结果模型 🔴 P1 新增 ==========
+
+model ContextLearningResult {
+  id String @id @default(uuid()) @db.Uuid
+
+  // 用户和行程标识
+  userId String? @map("user_id") @db.VarChar(255)
+  tripId String? @map("trip_id") @db.Uuid
+
+  // 学习事件类型
+  eventType String @map("event_type") @db.VarChar(50) // 'context_built' | 'context_used' | 'decision_made' | 'user_feedback'
+
+  // Block学习结果
+  blockKey  String @map("block_key") @db.VarChar(100) // Block的唯一标识（如 'COUNTRY_WEATHER', 'PLAN_SUMMARY'）
+  blockType String @map("block_type") @db.VarChar(50) // Block类型（如 'COUNTRY_WEATHER', 'PLAN_SUMMARY'）
+
+  // 学习指标
+  importanceScore       Float  @default(0.5) @map("importance_score") // 0-1，重要性评分
+  relevanceScore        Float? @map("relevance_score") // 0-1，相关性评分（可选）
+  usageCount            Int    @default(0) @map("usage_count") // 使用次数
+  positiveFeedbackCount Int    @default(0) @map("positive_feedback_count") // 正面反馈次数
+  negativeFeedbackCount Int    @default(0) @map("negative_feedback_count") // 负面反馈次数
+
+  // 学习置信度
+  confidence Float @default(0.0) @map("confidence") // 0-1，学习置信度
+  sampleSize Int   @default(0) @map("sample_size") // 样本数量
+
+  // 学习上下文
+  phase     String? @db.VarChar(50) // 规划阶段（如 'PLANNING', 'EXECUTION'）
+  agent     String? @db.VarChar(50) // Agent名称（如 'PlanningWorkbench', 'Gatekeeper'）
+  userQuery String? @map("user_query") @db.Text // 用户查询（用于相关性学习）
+
+  // 元数据
+  metadata  Json? // 额外的学习元数据
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 注意：userId可能为空，所以不能直接用于unique约束
+  // 使用组合索引代替unique约束
+  @@index([userId])
+  @@index([tripId])
+  @@index([blockKey])
+  @@index([blockType])
+  @@index([eventType])
+  @@index([phase])
+  @@index([agent])
+  @@index([importanceScore])
+  @@index([confidence])
+  @@index([createdAt(sort: Desc)])
+  @@map("context_learning_results")
 }

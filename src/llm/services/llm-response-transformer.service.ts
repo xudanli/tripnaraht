@@ -396,15 +396,49 @@ export class LlmResponseTransformerService {
         }
       }
 
+      // 🆕 HCI优化：处理选项值（标准化处理，去除首尾空格）
+      let processedOptions = question.options;
+      if (processedOptions && Array.isArray(processedOptions)) {
+        processedOptions = processedOptions.map((opt: any) => {
+          if (typeof opt === 'string') {
+            return opt.trim(); // 标准化选项值
+          }
+          // 如果是对象格式，标准化value和label
+          return {
+            ...opt,
+            value: (opt.value || opt.label || opt).toString().trim(),
+            label: (opt.label || opt.value || opt).toString().trim(),
+          };
+        });
+      }
+
+      // 🆕 HCI优化：处理条件输入字段（标准化triggerValue）
+      let processedConditionalInputs = question.conditionalInputs;
+      if (processedConditionalInputs && Array.isArray(processedConditionalInputs)) {
+        processedConditionalInputs = processedConditionalInputs.map((input: any) => ({
+          ...input,
+          triggerValue: input.triggerValue?.toString().trim() || '', // 标准化triggerValue
+          inputType: input.inputType,
+          label: input.label?.trim(),
+          placeholder: input.placeholder?.trim(),
+          required: input.required !== undefined ? input.required : true,
+          validation: input.validation,
+          hint: input.hint?.trim(),
+        }));
+      }
+
       transformedQuestions.push({
         id: trimmedId, // 使用清理后的id
         question: trimmedQuestionText, // 使用清理后的questionText
         type: questionType,
-        options: question.options,
+        options: processedOptions, // 🆕 使用标准化后的选项
         required: question.required,
         placeholder: question.placeholder,
         hint: question.hint,
         default: question.default,
+        validation: question.validation,
+        // 🆕 HCI优化：保留条件输入字段
+        conditionalInputs: processedConditionalInputs,
       } as ClarificationQuestion);
     }
 

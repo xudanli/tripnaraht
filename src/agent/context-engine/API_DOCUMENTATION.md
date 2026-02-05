@@ -616,9 +616,220 @@ async function getContextMetrics(tripId: string) {
 
 ---
 
+## 6. Context学习 Skill (context.learn)
+
+### Skill信息
+
+- **Skill名称**: `context.learn`
+- **描述**: 学习Context Block的重要性、相关性、使用情况等，用于优化Context构建策略
+- **类别**: `rag`
+- **工具组**: `CONTEXT`
+
+### 功能说明
+
+`context.learn` Skill用于从各种事件中学习Context Block的使用情况，包括：
+
+1. **Block重要性学习**: 哪些Block对用户决策更重要
+2. **Block相关性学习**: 哪些Block与用户查询更相关
+3. **Block使用情况学习**: 哪些Block被频繁使用
+4. **用户反馈学习**: 从用户反馈中学习Block的相关性
+
+### 输入参数
+
+```typescript
+interface ContextLearnInput {
+  /** 用户ID（可选） */
+  userId?: string;
+  
+  /** Trip ID（可选） */
+  tripId?: string;
+  
+  /** 学习事件类型 */
+  eventType: 'context_built' | 'context_used' | 'decision_made' | 'user_feedback';
+  
+  /** 事件数据 */
+  eventData: {
+    /** Context Package（如果是context_built事件） */
+    contextPackage?: ContextPackage;
+    
+    /** 使用的Block keys（如果是context_used事件） */
+    usedBlocks?: string[];
+    
+    /** 决策结果（如果是decision_made事件） */
+    decisionResult?: {
+      accepted: boolean;
+      satisfaction?: number; // 0-1
+    };
+    
+    /** 用户反馈（如果是user_feedback事件） */
+    feedback?: {
+      relevantBlocks?: string[];
+      irrelevantBlocks?: string[];
+      missingBlocks?: string[];
+    };
+  };
+  
+  /** 规划阶段（可选） */
+  phase?: string;
+  
+  /** Agent名称（可选） */
+  agent?: string;
+  
+  /** 用户查询（可选，用于相关性学习） */
+  userQuery?: string;
+}
+```
+
+### 输出结果
+
+```typescript
+interface ContextLearnOutput {
+  learningResult: {
+    /** 更新的Block优先级 */
+    updatedPriorities?: Record<string, number>;
+    
+    /** 推荐的Block组合 */
+    recommendedBlocks?: string[];
+    
+    /** 学习置信度 */
+    confidence: number;
+    
+    /** 样本数量 */
+    sampleSize: number;
+  };
+}
+```
+
+### 使用示例
+
+#### 1. 记录Context构建事件
+
+```typescript
+import { ContextLearnSkill } from '@/skills/context/context-learn.skill';
+
+// 在context.build执行后自动调用（已集成）
+const result = await contextLearnSkill.execute({
+  userId: 'user-123',
+  tripId: 'trip-456',
+  eventType: 'context_built',
+  eventData: {
+    contextPackage: contextPackage, // 构建的Context Package
+  },
+  phase: 'PLANNING',
+  agent: 'PlanningWorkbench',
+  userQuery: '计划一次冰岛旅行',
+});
+```
+
+#### 2. 记录用户反馈
+
+```typescript
+const result = await contextLearnSkill.execute({
+  userId: 'user-123',
+  tripId: 'trip-456',
+  eventType: 'user_feedback',
+  eventData: {
+    feedback: {
+      relevantBlocks: ['COUNTRY_WEATHER', 'PLAN_SUMMARY'],
+      irrelevantBlocks: ['COUNTRY_CURRENCY'],
+      missingBlocks: ['COUNTRY_VISA'],
+    },
+  },
+  phase: 'PLANNING',
+  agent: 'PlanningWorkbench',
+});
+```
+
+#### 3. 记录决策结果
+
+```typescript
+const result = await contextLearnSkill.execute({
+  userId: 'user-123',
+  tripId: 'trip-456',
+  eventType: 'decision_made',
+  eventData: {
+    decisionResult: {
+      accepted: true,
+      satisfaction: 0.8,
+    },
+  },
+  phase: 'PLANNING',
+  agent: 'PlanningWorkbench',
+});
+```
+
+### 学习机制
+
+#### 学习权重配置
+
+不同事件类型有不同的学习权重：
+
+- `context_built`: 0.1（最低，因为只是构建，不一定使用）
+- `context_used`: 0.3（中等，表示Block被使用）
+- `decision_made`: 0.6（较高，表示Block影响了决策）
+- `user_feedback`: 0.8（最高，直接的用户反馈）
+
+#### 时间衰减机制
+
+每次更新时，旧的重要性评分乘以衰减因子（0.95），新的事件权重乘以学习权重后累加。
+
+公式：`newScore = oldScore * 0.95 + newEventScore * weight`
+
+#### 置信度计算
+
+- 初始置信度：0.1（样本数=1）
+- 置信度增长：`confidence = min(1.0, sampleSize / 10)`
+- 最大置信度：1.0（样本数>=10）
+
+### 集成说明
+
+`context.learn` 已自动集成到 `context.build` Skill中：
+
+- 每次 `context.build` 执行后，会自动记录 `context_built` 事件
+- 异步执行，不阻塞主流程
+- 失败不影响Context构建
+
+### 查询学习结果
+
+可以通过 `ContextLearningService` 直接查询学习结果：
+
+```typescript
+import { ContextLearningService } from '@/agent/context-engine/services/context-learning.service';
+
+// 获取学习结果（更新的Block优先级、推荐的Block组合）
+const result = await contextLearningService.getLearningResult(
+  'user-123',
+  'PLANNING',
+  'PlanningWorkbench',
+);
+
+// result.updatedPriorities: { 'COUNTRY_WEATHER': 85, 'PLAN_SUMMARY': 90, ... }
+// result.recommendedBlocks: ['COUNTRY_WEATHER', 'PLAN_SUMMARY', ...]
+// result.confidence: 0.75
+// result.sampleSize: 15
+
+// 获取单个Block的学习统计
+const stats = await contextLearningService.getBlockLearningStats(
+  'COUNTRY_WEATHER',
+  'user-123',
+  'PLANNING',
+  'PlanningWorkbench',
+);
+```
+
+### 注意事项
+
+1. **异步执行**: `context.learn` 在 `context.build` 中是异步执行的，不会阻塞主流程
+2. **失败处理**: 学习失败不会影响Context构建，只会记录警告日志
+3. **数据持久化**: 学习结果存储在 `context_learning_results` 表中
+4. **个性化**: 可以为不同用户、不同阶段、不同Agent学习不同的Block重要性
+
+---
+
 ## 更新日志
 
 - **2025-01-20**: 初始版本，提供 5 个核心接口
+- **2026-02-04**: 新增 `context.learn` Skill，支持Context学习功能
 
 ---
 

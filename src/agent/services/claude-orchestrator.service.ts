@@ -62,6 +62,12 @@ import { UserDecisionService } from '../../trips/readiness/services/user-decisio
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
 import { DecisionStep } from '../../decision-draft/interfaces/decision-draft.interface';
+// Domain Agents (World Model Layer)
+import { GeoAgentService } from './domain-agents/geo-agent.service';
+import { WeatherAgentService } from './domain-agents/weather-agent.service';
+import { CostAgentService } from './domain-agents/cost-agent.service';
+import { ExperienceAgentService } from './domain-agents/experience-agent.service';
+import { DecisionOutput, DecisionNode } from '../interfaces/decision-node.interface';
 
 /**
  * Claude Orchestrator Service
@@ -92,10 +98,16 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
+    // Domain Agents (World Model Layer)
+    @Optional() private readonly geoAgent?: GeoAgentService,
+    @Optional() private readonly weatherAgent?: WeatherAgentService,
+    @Optional() private readonly costAgent?: CostAgentService,
+    @Optional() private readonly experienceAgent?: ExperienceAgentService,
   ) {
-    this.logger.log(`[ClaudeOrchestratorService] 已初始化`);
+    this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
-    this.logger.log(`[ClaudeOrchestratorService] 子 Agent: Planner=${!!this.plannerAgent}, Gatekeeper=${!!this.gatekeeperAgent}, Compliance=${!!this.complianceAgent}, LocalInsight=${!!this.localInsightAgent}, CoreDecision=${!!this.coreDecisionAgent}, Narrator=${!!this.narratorAgent}`);
+    this.logger.log(`[ClaudeOrchestratorService] Sub-Agents: Planner=${!!this.plannerAgent}, Gatekeeper=${!!this.gatekeeperAgent}, Compliance=${!!this.complianceAgent}, LocalInsight=${!!this.localInsightAgent}, CoreDecision=${!!this.coreDecisionAgent}, Narrator=${!!this.narratorAgent}`);
+    this.logger.log(`[ClaudeOrchestratorService] Domain Agents: Geo=${!!this.geoAgent}, Weather=${!!this.weatherAgent}, Cost=${!!this.costAgent}, Experience=${!!this.experienceAgent}`);
     if (this.skillsRegistry) {
       const skillsCount = this.skillsRegistry.getAllSkills().length;
       this.logger.log(`[ClaudeOrchestratorService] 可用 Skills 数量: ${skillsCount}`);
@@ -2591,6 +2603,9 @@ ${JSON.stringify(routingDecision, null, 2)}
             this.logger.warn(`[Claude Orchestrator] geo.check.hazard.zones 失败: ${error?.message}`);
           }
         }
+
+        // 6. Domain Agents - World Model Data
+        await this.collectWorldModelData(tripRequest, researchData, evidenceRefs);
       }
 
       state.research_data = researchData;
@@ -4663,6 +4678,55 @@ ${JSON.stringify(routingDecision, null, 2)}
     if (skillName === 'itinerary.verify') return deadline.clampTimeoutMs(1800);
     if (skillName === 'repair.apply') return deadline.clampTimeoutMs(1400);
     return deadline.clampTimeoutMs(1200);
+  }
+
+  /**
+   * 收集世界模型数据（通过 Domain Agents）
+   */
+  private async collectWorldModelData(
+    tripRequest: TripPlanRequest,
+    researchData: Record<string, any>,
+    evidenceRefs: string[],
+  ): Promise<void> {
+    this.logger.debug(`[Orchestrator] Collecting world model data via Domain Agents`);
+    const promises: Promise<void>[] = [];
+
+    // GeoAgent
+    if (this.geoAgent && typeof tripRequest.destination === 'object') {
+      const coords = tripRequest.destination;
+      promises.push(
+        this.geoAgent.analyzeTerrain([{ lat: coords.lat, lng: coords.lng }])
+          .then(r => { researchData.geo_terrain = r; r.evidence.forEach(e => evidenceRefs.push(e.evidence_id)); })
+          .catch(e => this.logger.warn(`[GeoAgent] Failed: ${e?.message}`))
+      );
+    }
+
+    // WeatherAgent
+    if (this.weatherAgent && typeof tripRequest.destination === 'object' && tripRequest.date_range) {
+      const coords = tripRequest.destination;
+      promises.push(
+        this.weatherAgent.getForecast(
+          { lat: coords.lat, lng: coords.lng },
+          { start: tripRequest.date_range.start_date, end: tripRequest.date_range.end_date }
+        ).then(r => { researchData.weather_forecast = r; r.evidence.forEach(e => evidenceRefs.push(e.evidence_id)); })
+          .catch(e => this.logger.warn(`[WeatherAgent] Failed: ${e?.message}`))
+      );
+    }
+
+    // CostAgent
+    if (this.costAgent && tripRequest.destination && tripRequest.date_range) {
+      const dest = typeof tripRequest.destination === 'string' ? tripRequest.destination : 'destination';
+      promises.push(
+        this.costAgent.estimateTripCost(
+          dest,
+          { start: tripRequest.date_range.start_date, end: tripRequest.date_range.end_date },
+          tripRequest.party?.count || 2
+        ).then(r => { researchData.cost_estimate = r; r.evidence.forEach(e => evidenceRefs.push(e.evidence_id)); })
+          .catch(e => this.logger.warn(`[CostAgent] Failed: ${e?.message}`))
+      );
+    }
+
+    await Promise.all(promises);
   }
 
   /**

@@ -1,6 +1,6 @@
 // src/agent/training/services/trajectory-etl.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   RLTrajectory,
@@ -38,9 +38,9 @@ export class TrajectoryETLService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly qualityChecker: DataQualityCheckerService,
-    private readonly piiAnonymizer: PIIAnonymizerService,
-    private readonly versionManager: DatasetVersionManagerService,
+    @Optional() private readonly qualityChecker?: DataQualityCheckerService,
+    @Optional() private readonly piiAnonymizer?: PIIAnonymizerService,
+    @Optional() private readonly versionManager?: DatasetVersionManagerService,
   ) {}
 
   /**

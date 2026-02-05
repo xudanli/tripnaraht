@@ -13,6 +13,8 @@ import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { ContextEngineerService } from '../../agent/context-engine/services/context-engineer.service';
 import { ContextPackage, ContextPackageOptions } from '../../agent/context-engine/types/context-package.types';
+import { ContextLearnSkill } from './context-learn.skill';
+import { SKILL_CONTEXT_LEARN } from '../skills.tokens';
 
 export interface ContextBuildInput extends SkillInput {
   /** Trip ID */
@@ -58,12 +60,15 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
   };
 
   private contextEngineer?: ContextEngineerService;
+  private contextLearn?: ContextLearnSkill;
 
   constructor(
     private readonly moduleRef: ModuleRef,
+    @Optional() @Inject(SKILL_CONTEXT_LEARN) contextLearn?: ContextLearnSkill,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
     // ContextEngineerService 在 execute 方法中通过 ModuleRef 获取
+    this.contextLearn = contextLearn;
   }
 
   /**
@@ -106,12 +111,57 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
 
       const contextPackage = await contextEngineer.build(options);
 
+      // 🔴 P1: 自动记录Context构建事件到context.learn
+      // 异步执行，不阻塞主流程
+      if (this.contextLearn) {
+        this.recordContextBuiltEvent(contextPackage, input).catch((error) => {
+          this.logger.warn(`记录Context构建事件失败: ${error.message}`, error.stack);
+        });
+      }
+
       return {
         contextPackage,
       };
     } catch (error: any) {
       this.logger.error(`构建 Context Package 失败: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  /**
+   * 记录Context构建事件到context.learn
+   * 用于学习哪些Block更重要、更相关
+   */
+  private async recordContextBuiltEvent(
+    contextPackage: ContextPackage,
+    input: ContextBuildInput,
+  ): Promise<void> {
+    if (!this.contextLearn) {
+      return;
+    }
+
+    try {
+      // 提取userId（如果有）
+      const userId = (input as any).userId;
+
+      await this.contextLearn.execute({
+        userId,
+        tripId: input.tripId,
+        eventType: 'context_built',
+        eventData: {
+          contextPackage,
+        },
+        phase: input.phase,
+        agent: input.agent,
+        userQuery: input.userQuery,
+      });
+
+      this.logger.debug(
+        `已记录Context构建事件: tripId=${input.tripId || 'none'}, phase=${input.phase}, agent=${input.agent}, blocks=${contextPackage.blocks.length}`,
+      );
+    } catch (error: any) {
+      // 记录事件失败不应该影响主流程，只记录警告
+      this.logger.warn(`记录Context构建事件失败: ${error.message}`);
     }
   }
 }

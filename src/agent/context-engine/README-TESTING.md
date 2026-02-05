@@ -83,6 +83,33 @@ npm test -- --testPathPattern=context-engine --coverage
 - ✅ 服务定义测试
 - ✅ 调用 ContextEngineerService.build
 - ✅ 支持 useCache 选项
+- ✅ 自动记录Context构建事件到context.learn
+
+### ContextLearnSkill ✅
+
+**测试用例**:
+- ✅ 服务定义测试
+- ✅ 调用 ContextLearningService.learn
+- ✅ 处理context_built事件
+- ✅ 处理context_used事件
+- ✅ 处理decision_made事件
+- ✅ 处理user_feedback事件
+- ✅ ContextLearningService未注入时的错误处理
+- ✅ 处理学习失败的情况
+
+### ContextLearningService ✅
+
+**测试用例**:
+- ✅ 服务定义测试
+- ✅ 从Context构建事件学习Block重要性
+- ✅ 更新现有Block的重要性评分（加权平均）
+- ✅ 从Context使用事件学习Block使用情况
+- ✅ 从决策结果学习Block重要性（基于满意度）
+- ✅ 从用户反馈学习Block相关性
+- ✅ 返回学习结果（更新的Block优先级、推荐的Block组合）
+- ✅ 返回单个Block的学习统计
+- ✅ PrismaService未注入时的处理
+- ✅ 并发安全（检查重复记录）
 
 ### ToolsSelectSkill ✅
 

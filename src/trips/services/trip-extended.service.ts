@@ -174,10 +174,18 @@ export class TripExtendedService {
     const shareData = await this.getTripByShareToken(shareToken);
     const originalTrip = shareData.trip;
 
+    // 生成默认行程名称
+    const { generateDefaultTripName } = require('../utils/trip-name.util');
+    const tripName = generateDefaultTripName({
+      destination: newTripData.destination,
+      startDate: new Date(newTripData.startDate),
+    });
+
     // 创建新行程
     const newTrip = await this.prisma.trip.create({
       data: {
         id: randomUUID(),
+        name: tripName, // 新增：行程名称
         destination: newTripData.destination,
         startDate: new Date(newTripData.startDate),
         endDate: new Date(newTripData.endDate),
@@ -202,7 +210,29 @@ export class TripExtendedService {
       });
 
       // 复制行程项
-      for (const item of day.ItineraryItem) {
+      // 🆕 查询新 day 的最大 order 值
+      const maxOrderItem = await this.prisma.itineraryItem.findFirst({
+        where: { tripDayId: newDay.id },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      });
+      let baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+        ? maxOrderItem.order + 1 
+        : 1;
+
+      // 🆕 按 order 排序（如果存在），否则按 startTime 排序
+      const sortedItems = [...day.ItineraryItem].sort((a, b) => {
+        if (a.order !== null && b.order !== null) {
+          return a.order - b.order;
+        }
+        if (a.startTime && b.startTime) {
+          return a.startTime.getTime() - b.startTime.getTime();
+        }
+        return 0;
+      });
+
+      for (let i = 0; i < sortedItems.length; i++) {
+        const item = sortedItems[i];
         await this.prisma.itineraryItem.create({
           data: {
             id: randomUUID(),
@@ -213,6 +243,7 @@ export class TripExtendedService {
             startTime: item.startTime,
             endTime: item.endTime,
             note: item.note,
+            order: baseOrder + i, // 🆕 设置显示顺序
           } as any,
         });
       }

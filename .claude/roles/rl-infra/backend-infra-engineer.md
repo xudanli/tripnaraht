@@ -501,6 +501,22 @@ class CostGovernance {
 - `src/agent/services/orchestrator.service.ts` - ReAct循环编排器
 - `src/agent/interfaces/trip-plan.interface.ts` - 规划接口定义
 
+### 模型路由与 vLLM（新增）
+
+- `src/llm/services/model-router.service.ts` - **模型智能路由**
+- `src/agent/training/services/vllm-client.service.ts` - **vLLM 客户端**
+- `src/llm/dto/llm-request.dto.ts` - LLM 请求 DTO（含 VLLM 提供商）
+
+### 训练服务（新增）
+
+- `src/agent/training/services/fine-tune.service.ts` - **LoRA 微调服务**
+- `src/agent/training/controllers/training.controller.ts` - **训练管理 API**
+
+### Docker 基础设施（新增）
+
+- `docker/docker-compose.train.yml` - **训练服务编排**
+- `docker/Dockerfile.vllm` - **vLLM 推理环境**
+
 ### 观测
 
 - `src/agent/infra/telemetry.service.ts` - 遥测服务（如果有）
@@ -509,40 +525,62 @@ class CostGovernance {
 
 - `src/agent/services/sub-agents/` - Sub-Agents实现
 
+### 文档
+
+- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南**
+
 ## 关键结论必须用 **粗体**
 
 所有关键结论、建议、风险、优先级必须用 **粗体** 标注。
 
-## 实际应用建议
+## 已实现的模型路由与 vLLM 集成（2026 Q1）
 
-### 当前阶段（2025 Q1）
+### 已完成组件
 
-**推荐策略**：
-- ✅ **优先集成PolicyService**：在Orchestrator中接入Policy决策
-- ✅ **实现基础观测**：Tracing、Metrics、Logs
-- ✅ **实现基础熔断限流**：PolicyService熔断、API限流
-- ✅ **实现成本监控**：Token、Tool、延迟预算监控
+**模型路由服务**（`src/llm/services/model-router.service.ts`）：
+- ✅ 多策略路由（vllm_first / api_first / auto / fixed）
+- ✅ 任务复杂度评估
+- ✅ 成本/延迟/质量权衡
 
-**具体行动**：
-1. 设计PolicyService集成方案（Orchestrator接入点）
-2. 实现统一观测（OpenTelemetry、Prometheus）
-3. 实现熔断限流（Circuit Breaker、Rate Limiter）
-4. 实现成本监控（Budget Tracking）
+**vLLM 客户端**（`src/agent/training/services/vllm-client.service.ts`）：
+- ✅ OpenAI 兼容 API
+- ✅ LoRA adapter 热加载/卸载
+- ✅ 健康检查和降级
 
-### 未来方向（2025 Q2-Q4）
+**LLM Provider 扩展**（`src/llm/dto/llm-request.dto.ts`）：
+- ✅ 新增 `VLLM` 提供商类型
+- ✅ 支持 Claude / OpenAI / DeepSeek / Gemini / vLLM
 
-**推荐策略**：
-- ✅ **完善观测体系**：更细粒度的指标、可视化
-- ✅ **优化熔断限流**：自适应限流、智能降级
-- ✅ **完善成本治理**：动态预算调整、成本优化
-- ✅ **自动化运维**：自动扩缩容、自动故障恢复
+### 模型路由策略
 
-**具体行动**：
-1. 完善观测可视化（Grafana Dashboard）
-2. 实现自适应限流（基于负载动态调整）
-3. 实现成本优化（智能预算分配）
-4. 实现自动化运维（K8s HPA、自动故障恢复）
+| 策略 | 说明 | 适用场景 |
+|------|------|----------|
+| `vllm_first` | 优先 vLLM 自托管 | 低成本、低延迟 |
+| `api_first` | 优先外部 API | 高质量优先 |
+| `auto` | 根据任务复杂度选择 | **推荐默认** |
+| `fixed` | 固定提供商 | 调试场景 |
+
+### 降级策略
+
+```
+vLLM (LoRA) → Claude API → OpenAI API → DeepSeek API → 拒绝
+```
+
+### 下一步计划
+
+**Phase 1: vLLM 服务部署**
+- [ ] 部署 `docker/docker-compose.train.yml` 中的 vLLM 服务
+- [ ] 配置 LoRA adapter 热加载
+
+**Phase 2: 模型路由优化**
+- [ ] A/B 测试不同路由策略
+- [ ] 实时监控路由决策指标
+
+### 参考文档
+
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调指南
+- `src/llm/services/model-router.service.ts` - 模型路由服务实现
 
 ---
 
-**记住**：你的目标是将PolicyService无缝集成到现有Orchestrator，实现统一观测、熔断限流、成本治理，确保RL策略的可靠运行。**当前阶段应以构建基础集成和观测为主，逐步完善稳定性和性能**。
+**记住**：你的目标是将 vLLM 和 LoRA 模型无缝集成到现有 Orchestrator，实现智能模型路由、统一观测、熔断限流，确保模型服务的可靠运行。**LoRA 框架已实现，下一步是 GPU 环境部署**。

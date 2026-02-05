@@ -20,6 +20,7 @@ import { EmbeddingCacheService } from './services/embedding-cache.service';
 import { RAGMonitoringService } from './services/rag-monitoring.service';
 import { RagTestsetService, RagEvalTestset } from './services/rag-testset.service';
 import { IndexingService } from '../knowledge-base/services/indexing.service';
+import { RagMetricsService } from './services/rag-metrics.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -40,49 +41,60 @@ export class RagController {
     private readonly ragMonitoringService: RAGMonitoringService,
     private readonly ragTestsetService: RagTestsetService,
     private readonly indexingService: IndexingService,
+    private readonly ragMetricsService: RagMetricsService,
   ) {}
 
   /**
-   * 检索文档
+   * 检索文档（已废弃）
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 请使用 POST /api/rag/chunks/retrieve
+   * 
+   * @deprecated document_index表已删除，此端点不再可用，请使用 POST /api/rag/chunks/retrieve
    */
   @Public()
   @Get('retrieve')
   @ApiOperation({
-    summary: '检索文档',
-    description: '从 RAG 知识库中检索相关文档',
+    summary: '检索文档（已废弃）',
+    description: '⚠️ document_index表已删除，此端点不再可用。请使用 POST /api/rag/chunks/retrieve',
+    deprecated: true
   })
   @ApiQuery({ name: 'query', description: '查询文本', required: true })
   @ApiQuery({ name: 'collection', description: '集合名称', required: true })
   @ApiQuery({ name: 'countryCode', description: '国家代码', required: false })
   @ApiQuery({ name: 'limit', description: '返回数量限制', required: false, type: Number })
-  @ApiResponse({ status: 200, description: '检索成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async retrieve(
     @Query('query') query: string,
     @Query('collection') collection: string,
     @Query('countryCode') countryCode?: string,
     @Query('limit') limit?: number,
   ) {
-    try {
-      const results = await this.ragService.retrieve({
-        query,
-        collection,
-        countryCode,
-        limit: limit ? parseInt(limit.toString()) : 10,
-      });
-      return successResponse(results);
-    } catch (error: any) {
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
+    return errorResponse(
+      ErrorCode.BUSINESS_ERROR,
+      '此端点已废弃。document_index表已删除，请使用 POST /api/rag/chunks/retrieve 接口',
+      {
+        deprecated: true,
+        newEndpoint: 'POST /api/rag/chunks/retrieve',
+        migrationGuide: '/api/rag/RAG_API_MIGRATION_GUIDE.md',
+      }
+    );
   }
 
   /**
-   * RAG 搜索（POST 版本，支持更复杂的查询参数）
+   * RAG 搜索（已废弃）
+   * 
+   * ⚠️ 已废弃：document_index表已删除
+   * ✅ 请使用 POST /api/rag/chunks/retrieve
+   * 
+   * @deprecated document_index表已删除，此端点不再可用，请使用 POST /api/rag/chunks/retrieve
    */
   @Public()
   @Post('search')
   @ApiOperation({
-    summary: 'RAG 搜索',
-    description: '从 RAG 知识库中搜索相关文档，支持更复杂的查询参数',
+    summary: 'RAG 搜索（已废弃）',
+    description: '⚠️ document_index表已删除，此端点不再可用。请使用 POST /api/rag/chunks/retrieve',
+    deprecated: true
   })
   @ApiBody({
     schema: {
@@ -98,7 +110,7 @@ export class RagController {
       required: ['query', 'collection'],
     },
   })
-  @ApiResponse({ status: 200, description: '搜索成功', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 410, description: '端点已废弃' })
   async search(
     @Body() body: {
       query: string;
@@ -109,19 +121,15 @@ export class RagController {
       minScore?: number;
     },
   ) {
-    try {
-      const results = await this.ragService.retrieve({
-        query: body.query,
-        collection: body.collection,
-        countryCode: body.countryCode,
-        tags: body.tags,
-        limit: body.limit || 10,
-        minScore: body.minScore || 0.5,
-      });
-      return successResponse(results);
-    } catch (error: any) {
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
+    return errorResponse(
+      ErrorCode.BUSINESS_ERROR,
+      '此端点已废弃。document_index表已删除，请使用 POST /api/rag/chunks/retrieve 接口',
+      {
+        deprecated: true,
+        newEndpoint: 'POST /api/rag/chunks/retrieve',
+        migrationGuide: '/api/rag/RAG_API_MIGRATION_GUIDE.md',
+      }
+    );
   }
 
   /**
@@ -904,12 +912,12 @@ export class RagController {
     @Query('countryCode') countryCode?: string,
   ) {
     try {
-      // 使用 RAG 检索相关文档
-      const ragResults = await this.ragService.retrieve({
+      // 使用 RAG 检索相关文档（使用新的 ChunkRetrievalService）
+      const ragResults = await this.chunkRetrieval.retrieve({
         query: `目的地实用信息、特色贴士、隐藏攻略、文化礼仪`,
-        collection: 'travel_guides',
-        countryCode,
+        category: 'travel_guides',
         limit: 10,
+        useHybridSearch: true,
       });
 
       // 获取当地洞察
@@ -947,8 +955,8 @@ export class RagController {
         insights: {
           tips: ragResults.map(r => ({
             content: r.content,
-            source: r.source,
-            score: r.score,
+            source: r.sourceFile || r.metadata?.sourceUrl,
+            score: r.similarity || r.hybridScore || 0,
           })),
           localInsights: localInsights.map(li => ({
             content: li.content,
@@ -1050,38 +1058,40 @@ export class RagController {
         // 提取 Trail Access 规则（如果相关）
         if (!body.ruleTypes || body.ruleTypes.includes('ENTRY')) {
           try {
-            // 这里需要从行程中获取 trail IDs
-            // 简化处理，使用通用查询
-            const trailRules = await this.ragService.retrieve({
-              query: `${countryCode} trail access rules permits`,
-              collection: 'compliance_rules',
-              countryCode,
-              limit: 5,
-            });
+          // 这里需要从行程中获取 trail IDs
+          // 简化处理，使用通用查询（使用新的 ChunkRetrievalService）
+          const trailRules = await this.chunkRetrieval.retrieve({
+            query: `${countryCode} trail access rules permits`,
+            category: 'compliance_rules',
+            chunkCategory: 'RULES',
+            limit: 5,
+            useHybridSearch: true,
+          });
 
-            if (trailRules.length > 0) {
-              checklist.push({
-                category: '路线准入规则',
-                items: trailRules.map(rule => ({
-                  description: rule.content.substring(0, 200),
-                  required: true,
-                  source: rule.source || 'RAG检索',
-                })),
-              });
-            }
+          if (trailRules.length > 0) {
+            checklist.push({
+              category: '路线准入规则',
+              items: trailRules.map(rule => ({
+                description: rule.content.substring(0, 200),
+                required: true,
+                source: rule.sourceFile || rule.metadata?.sourceUrl || 'RAG检索',
+              })),
+            });
+          }
           } catch (error) {
             // 忽略错误
           }
         }
 
-        // 提取签证规则
+        // 提取签证规则（使用新的 ChunkRetrievalService）
         if (!body.ruleTypes || body.ruleTypes.includes('VISA')) {
           try {
-            const visaRules = await this.ragService.retrieve({
+            const visaRules = await this.chunkRetrieval.retrieve({
               query: `${countryCode} visa requirements for Chinese citizens`,
-              collection: 'compliance_rules',
-              countryCode,
+              category: 'compliance_rules',
+              chunkCategory: 'RULES',
               limit: 5,
+              useHybridSearch: true,
             });
 
             if (visaRules.length > 0) {
@@ -1091,7 +1101,7 @@ export class RagController {
                   description: rule.content.substring(0, 200),
                   required: true,
                   deadline: '出发前至少30天',
-                  source: rule.source || 'RAG检索',
+                  source: rule.sourceFile || rule.metadata?.sourceUrl || 'RAG检索',
                 })),
               });
             }
@@ -2065,6 +2075,50 @@ export class RagController {
     try {
       this.ragMonitoringService.resetMetrics();
       return successResponse({ message: '监控指标已重置' });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  // ============================================================================
+  // Prometheus Metrics（合并自 RagMetricsController）
+  // ============================================================================
+
+  /**
+   * Prometheus 指标端点
+   */
+  @Public()
+  @Get('prometheus-metrics')
+  @ApiOperation({
+    summary: 'Prometheus 指标',
+    description: '返回 Prometheus 格式的指标数据',
+  })
+  @ApiResponse({ status: 200, description: '指标数据', schema: { type: 'string' } })
+  async getPrometheusMetrics(): Promise<string> {
+    return this.ragMetricsService.getMetrics();
+  }
+
+  /**
+   * 人类可读的统计信息
+   */
+  @Public()
+  @Get('metrics/stats')
+  @ApiOperation({
+    summary: '统计信息',
+    description: '返回人类可读的缓存统计信息',
+  })
+  @ApiResponse({ status: 200, description: '统计信息', type: ApiSuccessResponseDto })
+  async getMetricsStats() {
+    try {
+      const cacheStats = await this.ragMetricsService.getCacheStats();
+      return successResponse({
+        cache: {
+          hits: cacheStats.hits,
+          misses: cacheStats.misses,
+          hitRate: `${(cacheStats.hitRate * 100).toFixed(2)}%`,
+        },
+        timestamp: new Date().toISOString(),
+      });
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }

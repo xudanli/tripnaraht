@@ -212,8 +212,8 @@ export class RouteAndRunResponseDto {
     },
   })
   ui_state?: {
-    /** 当前状态机步骤 */
-    phase: 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'REPAIR' | 'NARRATE' | 'DONE' | 'FAILED' | 'TIMEOUT' | 'HALLUCINATION_DETECTION';
+    /** 当前状态机步骤（10步完整流程） */
+    phase: 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'COMPLIANCE' | 'REPAIR' | 'NARRATE' | 'FEEDBACK' | 'DONE' | 'FAILED' | 'TIMEOUT' | 'HALLUCINATION_DETECTION';
     /** UI 状态（映射自状态机步骤） */
     ui_status: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed';
     /** 进度百分比（0-100） */

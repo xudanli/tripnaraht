@@ -12,7 +12,7 @@
  */
 
 import { Injectable, Logger, Optional, NotFoundException } from '@nestjs/common';
-import { PlanState, PlanContext, PlanSkeletonSet } from '../../skills/plan/shared/plan-state.types';
+import { PlanState, PlanContext, PlanSkeletonSet, OptionComparison, PlanSkeleton } from '../../skills/plan/shared/plan-state.types';
 import { ContextBuildSkill } from '../../skills/context/context-build.skill';
 import { PlanArchitectGenerateSkeletonSkill } from '../../skills/plan/architect/plan-architect-generate-skeleton.skill';
 import { PlanArchitectCompareOptionsSkill } from '../../skills/plan/architect/plan-architect-compare-options.skill';
@@ -28,9 +28,19 @@ import { PlanConstraintsDetectConflictsSkill } from '../../skills/plan/constrain
 import { PlanLogAppendDecisionSkill } from '../../skills/plan/log/plan-log-append-decision.skill';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { StateStoreService } from '../infra/state-store.service';
+import { StateStoreService } from '../../agent/infra/state-store.service';
+import { DEMEffortMetadataService } from '../../trips/dem/services/dem-effort-metadata.service';
+import { GeoFactsService } from '../../trips/readiness/services/geo-facts.service';
+import { GeoCheckHazardZonesSkill } from '../../skills/geo/geo-check-hazard-zones.skill';
+import { RouteSegment } from '../../trips/decision/shared/world-model.types';
 import { TripRunManagerService } from './trip-run-manager.service';
 import { DecisionDraftStorageService } from '../../decision-draft/storage/decision-draft-storage.service';
+// Domain Agents (World Model Layer)
+import { GeoAgentService } from './domain-agents/geo-agent.service';
+import { WeatherAgentService } from './domain-agents/weather-agent.service';
+import { CostAgentService } from './domain-agents/cost-agent.service';
+import { ExperienceAgentService } from './domain-agents/experience-agent.service';
+import { runBounded } from './orchestration-utils';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -56,7 +66,7 @@ export interface PlanningWorkbenchResponse {
     skeletonOptions?: PlanSkeletonSet;
     
     /** 对比卡（隐藏，仅内部使用） */
-    comparison?: any;
+    comparison?: OptionComparison;
     
     /** 三人格输出（面向用户） */
     personas?: PersonaShellOutput;
@@ -76,6 +86,10 @@ export interface PlanningWorkbenchResponse {
 @Injectable()
 export class PlanningWorkbenchAgentService {
   private readonly logger = new Logger(PlanningWorkbenchAgentService.name);
+  
+  // 限制地理特征查询的并发度，避免数据库连接池耗尽
+  // 每个segment会触发6+个数据库查询，限制为2个并发segments = 最多12个并发查询
+  private readonly geoFeaturesMaxConcurrency = 2;
 
   constructor(
     @Optional() private readonly contextBuild?: ContextBuildSkill,
@@ -96,6 +110,15 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly stateStore?: StateStoreService,
     @Optional() private readonly tripRunManager?: TripRunManagerService,
     @Optional() private readonly decisionDraftStorage?: DecisionDraftStorageService,
+    // Domain Agents (World Model Layer)
+    @Optional() private readonly geoAgent?: GeoAgentService,
+    @Optional() private readonly weatherAgent?: WeatherAgentService,
+    @Optional() private readonly costAgent?: CostAgentService,
+    @Optional() private readonly experienceAgent?: ExperienceAgentService,
+    // DEM and Geographic Services
+    @Optional() private readonly demEffortMetadataService?: DEMEffortMetadataService,
+    @Optional() private readonly geoFactsService?: GeoFactsService,
+    @Optional() private readonly geoCheckHazardZonesSkill?: GeoCheckHazardZonesSkill,
   ) {}
 
   /**
@@ -140,10 +163,22 @@ export class PlanningWorkbenchAgentService {
     }
 
     try {
+      // 获取进度更新函数（如果存在）
+      const metadata = (request as any).metadata || {};
+      const updateProgress = metadata.updateProgress as ((progress: number, stage?: string) => void) | undefined;
+      const taskId = metadata.taskId as string | undefined;
+      
+      if (updateProgress) {
+        this.logger.debug(`进度更新函数已注入: taskId=${taskId || 'unknown'}`);
+      } else {
+        this.logger.debug('进度更新函数未注入（同步模式）');
+      }
+      
       // 1. 构建上下文（System 1）- 添加超时保护
       let world;
       if (request.tripId && this.contextBuild) {
         this.logger.debug('构建世界模型上下文...');
+        updateProgress?.(5, '正在构建世界模型上下文...');
         try {
           const contextPromise = this.contextBuild.execute({
             tripId: request.tripId,
@@ -158,14 +193,17 @@ export class PlanningWorkbenchAgentService {
           const contextResult = await Promise.race([contextPromise, timeoutPromise]);
           // world 可以从 contextPackage 中提取
           this.logger.debug('世界模型上下文构建完成');
+          updateProgress?.(10, '世界模型上下文构建完成');
         } catch (contextError: any) {
           this.logger.warn(`构建上下文失败或超时: ${contextError.message}，继续执行`);
           // 继续执行，不阻塞
         }
+      } else {
+        updateProgress?.(10, '跳过上下文构建');
       }
 
       // 2. 根据用户操作执行不同流程
-      let planState: PlanState = request.existingPlanState || this.createInitialPlanState(request.context);
+      let planState: PlanState = request.existingPlanState || this.createInitialPlanState(request.context, request.tripId);
       const uiOutput: PlanningWorkbenchResponse['uiOutput'] = {};
 
       switch (request.userAction) {
@@ -173,6 +211,7 @@ export class PlanningWorkbenchAgentService {
           // 生成骨架方案（技能层已有超时保护，不需要重复）
           if (this.architectGenerateSkeleton) {
             this.logger.debug('开始生成行程骨架方案...');
+            updateProgress?.(15, '开始生成行程骨架方案...');
             
             // === 创建 TripAttempt 记录 ===
             if (tripRunId && this.tripRunManager) {
@@ -195,6 +234,7 @@ export class PlanningWorkbenchAgentService {
             }
             
             try {
+              updateProgress?.(20, '正在调用LLM生成骨架方案...');
               // 直接调用，技能层会处理超时和错误
               const skeletonResult = await this.architectGenerateSkeleton.execute({
                 context: request.context,
@@ -202,6 +242,77 @@ export class PlanningWorkbenchAgentService {
                 world,
               });
               uiOutput.skeletonOptions = skeletonResult.skeletonSet;
+              updateProgress?.(40, '骨架方案生成完成，正在转换为segments...');
+              
+              // 将推荐的骨架方案转换为 segments（填充 planState.itinerary.segments）
+              const recommendedOption = skeletonResult.skeletonSet.options?.find(
+                opt => opt.id === skeletonResult.skeletonSet.recommendation?.optionId
+              ) || skeletonResult.skeletonSet.options?.[0];
+              
+              if (recommendedOption && recommendedOption.dayThemes && recommendedOption.dayThemes.length > 0) {
+                // 将 dayThemes 转换为 RouteSegment，并包含POI信息
+                planState.itinerary.segments = recommendedOption.dayThemes.map((theme, idx) => {
+                  // 查找当天的POI信息
+                  const dayPoi = recommendedOption.pois?.find(p => p.day === theme.day);
+                  
+                  return {
+                    segmentId: `day_${theme.day}_segment_1`,
+                    dayIndex: theme.day - 1, // dayIndex 从 0 开始
+                    distanceKm: 0, // 初始值，后续会由其他服务填充
+                    ascentM: 0, // 初始值，后续会由 DEM 服务填充
+                    slopePct: 0, // 初始值
+                    metadata: {
+                      theme: theme.theme,
+                      description: theme.description,
+                      day: theme.day,
+                      skeletonId: recommendedOption.id,
+                      skeletonName: recommendedOption.name,
+                      // 添加POI信息
+                      ...(dayPoi?.accommodation && { accommodation: dayPoi.accommodation }),
+                      ...(dayPoi?.restaurants && dayPoi.restaurants.length > 0 && { restaurants: dayPoi.restaurants }),
+                      ...(dayPoi?.attractions && dayPoi.attractions.length > 0 && { attractions: dayPoi.attractions }),
+                    },
+                  };
+                });
+                this.logger.debug(`已将骨架方案转换为 ${planState.itinerary.segments.length} 个 segments，包含POI信息`);
+                
+                // 检查segments中的POI坐标
+                const segmentsWithPoi = planState.itinerary.segments.filter(seg => {
+                  const hasAccommodation = seg.metadata?.accommodation?.coordinates;
+                  const hasRestaurants = seg.metadata?.restaurants?.some((r: any) => r.poi?.coordinates);
+                  const hasAttractions = seg.metadata?.attractions?.some((a: any) => a.coordinates);
+                  return hasAccommodation || hasRestaurants || hasAttractions;
+                });
+                this.logger.debug(`Segments中有POI坐标的数量: ${segmentsWithPoi.length}/${planState.itinerary.segments.length}`);
+              } else {
+                this.logger.warn(`推荐方案为空或没有dayThemes，无法转换为segments`);
+              }
+              
+              // === 阶段 2.5: 填充DEM地形数据和地理特征 ===
+              if (planState.itinerary.segments.length > 0) {
+                this.logger.debug(`开始执行阶段2.5: 填充DEM地形数据和地理特征（${planState.itinerary.segments.length} 个segments）`);
+                updateProgress?.(60, `正在填充DEM地形数据和地理特征（${planState.itinerary.segments.length} 个segments）...`);
+                await this.enrichSegmentsWithGeographicData(planState.itinerary.segments, request.context, updateProgress);
+              } else {
+                this.logger.warn(`跳过阶段2.5: segments为空，无法填充DEM和地理特征`);
+                updateProgress?.(80, '跳过DEM数据填充（segments为空）');
+              }
+              
+              // === 阶段 2.6: 记录决策追溯链和排除过程 ===
+              if (skeletonResult.skeletonSet.options && skeletonResult.skeletonSet.options.length > 1) {
+                this.logger.debug(`开始执行阶段2.6: 记录决策追溯链（${skeletonResult.skeletonSet.options.length} 个方案）`);
+                updateProgress?.(85, '正在记录决策追溯链...');
+                await this.recordDecisionTraceAndExclusions(
+                  planState,
+                  skeletonResult.skeletonSet,
+                  recommendedOption,
+                  request.context
+                );
+                updateProgress?.(90, '决策追溯链记录完成');
+              } else {
+                this.logger.debug(`跳过阶段2.6: 方案数量不足（${skeletonResult.skeletonSet.options?.length || 0} 个）`);
+                updateProgress?.(90, '跳过决策追溯链记录（方案数量不足）');
+              }
               
               // === 更新 TripAttempt 为 COMPLETED ===
               if (attemptId && this.tripRunManager) {
@@ -253,15 +364,17 @@ export class PlanningWorkbenchAgentService {
               }
               // 如果技能层抛出异常（不应该发生），创建一个默认方案作为兜底
               if (!uiOutput.skeletonOptions) {
+                const defaultDayThemes = Array.from({ length: request.context.days }, (_, i) => ({
+                  day: i + 1,
+                  theme: `第${i + 1}天`,
+                  description: `在${request.context.destination.city || request.context.destination.country}的第${i + 1}天行程`,
+                }));
+                
                 uiOutput.skeletonOptions = {
                   options: [{
                     id: 'default_1',
                     name: '默认方案',
-                    dayThemes: Array.from({ length: request.context.days }, (_, i) => ({
-                      day: i + 1,
-                      theme: `第${i + 1}天`,
-                      description: `在${request.context.destination.city || request.context.destination.country}的第${i + 1}天行程`,
-                    })),
+                    dayThemes: defaultDayThemes,
                     anchors: [],
                     transferDays: [],
                     rationale: {
@@ -276,6 +389,23 @@ export class PlanningWorkbenchAgentService {
                     reason: '生成失败，使用默认方案',
                   },
                 };
+                
+                // 将默认方案也转换为 segments
+                planState.itinerary.segments = defaultDayThemes.map((theme, idx) => ({
+                  segmentId: `day_${theme.day}_segment_1`,
+                  dayIndex: theme.day - 1,
+                  distanceKm: 0,
+                  ascentM: 0,
+                  slopePct: 0,
+                  metadata: {
+                    theme: theme.theme,
+                    description: theme.description,
+                    day: theme.day,
+                    skeletonId: 'default_1',
+                    skeletonName: '默认方案',
+                  },
+                }));
+                this.logger.debug(`已将默认骨架方案转换为 ${planState.itinerary.segments.length} 个 segments`);
               }
             }
           } else {
@@ -285,12 +415,263 @@ export class PlanningWorkbenchAgentService {
 
         case 'compare':
           // 对比方案（需要先有骨架方案）
-          // 这里简化，实际应该从 request 或 planState 中获取 options
+          if (this.architectCompareOptions) {
+            this.logger.debug('开始对比行程骨架方案...');
+            
+            // === 创建 TripAttempt 记录 ===
+            if (tripRunId && this.tripRunManager) {
+              try {
+                attemptId = await this.tripRunManager.createTripAttempt({
+                  tripRunId,
+                  attemptNumber,
+                  planOutline: `对比行程骨架方案`,
+                  nextActions: ['plan.architect.compareOptions'],
+                  metadata: {
+                    userAction: 'compare',
+                  },
+                });
+                if (attemptId) {
+                  this.logger.debug(`Created TripAttempt: ${attemptId} for compare`);
+                }
+              } catch (error: any) {
+                this.logger.warn(`Failed to create TripAttempt: ${error.message}`);
+              }
+            }
+
+            try {
+              // 1. 获取要对比的方案列表
+              // 优先从 request.existingPlanState 或 uiOutput 中获取
+              const skeletonSet = 
+                (request as any).skeletonOptions || 
+                uiOutput.skeletonOptions || 
+                planState.metadata?.skeletonOptions;
+
+              if (!skeletonSet || !skeletonSet.options || skeletonSet.options.length < 2) {
+                this.logger.warn(`对比方案失败: 需要至少2个方案，当前有 ${skeletonSet?.options?.length || 0} 个`);
+                uiOutput.confirmations = [
+                  '对比功能需要至少2个方案。请先生成多个方案后再进行对比。',
+                ];
+              } else {
+                // 2. 调用对比技能
+                const compareResult = await this.architectCompareOptions.execute({
+                  options: skeletonSet.options,
+                  context: request.context,
+                });
+
+                // 3. 存储对比结果
+                uiOutput.comparison = compareResult.comparison;
+                
+                // 4. 更新 planState 的推荐方案（如果对比结果有推荐）
+                if (compareResult.comparison.recommendation) {
+                  planState.metadata = {
+                    ...planState.metadata,
+                    comparison: compareResult.comparison,
+                    recommendedOptionId: compareResult.comparison.recommendation.optionId,
+                  };
+                  
+                  // 如果当前 segments 不是推荐方案，可以选择更新（但这里不自动更新，让用户决定）
+                  this.logger.debug(`对比完成，推荐方案: ${compareResult.comparison.recommendation.optionId}`);
+                }
+
+                // === 更新 TripAttempt 为 COMPLETED ===
+                if (attemptId && this.tripRunManager) {
+                  try {
+                    await this.tripRunManager.completeTripAttempt(
+                      attemptId,
+                      `成功对比 ${skeletonSet.options.length} 个方案`,
+                      {
+                        comparison: {
+                          optionCount: skeletonSet.options.length,
+                          recommendation: compareResult.comparison.recommendation,
+                        },
+                      },
+                    );
+                  } catch (error: any) {
+                    this.logger.warn(`Failed to update TripAttempt to COMPLETED: ${error.message}`);
+                  }
+                }
+
+                this.logger.debug(`行程骨架方案对比完成: ${skeletonSet.options.length} 个方案`);
+              }
+            } catch (compareError: any) {
+              this.logger.error(`对比方案失败: ${compareError.message}`, compareError.stack);
+              
+              // === 更新 TripAttempt 为 FAILED ===
+              if (attemptId && this.tripRunManager) {
+                try {
+                  await this.tripRunManager.failTripAttempt(
+                    attemptId,
+                    `对比方案失败: ${compareError.message}`,
+                  );
+                } catch (error: any) {
+                  this.logger.warn(`Failed to update TripAttempt to FAILED: ${error.message}`);
+                }
+              }
+
+              uiOutput.confirmations = [
+                `对比方案时发生错误: ${compareError.message}。请重试或联系支持。`,
+              ];
+            }
+          } else {
+            this.logger.warn('PlanArchitectCompareOptionsSkill 未注入，跳过对比方案');
+            uiOutput.confirmations = ['对比功能暂不可用，请稍后重试。'];
+          }
           break;
 
         case 'commit':
           // 提交方案（需要先有选定的方案）
-          // 这里简化，实际应该从 request 中获取 selectedOption
+          if (this.architectCommitOption) {
+            this.logger.debug('开始提交行程骨架方案...');
+            
+            // === 创建 TripAttempt 记录 ===
+            if (tripRunId && this.tripRunManager) {
+              try {
+                attemptId = await this.tripRunManager.createTripAttempt({
+                  tripRunId,
+                  attemptNumber,
+                  planOutline: `提交行程骨架方案`,
+                  nextActions: ['plan.architect.commitOption'],
+                  metadata: {
+                    userAction: 'commit',
+                  },
+                });
+                if (attemptId) {
+                  this.logger.debug(`Created TripAttempt: ${attemptId} for commit`);
+                }
+              } catch (error: any) {
+                this.logger.warn(`Failed to create TripAttempt: ${error.message}`);
+              }
+            }
+
+            try {
+              // 1. 获取选定的方案
+              // 优先从 request 中获取，否则从 planState.metadata 或 comparison.recommendation 中获取
+              const selectedOptionId = 
+                (request as any).selectedOptionId ||
+                planState.metadata?.recommendedOptionId ||
+                uiOutput.comparison?.recommendation?.optionId;
+
+              if (!selectedOptionId) {
+                this.logger.warn('提交方案失败: 未指定要提交的方案');
+                uiOutput.confirmations = [
+                  '请先选择一个方案进行提交。可以从对比结果中选择推荐方案，或直接指定方案ID。',
+                ];
+              } else {
+                // 2. 从 skeletonOptions 中查找选定的方案
+                const skeletonSet = 
+                  (request as any).skeletonOptions || 
+                  uiOutput.skeletonOptions || 
+                  planState.metadata?.skeletonOptions;
+
+                if (!skeletonSet || !skeletonSet.options) {
+                  this.logger.warn('提交方案失败: 未找到骨架方案集');
+                  uiOutput.confirmations = [
+                    '提交方案失败: 未找到骨架方案集。请先生成方案后再提交。',
+                  ];
+                } else {
+                  const selectedOption = skeletonSet.options.find((opt: PlanSkeleton) => opt.id === selectedOptionId);
+                  
+                  if (!selectedOption) {
+                    this.logger.warn(`提交方案失败: 未找到方案 ${selectedOptionId}`);
+                    uiOutput.confirmations = [
+                      `提交方案失败: 未找到方案 ${selectedOptionId}。请检查方案ID是否正确。`,
+                    ];
+                  } else {
+                    // 3. 调用提交技能
+                    const commitResult = await this.architectCommitOption.execute({
+                      selectedOption,
+                      existingPlanState: planState,
+                      context: request.context,
+                    });
+
+                    // 4. 更新 planState
+                    planState = commitResult.planState;
+                    
+                    // 5. 将选定的方案转换为 segments（如果还没有）
+                    if (selectedOption.dayThemes && selectedOption.dayThemes.length > 0) {
+                      planState.itinerary.segments = selectedOption.dayThemes.map((theme: { day: number; theme: string; description?: string }, idx: number) => {
+                        const dayPoi = selectedOption.pois?.find((p: { day: number }) => p.day === theme.day);
+                        
+                        return {
+                          segmentId: `day_${theme.day}_segment_1`,
+                          dayIndex: theme.day - 1,
+                          distanceKm: 0,
+                          ascentM: 0,
+                          slopePct: 0,
+                          metadata: {
+                            theme: theme.theme,
+                            description: theme.description,
+                            day: theme.day,
+                            skeletonId: selectedOption.id,
+                            skeletonName: selectedOption.name,
+                            ...(dayPoi?.accommodation && { accommodation: dayPoi.accommodation }),
+                            ...(dayPoi?.restaurants && dayPoi.restaurants.length > 0 && { restaurants: dayPoi.restaurants }),
+                            ...(dayPoi?.attractions && dayPoi.attractions.length > 0 && { attractions: dayPoi.attractions }),
+                          },
+                        };
+                      });
+                    }
+
+                    // 6. 填充DEM地形数据和地理特征
+                    if (planState.itinerary.segments.length > 0) {
+                      await this.enrichSegmentsWithGeographicData(planState.itinerary.segments, request.context, updateProgress);
+                    }
+
+                    // 7. 更新 planState 状态为 PROPOSED
+                    planState.status = 'PROPOSED';
+                    planState.metadata = {
+                      ...planState.metadata,
+                      selectedSkeleton: selectedOption.id,
+                      selectedSkeletonName: selectedOption.name,
+                      committedAt: new Date().toISOString(),
+                    };
+
+                    // === 更新 TripAttempt 为 COMPLETED ===
+                    if (attemptId && this.tripRunManager) {
+                      try {
+                        await this.tripRunManager.completeTripAttempt(
+                          attemptId,
+                          `成功提交方案: ${selectedOption.name} (${selectedOption.id})`,
+                          {
+                            commit: {
+                              optionId: selectedOption.id,
+                              optionName: selectedOption.name,
+                              planVersion: commitResult.plan_version,
+                            },
+                          },
+                        );
+                      } catch (error: any) {
+                        this.logger.warn(`Failed to update TripAttempt to COMPLETED: ${error.message}`);
+                      }
+                    }
+
+                    this.logger.debug(`行程骨架方案提交完成: ${selectedOption.name} (版本 ${commitResult.plan_version})`);
+                  }
+                }
+              }
+            } catch (commitError: any) {
+              this.logger.error(`提交方案失败: ${commitError.message}`, commitError.stack);
+              
+              // === 更新 TripAttempt 为 FAILED ===
+              if (attemptId && this.tripRunManager) {
+                try {
+                  await this.tripRunManager.failTripAttempt(
+                    attemptId,
+                    `提交方案失败: ${commitError.message}`,
+                  );
+                } catch (error: any) {
+                  this.logger.warn(`Failed to update TripAttempt to FAILED: ${error.message}`);
+                }
+              }
+
+              uiOutput.confirmations = [
+                `提交方案时发生错误: ${commitError.message}。请重试或联系支持。`,
+              ];
+            }
+          } else {
+            this.logger.warn('PlanArchitectCommitOptionSkill 未注入，跳过提交方案');
+            uiOutput.confirmations = ['提交功能暂不可用，请稍后重试。'];
+          }
           break;
 
         case 'adjust':
@@ -309,6 +690,72 @@ export class PlanningWorkbenchAgentService {
                 world,
               });
               uiOutput.skeletonOptions = skeletonResult.skeletonSet;
+              
+              // 将推荐的骨架方案转换为 segments（填充 planState.itinerary.segments）
+              const recommendedOption = skeletonResult.skeletonSet.options?.find(
+                opt => opt.id === skeletonResult.skeletonSet.recommendation?.optionId
+              ) || skeletonResult.skeletonSet.options?.[0];
+              
+              if (recommendedOption && recommendedOption.dayThemes && recommendedOption.dayThemes.length > 0) {
+                // 将 dayThemes 转换为 RouteSegment，并包含POI信息
+                planState.itinerary.segments = recommendedOption.dayThemes.map((theme, idx) => {
+                  // 查找当天的POI信息
+                  const dayPoi = recommendedOption.pois?.find(p => p.day === theme.day);
+                  
+                  return {
+                    segmentId: `day_${theme.day}_segment_1`,
+                    dayIndex: theme.day - 1, // dayIndex 从 0 开始
+                    distanceKm: 0, // 初始值，后续会由其他服务填充
+                    ascentM: 0, // 初始值，后续会由 DEM 服务填充
+                    slopePct: 0, // 初始值
+                    metadata: {
+                      theme: theme.theme,
+                      description: theme.description,
+                      day: theme.day,
+                      skeletonId: recommendedOption.id,
+                      skeletonName: recommendedOption.name,
+                      // 添加POI信息
+                      ...(dayPoi?.accommodation && { accommodation: dayPoi.accommodation }),
+                      ...(dayPoi?.restaurants && dayPoi.restaurants.length > 0 && { restaurants: dayPoi.restaurants }),
+                      ...(dayPoi?.attractions && dayPoi.attractions.length > 0 && { attractions: dayPoi.attractions }),
+                    },
+                  };
+                });
+                this.logger.debug(`已将骨架方案转换为 ${planState.itinerary.segments.length} 个 segments，包含POI信息`);
+                
+                // 检查segments中的POI坐标
+                const segmentsWithPoi = planState.itinerary.segments.filter(seg => {
+                  const hasAccommodation = seg.metadata?.accommodation?.coordinates;
+                  const hasRestaurants = seg.metadata?.restaurants?.some((r: any) => r.poi?.coordinates);
+                  const hasAttractions = seg.metadata?.attractions?.some((a: any) => a.coordinates);
+                  return hasAccommodation || hasRestaurants || hasAttractions;
+                });
+                this.logger.debug(`Segments中有POI坐标的数量: ${segmentsWithPoi.length}/${planState.itinerary.segments.length}`);
+              } else {
+                this.logger.warn(`默认流程：推荐方案为空或没有dayThemes，无法转换为segments`);
+              }
+              
+              // === 阶段 2.5: 填充DEM地形数据和地理特征 ===
+              if (planState.itinerary.segments.length > 0) {
+                this.logger.debug(`默认流程：开始执行阶段2.5: 填充DEM地形数据和地理特征（${planState.itinerary.segments.length} 个segments）`);
+                await this.enrichSegmentsWithGeographicData(planState.itinerary.segments, request.context);
+              } else {
+                this.logger.warn(`默认流程：跳过阶段2.5: segments为空，无法填充DEM和地理特征`);
+              }
+              
+              // === 阶段 2.6: 记录决策追溯链和排除过程 ===
+              if (skeletonResult.skeletonSet.options && skeletonResult.skeletonSet.options.length > 1) {
+                const defaultRecommendedOption = skeletonResult.skeletonSet.options?.[0];
+                this.logger.debug(`默认流程：开始执行阶段2.6: 记录决策追溯链（${skeletonResult.skeletonSet.options.length} 个方案）`);
+                await this.recordDecisionTraceAndExclusions(
+                  planState,
+                  skeletonResult.skeletonSet,
+                  defaultRecommendedOption,
+                  request.context
+                );
+              } else {
+                this.logger.debug(`默认流程：跳过阶段2.6: 方案数量不足（${skeletonResult.skeletonSet.options?.length || 0} 个）`);
+              }
               
               // 检查是否是默认方案
               const isDefault = skeletonResult.skeletonSet.options?.some(
@@ -330,15 +777,17 @@ export class PlanningWorkbenchAgentService {
               }
               // 如果技能层抛出异常（不应该发生），创建一个默认方案作为兜底
               if (!uiOutput.skeletonOptions) {
+                const defaultDayThemes = Array.from({ length: request.context.days }, (_, i) => ({
+                  day: i + 1,
+                  theme: `第${i + 1}天`,
+                  description: `在${request.context.destination.city || request.context.destination.country}的第${i + 1}天行程`,
+                }));
+                
                 uiOutput.skeletonOptions = {
                   options: [{
                     id: 'default_1',
                     name: '默认方案',
-                    dayThemes: Array.from({ length: request.context.days }, (_, i) => ({
-                      day: i + 1,
-                      theme: `第${i + 1}天`,
-                      description: `在${request.context.destination.city || request.context.destination.country}的第${i + 1}天行程`,
-                    })),
+                    dayThemes: defaultDayThemes,
                     anchors: [],
                     transferDays: [],
                     rationale: {
@@ -353,6 +802,23 @@ export class PlanningWorkbenchAgentService {
                     reason: '生成失败，使用默认方案',
                   },
                 };
+                
+                // 将默认方案也转换为 segments
+                planState.itinerary.segments = defaultDayThemes.map((theme, idx) => ({
+                  segmentId: `day_${theme.day}_segment_1`,
+                  dayIndex: theme.day - 1,
+                  distanceKm: 0,
+                  ascentM: 0,
+                  slopePct: 0,
+                  metadata: {
+                    theme: theme.theme,
+                    description: theme.description,
+                    day: theme.day,
+                    skeletonId: 'default_1',
+                    skeletonName: '默认方案',
+                  },
+                }));
+                this.logger.debug(`已将默认骨架方案转换为 ${planState.itinerary.segments.length} 个 segments`);
               }
             }
           } else {
@@ -478,6 +944,9 @@ export class PlanningWorkbenchAgentService {
         }
       }
       
+      // 更新进度到95%（即将完成）
+      updateProgress?.(95, '正在完成规划工作台流程...');
+      
       return {
         planState,
         uiOutput,
@@ -503,7 +972,7 @@ export class PlanningWorkbenchAgentService {
   /**
    * 创建初始 PlanState
    */
-  private createInitialPlanState(context: PlanContext): PlanState {
+  private createInitialPlanState(context: PlanContext, tripId?: string): PlanState {
     return {
       plan_id: `plan_${Date.now()}`,
       plan_version: 1,
@@ -520,8 +989,8 @@ export class PlanningWorkbenchAgentService {
         companions: context.constraints?.companions,
       },
       itinerary: {
-        tripId: context.existingPlanState?.plan_id || `trip_${Date.now()}`,
-        routeDirectionId: `route_${Date.now()}`,
+        tripId: tripId || context.existingPlanState?.itinerary?.tripId || `trip_${Date.now()}`,
+        routeDirectionId: context.existingPlanState?.itinerary?.routeDirectionId || `route_${Date.now()}`,
         segments: [],
       },
       mobility: {
@@ -539,6 +1008,498 @@ export class PlanningWorkbenchAgentService {
       status: 'DRAFT',
       metadata: {},
     };
+  }
+
+  /**
+   * 填充segments的DEM地形数据和地理特征
+   */
+  private async enrichSegmentsWithGeographicData(
+    segments: RouteSegment[],
+    context: PlanContext,
+    updateProgress?: (progress: number, stage?: string) => void
+  ): Promise<void> {
+    if (segments.length === 0) {
+      this.logger.debug(`enrichSegmentsWithGeographicData: segments为空，跳过`);
+      return;
+    }
+
+    this.logger.debug(`开始填充 ${segments.length} 个segments的地理数据...`);
+    this.logger.debug(`DEM服务可用: ${!!this.demEffortMetadataService}, 地理特征服务可用: ${!!this.geoFactsService}, 危险区域检测可用: ${!!this.geoCheckHazardZonesSkill}`);
+
+    // 限制并发度：最多同时处理2个segments，避免数据库连接池耗尽
+    // 每个segment会触发6+个数据库查询，2个并发 = 最多12个并发查询（连接池17个）
+    
+    // P0优化：使用Promise队列序列化进度更新，避免竞争条件
+    let completedCount = 0;
+    let progressUpdateQueue = Promise.resolve();
+    const baseProgress = 60;
+    const progressRange = 20; // 60% ~ 80%
+    const totalSegments = segments.length;
+    
+    // 原子化进度更新函数
+    const atomicUpdateProgress = (progress: number, stage?: string) => {
+      progressUpdateQueue = progressUpdateQueue.then(() => {
+        updateProgress?.(progress, stage);
+        return Promise.resolve();
+      });
+    };
+    
+    const segmentTasks = segments.map((segment, index) => async () => {
+        try {
+          // 更新进度：60% + (当前索引 / 总数) * 20% = 60% ~ 80%
+          const startProgress = baseProgress + Math.floor((index / totalSegments) * progressRange);
+          atomicUpdateProgress(startProgress, `正在填充Segment ${index + 1}/${totalSegments}的地理数据...`);
+          this.logger.debug(`开始处理Segment ${index + 1}/${totalSegments}，进度: ${startProgress}%`);
+          
+          // 1. 提取POI坐标构建路线
+          const routePoints = this.extractRoutePointsFromSegment(segment);
+          this.logger.debug(`Segment ${index + 1}: 提取到 ${routePoints.length} 个POI坐标点`);
+          
+          if (routePoints.length >= 2) {
+            // 2. 填充DEM地形数据
+            if (this.demEffortMetadataService) {
+              try {
+                this.logger.debug(`Segment ${index + 1}: 开始调用DEM服务计算地形数据（${routePoints.length} 个点）...`);
+                const demStartTime = Date.now();
+                
+                // 添加超时保护（30秒）
+                const demPromise = this.demEffortMetadataService.calculateEffortMetadata(
+                  routePoints,
+                  {
+                    activityType: context.travelMode === 'self_drive' ? 'driving' : 
+                                 context.travelMode === 'walking' ? 'walking' : 'walking',
+                    includeElevationProfile: false, // 不需要详细剖面，节省性能
+                  }
+                );
+                
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                  setTimeout(() => reject(new Error('DEM服务调用超时（30秒）')), 30000);
+                });
+                
+                const effortMetadata = await Promise.race([demPromise, timeoutPromise]);
+                const demDuration = Date.now() - demStartTime;
+                this.logger.debug(`Segment ${index + 1}: DEM服务调用完成，耗时 ${demDuration}ms`);
+                
+                // P0优化：DEM成功后更新进度
+                const demProgress = baseProgress + Math.floor((index / totalSegments) * progressRange) + Math.floor((progressRange / totalSegments) * 0.6);
+                atomicUpdateProgress(demProgress, `Segment ${index + 1}: DEM地形数据计算完成`);
+
+                // 更新segment的地形数据
+                segment.distanceKm = effortMetadata.totalDistance / 1000; // 转换为公里
+                segment.ascentM = effortMetadata.totalAscent;
+                segment.slopePct = effortMetadata.maxSlope;
+                
+                // 添加地形元数据
+                segment.metadata = {
+                  ...segment.metadata,
+                  elevation: {
+                    max: effortMetadata.maxElevation,
+                    min: effortMetadata.minElevation,
+                    avg: effortMetadata.avgElevation,
+                  },
+                  terrainComplexity: effortMetadata.terrainComplexity,
+                  difficulty: effortMetadata.difficulty,
+                  effortScore: effortMetadata.effortScore,
+                };
+
+                this.logger.debug(`Segment ${index + 1}: 距离=${segment.distanceKm.toFixed(1)}km, 爬升=${segment.ascentM.toFixed(0)}m, 坡度=${segment.slopePct.toFixed(1)}%`);
+              } catch (demError: any) {
+                const isTimeout = demError.message?.includes('超时') || demError.message?.includes('timeout') || demError.message?.includes('TIMEOUT');
+                this.logger.warn(`填充Segment ${index + 1}的DEM数据失败: ${demError.message}${isTimeout ? ' (超时)' : ''}`);
+                
+                // P0优化：超时后立即更新进度并跳过
+                if (isTimeout) {
+                  const skipProgress = baseProgress + Math.floor((index / totalSegments) * progressRange) + Math.floor((progressRange / totalSegments) * 0.7);
+                  atomicUpdateProgress(skipProgress, `Segment ${index + 1}: DEM服务超时，跳过地形数据填充`);
+                }
+              }
+            }
+
+            // 3. 查询地理特征（使用segment的中心点）
+            if (this.geoFactsService && routePoints.length > 0) {
+              try {
+                this.logger.debug(`Segment ${index + 1}: 开始查询地理特征...`);
+                const geoStartTime = Date.now();
+                const centerPoint = this.calculateSegmentCenter(routePoints);
+                
+                // 添加超时保护（10秒）
+                const geoPromise = this.geoFactsService.getGeoFeaturesForPoint(
+                  centerPoint.lat,
+                  centerPoint.lng,
+                  {
+                    useCache: true,
+                    month: new Date().getMonth() + 1, // 当前月份
+                  }
+                );
+                
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                  setTimeout(() => reject(new Error('地理特征查询超时（10秒）')), 10000);
+                });
+                
+                const geoFeatures = await Promise.race([geoPromise, timeoutPromise]);
+                const geoDuration = Date.now() - geoStartTime;
+                this.logger.debug(`Segment ${index + 1}: 地理特征查询完成，耗时 ${geoDuration}ms`);
+                
+                // P0优化：地理特征查询成功后更新进度
+                const geoProgress = baseProgress + Math.floor((index / totalSegments) * progressRange) + Math.floor((progressRange / totalSegments) * 0.8);
+                atomicUpdateProgress(geoProgress, `Segment ${index + 1}: 地理特征查询完成`);
+
+                // 添加地理特征到metadata
+                segment.metadata = {
+                  ...segment.metadata,
+                  geoFeatures: {
+                    rivers: {
+                      nearRiver: geoFeatures.rivers.nearRiver,
+                      riverDensityScore: geoFeatures.rivers.riverDensityScore,
+                    },
+                    mountains: {
+                      mountainDensityScore: geoFeatures.mountains.mountainDensityScore,
+                    },
+                    roads: {
+                      nearRoad: geoFeatures.roads.nearRoad,
+                      roadDensityScore: geoFeatures.roads.roadDensityScore,
+                    },
+                    coastlines: {
+                      nearCoastline: geoFeatures.coastlines.nearCoastline,
+                    },
+                    accessibility: {
+                      hasPort: geoFeatures.ports.nearPort,
+                      hasAirport: geoFeatures.airlines.nearAirport,
+                    },
+                  },
+                };
+
+                // 4. 检测危险区域（需要countryCode和route）
+                if (this.geoCheckHazardZonesSkill && routePoints.length >= 2) {
+                  try {
+                    // 从context推断countryCode
+                    const countryCode = this.inferCountryCode(context);
+                    if (countryCode) {
+                      const hazards = await this.geoCheckHazardZonesSkill.execute({
+                        route: routePoints,
+                        countryCode,
+                        month: new Date().getMonth() + 1,
+                        bufferRadius: 1000, // 1km缓冲区
+                      });
+
+                      if (hazards && hazards.hazardZones && hazards.hazardZones.length > 0) {
+                        segment.metadata = {
+                          ...segment.metadata,
+                          hazards: hazards.hazardZones.map((h: {
+                            zoneId: string;
+                            type: 'AVALANCHE' | 'MUDSLIDE' | 'FLOOD' | 'ICE' | 'VOLCANIC' | 'OTHER';
+                            level: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
+                            location?: { lat: number; lng: number };
+                            description?: string;
+                          }) => ({
+                            zoneId: h.zoneId,
+                            type: h.type,
+                            level: h.level,
+                            location: h.location,
+                            description: h.description,
+                          })),
+                          riskAssessment: hazards.riskAssessment,
+                        };
+                        this.logger.warn(`Segment ${index + 1} 检测到 ${hazards.hazardZones.length} 个危险区域`);
+                      }
+                    }
+                  } catch (hazardError: any) {
+                    this.logger.debug(`检测Segment ${index + 1}的危险区域失败: ${hazardError.message}`);
+                  }
+                }
+              } catch (geoError: any) {
+                const isTimeout = geoError.message?.includes('超时') || geoError.message?.includes('timeout') || geoError.message?.includes('TIMEOUT');
+                this.logger.warn(`填充Segment ${index + 1}的地理特征失败: ${geoError.message}${isTimeout ? ' (超时)' : ''}`);
+                
+                // P0优化：超时后立即更新进度并跳过
+                if (isTimeout) {
+                  const skipProgress = baseProgress + Math.floor((index / totalSegments) * progressRange) + Math.floor((progressRange / totalSegments) * 0.85);
+                  atomicUpdateProgress(skipProgress, `Segment ${index + 1}: 地理特征查询超时，跳过`);
+                }
+              }
+            }
+          } else if (routePoints.length === 1) {
+            // 只有一个POI，只查询地理特征，不计算DEM
+            this.logger.debug(`Segment ${index + 1}: 只有1个POI坐标，跳过DEM计算，只查询地理特征`);
+            if (this.geoFactsService) {
+              try {
+                const geoFeatures = await this.geoFactsService.getGeoFeaturesForPoint(
+                  routePoints[0].lat,
+                  routePoints[0].lng,
+                  { useCache: true }
+                );
+                segment.metadata = {
+                  ...segment.metadata,
+                  geoFeatures: {
+                    rivers: { nearRiver: geoFeatures.rivers.nearRiver },
+                    roads: { nearRoad: geoFeatures.roads.nearRoad },
+                    coastlines: { nearCoastline: geoFeatures.coastlines.nearCoastline },
+                  },
+                };
+              } catch (geoError: any) {
+                this.logger.debug(`填充Segment ${index + 1}的地理特征失败: ${geoError.message}`);
+              }
+            }
+          } else {
+            this.logger.debug(`Segment ${index + 1}: 没有POI坐标，跳过DEM和地理特征填充`);
+          }
+        } catch (error: any) {
+          this.logger.warn(`填充Segment ${index + 1}的地理数据失败: ${error.message}`, error.stack);
+        } finally {
+          // P0优化：原子化更新已完成计数和进度
+          progressUpdateQueue = progressUpdateQueue.then(() => {
+            completedCount++;
+            const finalProgress = baseProgress + Math.floor((completedCount / totalSegments) * progressRange);
+            updateProgress?.(finalProgress, `已完成 ${completedCount}/${totalSegments} 个segments的地理数据填充`);
+            this.logger.debug(`完成处理Segment ${index + 1}/${totalSegments}，进度: ${finalProgress}%，已完成: ${completedCount}/${totalSegments}`);
+            return Promise.resolve();
+          });
+        }
+    });
+
+    // 使用有界并发执行器限制并发度
+    await runBounded(segmentTasks, this.geoFeaturesMaxConcurrency);
+    
+    // P0优化：等待所有进度更新完成
+    await progressUpdateQueue;
+
+    this.logger.debug(`完成填充 ${segments.length} 个segments的地理数据`);
+    atomicUpdateProgress(80, 'DEM地形数据和地理特征填充完成');
+  }
+
+  /**
+   * 从segment中提取路线点（POI坐标）
+   */
+  private extractRoutePointsFromSegment(segment: RouteSegment): Array<{ lat: number; lng: number }> {
+    const points: Array<{ lat: number; lng: number }> = [];
+    const metadata = segment.metadata || {};
+
+    // 从accommodation提取
+    if (metadata.accommodation?.coordinates) {
+      points.push(metadata.accommodation.coordinates);
+      this.logger.debug(`从accommodation提取坐标: (${metadata.accommodation.coordinates.lat}, ${metadata.accommodation.coordinates.lng})`);
+    }
+
+    // 从restaurants提取
+    if (metadata.restaurants && Array.isArray(metadata.restaurants)) {
+      for (const restaurant of metadata.restaurants) {
+        if (restaurant.poi?.coordinates) {
+          points.push(restaurant.poi.coordinates);
+          this.logger.debug(`从restaurant提取坐标: (${restaurant.poi.coordinates.lat}, ${restaurant.poi.coordinates.lng})`);
+        }
+      }
+    }
+
+    // 从attractions提取
+    if (metadata.attractions && Array.isArray(metadata.attractions)) {
+      for (const attraction of metadata.attractions) {
+        if (attraction.coordinates) {
+          points.push(attraction.coordinates);
+          this.logger.debug(`从attraction提取坐标: (${attraction.coordinates.lat}, ${attraction.coordinates.lng})`);
+        }
+      }
+    }
+
+    if (points.length === 0) {
+      this.logger.debug(`Segment ${segment.segmentId}: 未找到任何POI坐标（accommodation: ${!!metadata.accommodation}, restaurants: ${metadata.restaurants?.length || 0}, attractions: ${metadata.attractions?.length || 0}）`);
+    }
+
+    return points;
+  }
+
+  /**
+   * 计算segment的中心点
+   */
+  private calculateSegmentCenter(points: Array<{ lat: number; lng: number }>): { lat: number; lng: number } {
+    if (points.length === 0) {
+      return { lat: 0, lng: 0 };
+    }
+
+    if (points.length === 1) {
+      return points[0];
+    }
+
+    // 计算所有点的平均坐标
+    const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+    const avgLng = points.reduce((sum, p) => sum + p.lng, 0) / points.length;
+
+    return { lat: avgLat, lng: avgLng };
+  }
+
+  /**
+   * 记录决策追溯链和排除过程
+   */
+  private async recordDecisionTraceAndExclusions(
+    planState: PlanState,
+    skeletonSet: PlanSkeletonSet,
+    recommendedOption: any,
+    context: PlanContext
+  ): Promise<void> {
+    try {
+      const exclusionLog: Array<{
+        excludedOptionId: string;
+        excludedOptionName: string;
+        reason: string;
+        evidence: string[];
+        timestamp: string;
+      }> = [];
+
+      // 记录为什么排除了其他方案
+      if (recommendedOption && skeletonSet.options) {
+        for (const option of skeletonSet.options) {
+          if (option.id !== recommendedOption.id) {
+            // 分析为什么这个方案被排除
+            const exclusionReason = this.analyzeExclusionReason(
+              option,
+              recommendedOption,
+              skeletonSet.recommendation,
+              context
+            );
+
+            exclusionLog.push({
+              excludedOptionId: option.id,
+              excludedOptionName: option.name,
+              reason: exclusionReason.reason,
+              evidence: exclusionReason.evidence,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      // 记录决策日志引用
+      const decisionLogRefs: Array<{
+        decision_id: string;
+        diff: any;
+        evidence_refs: string[];
+        rule_version: string;
+        timestamp: string;
+      }> = [];
+
+      if (recommendedOption) {
+        decisionLogRefs.push({
+          decision_id: `decision_${Date.now()}_skeleton_selection`,
+          diff: {
+            type: 'skeleton_selection',
+            selectedOptionId: recommendedOption.id,
+            selectedOptionName: recommendedOption.name,
+            excludedOptions: exclusionLog.map(e => e.excludedOptionId),
+          },
+          evidence_refs: [
+            `skeleton_set_${skeletonSet.options?.length || 0}_options`,
+            `recommendation_${skeletonSet.recommendation?.optionId || 'none'}`,
+          ],
+          rule_version: '1.0.0',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // 更新 planState
+      planState.metadata = {
+        ...planState.metadata,
+        exclusionLog,
+        decisionTrace: {
+          skeletonSelection: {
+            timestamp: new Date().toISOString(),
+            totalOptions: skeletonSet.options?.length || 0,
+            selectedOptionId: recommendedOption?.id,
+            recommendationReason: skeletonSet.recommendation?.reason,
+          },
+        },
+      };
+
+      planState.decision_log_refs = [
+        ...(planState.decision_log_refs || []),
+        ...decisionLogRefs,
+      ];
+
+      this.logger.debug(`已记录决策追溯链和排除过程: ${exclusionLog.length} 个排除项`);
+    } catch (error: any) {
+      this.logger.warn(`记录决策追溯链失败: ${error.message}`);
+      // 不阻塞主流程
+    }
+  }
+
+  /**
+   * 分析排除原因
+   */
+  private analyzeExclusionReason(
+    excludedOption: any,
+    recommendedOption: any,
+    recommendation: any,
+    context: PlanContext
+  ): {
+    reason: string;
+    evidence: string[];
+  } {
+    const evidence: string[] = [];
+    let reason = '不符合推荐标准';
+
+    // 分析推荐理由
+    if (recommendation?.reason) {
+      reason = `推荐理由: ${recommendation.reason}`;
+    }
+
+    // 对比方案特点
+    if (excludedOption.name === '紧凑型' && recommendedOption?.name !== '紧凑型') {
+      evidence.push('紧凑型方案节奏较紧，可能不符合用户偏好');
+      if (context.constraints?.fitness?.level === 'low') {
+        evidence.push('用户体力水平较低，不适合紧凑型方案');
+      }
+    }
+
+    if (excludedOption.name === '松弛型' && recommendedOption?.name !== '松弛型') {
+      evidence.push('松弛型方案节奏较慢，可能无法充分利用时间');
+      if (context.days && context.days <= 3) {
+        evidence.push('行程天数较短，建议选择更紧凑的方案');
+      }
+    }
+
+    // 对比预算约束
+    if (context.constraints?.budget?.total) {
+      // 这里可以添加更详细的预算分析
+      evidence.push('已考虑预算约束');
+    }
+
+    // 对比体力约束
+    if (context.constraints?.fitness?.level) {
+      if (excludedOption.name === '紧凑型' && context.constraints.fitness.level === 'low') {
+        evidence.push('紧凑型方案不适合低体力水平用户');
+      }
+    }
+
+    // 如果没有具体证据，使用通用原因
+    if (evidence.length === 0) {
+      evidence.push('根据综合评估，该方案不如推荐方案适合当前需求');
+    }
+
+    return { reason, evidence };
+  }
+
+  /**
+   * 从PlanContext推断国家代码
+   */
+  private inferCountryCode(context: PlanContext): string | null {
+    const country = context.destination?.country;
+    if (!country) {
+      return null;
+    }
+
+    // 国家名称到ISO代码的映射（简化版，实际应该使用地理编码服务）
+    const countryCodeMap: Record<string, string> = {
+      '冰岛': 'IS',
+      'Iceland': 'IS',
+      '格陵兰': 'GL',
+      'Greenland': 'GL',
+      '挪威': 'NO',
+      'Norway': 'NO',
+      '阿根廷': 'AR',
+      'Argentina': 'AR',
+      '中国': 'CN',
+      'China': 'CN',
+    };
+
+    return countryCodeMap[country] || null;
   }
 
   /**
@@ -1529,5 +2490,59 @@ export class PlanningWorkbenchAgentService {
         // 不抛出错误，避免影响主流程
       }
     }
+  }
+
+  /**
+   * 获取世界模型数据 (Domain Agents)
+   * 
+   * 通过 Domain Agents 获取地理、天气、成本、体验等世界模型数据，
+   * 用于支持决策核心引擎的约束检查和权衡分析。
+   */
+  async getWorldModelData(context: PlanContext): Promise<{
+    geo?: Awaited<ReturnType<GeoAgentService['analyzeTerrain']>>;
+    weather?: Awaited<ReturnType<WeatherAgentService['getForecast']>>;
+    cost?: Awaited<ReturnType<CostAgentService['estimateTripCost']>>;
+    experience?: Awaited<ReturnType<ExperienceAgentService['assessHumanExecutability']>>;
+  }> {
+    const result: {
+      geo?: Awaited<ReturnType<GeoAgentService['analyzeTerrain']>>;
+      weather?: Awaited<ReturnType<WeatherAgentService['getForecast']>>;
+      cost?: Awaited<ReturnType<CostAgentService['estimateTripCost']>>;
+      experience?: Awaited<ReturnType<ExperienceAgentService['assessHumanExecutability']>>;
+    } = {};
+
+    // 并行获取世界模型数据
+    const promises: Promise<void>[] = [];
+
+    // Extract dates from constraints if available
+    const startDate = context.constraints?.time?.startDate;
+    const endDate = context.constraints?.time?.endDate;
+    const hasDates = !!(startDate && endDate);
+
+    // Note: PlanContext.destination doesn't have coordinates, so GeoAgent and WeatherAgent 
+    // would need coordinates from another source (e.g., geocoding the city/country)
+    // For now, we skip these if no coordinates are available
+
+    // 成本数据
+    if (this.costAgent && context.destination && hasDates) {
+      const days = Math.ceil(
+        (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+      ) + 1;
+      promises.push(
+        this.costAgent.estimateTripCost(
+          context.destination.country || context.destination.city || '',
+          { start: startDate, end: endDate },
+          context.constraints?.companions?.count || 2
+        ).then(data => { result.cost = data; }).catch(e => {
+          this.logger.warn(`[WorldModel] CostAgent failed: ${e.message}`);
+        })
+      );
+    }
+
+    await Promise.all(promises);
+
+    this.logger.debug(`[WorldModel] Data collected: geo=${!!result.geo}, weather=${!!result.weather}, cost=${!!result.cost}`);
+
+    return result;
   }
 }

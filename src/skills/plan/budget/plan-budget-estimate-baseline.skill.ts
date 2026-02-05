@@ -45,6 +45,39 @@ export class PlanBudgetEstimateBaselineSkill implements Skill<PlanBudgetEstimate
     private readonly llmService: LlmService,
   ) {}
 
+  /**
+   * 从 LLM 响应中提取 JSON（处理可能包含 markdown 代码块标记的情况）
+   */
+  private extractJSON(response: string): any {
+    if (!response || typeof response !== 'string') {
+      throw new Error('响应为空或格式不正确');
+    }
+
+    let cleaned = response.trim();
+    
+    // 移除 markdown 代码块标记（更严格的匹配，支持多行）
+    cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/i, '');
+    cleaned = cleaned.replace(/\n?\s*```$/i, '');
+    cleaned = cleaned.trim();
+    
+    // 尝试提取 JSON 对象（如果响应中包含其他文本）
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    // 再次清理可能的空白字符
+    cleaned = cleaned.trim();
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (parseError: any) {
+      this.logger.error(`JSON 解析失败，原始响应（前500字符）: ${response.substring(0, 500)}`);
+      this.logger.error(`清理后的内容（前500字符）: ${cleaned.substring(0, 500)}`);
+      throw parseError;
+    }
+  }
+
   async execute(input: PlanBudgetEstimateBaselineInput): Promise<PlanBudgetEstimateBaselineOutput> {
     this.logger.debug(`执行 plan.budget.estimateBaseline: planId=${input.planState.plan_id}`);
 
@@ -101,7 +134,7 @@ ${userPrompt}`;
           },
         );
 
-        const budgetBreakdown = JSON.parse(budgetBreakdownStr) as BudgetBreakdown;
+        const budgetBreakdown = this.extractJSON(budgetBreakdownStr) as BudgetBreakdown;
 
         return {
           budgetBreakdown,

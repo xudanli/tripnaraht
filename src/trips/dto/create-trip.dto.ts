@@ -1,5 +1,5 @@
 // src/trips/dto/create-trip.dto.ts
-import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt } from 'class-validator';
+import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt, Length } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TripStatus } from './trip-status.dto';
@@ -163,4 +163,15 @@ export class CreateTripDto {
   @IsArray({ message: 'avoidPlaces 必须是数组' })
   @IsInt({ each: true, message: 'avoidPlaces 数组中的每个元素必须是整数' })
   avoidPlaces?: number[];
+
+  @ApiPropertyOptional({
+    description: '行程名称（1-200 字符，可选。如不提供，系统将自动生成默认名称）',
+    example: '冰岛环岛游',
+    maxLength: 200,
+    minLength: 1,
+  })
+  @IsOptional()
+  @IsString({ message: 'name 必须是字符串' })
+  @Length(1, 200, { message: '行程名称长度必须在 1-200 字符之间' })
+  name?: string;
 }

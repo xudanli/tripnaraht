@@ -10,6 +10,19 @@ export class OpeningHoursUtil {
    */
   static isOpenNow(hoursStr: string, timezone: string = 'Asia/Tokyo'): boolean {
     if (!hoursStr || hoursStr === 'Closed') return false;
+    
+    // 确保 hoursStr 是字符串类型
+    if (typeof hoursStr !== 'string') {
+      // 如果是数组，取第一个元素
+      if (Array.isArray(hoursStr)) {
+        hoursStr = hoursStr[0];
+      } else {
+        // 其他类型，转换为字符串
+        hoursStr = String(hoursStr);
+      }
+    }
+    
+    if (hoursStr === 'Closed') return false;
     if (hoursStr === '24 Hours' || hoursStr === '24/7') return true;
 
     // 1. 获取店铺当地的"当前时间"
@@ -17,6 +30,10 @@ export class OpeningHoursUtil {
     
     // 2. 解析营业时间字符串 (假设格式为 "HH:mm-HH:mm")
     // 实际抓取的数据可能很乱，这里针对最常见的 "Start-End" 格式
+    if (typeof hoursStr.split !== 'function') {
+      return false; // 无法解析，返回 false
+    }
+    
     const [startStr, endStr] = hoursStr.split('-');
     if (!startStr || !endStr) return false; // 格式无法解析
 
@@ -75,13 +92,31 @@ export class OpeningHoursUtil {
     const dayKey = now.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
     const hours = metadata.openingHours[dayKey];
-    if (hours) return hours;
+    if (hours) {
+      // 确保返回字符串类型
+      if (typeof hours === 'string') {
+        return hours;
+      } else if (Array.isArray(hours) && hours.length > 0) {
+        return typeof hours[0] === 'string' ? hours[0] : String(hours[0]);
+      } else {
+        return String(hours);
+      }
+    }
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = now.weekday >= 6; // 6 = Saturday, 7 = Sunday
-    return isWeekend 
+    const fallbackHours = isWeekend 
       ? (metadata.openingHours.weekend || 'Closed')
       : (metadata.openingHours.weekday || 'Closed');
+    
+    // 确保返回字符串类型
+    if (typeof fallbackHours === 'string') {
+      return fallbackHours;
+    } else if (Array.isArray(fallbackHours) && fallbackHours.length > 0) {
+      return typeof fallbackHours[0] === 'string' ? fallbackHours[0] : String(fallbackHours[0]);
+    } else {
+      return String(fallbackHours);
+    }
   }
 
   /**
@@ -96,6 +131,19 @@ export class OpeningHoursUtil {
    */
   static isOpenAt(hoursStr: string, checkDate: Date, timezone: string = 'Asia/Tokyo'): boolean {
     if (!hoursStr || hoursStr === 'Closed') return false;
+    
+    // 确保 hoursStr 是字符串类型
+    if (typeof hoursStr !== 'string') {
+      // 如果是数组，取第一个元素
+      if (Array.isArray(hoursStr)) {
+        hoursStr = hoursStr[0];
+      } else {
+        // 其他类型，转换为字符串
+        hoursStr = String(hoursStr);
+      }
+    }
+    
+    if (hoursStr === 'Closed') return false;
     if (hoursStr === '24 Hours' || hoursStr === '24/7') return true;
 
     // 1. 将检查时间转换为店铺当地时区
@@ -105,6 +153,10 @@ export class OpeningHoursUtil {
     const dayKey = checkDateTime.toFormat('ccc').toLowerCase();
     
     // 3. 解析营业时间字符串
+    if (typeof hoursStr.split !== 'function') {
+      return false; // 无法解析，返回 false
+    }
+    
     const [startStr, endStr] = hoursStr.split('-');
     if (!startStr || !endStr) return false; // 格式无法解析
 
@@ -141,13 +193,33 @@ export class OpeningHoursUtil {
     const dayKey = checkDateTime.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
     const hours = metadata.openingHours[dayKey];
-    if (hours) return hours;
+    if (hours) {
+      // 确保返回字符串类型
+      if (typeof hours === 'string') {
+        return hours;
+      } else if (Array.isArray(hours) && hours.length > 0) {
+        // 如果是数组，取第一个元素
+        return typeof hours[0] === 'string' ? hours[0] : String(hours[0]);
+      } else {
+        // 其他类型，转换为字符串
+        return String(hours);
+      }
+    }
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = checkDateTime.weekday >= 6; // 6 = Saturday, 7 = Sunday
-    return isWeekend 
+    const fallbackHours = isWeekend 
       ? (metadata.openingHours.weekend || 'Closed')
       : (metadata.openingHours.weekday || 'Closed');
+    
+    // 确保返回字符串类型
+    if (typeof fallbackHours === 'string') {
+      return fallbackHours;
+    } else if (Array.isArray(fallbackHours) && fallbackHours.length > 0) {
+      return typeof fallbackHours[0] === 'string' ? fallbackHours[0] : String(fallbackHours[0]);
+    } else {
+      return String(fallbackHours);
+    }
   }
 }
 

@@ -22,6 +22,7 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadService } from '../upload/upload.service';
+import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 
 @ApiTags('places')
 @Controller('places')
@@ -39,6 +40,116 @@ export class PlacesController {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
   ) {}
+
+  @Public()
+  @Get(':placeId/evidence')
+  @ApiOperation({
+    summary: '获取地点的关键证据',
+    description: '获取地点的关键证据信息（营业时间、封路信息、天气窗口等）',
+  })
+  @ApiParam({ name: 'placeId', description: '地点ID', type: Number, example: 1 })
+  @ApiQuery({ name: 'date', description: '指定日期（YYYY-MM-DD）', required: false, example: '2026-02-05' })
+  @ApiQuery({ name: 'includeWeather', description: '是否包含天气信息', required: false, type: Boolean, example: true })
+  @ApiQuery({ name: 'includeTraffic', description: '是否包含交通信息', required: false, type: Boolean, example: true })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回关键证据',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({ status: 404, description: '地点不存在' })
+  async getEvidence(
+    @Param('placeId', ParseIntPipe) placeId: number,
+    @Query('date') date?: string,
+    @Query('includeWeather') includeWeather?: string,
+    @Query('includeTraffic') includeTraffic?: string,
+  ) {
+    try {
+      const place = await this.placesService.findOne(placeId);
+      if (!place) {
+        return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${placeId} 不存在`);
+      }
+
+      const metadata = (place.metadata as any) || {};
+      const shouldIncludeWeather = includeWeather !== 'false';
+      const shouldIncludeTraffic = includeTraffic !== 'false';
+      const targetDate = date || new Date().toISOString().split('T')[0];
+
+      // 构建营业时间
+      let businessHours: any = undefined;
+      if (metadata.openingHours || metadata.opening_hours) {
+        const openingHours = metadata.openingHours || metadata.opening_hours;
+        const timezone = metadata.timezone || 'Asia/Tokyo';
+        const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
+        
+        businessHours = {
+          open: todayHours !== 'Closed' ? todayHours.split('-')[0]?.trim() : undefined,
+          close: todayHours !== 'Closed' ? todayHours.split('-')[1]?.trim() : undefined,
+          timezone: timezone,
+          exceptions: [], // TODO: 可以从metadata中提取例外情况
+        };
+      }
+
+      // 构建封路信息
+      let roadClosure: any = { hasClosure: false };
+      if (shouldIncludeTraffic && (metadata.roadStatus || metadata.roadClosure)) {
+        const roadStatus = metadata.roadStatus || {};
+        roadClosure = {
+          hasClosure: metadata.roadClosure === true || roadStatus.closed === true,
+          closures: roadStatus.closures || [],
+        };
+      }
+
+      // 构建天气窗口
+      let weatherWindow: any = undefined;
+      if (shouldIncludeWeather && (metadata.weatherInfo || metadata.weather)) {
+        const weatherInfo = metadata.weatherInfo || metadata.weather || {};
+        weatherWindow = {
+          date: targetDate,
+          condition: weatherInfo.condition || weatherInfo.weather || '未知',
+          description: weatherInfo.description || `${weatherInfo.condition || '未知'}，${weatherInfo.temperature ? `温度${weatherInfo.temperature}°C` : ''}`,
+          temperature: {
+            min: weatherInfo.tempMin || weatherInfo.temperature_min || undefined,
+            max: weatherInfo.tempMax || weatherInfo.temperature_max || weatherInfo.temperature || undefined,
+            unit: 'celsius' as const,
+          },
+          precipitation: weatherInfo.precipitation ? {
+            probability: weatherInfo.precipitation.probability || weatherInfo.precipitation_probability || undefined,
+            amount: weatherInfo.precipitation.amount || weatherInfo.precipitation_amount || undefined,
+          } : undefined,
+          wind: weatherInfo.wind ? {
+            speed: weatherInfo.wind.speed || weatherInfo.wind_speed || undefined,
+            direction: weatherInfo.wind.direction || weatherInfo.wind_direction || undefined,
+          } : undefined,
+          suitableForOutdoor: weatherInfo.suitableForOutdoor !== false, // 默认true
+        };
+      }
+
+      // 构建其他信息
+      const otherInfo: any = {};
+      if (metadata.crowdLevel) {
+        otherInfo.crowdLevel = metadata.crowdLevel;
+      }
+      if (metadata.specialEvents) {
+        otherInfo.specialEvents = metadata.specialEvents;
+      }
+
+      return successResponse({
+        placeId: place.id,
+        placeName: place.nameCN || place.nameEN || '未知地点',
+        evidence: {
+          businessHours,
+          roadClosure,
+          weatherWindow,
+          otherInfo: Object.keys(otherInfo).length > 0 ? otherInfo : undefined,
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
 
   @Public()
   @Get('nearby')
@@ -99,10 +210,14 @@ export class PlacesController {
     return this.placesService.findNearbyRestaurants(lat, lng, radiusMeters, payment);
   }
 
+  /**
+   * @deprecated 请使用 POST /places/admin 接口
+   * 此接口与 /admin 功能完全重复，将在下个版本删除
+   */
   @Post()
   @ApiOperation({ 
-    summary: '创建地点',
-    description: '创建新的地点记录，包括地理位置（PostGIS）和元数据（JSONB）'
+    summary: '[Deprecated] 创建地点',
+    description: '⚠️ 已废弃，请使用 POST /places/admin。创建新的地点记录，包括地理位置（PostGIS）和元数据（JSONB）'
   })
   @ApiResponse({ 
     status: 200, 
@@ -343,357 +458,15 @@ export class PlacesController {
     });
   }
 
-  @Post('attractions/:id/enrich')
-  @ApiOperation({
-    summary: '从高德地图获取景点详细信息',
-    description:
-      '根据景点的名称和坐标，通过高德地图 API 获取以下信息：\n' +
-      '- 开放时间（营业时间）\n' +
-      '- 门票价格\n' +
-      '- 类型（三级分类）\n' +
-      '- 基础亮点（标签）\n' +
-      '- 兴趣维度\n\n' +
-      '获取的信息会更新到地点的 metadata 字段中。',
-  })
-  @ApiParam({
-    name: 'id',
-    description: '地点 ID',
-    type: Number,
-    example: 1,
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功更新景点信息',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number', example: 1 },
-        name: { type: 'string', example: '天安门广场' },
-        metadata: {
-          type: 'object',
-          properties: {
-            openingHours: { type: 'object' },
-            ticketPrice: { type: 'string', example: '免费' },
-            type: { type: 'string', example: '风景名胜;广场;城市广场' },
-            highlights: { type: 'array', items: { type: 'string' } },
-            interestDimensions: { type: 'array', items: { type: 'string' } },
-          },
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 404, description: '地点不存在' })
-  @ApiResponse({ status: 400, description: '地点不是景点类别或缺少坐标' })
-  async enrichAttraction(@Param('id', ParseIntPipe) id: number) {
-    return this.placesService.enrichPlaceFromAmap(id);
-  }
-
-  @Post('attractions/batch-enrich')
-  @ApiOperation({
-    summary: '批量更新景点信息（从高德地图）',
-    description:
-      '批量从高德地图获取景点详细信息并更新到数据库。\n\n' +
-      '可以指定地点 ID 列表，如果不指定则更新所有景点。\n\n' +
-      '**注意**：批量更新会调用高德地图 API，请注意 API 配额限制。',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        placeIds: {
-          type: 'array',
-          items: { type: 'number' },
-          description: '地点 ID 列表（可选，不提供则更新所有景点）',
-          example: [1, 2, 3],
-        },
-        batchSize: {
-          type: 'number',
-          description: '批次大小（默认 10）',
-          default: 10,
-          minimum: 1,
-          maximum: 50,
-        },
-        delay: {
-          type: 'number',
-          description: '批次间延迟（毫秒，默认 200）',
-          default: 200,
-          minimum: 0,
-        },
-      },
-    },
-    required: false,
-  })
-  @ApiResponse({
-    status: 200,
-    description: '批量更新完成',
-    schema: {
-      type: 'object',
-      properties: {
-        total: { type: 'number', example: 100 },
-        success: { type: 'number', example: 95 },
-        failed: { type: 'number', example: 5 },
-        results: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              placeId: { type: 'number' },
-              name: { type: 'string' },
-              status: { type: 'string', enum: ['success', 'failed'] },
-              error: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async batchEnrichAttractions(
-    @Body()
-    body?: {
-      placeIds?: number[];
-      batchSize?: number;
-      delay?: number;
-    }
-  ) {
-    return this.placesService.batchEnrichPlacesFromAmap(
-      body?.placeIds,
-      body?.batchSize || 10,
-      body?.delay || 200
-    );
-  }
-
-  @Get('overpass/:countryCode')
-  @ApiOperation({
-    summary: '从 Google Places API 获取指定国家的景点数据',
-    description:
-      '从 Google Places API 获取指定国家的旅游景点数据。\n\n' +
-      '支持的国家代码：ISO 3166-1 标准（如 IS=冰岛，JP=日本等）\n\n' +
-      '返回的数据包括：\n' +
-      '- 景点名称（中英文）\n' +
-      '- 经纬度坐标\n' +
-      '- 景点类型（attraction, viewpoint, museum 等）\n' +
-      '- OSM 原始标签数据',
-  })
-  @ApiParam({
-    name: 'countryCode',
-    description: 'ISO 3166-1 国家代码',
-    example: 'IS',
-    type: String,
-  })
-  @ApiQuery({
-    name: 'tourismTypes',
-    description: '旅游类型过滤（可选，多个用逗号分隔）',
-    example: 'attraction,viewpoint,museum',
-    required: false,
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回景点列表',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          osmId: { type: 'number', example: 123456 },
-          osmType: { type: 'string', enum: ['node', 'way', 'relation'], example: 'node' },
-          name: { type: 'string', example: 'Hallgrímskirkja' },
-          nameEn: { type: 'string', example: 'Hallgrimskirkja' },
-          lat: { type: 'number', example: 64.1466 },
-          lng: { type: 'number', example: -21.9426 },
-          category: { type: 'string', example: 'tourism' },
-          type: { type: 'string', example: 'attraction' },
-          rawTags: { type: 'object' },
-        },
-      },
-    },
-  })
-  async getAttractionsFromOverpass(
-    @Param('countryCode') countryCode: string,
-    @Query('tourismTypes') tourismTypes?: string,
-  ) {
-    const types = tourismTypes
-      ? tourismTypes.split(',').map((t) => t.trim())
-      : undefined;
-    
-    // 设置超时时间（45 秒），如果超时则返回 504
-    const timeoutMs = 45000;
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new GatewayTimeoutException('Google Places API 请求超时，请稍后重试或减少搜索范围'));
-      }, timeoutMs);
-    });
-
-    try {
-      // 使用 Promise.race 实现超时控制
-      const result = await Promise.race([
-        this.placesService.fetchAttractionsFromOverpass(countryCode, types),
-        timeoutPromise,
-      ]);
-      return result;
-    } catch (error: any) {
-      // 如果是超时错误，直接抛出
-      if (error instanceof GatewayTimeoutException) {
-        throw error;
-      }
-      // 其他错误也抛出
-      throw error;
-    }
-  }
-
-  @Post('overpass/iceland/import')
-  @ApiOperation({
-    summary: '从 Google Places API 导入冰岛景点到数据库',
-    description:
-      '从 Google Places API 获取冰岛的所有旅游景点，并保存到数据库。\n\n' +
-      '**功能说明**：\n' +
-      '- 自动获取或创建冰岛城市记录\n' +
-      '- 从 Google Places 获取景点数据\n' +
-      '- 自动去重（通过 OSM ID 或名称+坐标）\n' +
-      '- 批量保存到数据库\n\n' +
-      '**返回结果**：\n' +
-      '- total: 总数量\n' +
-      '- created: 成功创建数量\n' +
-      '- skipped: 跳过数量（已存在）\n' +
-      '- errors: 错误数量\n' +
-      '- results: 详细结果列表',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        tourismTypes: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '旅游类型过滤（可选）',
-          example: ['attraction', 'viewpoint', 'museum'],
-        },
-        cityId: {
-          type: 'number',
-          description: '城市 ID（可选，不提供则自动查找或创建）',
-          example: 1,
-        },
-      },
-      required: [],
-    },
-  })
-  @ApiResponse({
-    status: 200,
-    description: '导入完成',
-    schema: {
-      type: 'object',
-      properties: {
-        total: { type: 'number', example: 500 },
-        created: { type: 'number', example: 450 },
-        skipped: { type: 'number', example: 30 },
-        errors: { type: 'number', example: 20 },
-        results: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              osmId: { type: 'number' },
-              name: { type: 'string' },
-              status: { type: 'string', enum: ['created', 'skipped', 'error'] },
-              error: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async importIcelandAttractions(
-    @Body()
-    body?: {
-      tourismTypes?: string[];
-      cityId?: number;
-    }
-  ) {
-    return this.placesService.importIcelandAttractionsFromOverpass(
-      body?.tourismTypes,
-      body?.cityId
-    );
-  }
-
-  @Post('nature-poi/import')
-  @ApiOperation({
-    summary: '从 GeoJSON 导入自然 POI 数据',
-    description:
-      '从冰岛官方地理数据（Landmælingar Íslands / Náttúrufræðistofnun Íslands）导入自然 POI。\n\n' +
-      '**支持的数据源**：\n' +
-      '- iceland_lmi: 冰岛土地测量局数据\n' +
-      '- iceland_nsi: 冰岛自然历史研究所数据\n' +
-      '- manual: 手工维护数据\n\n' +
-      '**GeoJSON 格式要求**：\n' +
-      '- 必须是 FeatureCollection\n' +
-      '- 每个 Feature 的 properties 应包含：name, subCategory, accessType 等字段\n' +
-      '- 坐标系统应为 WGS84 (EPSG:4326)',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        geojson: {
-          type: 'object',
-          description: 'GeoJSON FeatureCollection',
-        },
-        source: {
-          type: 'string',
-          enum: ['iceland_lmi', 'iceland_nsi', 'manual'],
-          example: 'iceland_nsi',
-        },
-        countryCode: {
-          type: 'string',
-          example: 'IS',
-        },
-        cityId: {
-          type: 'number',
-          description: '城市 ID（可选）',
-          example: 1,
-        },
-      },
-      required: ['geojson', 'source', 'countryCode'],
-    },
-  })
-  @ApiResponse({
-    status: 200,
-    description: '导入完成',
-    schema: {
-      type: 'object',
-      properties: {
-        total: { type: 'number', example: 100 },
-        created: { type: 'number', example: 85 },
-        skipped: { type: 'number', example: 10 },
-        errors: { type: 'number', example: 5 },
-        results: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              status: { type: 'string', enum: ['created', 'skipped', 'error'] },
-              error: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async importNaturePoiFromGeoJSON(
-    @Body()
-    body: {
-      geojson: any;
-      source: 'iceland_lmi' | 'iceland_nsi' | 'manual';
-      countryCode: string;
-      cityId?: number;
-    }
-  ) {
-    return this.naturePoiService.importFromGeoJSON(
-      body.geojson,
-      body.source,
-      body.countryCode,
-      body.cityId
-    );
-  }
+  // ========== 以下 5 个数据导入接口已删除（2026-02-03）==========
+  // 删除原因：管理/数据导入接口，普通用户不应访问，且应通过脚本或后台管理系统执行
+  // - POST /attractions/:id/enrich - 高德数据增强
+  // - POST /attractions/batch-enrich - 批量高德数据增强
+  // - GET /overpass/:countryCode - Google Places 数据获取
+  // - POST /overpass/iceland/import - 冰岛数据导入
+  // - POST /nature-poi/import - 自然 POI 导入
+  // 相关服务方法仍可通过 PlacesService 和 NaturePoiService 调用
+  // ================================================================
 
   @Public()
   @Get('nature-poi/nearby')
@@ -908,10 +681,14 @@ export class PlacesController {
     );
   }
 
+  /**
+   * @deprecated 请使用 POST /places/admin/batch 接口
+   * 此接口与 /admin/batch 功能完全重复，将在下个版本删除
+   */
   @Post('batch')
   @ApiOperation({
-    summary: '批量获取地点详情',
-    description: '根据地点 ID 列表批量获取地点详情，避免前端 N 次请求。',
+    summary: '[Deprecated] 批量获取地点详情',
+    description: '⚠️ 已废弃，请使用 POST /places/admin/batch。根据地点 ID 列表批量获取地点详情，避免前端 N 次请求。',
   })
   @ApiBody({
     schema: {
@@ -1325,11 +1102,15 @@ export class PlacesController {
     }
   }
 
+  /**
+   * @deprecated 功能未实现，请使用 /search/semantic 进行语义搜索
+   * 此接口将在下个版本删除
+   */
   @Public()
   @Get('recommendations')
   @ApiOperation({
-    summary: '获取地点推荐（功能待实现）',
-    description: '根据行程 ID 获取推荐的地点列表。此功能正在开发中。',
+    summary: '[Deprecated] 获取地点推荐（功能未实现）',
+    description: '⚠️ 已废弃。功能未实现，请使用 GET /places/search/semantic 进行语义搜索。',
   })
   @ApiQuery({ name: 'tripId', description: '行程 ID', example: '928b30d5-432b-4dbf-8967-2248222438be', required: true })
   @ApiQuery({ name: 'limit', description: '返回数量限制（默认 20）', example: 20, type: Number, required: false })
@@ -1344,7 +1125,7 @@ export class PlacesController {
   ) {
     return errorResponse(
       ErrorCode.UNSUPPORTED_ACTION,
-      '地点推荐功能正在开发中，敬请期待。目前可以使用 /api/places/search 或 /api/places/search/semantic 进行地点搜索。',
+      '地点推荐功能已废弃，请使用 /api/places/search/semantic 进行语义搜索。',
     );
   }
 
@@ -1556,10 +1337,14 @@ export class PlacesController {
     return successResponse(place);
   }
 
+  /**
+   * @deprecated 请使用 PUT /places/admin/:id 接口
+   * 此接口与 /admin/:id 功能完全重复，将在下个版本删除
+   */
   @Put(':id')
   @ApiOperation({
-    summary: '更新地点（管理接口）',
-    description: '更新地点信息，包括名称、地址、坐标、元数据等。需要管理员权限。',
+    summary: '[Deprecated] 更新地点',
+    description: '⚠️ 已废弃，请使用 PUT /places/admin/:id。更新地点信息，包括名称、地址、坐标、元数据等。',
   })
   @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
   @ApiBody({ type: UpdatePlaceDto })
@@ -1588,10 +1373,14 @@ export class PlacesController {
     }
   }
 
+  /**
+   * @deprecated 请使用 DELETE /places/admin/:id 接口
+   * 此接口与 /admin/:id 功能完全重复，将在下个版本删除
+   */
   @Delete(':id')
   @ApiOperation({
-    summary: '删除地点（管理接口）',
-    description: '删除地点记录。注意：如果地点已被行程使用，删除可能会影响相关行程。需要管理员权限。',
+    summary: '[Deprecated] 删除地点',
+    description: '⚠️ 已废弃，请使用 DELETE /places/admin/:id。删除地点记录。',
   })
   @ApiParam({ name: 'id', description: '地点 ID', type: Number, example: 1 })
   @ApiResponse({

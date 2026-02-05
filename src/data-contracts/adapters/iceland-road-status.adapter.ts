@@ -26,7 +26,7 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
   constructor(@Optional() private configService?: ConfigService) {
     super(IcelandRoadStatusAdapter.name, {
       baseURL: 'https://www.road.is',
-      timeout: 15000,
+      timeout: 5000, // 减少超时时间到 5 秒，快速失败
     });
   }
 
@@ -46,21 +46,37 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
         });
         data = datexResponse.data;
         this.logger.debug('使用 DATEX II API');
-      } catch (datexError) {
+      } catch (datexError: any) {
         // 如果 DATEX II 不可用，尝试标准 API
+        const errorMsg = AdapterMapper.extractErrorMessage(datexError);
+        if (errorMsg.includes('EAI_AGAIN') || errorMsg.includes('timeout') || errorMsg.includes('超时') || errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNREFUSED')) {
+          // 网络错误，快速失败，不尝试标准 API
+          this.logger.warn(`网络错误，无法连接到 road.is: ${errorMsg}`);
+          throw datexError;
+        }
         this.logger.debug('DATEX II API 不可用，尝试标准 API');
       }
       
-      // 方法 2: 使用标准 Road.is API
+      // 方法 2: 使用标准 Road.is API（仅在 DATEX II 失败且不是网络错误时尝试）
       if (!data) {
-        const response = await this.httpClient.get('/api/roadconditions', {
-          params: {
-            lat: query.lat,
-            lon: query.lng,
-            radius: query.radius || 50000,
-          },
-        });
-        data = response.data;
+        try {
+          const response = await this.httpClient.get('/api/roadconditions', {
+            params: {
+              lat: query.lat,
+              lon: query.lng,
+              radius: query.radius || 50000,
+            },
+          });
+          data = response.data;
+        } catch (apiError: any) {
+          const errorMsg = AdapterMapper.extractErrorMessage(apiError);
+          if (errorMsg.includes('EAI_AGAIN') || errorMsg.includes('timeout') || errorMsg.includes('超时') || errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNREFUSED')) {
+            // 网络错误，快速失败
+            this.logger.warn(`网络错误，无法连接到 road.is: ${errorMsg}`);
+            throw apiError;
+          }
+          throw apiError;
+        }
       }
       
       // 转换为标准格式
@@ -84,7 +100,20 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
       
       return status;
     } catch (error) {
-      this.logger.error(`获取冰岛路况失败: ${AdapterMapper.extractErrorMessage(error)}`);
+      const errorMsg = AdapterMapper.extractErrorMessage(error);
+      
+      // 检查是否是网络错误
+      const isNetworkError = errorMsg.includes('EAI_AGAIN') || 
+                            errorMsg.includes('timeout') || 
+                            errorMsg.includes('超时') ||
+                            errorMsg.includes('ENOTFOUND') ||
+                            errorMsg.includes('ECONNREFUSED');
+      
+      if (isNetworkError) {
+        this.logger.warn(`网络错误，无法连接到 road.is，返回保守估计: ${errorMsg}`);
+      } else {
+        this.logger.error(`获取冰岛路况失败: ${errorMsg}`);
+      }
       
       // 如果 API 调用失败，返回保守的警告状态
       return AdapterMapper.createDefaultErrorResponse<RoadStatus>(
@@ -92,10 +121,13 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
         error,
         {
           isOpen: true, // 假设开放，但标记为需要检查
-          riskLevel: 2, // 中等风险（因为无法获取实时数据）
-          reason: '无法获取实时路况数据，建议查询官方 Road.is 网站',
+          riskLevel: isNetworkError ? 1 : 2, // 网络错误时风险稍低（可能是临时问题）
+          reason: isNetworkError 
+            ? '无法连接到路况服务，请稍后重试或查询官方 Road.is 网站'
+            : '无法获取实时路况数据，建议查询官方 Road.is 网站',
           metadata: {
             note: 'API 调用失败，返回保守估计',
+            networkError: isNetworkError,
           },
         }
       );

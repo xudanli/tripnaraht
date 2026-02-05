@@ -6,7 +6,7 @@
  * 输出标准化的 violations[]，作为 Neptune 触发与 DecisionLog 的统一输入
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   TripWorldState,
   ActivityCandidate,
@@ -15,6 +15,8 @@ import {
   GeoPoint,
 } from '../world-model';
 import { PlanSlot, PlanDay, TripPlan } from '../plan-model';
+import { ConstraintConflictResolver } from './constraint-conflict-resolver.service';
+import { ConstraintConflictResult } from './constraint-dsl.types';
 
 export type ViolationSeverity = 'error' | 'warning' | 'info';
 
@@ -29,6 +31,22 @@ export interface CheckerViolation {
   suggestions?: string[];
 }
 
+export interface InfeasibilityReason {
+  constraint: string; // 约束名称，如 'time_window', 'budget', 'physical'
+  description: string; // 为什么不可行
+  affected_activities?: Array<{
+    activity: string; // 活动ID
+    message: string; // 具体问题描述
+  }>;
+  fix_suggestions: string[]; // 修复建议
+}
+
+export interface InfeasibilityExplanation {
+  feasible: boolean;
+  reasons: InfeasibilityReason[];
+  summary?: string; // 简要总结
+}
+
 export interface ConstraintCheckResult {
   violations: CheckerViolation[];
   isValid: boolean;
@@ -37,6 +55,8 @@ export interface ConstraintCheckResult {
     warningCount: number;
     infoCount: number;
   };
+  conflicts?: ConstraintConflictResult; // 约束冲突检测结果（可选）
+  infeasibilityExplanation?: InfeasibilityExplanation; // 不可行性解释（可选）
 }
 
 /**
@@ -44,10 +64,14 @@ export interface ConstraintCheckResult {
  */
 @Injectable()
 export class ConstraintChecker {
+  constructor(
+    @Optional() private readonly conflictResolver?: ConstraintConflictResolver
+  ) {}
+
   /**
    * 校验完整计划
    */
-  checkPlan(state: TripWorldState, plan: TripPlan): ConstraintCheckResult {
+  async checkPlan(state: TripWorldState, plan: TripPlan): Promise<ConstraintCheckResult> {
     const violations: CheckerViolation[] = [];
 
     for (const day of plan.days) {
@@ -78,6 +102,30 @@ export class ConstraintChecker {
     const warningCount = violations.filter(v => v.severity === 'warning').length;
     const infoCount = violations.filter(v => v.severity === 'info').length;
 
+    // 检测约束冲突（如果冲突解析器可用）
+    let conflicts: ConstraintConflictResult | undefined;
+    if (this.conflictResolver) {
+      try {
+        // 从state中获取约束DSL
+        const constraintDSL = (state.policies as any)?.constraintDSL;
+        if (constraintDSL) {
+          conflicts = await this.conflictResolver.detectAndExplainConflicts(
+            constraintDSL,
+            plan,
+            state
+          );
+        }
+      } catch (error) {
+        console.warn('约束冲突检测失败:', error);
+      }
+    }
+
+    // 生成不可行性解释（如果有错误级别的违规）
+    let infeasibilityExplanation: InfeasibilityExplanation | undefined;
+    if (errorCount > 0) {
+      infeasibilityExplanation = this.explainInfeasibility(violations, state);
+    }
+
     return {
       violations,
       isValid: errorCount === 0,
@@ -86,7 +134,176 @@ export class ConstraintChecker {
         warningCount,
         infoCount,
       },
+      conflicts,
+      infeasibilityExplanation,
     };
+  }
+
+  /**
+   * 解释为什么方案不可行
+   */
+  explainInfeasibility(
+    violations: CheckerViolation[],
+    state: TripWorldState
+  ): InfeasibilityExplanation {
+    const criticalViolations = violations.filter(v => v.severity === 'error');
+
+    if (criticalViolations.length === 0) {
+      return {
+        feasible: true,
+        reasons: [],
+      };
+    }
+
+    // 按类型分组违规
+    const violationsByType = this.groupViolationsByType(criticalViolations);
+
+    const reasons: InfeasibilityReason[] = [];
+
+    // 1. 时间窗冲突
+    if (violationsByType.TIME_WINDOW_VIOLATION) {
+      const timeWindowViolations = violationsByType.TIME_WINDOW_VIOLATION;
+      reasons.push({
+        constraint: 'time_window',
+        description: `有 ${timeWindowViolations.length} 个活动不在开放时间窗内`,
+        affected_activities: timeWindowViolations.map(v => ({
+          activity: v.activityId || v.slotId || 'unknown',
+          message: v.message,
+        })),
+        fix_suggestions: [
+          '调整活动时间到开放窗口',
+          '替换为其他开放时间更灵活的活动',
+          '检查POI的开放时间数据是否准确',
+        ],
+      });
+    }
+
+    // 2. 连通性问题
+    if (violationsByType.CONNECTIVITY_INSUFFICIENT_TIME) {
+      const connectivityViolations = violationsByType.CONNECTIVITY_INSUFFICIENT_TIME;
+      reasons.push({
+        constraint: 'connectivity',
+        description: `有 ${connectivityViolations.length} 段行程的旅行时间不足`,
+        affected_activities: connectivityViolations.map(v => ({
+          activity: v.slotId || 'unknown',
+          message: v.message,
+        })),
+        fix_suggestions: [
+          '增加活动之间的缓冲时间',
+          '调整活动顺序以减少旅行时间',
+          '替换为更近的活动',
+          '检查交通时间数据是否准确',
+        ],
+      });
+    }
+
+    // 3. 预算超支
+    if (violationsByType.BUDGET_GLOBAL_OVERRUN || violationsByType.BUDGET_DAILY_OVERRUN) {
+      const budgetViolations = [
+        ...(violationsByType.BUDGET_GLOBAL_OVERRUN || []),
+        ...(violationsByType.BUDGET_DAILY_OVERRUN || []),
+      ];
+      const globalViolation = violationsByType.BUDGET_GLOBAL_OVERRUN?.[0];
+      const overrunRatio = globalViolation?.details?.overrunRatio || 1.0;
+      
+      reasons.push({
+        constraint: 'budget',
+        description: `总预算超支 ${overrunRatio > 1.2 ? '严重' : '轻微'}（超支 ${((overrunRatio - 1) * 100).toFixed(1)}%）`,
+        affected_activities: [],
+        fix_suggestions: [
+          '减少活动数量',
+          '替换为更便宜的活动',
+          '调整预算分配（如果允许）',
+          '延长行程天数以降低日均成本',
+        ],
+      });
+    }
+
+    // 4. 天气不可行
+    if (violationsByType.WEATHER_UNSAFE) {
+      const weatherViolations = violationsByType.WEATHER_UNSAFE;
+      reasons.push({
+        constraint: 'weather',
+        description: `有 ${weatherViolations.length} 个户外活动受天气影响，可能不可行`,
+        affected_activities: weatherViolations.map(v => ({
+          activity: v.activityId || v.slotId || 'unknown',
+          message: v.message,
+        })),
+        fix_suggestions: [
+          '替换为室内活动',
+          '调整到天气较好的时段',
+          '准备备选方案',
+          '检查天气预报数据是否准确',
+        ],
+      });
+    }
+
+    // 5. 物理限制
+    if (violationsByType.PHYSICAL_OVERLOAD) {
+      const physicalViolations = violationsByType.PHYSICAL_OVERLOAD;
+      reasons.push({
+        constraint: 'physical_limitations',
+        description: `当日活动强度超出推荐值`,
+        affected_activities: physicalViolations.map(v => ({
+          activity: v.date || 'unknown',
+          message: v.message,
+        })),
+        fix_suggestions: [
+          '减少活动数量',
+          '缩短部分活动停留时间',
+          '增加休息时间',
+          '调整节奏偏好设置',
+        ],
+      });
+    }
+
+    // 6. 风险容忍度不匹配
+    if (violationsByType.RISK_TOLERANCE_MISMATCH) {
+      const riskViolations = violationsByType.RISK_TOLERANCE_MISMATCH;
+      reasons.push({
+        constraint: 'risk_tolerance',
+        description: `行程包含高风险活动，但用户风险偏好为低`,
+        affected_activities: riskViolations.map(v => ({
+          activity: v.date || 'unknown',
+          message: v.message,
+        })),
+        fix_suggestions: [
+          '替换为低风险活动',
+          '确认用户是否接受高风险活动',
+          '调整风险容忍度设置',
+        ],
+      });
+    }
+
+    // 生成总结
+    const summary = reasons.length > 0
+      ? `方案不可行，原因：${reasons.map(r => r.description).join('；')}`
+      : undefined;
+
+    return {
+      feasible: false,
+      reasons,
+      summary,
+    };
+  }
+
+  /**
+   * 按类型分组违规
+   */
+  private groupViolationsByType(
+    violations: CheckerViolation[]
+  ): Record<string, CheckerViolation[]> {
+    const grouped: Record<string, CheckerViolation[]> = {};
+
+    for (const violation of violations) {
+      const type = violation.code;
+      if (!grouped[type]) {
+        grouped[type] = [];
+      }
+      grouped[type].push(violation);
+    }
+
+    return grouped;
   }
 
   /**

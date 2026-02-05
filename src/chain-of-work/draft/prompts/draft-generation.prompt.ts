@@ -284,11 +284,27 @@ ${JSON.stringify(request, null, 2)}
 
 ## 重要约束
 
-1. **步骤顺序**：必须严格按照状态机流程顺序，GATE_EVAL 必须在 PLAN_GEN 之前
-2. **步骤完整性**：必须包含所有 8 个步骤（INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → REPAIR → NARRATE → DONE）
-3. **Skills 映射**：RESEARCH 步骤必须包含需要调用的 Skills 列表
-4. **条件执行**：REPAIR 步骤必须标注执行条件
-5. **步骤描述**：每个步骤的描述必须清晰、具体、可执行
+1. **步骤顺序**：必须严格按照 10 步状态机流程顺序
+2. **步骤完整性**：必须包含所有 10 个步骤：INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → COMPLIANCE → REPAIR → NARRATE → FEEDBACK → DONE
+3. **Agent 映射**：INTAKE/PLAN_GEN→Planner, RESEARCH→DomainAgents, GATE_EVAL→Gatekeeper(Abu), VERIFY→CoreDecision(Dr.Dre), COMPLIANCE→Compliance, REPAIR→LocalInsight(Neptune), NARRATE→Narrator, FEEDBACK→Execution
+4. **Skills 映射**：RESEARCH 步骤必须包含需要调用的 Skills 列表
+5. **条件执行**：REPAIR 步骤必须标注执行条件
+6. **多方案生成**：PLAN_GEN 应生成 Plan A/B/C 三个方案，带风险概率
+
+## 10 步流程说明
+
+| 步骤 | Agent | 职责 |
+|------|-------|------|
+| INTAKE | Planner | 解析需求、识别缺口 |
+| RESEARCH | Domain Agents | 调用 Geo/Weather/Cost/Experience Agent 收集硬数据 |
+| GATE_EVAL | Gatekeeper (Abu) | Should-Exist Gate 安全检查 |
+| PLAN_GEN | Planner | 生成 Plan A/B/C 多方案 |
+| VERIFY | CoreDecision (Dr.Dre) | 节奏评估 + 冲突检测 |
+| COMPLIANCE | Compliance | 风险分类 + 合规检查 + 免责留痕 |
+| REPAIR | LocalInsight (Neptune) | 空间修复（条件执行） |
+| NARRATE | Narrator | 决策理由可视化 |
+| FEEDBACK | Execution | RLHF 信号采集 |
+| DONE | - | 输出最终结果 |
 
 ## 注意事项
 
@@ -296,5 +312,7 @@ ${JSON.stringify(request, null, 2)}
 - 对于复杂行程（如徒步、高风险地区），GATE_EVAL 步骤的描述应该更详细
 - RESEARCH 步骤的 Skills 选择应该基于用户需求（自驾需要 transport.search，徒步需要 dem.getProfile）
 - 确保步骤描述符合 TripNARA 的决策优先、可执行优先原则
+- COMPLIANCE 负责风险分类、合规检查和免责留痕
+- FEEDBACK 收集用户反馈用于 RLHF 学习
 `;
 }

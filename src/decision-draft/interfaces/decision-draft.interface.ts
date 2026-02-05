@@ -106,6 +106,9 @@ export interface DecisionStep {
   step_draft_ids: string[];
   step_drafts?: any[]; // TripNARAStepDraft[]（Expert 模式可见）
   
+  // 步骤依赖关系
+  dependencies?: string[]; // 依赖的其他步骤 ID 列表
+  
   // 状态机集成字段（P0 新增）
   orchestration_step?: OrchestrationStep; // 关联的状态机步骤（INTAKE/RESEARCH/GATE_EVAL/...）
   sub_agent?: SubAgentType; // 关联的 Sub-Agent（Planner/Gatekeeper/LocalInsight/...）

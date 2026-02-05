@@ -1,6 +1,7 @@
 // src/trips/decision/services/decision-logging.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   DecisionPointType,
@@ -12,6 +13,7 @@ import {
   Deviation,
   LearningSignals,
 } from '../interfaces/decision-logging.interface';
+import { ContextLearningService } from '../../../agent/context-engine/services/context-learning.service';
 
 /**
  * 决策日志服务
@@ -21,8 +23,12 @@ import {
 @Injectable()
 export class DecisionLoggingService {
   private readonly logger = new Logger(DecisionLoggingService.name);
+  private contextLearningService?: ContextLearningService;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moduleRef: ModuleRef,
+  ) {}
 
   /**
    * 记录决策点
@@ -146,10 +152,87 @@ export class DecisionLoggingService {
         `记录决策结果：${decisionId}，用户满意度：${userSatisfaction || '未提供'}`,
       );
 
+      // 🔴 P1: 记录decision_made事件到context.learn
+      // 异步执行，不阻塞主流程
+      this.recordDecisionMadeEvent(decisionLog, userSatisfaction).catch((error) => {
+        this.logger.warn(`记录决策学习事件失败: ${error.message}`, error.stack);
+      });
+
       return { id: outcome.id };
     } catch (error) {
       this.logger.error(`记录决策结果失败: ${error}`, error instanceof Error ? error.stack : undefined);
       throw error;
+    }
+  }
+
+  /**
+   * 记录决策完成事件到context.learn
+   * 用于学习哪些Context Block对决策更重要
+   */
+  private async recordDecisionMadeEvent(
+    decisionLog: any,
+    userSatisfaction?: number,
+  ): Promise<void> {
+    try {
+      // 懒加载获取ContextLearningService
+      if (!this.contextLearningService) {
+        try {
+          this.contextLearningService = this.moduleRef.get(ContextLearningService, { strict: false });
+        } catch (error) {
+          this.logger.debug('ContextLearningService 不可用，跳过决策学习事件记录');
+          return;
+        }
+      }
+
+      if (!this.contextLearningService) {
+        return;
+      }
+
+      // 提取信息
+      const tripId = decisionLog.tripId;
+      const userId = (decisionLog as any).userId || null; // 如果decisionLog有userId字段
+      const phase = decisionLog.decisionStage || 'PLANNING';
+      const agent = decisionLog.decisionSource === 'PHYSICAL' ? 'Gatekeeper' : 
+                    decisionLog.decisionSource === 'HUMAN' ? 'PlanningWorkbench' : 
+                    'CoreDecision';
+
+      // 计算满意度（0-1范围）
+      // userSatisfaction可能是0-10或0-100的范围，需要归一化
+      let satisfaction: number | undefined;
+      if (userSatisfaction !== undefined) {
+        if (userSatisfaction <= 1) {
+          satisfaction = userSatisfaction; // 已经是0-1范围
+        } else if (userSatisfaction <= 10) {
+          satisfaction = userSatisfaction / 10; // 0-10范围转换为0-1
+        } else {
+          satisfaction = userSatisfaction / 100; // 0-100范围转换为0-1
+        }
+      }
+
+      // 判断决策是否被接受（基于action字段）
+      const accepted = decisionLog.action === 'ALLOW' || decisionLog.action === 'ACCEPT';
+
+      // 记录学习事件
+      await this.contextLearningService.learn({
+        userId: userId || undefined,
+        tripId: tripId || undefined,
+        eventType: 'decision_made',
+        eventData: {
+          decisionResult: {
+            accepted,
+            satisfaction,
+          },
+        },
+        phase,
+        agent,
+      });
+
+      this.logger.debug(
+        `已记录决策学习事件: decisionId=${decisionLog.id}, tripId=${tripId || 'none'}, satisfaction=${satisfaction || 'none'}`,
+      );
+    } catch (error: any) {
+      // 记录事件失败不应该影响主流程，只记录警告
+      this.logger.warn(`记录决策学习事件失败: ${error.message}`);
     }
   }
 

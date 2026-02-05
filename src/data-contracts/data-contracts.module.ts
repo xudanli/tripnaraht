@@ -12,6 +12,7 @@ import { IcelandSafetyAdapter } from './adapters/iceland-safety.adapter';
 import { IcelandAuroraAdapter } from './adapters/iceland-aurora.adapter';
 import { IcelandFRoadService } from './services/iceland-froad.service';
 import { IcelandComprehensiveService } from './services/iceland-comprehensive.service';
+import { DataContractsController } from './data-contracts.controller';
 
 /**
  * 数据契约模块
@@ -22,6 +23,7 @@ import { IcelandComprehensiveService } from './services/iceland-comprehensive.se
 @Global()
 @Module({
   imports: [ConfigModule],
+  controllers: [DataContractsController],
   providers: [
     // 路由器服务
     DataSourceRouterService,
@@ -44,6 +46,7 @@ import { IcelandComprehensiveService } from './services/iceland-comprehensive.se
   exports: [
     DataSourceRouterService,
     IcelandComprehensiveService, // 导出冰岛综合服务
+    IcelandSafetyAdapter, // 导出冰岛安全适配器（供 IcelandInfoController 使用）
   ],
 })
 export class DataContractsModule implements OnModuleInit {

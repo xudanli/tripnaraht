@@ -75,13 +75,15 @@ export class AgentService {
     current_step_detail?: string; // 🆕 当前步骤详细说明
   } {
     const stepProgressMap: Record<OrchestrationStep, number> = {
-      INTAKE: 12.5,
-      RESEARCH: 25.0,
-      GATE_EVAL: 37.5,
-      PLAN_GEN: 50.0,
-      VERIFY: 62.5,
-      REPAIR: 75.0,
-      NARRATE: 87.5,
+      INTAKE: 10.0,
+      RESEARCH: 20.0,
+      GATE_EVAL: 30.0,
+      PLAN_GEN: 40.0,
+      VERIFY: 50.0,
+      COMPLIANCE: 60.0,
+      REPAIR: 70.0,
+      NARRATE: 80.0,
+      FEEDBACK: 90.0,
       DONE: 100.0,
       FAILED: 0,
       TIMEOUT: 0,
@@ -94,8 +96,10 @@ export class AgentService {
       GATE_EVAL: '正在评估行程可行性...',
       PLAN_GEN: '正在生成行程安排...',
       VERIFY: '正在验证行程...',
+      COMPLIANCE: '正在检查风险合规...',
       REPAIR: '正在修复行程问题...',
       NARRATE: '正在生成说明...',
+      FEEDBACK: '正在收集反馈信号...',
       DONE: '处理完成',
       FAILED: '处理失败',
       TIMEOUT: '请求超时',
@@ -109,8 +113,10 @@ export class AgentService {
       GATE_EVAL: 5000,   // 5秒
       PLAN_GEN: 10000,   // 10秒
       VERIFY: 6000,      // 6秒
+      COMPLIANCE: 3000,  // 3秒
       REPAIR: 4000,      // 4秒（条件执行）
       NARRATE: 3000,     // 3秒
+      FEEDBACK: 2000,    // 2秒
       DONE: 0,
       FAILED: 0,
       TIMEOUT: 0,
@@ -124,8 +130,10 @@ export class AgentService {
       GATE_EVAL: '评估路线安全性、可达性和可行性（三人格评审）',
       PLAN_GEN: '生成详细的行程安排，包括时间、地点、交通方式',
       VERIFY: '验证时间冲突、换乘时间、开放时间等',
+      COMPLIANCE: '检查风险分类、合规要求和免责留痕',
       REPAIR: '修复发现的问题，优化行程（如需要）',
       NARRATE: '生成用户友好的行程说明和提示',
+      FEEDBACK: '收集用户反馈信号用于决策优化',
       DONE: '所有步骤已完成',
       FAILED: '处理过程中出现错误',
       TIMEOUT: '请求超时，请缩小范围或稍后重试',
@@ -140,6 +148,7 @@ export class AgentService {
       case 'RESEARCH':
       case 'PLAN_GEN':
       case 'NARRATE':
+      case 'FEEDBACK':
         uiStatus = 'thinking';
         break;
       case 'GATE_EVAL':
@@ -150,6 +159,7 @@ export class AgentService {
         }
         break;
       case 'VERIFY':
+      case 'COMPLIANCE':
         uiStatus = 'verifying';
         break;
       case 'REPAIR':

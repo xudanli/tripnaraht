@@ -17,7 +17,7 @@ export class TokenService {
     private prisma: PrismaService,
     @Optional() private configService?: ConfigService,
   ) {
-    this.accessTokenExpiresIn = this.configService?.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '15m';
+    this.accessTokenExpiresIn = this.configService?.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN') || '48h';
     this.refreshTokenExpiresInDays = parseInt(
       this.configService?.get<string>('JWT_REFRESH_TOKEN_EXPIRES_IN_DAYS') || '30',
       10,

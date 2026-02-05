@@ -32,6 +32,7 @@ import {
   SKILL_CONTEXT_EVALUATE,
   SKILL_CONTEXT_REGRESSION_TESTS,
   SKILL_PLAN_SELECT_SLICES,
+  SKILL_CONTEXT_LEARN,
   SKILL_TOOLS_SELECT,
   SKILL_DECISION_LOG_APPEND,
 } from '../skills.tokens';
@@ -76,6 +77,7 @@ export class SkillsRegistryService {
     @Optional() @Inject(SKILL_CONTEXT_EVALUATE) private readonly contextEvaluate?: Skill,
     @Optional() @Inject(SKILL_CONTEXT_REGRESSION_TESTS) private readonly contextRegressionTests?: Skill,
     @Optional() @Inject(SKILL_PLAN_SELECT_SLICES) private readonly planSelectSlices?: Skill,
+    @Optional() @Inject(SKILL_CONTEXT_LEARN) private readonly contextLearn?: Skill,
     @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly toolsSelect?: Skill,
     @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly decisionLogAppend?: Skill,
   ) {
@@ -106,6 +108,7 @@ export class SkillsRegistryService {
     if (this.contextEvaluate) this.registerSkill(this.contextEvaluate);
     if (this.contextRegressionTests) this.registerSkill(this.contextRegressionTests);
     if (this.planSelectSlices) this.registerSkill(this.planSelectSlices);
+    if (this.contextLearn) this.registerSkill(this.contextLearn);
     if (this.toolsSelect) this.registerSkill(this.toolsSelect);
     if (this.decisionLogAppend) this.registerSkill(this.decisionLogAppend);
     this.logger.log(`[SkillsRegistryService] 构造函数完成，已注册 ${this.skills.size} 个 Skills`);

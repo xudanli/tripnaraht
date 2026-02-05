@@ -13,7 +13,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
+import { ChunkRetrievalService } from './chunk-retrieval.service';
 import { LlmExtractionService } from './llm-extraction.service';
 
 /**
@@ -73,7 +73,7 @@ export class ComplianceFactsAgent {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ragService: RagService,
+    private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly llmExtraction: LlmExtractionService,
   ) {}
 
@@ -87,12 +87,13 @@ export class ComplianceFactsAgent {
     this.logger.debug(`提取 Rail Pass 规则: passType=${passType}, countryCode=${countryCode}`);
 
     try {
-      // 1. RAG 检索相关文档段落
-      const snippets = await this.ragService.retrieve({
+      // 1. RAG 检索相关文档段落（使用新的 ChunkRetrievalService）
+      const snippets = await this.chunkRetrieval.retrieve({
         query: `${passType} rules for ${countryCode}`,
-        collection: 'rail_pass_rules',
-        countryCode,
+        category: 'compliance_rules', // 对应原来的 collection: 'rail_pass_rules'
+        chunkCategory: 'RULES', // 规则类型的 chunk
         limit: 10,
+        useHybridSearch: true, // 启用混合检索以提高准确性
       });
 
       if (snippets.length === 0) {
@@ -160,7 +161,7 @@ Return only valid JSON array.`;
           ruleType: 'RAIL_PASS',
           ruleData: rule as any,
           source: 'RAG_EXTRACTED',
-          sourceUrl: snippets[0]?.source,
+          sourceUrl: snippets[0]?.sourceFile || snippets[0]?.metadata?.sourceUrl,
           confidence: 'HIGH',
         })),
         skipDuplicates: true,
@@ -185,12 +186,13 @@ Return only valid JSON array.`;
     this.logger.debug(`提取 Trail Access 规则: trailId=${trailId}, countryCode=${countryCode}`);
 
     try {
-      // 1. RAG 检索
-      const snippets = await this.ragService.retrieve({
+      // 1. RAG 检索（使用新的 ChunkRetrievalService）
+      const snippets = await this.chunkRetrieval.retrieve({
         query: `${trailId} access permit requirements ${countryCode}`,
-        collection: 'trail_access_rules',
-        countryCode,
+        category: 'compliance_rules', // 对应原来的 collection: 'trail_access_rules'
+        chunkCategory: 'RULES', // 规则类型的 chunk
         limit: 10,
+        useHybridSearch: true, // 启用混合检索以提高准确性
       });
 
       if (snippets.length === 0) {
@@ -259,7 +261,7 @@ Schema:
           ruleType: 'TRAIL_ACCESS',
           ruleData: rule as any,
           source: 'RAG_EXTRACTED',
-          sourceUrl: snippets[0]?.source,
+          sourceUrl: snippets[0]?.sourceFile || snippets[0]?.metadata?.sourceUrl,
           confidence: 'HIGH',
         })),
         skipDuplicates: true,

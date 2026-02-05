@@ -7,6 +7,8 @@ export enum LlmProvider {
   GEMINI = 'gemini',
   DEEPSEEK = 'deepseek',
   ANTHROPIC = 'anthropic',
+  /** vLLM 自托管模型（TripNARA LoRA 微调） */
+  VLLM = 'vllm',
 }
 
 export class NaturalLanguageToParamsDto {

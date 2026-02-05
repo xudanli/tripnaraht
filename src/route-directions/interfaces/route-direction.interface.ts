@@ -189,6 +189,27 @@ export interface RouteDirectionData {
 }
 
 /**
+ * POI优先级枚举
+ * - MUST_SEE: 必看（核心景点，不可跳过）
+ * - HIGH: 高优先级（强烈推荐，尽量安排）
+ * - MEDIUM: 中优先级（推荐，时间允许则安排）
+ * - LOW: 低优先级（可选，有空闲时间可考虑）
+ * - OPTIONAL: 可选（备选方案，用于填充空闲时间）
+ */
+export type PoiPriority = 'MUST_SEE' | 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIONAL';
+
+/**
+ * POI优先级数值映射（用于排序和计算）
+ */
+export const POI_PRIORITY_SCORE: Record<PoiPriority, number> = {
+  MUST_SEE: 100,
+  HIGH: 80,
+  MEDIUM: 60,
+  LOW: 40,
+  OPTIONAL: 20,
+};
+
+/**
  * 日计划中的POI信息
  */
 export interface DayPlanPoi {
@@ -208,12 +229,29 @@ export interface DayPlanPoi {
   rating?: number;
   /** POI 描述（可选） */
   description?: string;
-  /** 是否为必游POI（默认false） */
+  /** 是否为必游POI（默认false，向后兼容，建议使用priority代替） */
   required?: boolean;
-  /** POI 顺序（用于排序，可选） */
-  order?: number;
-  /** 预计停留时间（分钟，可选） */
+  /** 
+   * POI优先级（新字段，推荐使用）
+   * - MUST_SEE: 必看景点，核心体验
+   * - HIGH: 高优先级，强烈推荐
+   * - MEDIUM: 中优先级，推荐
+   * - LOW: 低优先级，可选
+   * - OPTIONAL: 备选方案
+   * 默认: MEDIUM
+   */
+  priority?: PoiPriority;
+  /** 🆕 开始时间（ISO 8601 格式，可选。如果提供，创建行程时将使用此时间） */
+  startTime?: string;
+  /** 🆕 结束时间（ISO 8601 格式，可选。如果提供，创建行程时将使用此时间） */
+  endTime?: string;
+  /** 预计停留时间（分钟，可选。如果未提供 startTime/endTime，将使用此字段计算时间） */
   durationMinutes?: number;
+  /** 
+   * 优先级原因说明（可选）
+   * 解释为什么这个POI有这个优先级，便于运营理解
+   */
+  priorityReason?: string;
   /** 其他元数据（可选） */
   metadata?: Record<string, any>;
 }

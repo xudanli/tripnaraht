@@ -15,15 +15,11 @@ import {
   ExecutionResult,
   Version,
 } from '../interfaces/chain-of-work.interface';
-// TODO: 导入认证 Guard（待实现）
-// import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-// import { RolesGuard } from '../../auth/guards/roles.guard';
-// import { Roles } from '../../auth/decorators/roles.decorator';
-// import { Public } from '../../auth/decorators/public.decorator';
+import { Public } from '../../auth/decorators/public.decorator';
 
 @ApiTags('Chain-of-Work')
 @Controller('chain-of-work')
-// @UseGuards(JwtAuthGuard) // TODO: 启用认证（待实现）
+@Public() // 临时开放测试，生产环境应移除并添加认证
 export class ChainOfWorkController {
   private readonly logger = new Logger(ChainOfWorkController.name);
 

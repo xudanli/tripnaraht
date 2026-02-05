@@ -9,6 +9,8 @@ import { Controller, Post, Get, Body, Query, HttpCode, HttpStatus, Logger } from
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { ContextEngineerService } from './services/context-engineer.service';
 import { ContextMetricsService } from './services/context-metrics.service';
+import { ContextPrometheusMetricsService } from './services/context-prometheus-metrics.service';
+import { ContextPerformanceAnalysisService } from './services/context-performance-analysis.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
@@ -45,6 +47,8 @@ export class ContextController {
   constructor(
     private readonly contextEngineer: ContextEngineerService,
     @Optional() private readonly metricsService?: ContextMetricsService,
+    @Optional() private readonly prometheusMetrics?: ContextPrometheusMetricsService,
+    @Optional() private readonly performanceAnalysis?: ContextPerformanceAnalysisService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
@@ -830,6 +834,99 @@ export class ContextController {
       });
     } catch (error: any) {
       this.logger.error(`获取指标失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * Phase 1.4 优化: Prometheus 指标端点
+   */
+  @Public()
+  @Get('prometheus-metrics')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Prometheus 指标',
+    description: '返回 Prometheus 格式的 Context Engine 指标数据',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Prometheus 格式的指标数据',
+    content: {
+      'text/plain': {
+        schema: {
+          type: 'string',
+        },
+      },
+    },
+  })
+  async getPrometheusMetrics(): Promise<string> {
+    try {
+      if (!this.prometheusMetrics) {
+        return '# Context Prometheus Metrics\n# Service not available\n';
+      }
+
+      const metrics = await this.prometheusMetrics.getMetrics();
+      return metrics;
+    } catch (error: any) {
+      this.logger.error(`获取 Prometheus 指标失败: ${error.message}`, error.stack);
+      return `# Context Prometheus Metrics\n# Error: ${error.message}\n`;
+    }
+  }
+
+  /**
+   * Phase 4.3 优化: 性能分析报告端点
+   */
+  @Public()
+  @Get('performance-report')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '性能分析报告',
+    description: '生成 Context Engine 性能分析报告',
+  })
+  @ApiQuery({ name: 'startTime', required: false, type: String, description: '开始时间 (ISO 8601)' })
+  @ApiQuery({ name: 'endTime', required: false, type: String, description: '结束时间 (ISO 8601)' })
+  @ApiQuery({ name: 'format', required: false, enum: ['json', 'markdown'], description: '报告格式' })
+  @ApiQuery({ name: 'includeLearning', required: false, type: Boolean, description: '包含 Context Learning 数据' })
+  @ApiQuery({ name: 'includeBottlenecks', required: false, type: Boolean, description: '包含性能瓶颈分析' })
+  @ApiResponse({
+    status: 200,
+    description: '性能分析报告',
+  })
+  async getPerformanceReport(
+    @Query('startTime') startTime?: string,
+    @Query('endTime') endTime?: string,
+    @Query('format') format: 'json' | 'markdown' = 'json',
+    @Query('includeLearning') includeLearning?: boolean,
+    @Query('includeBottlenecks') includeBottlenecks?: boolean,
+  ) {
+    try {
+      if (!this.performanceAnalysis) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, '性能分析服务不可用');
+      }
+
+      // 默认时间范围：最近 24 小时
+      const end = endTime ? new Date(endTime) : new Date();
+      const start = startTime ? new Date(startTime) : new Date(end.getTime() - 24 * 60 * 60 * 1000);
+
+      const report = await this.performanceAnalysis.generateReport(
+        { start, end },
+        {
+          includeLearning: includeLearning ?? true,
+          includeBottlenecks: includeBottlenecks ?? true,
+        },
+      );
+
+      if (format === 'markdown') {
+        const markdown = await this.performanceAnalysis.exportReportAsMarkdown(report);
+        return {
+          format: 'markdown',
+          content: markdown,
+        };
+      }
+
+      return successResponse(report);
+    } catch (error: any) {
+      this.logger.error(`生成性能分析报告失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

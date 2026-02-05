@@ -2974,6 +2974,16 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
         const endDateTime = new Date(dayDate);
         endDateTime.setHours(endHour, endMin, 0, 0);
 
+        // 🆕 查询当天最大的 order 值
+        const maxOrderItem = await this.prisma.itineraryItem.findFirst({
+          where: { tripDayId: targetDay.dayId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        const orderValue = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+          ? maxOrderItem.order + 1 
+          : 1;
+
         await this.prisma.itineraryItem.create({
           data: {
             id: newItemId,
@@ -2983,6 +2993,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
             endTime: endDateTime,
             placeId: dto.place.placeId || null,
             note: dto.place.address || null,
+            order: orderValue, // 🆕 设置显示顺序
           },
         });
       } catch (error: any) {

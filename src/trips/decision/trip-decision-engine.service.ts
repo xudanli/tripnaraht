@@ -26,6 +26,10 @@ import { TransportPluginService } from '../../route-directions/plugins/transport
 import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
 import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
 import { MemoryService } from '../../agent/memory/services/memory.service';
+import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
+import { ConstraintDSL } from './constraints/constraint-dsl.types';
+import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { MultiPlanGenerator, PlanVariant } from './services/multi-plan-generator.service';
 import { DEMDailyEnergyService, DailyEnergyBudget } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
 import { DEMRiskScoringService, PlanRiskScore } from './services/dem-risk-scoring.service';
@@ -81,6 +85,9 @@ export class TripDecisionEngineService {
     @Optional() private readonly demDecisionEvidenceService?: DemDecisionEvidenceService,
     @Optional() private readonly strategyOrchestrator?: StrategyOrchestratorService,
     @Optional() private readonly planConverter?: PlanConverterService,
+    @Optional() private readonly constraintDSLCompiler?: ConstraintDSLCompiler,
+    @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
+    @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
     // ReadinessService 和 ReadinessAgentService 在需要时通过 ModuleRef 获取
@@ -1159,7 +1166,77 @@ export class TripDecisionEngineService {
       }
     }
 
+    // 检测约束冲突（如果冲突解析器可用）
+    if (this.conflictResolver) {
+      try {
+        const constraintDSL = (state.policies as any)?.constraintDSL;
+        if (constraintDSL) {
+          const conflictResult = await this.conflictResolver.detectAndExplainConflicts(
+            constraintDSL,
+            finalPlan,
+            state
+          );
+          
+          // 将冲突信息添加到决策日志
+          if (conflictResult.has_conflicts) {
+            log.conflicts = conflictResult.conflicts;
+            this.logger.log(
+              `检测到 ${conflictResult.conflicts.length} 个约束冲突: critical=${conflictResult.critical_count}, high=${conflictResult.high_count}, medium=${conflictResult.medium_count}, low=${conflictResult.low_count}`
+            );
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`约束冲突检测失败: ${error instanceof Error ? error.message : String(error)}`);
+        // 不阻断返回，只记录警告
+      }
+    }
+
     return { plan: finalPlan, log, readiness };
+  }
+
+  /**
+   * 生成多个方案变体（不同权衡策略）
+   * 
+   * 可选功能：生成保守、平衡、激进三种方案供用户选择
+   */
+  async generateMultiplePlans(
+    state: TripWorldState,
+    requestId?: string
+  ): Promise<{ variants: PlanVariant[]; log: DecisionRunLog }> {
+    if (!this.multiPlanGenerator) {
+      throw new Error('MultiPlanGenerator is required for multi-plan generation');
+    }
+
+    // 获取约束DSL
+    const constraintDSL = (state.policies as any)?.constraintDSL;
+    if (!constraintDSL) {
+      throw new Error('ConstraintDSL is required for multi-plan generation');
+    }
+
+    // 生成多个方案
+    const variants = await this.multiPlanGenerator.generateMultiplePlans(
+      state,
+      constraintDSL
+    );
+
+    // 创建决策日志
+    const log: DecisionRunLog = {
+      runId: requestId || `multi_plan_${Date.now()}`,
+      at: new Date().toISOString(),
+      trigger: 'initial_generate',
+      plannerVersion: '1.0.0',
+      strategyMix: ['abu', 'drdre', 'neptune'],
+      inputDigest: {
+        destination: state.context.destination,
+        startDate: state.context.startDate,
+        durationDays: state.context.durationDays,
+        signalUpdatedAt: state.signals.lastUpdatedAt || new Date().toISOString(),
+      },
+      chosenActions: [],
+      explanation: `生成了 ${variants.length} 个方案变体：${variants.map(v => v.id).join(', ')}`,
+    };
+
+    return { variants, log };
   }
 
   /**
@@ -1392,6 +1469,8 @@ export class TripDecisionEngineService {
   /**
    * 将约束注入到 world model（区分硬约束/软约束/目标函数权重）
    * 根据 pace 调整约束值，并应用目标权重
+   * 
+   * 支持新DSL格式和旧格式（向后兼容）
    */
   private injectConstraints(state: TripWorldState, constraints: any): void {
     // 将约束存储到 state 的 metadata 中，供后续策略使用
@@ -1412,7 +1491,41 @@ export class TripDecisionEngineService {
     policies.abuConfig = policyProfile.abuConfig;
     policies.drdreConfig = policyProfile.drdreConfig;
 
-    // 解析约束结构（支持新格式和旧格式兼容）
+    // 使用DSL编译器（如果可用）或回退到旧逻辑
+    if (this.constraintDSLCompiler) {
+      try {
+        const compiled = this.constraintDSLCompiler.compile(constraints, state);
+        
+        // 合并编译后的约束
+        policies.hardConstraints = {
+          ...policies.hardConstraints,
+          ...compiled.hardConstraints,
+        };
+        policies.softConstraints = {
+          ...policies.softConstraints,
+          ...compiled.softConstraints,
+        };
+        policies.objectives = {
+          ...policies.objectives,
+          ...compiled.objectives,
+        };
+
+        // 保存原始DSL到metadata（用于冲突检测）
+        if (constraints.hard_constraints || constraints.soft_constraints) {
+          policies.constraintDSL = constraints as ConstraintDSL;
+        }
+
+        this.logger.log(
+          `使用DSL编译器注入了约束 (pace=${pace}): hard=${JSON.stringify(policies.hardConstraints)}, soft=${JSON.stringify(policies.softConstraints)}, objectives=${JSON.stringify(policies.objectives)}`
+        );
+        return;
+      } catch (error) {
+        this.logger.warn(`DSL编译失败，回退到旧逻辑: ${error instanceof Error ? error.message : String(error)}`);
+        // 继续执行旧逻辑
+      }
+    }
+
+    // 旧逻辑（向后兼容）
     const hardConstraints = constraints.hard || {};
     const softConstraints = constraints.soft || {};
     const objectives = constraints.objectives || {};

@@ -295,8 +295,15 @@ async function bootstrap() {
   
   console.log('🌐 [Bootstrap] 开始监听端口...');
   const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port, '0.0.0.0'); // ✅ 关键：不要只绑 127.0.0.1
+  
+  // 设置HTTP服务器超时（默认2分钟，对于规划工作台等长时间操作）
+  const server = await app.listen(port, '0.0.0.0'); // ✅ 关键：不要只绑 127.0.0.1
+  server.timeout = 120000; // 2分钟超时（120秒），适用于规划工作台等长时间操作
+  server.keepAliveTimeout = 65000; // keep-alive超时（65秒）
+  server.headersTimeout = 66000; // headers超时（66秒，必须大于keepAliveTimeout）
+  
   console.log(`✅ [Bootstrap] API listening on http://0.0.0.0:${port}`);
+  console.log(`✅ [Bootstrap] HTTP服务器超时设置: ${server.timeout}ms (${server.timeout / 1000}秒)`);
   console.log(`📚 Swagger 文档: http://0.0.0.0:${port}/api-docs`);
 }
 

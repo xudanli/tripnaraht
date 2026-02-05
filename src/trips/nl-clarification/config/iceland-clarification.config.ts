@@ -435,7 +435,14 @@ export const ICELAND_CONFIG_TEMPLATE: DestinationClarificationConfig = {
     {
       fieldName: 'travelSeason',
       fieldType: 'string',
-      extractionPrompt: '从用户描述中提取旅行季节：winter（11月-3月，极光季）、summer（6月-8月，午夜太阳）、spring_autumn（4月-5月或9月-10月，过渡季）',
+      extractionPrompt: `从用户描述中提取旅行季节，**必须基于日期而非活动偏好**：
+- 如果用户提到了具体日期（startDate），**必须基于日期计算季节**：
+  - 11月-3月 → winter（冬季）
+  - 6月-8月 → summer（夏季）
+  - 4月-5月或9月-10月 → spring_autumn（过渡季）
+- 如果用户只提到活动（如"看极光"）但没有日期，可以推断为winter
+- **重要**：如果日期是9月，即使用户说"看极光"，travelSeason也应该是spring_autumn，而不是winter
+- **一致性规则**：travelSeason必须与startDate的月份一致，不能矛盾`,
       validation: {
         required: false,
         enum: ['winter', 'summer', 'spring_autumn'],

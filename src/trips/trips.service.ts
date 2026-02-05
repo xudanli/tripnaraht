@@ -37,6 +37,7 @@ import { EvidenceFilteringService } from './services/evidence-filtering.service'
 import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './services/evidence-completeness-checker.service';
 import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
+import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 
 @Injectable()
 export class TripsService {
@@ -208,6 +209,12 @@ export class TripsService {
     // ============================================
     // 步骤 4: 写入数据库 (使用 Transaction 保证原子性)
     // ============================================
+    // 生成行程名称（如果未提供，使用默认名称）
+    const tripName = dto.name?.trim() || this.generateDefaultTripName({
+      destination: normalizedCountryCode,
+      startDate: dto.startDate,
+    });
+
     // 使用事务确保 Trip 和 TripDay 要么全部创建成功，要么全部失败
     return this.prisma.$transaction(async (tx) => {
       // A. 创建 Trip 主记录
@@ -215,6 +222,7 @@ export class TripsService {
       const trip = await tx.trip.create({
         data: {
           id: randomUUID(),
+          name: tripName, // 新增：行程名称
           destination: normalizedCountryCode,
           startDate: start.toJSDate(),
           endDate: end.toJSDate(),
@@ -406,7 +414,10 @@ export class TripsService {
           include: {
             // 第二层：关联查询每天下面的 Items
             ItineraryItem: {
-              orderBy: { startTime: 'asc' }, // 按时间轴排序 (9点在10点前)
+              // 🆕 统一按 startTime 排序（移除 order 排序）
+              orderBy: {
+                startTime: 'asc', // 按时间轴排序 (9点在10点前)
+              },
               include: {
                 // 第三层：关联查询 Item 对应的地点详情 (如果有)
                 // P0 必须返回：id, nameCN, nameEN, category, address, rating, metadata(openingHours)
@@ -483,6 +494,13 @@ export class TripsService {
       throw new BadRequestException('已完成的行程不能改回规划中或进行中状态');
     }
 
+    // 进行中的行程不能改回规划中
+    // 决策：禁止 IN_PROGRESS → PLANNING，避免数据混乱
+    // 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
+    if (currentStatus === TripStatus.IN_PROGRESS && newStatus === TripStatus.PLANNING) {
+      throw new BadRequestException('进行中的行程不能改回规划中状态。如需重新规划，请使用规划工作台功能');
+    }
+
     // 其他状态转换都是允许的
   }
 
@@ -541,6 +559,21 @@ export class TripsService {
       // 验证状态转换
       this.validateStatusTransition(existingTrip.status, dto.status);
       updateData.status = dto.status;
+    }
+
+    // 处理名称更新
+    if (dto.name !== undefined) {
+      const trimmedName = dto.name.trim();
+      if (trimmedName.length === 0) {
+        // 如果名称为空字符串，生成默认名称
+        const { generateDefaultTripName } = require('./utils/trip-name.util');
+        updateData.name = generateDefaultTripName({
+          destination: existingTrip.destination,
+          startDate: existingTrip.startDate,
+        });
+      } else {
+        updateData.name = trimmedName;
+      }
     }
 
     // 如果更新了日期，需要重新计算天数
@@ -908,13 +941,7 @@ export class TripsService {
             currentItemId = item.id;
           } else if (now < startTime && !nextStop) {
             // 下一个项
-            nextStop = {
-              itemId: item.id,
-              placeId: item.placeId,
-              placeName: item.Place?.nameEN || item.Place?.nameCN || '未知地点',
-              startTime: startTime.toISO(),
-              estimatedArrivalTime: startTime.toISO(),
-            };
+            nextStop = await this.buildNextStopInfo(item, startTime);
             break;
           }
         }
@@ -924,13 +951,7 @@ export class TripsService {
           const firstItem = day.ItineraryItem.find(item => item.startTime && DateTime.fromJSDate(item.startTime) > now);
           if (firstItem && firstItem.startTime) {
             const startTime = DateTime.fromJSDate(firstItem.startTime);
-            nextStop = {
-              itemId: firstItem.id,
-              placeId: firstItem.placeId,
-              placeName: firstItem.Place?.nameEN || firstItem.Place?.nameCN || '未知地点',
-              startTime: startTime.toISO(),
-              estimatedArrivalTime: startTime.toISO(),
-            };
+            nextStop = await this.buildNextStopInfo(firstItem, startTime);
           }
         }
 
@@ -944,6 +965,198 @@ export class TripsService {
       nextStop,
       timezone,
       now: now.toISO(),
+    };
+  }
+
+  /**
+   * 构建 nextStop 信息，包含完整的 Place 信息
+   */
+  private async buildNextStopInfo(item: any, startTime: DateTime) {
+    const place = item.Place;
+    if (!place) {
+      return {
+        itemId: item.id,
+        placeId: item.placeId,
+        placeName: '未知地点',
+        startTime: startTime.toISO(),
+        estimatedArrivalTime: startTime.toISO(),
+      };
+    }
+
+    // 提取坐标 - 支持多种数据源
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+    
+    // 方法1: 尝试从 PostGIS location 字段提取
+    // 注意：Prisma 可能不会自动包含 PostGIS location 字段，所以直接查询数据库
+    try {
+      const locationResult = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+        SELECT 
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ${place.id} AND location IS NOT NULL
+      `;
+      
+      if (locationResult.length > 0 && locationResult[0].lat != null && locationResult[0].lng != null) {
+        latitude = Number(locationResult[0].lat);
+        longitude = Number(locationResult[0].lng);
+        this.logger.debug(`[buildNextStopInfo] 从 PostGIS 提取坐标成功: Place ${place.id}, lat=${latitude}, lng=${longitude}`);
+      } else {
+        this.logger.debug(`[buildNextStopInfo] Place ${place.id} PostGIS location 字段为空或查询无结果`);
+      }
+    } catch (error: any) {
+      // PostGIS 查询失败，继续尝试其他方法
+      this.logger.debug(`[buildNextStopInfo] PostGIS 查询失败: Place ${place.id}, error: ${error.message}`);
+    }
+    
+    // 方法2: 如果 PostGIS 提取失败，尝试从 metadata 获取坐标
+    if (!latitude || !longitude) {
+      const metadata = (place.metadata as any) || {};
+      
+      // 尝试 metadata.lat / metadata.lng
+      if (metadata.lat && metadata.lng) {
+        latitude = Number(metadata.lat);
+        longitude = Number(metadata.lng);
+        this.logger.debug(`[buildNextStopInfo] 从 metadata.lat/lng 提取坐标成功: Place ${place.id}, lat=${latitude}, lng=${longitude}`);
+      }
+      // 尝试 metadata.coordinates 数组格式 [lng, lat] 或 [lat, lng]
+      else if (metadata.coordinates && Array.isArray(metadata.coordinates) && metadata.coordinates.length >= 2) {
+        // 通常 GeoJSON 格式是 [lng, lat]，但有些数据可能是 [lat, lng]
+        // 根据数值范围判断：纬度通常在 -90 到 90 之间，经度在 -180 到 180 之间
+        const coord1 = Number(metadata.coordinates[0]);
+        const coord2 = Number(metadata.coordinates[1]);
+        
+        if (Math.abs(coord1) <= 90 && Math.abs(coord2) <= 180) {
+          // coord1 是纬度，coord2 是经度
+          latitude = coord1;
+          longitude = coord2;
+        } else if (Math.abs(coord1) <= 180 && Math.abs(coord2) <= 90) {
+          // coord1 是经度，coord2 是纬度（GeoJSON 格式）
+          latitude = coord2;
+          longitude = coord1;
+        } else {
+          // 默认假设是 [lat, lng]
+          latitude = coord1;
+          longitude = coord2;
+        }
+      }
+      // 尝试 metadata.location.lat / metadata.location.lng
+      else if (metadata.location) {
+        if (metadata.location.lat && metadata.location.lng) {
+          latitude = Number(metadata.location.lat);
+          longitude = Number(metadata.location.lng);
+        } else if (metadata.location.coordinates && Array.isArray(metadata.location.coordinates)) {
+          const coord1 = Number(metadata.location.coordinates[0]);
+          const coord2 = Number(metadata.location.coordinates[1]);
+          if (Math.abs(coord1) <= 90 && Math.abs(coord2) <= 180) {
+            latitude = coord1;
+            longitude = coord2;
+          } else if (Math.abs(coord1) <= 180 && Math.abs(coord2) <= 90) {
+            latitude = coord2;
+            longitude = coord1;
+          }
+        }
+      }
+    }
+
+    // 提取营业时间
+    const metadata = (place.metadata as any) || {};
+    let businessHours: any = undefined;
+    
+    if (metadata.openingHours || metadata.opening_hours) {
+      const openingHours = metadata.openingHours || metadata.opening_hours;
+      const timezone = metadata.timezone || 'Asia/Tokyo';
+      
+      // 尝试获取今天的营业时间
+      let todayHours: any = OpeningHoursUtil.getTodayHours(metadata, timezone);
+      
+      // 确保 todayHours 是字符串类型（双重保护）
+      if (typeof todayHours !== 'string') {
+        if (Array.isArray(todayHours) && todayHours.length > 0) {
+          todayHours = typeof todayHours[0] === 'string' ? todayHours[0] : String(todayHours[0]);
+        } else {
+          todayHours = String(todayHours);
+        }
+      }
+      
+      // 再次确保是字符串类型（防止类型转换失败）
+      todayHours = String(todayHours) as string;
+      
+      // 解析营业时间字符串（格式：HH:mm-HH:mm）
+      // 使用 try-catch 保护，防止意外错误
+      try {
+        if (todayHours && todayHours !== 'Closed' && todayHours !== 'undefined' && todayHours !== 'null' && typeof todayHours === 'string') {
+          const parts = todayHours.split('-');
+          if (parts.length >= 2) {
+            businessHours = {
+              open: parts[0]?.trim(),
+              close: parts[1]?.trim(),
+              timezone: timezone,
+              raw: openingHours, // 保留原始数据
+            };
+          } else {
+            // 如果格式不正确，只保存原始数据
+            businessHours = {
+              timezone: timezone,
+              raw: openingHours,
+              formatted: todayHours, // 保存格式化后的字符串
+            };
+          }
+        } else {
+          // 如果无法解析，只保存原始数据
+          businessHours = {
+            timezone: timezone,
+            raw: openingHours,
+          };
+        }
+      } catch (error: any) {
+        // 如果解析失败，只保存原始数据，不抛出错误
+        this.logger.warn(`无法解析营业时间: ${error.message}, todayHours类型: ${typeof todayHours}, 值: ${todayHours}`);
+        businessHours = {
+          timezone: timezone,
+          raw: openingHours,
+        };
+      }
+    }
+
+    // 记录坐标提取结果（用于调试）
+    if (!latitude || !longitude) {
+      const metadata = (place.metadata as any) || {};
+      this.logger.warn(
+        `[buildNextStopInfo] Place ${place.id} (${place.nameEN || place.nameCN}) 无法提取坐标: ` +
+        `location=${!!place.location}, ` +
+        `metadata.lat=${metadata.lat || 'N/A'}, ` +
+        `metadata.lng=${metadata.lng || 'N/A'}, ` +
+        `metadata.coordinates=${metadata.coordinates ? JSON.stringify(metadata.coordinates) : 'N/A'}`
+      );
+    } else {
+      this.logger.debug(`[buildNextStopInfo] Place ${place.id} 坐标提取成功: lat=${latitude}, lng=${longitude}`);
+    }
+
+    return {
+      itemId: item.id,
+      placeId: item.placeId,
+      placeName: place.nameEN || place.nameCN || '未知地点',
+      startTime: startTime.toISO(),
+      estimatedArrivalTime: startTime.toISO(),
+      Place: {
+        id: place.id,
+        nameEN: place.nameEN || undefined,
+        nameCN: place.nameCN || undefined,
+        latitude: latitude ?? null,        // 必需字段，确保字段存在（即使为 null）
+        longitude: longitude ?? null,      // 必需字段，确保字段存在（即使为 null）
+        address: place.address || undefined,
+        category: place.category || undefined,
+        rating: place.rating || undefined,
+        businessHours: businessHours,
+        metadata: place.metadata || undefined,
+        // 兼容字段：如果标准字段不存在，提供兼容字段
+        ...(latitude && longitude ? {} : {
+          lat: latitude ?? null,
+          lng: longitude ?? null,
+        }),
+      },
     };
   }
 
@@ -2213,7 +2426,14 @@ export class TripsService {
     });
 
     // 阶段4: 风险评估与缓冲
-    const alerts = await this.getPersonaAlerts(tripId);
+    let alerts: PersonaAlertDto[] = [];
+    try {
+      alerts = await this.getPersonaAlerts(tripId);
+    } catch (error: any) {
+      // 🆕 如果获取 alerts 失败，记录错误但不阻止返回 pipeline status
+      this.logger.warn(`获取 Persona Alerts 失败: ${error.message}`);
+      alerts = [];
+    }
     const riskAlerts = alerts.filter(a => a.severity === AlertSeverity.WARNING);
     
     stages.push({
@@ -2803,5 +3023,26 @@ export class TripsService {
     }
 
     return trip;
+  }
+
+  /**
+   * 生成默认行程名称
+   * 格式：{目的地名称} {开始日期}
+   * 例如：冰岛 2025-06-01
+   */
+  private generateDefaultTripName(params: {
+    destination: string;
+    startDate: string;
+  }): string {
+    const { generateDefaultTripName } = require('./utils/trip-name.util');
+    return generateDefaultTripName(params);
+  }
+
+  /**
+   * 从国家代码获取目的地名称（中文）
+   */
+  private getDestinationName(countryCode: string): string {
+    const { getDestinationName } = require('./utils/trip-name.util');
+    return getDestinationName(countryCode);
   }
 }

@@ -1,0 +1,15 @@
+[
+  {
+    "countryCode": "CH",
+    "coverageRate": 1,
+    "resolution": "300m",
+    "querySuccessRate": 1,
+    "queryLatency": {
+      "p50": 9,
+      "p95": 33,
+      "p99": 33
+    },
+    "missingRegions": [],
+    "recommendations": []
+  }
+]

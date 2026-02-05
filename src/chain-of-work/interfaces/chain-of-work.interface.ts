@@ -29,10 +29,15 @@ export interface TripNARAStepDraft {
   priority: number; // 1-10
   conditions?: string; // 执行条件
   
-  // TripNARA 特定字段
-  sub_agent?: SubAgentType;
-  guardian?: GuardianType; // 'ABU' | 'DR_DRE' | 'NEPTUNE'
-  skills?: SkillMapping[];
+  // TripNARA Agent 映射
+  sub_agent?: SubAgentType;           // 负责执行的 Sub-Agent (Planner/Gatekeeper/CoreDecision/LocalInsight/...)
+  guardian?: GuardianType;             // 三人格守护者 ('ABU' | 'DR_DRE' | 'NEPTUNE')
+  domain_agents?: string[];            // Domain Agents (GeoAgent/WeatherAgent/CostAgent/ExperienceAgent)
+  skills?: SkillMapping[] | string[];  // 需要调用的 Skills
+  
+  // 输入输出定义
+  inputs?: string[];   // 步骤输入
+  outputs?: string[];  // 步骤输出
   
   // 决策相关
   gate_result?: GateResult; // GATE_EVAL 步骤的输出

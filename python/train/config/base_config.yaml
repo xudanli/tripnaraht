@@ -1,0 +1,74 @@
+# TripNARA LoRA 微调基础配置
+# 适用于 Qwen2.5-7B-Instruct 模型
+
+# ============================================
+# 模型配置
+# ============================================
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+# ============================================
+# LoRA 配置
+# ============================================
+finetuning_type: lora
+lora_rank: 64
+lora_alpha: 128
+lora_dropout: 0.05
+lora_target: all  # 或指定: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj
+
+# ============================================
+# 量化配置 (QLoRA)
+# ============================================
+quantization_bit: 4  # 4-bit 量化，节省显存
+quantization_method: bitsandbytes  # 或 gptq, awq
+
+# ============================================
+# 训练配置
+# ============================================
+stage: sft  # supervised fine-tuning
+do_train: true
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-4
+num_train_epochs: 3
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+max_grad_norm: 1.0
+
+# ============================================
+# 数据配置
+# ============================================
+dataset_dir: /app/data
+template: qwen  # 对话模板
+cutoff_len: 4096  # 最大序列长度
+preprocessing_num_workers: 4
+
+# ============================================
+# 输出配置
+# ============================================
+output_dir: /app/outputs
+logging_dir: /app/logs
+logging_steps: 10
+save_steps: 100
+save_total_limit: 3
+report_to: mlflow
+
+# ============================================
+# 性能优化
+# ============================================
+fp16: false
+bf16: true  # 使用 BF16 精度
+flash_attn: fa2  # Flash Attention 2
+use_unsloth: false  # 可选：使用 Unsloth 加速
+
+# ============================================
+# DeepSpeed 配置 (可选)
+# ============================================
+# deepspeed: ds_config.json
+
+# ============================================
+# 评估配置
+# ============================================
+do_eval: true
+eval_steps: 50
+per_device_eval_batch_size: 2

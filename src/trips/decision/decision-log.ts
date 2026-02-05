@@ -8,6 +8,7 @@
 
 import { ISODatetime, ISODate } from './world-model';
 import { TripPlan } from './plan-model';
+import { ConstraintConflict } from './constraints/constraint-dsl.types';
 
 export type DecisionTrigger =
   | 'initial_generate'
@@ -205,5 +206,8 @@ export interface DecisionRunLog {
     failureReason?: string;
     recommendations?: string[];
   };
+
+  // 约束冲突检测结果
+  conflicts?: ConstraintConflict[];
 }
 

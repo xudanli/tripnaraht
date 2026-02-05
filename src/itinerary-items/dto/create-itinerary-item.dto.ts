@@ -84,6 +84,17 @@ export class CreateItineraryItemDto {
   @IsOptional()
   note?: string;
 
+  @ApiPropertyOptional({
+    description: '显示顺序（数字越小越靠前，用于控制行程项的显示顺序。如果不提供，将自动计算）',
+    example: 1,
+    type: Number,
+    minimum: 0
+  })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  order?: number;
+
   // ========== 费用相关字段 ==========
 
   @ApiPropertyOptional({

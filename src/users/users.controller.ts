@@ -36,6 +36,9 @@ export class UsersController {
   })
   async getCurrentUser(@CurrentUser() user: CurrentUserPayload) {
     try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
       const currentUser = await this.usersService.getCurrentUser(user.userId);
       return successResponse(currentUser);
     } catch (error: any) {
@@ -73,6 +76,9 @@ export class UsersController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
       const updatedUser = await this.usersService.updateCurrentUser(user.userId, dto);
       return successResponse(updatedUser);
     } catch (error: any) {
@@ -113,6 +119,9 @@ export class UsersController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
       const result = await this.usersService.deleteCurrentUser(user.userId, dto.confirmText);
       return successResponse(result);
     } catch (error: any) {
@@ -144,6 +153,9 @@ export class UsersController {
   })
   async getProfile(@CurrentUser() user: CurrentUserPayload) {
     try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
       const profile = await this.usersService.getProfile(user.userId);
       return successResponse(profile);
     } catch (error: any) {
@@ -178,6 +190,9 @@ export class UsersController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
       const profile = await this.usersService.updateProfile(user.userId, dto);
       return successResponse(profile);
     } catch (error: any) {

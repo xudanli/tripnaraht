@@ -1,6 +1,6 @@
 // src/agent/training/services/replay-comparator.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReplayComparisonResult } from '../interfaces/evaluation.interface';
 import { RLTrajectory } from '../interfaces/trajectory.interface';
@@ -22,7 +22,7 @@ export class ReplayComparatorService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly policyService: PolicyServiceManagerService,
+    @Optional() private readonly policyService?: PolicyServiceManagerService,
   ) {}
 
   /**

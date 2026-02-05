@@ -211,32 +211,94 @@ export class TripsController {
     @CurrentUser() user?: CurrentUserPayload
   ) {
     try {
-      const userId = user?.userId;
+      // 🆕 测试模式：如果没有 userId，使用临时 userId（仅用于测试）
+      let userId = user?.userId;
       if (!userId) {
-        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+        // 测试模式：使用 sessionId 或生成临时 userId
+        // 注意：生产环境应该要求登录
+        if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_MODE === 'true') {
+          userId = dto.sessionId ? `temp_${dto.sessionId.split('_').pop()}` : `temp_${Date.now()}`;
+          this.logger.warn(`[测试模式] 使用临时 userId: ${userId}`);
+        } else {
+          return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+        }
       }
 
-      // 1. 获取或创建会话
+      // 1. 🆕 自动判断：如果 sessionId 为空或会话不存在，自动清空旧会话并创建新会话
+      // 这样前端不需要传递 isNewConversation，点击"创建对话"时自动清空
+      let shouldClearOldSessions = false;
+      
+      if (dto.isNewConversation) {
+        // 显式标记为新对话
+        shouldClearOldSessions = true;
+        this.logger.debug(`显式标记为新对话，将清空旧会话`);
+      } else if (!dto.sessionId) {
+        // sessionId 为空，说明是创建新对话
+        shouldClearOldSessions = true;
+        this.logger.debug(`sessionId 为空，自动判断为创建新对话，将清空旧会话`);
+      } else {
+        // 检查会话是否存在
+        const sessionExists = await this.nlConversationContextService.sessionExists(dto.sessionId, userId);
+        if (!sessionExists) {
+          // 会话不存在，说明是创建新对话
+          shouldClearOldSessions = true;
+          this.logger.debug(`会话 ${dto.sessionId} 不存在，自动判断为创建新对话，将清空旧会话`);
+        } else {
+          // 会话存在，继续对话
+          this.logger.debug(`会话 ${dto.sessionId} 存在，继续对话`);
+        }
+      }
+      
+      // 2. 如果需要清空旧会话，删除用户的所有旧会话
+      if (shouldClearOldSessions) {
+        this.logger.debug(`开始新对话，清空用户 ${userId} 的所有旧会话上下文`);
+        try {
+          // 🆕 删除用户的所有会话（包括指定的 sessionId 和其他会话）
+          const deletedCount = await this.nlConversationContextService.deleteAllUserSessions(userId);
+          this.logger.debug(`已删除 ${deletedCount} 个旧会话`);
+          
+          // 兼容旧格式：如果未登录用户，也尝试删除旧格式的会话
+          if (!user?.userId && dto.sessionId) {
+            await this.nlConversationContextService.deleteSession(dto.sessionId, dto.sessionId);
+          }
+        } catch (error: any) {
+          this.logger.warn(`删除旧会话失败（继续创建新会话）: ${error.message}`);
+        }
+        // 清空 sessionId，强制创建新会话
+        dto.sessionId = undefined;
+        this.logger.debug(`开始新对话，已清空所有旧上下文`);
+      }
+
+      // 3. 获取或创建会话
       const sessionId = await this.nlConversationContextService.getOrCreateSession(dto.sessionId, userId);
       
-      // 2. 加载历史对话上下文（如果有）
+      // 4. 加载历史对话上下文（如果有）
       const existingContext = await this.nlConversationContextService.getContext(sessionId, userId);
-      const conversationHistory = existingContext?.messages || [];
       
-      // 3. 添加用户消息到会话
+      // 🆕 修复：如果这是新会话（messages 为空），不应该加载历史上下文
+      // 只有在会话已存在且有消息时才加载历史
+      const conversationHistory = (existingContext && existingContext.messages && existingContext.messages.length > 0) 
+        ? existingContext.messages 
+        : [];
+      
+      // 5. 添加用户消息到会话
       await this.nlConversationContextService.addMessage(sessionId, userId, 'user', dto.text);
 
-      // 4. 构建包含历史上下文的提示（如果有历史对话）
+      // 6. 构建包含历史上下文的提示（如果有历史对话）
       let promptText = dto.text;
       if (conversationHistory.length > 0) {
-        const historyContext = conversationHistory
-          .slice(-6) // 只使用最近 6 条消息
-          .map(msg => `${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`)
-          .join('\n');
-        promptText = `历史对话上下文：\n${historyContext}\n\n当前用户输入：${dto.text}`;
+        // 🆕 确保只使用用户实际发送的消息（排除可能的系统消息）
+        const userMessages = conversationHistory.filter(msg => msg.role === 'user' || msg.role === 'assistant');
+        if (userMessages.length > 0) {
+          const historyContext = userMessages
+            .slice(-6) // 只使用最近 6 条消息
+            .map(msg => `${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`)
+            .join('\n');
+          promptText = `历史对话上下文：\n${historyContext}\n\n当前用户输入：${dto.text}`;
+        }
       }
 
-      // 5. 检测目的地并构建 Context Package（如果可用）
+      // 7. 检测目的地并构建 Context Package（如果可用）
       let contextBlocks: ContextBlock[] = [];
       let detectedCountryCode: string | undefined;
       
@@ -374,14 +436,23 @@ export class TripsController {
           // 记录降级指标（用于监控）
           this.logger.warn(`Falling back to text mode due to transformation failure`);
           
+          // 🆕 修复：确保clarificationQuestions不为空
+          const fallbackQuestions = parseResult.clarificationQuestions && parseResult.clarificationQuestions.length > 0
+            ? parseResult.clarificationQuestions.map((q: string, i: number) => ({
+                id: `fallback_q_${i}_${Date.now()}`,
+                question: q,
+                type: 'text' as const,
+                required: false,
+              }))
+            : this.generateDefaultClarificationQuestions(
+                'general',
+                detectedCountryCode,
+                parseResult.params
+              );
+          
           structuredResponse = {
             plannerReply: parseResult.plannerReply,
-            clarificationQuestions: parseResult.clarificationQuestions?.map((q: string, i: number) => ({
-              id: `fallback_q_${i}_${Date.now()}`,
-              question: q,
-              type: 'text' as const,
-              required: false,
-            })),
+            clarificationQuestions: fallbackQuestions,
           };
         }
 
@@ -433,13 +504,49 @@ export class TripsController {
           }
         }
         
+        // 🆕 修复：确保clarificationQuestions不为空
+        let clarificationQuestions = structuredResponse.clarificationQuestions || [];
+        if (clarificationQuestions.length === 0) {
+          // 如果没有澄清问题，生成默认问题
+          clarificationQuestions = this.generateDefaultClarificationQuestions(
+            'general',
+            detectedCountryCode,
+            parseResult.params
+          );
+          this.logger.warn(`needsClarification=true但clarificationQuestions为空，已生成默认问题: ${clarificationQuestions.length}个`);
+        }
+        
+        // 🆕 P0优化：标记必需问题（澄清问题）为 'required' 分组
+        clarificationQuestions = clarificationQuestions.map((q: any) => ({
+          ...q,
+          group: q.group || 'required', // 默认为必需问题
+        }));
+        
+        // 🆕 在澄清过程中，如果已经有一些基础信息，也添加补充问题
+        // 检查是否已经有基础信息（目的地、日期、预算等）
+        const hasBasicInfo = parseResult.params.destination || parseResult.params.startDate || parseResult.params.totalBudget;
+        if (hasBasicInfo) {
+          // 添加补充问题，询问是否需要进一步补充信息
+          const supplementaryQuestions = this.generateSupplementaryQuestions(parseResult.params, detectedCountryCode);
+          if (supplementaryQuestions.length > 0) {
+            // 🆕 P0优化：标记补充问题为 'optional' 分组
+            const optionalQuestions = supplementaryQuestions.map((q: any) => ({
+              ...q,
+              group: 'optional', // 标记为可选问题
+            }));
+            // 将补充问题添加到澄清问题列表的末尾
+            clarificationQuestions = [...clarificationQuestions, ...optionalQuestions];
+            this.logger.debug(`在澄清过程中添加了 ${optionalQuestions.length} 个补充问题（标记为optional分组）`);
+          }
+        }
+        
         this.logger.debug(`Returning planner-style clarification: ${structuredResponse.plannerReply?.substring(0, 100) || parseResult.plannerReply?.substring(0, 100)}...`);
         return successResponse({
           sessionId, // 返回会话 ID，前端需要保存
           needsClarification: true,
           // 🆕 结构化响应
           plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
-          clarificationQuestions: structuredResponse.clarificationQuestions,
+          clarificationQuestions,
           // 向后兼容
           plannerReply: structuredResponse.plannerReply || parseResult.plannerReply,
           suggestedQuestions: parseResult.suggestedQuestions,
@@ -451,21 +558,11 @@ export class TripsController {
         });
       }
 
-      // 转换为 CreateTripDto
-      const travelers: Array<{ type: 'ADULT' | 'ELDERLY' | 'CHILD'; mobilityTag: MobilityTag }> = [];
+      // 🆕 严格控制：即使所有必需字段都有了，也要先显示确认卡片，询问用户是否需要补充信息
+      // 只有在用户明确确认后才创建行程
+      this.logger.debug(`所有必需字段已齐全，但需要用户确认后才能创建行程`);
       
-      if (parseResult.params.hasChildren) {
-        travelers.push({ type: 'CHILD', mobilityTag: MobilityTag.CITY_POTATO });
-      }
-      if (parseResult.params.hasElderly) {
-        travelers.push({ type: 'ELDERLY', mobilityTag: MobilityTag.ACTIVE_SENIOR });
-      }
-      // 默认至少一个成人
-      if (travelers.length === 0 || !travelers.some(t => t.type === 'ADULT' && t.mobilityTag !== MobilityTag.LIMITED)) {
-        travelers.push({ type: 'ADULT', mobilityTag: MobilityTag.CITY_POTATO });
-      }
-
-      // 确保日期格式正确（YYYY-MM-DD）
+      // 确保日期格式正确（用于显示）
       let startDate = parseResult.params.startDate;
       let endDate = parseResult.params.endDate;
       
@@ -477,83 +574,8 @@ export class TripsController {
         endDate = endDate.split('T')[0];
       }
 
-      this.logger.debug(`Creating trip with params: ${JSON.stringify({ destination: parseResult.params.destination, startDate, endDate, totalBudget: parseResult.params.totalBudget, travelersCount: travelers.length })}`);
-
-      const createTripDto: CreateTripDto = {
-        destination: parseResult.params.destination,
-        startDate: startDate,
-        endDate: endDate,
-        totalBudget: parseResult.params.totalBudget,
-        travelers: travelers as any,
-      };
-
-      // 8. 创建行程
-      const trip = await this.tripsService.create(createTripDto, userId);
-      
-      // 8.1 设置预算约束（确保预算约束功能完整可用）
-      // 从 budgetConfig 中提取已计算的每日预算
-      const budgetConfig = (trip.budgetConfig as any) || {};
-      const calculatedDailyBudget = budgetConfig.daily_budget || budgetConfig.dailyBudget;
-      
-      try {
-        await this.tripBudgetService.setBudgetConstraint(trip.id, {
-          total: parseResult.params.totalBudget,
-          currency: 'CNY',
-          dailyBudget: calculatedDailyBudget,
-          // 不设置 categoryLimits，让用户后续可以自定义
-        });
-        this.logger.debug(`已为行程 ${trip.id} 设置预算约束: 总预算 ${parseResult.params.totalBudget} 元`);
-      } catch (error: any) {
-        // 预算约束设置失败不影响主流程，只记录警告
-        this.logger.warn(`设置预算约束失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
-      }
-      
-      // 8.2 添加成功消息到会话
-      await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', `行程已创建成功！目的地：${parseResult.params.destination}，日期：${startDate} 至 ${endDate}，预算：${parseResult.params.totalBudget}元`, {
-        tripId: trip.id,
-        success: true,
-        parsedParams: parseResult.params,
-        showConfirmCard: true, // 行程创建成功时显示确认卡片
-        questionAnswers: {}, // 所有问题已回答
-      });
-      
-      // 10. 清理会话上下文（行程创建成功后，可以清理或保留用于后续对话）
-      // 这里选择保留，以便用户后续可以继续对话
-      
-      // 11. 异步生成行程规划点（不阻塞响应）
-      // 计算行程天数
-      const start = DateTime.fromISO(startDate);
-      const end = DateTime.fromISO(endDate);
-      const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
-      
-      // 在后台异步生成规划点，不等待完成
-      this.generateDraftAsync(trip.id, {
-        destination: parseResult.params.destination,
-        days: durationDays,
-        startDate: startDate,
-        endDate: endDate,
-        style: parseResult.params.preferences?.style || 'balanced',
-        intensity: parseResult.params.preferences?.intensity || 'balanced',
-      }).catch((error: any) => {
-        this.logger.error(`后台生成行程规划点失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
-      });
-      
-      // 11.1 尝试推荐酒店（异步，不阻塞响应）
-      // 注意：此时可能还没有景点数据，推荐可能失败，但会在行程项生成完成后再次推荐
-      let hotelRecommendations: any[] | undefined = undefined;
-      if (this.hotelRecommendationService) {
-        this.recommendHotelsAsync(trip.id, parseResult.params.totalBudget).then((recommendations: any[] | undefined) => {
-          if (recommendations && recommendations.length > 0) {
-            this.logger.debug(`为行程 ${trip.id} 推荐了 ${recommendations.length} 个酒店`);
-          }
-        }).catch((error: any) => {
-          // 此时可能还没有景点数据，失败是正常的，会在行程项生成完成后再次推荐
-          this.logger.debug(`首次酒店推荐失败（可能因为还没有景点数据）: ${error.message}`);
-        });
-      }
-      
       // 🆕 获取目的地中文名称
-      let destinationName = parseResult.params.destination;
+      let destinationName = detectedCountryCode || parseResult.params.destination;
       if (detectedCountryCode) {
         if (destinationConfig && destinationConfig.destinationName) {
           destinationName = destinationConfig.destinationName;
@@ -571,17 +593,115 @@ export class TripsController {
           destinationName = countryNameMap[detectedCountryCode] || detectedCountryCode;
         }
       }
+
+      // 🆕 构建确认卡片内容
+      // 🆕 P4优化：使用summary_card类型整合信息，减少信息块数量
+      // 🆕 HCI P1优化：增强信息展示，提升用户确认信心
       
-      // 12. 立即返回行程（不包含规划点，规划点会在后台生成）
-      return successResponse({
-        sessionId, // 返回会话 ID
-        trip,
+      // 计算旅行者详细信息
+      const travelersArray = (parseResult.params as any).travelers;
+      const travelerCount = Array.isArray(travelersArray) ? travelersArray.length : 
+        (parseResult.params.hasChildren ? 3 : parseResult.params.hasElderly ? 2 : 2); // 默认2人
+      const travelerTypes: string[] = [];
+      if (parseResult.params.hasChildren) {
+        travelerTypes.push('儿童');
+      }
+      if (parseResult.params.hasElderly) {
+        travelerTypes.push('老人');
+      }
+      const adultCount = travelerCount - (parseResult.params.hasChildren ? 1 : 0) - (parseResult.params.hasElderly ? 1 : 0);
+      if (adultCount > 0) {
+        travelerTypes.unshift(`${adultCount}位成人`);
+      }
+      
+      // 构建旅行者信息字符串
+      let travelersInfo = travelerTypes.join('、');
+      if (travelerTypes.length === 0) {
+        travelersInfo = '2位成人'; // 默认值
+      }
+      
+      // 🆕 HCI P1优化：检测旅行目的
+      const travelPurpose = this.detectTravelPurpose(parseResult.params, dto.text, existingContext);
+      if (travelPurpose) {
+        travelersInfo += `（${travelPurpose}）`;
+      }
+      
+      // 🆕 HCI P1优化：检查是否有偏好信息
+      const paramsAny = parseResult.params as any;
+      const hasPreferences = paramsAny.preferences?.interests || 
+        paramsAny.preferences?.style || 
+        paramsAny.preferences?.pace ||
+        paramsAny.pace;
+      
+      const confirmationBlocks: any[] = [
+        {
+          type: 'highlight',
+          highlightType: 'info',
+          highlightText: '✅ 已收集到所有必需信息，准备创建行程',
+        },
+        {
+          type: 'summary_card',
+          summary: {
+            destination: destinationName || '未指定',
+            duration: startDate && endDate ? `${startDate} 至 ${endDate}` : '未指定',
+            travelers: travelersInfo, // 🆕 HCI P1优化：显示详细旅行者信息
+            budget: {
+              amount: parseResult.params.totalBudget || 0,
+              currency: 'CNY',
+            },
+          },
+        },
+      ];
+      
+      // 🆕 HCI P1优化：如果没有偏好信息，添加偏好信息入口提示
+      if (!hasPreferences) {
+        confirmationBlocks.push({
+          type: 'paragraph',
+          content: '⚙️ 偏好设置：未设置\n如需补充偏好信息（如旅行风格、兴趣点、节奏等），请告诉我。',
+        });
+      }
+      
+      confirmationBlocks.push({
+        type: 'paragraph',
+        content: '在创建行程前，请确认以上信息是否正确，或者告诉我是否需要补充其他信息。',
+      });
+
+      // 🆕 生成补充信息问题（可选）
+      // 🆕 P0优化：标记补充问题为 'optional' 分组
+      const supplementaryQuestions = this.generateSupplementaryQuestions(parseResult.params, detectedCountryCode).map((q: any) => ({
+        ...q,
+        group: 'optional', // 标记为可选问题
+      }));
+
+      // 添加助手回复到会话
+      const assistantReply = `我已经收集到创建行程所需的基本信息。请确认以下信息是否正确，或者告诉我是否需要补充其他信息。`;
+      const savedContext = await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
+        needsClarification: false, // 不需要澄清，但需要确认
+        needsConfirmation: true, // 🆕 标记需要用户确认
+        plannerResponseBlocks: confirmationBlocks,
+        clarificationQuestions: supplementaryQuestions, // 可选补充问题
         parsedParams: parseResult.params,
-        generatingItems: true, // 标记正在生成规划点
-        message: '行程已创建，正在后台生成行程规划点，请稍后刷新查看',
-        hotelRecommendations, // 如果有推荐则返回，否则为 undefined
-        destination: detectedCountryCode || parseResult.params.destination, // 🆕 添加国家代码
-        destinationName, // 🆕 添加中文目的地名称
+        showConfirmCard: true, // 🆕 显示确认卡片
+        questionAnswers: {},
+      });
+
+      // 🆕 获取最后一条消息的ID
+      const lastMessage = savedContext.messages[savedContext.messages.length - 1];
+
+      this.logger.debug(`返回确认卡片，等待用户确认创建行程`);
+      return successResponse({
+        sessionId,
+        needsClarification: false,
+        needsConfirmation: true, // 🆕 标记需要用户确认
+        plannerResponseBlocks: confirmationBlocks,
+        clarificationQuestions: supplementaryQuestions, // 可选补充问题
+        plannerReply: assistantReply,
+        conversationContext: parseResult.conversationContext,
+        partialParams: parseResult.params,
+        destination: detectedCountryCode || parseResult.params.destination,
+        destinationName,
+        lastMessageId: lastMessage.id,
+        showConfirmCard: true, // 🆕 前端应显示确认卡片
       });
     } catch (error: any) {
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
@@ -611,6 +731,85 @@ export class TripsController {
         this.logger.debug(`Default error response: ${JSON.stringify({ message: defaultMessage, details: defaultDetails })}`);
         return errorResponse(ErrorCode.BUSINESS_ERROR, defaultMessage, defaultDetails);
       }
+    }
+  }
+
+  /**
+   * 🆕 确认创建行程
+   */
+  @Post('nl-conversation/:sessionId/confirm-create')
+  @Public()
+  @ApiOperation({
+    summary: '确认创建行程',
+    description: '用户确认创建行程，系统将根据已收集的参数创建行程',
+  })
+  @ApiParam({ name: 'sessionId', description: '会话 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        confirm: {
+          type: 'boolean',
+          description: '是否确认创建',
+        },
+        additionalParams: {
+          type: 'object',
+          description: '额外的参数（可选）',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '行程创建成功',
+    type: ApiSuccessResponseDto,
+  })
+  async confirmCreateTrip(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { confirm: boolean; additionalParams?: Record<string, any> },
+    @CurrentUser() user?: CurrentUserPayload
+  ) {
+    try {
+      // 🆕 如果没有 userId，使用 sessionId 作为临时 userId
+      const userId = user?.userId || `temp_${sessionId}`;
+      
+      if (!body.confirm) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, '用户未确认创建行程');
+      }
+
+      // 1. 获取会话上下文
+      const context = await this.nlConversationContextService.getContext(sessionId, userId);
+      if (!context) {
+        return errorResponse(ErrorCode.NOT_FOUND, '会话不存在或已过期');
+      }
+
+      // 2. 获取已收集的参数
+      const params = {
+        ...(context.partialParams || {}),
+        ...(body.additionalParams || {}),
+      };
+
+      // 3. 验证必需字段
+      if (!params.destination || !params.startDate || !params.endDate || !params.totalBudget) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, '缺少必需字段：destination、startDate、endDate、totalBudget');
+      }
+
+      // 4. 检测目的地代码
+      const detectedCountryCode = params.destination?.toUpperCase() || null;
+      
+      // 5. 调用 createTripFromParams 创建行程
+      const result = await this.createTripFromParams(
+        params,
+        userId,
+        sessionId,
+        detectedCountryCode
+      );
+
+      this.logger.log(`用户确认创建行程成功: sessionId=${sessionId}, tripId=${result.data?.trip?.id}`);
+      return result;
+    } catch (error: any) {
+      this.logger.error(`确认创建行程失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `确认创建行程失败: ${error.message}`);
     }
   }
 
@@ -829,26 +1028,33 @@ export class TripsController {
             // 如果决策是 NOT_RECOMMENDED 或 STRONGLY_RECONSIDER，阻止创建
             if (decisionResult.decision === 'NOT_RECOMMENDED' || decisionResult.decision === 'STRONGLY_RECONSIDER') {
               const destinationName = config?.destinationName || '斯瓦尔巴';
-              return successResponse({
-                sessionId,
-                needsClarification: true,
-                blockedByDecisionMatrix: true,
-                decisionResult,
-                plannerResponseBlocks: [
-                  {
-                    type: 'highlight',
-                    highlightType: 'warning',
-                    highlightText: `⚠️ ${decisionResult.reason}`,
-                  },
-                  {
-                    type: 'paragraph',
-                    content: `**建议**：\n${decisionResult.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}`,
-                  },
-                ],
-                clarificationQuestions: [],
-                destination: destinationCode,
-                destinationName,
-              });
+            // 🆕 修复：生成默认澄清问题，确保needsClarification=true时clarificationQuestions不为空
+            const defaultQuestions = this.generateDefaultClarificationQuestions(
+              'decision_matrix_blocked',
+              destinationCode,
+              mergedParams
+            );
+            
+            return successResponse({
+              sessionId,
+              needsClarification: true,
+              blockedByDecisionMatrix: true,
+              decisionResult,
+              plannerResponseBlocks: [
+                {
+                  type: 'highlight',
+                  highlightType: 'warning',
+                  highlightText: `⚠️ ${decisionResult.reason}`,
+                },
+                {
+                  type: 'paragraph',
+                  content: `**建议**：\n${decisionResult.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}`,
+                },
+              ],
+              clarificationQuestions: defaultQuestions,
+              destination: destinationCode,
+              destinationName,
+            });
             }
           } catch (error: any) {
             this.logger.warn(`决策矩阵执行失败: ${error.message}`);
@@ -933,6 +1139,17 @@ export class TripsController {
             destinationName = countryNameMap[destinationCode] || destinationCode;
           }
           
+          // 🆕 修复：确保clarificationQuestions不为空
+          let clarificationQuestions = gateResult.additionalQuestions || [];
+          if (clarificationQuestions.length === 0) {
+            // 如果没有additionalQuestions，生成默认问题
+            clarificationQuestions = this.generateDefaultClarificationQuestions(
+              'gate_blocked',
+              destinationCode,
+              mergedParams
+            );
+          }
+          
           return successResponse({
             sessionId,
             needsClarification: true,
@@ -951,7 +1168,7 @@ export class TripsController {
                 buttons: alternativeActions,
               }] : []),
             ],
-            clarificationQuestions: gateResult.additionalQuestions || [],
+            clarificationQuestions,
             alternativeActions, // 🆕 同时提供 alternativeActions 字段供前端使用
           });
         }
@@ -985,6 +1202,13 @@ export class TripsController {
               if (safetyCheckResult.shouldBlock) {
                 this.logger.warn(`安全第一原则阻止: ${safetyCheckResult.blockReason}`);
                 // 如果被阻止，返回警告而不是继续澄清
+                // 🆕 修复：生成默认澄清问题，确保needsClarification=true时clarificationQuestions不为空
+                const defaultQuestions = this.generateDefaultClarificationQuestions(
+                  'safety_principle_blocked',
+                  destinationCode,
+                  mergedParams
+                );
+                
                 return successResponse({
                   sessionId,
                   needsClarification: true,
@@ -1007,7 +1231,7 @@ export class TripsController {
                       })),
                     }] : []),
                   ],
-                  clarificationQuestions: [],
+                  clarificationQuestions: defaultQuestions,
                   destination: destinationCode,
                   destinationName: config?.destinationName || destinationCode,
                 });
@@ -1079,11 +1303,23 @@ export class TripsController {
         destinationName = countryNameMap[destinationCode] || destinationCode;
       }
       
+      // 🆕 修复：确保clarificationQuestions不为空
+      let clarificationQuestions = structuredResponse.clarificationQuestions || [];
+      if (clarificationQuestions.length === 0) {
+        // 如果没有澄清问题，生成默认问题
+        clarificationQuestions = this.generateDefaultClarificationQuestions(
+          'general',
+          destinationCode,
+          mergedParams
+        );
+        this.logger.warn(`needsClarification=true但clarificationQuestions为空，已生成默认问题: ${clarificationQuestions.length}个`);
+      }
+      
       const response = {
         sessionId,
         needsClarification: true,
         plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
-        clarificationQuestions: structuredResponse.clarificationQuestions,
+        clarificationQuestions,
         plannerReply: structuredResponse.plannerReply,
         partialParams: mergedParams,
         destination: destinationCode, // 保留国家代码
@@ -1247,16 +1483,18 @@ export class TripsController {
       {
         tripId: trip.id,
         success: true,
+        parsedParams: params,
+        showConfirmCard: false, // 行程已创建，不需要确认卡片
       }
     );
     
     // 🆕 获取目的地中文名称
-    let destinationName = params.destination;
+    let tripDestinationName = params.destination;
     if (destinationCode) {
       if (this.destinationClarificationConfigService) {
         const destConfig = await this.destinationClarificationConfigService.getConfig(destinationCode);
         if (destConfig && destConfig.destinationName) {
-          destinationName = destConfig.destinationName;
+          tripDestinationName = destConfig.destinationName;
         } else {
           const countryNameMap: Record<string, string> = {
             'GL': '格陵兰',
@@ -1268,18 +1506,280 @@ export class TripsController {
             'US': '美国',
             'TH': '泰国',
           };
-          destinationName = countryNameMap[destinationCode] || destinationCode;
+          tripDestinationName = countryNameMap[destinationCode] || destinationCode;
         }
       }
+    }
+    
+    // 异步生成行程规划点（不阻塞响应）
+    const start = DateTime.fromISO(startDate);
+    const end = DateTime.fromISO(endDate);
+    const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
+    
+    this.generateDraftAsync(trip.id, {
+      destination: params.destination,
+      days: durationDays,
+      startDate: startDate,
+      endDate: endDate,
+      style: params.preferences?.style || 'balanced',
+      intensity: params.preferences?.intensity || 'balanced',
+    }).catch((error: any) => {
+      this.logger.error(`后台生成行程规划点失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
+    });
+    
+    // 🆕 异步生成决策草案（记录 AI 决策过程，支持回放和 RLHF）
+    this.generateDecisionDraftAsync(
+      trip.id,
+      params.userInput || `创建${params.destination}行程`,
+      params,
+      {
+        destination: params.destination,
+        startDate: startDate,
+        endDate: endDate,
+        days: durationDays,
+        totalBudget: params.totalBudget,
+        hasChildren: params.hasChildren,
+        hasElderly: params.hasElderly,
+        preferences: params.preferences,
+      }
+    ).catch((error: any) => {
+      this.logger.error(`后台生成决策草案失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
+    });
+    
+    // 尝试推荐酒店（异步，不阻塞响应）
+    if (this.hotelRecommendationService) {
+      this.recommendHotelsAsync(trip.id, params.totalBudget).catch((error: any) => {
+        this.logger.debug(`首次酒店推荐失败（可能因为还没有景点数据）: ${error.message}`);
+      });
     }
     
     return successResponse({
       sessionId,
       trip,
       parsedParams: params,
-      destination: destinationCode || params.destination, // 🆕 添加国家代码
-      destinationName, // 🆕 添加中文目的地名称
+      destination: destinationCode || params.destination,
+      destinationName: tripDestinationName,
+      generatingItems: true, // 标记正在生成规划点
+      message: '行程已创建，正在后台生成行程规划点，请稍后刷新查看',
     });
+  }
+
+  /**
+   * 🆕 生成默认澄清问题（当needsClarification=true但没有具体问题时使用）
+   * 🆕 P0优化：标记为 'required' 分组
+   * 🆕 P1优化：限制必需问题组不超过5个
+   */
+  private generateDefaultClarificationQuestions(
+    reason: string,
+    destinationCode?: string,
+    currentParams?: Record<string, any>
+  ): any[] {
+    const questions: any[] = [];
+    const MAX_REQUIRED_QUESTIONS = 5; // 🆕 P1优化：限制必需问题数量
+    
+    // 根据原因生成相应的问题
+    if (reason === 'decision_matrix_blocked') {
+      // 决策矩阵阻止：询问用户是否要调整计划
+      questions.push({
+        id: 'confirm_adjust_plan',
+        question: '您是否希望调整计划以符合安全要求？',
+        type: 'single_choice',
+        options: [
+          { value: 'yes', label: '是，帮我调整' },
+          { value: 'no', label: '否，我了解风险' },
+        ],
+        required: true,
+        metadata: {
+          category: 'safety',
+          priority: 'high',
+          fieldName: 'confirmAdjustPlan',
+        },
+      });
+    } else if (reason === 'gate_blocked') {
+      // Gate阻止：询问用户选择替代方案
+      questions.push({
+        id: 'select_alternative',
+        question: '请选择您希望采取的替代方案',
+        type: 'single_choice',
+        options: [
+          { value: 'increase_budget', label: '增加预算' },
+          { value: 'adjust_dates', label: '调整日期' },
+          { value: 'modify_preferences', label: '修改偏好' },
+        ],
+        required: true,
+        metadata: {
+          category: 'constraint',
+          priority: 'high',
+          fieldName: 'alternativeAction',
+        },
+      });
+    } else if (reason === 'safety_principle_blocked') {
+      // 安全第一原则阻止：询问用户是否接受风险
+      questions.push({
+        id: 'accept_risk',
+        question: '您是否了解并接受相关风险？',
+        type: 'single_choice',
+        options: [
+          { value: 'yes_understand', label: '是，我了解风险并愿意继续' },
+          { value: 'no_modify', label: '否，请帮我调整计划' },
+        ],
+        required: true,
+        metadata: {
+          category: 'safety',
+          priority: 'high',
+          fieldName: 'acceptRisk',
+        },
+      });
+    } else {
+      // 通用默认问题：询问缺失的关键信息
+      const missingFields: string[] = [];
+      
+      if (!currentParams?.destination) {
+        missingFields.push('目的地');
+      }
+      if (!currentParams?.startDate) {
+        missingFields.push('出发日期');
+      }
+      if (!currentParams?.totalBudget) {
+        missingFields.push('预算');
+      }
+      
+      if (missingFields.length > 0) {
+        questions.push({
+          id: 'provide_missing_info',
+          question: `请提供以下信息：${missingFields.join('、')}`,
+          type: 'text',
+          required: true,
+          placeholder: `请输入${missingFields[0]}`,
+          metadata: {
+            category: 'basic',
+            priority: 'high',
+            fieldName: 'missingInfo',
+          },
+        });
+      }
+      // 🆕 移除：不再询问"是否需要进一步澄清其他信息"
+      // 如果所有基础信息都有，直接返回已生成的问题（如果有）
+    }
+    
+    // 🆕 P0优化：标记所有问题为 'required' 分组
+    // 🆕 P1优化：如果超过限制，只返回前MAX_REQUIRED_QUESTIONS个问题
+    return questions.slice(0, MAX_REQUIRED_QUESTIONS).map((q: any) => ({
+      ...q,
+      group: 'required', // 标记为必需问题
+    }));
+  }
+
+  /**
+   * 🆕 HCI P1优化：检测旅行目的
+   * 从用户输入、参数或对话上下文中检测旅行目的（蜜月、家庭、商务等）
+   */
+  private detectTravelPurpose(
+    params: Record<string, any>,
+    userInput?: string,
+    context?: any
+  ): string | null {
+    // 从用户输入中检测
+    if (userInput) {
+      const inputLower = userInput.toLowerCase();
+      if (inputLower.includes('蜜月') || inputLower.includes('honeymoon') || inputLower.includes('新婚')) {
+        return '蜜月旅行';
+      }
+      if (inputLower.includes('带娃') || inputLower.includes('带孩子') || inputLower.includes('亲子')) {
+        return '家庭旅行';
+      }
+      if (inputLower.includes('商务') || inputLower.includes('business')) {
+        return '商务旅行';
+      }
+      if (inputLower.includes('毕业') || inputLower.includes('毕业旅行')) {
+        return '毕业旅行';
+      }
+    }
+    
+    // 从参数中检测
+    if (params.hasChildren) {
+      return '家庭旅行';
+    }
+    
+    // 从对话上下文中检测
+    if (context?.conversationContext?.travelStyle) {
+      const style = context.conversationContext.travelStyle.toLowerCase();
+      if (style.includes('honeymoon') || style.includes('蜜月')) {
+        return '蜜月旅行';
+      }
+      if (style.includes('family') || style.includes('家庭')) {
+        return '家庭旅行';
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * 🆕 生成补充信息问题（在澄清过程中或所有必需字段都有时，询问用户是否需要补充其他信息）
+   * 🆕 P0优化：限制问题数量，符合Miller's Law（7±2限制）
+   * 🆕 P1优化：限制补充问题组不超过3个
+   */
+  private generateSupplementaryQuestions(
+    params: Record<string, any>,
+    destinationCode?: string
+  ): any[] {
+    const questions: any[] = [];
+    const MAX_SUPPLEMENTARY_QUESTIONS = 3; // 🆕 P1优化：限制补充问题数量
+    
+    // 🆕 移除：不再询问"是否需要进一步澄清其他信息"
+    // 直接生成其他补充问题（偏好、安全等）
+    
+    // 检查是否有可选的补充信息
+    const hasOptionalInfo = params.preferences?.interests || params.preferences?.style || params.preferences?.pace;
+    
+    // 如果没有偏好信息，询问是否需要补充偏好信息
+    // 🆕 P2优化：使用更具体的选项，减少决策时间
+    if (!hasOptionalInfo && questions.length < MAX_SUPPLEMENTARY_QUESTIONS) {
+      questions.push({
+        id: 'supplement_preferences',
+        question: '是否需要补充其他偏好信息？（如旅行风格、兴趣点、节奏等）',
+        type: 'single_choice',
+        options: [
+          { value: 'yes', label: '补充偏好信息' },
+          { value: 'no', label: '暂不补充' },
+        ],
+        required: false,
+        metadata: {
+          category: 'preferences',
+          priority: 'low',
+          fieldName: 'supplementPreferences',
+        },
+      });
+    }
+    
+    // 🆕 P1优化：如果已达到限制，不再添加安全问题
+    if (questions.length >= MAX_SUPPLEMENTARY_QUESTIONS) {
+      return questions;
+    }
+    
+    // 如果目的地是高风险地区，询问是否需要补充安全相关信息
+    // 🆕 P2优化：使用更具体的选项，减少决策时间
+    const highRiskDestinations = ['GL', 'SJ', 'AR']; // 格陵兰、斯瓦尔巴、阿根廷（部分区域）
+    if (destinationCode && highRiskDestinations.includes(destinationCode) && questions.length < MAX_SUPPLEMENTARY_QUESTIONS) {
+      questions.push({
+        id: 'supplement_safety_info',
+        question: '是否需要补充安全相关信息？（如健康状况、户外经验等）',
+        type: 'single_choice',
+        options: [
+          { value: 'yes', label: '补充安全信息' },
+          { value: 'no', label: '暂不补充' },
+        ],
+        required: false,
+        metadata: {
+          category: 'safety',
+          priority: 'medium',
+          fieldName: 'supplementSafetyInfo',
+        },
+      });
+    }
+    
+    return questions;
   }
 
   /**
@@ -1383,6 +1883,36 @@ export class TripsController {
       if (q.default !== undefined) question.default = q.default;
       if (q.validation) question.validation = q.validation;
       if (q.dependencies) question.dependencies = q.dependencies;
+      
+      // 🆕 HCI优化：保留条件输入字段（标准化triggerValue）
+      if (q.conditionalInputs && Array.isArray(q.conditionalInputs)) {
+        question.conditionalInputs = q.conditionalInputs.map((input: any) => ({
+          ...input,
+          triggerValue: input.triggerValue?.toString().trim() || '', // 标准化triggerValue
+          inputType: input.inputType,
+          label: input.label?.trim(),
+          placeholder: input.placeholder?.trim(),
+          required: input.required !== undefined ? input.required : true,
+          validation: input.validation,
+          hint: input.hint?.trim(),
+        }));
+      }
+      
+      // 🆕 HCI优化：标准化选项值（确保与conditionalInputs的triggerValue匹配）
+      if (question.options && Array.isArray(question.options)) {
+        question.options = question.options.map((opt: any) => {
+          if (typeof opt === 'string') {
+            return opt.trim(); // 标准化选项值
+          }
+          // 如果是对象格式，标准化value和label
+          const normalizedOpt = {
+            ...opt,
+            value: (opt.value || opt.label || opt).toString().trim(),
+            label: (opt.label || opt.value || opt).toString().trim(),
+          };
+          return normalizedOpt;
+        });
+      }
       
       // 添加元数据（包括 isCritical 标记）
       question.metadata = {
@@ -1591,10 +2121,12 @@ export class TripsController {
         questionAnswers: message.metadata?.questionAnswers || {},
       });
     } catch (error: any) {
-      this.logger.error(`更新消息问题答案失败: ${error.message}`, error.stack);
+      // 如果消息不存在，记录警告而不是错误（可能是前端重复请求或使用了错误的ID）
       if (error.message.includes('不存在')) {
+        this.logger.warn(`更新消息问题答案失败: ${error.message}`, error.stack);
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
+      this.logger.error(`更新消息问题答案失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, '更新消息问题答案失败');
     }
   }
@@ -2691,22 +3223,36 @@ export class TripsController {
   @Get(':id/budget/constraint')
   @ApiOperation({
     summary: '获取预算约束',
-    description: '获取行程的预算约束配置',
+    description: '获取行程的预算约束配置。如果未设置预算约束，会从准备度接口获取 budgetLevel 并提供默认预算建议。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'userId', description: '用户 ID（可选，用于从准备度接口获取 budgetLevel）', required: false })
   @ApiResponse({
     status: 200,
     description: '成功返回预算约束',
     type: ApiSuccessResponseDto,
   })
-  async getBudgetConstraint(@Param('id') id: string) {
+  async getBudgetConstraint(
+    @Param('id') id: string,
+    @Query('userId') userId?: string,
+    @CurrentUser() currentUser?: CurrentUserPayload
+  ) {
     try {
-      const constraint = await this.tripBudgetService.getBudgetConstraint(id);
+      // 优先使用 currentUser，其次使用 query 参数
+      const effectiveUserId = currentUser?.userId || userId;
+      const constraint = await this.tripBudgetService.getBudgetConstraint(id, effectiveUserId);
       if (!constraint) {
         return successResponse({ budgetConstraint: null });
       }
+      
+      // 检查是否为推荐预算（非用户设置）
+      const isRecommended = (constraint as any)._isRecommended === true;
+      
       return successResponse({
-        budgetConstraint: constraint,
+        budgetConstraint: {
+          ...constraint,
+          _isRecommended: isRecommended, // 标记是否为推荐预算
+        },
         createdAt: constraint.createdAt,
         updatedAt: constraint.updatedAt,
       });

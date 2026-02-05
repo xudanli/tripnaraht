@@ -255,6 +255,43 @@ export class ClarificationQuestionDto implements ClarificationQuestion {
     category?: string;
     priority?: 'high' | 'medium' | 'low';
   };
+
+  /**
+   * 🆕 问题分组（用于前端分组展示）
+   * - 'required': 必需问题（澄清问题）
+   * - 'optional': 可选问题（补充问题）
+   */
+  @ApiPropertyOptional({
+    description: '问题分组（required=必需问题，optional=可选问题）',
+    enum: ['required', 'optional'],
+  })
+  @IsEnum(['required', 'optional'])
+  @IsOptional()
+  group?: 'required' | 'optional';
+
+  /**
+   * 🆕 HCI优化：条件输入字段（当用户选择特定选项时显示后续输入字段）
+   * 例如：选择"不准确，需要修改"后显示日期选择框
+   */
+  @ApiPropertyOptional({
+    description: '条件输入字段配置',
+    type: [Object],
+  })
+  @IsArray()
+  @IsOptional()
+  conditionalInputs?: Array<{
+    triggerValue: string;
+    inputType: 'text' | 'date' | 'number' | 'date_range';
+    label?: string;
+    placeholder?: string;
+    required?: boolean;
+    validation?: {
+      min?: number;
+      max?: number;
+      pattern?: string;
+    };
+    hint?: string;
+  }>;
 }
 
 /**

@@ -1,0 +1,38 @@
+[
+  {
+    "countryCode": "CH",
+    "rivers": {
+      "coverageRate": 1,
+      "featureCount": 88,
+      "missingRegions": []
+    },
+    "mountains": {
+      "coverageRate": 1,
+      "featureCount": 80,
+      "missingRegions": []
+    },
+    "roads": {
+      "coverageRate": 1,
+      "featureCount": 809,
+      "missingRegions": []
+    },
+    "coastlines": {
+      "coverageRate": 0,
+      "featureCount": 0,
+      "missingRegions": [
+        "CH"
+      ]
+    },
+    "ports": {
+      "coverageRate": 1,
+      "featureCount": 8,
+      "missingRegions": []
+    },
+    "railways": {
+      "coverageRate": 1,
+      "featureCount": 1663,
+      "missingRegions": []
+    },
+    "recommendations": []
+  }
+]

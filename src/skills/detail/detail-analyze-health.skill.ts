@@ -49,14 +49,16 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
       const pace = this.analyzePace(input.tripData, input.planState);
       const feasibility = this.analyzeFeasibility(input.tripData, input.planState);
 
-      // 计算总体健康度
+      // 计算总体健康度（木桶效应：取最低分）
+      // 决策：采用木桶效应，确保所有维度都健康
+      // 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
       const scores = [schedule.score, budget.score, pace.score, feasibility.score];
-      const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      const overallScore = Math.min(...scores);
       
       let overall: TripHealth['overall'] = 'healthy';
-      if (avgScore < 50) {
+      if (overallScore < 50) {
         overall = 'critical';
-      } else if (avgScore < 70) {
+      } else if (overallScore < 70) {
         overall = 'warning';
       }
 

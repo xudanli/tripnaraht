@@ -15,7 +15,6 @@ import { Public } from '../auth/decorators/public.decorator';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
-import { ReadinessService } from '../trips/readiness/services/readiness.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
 import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
@@ -23,6 +22,8 @@ import { RoadStatusQuery } from '../data-contracts/interfaces/road-status.interf
 import { PlacesService } from '../places/places.service';
 import { Prisma } from '@prisma/client';
 import { EvidenceFetchTaskService, EvidenceFetchTaskStatus } from '../trips/services/evidence-fetch-task.service';
+import { PlanningWorkbenchTaskService, PlanningWorkbenchTaskStatus } from './services/planning-workbench-task.service';
+import { TripSuggestionsService } from '../trips/services/trip-suggestions.service';
 
 @ApiTags('planning-workbench')
 @Controller('planning-workbench')
@@ -34,11 +35,12 @@ export class PlanningWorkbenchController {
     private readonly budgetEvaluationService: BudgetEvaluationService,
     private readonly tripBudgetService: TripBudgetService,
     private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService,
-    @Optional() private readonly readinessService?: ReadinessService,
     private readonly prisma?: PrismaService,
     @Optional() private readonly dataSourceRouter?: DataSourceRouterService,
     @Optional() private readonly placesService?: PlacesService,
     @Optional() private readonly evidenceFetchTaskService?: EvidenceFetchTaskService,
+    @Optional() private readonly planningWorkbenchTaskService?: PlanningWorkbenchTaskService,
+    @Optional() private readonly tripSuggestionsService?: TripSuggestionsService,
   ) {}
 
   /**
@@ -51,12 +53,20 @@ export class PlanningWorkbenchController {
     summary: '执行规划工作台流程',
     description: `
 规划工作台的主入口，支持以下操作：
-- generate: 生成行程骨架方案
-- compare: 对比多个方案
-- commit: 提交选定的方案
+- generate: 生成行程骨架方案（✅ v2.0新增：自动填充DEM地形数据和地理特征）
+- compare: 对比多个方案（✅ v2.0新增：多维度评分对比）
+- commit: 提交选定的方案（✅ v2.0新增：自动填充DEM和地理特征）
 - adjust: 调整现有方案
 
+**v2.0新增功能**：
+- ✅ DEM地形数据填充：自动填充segments的distanceKm、ascentM、slopePct
+- ✅ 地理特征查询：自动查询河流、山脉、危险区域等
+- ✅ RAG语义搜索：POI查询使用向量搜索进行语义匹配
+- ✅ 决策追溯链：记录决策过程和排除原因
+
 返回三人格的决策结果（Abu/Dr.Dre/Neptune），其他角色（预算/交通/节奏/总规划师）隐藏为能力模块。
+
+详细文档请参考：/src/agent/PLANNING_WORKBENCH_API.md
     `.trim(),
   })
   @ApiBody({
@@ -85,6 +95,8 @@ export class PlanningWorkbenchController {
         },
         tripId: { type: 'string' },
         userAction: { type: 'string', enum: ['generate', 'compare', 'commit', 'adjust'] },
+        selectedOptionId: { type: 'string', description: '选定的方案ID（commit时使用）' },
+        skeletonOptions: { type: 'object', description: '骨架方案集（compare时使用）' },
       },
       required: ['context'],
     },
@@ -118,6 +130,23 @@ export class PlanningWorkbenchController {
                     summary: { type: 'string' },
                     nextSteps: { type: 'array', items: { type: 'string' } },
                   },
+                },
+                skeletonOptions: {
+                  type: 'object',
+                  description: '骨架方案集（generate操作返回）',
+                },
+                comparison: {
+                  type: 'object',
+                  description: '对比结果（compare操作返回，包含多维度评分）',
+                },
+                health: {
+                  type: 'object',
+                  description: '健康度评估（预算/节奏/可行性）',
+                },
+                confirmations: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: '需要用户确认的事项',
                 },
               },
             },
@@ -633,6 +662,60 @@ export class PlanningWorkbenchController {
     }
   }
 
+  /**
+   * Auto综合：批量应用高优先级建议
+   * 
+   * 决策：只应用高优先级建议（severity === BLOCKER）
+   * 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
+   */
+  @Public()
+  @Post('auto-optimize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Auto综合：批量应用高优先级建议',
+    description: '自动应用所有高优先级建议（severity === BLOCKER）。只应用高优先级建议，确保安全性。',
+  })
+  @ApiBody({
+    description: 'Auto综合请求',
+    schema: {
+      type: 'object',
+      properties: {
+        tripId: { type: 'string', description: '行程 ID' },
+        preview: { type: 'boolean', description: '是否预览模式（不实际应用）', default: false },
+        limit: { type: 'number', description: '最多应用的建议数量', default: 10 },
+      },
+      required: ['tripId'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '执行成功',
+  })
+  async autoOptimize(@Body() body: {
+    tripId: string;
+    preview?: boolean;
+    limit?: number;
+  }) {
+    try {
+      if (!this.tripSuggestionsService) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'TripSuggestionsService 未注入');
+      }
+
+      const result = await this.tripSuggestionsService.applyHighPrioritySuggestions(
+        body.tripId,
+        {
+          preview: body.preview || false,
+          limit: body.limit || 10,
+        }
+      );
+
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`Auto综合优化失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   // ==================== 后台管理接口 ====================
 
   @Public()
@@ -674,6 +757,32 @@ export class PlanningWorkbenchController {
   }
 
   @Public()
+  @Get('admin/sessions/stats')
+  @ApiOperation({
+    summary: '获取会话统计（管理接口）',
+    description: '获取规划会话的统计信息，包括成功率、平均时长等。',
+  })
+  @ApiQuery({ name: 'startDate', required: false, type: String })
+  @ApiQuery({ name: 'endDate', required: false, type: String })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回会话统计',
+    type: ApiSuccessResponseDto,
+  })
+  async getAdminSessionStats(@Query() query: any) {
+    try {
+      const stats = await this.planningWorkbenchAdminService.getSessionStats({
+        startDate: query.startDate ? new Date(query.startDate) : undefined,
+        endDate: query.endDate ? new Date(query.endDate) : undefined,
+      });
+      return successResponse(stats);
+    } catch (error: any) {
+      this.logger.error(`获取会话统计失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get('admin/sessions/:id')
   @ApiOperation({
     summary: '获取规划会话详情（管理接口）',
@@ -699,32 +808,6 @@ export class PlanningWorkbenchController {
       return successResponse(session);
     } catch (error: any) {
       this.logger.error(`获取会话详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/sessions/stats')
-  @ApiOperation({
-    summary: '获取会话统计（管理接口）',
-    description: '获取规划会话的统计信息，包括成功率、平均时长等。',
-  })
-  @ApiQuery({ name: 'startDate', required: false, type: String })
-  @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话统计',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminSessionStats(@Query() query: any) {
-    try {
-      const stats = await this.planningWorkbenchAdminService.getSessionStats({
-        startDate: query.startDate ? new Date(query.startDate) : undefined,
-        endDate: query.endDate ? new Date(query.endDate) : undefined,
-      });
-      return successResponse(stats);
-    } catch (error: any) {
-      this.logger.error(`获取会话统计失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -787,172 +870,6 @@ export class PlanningWorkbenchController {
       return successResponse(plan);
     } catch (error: any) {
       this.logger.error(`获取方案详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  // ==================== 准备度检查接口 ====================
-
-  @Public()
-  @Get('trips/:tripId/readiness')
-  @ApiOperation({
-    summary: '获取行程准备度检查结果',
-    description: '从规划工作台获取指定行程的准备度检查结果，包括 must/should/optional 清单和风险预警',
-  })
-  @ApiParam({
-    name: 'tripId',
-    description: '行程 ID',
-    type: 'string',
-  })
-  @ApiQuery({
-    name: 'lang',
-    description: '语言',
-    required: false,
-    enum: ['en', 'zh'],
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回准备度检查结果',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            findings: { type: 'array' },
-            summary: { type: 'object' },
-            readinessUrl: { type: 'string', description: '准备度详细页面 URL' },
-          },
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: '行程不存在',
-    type: ApiErrorResponseDto,
-  })
-  async getTripReadiness(
-    @Param('tripId') tripId: string,
-    @Query('lang') lang?: 'en' | 'zh',
-  ) {
-    try {
-      if (!this.readinessService) {
-        return errorResponse(
-          ErrorCode.INTERNAL_ERROR,
-          '准备度服务未启用，请检查 ReadinessModule 是否正确导入',
-        );
-      }
-
-      if (!this.prisma) {
-        return errorResponse(
-          ErrorCode.INTERNAL_ERROR,
-          'PrismaService 未注入',
-        );
-      }
-
-      // 获取行程信息
-      const trip = await this.prisma.trip.findUnique({
-        where: { id: tripId },
-        select: {
-          id: true,
-          destination: true,
-          startDate: true,
-          endDate: true,
-        },
-      });
-
-      if (!trip) {
-        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
-      }
-
-      // 构建 TripContext
-      const context = this.readinessService.extractTripContext({
-        context: {
-          destination: trip.destination || '',
-          startDate: trip.startDate.toISOString().split('T')[0],
-          durationDays: Math.ceil(
-            (trip.endDate.getTime() - trip.startDate.getTime()) / (1000 * 60 * 60 * 24),
-          ) + 1,
-          preferences: {
-            intents: {},
-            pace: 'moderate',
-            riskTolerance: 'medium',
-          },
-        },
-        candidatesByDate: {},
-        signals: {
-          lastUpdatedAt: new Date().toISOString(),
-        },
-      });
-
-      // 调用准备度检查
-      const result = await this.readinessService.checkFromDestination(
-        trip.destination,
-        context,
-        {
-          lang: lang || 'en',
-        },
-      );
-
-      return successResponse({
-        ...result,
-        readinessUrl: `/api/readiness/trip/${tripId}`,
-        quickLinks: {
-          personalizedChecklist: `/api/readiness/personalized-checklist?tripId=${tripId}`,
-          riskWarnings: `/api/readiness/risk-warnings?tripId=${tripId}`,
-          readinessScore: `/api/readiness/trip/${tripId}/score`,
-          coverageMap: `/api/readiness/trip/${tripId}/coverage-map`,
-        },
-      });
-    } catch (error: any) {
-      this.logger.error(`获取行程准备度失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('trips/:tripId/readiness/score')
-  @ApiOperation({
-    summary: '获取行程准备度分数',
-    description: '从规划工作台获取指定行程的准备度分数，包括多维度评分。实际调用 /api/readiness/trip/:tripId/score',
-  })
-  @ApiParam({
-    name: 'tripId',
-    description: '行程 ID',
-    type: 'string',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回准备度分数链接',
-  })
-  async getTripReadinessScore(@Param('tripId') tripId: string) {
-    try {
-      if (!this.prisma) {
-        return errorResponse(ErrorCode.INTERNAL_ERROR, 'PrismaService 未注入');
-      }
-
-      // 检查行程是否存在
-      const trip = await this.prisma.trip.findUnique({
-        where: { id: tripId },
-        select: { id: true },
-      });
-
-      if (!trip) {
-        return errorResponse(ErrorCode.NOT_FOUND, `行程 ${tripId} 不存在`);
-      }
-
-      // 返回准备度分数 API 链接
-      return successResponse({
-        message: '请使用准备度 API 获取详细分数',
-        readinessScoreUrl: `/api/readiness/trip/${tripId}/score`,
-        readinessChecklistUrl: `/api/readiness/personalized-checklist?tripId=${tripId}`,
-        readinessRiskWarningsUrl: `/api/readiness/risk-warnings?tripId=${tripId}`,
-        readinessCoverageMapUrl: `/api/readiness/trip/${tripId}/coverage-map`,
-      });
-    } catch (error: any) {
-      this.logger.error(`获取行程准备度分数失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -1868,6 +1785,254 @@ export class PlanningWorkbenchController {
     } catch (error: any) {
       this.logger.error(`取消任务失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, '取消任务失败', { originalError: error.message });
+    }
+  }
+
+  /**
+   * 🆕 P0功能：异步执行规划工作台（后台任务）
+   * 
+   * 当请求参数中包含 `async=true` 时，此端点会立即返回 202 Accepted 和 taskId，
+   * 实际处理在后台进行。客户端可以通过轮询 `/api/planning-workbench/tasks/:taskId/status` 
+   * 来获取任务进度和结果。
+   * 
+   * 这是为了解决HTTP请求超时问题（P0优先级）。
+   */
+  @Public()
+  @Post('execute-async')
+  @HttpCode(202) // Accepted
+  @ApiOperation({
+    summary: '异步执行规划工作台（P0功能）',
+    description: '异步执行规划工作台流程，立即返回 taskId，客户端需要轮询 /api/planning-workbench/tasks/:taskId/status 获取结果。使用场景：当规划工作台处理时间较长（>30秒）时，使用异步模式可以避免HTTP超时问题。工作流程：1. 调用此端点，立即返回 202 Accepted 和 taskId；2. 客户端轮询 /api/planning-workbench/tasks/:taskId/status 获取进度和结果；3. 当任务状态为 COMPLETED 时，结果在 result 字段中。轮询建议：初始间隔1秒，最大间隔5秒，超时时间120秒（2分钟）。',
+  })
+  @ApiBody({
+    description: '规划工作台请求（与同步模式相同）',
+  })
+  @ApiResponse({
+    status: 202,
+    description: '任务已接受，返回 taskId',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string', example: '550e8400-e29b-41d4-a716-446655440000' },
+            message: { type: 'string', example: '任务已接受，正在处理中' },
+            statusUrl: { type: 'string', example: '/api/planning-workbench/tasks/:taskId/status' },
+          },
+        },
+      },
+    },
+  })
+  async executeAsync(@Body() request: PlanningWorkbenchRequest) {
+    if (!this.planningWorkbenchTaskService) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanningWorkbenchTaskService 未注入');
+    }
+
+    try {
+      // 创建任务
+      const taskId = this.planningWorkbenchTaskService.createTask();
+      
+      // 异步执行任务（不等待完成）
+      // 使用 setImmediate 确保不会阻塞当前请求
+      setImmediate(() => {
+        this.executeTaskAsync(taskId, request).catch((error: any) => {
+          this.logger.error(`异步任务执行失败: taskId=${taskId}, error=${error.message}`, error.stack);
+          try {
+            this.planningWorkbenchTaskService?.markFailed(taskId, error.message || '未知错误');
+          } catch (markFailedError: any) {
+            this.logger.error(`标记任务失败时出错: ${markFailedError.message}`, markFailedError.stack);
+          }
+        });
+      });
+
+      return successResponse({
+        taskId,
+        message: '任务已接受，正在处理中',
+        statusUrl: `/api/planning-workbench/tasks/${taskId}/status`,
+      });
+    } catch (error: any) {
+      this.logger.error(`创建异步任务失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 🆕 P0功能：获取规划工作台任务状态
+   */
+  @Public()
+  @Get('tasks/:taskId/status')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '获取规划工作台任务状态（P0功能）',
+    description: '查询异步规划工作台任务的状态和进度。返回状态：PENDING（任务已创建，等待执行）、RUNNING（任务正在执行中）、COMPLETED（任务已完成，结果在 result 字段中）、FAILED（任务失败，错误信息在 error 字段中）、CANCELLED（任务已取消）。轮询建议：初始间隔1秒，最大间隔5秒，超时时间120秒（2分钟）。',
+  })
+  @ApiParam({
+    name: 'taskId',
+    description: '任务ID',
+    type: String,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取任务状态',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string' },
+            status: { type: 'string', enum: ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] },
+            progress: { type: 'number', minimum: 0, maximum: 100 },
+            currentStage: { type: 'string', nullable: true },
+            estimatedTimeRemaining: { type: 'number', nullable: true },
+            error: { type: 'string', nullable: true },
+            result: { type: 'object', nullable: true },
+            createdAt: { type: 'string' },
+            updatedAt: { type: 'string' },
+            completedAt: { type: 'string', nullable: true },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: '任务不存在',
+    type: ApiErrorResponseDto,
+  })
+  async getPlanningWorkbenchTaskStatus(@Param('taskId') taskId: string) {
+    if (!this.planningWorkbenchTaskService) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanningWorkbenchTaskService 未注入');
+    }
+
+    try {
+      const progress = this.planningWorkbenchTaskService.getTaskProgress(taskId);
+      if (!progress) {
+        return errorResponse(ErrorCode.NOT_FOUND, `任务 ${taskId} 不存在`);
+      }
+
+      return successResponse(progress);
+    } catch (error: any) {
+      this.logger.error(`获取任务状态失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 🆕 P0功能：取消规划工作台任务
+   */
+  @Public()
+  @Post('tasks/:taskId/cancel-planning')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '取消规划工作台任务（P0功能）',
+    description: '取消正在执行的规划工作台任务。只能取消 PENDING 或 RUNNING 状态的任务。',
+  })
+  @ApiParam({
+    name: 'taskId',
+    description: '任务ID',
+    type: String,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功取消任务',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  async cancelPlanningWorkbenchTask(@Param('taskId') taskId: string) {
+    if (!this.planningWorkbenchTaskService) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanningWorkbenchTaskService 未注入');
+    }
+
+    try {
+      const cancelled = this.planningWorkbenchTaskService.cancelTask(taskId);
+      if (!cancelled) {
+        return errorResponse(ErrorCode.NOT_FOUND, `任务 ${taskId} 不存在或无法取消`);
+      }
+
+      return successResponse({
+        taskId,
+        message: '任务已取消',
+      });
+    } catch (error: any) {
+      this.logger.error(`取消任务失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 内部方法：异步执行任务
+   */
+  private async executeTaskAsync(taskId: string, request: PlanningWorkbenchRequest): Promise<void> {
+    if (!this.planningWorkbenchTaskService) {
+      throw new Error('PlanningWorkbenchTaskService 未注入');
+    }
+
+    const startTime = Date.now();
+    
+    try {
+      // 标记为运行中
+      this.planningWorkbenchTaskService.markRunning(taskId, '正在初始化...');
+      
+      // 将 taskId 和进度更新函数注入到 request 的 metadata 中
+      const requestWithProgress = {
+        ...request,
+        metadata: {
+          ...(request as any).metadata,
+          taskId,
+          updateProgress: (progress: number, stage?: string) => {
+            try {
+              this.logger.debug(`进度更新回调被调用: taskId=${taskId}, progress=${progress}%, stage=${stage || 'N/A'}`);
+              this.planningWorkbenchTaskService?.updateProgressPercent(taskId, progress, stage);
+            } catch (error: any) {
+              this.logger.error(`进度更新回调失败: ${error.message}`, error.stack);
+            }
+          },
+        },
+      };
+      
+      this.logger.debug(`开始执行异步任务: taskId=${taskId}, action=${request.userAction || 'generate'}`);
+      
+      // 执行规划工作台（使用包装后的 request）
+      // 注意：由于 execute 方法目前不支持进度回调，我们通过拦截关键步骤来更新进度
+      // 这里先标记为"正在生成方案"
+      this.planningWorkbenchTaskService.updateProgressPercent(taskId, 10, '正在生成行程骨架方案...');
+      
+      const result = await this.planningWorkbenchAgent.execute(requestWithProgress);
+      
+      // 标记为完成
+      this.planningWorkbenchTaskService.markCompleted(taskId, result);
+      
+      const duration = Date.now() - startTime;
+      this.logger.log(`✅ 异步任务 ${taskId} 完成，耗时 ${duration}ms`);
+      
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      this.logger.error(`❌ 异步任务 ${taskId} 失败，耗时 ${duration}ms: ${error.message}`, error.stack);
+      
+      // 确保标记失败状态，即使出错也要更新
+      try {
+        this.planningWorkbenchTaskService.markFailed(taskId, error.message || '未知错误');
+      } catch (markFailedError: any) {
+        this.logger.error(`标记任务失败状态时出错: ${markFailedError.message}`, markFailedError.stack);
+      }
+      
+      // 不重新抛出错误，因为这是异步任务，错误已经在 catch 中处理
+      // throw error;
     }
   }
 }

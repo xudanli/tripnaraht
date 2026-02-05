@@ -36,7 +36,7 @@ export class ScheduleConverterService {
     // 2. 将 stops 转换为 ItineraryItem
     const items = schedule.stops
       .filter(stop => stop.kind === 'POI') // 只处理 POI 类型的 stop
-      .map((stop: PlannedStop) => {
+      .map((stop: PlannedStop, index: number) => {
         const date = DateTime.fromISO(dateISO);
         const startTime = date.startOf('day').plus({ minutes: stop.startMin }).toJSDate();
         const endTime = date.startOf('day').plus({ minutes: stop.endMin }).toJSDate();
@@ -49,6 +49,7 @@ export class ScheduleConverterService {
           startTime,
           endTime,
           note: stop.notes?.join('; ') || null,
+          order: index + 1, // 🆕 设置显示顺序
         };
       });
 

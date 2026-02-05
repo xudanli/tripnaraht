@@ -64,6 +64,47 @@ export interface PlanConstraints {
 }
 
 /**
+ * POI 信息（从 Place 表获取）
+ */
+export interface SkeletonPoi {
+  /** Place ID */
+  placeId: number;
+  
+  /** Place UUID */
+  placeUuid: string;
+  
+  /** POI 名称（中文） */
+  nameCN: string;
+  
+  /** POI 名称（英文） */
+  nameEN?: string;
+  
+  /** POI 类别 */
+  category: 'ATTRACTION' | 'RESTAURANT' | 'HOTEL' | 'SHOPPING' | 'TRANSIT_HUB' | 'HOSPITAL';
+  
+  /** 地址 */
+  address?: string;
+  
+  /** 评分（0-5） */
+  rating?: number;
+  
+  /** 描述 */
+  description?: string;
+  
+  /** 坐标 */
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  
+  /** 优先级（用于排序和推荐） */
+  priority?: 'anchor' | 'core' | 'optional';
+  
+  /** 其他元数据 */
+  metadata?: Record<string, any>;
+}
+
+/**
  * 行程骨架（Skeleton）
  */
 export interface PlanSkeleton {
@@ -94,6 +135,20 @@ export interface PlanSkeleton {
     from: string;
     to: string;
     mode?: string;
+  }>;
+  
+  /** 每天的 POI 列表（住宿、餐厅、景点） */
+  pois?: Array<{
+    day: number;
+    /** 住宿 POI */
+    accommodation?: SkeletonPoi;
+    /** 餐厅 POI 列表（早餐、午餐、晚餐） */
+    restaurants?: Array<{
+      meal: 'breakfast' | 'lunch' | 'dinner';
+      poi: SkeletonPoi;
+    }>;
+    /** 景点 POI 列表 */
+    attractions?: SkeletonPoi[];
   }>;
   
   /** 取舍理由 */

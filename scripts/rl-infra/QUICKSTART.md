@@ -1,6 +1,28 @@
-# PolicyService TypeScript 快速启动指南
+# RL 基础设施快速启动指南
 
-## 🚀 快速开始
+## 🚀 推荐：新 LoRA 微调框架
+
+```bash
+# 启动完整训练服务栈
+cd docker
+docker-compose -f docker-compose.train.yml up -d
+
+# 检查服务状态
+docker-compose -f docker-compose.train.yml ps
+
+# 服务端口：
+# - http://localhost:8000 - LoRA 训练 API
+# - http://localhost:8080 - vLLM 推理 (OpenAI 兼容)
+# - http://localhost:8003 - LLM Judge 评分
+# - http://localhost:5000 - MLflow UI
+# - http://localhost:6007 - TensorBoard
+```
+
+详见：`docs/LORA_FINETUNE_GUIDE.md`
+
+---
+
+## 传统 PolicyService (向后兼容)
 
 ### 1. 安装依赖（如果还没有）
 
@@ -98,6 +120,18 @@ npx ts-node scripts/rl-infra/policy-service.ts
 
 ## 📚 更多信息
 
+- **新框架文档**: [docs/LORA_FINETUNE_GUIDE.md](../../docs/LORA_FINETUNE_GUIDE.md)
+- **Docker 编排**: [docker/docker-compose.train.yml](../../docker/docker-compose.train.yml)
 - 详细文档: [README_POLICY_SERVICE_TS.md](./README_POLICY_SERVICE_TS.md)
 - API 规范: [../../POLICY_SERVICE_API_SPEC.md](../../POLICY_SERVICE_API_SPEC.md)
-- 迁移说明: [../../POLICY_SERVICE_MIGRATION_TO_TS.md](../../POLICY_SERVICE_MIGRATION_TO_TS.md)
+
+## 🆕 新框架 vs 传统框架
+
+| 功能 | 新框架 (推荐) | 传统框架 |
+|------|--------------|---------|
+| 训练 | LoRA 微调 + LLaMA-Factory | Ray 分布式 |
+| 推理 | vLLM (高性能) | 自定义 Policy Service |
+| 评分 | LLM Judge (增强版) | 基础版 |
+| 部署 | Docker Compose | 手动启动 |
+
+**推荐迁移到新框架以获得更好的性能和更多功能。**

@@ -1,5 +1,5 @@
 // src/trips/dto/create-trip-from-nl.dto.ts
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 
@@ -18,6 +18,14 @@ export class CreateTripFromNaturalLanguageDto {
   @IsString()
   @IsOptional()
   sessionId?: string;
+
+  @ApiPropertyOptional({
+    description: '是否开始新对话（true时清空旧上下文，创建新会话）',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  isNewConversation?: boolean;
 
   @ApiPropertyOptional({
     description: 'LLM 提供商',

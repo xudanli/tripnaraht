@@ -34,7 +34,7 @@
 
 ### 会话管理
 
-- **Access Token**: 15 分钟 JWT（前端内存存储）
+- **Access Token**: 48 小时 JWT（前端内存存储）
 - **Refresh Token**: 30 天，httpOnly cookie（服务端存储哈希）
 - **Token 旋转**: 每次 refresh 都会旋转 refresh token，提升安全性
 
@@ -310,7 +310,7 @@ GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
 JWT_SECRET=your-jwt-secret
-JWT_ACCESS_TOKEN_EXPIRES_IN=15m
+JWT_ACCESS_TOKEN_EXPIRES_IN=48h
 JWT_REFRESH_TOKEN_EXPIRES_IN_DAYS=30
 FRONTEND_URL=http://localhost:3001
 NODE_ENV=development

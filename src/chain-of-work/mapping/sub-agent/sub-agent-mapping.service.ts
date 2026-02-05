@@ -16,19 +16,21 @@ import { TripNARAStepDraft, SubAgentMapping } from '../../interfaces/chain-of-wo
 export class SubAgentMappingService {
   private readonly logger = new Logger(SubAgentMappingService.name);
 
-  // 步骤类型到 Sub-Agent 的映射规则
+  // 步骤类型到 Sub-Agent 的映射规则（10步完整流程）
   private readonly stepToSubAgentMap: Record<OrchestrationStep, SubAgentType> = {
     'INTAKE': 'Planner',
-    'RESEARCH': 'Planner', // RESEARCH 步骤不直接调用 Sub-Agent，而是调用 Skills
+    'RESEARCH': 'Planner', // RESEARCH 步骤通过 Domain Agents 调用 Skills
     'GATE_EVAL': 'Gatekeeper',
     'PLAN_GEN': 'Planner',
     'VERIFY': 'CoreDecision',
+    'COMPLIANCE': 'Compliance',
     'REPAIR': 'LocalInsight',
     'NARRATE': 'Narrator',
+    'FEEDBACK': 'CoreDecision', // RLHF 信号采集
     'DONE': 'Orchestrator',
     'FAILED': 'Orchestrator',
     'TIMEOUT': 'Orchestrator',
-    'HALLUCINATION_DETECTION': 'Orchestrator',
+    'HALLUCINATION_DETECTION': 'HallucinationDetection',
   };
 
   // Sub-Agent 到三人格的映射规则
