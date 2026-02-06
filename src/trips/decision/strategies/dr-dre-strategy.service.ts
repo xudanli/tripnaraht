@@ -27,7 +27,7 @@
  * - 不再使用"魔法参数 if-else"，而是"人类能力模型驱动的控制器"
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import {
   WorldModelContext,
@@ -38,6 +38,8 @@ import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, Decis
 import { DayProfile, PaceConstraints, RollingFatigueIssue } from '../interfaces/day-profile.interface';
 import { SplitOperation, BufferDayOperation, DrDreOperation } from '../interfaces/dr-dre-operation.interface';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
+import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
+import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
 @Injectable()
 export class DrDreStrategy implements DecisionPersonaStrategy {
@@ -46,6 +48,8 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
 
   constructor(
     private readonly fatigueCalculator: FatigueCalculatorService,
+    @Optional() private readonly airbnbIntegration?: AirbnbIntegrationService,
+    @Optional() private readonly bookingComIntegration?: BookingComIntegrationService,
   ) {}
 
   /**
@@ -66,6 +70,134 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
 
     const pace = this.buildPaceConstraints(world);
     let dayProfiles = this.buildDayProfiles(plan, pace);
+
+    // 0️⃣.5 检查住宿位置对路线节奏的影响（Airbnb 集成）
+    if (this.airbnbIntegration && plan.segments.length > 0) {
+      try {
+        // 为每日路线检查住宿位置
+        const segmentsByDay = new Map<number, RouteSegment[]>();
+        for (const segment of plan.segments) {
+          const dayIndex = segment.dayIndex || 0;
+          if (!segmentsByDay.has(dayIndex)) {
+            segmentsByDay.set(dayIndex, []);
+          }
+          segmentsByDay.get(dayIndex)!.push(segment);
+        }
+
+        for (const [dayIndex, daySegments] of segmentsByDay.entries()) {
+          const lastSegment = daySegments[daySegments.length - 1];
+          const endPointLocation = lastSegment.metadata?.endLocation || 
+                                   lastSegment.metadata?.toLocation ||
+                                   lastSegment.metadata?.coordinates;
+
+          if (endPointLocation && endPointLocation.lat && endPointLocation.lng) {
+            // 估算日期
+            const currentYear = new Date().getFullYear();
+            const month = world.physical.month;
+            const dayDate = new Date(currentYear, month - 1, dayIndex + 1);
+            const checkinDate = dayDate.toISOString().split('T')[0];
+            const checkoutDate = new Date(dayDate.getTime() + 86400000).toISOString().split('T')[0];
+            const partySize = (world.human as any)?.partySize || 2;
+
+            // 检查住宿位置对路线节奏的影响
+            const impact = await this.airbnbIntegration.checkAccommodationImpactOnPace(
+              { lat: endPointLocation.lat, lng: endPointLocation.lng },
+              checkinDate,
+              checkoutDate,
+              partySize,
+            );
+
+            // 如果影响较大（HIGH），调整该日的疲劳指数
+            if (impact.impact === 'HIGH' && impact.distanceToNearestAccommodation > 10000) {
+              // 增加额外的移动距离，影响疲劳指数
+              const additionalDistanceKm = impact.distanceToNearestAccommodation / 1000;
+              const dayProfile = dayProfiles.find(d => d.dayIndex === dayIndex);
+              if (dayProfile) {
+                // 增加距离和疲劳指数
+                // 注意：DayProfile 没有 distanceKm 字段，这里只更新疲劳指数
+                // dayProfile.distanceKm += additionalDistanceKm; // 已移除
+                dayProfile.fatigueIndex = Math.min(
+                  dayProfile.fatigueIndex * (1 + additionalDistanceKm / 50), // 每增加 50km 增加 100% 疲劳
+                  2.0 // 限制最大疲劳指数
+                );
+                this.logger.debug(
+                  `Day ${dayIndex}: 住宿距离 ${(impact.distanceToNearestAccommodation / 1000).toFixed(1)}km，调整疲劳指数至 ${dayProfile.fatigueIndex.toFixed(2)}`
+                );
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Airbnb pace impact check failed: ${error.message}, continuing with original pace`);
+        // 降级：继续使用原始节奏，不阻塞决策流程
+      }
+    }
+
+    // 0️⃣.6 检查租车取车/还车位置对路线节奏的影响（Booking.com 集成）
+    if (this.bookingComIntegration && plan.segments.length > 0) {
+      try {
+        const segmentsByDay = new Map<number, RouteSegment[]>();
+        for (const segment of plan.segments) {
+          const dayIndex = segment.dayIndex || 0;
+          if (!segmentsByDay.has(dayIndex)) {
+            segmentsByDay.set(dayIndex, []);
+          }
+          segmentsByDay.get(dayIndex)!.push(segment);
+        }
+
+        for (const [dayIndex, daySegments] of segmentsByDay.entries()) {
+          const firstSegment = daySegments[0];
+          const lastSegment = daySegments[daySegments.length - 1];
+          
+          const pickupLocation = firstSegment.metadata?.startLocation || 
+                                firstSegment.metadata?.fromLocation ||
+                                firstSegment.metadata?.coordinates;
+          const dropoffLocation = lastSegment.metadata?.endLocation || 
+                                 lastSegment.metadata?.toLocation ||
+                                 lastSegment.metadata?.coordinates;
+
+          if (pickupLocation && dropoffLocation && 
+              pickupLocation.lat && pickupLocation.lng &&
+              dropoffLocation.lat && dropoffLocation.lng) {
+            
+            // 估算日期和时间
+            const currentYear = new Date().getFullYear();
+            const month = world.physical.month;
+            const dayDate = new Date(currentYear, month - 1, dayIndex + 1);
+            const pickupTime = '10:00';
+            const dropoffTime = '18:00';
+            const driverAge = (world.human as any)?.driverAge || 25;
+
+            // 检查租车对节奏的影响
+            const impact = await this.bookingComIntegration.checkCarRentalImpactOnPace(
+              pickupLocation,
+              dropoffLocation,
+              pickupTime,
+              dropoffTime,
+              driverAge,
+            );
+
+            // 如果影响较大（HIGH），调整该日的疲劳指数
+            if (impact.impactLevel === 'HIGH') {
+              const dayProfile = dayProfiles.find(d => d.dayIndex === dayIndex);
+              if (dayProfile) {
+                // 增加额外的移动距离（取车/还车位置偏离路线）
+                const additionalDistanceKm = impact.distanceToPickupLocation / 1000;
+                dayProfile.fatigueIndex = Math.min(
+                  dayProfile.fatigueIndex * (1 + additionalDistanceKm / 50),
+                  2.0
+                );
+                this.logger.debug(
+                  `Day ${dayIndex}: 租车位置影响节奏，调整疲劳指数至 ${dayProfile.fatigueIndex.toFixed(2)}`
+                );
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Booking.com car rental impact check failed: ${error.message}`);
+      }
+    }
 
     const logs: DecisionLogEntry[] = [];
 

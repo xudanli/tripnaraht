@@ -16,6 +16,7 @@ import { DataCollectionService } from './services/data-collection.service'; // �
 import { DEMResolutionCacheService } from './services/dem-resolution-cache.service'; // 🔴 P0 新增：DEM分辨率缓存
 import { PrismaModule } from '../prisma/prisma.module';
 import { DecisionModule } from '../trips/decision/decision.module';
+import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
 
 /**
  * 数据质量模块
@@ -52,6 +53,7 @@ import { DecisionModule } from '../trips/decision/decision.module';
   imports: [
     PrismaModule,
     forwardRef(() => DecisionModule),
+    PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于复杂数据质量检查）
     // ScheduleModule已在AppModule中全局导入，无需重复导入
   ],
   providers: [

@@ -103,6 +103,9 @@ import { DecisionSupportService } from './services/decision-support.service';
 import { RhythmMatchingService } from './services/rhythm-matching.service';
 import { MultiPersonDecisionService } from './services/multi-person-decision.service';
 import { TrainingModule } from '../../agent/training/training.module';
+import { ExaModule } from '../../mcp/exa.module';
+import { AirbnbModule } from '../../mcp/airbnb.module';
+import { BookingComModule } from '../../mcp/booking-com.module';
 
 // 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
 let DataQualityModule: any;
@@ -132,6 +135,9 @@ try {
     ...(enableContextEngineModule ? [ContextEngineModule] : []),
     ...(enableSkillsModule ? [forwardRef(() => SkillsModule)] : []),
     TrainingModule, // Iterative Deployment 训练模块
+    ExaModule, // Exa 集成模块（实时信息搜索）
+    AirbnbModule, // Airbnb 集成模块（住宿搜索）
+    BookingComModule, // Booking.com 集成模块（租车搜索）
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）

@@ -82,6 +82,7 @@ import { DataModelingModule } from '../data-modeling/data-modeling.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TrainingModule } from './training/training.module';
 import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
+import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
 
 /**
  * Agent Module
@@ -111,6 +112,7 @@ import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
     PrismaModule, // Prisma 模块（用于数据库访问）
     TrainingModule, // Iterative Deployment 训练模块
     forwardRef(() => DecisionDraftModule), // 使用 forwardRef 避免循环依赖
+    PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
   ],
   controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
   providers: [

@@ -48,6 +48,9 @@ import {
   checkCoreExperienceCoverage,
 } from '../models/route-philosophy.model';
 import { RoutePhilosophy } from '../models/route-philosophy.model';
+import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
+import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
+import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
 @Injectable()
 export class NeptuneStrategy implements DecisionPersonaStrategy {
@@ -58,6 +61,9 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
     private readonly spatialReplacement: SpatialReplacementService,
     private readonly spatialIssueDetector: SpatialIssueDetectorService,
     @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
+    @Optional() private readonly exaIntegration?: ExaIntegrationService,
+    @Optional() private readonly airbnbIntegration?: AirbnbIntegrationService,
+    @Optional() private readonly bookingComIntegration?: BookingComIntegrationService,
   ) {}
 
   /**
@@ -139,6 +145,71 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
       );
 
       if (!operation) {
+        // 找不到合理替代：尝试使用 Exa 搜索实时替代方案
+        const exaAlternative = await this.searchExaAlternatives(issue, world, routeDirection);
+        
+        if (exaAlternative) {
+          // 使用 Exa 找到的替代方案
+          logs.push({
+            persona: 'NEPTUNE',
+            action: 'REPLACE',
+            explanation: `发现 ${issue.type}（${issue.reason}），通过实时信息搜索找到替代方案: ${exaAlternative.explanation}`,
+            reasonCodes: ['EXA_ALTERNATIVE_FOUND'],
+            evidenceRefs: [issue.issueId, exaAlternative.newPoiId || ''],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'PHYSICAL',
+            decisionStage: 'SPATIAL_REPAIR',
+          });
+          
+          // 应用 Exa 替代方案（简化处理：记录日志，实际替换需要进一步处理）
+          // TODO: 将 Exa 替代方案转换为 ReplacementOperation
+          continue;
+        }
+
+        // 如果问题是住宿相关，尝试使用 Airbnb 搜索替代住宿
+        if (issue.type === 'POI_UNAVAILABLE' && issue.poiId && issue.originalLocation) {
+          const airbnbAlternative = await this.searchAirbnbAlternatives(issue, world, plan);
+          
+          if (airbnbAlternative) {
+            logs.push({
+              persona: 'NEPTUNE',
+              action: 'REPLACE',
+              explanation: `发现 ${issue.type}（${issue.reason}），通过 Airbnb 搜索找到路线内的替代住宿: ${airbnbAlternative.explanation}`,
+              reasonCodes: ['AIRBNB_ALTERNATIVE_FOUND'],
+              evidenceRefs: [issue.issueId, airbnbAlternative.newPoiId || ''],
+              timestamp: new Date().toISOString(),
+              decisionSource: 'HEURISTIC',
+              decisionStage: 'SPATIAL_REPAIR',
+            });
+            
+            // 应用 Airbnb 替代方案（简化处理：记录日志）
+            continue;
+          }
+        }
+
+        // 如果问题是交通相关（公共交通不可用），尝试使用 Booking.com 搜索租车
+        if (issue.type === 'POI_UNAVAILABLE' && 
+            issue.originalLocation && 
+            (issue.reason?.includes('transport') || issue.reason?.includes('交通'))) {
+          const carRentalAlternative = await this.searchCarRentalAlternatives(issue, world, plan);
+          
+          if (carRentalAlternative) {
+            logs.push({
+              persona: 'NEPTUNE',
+              action: 'REPLACE',
+              explanation: `发现 ${issue.type}（${issue.reason}），通过 Booking.com 搜索找到租车替代方案: ${carRentalAlternative.explanation}`,
+              reasonCodes: ['BOOKING_COM_CAR_RENTAL_FOUND'],
+              evidenceRefs: [issue.issueId, carRentalAlternative.newPoiId || ''],
+              timestamp: new Date().toISOString(),
+              decisionSource: 'HEURISTIC',
+              decisionStage: 'SPATIAL_REPAIR',
+            });
+            
+            // 应用租车替代方案（简化处理：记录日志）
+            continue;
+          }
+        }
+        
         // 找不到合理替代：不强行修复，记录日志
         logs.push({
           persona: 'NEPTUNE',
@@ -383,6 +454,163 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
 
       default:
         return null;
+    }
+  }
+
+  /**
+   * 使用 Exa 搜索替代方案
+   */
+  private async searchExaAlternatives(
+    issue: SpatialIssue,
+    world: WorldModelContext,
+    routeDirection: any,
+  ): Promise<ReplacementOperation | null> {
+    if (!this.exaIntegration) {
+      return null;
+    }
+
+    try {
+      // 构建搜索查询
+      const destination = issue.originalLocation 
+        ? `${issue.originalLocation.lat},${issue.originalLocation.lng}`
+        : world.physical.countryCode;
+      const category = issue.type === 'POI_UNAVAILABLE' ? '景点' : '入口点';
+      const month = world.physical.month;
+
+      // 搜索替代方案
+      const alternatives = await this.exaIntegration.searchAlternativeDestinations(
+        destination,
+        category,
+        month,
+        new Date().getFullYear(),
+      );
+
+      if (alternatives.alternatives.length === 0) {
+        return null;
+      }
+
+      // 选择第一个替代方案（简化处理）
+      const alternative = alternatives.alternatives[0];
+      
+      // 返回一个简化的替换操作（实际应用中需要更详细的处理）
+      return {
+        type: issue.type === 'POI_UNAVAILABLE' ? 'POI_REPLACEMENT' : 'ENTRY_REPLACEMENT',
+        originalPoiId: issue.poiId || '',
+        newPoiId: `exa_${Date.now()}`, // 临时 ID，实际需要从搜索结果中提取
+        score: 0.5, // 默认评分
+        explanation: `通过实时信息搜索找到替代方案: ${alternative.name}${alternative.description ? ` - ${alternative.description}` : ''}`,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Exa alternative search failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 使用 Booking.com 搜索租车替代方案
+   */
+  private async searchCarRentalAlternatives(
+    issue: SpatialIssue,
+    world: WorldModelContext,
+    plan: RoutePlanDraft,
+  ): Promise<ReplacementOperation | null> {
+    if (!this.bookingComIntegration || !issue.originalLocation) {
+      return null;
+    }
+
+    try {
+      // 估算日期和时间
+      const currentYear = new Date().getFullYear();
+      const month = world.physical.month;
+      const dayDate = new Date(currentYear, month - 1, 1);
+      const pickupTime = '10:00';
+      const dropoffTime = '18:00';
+      const driverAge = (world.human as any)?.driverAge || 25;
+
+      // 搜索路线走廊内的租车（5km 半径）
+      const availability = await this.bookingComIntegration.searchCarRentalsInCorridor(
+        issue.originalLocation,
+        5, // 5km 半径
+        pickupTime,
+        dropoffTime,
+        driverAge,
+      );
+
+      if (!availability.available || !availability.rentals || availability.rentals.length === 0) {
+        return null;
+      }
+
+      // 选择价格最低的租车
+      const cheapest = availability.rentals.reduce((prev, curr) => {
+        const prevPrice = prev.price?.amount || Infinity;
+        const currPrice = curr.price?.amount || Infinity;
+        return currPrice < prevPrice ? curr : prev;
+      });
+
+      return {
+        type: 'POI_REPLACEMENT',
+        originalPoiId: issue.poiId || '',
+        newPoiId: cheapest.id,
+        score: 0.7, // 租车替代方案评分略高于住宿（因为更灵活）
+        explanation: `找到路线内的租车替代方案: ${cheapest.company} - ${cheapest.vehicleType}（价格 ${cheapest.price?.currency} ${cheapest.price?.amount}）`,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Booking.com car rental search failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 使用 Airbnb 搜索替代住宿
+   */
+  private async searchAirbnbAlternatives(
+    issue: SpatialIssue,
+    world: WorldModelContext,
+    plan: RoutePlanDraft,
+  ): Promise<ReplacementOperation | null> {
+    if (!this.airbnbIntegration || !issue.originalLocation) {
+      return null;
+    }
+
+    try {
+      // 估算日期（简化处理）
+      const currentYear = new Date().getFullYear();
+      const month = world.physical.month;
+      const dayDate = new Date(currentYear, month - 1, 1);
+      const checkinDate = dayDate.toISOString().split('T')[0];
+      const checkoutDate = new Date(dayDate.getTime() + 86400000).toISOString().split('T')[0];
+      const partySize = (world.human as any)?.partySize || 2;
+
+      // 搜索路线走廊内的住宿（5km 半径）
+      const availability = await this.airbnbIntegration.searchAccommodationsInCorridor(
+        issue.originalLocation,
+        5, // 5km 半径
+        checkinDate,
+        checkoutDate,
+        partySize,
+      );
+
+      if (!availability.available || !availability.listings || availability.listings.length === 0) {
+        return null;
+      }
+
+      // 选择最近的住宿
+      const nearest = availability.listings.reduce((prev, curr) => {
+        const prevDist = prev.distanceFromPoint || Infinity;
+        const currDist = curr.distanceFromPoint || Infinity;
+        return currDist < prevDist ? curr : prev;
+      });
+
+      return {
+        type: 'POI_REPLACEMENT',
+        originalPoiId: issue.poiId || '',
+        newPoiId: nearest.id,
+        score: 0.6, // 默认评分
+        explanation: `找到路线内的替代住宿: ${nearest.name}（距离 ${(nearest.distanceFromPoint || 0 / 1000).toFixed(1)}km）`,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Airbnb alternative search failed: ${error.message}`);
+      return null;
     }
   }
 

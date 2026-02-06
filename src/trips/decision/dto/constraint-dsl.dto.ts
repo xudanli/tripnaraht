@@ -53,7 +53,7 @@ export class ConstraintDSLDto implements ConstraintDSL {
 
 export class DetectConflictsRequestDto {
   @ApiProperty({ description: '约束DSL' })
-  constraints: ConstraintDSLDto;
+  constraints!: ConstraintDSLDto;
 
   @ApiPropertyOptional({ description: '行程计划（可选，用于更精确的冲突检测）' })
   plan?: any;
@@ -64,8 +64,8 @@ export class DetectConflictsRequestDto {
 
 export class GenerateMultiplePlansRequestDto {
   @ApiProperty({ description: '世界状态' })
-  state: any;
+  state!: any;
 
   @ApiProperty({ description: '约束DSL' })
-  constraints: ConstraintDSLDto;
+  constraints!: ConstraintDSLDto;
 }

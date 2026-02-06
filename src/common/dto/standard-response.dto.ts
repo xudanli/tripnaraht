@@ -75,4 +75,7 @@ export enum ErrorCode {
   
   // 禁止访问（无权限）
   FORBIDDEN = 'FORBIDDEN',
+  
+  // 请求错误
+  BAD_REQUEST = 'BAD_REQUEST',
 }

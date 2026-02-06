@@ -18,6 +18,7 @@ import { DemModule } from '../trips/dem/dem.module';
 import { LlmModule } from '../llm/llm.module';
 import { TransportModule } from '../transport/transport.module';
 import { DataContractsModule } from '../data-contracts/data-contracts.module';
+import { ExaModule } from '../mcp/exa.module';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -220,6 +221,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
     forwardRef(() => LlmModule), // 导入 LlmModule 以支持规划技能使用 LlmService
     forwardRef(() => DataContractsModule), // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
+    ExaModule, // 导入 ExaModule 以支持 WorldBuildContextSkill 使用 ExaIntegrationService
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）

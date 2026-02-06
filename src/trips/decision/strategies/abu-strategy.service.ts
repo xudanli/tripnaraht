@@ -15,16 +15,25 @@
  * - 日志里只写：DEM 证据、封路状态、Hazard 信息、合规/签证/季节窗口
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
 import { DecisionResult, DecisionAction, DecisionSource, DecisionStage } from '../shared/decision-result.types';
 import { validatePhysicalRealityModel } from '../models/physical-reality.model';
+import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
+import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
+import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
 @Injectable()
 export class AbuStrategy implements DecisionPersonaStrategy {
   private readonly logger = new Logger(AbuStrategy.name);
   readonly personaName = 'ABU' as const;
+
+  constructor(
+    @Optional() private readonly exaIntegration?: ExaIntegrationService,
+    @Optional() private readonly airbnbIntegration?: AirbnbIntegrationService,
+    @Optional() private readonly bookingComIntegration?: BookingComIntegrationService,
+  ) {}
 
   /**
    * 评估计划
@@ -173,6 +182,71 @@ export class AbuStrategy implements DecisionPersonaStrategy {
                 road.seasonOpenTo && physical.month > road.seasonOpenTo))
     );
 
+    // 3️⃣.5 搜索实时风险信息（Exa 集成）
+    let realTimeRiskInfo: any = null;
+    if (this.exaIntegration && world.routeDirection) {
+      try {
+        const routeName = world.routeDirection.name || plan.routeDirectionId;
+        realTimeRiskInfo = await this.exaIntegration.searchRealTimeRisks(
+          physical.countryCode,
+          routeName,
+          physical.month,
+          new Date().getFullYear(),
+        );
+
+        if (realTimeRiskInfo.hasRisk) {
+          this.logger.warn(
+            `计划 ${plan.tripId} 检测到实时风险: ${realTimeRiskInfo.riskType} - ${realTimeRiskInfo.riskDescription}`
+          );
+          
+          // 如果检测到道路封闭风险，直接拒绝
+          if (realTimeRiskInfo.riskType === 'ROAD_CLOSED' || realTimeRiskInfo.riskType === 'TRANSPORT') {
+            return {
+              allowed: false,
+              action: 'REJECT',
+              logs: [
+                {
+                  persona: 'ABU',
+                  action: 'REJECT',
+                  explanation: `实时信息显示路线封闭或交通中断: ${realTimeRiskInfo.riskDescription || '未知原因'}`,
+                  reasonCodes: ['REALTIME_ROAD_CLOSED'],
+                  evidenceRefs: [],
+                  timestamp: new Date().toISOString(),
+                  decisionSource: 'PHYSICAL',
+                  decisionStage: 'ABU_GATE',
+                },
+              ],
+            };
+          }
+
+          // 其他高风险（天气、地质灾害、政治）也拒绝
+          if (realTimeRiskInfo.riskType === 'WEATHER' || 
+              realTimeRiskInfo.riskType === 'GEOLOGICAL' || 
+              realTimeRiskInfo.riskType === 'POLITICAL') {
+            return {
+              allowed: false,
+              action: 'REJECT',
+              logs: [
+                {
+                  persona: 'ABU',
+                  action: 'REJECT',
+                  explanation: `实时信息显示高风险: ${realTimeRiskInfo.riskType} - ${realTimeRiskInfo.riskDescription || '未知原因'}`,
+                  reasonCodes: ['REALTIME_HIGH_RISK'],
+                  evidenceRefs: [],
+                  timestamp: new Date().toISOString(),
+                  decisionSource: 'PHYSICAL',
+                  decisionStage: 'ABU_GATE',
+                },
+              ],
+            };
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Exa real-time risk search failed: ${error.message}, continuing with structured data`);
+        // 降级：继续使用结构化数据，不阻塞决策流程
+      }
+    }
+
     if (closedRoads.length > 0) {
       this.logger.warn(
         `计划 ${plan.tripId} 包含 ${closedRoads.length} 条封闭道路`
@@ -237,6 +311,179 @@ export class AbuStrategy implements DecisionPersonaStrategy {
         `计划 ${plan.tripId} 可能依赖已取消的渡轮: ${cancelledFerries.map(f => f.ferryId).join(', ')}`
       );
       // 注意：这里不直接拒绝，因为可能不依赖，但记录警告
+    }
+
+    // 5️⃣.5 检查关键节点住宿可用性（Airbnb 集成）
+    if (this.airbnbIntegration && plan.segments.length > 0) {
+      try {
+        // 提取关键节点：第一天起点和最后一天终点
+        const firstSegment = plan.segments.find(s => s.dayIndex === 0 || s.dayIndex === 1) || plan.segments[0];
+        const lastSegment = plan.segments[plan.segments.length - 1];
+        
+        // 从 metadata 中提取坐标（简化处理）
+        const firstNodeLocation = firstSegment.metadata?.startLocation || 
+                                  firstSegment.metadata?.fromLocation ||
+                                  firstSegment.metadata?.coordinates;
+        const lastNodeLocation = lastSegment.metadata?.endLocation || 
+                                lastSegment.metadata?.toLocation ||
+                                lastSegment.metadata?.coordinates;
+
+        // 估算日期（简化处理：基于月份和 dayIndex）
+        const currentYear = new Date().getFullYear();
+        const month = physical.month;
+        const firstDayDate = new Date(currentYear, month - 1, 1);
+        const lastDayDate = new Date(currentYear, month - 1, plan.segments.length);
+        
+        const checkinDate = firstDayDate.toISOString().split('T')[0];
+        const checkoutDate = new Date(lastDayDate.getTime() + 86400000).toISOString().split('T')[0]; // 加一天
+
+        // 估算团队人数（从 human 模型或默认值）
+        const partySize = (world.human as any)?.partySize || 2;
+
+        // 检查第一天起点的住宿可用性（如果有关键节点坐标）
+        if (firstNodeLocation && firstNodeLocation.lat && firstNodeLocation.lng) {
+          const firstDayAvailability = await this.airbnbIntegration.checkCriticalNodeAvailability(
+            { lat: firstNodeLocation.lat, lng: firstNodeLocation.lng },
+            checkinDate,
+            new Date(firstDayDate.getTime() + 86400000).toISOString().split('T')[0],
+            partySize,
+          );
+
+          if (!firstDayAvailability.available) {
+            this.logger.warn(
+              `计划 ${plan.tripId} 第一天起点没有可用住宿`
+            );
+            return {
+              allowed: false,
+              action: 'REJECT',
+              logs: [
+                {
+                  persona: 'ABU',
+                  action: 'REJECT',
+                  explanation: `第一天起点没有可用住宿，路线不可执行`,
+                  reasonCodes: ['NO_ACCOMMODATION_AT_START'],
+                  evidenceRefs: [firstSegment.segmentId],
+                  timestamp: new Date().toISOString(),
+                  decisionSource: 'HEURISTIC',
+                  decisionStage: 'ABU_GATE',
+                },
+              ],
+            };
+          }
+        }
+
+        // 检查最后一天终点的住宿可用性（如果有关键节点坐标）
+        if (lastNodeLocation && lastNodeLocation.lat && lastNodeLocation.lng) {
+          const lastDayCheckin = new Date(lastDayDate.getTime() - 86400000).toISOString().split('T')[0];
+          const lastDayAvailability = await this.airbnbIntegration.checkCriticalNodeAvailability(
+            { lat: lastNodeLocation.lat, lng: lastNodeLocation.lng },
+            lastDayCheckin,
+            checkoutDate,
+            partySize,
+          );
+
+          if (!lastDayAvailability.available) {
+            this.logger.warn(
+              `计划 ${plan.tripId} 最后一天终点没有可用住宿`
+            );
+            return {
+              allowed: false,
+              action: 'REJECT',
+              logs: [
+                {
+                  persona: 'ABU',
+                  action: 'REJECT',
+                  explanation: `最后一天终点没有可用住宿，路线不可执行`,
+                  reasonCodes: ['NO_ACCOMMODATION_AT_END'],
+                  evidenceRefs: [lastSegment.segmentId],
+                  timestamp: new Date().toISOString(),
+                  decisionSource: 'HEURISTIC',
+                  decisionStage: 'ABU_GATE',
+                },
+              ],
+            };
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Airbnb accommodation check failed: ${error.message}, continuing with other checks`);
+        // 降级：继续其他检查，不阻塞决策流程
+      }
+    }
+
+    // 5️⃣.6 检查关键节点租车可用性（Booking.com 集成）
+    // 注意：只有在路线明确需要租车时才检查（如 road trip、self-drive 标签）
+    if (this.bookingComIntegration && plan.segments.length > 0) {
+      try {
+        // 检查路线是否需要租车（通过 RouteDirection tags 或 metadata）
+        const routeTags = (world.routeDirection as any)?.tags || [];
+        const needsCarRental = routeTags.includes('road-trip') || 
+                              routeTags.includes('self-drive') ||
+                              (world.routeDirection as any)?.metadata?.needsCarRental === true;
+
+        if (!needsCarRental) {
+          // 路线不需要租车，跳过检查
+          this.logger.debug('Route does not require car rental, skipping check');
+        } else {
+          // 提取关键节点：第一天起点和最后一天终点
+          const firstSegment = plan.segments.find(s => s.dayIndex === 0 || s.dayIndex === 1) || plan.segments[0];
+          const lastSegment = plan.segments[plan.segments.length - 1];
+          
+          const firstNodeLocation = firstSegment.metadata?.startLocation || 
+                                    firstSegment.metadata?.fromLocation ||
+                                    firstSegment.metadata?.coordinates;
+          const lastNodeLocation = lastSegment.metadata?.endLocation || 
+                                  lastSegment.metadata?.toLocation ||
+                                  lastSegment.metadata?.coordinates;
+
+          if (firstNodeLocation && lastNodeLocation && 
+              firstNodeLocation.lat && firstNodeLocation.lng &&
+              lastNodeLocation.lat && lastNodeLocation.lng) {
+            // 估算日期和时间
+            const currentYear = new Date().getFullYear();
+            const month = physical.month;
+            const firstDayDate = new Date(currentYear, month - 1, 1);
+            const lastDayDate = new Date(currentYear, month - 1, plan.segments.length);
+            
+            const pickupTime = '10:00';
+            const dropoffTime = '10:00';
+            const driverAge = (world.human as any)?.driverAge || 25;
+
+            // 检查租车可用性
+            const carRentalAvailability = await this.bookingComIntegration.checkCriticalNodeCarRentalAvailability(
+              { lat: firstNodeLocation.lat, lng: firstNodeLocation.lng },
+              { lat: lastNodeLocation.lat, lng: lastNodeLocation.lng },
+              pickupTime,
+              dropoffTime,
+              driverAge,
+            );
+
+            if (!carRentalAvailability.available) {
+              this.logger.warn(
+                `计划 ${plan.tripId} 关键节点没有可用租车（路线需要租车）`
+              );
+              return {
+                allowed: false,
+                action: 'REJECT',
+                logs: [
+                  {
+                    persona: 'ABU',
+                    action: 'REJECT',
+                    explanation: `路线需要租车，但关键节点没有可用租车，路线不可执行`,
+                    reasonCodes: ['NO_CAR_RENTAL_AVAILABLE'],
+                    evidenceRefs: [firstSegment.segmentId, lastSegment.segmentId],
+                    timestamp: new Date().toISOString(),
+                    decisionSource: 'HEURISTIC',
+                    decisionStage: 'ABU_GATE',
+                  },
+                ],
+              };
+            }
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Booking.com car rental check failed: ${error.message}, continuing with other checks`);
+        // 降级：继续其他检查，不阻塞决策流程
+      }
     }
 
     // 6️⃣ 检查合规（许可、向导、签证）

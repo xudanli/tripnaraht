@@ -12,6 +12,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { PhysicalRealityRetrievalService } from './physical-reality-retrieval.service';
 
 export interface PhysicalRealityQualityMetrics {
@@ -265,14 +266,14 @@ export class PhysicalRealityQualityMonitorService {
       },
     });
 
-    const chunksWithMetadata = await this.prisma.chunk.count({
-      where: {
-        type: {
-          in: ['road_status', 'ferry_schedules', 'weather_windows'],
-        },
-        metadata: { not: null },
-      },
-    });
+    // 使用原始 SQL 查询，因为 Prisma 对 JSON null 检查支持有限
+    const chunksWithMetadataResult = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM chunks
+      WHERE type IN ('road_status', 'ferry_schedules', 'weather_windows')
+        AND metadata IS NOT NULL
+    `;
+    const chunksWithMetadata = Number(chunksWithMetadataResult[0]?.count || 0);
 
     const chunksWithEmbedding = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) as count

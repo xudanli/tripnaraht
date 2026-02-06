@@ -672,6 +672,9 @@ export class ItineraryItemsService {
     const end = updateDto.endTime ? new Date(updateDto.endTime) : existing.endTime;
 
     // 基础校验
+    if (!start || !end) {
+      throw new BadRequestException('开始时间和结束时间不能为空');
+    }
     if (start >= end) {
       throw new BadRequestException('结束时间必须晚于开始时间');
     }
@@ -688,7 +691,7 @@ export class ItineraryItemsService {
       if (!tripDay) {
         throw new NotFoundException(`找不到指定的行程日期 (ID: ${targetTripDayId})`);
       }
-    } else if (updateDto.startTime && start) {
+    } else if (updateDto.startTime) {
       // 如果更新了 startTime 但未提供 tripDayId，根据新的 startTime 找到对应的 TripDay
       const startDate = DateTime.fromJSDate(start, { zone: 'utc' });
       const dayStart = startDate.startOf('day').toJSDate();

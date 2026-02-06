@@ -46,6 +46,15 @@ import { ContextEngineModule } from './agent/context-engine/context-engine.modul
 import { ChainOfWorkModule } from './chain-of-work/chain-of-work.module';
 import { DecisionDraftModule } from './decision-draft/decision-draft.module';
 import { AdminModule } from './admin/admin.module';
+import { AirbnbModule } from './mcp/airbnb.module';
+import { AmadeusModule } from './mcp/amadeus.module';
+import { ExaModule } from './mcp/exa.module';
+import { GoogleCalendarModule } from './mcp/google-calendar.module';
+import { BookingComModule } from './mcp/booking-com.module';
+import { PostgreSQLMcpModule } from './mcp/postgresql-mcp.module';
+import { BrowserbaseMcpModule } from './mcp/browserbase-mcp.module';
+import { GoogleMapsDirectModule } from './mcp/google-maps-direct.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -109,6 +118,15 @@ import { AdminModule } from './admin/admin.module';
     ChainOfWorkModule, // Chain-of-Work 引擎模块（步骤草案显性化）
     DecisionDraftModule, // Decision-First Agent 引擎模块（决策草案生成）
     AdminModule, // Admin模块（数据质量管理等）
+    AirbnbModule, // Airbnb MCP 模块（房源搜索和详情查询）
+    AmadeusModule, // Amadeus MCP 模块（航班搜索）
+    ExaModule, // Exa MCP 模块（Web 搜索、代码搜索、公司研究）
+    GoogleCalendarModule, // Google Calendar MCP 模块（行程同步、事件管理）
+    BookingComModule, // Booking.com MCP 模块（租车搜索，通过 RapidAPI）
+    PostgreSQLMcpModule, // PostgreSQL MCP 模块（数据库查询和执行）
+    BrowserbaseMcpModule, // Browserbase MCP 模块（浏览器自动化）
+    GoogleMapsDirectModule, // Google Maps 直接 API 模块（路线规划、地理编码等）
+    AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
   ],
 })
 export class AppModule {}

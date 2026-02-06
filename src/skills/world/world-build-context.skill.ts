@@ -19,6 +19,7 @@ import { RouteDirectionsService } from '../../route-directions/route-directions.
 import { PhysicalRealityModel } from '../../trips/decision/models/physical-reality.model';
 import { HumanCapabilityModel } from '../../trips/decision/models/human-capability.model';
 import { createHumanCapabilityModelFromProfile } from '../../trips/decision/models/human-capability.model';
+import { ExaIntegrationService } from '../../mcp/exa-integration.service';
 
 export interface WorldBuildContextInput extends SkillInput {
   /** 行程 ID（如果有） */
@@ -76,6 +77,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
+    @Optional() private readonly exaIntegration?: ExaIntegrationService,
   ) {}
 
   async execute(input: WorldBuildContextInput): Promise<WorldBuildContextOutput> {
@@ -194,6 +196,64 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         countryCode,
         month: season,
       };
+
+      // 4.5 补充实时信息（Exa 集成）
+      if (this.exaIntegration && routeDirection) {
+        try {
+          const routeName = routeDirection.name || routeDirectionId || '';
+          const realTimeRiskInfo = await this.exaIntegration.searchRealTimeRisks(
+            countryCode,
+            routeName,
+            season,
+            new Date().getFullYear(),
+          );
+
+          // 如果检测到实时风险，补充到 roadStates 或 hazardZones
+          if (realTimeRiskInfo.hasRisk) {
+            this.logger.debug(`检测到实时风险信息: ${realTimeRiskInfo.riskType} - ${realTimeRiskInfo.riskDescription}`);
+            
+            if (realTimeRiskInfo.riskType === 'ROAD_CLOSED' || realTimeRiskInfo.riskType === 'TRANSPORT') {
+              // 补充到 roadStates
+              physical.roadStates.push({
+                roadId: `realtime_${Date.now()}`,
+                status: 'CLOSED',
+                metadata: {
+                  reason: realTimeRiskInfo.riskDescription || '实时信息显示道路封闭',
+                  source: 'EXA_REALTIME',
+                  riskType: realTimeRiskInfo.riskType,
+                  confidence: realTimeRiskInfo.confidence,
+                },
+              });
+            } else if (realTimeRiskInfo.riskType === 'WEATHER' || 
+                       realTimeRiskInfo.riskType === 'GEOLOGICAL') {
+              // 补充到 hazardZones
+              // 注意：HazardZoneState.type 是枚举，WEATHER 对应 FLOOD/ICE，GEOLOGICAL 对应 MUDSLIDE/VOLCANIC
+              const hazardType = realTimeRiskInfo.riskType === 'WEATHER' 
+                ? 'FLOOD' // 或 'ICE'，根据描述判断
+                : 'MUDSLIDE'; // 或 'VOLCANIC'，根据描述判断
+              
+              physical.hazardZones.push({
+                zoneId: `realtime_${Date.now()}`,
+                type: hazardType,
+                level: 'HIGH',
+                seasonality: {
+                  highRiskMonths: [season],
+                  lowRiskMonths: [], // 补充缺失字段
+                },
+                metadata: {
+                  description: realTimeRiskInfo.riskDescription || '实时信息显示高风险',
+                  source: 'EXA_REALTIME',
+                  riskType: realTimeRiskInfo.riskType,
+                  confidence: realTimeRiskInfo.confidence,
+                },
+              });
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`Exa real-time info search failed: ${error.message}, continuing without real-time data`);
+          // 降级：继续构建，不阻塞
+        }
+      }
 
       // TODO: 检查 DEM 数据完整性
       // missingPieces.demGaps = [...];

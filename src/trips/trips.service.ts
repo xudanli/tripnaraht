@@ -38,6 +38,7 @@ import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './servi
 import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
+import { BookingComIntegrationService } from '../mcp/booking-com-integration.service';
 
 @Injectable()
 export class TripsService {
@@ -55,6 +56,108 @@ export class TripsService {
     return uuidRegex.test(uuid.trim());
   }
 
+  /**
+   * 检查行程是否需要租车
+   * 
+   * 判断条件：
+   * 1. 路线距离较长（>100km）
+   * 2. 路线经过偏远地区（公共交通不发达）
+   * 3. 用户明确指定需要租车（通过 metadata）
+   * 4. 路线类型为"自驾"或"road trip"
+   * 
+   * @param dto 创建行程的输入数据（可选）
+   * @param countryCode 目的地国家代码（可选）
+   * @param tripId 行程 ID（可选，用于查询已有行程）
+   * @returns 是否需要租车
+   */
+  async checkCarRentalNeeds(
+    dto?: CreateTripDto,
+    countryCode?: string,
+    tripId?: string,
+  ): Promise<boolean> {
+    // 如果提供了 tripId，从数据库查询
+    if (tripId) {
+      try {
+        // 简化处理：检查 trip metadata 中是否有租车需求标记
+        const trip = await this.prisma.trip.findUnique({
+          where: { id: tripId },
+        });
+
+        if (trip) {
+          const metadata = (trip.metadata as any) || {};
+          if (metadata.needsCarRental === true) {
+            return true;
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Failed to check car rental needs for trip ${tripId}: ${error.message}`);
+      }
+    }
+
+    // 如果提供了 dto，从 DTO 中检查
+    if (dto) {
+      // 检查 DTO 中是否有 metadata 字段（可选）
+      const metadata = (dto as any).metadata || {};
+      if (metadata.needsCarRental === true) {
+        return true;
+      }
+      
+      // 检查目的地国家（某些国家更适合自驾）
+      if (countryCode) {
+        const carRentalFriendlyCountries = ['US', 'CA', 'AU', 'NZ', 'IS', 'NO', 'SE', 'FI'];
+        if (carRentalFriendlyCountries.includes(countryCode.toUpperCase())) {
+          // 这些国家通常更适合自驾，但不一定需要
+          // 这里只是提示，实际决策应该基于路线
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 估算租车成本
+   * 
+   * 注意：此方法需要在路线规划完成后调用，因为需要 RoutePlanDraft
+   * 
+   * @param tripId 行程 ID
+   * @returns 租车成本估算（如果不需要租车或无法估算，返回 0）
+   */
+  async estimateCarRentalCost(tripId: string): Promise<number> {
+    if (!this.bookingComIntegration) {
+      this.logger.debug('BookingComIntegrationService not available, skipping car rental cost estimation');
+      return 0;
+    }
+
+    const needsCarRental = await this.checkCarRentalNeeds(undefined, undefined, tripId);
+    if (!needsCarRental) {
+      return 0;
+    }
+
+    try {
+      // 获取行程信息
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+      });
+
+      if (!trip) {
+        return 0;
+      }
+
+      // 构建简化的 RoutePlanDraft（用于成本估算）
+      // 注意：这里需要从 RouteDirection 和 TripDay 构建 RoutePlanDraft
+      // 简化处理：如果无法构建，返回 0
+      // 实际应用中，应该在路线规划完成后调用此方法
+      // 此时可以调用 bookingComIntegration.estimateCarRentalCost(plan, world)
+
+      this.logger.debug(`Car rental cost estimation for trip ${tripId} requires RoutePlanDraft, skipping for now`);
+      return 0;
+    } catch (error: any) {
+      this.logger.warn(`Car rental cost estimation failed: ${error.message}`);
+      return 0;
+    }
+  }
+
   constructor(
     private prisma: PrismaService,
     private flightPriceService: FlightPriceService,
@@ -66,6 +169,7 @@ export class TripsService {
     private evidenceFiltering: EvidenceFilteringService,
     private evidenceCompletenessChecker: EvidenceCompletenessChecker,
     private evidenceTrigger: EvidenceTriggerService,
+    private bookingComIntegration?: BookingComIntegrationService,
   ) {}
 
   /**
@@ -164,7 +268,21 @@ export class TripsService {
       true // 使用保守估算（旺季价格）
     );
     
-    const remainingBudget = dto.totalBudget - estimatedFlightVisa;
+    // 检查是否需要租车并估算租车成本
+    let estimatedCarRentalCost = 0;
+    const needsCarRental = await this.checkCarRentalNeeds(dto, normalizedCountryCode);
+    if (needsCarRental && this.bookingComIntegration) {
+      try {
+        // 简化处理：使用默认坐标估算（实际应用中应该从 RouteDirection 获取）
+        // 这里暂时跳过，因为需要 RoutePlanDraft，在行程创建时还没有生成
+        // 租车成本估算将在行程规划完成后进行
+        this.logger.debug('Trip may need car rental, cost estimation will be done after route planning');
+      } catch (error: any) {
+        this.logger.warn(`Car rental cost estimation failed: ${error.message}`);
+      }
+    }
+    
+    const remainingBudget = dto.totalBudget - estimatedFlightVisa - estimatedCarRentalCost;
     const dailyBudget = remainingBudget / durationDays;
     
     // 根据每日预算推导酒店档次

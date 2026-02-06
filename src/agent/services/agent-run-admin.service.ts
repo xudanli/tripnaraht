@@ -5,14 +5,18 @@
  * 用于后台管理 Agent 运行（TripRun）和尝试（TripAttempt）
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PostgreSQLMcpService } from '../../mcp/postgresql-mcp.service';
 
 @Injectable()
 export class AgentRunAdminService {
   private readonly logger = new Logger(AgentRunAdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly postgresqlMcp?: PostgreSQLMcpService,
+  ) {}
 
   /**
    * 验证 UUID 格式
@@ -529,5 +533,70 @@ export class AgentRunAdminService {
       maxDuration: durations[durations.length - 1],
       totalRuns: durations.length,
     };
+  }
+
+  /**
+   * 批量更新 TripRun 状态（使用 PostgreSQL MCP）
+   */
+  async batchUpdateRunStatus(
+    runIds: string[],
+    status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+  ): Promise<number> {
+    if (!this.postgresqlMcp || !this.postgresqlMcp.isAvailable()) {
+      // 降级：逐个更新（较慢）
+      this.logger.warn('PostgreSQL MCP service not available, falling back to individual updates');
+      let updated = 0;
+      for (const runId of runIds) {
+        try {
+          await this.prisma.tripRun.update({
+            where: { id: runId },
+            data: { status },
+          });
+          updated++;
+        } catch (error: any) {
+          this.logger.warn(`Failed to update run ${runId}: ${error.message}`);
+        }
+      }
+      return updated;
+    }
+
+    try {
+      const query = `
+        UPDATE "TripRun"
+        SET 
+          status = $1,
+          updated_at = NOW()
+        WHERE id = ANY($2::uuid[])
+      `;
+
+      const result = await this.postgresqlMcp.execute(query, [status, runIds]);
+      return result.rowCount || 0;
+    } catch (error: any) {
+      this.logger.error(`批量更新 TripRun 状态失败: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 清理过期的 TripRun（使用 PostgreSQL MCP）
+   */
+  async cleanupExpiredRuns(retentionDays: number = 90): Promise<number> {
+    if (!this.postgresqlMcp || !this.postgresqlMcp.isAvailable()) {
+      throw new Error('PostgreSQL MCP service not available for cleanup operation');
+    }
+
+    try {
+      const query = `
+        DELETE FROM "TripRun"
+        WHERE status = 'COMPLETED'
+          AND completed_at < NOW() - INTERVAL '${retentionDays} days'
+      `;
+
+      const result = await this.postgresqlMcp.execute(query);
+      return result.rowCount || 0;
+    } catch (error: any) {
+      this.logger.error(`清理过期 TripRun 失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }

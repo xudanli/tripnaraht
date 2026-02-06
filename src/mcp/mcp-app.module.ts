@@ -13,6 +13,10 @@ import { DecisionModule } from '../trips/decision/decision.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { SkillsModule } from '../skills/skills.module';
+import { PostgreSQLMcpModule } from './postgresql-mcp.module';
+import { BrowserbaseMcpModule } from './browserbase-mcp.module';
+import { GoogleMapsDirectModule } from './google-maps-direct.module';
+import { WeatherDirectModule } from './weather-direct.module';
 
 // DecisionModule 在 MCP 模式下已修复（使用 PlacesLiteModule），默认禁用（避免启动阻塞）
 // 如需启用，设置 ENABLE_DECISION_SKILLS=true
@@ -38,6 +42,10 @@ const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
     ...(enableReadinessModule ? [ReadinessModule] : []),
     RouteDirectionsModule,
     SkillsModule,
+    PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于智能体工具）
+    BrowserbaseMcpModule, // Browserbase MCP 模块（用于智能体工具）
+    GoogleMapsDirectModule, // Google Maps 直接 API 模块（路线规划、地理编码等）
+    WeatherDirectModule, // Weather 直接 API 模块（使用 Open-Meteo API，无需 Python）
   ],
 })
 export class McpAppModule {}

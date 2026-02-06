@@ -8,10 +8,11 @@
  * 输出：visaRiskLevel + recommendedLeadTime + specialRules[]
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PackStorageService } from '../../trips/readiness/storage/pack-storage.service';
+import { ExaIntegrationService } from '../../mcp/exa-integration.service';
 
 export interface ReadinessCheckVisaWindowInput extends SkillInput {
   /** 行程元数据 */
@@ -63,6 +64,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
   constructor(
     private readonly prisma: PrismaService,
     private readonly packStorage: PackStorageService,
+    @Optional() private readonly exaIntegration?: ExaIntegrationService,
   ) {}
 
   async execute(input: ReadinessCheckVisaWindowInput): Promise<ReadinessCheckVisaWindowOutput> {
@@ -96,8 +98,57 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
         this.logger.warn(`无法获取 Readiness Pack，使用默认逻辑: ${error}`);
       }
 
+      // 2.5 搜索实时签证政策信息（Exa 集成）
+      let realTimeVisaInfo: any = null;
+      if (this.exaIntegration) {
+        try {
+          const year = new Date(departure).getFullYear();
+          const month = departure.getMonth() + 1;
+          const query = `${destinationCountryCode} ${nationality}护照 ${year}年 签证政策 入境要求`;
+          
+          const searchResult = await this.exaIntegration.searchRealTimeRisks(
+            destinationCountryCode,
+            `签证政策查询`,
+            month,
+            year,
+          );
+
+          // 使用专门的签证政策搜索（简化处理：直接解析风险搜索结果）
+          // 注意：这里可以进一步优化，使用专门的签证政策搜索方法
+          // 目前先使用现有的搜索方法
+          if (searchResult.hasRisk === false) {
+            // 如果没有风险，说明可能是免签或简单签证要求
+            // 进一步搜索详细签证信息
+            const visaQuery = `${destinationCountryCode} ${nationality}护照 ${year}年 签证 免签 电子签`;
+            const visaSearchResult = await this.exaIntegration.searchRealTimeRisks(
+              destinationCountryCode,
+              visaQuery,
+              month,
+              year,
+            );
+            
+            // 解析签证政策（简化处理）
+            if (visaSearchResult) {
+              realTimeVisaInfo = {
+                source: 'EXA_REALTIME',
+                description: visaSearchResult.riskDescription || '',
+              };
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`Exa visa policy search failed: ${error.message}，继续使用结构化数据`);
+          // 降级：继续使用结构化数据
+        }
+      }
+
       // 3. 判断签证要求（简化版，实际应该查询签证政策表）
-      const visaStatus = this.determineVisaStatus(destinationCountryCode, nationality, stayDays, visaInfo);
+      // 优先使用实时信息，如果没有则使用结构化数据
+      const visaStatus = this.determineVisaStatus(
+        destinationCountryCode, 
+        nationality, 
+        stayDays, 
+        realTimeVisaInfo || visaInfo
+      );
 
       // 4. 评估风险等级
       const visaRiskLevel = this.assessRiskLevel(visaStatus, departure, stayDays);

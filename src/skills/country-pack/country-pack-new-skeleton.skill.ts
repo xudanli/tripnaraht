@@ -10,10 +10,11 @@
  * - RouteDirectionPack: 路线方向 Pack
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { ReadinessPack, SeasonType, ReadinessCategory } from '../../trips/readiness/types/readiness-pack.types';
 import { ImportCountryPackDto } from '../../route-directions/dto/import-country-pack.dto';
+import { ExaIntegrationService } from '../../mcp/exa-integration.service';
 
 export interface CountryPackNewSkeletonInput extends SkillInput {
   /** 国家代码（ISO 3166-1 alpha-2） */
@@ -46,6 +47,10 @@ export interface CountryPackNewSkeletonOutput extends SkillOutput {
 export class CountryPackNewSkeletonSkill implements Skill<CountryPackNewSkeletonInput, CountryPackNewSkeletonOutput> {
   private readonly logger = new Logger(CountryPackNewSkeletonSkill.name);
 
+  constructor(
+    @Optional() private readonly exaIntegration?: ExaIntegrationService,
+  ) {}
+
   metadata = {
     name: 'countryPack.newSkeleton',
     description: '创建国家 Pack 骨架，支持 ReadinessPack 和 RouteDirectionPack 两种类型',
@@ -55,6 +60,23 @@ export class CountryPackNewSkeletonSkill implements Skill<CountryPackNewSkeleton
 
   async execute(input: CountryPackNewSkeletonInput): Promise<CountryPackNewSkeletonOutput> {
     this.logger.debug(`执行 countryPack.newSkeleton: country=${input.countryCode}, type=${input.packType}`);
+
+    // 可选：启动深度研究（异步任务，不阻塞骨架创建）
+    if (this.exaIntegration && input.packType === 'readiness') {
+      try {
+        const researchTopic = `${input.countryName} ${input.countryCode} 旅行准备 签证 入境要求 安全信息`;
+        const researchResult = await this.exaIntegration.startDeepResearch(researchTopic, 'country_pack');
+        
+        if (researchResult.status === 'started') {
+          this.logger.debug(`已启动深度研究任务: ${researchResult.researchId}`);
+          // 注意：研究结果将在后续通过 checkDeepResearch 获取
+          // 这里只启动任务，不等待结果
+        }
+      } catch (error: any) {
+        this.logger.warn(`启动深度研究失败: ${error.message}，继续创建骨架`);
+        // 降级：继续创建骨架，不阻塞
+      }
+    }
 
     if (input.packType === 'readiness') {
       return this.createReadinessPackSkeleton(input);

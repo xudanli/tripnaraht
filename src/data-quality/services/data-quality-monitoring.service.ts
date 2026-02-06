@@ -1,10 +1,11 @@
 // src/data-quality/services/data-quality-monitoring.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataQualityFrameworkService } from './data-quality-framework.service';
 import { DataQualityAlertService } from './data-quality-alert.service';
+import { PostgreSQLMcpService } from '../../mcp/postgresql-mcp.service';
 
 /**
  * 数据源配置
@@ -34,6 +35,7 @@ export class DataQualityMonitoringService {
     private readonly prisma: PrismaService,
     private readonly dataQualityFramework: DataQualityFrameworkService,
     private readonly alertService: DataQualityAlertService,
+    @Optional() private readonly postgresqlMcp?: PostgreSQLMcpService,
   ) {}
 
   /**
@@ -206,6 +208,126 @@ export class DataQualityMonitoringService {
     const metric = this.dataQualityFramework.assessConsistency(data);
 
     return metric.currentValue;
+  }
+
+  /**
+   * 使用 PostgreSQL MCP 检查数据完整性（复杂查询）
+   * 
+   * 使用场景：
+   * - 检查跨表的数据完整性
+   * - 检查外键约束
+   * - 检查数据一致性
+   */
+  async checkDataIntegrity(): Promise<{
+    issues: Array<{
+      issueType: string;
+      count: number;
+      description: string;
+    }>;
+    overallHealth: number;
+  }> {
+    if (!this.postgresqlMcp || !this.postgresqlMcp.isAvailable()) {
+      this.logger.warn('PostgreSQL MCP service not available, skipping data integrity check');
+      return { issues: [], overallHealth: 1.0 };
+    }
+
+    try {
+      // 检查行程没有关联天的情况
+      const tripsWithoutDaysQuery = `
+        SELECT 
+          'trips_without_days' as issue_type,
+          COUNT(*) as count
+        FROM "Trip" t
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "TripDay" td WHERE td.trip_id = t.id
+        )
+      `;
+
+      // 检查天没有关联行程项的情况
+      const daysWithoutItemsQuery = `
+        SELECT 
+          'days_without_items' as issue_type,
+          COUNT(*) as count
+        FROM "TripDay" td
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "ItineraryItem" ii WHERE ii.trip_day_id = td.id
+        )
+      `;
+
+      // 检查行程项没有关联地点的情况
+      const itemsWithoutPlacesQuery = `
+        SELECT 
+          'items_without_places' as issue_type,
+          COUNT(*) as count
+        FROM "ItineraryItem" ii
+        WHERE ii.place_id IS NULL
+      `;
+
+      // 检查孤立的地点（没有被任何行程项引用）
+      const orphanedPlacesQuery = `
+        SELECT 
+          'orphaned_places' as issue_type,
+          COUNT(*) as count
+        FROM "Place" p
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "ItineraryItem" ii WHERE ii.place_id = p.id
+        )
+      `;
+
+      const [tripsWithoutDays, daysWithoutItems, itemsWithoutPlaces, orphanedPlaces] = await Promise.all([
+        this.postgresqlMcp.query(tripsWithoutDaysQuery),
+        this.postgresqlMcp.query(daysWithoutItemsQuery),
+        this.postgresqlMcp.query(itemsWithoutPlacesQuery),
+        this.postgresqlMcp.query(orphanedPlacesQuery),
+      ]);
+
+      const issues: Array<{
+        issueType: string;
+        count: number;
+        description: string;
+      }> = [];
+
+      if (tripsWithoutDays && tripsWithoutDays.length > 0 && tripsWithoutDays[0].count > 0) {
+        issues.push({
+          issueType: 'trips_without_days',
+          count: Number(tripsWithoutDays[0].count),
+          description: '存在没有关联任何天的行程',
+        });
+      }
+
+      if (daysWithoutItems && daysWithoutItems.length > 0 && daysWithoutItems[0].count > 0) {
+        issues.push({
+          issueType: 'days_without_items',
+          count: Number(daysWithoutItems[0].count),
+          description: '存在没有关联任何行程项的天',
+        });
+      }
+
+      if (itemsWithoutPlaces && itemsWithoutPlaces.length > 0 && itemsWithoutPlaces[0].count > 0) {
+        issues.push({
+          issueType: 'items_without_places',
+          count: Number(itemsWithoutPlaces[0].count),
+          description: '存在没有关联地点的行程项',
+        });
+      }
+
+      if (orphanedPlaces && orphanedPlaces.length > 0 && orphanedPlaces[0].count > 0) {
+        issues.push({
+          issueType: 'orphaned_places',
+          count: Number(orphanedPlaces[0].count),
+          description: '存在没有被任何行程项引用的孤立地点',
+        });
+      }
+
+      // 计算整体健康度（基于问题数量）
+      const totalIssues = issues.reduce((sum, issue) => sum + issue.count, 0);
+      const overallHealth = totalIssues === 0 ? 1.0 : Math.max(0, 1.0 - totalIssues / 1000); // 假设1000个问题为最差情况
+
+      return { issues, overallHealth };
+    } catch (error: any) {
+      this.logger.error(`数据完整性检查失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
