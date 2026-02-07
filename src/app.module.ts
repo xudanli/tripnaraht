@@ -54,6 +54,15 @@ import { BookingComModule } from './mcp/booking-com.module';
 import { PostgreSQLMcpModule } from './mcp/postgresql-mcp.module';
 import { BrowserbaseMcpModule } from './mcp/browserbase-mcp.module';
 import { GoogleMapsDirectModule } from './mcp/google-maps-direct.module';
+import { StripeDirectModule } from './mcp/stripe-direct.module';
+import { RestaurantDirectModule } from './mcp/restaurant-direct.module';
+import { CurrencyDirectModule } from './mcp/currency-direct.module';
+import { HotelDirectModule } from './mcp/hotel-direct.module';
+import { TranslationDirectModule } from './mcp/translation-direct.module';
+import { ImageDirectModule } from './mcp/image-direct.module';
+import { FileExtractorMcpModule } from './mcp/file-extractor-mcp.module';
+import { FileExtractorDirectModule } from './mcp/file-extractor-direct.module';
+import { McpOAuthModule } from './mcp/mcp-oauth.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
@@ -126,6 +135,15 @@ import { AnalyticsModule } from './analytics/analytics.module';
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（数据库查询和执行）
     BrowserbaseMcpModule, // Browserbase MCP 模块（浏览器自动化）
     GoogleMapsDirectModule, // Google Maps 直接 API 模块（路线规划、地理编码等）
+    StripeDirectModule, // Stripe 直接 API 模块（支付处理）
+    RestaurantDirectModule, // Restaurant 直接 API 模块（餐厅搜索和推荐）
+    CurrencyDirectModule, // Currency Exchange 直接 API 模块（汇率转换）
+    HotelDirectModule, // Hotel Booking 直接 API 模块（酒店搜索和推荐）
+    TranslationDirectModule, // Translation 直接 API 模块（文本翻译）
+    ImageDirectModule, // Image 直接 API 模块（图片搜索和推荐）
+    FileExtractorMcpModule, // File Extractor MCP 模块（文件内容提取，需要 OAuth）
+    FileExtractorDirectModule, // File Extractor Direct 模块（直接实现，无需认证）⭐
+    McpOAuthModule, // MCP OAuth 回调模块（处理所有 MCP 服务的 OAuth 回调）
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
   ],
 })

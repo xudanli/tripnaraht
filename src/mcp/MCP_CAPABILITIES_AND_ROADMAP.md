@@ -1,30 +1,37 @@
 # MCP 能力清单与产品路线图
 
-**文档版本**: v1.0  
-**更新日期**: 2026-02-06  
+**文档版本**: v2.0  
+**更新日期**: 2026-02-07  
 **目标受众**: 产品经理、技术团队、决策者
+
+**注意**: 详细的产品经理 + AI 科学家联合评估请参考 [MCP_SERVICES_EVALUATION.md](./MCP_SERVICES_EVALUATION.md)
 
 ---
 
 ## 📊 执行摘要
 
 ### 当前状态
-- ✅ **已集成 MCP 服务**: 7 个
-- ✅ **已集成 Skills**: 多个（通过 MCP Skills Server 暴露）
+- ✅ **已集成 MCP 服务**: 10 个
+- ✅ **已集成 Skills**: 50+ 个（通过 MCP Skills Server 暴露）
+- ✅ **总工具数**: 100+ 个
 - ✅ **集成方式**: 混合模式（MCP 服务器 + Skills 系统）
 - 📈 **成熟度**: 生产可用
 
 ### 核心能力覆盖
+- ✅ 地图服务（Google Maps Direct API）
+- ✅ 天气服务（Weather Direct API）
 - ✅ 住宿搜索（Airbnb）
 - ✅ 航班搜索（Amadeus）
+- ✅ 铁路查询（Rail MCP）
 - ✅ 日历管理（Google Calendar）
 - ✅ 数据库操作（PostgreSQL）
 - ✅ Web 搜索（Exa）
 - ✅ 浏览器自动化（Browserbase）
+- ✅ 文件提取（File Extractor）
 - ⚠️ 租车服务（Booking.com - 非 MCP）
-- ❌ 天气服务（待集成）
-- ❌ 地图服务（待集成）
 - ❌ 支付服务（待集成）
+- ❌ 酒店预订（待集成）
+- ❌ 餐饮推荐（待集成）
 
 ---
 
@@ -397,7 +404,8 @@ python3 -m pip install mcp_weather_server
 
 **优先级**: P1（高）  
 **业务价值**: ⭐⭐⭐⭐  
-**技术难度**: ⭐⭐⭐
+**技术难度**: ⭐⭐⭐  
+**状态**: ✅ 已完成
 
 **为什么需要**:
 - ✅ **欧洲市场**: 欧洲铁路网络发达
@@ -405,16 +413,23 @@ python3 -m pip install mcp_weather_server
 - ✅ **城市间移动**: 某些路线铁路比飞机更便捷
 
 **可用服务**:
-- Smithery: 搜索 "Train" 或 "Railway"
-- 已有示例: "NS Travel" (荷兰铁路)
+- Smithery: `https://smithery.ai/server/DeniseLewis200081/rail`
 
-**预期工具**:
-- `train.searchRoutes` - 搜索路线
-- `train.getSchedule` - 获取时刻表
-- `train.checkAvailability` - 检查可用性
-- `train.book` - 预订车票
+**已实现工具**:
+- ✅ 动态工具发现（工具列表在连接时自动发现）
+- ✅ 工具名称格式: `rail.{tool_name}`
 
-**集成工作量**: 中等（3-4 天）
+**集成说明**:
+- ✅ 已创建 `rail-client.ts` 客户端
+- ✅ 已创建 `rail-bridge-server.ts` 桥接服务器
+- ✅ 已集成到 `mcp-skills-server.ts`
+- ✅ 已创建测试脚本和认证助手
+- 📝 参考: [Rail MCP 集成指南](./RAIL_MCP_INTEGRATION.md)
+
+**安装要求**:
+- 需要 OAuth 认证（运行 `npm run mcp:auth:rail`）
+
+**集成工作量**: 已完成（1 天）
 
 ---
 

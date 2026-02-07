@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ItineraryItemsService } from './itinerary-items.service';
 import { ItineraryItemsController } from './itinerary-items.controller';
 import { ItineraryValidationService } from './services/itinerary-validation.service';
@@ -9,9 +9,16 @@ import { TravelTimeValidator } from './validators/travel-time.validator';
 import { BufferTimeValidator } from './validators/buffer-time.validator';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
+import { PlacesModule } from '../places/places.module';
+import { GoogleMapsDirectModule } from '../mcp/google-maps-direct.module';
 
 @Module({
-  imports: [PrismaModule, TransportModule],
+  imports: [
+    PrismaModule, 
+    TransportModule,
+    forwardRef(() => PlacesModule), // 使用 forwardRef 避免循环依赖
+    GoogleMapsDirectModule,
+  ],
   controllers: [ItineraryItemsController],
   providers: [
     // 核心服务

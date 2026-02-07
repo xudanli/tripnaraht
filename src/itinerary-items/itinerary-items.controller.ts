@@ -1,5 +1,5 @@
 // src/itinerary-items/itinerary-items.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException, NotFoundException, Logger, ParseFloatPipe, ParseEnumPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { ItineraryItemsService } from './itinerary-items.service';
 import { ItineraryValidationService } from './services/itinerary-validation.service';
@@ -8,6 +8,7 @@ import { CreateItineraryItemDto } from './dto/create-itinerary-item.dto';
 import { UpdateItineraryItemDto } from './dto/update-itinerary-item.dto';
 import { AggregatedValidationResultDto, BatchValidationResultDto } from './dto/validation-result.dto';
 import { ItemCostDto, BatchUpdateCostDto, TripCostSummaryDto, BatchUpdateCostResultDto } from './dto/item-cost.dto';
+import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -193,6 +194,170 @@ export class ItineraryItemsController {
       ? await this.itineraryItemsService.findByTripDay(tripDayId)
       : await this.itineraryItemsService.findAll();
     return successResponse(items);
+  }
+
+  @Public()
+  @Get('nearby-poi')
+  @ApiOperation({
+    summary: '基于行程项搜索附近的POI',
+    description: '搜索行程项附近的景点、餐厅、住宿、加油站、休息点等。可以基于行程项ID或直接提供坐标。',
+  })
+  @ApiQuery({
+    name: 'itemId',
+    description: '行程项ID（可选，如果提供则使用行程项的坐标）',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'lat',
+    description: '纬度（如果未提供 itemId，则必须提供）',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'lng',
+    description: '经度（如果未提供 itemId，则必须提供）',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'radius',
+    description: '搜索半径（米），默认5000米',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'categories',
+    description: '要搜索的POI类别（可多选，用逗号分隔）',
+    required: false,
+    enum: NearbyPoiCategory,
+    isArray: true,
+  })
+  @ApiQuery({
+    name: 'minRating',
+    description: '最小评分（0-5）',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'openNow',
+    description: '是否只返回当前营业的地点（仅对餐厅有效）',
+    required: false,
+    type: Boolean,
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: '返回结果数量限制，默认20',
+    required: false,
+    type: Number,
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回附近POI列表（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '参数错误（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程项不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async searchNearbyPoi(
+    @Query('itemId') itemId?: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('radius') radius?: string,
+    @Query('categories') categories?: string,
+    @Query('minRating') minRating?: string,
+    @Query('openNow') openNow?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      // 参数验证：必须提供 itemId 或 lat/lng
+      if (!itemId && (!lat || !lng)) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          '必须提供 itemId 或 lat/lng 坐标'
+        );
+      }
+
+      // 验证坐标格式
+      if (lat && (isNaN(parseFloat(lat)) || parseFloat(lat) < -90 || parseFloat(lat) > 90)) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          '纬度必须在 -90 到 90 之间'
+        );
+      }
+
+      if (lng && (isNaN(parseFloat(lng)) || parseFloat(lng) < -180 || parseFloat(lng) > 180)) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          '经度必须在 -180 到 180 之间'
+        );
+      }
+
+      // 解析 categories
+      let categoryArray: NearbyPoiCategory[] | undefined;
+      if (categories) {
+        categoryArray = categories.split(',').map(c => c.trim() as NearbyPoiCategory);
+        // 验证类别值
+        const validCategories = Object.values(NearbyPoiCategory);
+        const invalidCategories = categoryArray.filter(c => !validCategories.includes(c));
+        if (invalidCategories.length > 0) {
+          return errorResponse(
+            ErrorCode.VALIDATION_ERROR,
+            `无效的类别: ${invalidCategories.join(', ')}`
+          );
+        }
+      }
+
+      // 构建查询对象
+      const query: SearchNearbyPoiQueryDto = {
+        itemId: itemId,
+        lat: lat ? parseFloat(lat) : undefined,
+        lng: lng ? parseFloat(lng) : undefined,
+        radius: radius ? parseFloat(radius) : undefined,
+        categories: categoryArray,
+        minRating: minRating ? parseFloat(minRating) : undefined,
+        openNow: openNow === 'true' ? true : openNow === 'false' ? false : undefined,
+        limit: limit ? parseInt(limit) : undefined,
+      };
+
+      console.log(`🔍 [searchNearbyPoi] 控制器开始处理请求: itemId=${itemId}, lat=${lat}, lng=${lng}`);
+      this.logger.log(`[searchNearbyPoi] 控制器开始处理请求: itemId=${itemId}, lat=${lat}, lng=${lng}`);
+      let results: any;
+      try {
+        results = await this.itineraryItemsService.searchNearbyPoi(query);
+        console.log(`🔍 [searchNearbyPoi] 服务方法返回: ${results === null ? 'null' : results === undefined ? 'undefined' : Array.isArray(results) ? `array(${results.length})` : typeof results}`);
+        this.logger.log(`[searchNearbyPoi] 服务方法返回: ${results === null ? 'null' : results === undefined ? 'undefined' : Array.isArray(results) ? `array(${results.length})` : typeof results}`);
+      } catch (serviceError: any) {
+        this.logger.error(`[searchNearbyPoi] 服务方法抛出异常:`, serviceError);
+        throw serviceError; // 重新抛出，让外层catch处理
+      }
+      
+      // 确保返回数组而不是null
+      const safeResults = Array.isArray(results) ? results : [];
+      console.log(`🔍 [searchNearbyPoi] 最终返回结果数量: ${safeResults.length} 条`);
+      this.logger.log(`[searchNearbyPoi] 最终返回结果数量: ${safeResults.length} 条`);
+      if (!Array.isArray(results)) {
+        this.logger.warn(`[searchNearbyPoi] ⚠️ 服务返回了非数组类型: ${typeof results}, 值: ${JSON.stringify(results)}, 已转换为空数组`);
+      }
+      return successResponse(safeResults);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error('搜索附近POI失败:', error);
+      this.logger.error('错误堆栈:', error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
   }
 
   @Public()

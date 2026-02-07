@@ -1,17 +1,23 @@
 // src/itinerary-items/itinerary-items.service.ts
-import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItineraryItemDto, ItemType } from './dto/create-itinerary-item.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
+import { PlacesService } from '../places/places.service';
+import { GoogleMapsDirectService } from '../mcp/google-maps-direct.service';
+import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
+import { PlaceCategory } from '@prisma/client';
 
 @Injectable()
 export class ItineraryItemsService {
   constructor(
     private prisma: PrismaService,
-    @Optional() private readonly smartRoutesService?: SmartRoutesService
+    @Optional() private readonly smartRoutesService?: SmartRoutesService,
+    @Optional() @Inject(forwardRef(() => PlacesService)) private readonly placesService?: PlacesService,
+    @Optional() private readonly googleMapsService?: GoogleMapsDirectService,
   ) {}
 
   /**
@@ -247,7 +253,8 @@ export class ItineraryItemsService {
       console.warn('自动计算交通信息失败:', err.message);
     });
 
-    return newItem;
+    // 为 Place 添加坐标字段
+    return this.enrichItemWithCoordinates(newItem);
   }
 
   /**
@@ -314,7 +321,7 @@ export class ItineraryItemsService {
    * 获取所有行程项
    */
   async findAll() {
-    return this.prisma.itineraryItem.findMany({
+    const items = await this.prisma.itineraryItem.findMany({
       include: {
         Place: true,
         Trail: {
@@ -341,13 +348,16 @@ export class ItineraryItemsService {
         startTime: 'asc',
       },
     });
+
+    // 为每个行程项的 Place 添加坐标字段
+    return Promise.all(items.map(item => this.enrichItemWithCoordinates(item)));
   }
 
   /**
    * 根据 ID 获取单个行程项
    */
   async findOne(id: string) {
-    return this.prisma.itineraryItem.findUnique({
+    const item = await this.prisma.itineraryItem.findUnique({
       where: { id },
       include: {
         Place: {
@@ -381,6 +391,13 @@ export class ItineraryItemsService {
         },
       },
     });
+
+    if (!item) {
+      return null;
+    }
+
+    // 为 Place 添加坐标字段
+    return this.enrichItemWithCoordinates(item);
   }
 
   /**
@@ -438,8 +455,11 @@ export class ItineraryItemsService {
     // 合并结果，退房项排在最前面
     const allItems = [...checkoutItems, ...todayItems];
 
-    // 添加跨天标记
-    return allItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    // 添加跨天标记和坐标字段
+    const enrichedItems = await Promise.all(
+      allItems.map(item => this.enrichItemWithCoordinates(item))
+    );
+    return enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
   }
 
   /**
@@ -775,7 +795,7 @@ export class ItineraryItemsService {
       // 如果 cascadeMode 为 'none'，只更新当前项，不调整后续行程项
     }
 
-    return this.prisma.itineraryItem.update({
+    const updatedItem = await this.prisma.itineraryItem.update({
       where: { id },
       data: {
         ...(updateDto.placeId !== undefined && { placeId: updateDto.placeId }),
@@ -818,6 +838,9 @@ export class ItineraryItemsService {
         TripDay: true,
       },
     });
+
+    // 为 Place 添加坐标字段
+    return this.enrichItemWithCoordinates(updatedItem);
   }
 
   /**
@@ -1073,6 +1096,158 @@ export class ItineraryItemsService {
     }
 
     return null;
+  }
+
+  /**
+   * 🆕 提取 Place 坐标（支持 PostGIS 查询）
+   * 优先从 PostGIS location 字段提取，其次从 metadata 提取
+   */
+  private async extractPlaceCoordinatesAsync(place: any): Promise<{ lat: number; lng: number } | null> {
+    if (!place || !place.id) {
+      return null;
+    }
+
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+
+    // 方法1: 尝试从 PostGIS location 字段提取
+    try {
+      const locationResult = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+        SELECT 
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ${place.id} AND location IS NOT NULL
+      `;
+      
+      if (locationResult.length > 0 && locationResult[0].lat != null && locationResult[0].lng != null) {
+        latitude = Number(locationResult[0].lat);
+        longitude = Number(locationResult[0].lng);
+      }
+    } catch (error: any) {
+      // PostGIS 查询失败，继续尝试其他方法
+    }
+    
+    // 方法2: 如果 PostGIS 提取失败，尝试从 metadata 获取坐标
+    if (!latitude || !longitude) {
+      const metadata = (place.metadata as any) || {};
+      
+      // 尝试 metadata.lat / metadata.lng
+      if (metadata.lat && metadata.lng) {
+        latitude = Number(metadata.lat);
+        longitude = Number(metadata.lng);
+      }
+      // 尝试 metadata.coordinates 数组格式 [lng, lat] 或 [lat, lng]
+      else if (metadata.coordinates && Array.isArray(metadata.coordinates) && metadata.coordinates.length >= 2) {
+        const coord1 = Number(metadata.coordinates[0]);
+        const coord2 = Number(metadata.coordinates[1]);
+        
+        if (Math.abs(coord1) <= 90 && Math.abs(coord2) <= 180) {
+          // coord1 是纬度，coord2 是经度
+          latitude = coord1;
+          longitude = coord2;
+        } else if (Math.abs(coord1) <= 180 && Math.abs(coord2) <= 90) {
+          // coord1 是经度，coord2 是纬度（GeoJSON 格式）
+          latitude = coord2;
+          longitude = coord1;
+        } else {
+          // 默认假设是 [lat, lng]
+          latitude = coord1;
+          longitude = coord2;
+        }
+      }
+      // 尝试 metadata.location.lat / metadata.location.lng
+      else if (metadata.location) {
+        if (metadata.location.lat && metadata.location.lng) {
+          latitude = Number(metadata.location.lat);
+          longitude = Number(metadata.location.lng);
+        } else if (metadata.location.coordinates && Array.isArray(metadata.location.coordinates)) {
+          const coord1 = Number(metadata.location.coordinates[0]);
+          const coord2 = Number(metadata.location.coordinates[1]);
+          if (Math.abs(coord1) <= 90 && Math.abs(coord2) <= 180) {
+            latitude = coord1;
+            longitude = coord2;
+          } else if (Math.abs(coord1) <= 180 && Math.abs(coord2) <= 90) {
+            latitude = coord2;
+            longitude = coord1;
+          }
+        }
+      }
+    }
+
+    if (latitude != null && longitude != null) {
+      return { lat: latitude, lng: longitude };
+    }
+
+    return null;
+  }
+
+  /**
+   * 🆕 为行程项添加坐标字段到 Place 对象
+   */
+  private async enrichItemWithCoordinates(item: any): Promise<any> {
+    if (!item) {
+      return item;
+    }
+
+    // 处理主 Place 对象
+    if (item.Place) {
+      const coords = await this.extractPlaceCoordinatesAsync(item.Place);
+      item.Place = {
+        ...item.Place,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        latitude: coords?.lat ?? null,
+        longitude: coords?.lng ?? null,
+        coordinates: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
+      };
+    }
+
+    // 处理 Trail 相关的 Place 对象
+    if (item.Trail) {
+      if (item.Trail.Place_Trail_startPlaceIdToPlace) {
+        const startCoords = await this.extractPlaceCoordinatesAsync(item.Trail.Place_Trail_startPlaceIdToPlace);
+        item.Trail.Place_Trail_startPlaceIdToPlace = {
+          ...item.Trail.Place_Trail_startPlaceIdToPlace,
+          lat: startCoords?.lat ?? null,
+          lng: startCoords?.lng ?? null,
+          latitude: startCoords?.lat ?? null,
+          longitude: startCoords?.lng ?? null,
+          coordinates: startCoords ? { lat: startCoords.lat, lng: startCoords.lng } : undefined,
+        };
+      }
+
+      if (item.Trail.Place_Trail_endPlaceIdToPlace) {
+        const endCoords = await this.extractPlaceCoordinatesAsync(item.Trail.Place_Trail_endPlaceIdToPlace);
+        item.Trail.Place_Trail_endPlaceIdToPlace = {
+          ...item.Trail.Place_Trail_endPlaceIdToPlace,
+          lat: endCoords?.lat ?? null,
+          lng: endCoords?.lng ?? null,
+          latitude: endCoords?.lat ?? null,
+          longitude: endCoords?.lng ?? null,
+          coordinates: endCoords ? { lat: endCoords.lat, lng: endCoords.lng } : undefined,
+        };
+      }
+
+      // 处理 TrailWaypoint 中的 Place
+      if (item.Trail.TrailWaypoint && Array.isArray(item.Trail.TrailWaypoint)) {
+        for (const waypoint of item.Trail.TrailWaypoint) {
+          if (waypoint.Place) {
+            const waypointCoords = await this.extractPlaceCoordinatesAsync(waypoint.Place);
+            waypoint.Place = {
+              ...waypoint.Place,
+              lat: waypointCoords?.lat ?? null,
+              lng: waypointCoords?.lng ?? null,
+              latitude: waypointCoords?.lat ?? null,
+              longitude: waypointCoords?.lng ?? null,
+              coordinates: waypointCoords ? { lat: waypointCoords.lat, lng: waypointCoords.lng } : undefined,
+            };
+          }
+        }
+      }
+    }
+
+    return item;
   }
 
   /**
@@ -1850,7 +2025,7 @@ export class ItineraryItemsService {
       throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
     }
 
-    return this.prisma.itineraryItem.update({
+    const updatedItem = await this.prisma.itineraryItem.update({
       where: { id },
       data: {
         bookingStatus: bookingData.bookingStatus,
@@ -1863,6 +2038,9 @@ export class ItineraryItemsService {
         TripDay: true,
       },
     });
+
+    // 为 Place 添加坐标字段
+    return this.enrichItemWithCoordinates(updatedItem);
   }
 
   /**
@@ -1970,7 +2148,7 @@ export class ItineraryItemsService {
       throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
     }
 
-    return this.prisma.itineraryItem.update({
+    const updatedItem = await this.prisma.itineraryItem.update({
       where: { id },
       data: {
         travelFromPreviousDuration: travelData.travelFromPreviousDuration,
@@ -1982,5 +2160,268 @@ export class ItineraryItemsService {
         TripDay: true,
       },
     });
+
+    // 为 Place 添加坐标字段
+    return this.enrichItemWithCoordinates(updatedItem);
+  }
+
+  /**
+   * 🆕 基于行程项搜索附近的POI
+   * 支持景点、餐厅、住宿、加油站、休息点
+   */
+  async searchNearbyPoi(query: SearchNearbyPoiQueryDto): Promise<NearbyPoiResultDto[]> {
+    console.log(`[searchNearbyPoi] 开始搜索:`, { itemId: query.itemId, lat: query.lat, lng: query.lng, radius: query.radius, categories: query.categories });
+    try {
+      // 1. 获取坐标
+      let lat: number;
+      let lng: number;
+
+      if (query.itemId) {
+        // 从行程项获取坐标
+        const item = await this.findOne(query.itemId);
+        if (!item) {
+          throw new NotFoundException(`找不到指定的行程项 (ID: ${query.itemId})`);
+        }
+
+        if (!item.Place) {
+          throw new BadRequestException(`行程项 ${query.itemId} 没有关联的地点`);
+        }
+
+        const coords = await this.extractPlaceCoordinatesAsync(item.Place);
+        if (!coords) {
+          throw new BadRequestException(`行程项 ${query.itemId} 的地点没有坐标信息`);
+        }
+
+        lat = coords.lat;
+        lng = coords.lng;
+      } else if (query.lat !== undefined && query.lng !== undefined) {
+        lat = query.lat;
+        lng = query.lng;
+      } else {
+        throw new BadRequestException('必须提供 itemId 或 lat/lng 坐标');
+      }
+
+      // 2. 设置默认参数
+      const radius = query.radius || 5000;
+      const categories = query.categories || [
+        NearbyPoiCategory.ATTRACTION,
+        NearbyPoiCategory.RESTAURANT,
+        NearbyPoiCategory.HOTEL,
+        NearbyPoiCategory.GAS_STATION,
+        NearbyPoiCategory.REST_AREA,
+      ];
+      const limit = query.limit || 20;
+
+      // 3. 分类搜索
+      const results: NearbyPoiResultDto[] = [];
+
+      // 3.1 搜索数据库中的类别（ATTRACTION, RESTAURANT, HOTEL）
+      const dbCategories: PlaceCategory[] = [];
+      if (categories.includes(NearbyPoiCategory.ATTRACTION)) {
+        dbCategories.push(PlaceCategory.ATTRACTION);
+      }
+      if (categories.includes(NearbyPoiCategory.RESTAURANT)) {
+        dbCategories.push(PlaceCategory.RESTAURANT);
+      }
+      if (categories.includes(NearbyPoiCategory.HOTEL)) {
+        dbCategories.push(PlaceCategory.HOTEL);
+      }
+
+      if (dbCategories.length > 0) {
+        if (!this.placesService) {
+          console.warn('[searchNearbyPoi] PlacesService 未注入，跳过数据库搜索');
+        } else {
+          for (const category of dbCategories) {
+            const places = await this.placesService.findNearby(lat, lng, radius, category);
+          
+            for (const place of places) {
+          // 应用过滤条件
+          if (query.minRating && place.rating && place.rating < query.minRating) {
+            continue;
+          }
+
+          // 提取坐标
+          const placeCoords = await this.extractPlaceCoordinatesAsync(place as any);
+          if (!placeCoords) {
+            continue;
+          }
+
+          // 提取营业时间（从status或metadata中提取）
+          const placeAny = place as any;
+          const metadata = placeAny.metadata || placeAny.status || {};
+          let openingHours: any = undefined;
+          if (metadata.openingHours || metadata.opening_hours) {
+            const openingHoursData = metadata.openingHours || metadata.opening_hours;
+            const timezone = metadata.timezone || 'UTC';
+            const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
+            
+            if (todayHours && todayHours !== 'Closed') {
+              const parts = todayHours.split('-');
+              openingHours = {
+                open: parts[0]?.trim(),
+                close: parts[1]?.trim(),
+                openNow: query.openNow !== undefined ? (todayHours !== 'Closed') : undefined,
+              };
+            }
+          }
+
+          results.push({
+            id: place.id,
+            nameCN: place.nameCN,
+            nameEN: place.nameEN || undefined,
+            category: category,
+            address: place.address || undefined,
+            rating: place.rating || undefined,
+            lat: placeCoords.lat,
+            lng: placeCoords.lng,
+            distanceMeters: place.distance || 0, // PlaceWithDistance使用distance字段
+            openingHours: openingHours,
+            metadata: placeAny.metadata || undefined,
+            });
+            }
+          }
+        }
+      }
+
+      // 3.2 搜索 Google Places API 的类别（GAS_STATION, REST_AREA）
+      const googleCategories: string[] = [];
+      if (categories.includes(NearbyPoiCategory.GAS_STATION)) {
+        googleCategories.push('gas_station');
+      }
+      if (categories.includes(NearbyPoiCategory.REST_AREA)) {
+        googleCategories.push('rest_stop');
+      }
+
+      if (googleCategories.length > 0 && this.googleMapsService?.isServiceAvailable()) {
+      for (const googleType of googleCategories) {
+        try {
+          const googleResults = await this.googleMapsService.nearbySearch({
+            location: { lat, lng },
+            radius: radius,
+            type: googleType,
+            language: 'en',
+          });
+
+          if (googleResults.success && googleResults.data.results) {
+            for (const result of googleResults.data.results.slice(0, limit)) {
+              const geometry = result.geometry;
+              const location = geometry?.location;
+              
+              if (!location) {
+                continue;
+              }
+
+              // 计算距离（使用 Haversine 公式）
+              const distanceMeters = this.calculateDistance(
+                lat,
+                lng,
+                location.lat,
+                location.lng
+              );
+
+              // 应用过滤条件
+              if (query.minRating && result.rating && result.rating < query.minRating) {
+                continue;
+              }
+
+              // 确定类别
+              let category: PlaceCategory;
+              if (googleType === 'gas_station') {
+                category = PlaceCategory.TRANSIT_HUB; // 使用 TRANSIT_HUB 作为加油站类别
+              } else {
+                category = PlaceCategory.ATTRACTION; // 使用 ATTRACTION 作为休息点类别
+              }
+
+              // 提取营业时间
+              let openingHours: any = undefined;
+              if (result.opening_hours) {
+                const periods = result.opening_hours.periods;
+                const openNow = result.opening_hours.open_now;
+                
+                if (periods && periods.length > 0) {
+                  const today = new Date().getDay();
+                  const todayPeriod = periods.find((p: any) => p.open?.day === today);
+                  
+                  if (todayPeriod?.open) {
+                    openingHours = {
+                      open: this.formatTime(todayPeriod.open.time),
+                      close: todayPeriod.close ? this.formatTime(todayPeriod.close.time) : undefined,
+                      openNow: openNow,
+                    };
+                  }
+                }
+              }
+
+              results.push({
+                id: result.place_id ? parseInt(result.place_id.replace(/\D/g, '')) || 0 : 0,
+                nameCN: result.name,
+                nameEN: result.name,
+                category: category,
+                address: result.vicinity || result.formatted_address,
+                rating: result.rating,
+                lat: location.lat,
+                lng: location.lng,
+                distanceMeters: distanceMeters,
+                openingHours: openingHours,
+                metadata: {
+                  placeId: result.place_id,
+                  types: result.types,
+                  priceLevel: result.price_level,
+                },
+              });
+            }
+          }
+        } catch (error: any) {
+          // 忽略 Google Places API 错误，继续处理其他结果
+          console.warn(`Google Places API 搜索失败 (${googleType}):`, error.message);
+        }
+      }
+      }
+
+      // 4. 排序和限制结果
+      results.sort((a, b) => a.distanceMeters - b.distanceMeters);
+      const finalResults = results.slice(0, limit);
+      console.log(`[searchNearbyPoi] 搜索完成: 坐标(${lat}, ${lng}), 半径${radius}m, 找到${finalResults.length}个结果`);
+      // 确保始终返回数组
+      return Array.isArray(finalResults) ? finalResults : [];
+    } catch (error: any) {
+      console.error('[searchNearbyPoi] 搜索失败:', error);
+      console.error('[searchNearbyPoi] 错误堆栈:', error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 计算两点之间的距离（Haversine 公式，单位：米）
+   */
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000; // 地球半径（米）
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) *
+        Math.cos(this.toRad(lat2)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /**
+   * 角度转弧度
+   */
+  private toRad(degrees: number): number {
+    return degrees * (Math.PI / 180);
+  }
+
+  /**
+   * 格式化时间（HHMM -> HH:mm）
+   */
+  private formatTime(time: string): string {
+    if (time.length === 4) {
+      return `${time.substring(0, 2)}:${time.substring(2, 4)}`;
+    }
+    return time;
   }
 }

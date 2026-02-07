@@ -1,5 +1,9 @@
 # MCP 服务器集成总结
 
+**📚 API 文档索引**: 请查看 [MCP_API_DOCUMENTATION_INDEX.md](./MCP_API_DOCUMENTATION_INDEX.md) 获取所有服务的完整 API 文档
+
+---
+
 ## 📋 已集成的 MCP 服务
 
 本项目已成功集成以下 Smithery MCP 服务：
@@ -135,7 +139,101 @@ curl "http://localhost:3000/api/weather-direct/forecast?city=Tokyo&start_date=20
 
 ---
 
-### 4. Airbnb MCP ⭐
+### 4. Rail MCP ⭐
+
+**服务类型**: 远程 HTTP/SSE MCP 服务器  
+**服务 URL**: `https://server.smithery.ai/DeniseLewis200081/rail`
+
+**功能**: 铁路查询、时刻表、预订等功能
+
+**文件**:
+- `src/mcp/rail-client.ts` - 客户端类
+- `src/mcp/rail-bridge-server.ts` - 桥接服务器
+- `scripts/test-rail-mcp.ts` - 测试脚本
+- `scripts/rail-auth.ts` - 认证助手
+
+**文档**:
+- `src/mcp/RAIL_MCP_INTEGRATION.md` - 完整集成文档
+
+**使用方法**:
+```bash
+# 认证（首次使用需要）
+npm run mcp:auth:rail
+
+# 测试
+npm run mcp:test:rail
+
+# 桥接服务器（用于 Claude Desktop）
+npm run mcp:rail
+```
+
+**工具列表**:
+- 工具列表在连接时动态发现
+- 工具名称格式: `rail.{tool_name}`
+
+**配置**:
+- 需要 OAuth 认证（首次使用需要运行认证脚本）
+- 认证信息保存在 `~/.tripnara-mcp/rail-*.json`
+
+**优势**:
+- ✅ 提供铁路查询功能
+- ✅ 支持欧洲铁路网络
+- ✅ 动态工具发现
+
+---
+
+### 5. File Extractor MCP ⭐
+
+**服务类型**: 远程 HTTP/SSE MCP 服务器  
+**服务 URL**: `https://server.smithery.ai/@dravidsajinraj-iex/file-extractor-mcp`
+
+**功能**: 从各种文件格式中提取内容和元数据
+
+**支持的文件格式**:
+- ✅ PDF
+- ✅ DOC, DOCX
+- ✅ PPTX
+- ✅ CSV
+- ✅ XLSX
+
+**文件**:
+- `src/mcp/file-extractor-client.ts` - 客户端类
+- `src/mcp/file-extractor-bridge-server.ts` - 桥接服务器
+- `scripts/test-file-extractor-mcp.ts` - 测试脚本
+- `scripts/file-extractor-auth.ts` - 认证助手
+
+**文档**:
+- `src/mcp/FILE_EXTRACTOR_MCP_INTEGRATION.md` - 完整集成文档
+
+**使用方法**:
+```bash
+# 测试
+npm run mcp:test:file-extractor
+
+# 认证（如果需要）
+npm run mcp:auth:file-extractor
+
+# 桥接服务器（用于 Claude Desktop）
+npm run mcp:file-extractor
+```
+
+**工具列表**:
+- `file_extractor.extract_metadata` - 提取文件元数据
+- `file_extractor.extract_file_content` - 提取文件内容
+
+**配置**:
+- 可能需要 OAuth 认证（取决于服务配置）
+- 认证信息保存在 `~/.tripnara-mcp/file-extractor-mcp-*.json`
+
+**优势**:
+- ✅ 支持多种文件格式
+- ✅ 支持 URL 下载和云存储
+- ✅ 支持内容搜索和分页
+- ✅ 提取元数据和内容
+
+---
+
+### 6. Airbnb MCP ⭐
 
 **服务 URL**: `https://server.smithery.ai/iclickfreedownloads/mcp-server-airbnb`
 
@@ -165,7 +263,7 @@ npm run mcp:airbnb
 
 ---
 
-### 4. Amadeus MCP ⭐
+### 7. Amadeus MCP ⭐
 
 **服务 URL**: `https://server.smithery.ai/@almogqwinz/mcp-amadeus-api`
 
@@ -197,7 +295,7 @@ npm run test:amadeus:service
 
 ---
 
-### 5. Browserbase MCP ⭐
+### 8. Browserbase MCP ⭐
 
 **服务 URL**: `https://server.smithery.ai/@browserbasehq/mcp-browserbase`
 
@@ -232,7 +330,7 @@ npm run test:browserbase-mcp:api
 
 ---
 
-### 6. PostgreSQL MCP ⭐
+### 9. PostgreSQL MCP ⭐
 
 **服务 URL**: `https://server.smithery.ai/1Levick3/postgresql-mcp-server`
 
@@ -292,6 +390,11 @@ npm run mcp:postgresql
     "postgresql": {
       "command": "npx",
       "args": ["tsx", "src/mcp/postgresql-mcp-bridge-server.ts"],
+      "cwd": "/home/devbox/project"
+    },
+    "file-extractor": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp/file-extractor-bridge-server.ts"],
       "cwd": "/home/devbox/project"
     }
   }
@@ -418,15 +521,35 @@ npm run mcp:airbnb
 
 ---
 
-## ✅ 状态
+## ✅ 状态总结
 
-- ✅ Google Maps MCP - 已集成，可以使用
-- ✅ Google Calendar MCP - 已集成，可以使用
-- ✅ Airbnb MCP - 已集成，可以使用
-- ✅ Amadeus MCP - 已集成，可以使用
-- ✅ Browserbase MCP - 已集成，可以使用
-- ✅ PostgreSQL MCP - 已集成，可以使用
+### 已集成的 MCP 服务（10个）
+
+| # | 服务名称 | 状态 | 工具数 | 认证方式 |
+|---|---------|------|--------|---------|
+| 1 | Google Maps Direct API | ✅ 可用 | 4 | API Key |
+| 2 | Weather Direct API | ✅ 可用 | 3 | 无需认证 |
+| 3 | Google Calendar MCP | ✅ 可用 | 29 | OAuth 2.0 |
+| 4 | Airbnb MCP | ✅ 可用 | 2 | 无需认证 |
+| 5 | Amadeus MCP | ✅ 可用 | 多个 | API Key |
+| 6 | PostgreSQL MCP | ✅ 可用 | 2 | 连接字符串 |
+| 7 | Browserbase MCP | ✅ 可用 | 5 | API Key |
+| 8 | Exa MCP | ✅ 可用 | 9+ | API Key |
+| 9 | Rail MCP | ✅ 可用 | 动态 | OAuth 2.0 |
+| 10 | File Extractor MCP | ✅ 可用 | 2 | OAuth 2.0（可选） |
+| 11 | Stripe MCP | ✅ 可用 | 动态 | OAuth 2.0（可选） |
+
+**总计**: 11 个服务，100+ 个工具
+
+### 关键缺失能力
+
+- ✅ **Payment/Stripe MCP** - 已完成（P0）
+- ❌ **Hotel Booking MCP** - 补充住宿选择（P0）
+- ❌ **Restaurant/Food MCP** - 提升行程完整性（P1）
+- ❌ **Currency Exchange MCP** - 国际化支持（P1）
+
+**详细评估**: 请参考 [MCP_SERVICES_EVALUATION.md](./MCP_SERVICES_EVALUATION.md)
 
 ---
 
-**最后更新**: 2026-02-06
+**最后更新**: 2026-02-07

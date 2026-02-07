@@ -15,6 +15,7 @@ const READINESS_TEST_BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 interface TestResult {
   name: string;
   success: boolean;
+  passed?: boolean; // Add for compatibility
   error?: string;
   data?: any;
 }
@@ -379,3 +380,6 @@ readinessMain().catch(error => {
   console.error('❌ 程序执行失败:', error);
   process.exit(1);
 });
+
+// Export empty object to make this a module and avoid global scope conflicts
+export {};

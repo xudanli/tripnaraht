@@ -702,9 +702,18 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Relations
-  refreshTokens RefreshToken[]
-  profile       UserProfile?
-  featureFlags  UserFeatureFlag[]
+  refreshTokens          RefreshToken[]
+  profile                UserProfile?
+  featureFlags           UserFeatureFlag[]
+  stripeConnection       StripeConnection?
+  paymentIntents         PaymentIntent[]
+  restaurantPreferences  RestaurantPreferences?
+  restaurantBookings     RestaurantBooking[]
+  currencySettings       CurrencySettings?
+  hotelPreferences       HotelPreferences?
+  hotelBookings          HotelBooking[]
+  translationSettings    TranslationSettings?
+  imagePreferences       ImagePreferences?
 
   @@index([googleSub])
   @@index([email])
@@ -735,6 +744,182 @@ model UserProfile {
   User        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ========== Stripe Integration ==========
+
+model StripeConnection {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  stripeAccountId   String?  @map("stripe_account_id") @db.Text // Stripe Connect account ID (if using Connect)
+  stripeCustomerId  String?  @map("stripe_customer_id") @db.Text // Stripe Customer ID
+  accessToken       String?  @map("access_token") @db.Text // Encrypted OAuth access token (if using Connect)
+  refreshToken      String?  @map("refresh_token") @db.Text // Encrypted OAuth refresh token (if using Connect)
+  tokenExpiresAt    DateTime? @map("token_expires_at") // OAuth token expiration
+  isActive          Boolean  @default(true) @map("is_active")
+  metadata          Json?    // Additional metadata (account status, capabilities, etc.)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId]) // One Stripe connection per user
+  @@index([userId])
+  @@index([stripeAccountId])
+  @@index([stripeCustomerId])
+  @@index([isActive])
+  @@map("stripe_connections")
+}
+
+model PaymentIntent {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  stripePaymentIntentId String @unique @map("stripe_payment_intent_id") @db.Text
+  amount            Int      // Amount in cents
+  currency          String   @default("usd") @db.VarChar(3)
+  status            String   @db.VarChar(50) // created, processing, succeeded, failed, canceled
+  metadata          Json?    // Additional metadata (tripId, bookingId, etc.)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payment_intents")
+}
+
+// ========== Restaurant Integration ==========
+
+model RestaurantPreferences {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  cuisine             Json     @default("[]") // Array of cuisine types (e.g., ["italian", "chinese", "japanese"])
+  priceRange          String   @default("medium") @map("price_range") @db.VarChar(20) // 'low', 'medium', 'high', 'very_high'
+  dietaryRestrictions Json     @default("[]") @map("dietary_restrictions") // Array of restrictions (e.g., ["vegetarian", "vegan", "gluten-free"])
+  favoriteRestaurants Json     @default("[]") @map("favorite_restaurants") // Array of place IDs
+  metadata            Json?    // Additional preferences (e.g., preferred meal times, ambience)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("restaurant_preferences")
+}
+
+model RestaurantBooking {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  placeId           String   @map("place_id") @db.Text // Google Places place_id
+  restaurantName    String   @map("restaurant_name") @db.Text
+  reservationDate   DateTime @map("reservation_date")
+  partySize         Int      @map("party_size")
+  status            String   @db.VarChar(50) // 'pending', 'confirmed', 'cancelled', 'completed'
+  metadata          Json?    // Additional booking details (e.g., special requests, contact info)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([placeId])
+  @@index([status])
+  @@index([reservationDate])
+  @@map("restaurant_bookings")
+}
+
+// ========== Currency Integration ==========
+
+model CurrencySettings {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  defaultCurrency    String   @default("USD") @map("default_currency") @db.VarChar(3)
+  preferredCurrencies Json    @default("[]") @map("preferred_currencies") // Array of currency codes
+  metadata           Json?    // Additional settings
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("currency_settings")
+}
+
+// ========== Hotel Integration ==========
+
+model HotelPreferences {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  hotelType    Json     @default("[]") @map("hotel_type") // Array of hotel types (e.g., ["luxury", "boutique", "resort"])
+  priceRange   String   @default("medium") @map("price_range") @db.VarChar(20) // 'low', 'medium', 'high', 'very_high'
+  amenities    Json     @default("[]") // Array of amenities (e.g., ["wifi", "pool", "gym", "spa"])
+  favoriteHotels Json   @default("[]") @map("favorite_hotels") // Array of place IDs
+  metadata     Json?    // Additional preferences
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("hotel_preferences")
+}
+
+model HotelBooking {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  placeId       String   @map("place_id") @db.Text // Google Places place_id
+  hotelName     String   @map("hotel_name") @db.Text
+  checkIn       DateTime @map("check_in")
+  checkOut      DateTime @map("check_out")
+  guests        Int
+  roomType      String?  @map("room_type") @db.Text
+  status        String   @db.VarChar(50) // 'pending', 'confirmed', 'cancelled', 'completed'
+  metadata      Json?    // Additional booking details (e.g., special requests, contact info)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([placeId])
+  @@index([status])
+  @@index([checkIn])
+  @@map("hotel_bookings")
+}
+
+// ========== Translation Integration ==========
+
+model TranslationSettings {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @unique @map("user_id") @db.Uuid
+  defaultTargetLanguage String  @default("en") @map("default_target_language") @db.VarChar(10)
+  preferredLanguages   Json     @default("[]") @map("preferred_languages") // Array of language codes
+  autoDetect           Boolean  @default(true) @map("auto_detect")
+  metadata             Json?    // Additional settings
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("translation_settings")
+}
+
+// ========== Image Integration ==========
+
+model ImagePreferences {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  preferredStyles       Json     @default("[]") @map("preferred_styles") // Array of style keywords (e.g., ["nature", "urban", "abstract"])
+  preferredColors       Json     @default("[]") @map("preferred_colors") // Array of hex colors (e.g., ["#FF0000", "#00FF00"])
+  preferredOrientations  Json     @default("[]") @map("preferred_orientations") // Array of orientations (e.g., ["landscape", "portrait"])
+  favoriteImages        Json     @default("[]") @map("favorite_images") // Array of image IDs
+  metadata              Json?    // Additional preferences
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("image_preferences")
 }
 
 // ========== Feature Flags ==========

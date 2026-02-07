@@ -95,6 +95,143 @@ async function bootstrap() {
     });
   });
   
+  // 添加 OAuth 回调端点（绕过全局前缀，供 MCP 服务使用）
+  httpAdapter.get('/oauth/callback', (req: any, res: any) => {
+    const code = req.query.code;
+    const error = req.query.error;
+    const errorDescription = req.query.error_description;
+    
+    if (error) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>OAuth 认证失败</title>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .container {
+              background: white;
+              padding: 2rem;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              max-width: 500px;
+            }
+            h1 { color: #d32f2f; margin-top: 0; }
+            .error { color: #666; margin: 1rem 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>❌ OAuth 认证失败</h1>
+            <div class="error">
+              <strong>错误:</strong> ${error}
+            </div>
+            ${errorDescription ? `<div class="error"><strong>描述:</strong> ${errorDescription}</div>` : ''}
+            <p>请检查认证流程或联系支持。</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    if (code) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>OAuth 认证成功</title>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .container {
+              background: white;
+              padding: 2rem;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              max-width: 500px;
+              text-align: center;
+            }
+            h1 { color: #2e7d32; margin-top: 0; }
+            .success { color: #666; margin: 1rem 0; }
+            .code { background: #f5f5f5; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.9em; word-break: break-all; }
+            .note { color: #999; font-size: 0.9em; margin-top: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>✅ OAuth 认证成功</h1>
+            <div class="success">
+              <p>授权码已接收，认证信息正在处理中...</p>
+              <div class="code">${code.substring(0, 50)}...</div>
+            </div>
+            <div class="note">
+              <p>您可以关闭此窗口。</p>
+              <p>如果这是首次认证，请返回命令行查看后续步骤。</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>OAuth 回调</title>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+          }
+          .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            max-width: 500px;
+            text-align: center;
+          }
+          h1 { color: #1976d2; margin-top: 0; }
+          .info { color: #666; margin: 1rem 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>OAuth 回调端点</h1>
+          <div class="info">
+            <p>这是 MCP 服务的 OAuth 回调端点。</p>
+            <p>请通过 OAuth 授权流程访问此页面。</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+  
   // 添加根路径端点
   httpAdapter.get('/', (req: any, res: any) => {
     res.json({

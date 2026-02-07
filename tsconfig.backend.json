@@ -36,6 +36,7 @@
     "dist",
     "**/*.spec.ts",
     "**/*.test.ts",
-    "src/mcp/**/*"
+    "src/mcp/**/*",
+    "scripts/test-chain-of-work-admin.ts"
   ]
 }
