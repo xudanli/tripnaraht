@@ -187,6 +187,71 @@ export class VisionService {
 
 
   /**
+   * 从图片中提取文字（OCR）
+   * 
+   * @param image 图片 Buffer
+   * @param opts 选项（语言等）
+   * @returns OCR 提取的文字结果
+   */
+  async extractText(
+    image: Buffer,
+    opts?: {
+      locale?: string;
+    }
+  ): Promise<StandardResponse<{
+    fullText: string;
+    lines: string[];
+  }>> {
+    const requestId = randomUUID();
+    
+    try {
+      // 验证输入
+      if (!image || image.length === 0) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          'image is required',
+          { field: 'image' }
+        );
+      }
+
+      this.logger.log(
+        `[${requestId}] Extracting text from image: size=${image.length}`
+      );
+
+      // OCR 提取文字
+      let ocrResult;
+      try {
+        ocrResult = await this.mockOcrProvider.extractText(image, {
+          locale: opts?.locale || 'zh-CN',
+        });
+      } catch (error: any) {
+        this.logger.error(`[${requestId}] OCR error: ${error.message}`, error.stack);
+        return errorResponse(
+          ErrorCode.PROVIDER_ERROR,
+          'OCR 提取文字失败',
+          { provider: 'MockOcrProvider', originalError: error.message }
+        );
+      }
+
+      this.logger.log(
+        `[${requestId}] OCR completed: lines=${ocrResult.lines.length}`
+      );
+
+      return successResponse({
+        fullText: ocrResult.fullText,
+        lines: ocrResult.lines,
+      });
+    } catch (error: any) {
+      this.logger.error(`[${requestId}] Unexpected error: ${error.message}`, error.stack);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error.message || '提取文字时发生错误',
+        { requestId }
+      );
+    }
+  }
+
+  /**
    * 去重并排序候选 POI
    * 
    * 排序规则：

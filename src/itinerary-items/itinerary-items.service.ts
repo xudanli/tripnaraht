@@ -2284,6 +2284,7 @@ export class ItineraryItemsService {
       }
 
       // 3.2 搜索 Google Places API 的类别（GAS_STATION, REST_AREA）
+      // 优化：并行执行多个Google API请求，减少总响应时间
       const googleCategories: string[] = [];
       if (categories.includes(NearbyPoiCategory.GAS_STATION)) {
         googleCategories.push('gas_station');
@@ -2293,16 +2294,36 @@ export class ItineraryItemsService {
       }
 
       if (googleCategories.length > 0 && this.googleMapsService?.isServiceAvailable()) {
-      for (const googleType of googleCategories) {
-        try {
-          const googleResults = await this.googleMapsService.nearbySearch({
-            location: { lat, lng },
-            radius: radius,
-            type: googleType,
-            language: 'en',
-          });
+        // 并行执行所有Google API请求，使用Promise.allSettled确保一个失败不影响其他的
+        const googleSearchPromises = googleCategories.map(async (googleType) => {
+          try {
+            const googleResults = await this.googleMapsService.nearbySearch({
+              location: { lat, lng },
+              radius: radius,
+              type: googleType,
+              language: 'en',
+            });
 
-          if (googleResults.success && googleResults.data.results) {
+            return { googleType, googleResults, error: null };
+          } catch (error: any) {
+            // 记录错误但不抛出，让Promise.allSettled处理
+            console.warn(`Google Places API 搜索失败 (${googleType}):`, error.message);
+            return { googleType, googleResults: null, error: error.message };
+          }
+        });
+
+        // 等待所有请求完成（无论成功或失败）
+        const googleSearchResults = await Promise.allSettled(googleSearchPromises);
+
+        // 处理每个请求的结果
+        for (const settledResult of googleSearchResults) {
+          if (settledResult.status === 'fulfilled') {
+            const { googleType, googleResults, error } = settledResult.value;
+            
+            if (error || !googleResults?.success || !googleResults.data.results) {
+              continue; // 跳过失败的请求
+            }
+
             for (const result of googleResults.data.results.slice(0, limit)) {
               const geometry = result.geometry;
               const location = geometry?.location;
@@ -2371,11 +2392,7 @@ export class ItineraryItemsService {
               });
             }
           }
-        } catch (error: any) {
-          // 忽略 Google Places API 错误，继续处理其他结果
-          console.warn(`Google Places API 搜索失败 (${googleType}):`, error.message);
         }
-      }
       }
 
       // 4. 排序和限制结果

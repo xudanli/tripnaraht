@@ -63,6 +63,7 @@ import { ImageDirectModule } from './mcp/image-direct.module';
 import { FileExtractorMcpModule } from './mcp/file-extractor-mcp.module';
 import { FileExtractorDirectModule } from './mcp/file-extractor-direct.module';
 import { McpOAuthModule } from './mcp/mcp-oauth.module';
+import { McpCapabilityModule } from './mcp/mcp-capability.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
@@ -144,6 +145,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     FileExtractorMcpModule, // File Extractor MCP 模块（文件内容提取，需要 OAuth）
     FileExtractorDirectModule, // File Extractor Direct 模块（直接实现，无需认证）⭐
     McpOAuthModule, // MCP OAuth 回调模块（处理所有 MCP 服务的 OAuth 回调）
+    McpCapabilityModule, // MCP 能力管理模块（统一控制各能力的开启/关闭）
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
   ],
 })

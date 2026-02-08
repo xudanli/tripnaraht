@@ -11,18 +11,20 @@
  * - PreferenceLearningService: 偏好学习服务
  */
 
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { LlmModule } from '../../../llm/llm.module';
 import { PersonaLanguageService } from './services/persona-language.service';
 import { RecommendationEngineService } from './services/recommendation-engine.service';
 import { PreferenceLearningService } from './services/preference-learning.service';
+import { RouteDirectionsModule } from '../../../route-directions/route-directions.module';
 
 @Global()
 @Module({
   imports: [
     PrismaModule,
     LlmModule,
+    forwardRef(() => RouteDirectionsModule), // 使用 forwardRef 避免循环依赖
   ],
   providers: [
     PersonaLanguageService,

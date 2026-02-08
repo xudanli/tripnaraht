@@ -130,7 +130,8 @@
     "test:evidence-progress": "npx tsx scripts/test-evidence-progress.ts",
     "test:evidence-apis": "npx tsx scripts/test-evidence-apis.ts",
     "test:evidence-apis:http": "npx tsx scripts/test-evidence-apis-http.ts",
-    "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts"
+    "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts",
+    "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts"
   },
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",
@@ -149,6 +150,7 @@
     "@nestjs/platform-express": "^11.1.9",
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^11.2.3",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.19.0",
     "@smithery/api": "^0.38.0",
     "@types/bcrypt": "^6.0.0",

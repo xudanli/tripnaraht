@@ -16,6 +16,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UserPreferences, DestinationRecommendation } from '../../planning-assistant/interfaces/planning-assistant.interface';
+// 动态导入 RouteDirectionsService 以避免循环依赖
+type RouteDirectionsService = any;
 
 export interface RecommendationInput {
   preferences: UserPreferences;
@@ -127,8 +129,12 @@ export class RecommendationEngineService {
 
   constructor(
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly routeDirectionsService?: RouteDirectionsService,
   ) {
     this.logger.log('推荐引擎服务已初始化');
+    if (this.routeDirectionsService) {
+      this.logger.log('路线方向服务已注入，将使用路线模板数据');
+    }
   }
 
   /**
@@ -184,6 +190,31 @@ export class RecommendationEngineService {
       if (normalizedCountryCode && idToCountryCode[id] !== normalizedCountryCode) continue;
 
       candidates.push(this.createDestinationFromTags(id, data));
+    }
+
+    // 从路线方向获取（如果可用且指定了国家代码）
+    if (this.routeDirectionsService && normalizedCountryCode) {
+      try {
+        this.logger.debug(`从路线方向获取候选: countryCode=${normalizedCountryCode}`);
+        const routeDirectionsResult = await this.routeDirectionsService.findRouteDirectionsByCountry(
+          normalizedCountryCode,
+          { limit: 10 }
+        );
+        
+        for (const rd of routeDirectionsResult.active) {
+          // 转换为 DestinationRecommendation
+          const destination = this.createDestinationFromRouteDirection(rd);
+          // 避免重复（检查 ID 和 countryCode）
+          if (!candidates.some(c => c.id === destination.id || 
+            (c.countryCode === destination.countryCode && c.name === destination.name))) {
+            candidates.push(destination);
+            this.logger.debug(`添加路线方向候选: ${destination.nameCN} (${destination.countryCode})`);
+          }
+        }
+      } catch (error: any) {
+        // 如果 RouteDirection 表不存在或其他错误，记录警告但不影响其他数据源
+        this.logger.warn(`从路线方向获取候选失败: ${error.message}`);
+      }
     }
 
     // 尝试从数据库获取更多
@@ -243,7 +274,47 @@ export class RecommendationEngineService {
       }
     }
 
+    this.logger.debug(`候选目的地总数: ${candidates.length} (countryCode=${normalizedCountryCode || 'all'})`);
     return candidates;
+  }
+
+  /**
+   * 从路线方向创建目的地推荐
+   */
+  private createDestinationFromRouteDirection(rd: any): DestinationRecommendation {
+    const seasonality = rd.seasonality as any;
+    const bestMonths = seasonality?.bestMonths || [];
+    const tags = rd.tags || [];
+    
+    // 从 metadata 中提取预算信息（如果有）
+    const metadata = rd.metadata as any;
+    const budgetRange = metadata?.budgetRange;
+    
+    return {
+      id: `route_direction_${rd.id}`,
+      countryCode: rd.countryCode,
+      name: rd.nameEN || rd.name || '',
+      nameCN: rd.nameCN || rd.name || '',
+      description: rd.description || '',
+      descriptionCN: rd.description || '',
+      highlights: tags.slice(0, 4),
+      highlightsCN: this.translateTags(tags.slice(0, 4)),
+      matchScore: 0, // 将在 scoreDestination 中计算
+      matchReasons: [],
+      matchReasonsCN: [],
+      estimatedBudget: budgetRange ? {
+        min: budgetRange.min || 2000,
+        max: budgetRange.max || 8000,
+        currency: budgetRange.currency || 'USD',
+      } : {
+        min: 2000,
+        max: 8000,
+        currency: 'USD',
+      },
+      bestSeasons: this.formatBestSeasons(bestMonths),
+      tags: tags,
+      imageUrl: undefined,
+    };
   }
 
   /**
@@ -261,6 +332,18 @@ export class RecommendationEngineService {
       spain: { en: 'Spain', cn: '西班牙', description: 'Vibrant culture, beautiful beaches, and delicious tapas', descriptionCN: '活力文化、美丽海滩、美味 tapas' },
     };
 
+    // 国家代码映射（与 getCandidates 中的映射保持一致）
+    const idToCountryCode: Record<string, string> = {
+      iceland: 'IS',
+      japan: 'JP',
+      newzealand: 'NZ',
+      italy: 'IT',
+      thailand: 'TH',
+      spain: 'ES',
+      switzerland: 'CH',
+      maldives: 'MV',
+    };
+
     const info = names[id] || { en: id, cn: id, description: '', descriptionCN: '' };
     const budgetRanges: Record<string, { min: number; max: number }> = {
       low: { min: 1000, max: 2500 },
@@ -271,7 +354,7 @@ export class RecommendationEngineService {
 
     return {
       id,
-      countryCode: id.substring(0, 2).toUpperCase(),
+      countryCode: idToCountryCode[id] || id.substring(0, 2).toUpperCase(), // 使用正确的国家代码映射
       name: info.en,
       nameCN: info.cn,
       description: info.description,

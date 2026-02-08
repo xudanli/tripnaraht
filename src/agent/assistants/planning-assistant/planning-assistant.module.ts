@@ -8,28 +8,94 @@
  */
 
 import { Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { PlanningAssistantService } from './services/planning-assistant.service';
 import { PlanningAssistantController } from './planning-assistant.controller';
+import { PlanningAssistantV2Controller } from './controllers/planning-assistant-v2.controller';
+import { PlanningAssistantV2Service } from './services/planning-assistant-v2.service';
+import { SmartRouterService } from './services/smart-router.service';
+import { McpToolRegistryService } from './services/mcp-tool-registry.service';
+import { McpToolDispatcherService } from './services/mcp-tool-dispatcher.service';
+import { LlmToolSelectorService } from './services/llm-tool-selector.service';
 import { LlmModule } from '../../../llm/llm.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { PlanningWorkbenchAgentService } from '../../services/planning-workbench-agent.service';
 import { PersonaShellService } from '../../services/persona-shell.service';
 import { SharedAssistantsModule } from '../shared/shared-assistants.module';
 import { AgentInfraModule } from '../../infra/infra.module';
+import { CacheModule } from '../../../common/cache/cache.module';
+import { HotelDirectModule } from '../../../mcp/hotel-direct.module';
+import { GoogleMapsDirectModule } from '../../../mcp/google-maps-direct.module';
+import { AirbnbModule } from '../../../mcp/airbnb.module';
+import { RestaurantDirectModule } from '../../../mcp/restaurant-direct.module';
+import { WeatherDirectModule } from '../../../mcp/weather-direct.module';
+import { ExaModule } from '../../../mcp/exa.module';
+import { AmadeusModule } from '../../../mcp/amadeus.module';
+import { TranslationDirectModule } from '../../../mcp/translation-direct.module';
+import { CurrencyDirectModule } from '../../../mcp/currency-direct.module';
+import { ImageDirectModule } from '../../../mcp/image-direct.module';
+import { VisionModule } from '../../../vision/vision.module';
+import { RailModule } from '../../../mcp/rail.module';
+import { BookingComModule } from '../../../mcp/booking-com.module';
+import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
+
+// 根据环境变量调整限流配置
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const disableThrottler = process.env.DISABLE_THROTTLER === 'true';
+
+// 开发环境：更宽松的限流（1000 次/分钟）或禁用
+// 生产环境：标准限流（100 次/分钟）
+const throttlerConfig = disableThrottler
+  ? [{ ttl: 60000, limit: 999999 }] // 禁用限流（设置一个非常大的值）
+  : isDevelopment
+    ? [{ ttl: 60000, limit: 1000 }] // 开发环境：1000 次/分钟
+    : [{ ttl: 60000, limit: 100 }]; // 生产环境：100 次/分钟
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot(throttlerConfig),
     LlmModule,
-    PrismaModule,
+    PrismaModule, // 提供PrismaService
     SharedAssistantsModule,
-    AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway)
+    AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway, TaskService)
+    CacheModule, // 通用缓存模块
+    HotelDirectModule, // 酒店搜索服务
+    GoogleMapsDirectModule, // Google Maps 服务（用于地理编码）
+    AirbnbModule, // Airbnb/民宿搜索服务
+    RestaurantDirectModule, // 餐厅搜索服务
+    WeatherDirectModule, // 天气查询服务
+    ExaModule, // Web搜索服务（Exa MCP）
+    AmadeusModule, // 航班搜索服务
+    TranslationDirectModule, // 翻译服务
+    CurrencyDirectModule, // 货币转换服务
+    ImageDirectModule, // 图片搜索服务
+    VisionModule, // Vision Service + OCR（图片识别）
+    RailModule, // Rail MCP 服务（铁路查询）
+    BookingComModule, // Booking.com 租车服务
+    GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
   ],
-  controllers: [PlanningAssistantController],
+  controllers: [
+    PlanningAssistantController, // V1 接口（保留，向后兼容）
+    PlanningAssistantV2Controller, // V2 接口（新设计）
+  ],
   providers: [
     PlanningAssistantService,
+    PlanningAssistantV2Service, // V2 Service
+    SmartRouterService, // 智能路由服务
+    McpToolRegistryService, // MCP 工具注册表
+    McpToolDispatcherService, // MCP 工具分发器
+    LlmToolSelectorService, // LLM 工具选择器
     PlanningWorkbenchAgentService, // 保留用于 CoreGateway 内部路由
     PersonaShellService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard, // 全局应用速率限制守卫
+    },
   ],
-  exports: [PlanningAssistantService],
+  exports: [
+    PlanningAssistantService,
+    PlanningAssistantV2Service, // 导出V2 Service
+  ],
 })
 export class PlanningAssistantModule {}

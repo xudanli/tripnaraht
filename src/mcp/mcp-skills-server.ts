@@ -202,13 +202,33 @@ async function createMcpServer() {
   
   console.error(`Registered ${allSkills.length} tools successfully`);
 
+  // 获取 MCP 能力管理器（用于检查能力是否启用）
+  let capabilityManager: any = null;
+  try {
+    const { McpCapabilityManagerService } = await import('./services/mcp-capability-manager.service');
+    capabilityManager = app.get(McpCapabilityManagerService, { strict: false });
+    if (capabilityManager) {
+      console.error('MCP Capability Manager available');
+    }
+  } catch (error: any) {
+    console.error('⚠️  MCP Capability Manager not available:', error.message);
+  }
+
+  // 辅助函数：检查能力是否启用
+  const isCapabilityEnabled = (serviceName: string): boolean => {
+    if (!capabilityManager) {
+      return true; // 如果能力管理器不可用，默认启用所有能力
+    }
+    return capabilityManager.isCapabilityEnabled(serviceName);
+  };
+
   // 注册 PostgreSQL MCP 工具
   let postgresqlMcpService: any = null;
   try {
     const { PostgreSQLMcpService } = await import('./postgresql-mcp.service');
     postgresqlMcpService = app.get(PostgreSQLMcpService, { strict: false });
     
-    if (postgresqlMcpService && postgresqlMcpService.isAvailable()) {
+    if (postgresqlMcpService && postgresqlMcpService.isAvailable() && isCapabilityEnabled('postgresql')) {
       console.error('PostgreSQL MCP service available, registering tools...');
 
       // 注册 postgresql.query 工具
@@ -296,12 +316,15 @@ async function createMcpServer() {
   // 注册 Airbnb MCP 工具
   let airbnbClient: any = null;
   try {
-    const { getAirbnbClient } = await import('./airbnb-client');
-    airbnbClient = getAirbnbClient();
-    
-    console.error('Connecting to Airbnb MCP server...');
-    await airbnbClient.connect();
-    console.error('✅ Airbnb MCP client connected');
+    if (!isCapabilityEnabled('airbnb')) {
+      console.error('⚠️  Airbnb MCP capability is disabled, skipping registration');
+    } else {
+      const { getAirbnbClient } = await import('./airbnb-client');
+      airbnbClient = getAirbnbClient();
+      
+      console.error('Connecting to Airbnb MCP server...');
+      await airbnbClient.connect();
+      console.error('✅ Airbnb MCP client connected');
 
     // 注册 airbnb_search 工具
     server.registerTool(
@@ -472,10 +495,13 @@ async function createMcpServer() {
   // 注册 Google Maps Direct API 工具（直接使用 Google Maps API，不依赖 Smithery）
   let googleMapsDirectService: any = null;
   try {
-    const { GoogleMapsDirectService } = await import('./google-maps-direct.service');
-    googleMapsDirectService = app.get(GoogleMapsDirectService, { strict: false });
-    
-    if (googleMapsDirectService && googleMapsDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('google_maps')) {
+      console.error('⚠️  Google Maps capability is disabled, skipping registration');
+    } else {
+      const { GoogleMapsDirectService } = await import('./google-maps-direct.service');
+      googleMapsDirectService = app.get(GoogleMapsDirectService, { strict: false });
+      
+      if (googleMapsDirectService && googleMapsDirectService.isServiceAvailable()) {
       console.error('Google Maps Direct API service available, registering tools...');
 
     // 注册 google_maps.getRoute 工具（直接使用 Google Maps API）
@@ -740,10 +766,13 @@ async function createMcpServer() {
   // 注册 Weather Direct API 工具（直接使用 Open-Meteo API，无需 Python）
   let weatherDirectService: any = null;
   try {
-    const { WeatherDirectService } = await import('./weather-direct.service');
-    weatherDirectService = app.get(WeatherDirectService, { strict: false });
-
-    if (weatherDirectService && weatherDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('weather')) {
+      console.error('⚠️  Weather capability is disabled, skipping registration');
+    } else {
+      const { WeatherDirectService } = await import('./weather-direct.service');
+      weatherDirectService = app.get(WeatherDirectService, { strict: false });
+      
+      if (weatherDirectService && weatherDirectService.isServiceAvailable()) {
       console.error('Weather Direct API service available, registering tools...');
 
       // 注册 weather.getCurrentWeather 工具
@@ -861,7 +890,7 @@ async function createMcpServer() {
   // 可以通过环境变量禁用 Rail MCP（如果不需要或不想认证）
   const enableRailMcp = process.env.ENABLE_RAIL_MCP !== 'false';
   
-  if (enableRailMcp) {
+  if (enableRailMcp && isCapabilityEnabled('rail')) {
     try {
       const { getRailClient } = await import('./rail-client');
       railClient = getRailClient();
@@ -912,14 +941,21 @@ async function createMcpServer() {
       console.error('💡 提示: 如果不需要 Rail 功能，可以设置 ENABLE_RAIL_MCP=false 禁用');
     }
   } else {
-    console.error('ℹ️  Rail MCP 已禁用 (ENABLE_RAIL_MCP=false)');
+    if (!isCapabilityEnabled('rail')) {
+      console.error('ℹ️  Rail MCP capability is disabled');
+    } else {
+      console.error('ℹ️  Rail MCP 已禁用 (ENABLE_RAIL_MCP=false)');
+    }
   }
 
   // 注册 File Extractor MCP 工具
   let fileExtractorClient: any = null;
   try {
-    const { getFileExtractorClient } = await import('./file-extractor-client');
-    fileExtractorClient = getFileExtractorClient();
+    if (!isCapabilityEnabled('file_extractor')) {
+      console.error('⚠️  File Extractor capability is disabled, skipping registration');
+    } else {
+      const { getFileExtractorClient } = await import('./file-extractor-client');
+      fileExtractorClient = getFileExtractorClient();
     
     console.error('Connecting to File Extractor MCP server...');
     await fileExtractorClient.connect();
@@ -969,10 +1005,13 @@ async function createMcpServer() {
   // 注册 Stripe Direct API 工具（直接使用 Stripe API，用户级别认证存储在数据库）
   let stripeDirectService: any = null;
   try {
-    const { StripeDirectService } = await import('./stripe-direct.service');
-    stripeDirectService = app.get(StripeDirectService, { strict: false });
-    
-    if (stripeDirectService && stripeDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('stripe')) {
+      console.error('⚠️  Stripe capability is disabled, skipping registration');
+    } else {
+      const { StripeDirectService } = await import('./stripe-direct.service');
+      stripeDirectService = app.get(StripeDirectService, { strict: false });
+      
+      if (stripeDirectService && stripeDirectService.isServiceAvailable()) {
       console.error('Stripe Direct API service available, registering tools...');
 
       // 注册 stripe.createPaymentIntent 工具
@@ -1415,8 +1454,12 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: browserbase.evaluate');
+      }
     } else {
       console.error('⚠️  Browserbase MCP service not available, skipping tool registration');
+    }
+    } else {
+      console.error('⚠️  Browserbase capability is disabled, skipping registration');
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Browserbase MCP tools:', error.message);
@@ -1426,10 +1469,13 @@ async function createMcpServer() {
   // 注册 Currency Exchange Direct API 工具（可选）
   let currencyDirectService: any = null;
   try {
-    const { CurrencyDirectService } = await import('./currency-direct.service');
-    currencyDirectService = app.get(CurrencyDirectService, { strict: false });
-    
-    if (currencyDirectService && currencyDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('currency')) {
+      console.error('⚠️  Currency capability is disabled, skipping registration');
+    } else {
+      const { CurrencyDirectService } = await import('./currency-direct.service');
+      currencyDirectService = app.get(CurrencyDirectService, { strict: false });
+      
+      if (currencyDirectService && currencyDirectService.isServiceAvailable()) {
       console.error('Currency Direct API service available, registering tools...');
 
       // 注册 currency.getLatestRates 工具
@@ -1565,10 +1611,13 @@ async function createMcpServer() {
   // 注册 Hotel Direct API 工具（可选）
   let hotelDirectService: any = null;
   try {
-    const { HotelDirectService } = await import('./hotel-direct.service');
-    hotelDirectService = app.get(HotelDirectService, { strict: false });
-    
-    if (hotelDirectService && hotelDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('hotel')) {
+      console.error('⚠️  Hotel capability is disabled, skipping registration');
+    } else {
+      const { HotelDirectService } = await import('./hotel-direct.service');
+      hotelDirectService = app.get(HotelDirectService, { strict: false });
+      
+      if (hotelDirectService && hotelDirectService.isServiceAvailable()) {
       console.error('Hotel Direct API service available, registering tools...');
 
       // 注册 hotel.search 工具
@@ -1824,10 +1873,13 @@ async function createMcpServer() {
   // 注册 Translation Direct API 工具（可选）
   let translationDirectService: any = null;
   try {
-    const { TranslationDirectService } = await import('./translation-direct.service');
-    translationDirectService = app.get(TranslationDirectService, { strict: false });
-    
-    if (translationDirectService && translationDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('translation')) {
+      console.error('⚠️  Translation capability is disabled, skipping registration');
+    } else {
+      const { TranslationDirectService } = await import('./translation-direct.service');
+      translationDirectService = app.get(TranslationDirectService, { strict: false });
+      
+      if (translationDirectService && translationDirectService.isServiceAvailable()) {
       console.error('Translation Direct API service available, registering tools...');
 
       // 注册 translation.translate 工具
@@ -2000,10 +2052,13 @@ async function createMcpServer() {
   // 注册 Image Direct API 工具（可选）
   let imageDirectService: any = null;
   try {
-    const { ImageDirectService } = await import('./image-direct.service');
-    imageDirectService = app.get(ImageDirectService, { strict: false });
-    
-    if (imageDirectService && imageDirectService.isServiceAvailable()) {
+    if (!isCapabilityEnabled('image')) {
+      console.error('⚠️  Image capability is disabled, skipping registration');
+    } else {
+      const { ImageDirectService } = await import('./image-direct.service');
+      imageDirectService = app.get(ImageDirectService, { strict: false });
+      
+      if (imageDirectService && imageDirectService.isServiceAvailable()) {
       console.error('Image Direct API service available, registering tools...');
 
       // 注册 image.search 工具
@@ -2156,7 +2211,123 @@ async function createMcpServer() {
     console.error('Note: Image Direct API tools will not be available');
   }
 
-  return { server, app, allSkills, airbnbClient, postgresqlMcpService, browserbaseMcpService, googleMapsDirectService, weatherDirectService, railClient, fileExtractorClient, stripeClient, stripeDirectService, restaurantDirectService, currencyDirectService, hotelDirectService, translationDirectService, imageDirectService };
+  // 注册 Vision Service + OCR 工具（核心能力）
+  let visionService: any = null;
+  try {
+    if (!isCapabilityEnabled('vision')) {
+      console.error('⚠️  Vision capability is disabled, skipping registration');
+    } else {
+      const { VisionService } = await import('../vision/vision.service');
+      visionService = app.get(VisionService, { strict: false });
+      
+      if (visionService) {
+      console.error('Vision Service available, registering tools...');
+
+      // 注册 vision.poiRecommend 工具
+      server.registerTool(
+        'vision.poiRecommend',
+        {
+          description: '识别图片中的地点（POI推荐）。通过 OCR 提取文字，然后搜索附近的 POI 并返回候选列表和建议。支持菜单、路牌、景点介绍牌等场景。',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              image: {
+                type: 'string',
+                description: '图片的 base64 编码字符串',
+                format: 'base64',
+              },
+              lat: {
+                type: 'number',
+                description: '用户当前位置纬度',
+              },
+              lng: {
+                type: 'number',
+                description: '用户当前位置经度',
+              },
+              locale: {
+                type: 'string',
+                description: '语言代码（可选），如 zh-CN, ja-JP, en-US',
+              },
+            },
+            required: ['image', 'lat', 'lng'],
+          },
+        },
+        async (args: any) => {
+          try {
+            // 将 base64 字符串转换为 Buffer
+            const imageBuffer = Buffer.from(args.image, 'base64');
+            
+            const result = await visionService.poiRecommend(imageBuffer, {
+              lat: args.lat,
+              lng: args.lng,
+              locale: args.locale,
+            });
+            
+            return formatResponse(result);
+          } catch (error: any) {
+            return formatResponse({
+              error: error.message || 'Unknown error',
+              stack: error.stack,
+            });
+          }
+        }
+      );
+      console.error('  ✓ Registered tool: vision.poiRecommend');
+
+      // 注册 ocr.extractText 工具（单独使用 OCR）
+      server.registerTool(
+        'ocr.extractText',
+        {
+          description: '从图片中提取文字（OCR）。返回提取的文字结果，包括完整文本和按行分割的文本。可用于翻译、文本识别等场景。',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              image: {
+                type: 'string',
+                description: '图片的 base64 编码字符串',
+                format: 'base64',
+              },
+              locale: {
+                type: 'string',
+                description: '语言代码（可选），如 zh-CN, ja-JP, en-US',
+              },
+            },
+            required: ['image'],
+          },
+        },
+        async (args: any) => {
+          try {
+            // 将 base64 字符串转换为 Buffer
+            const imageBuffer = Buffer.from(args.image, 'base64');
+            
+            // 使用 Vision Service 的 extractText 方法
+            const result = await visionService.extractText(imageBuffer, {
+              locale: args.locale,
+            });
+            
+            return formatResponse(result);
+          } catch (error: any) {
+            return formatResponse({
+              error: error.message || 'Unknown error',
+              stack: error.stack,
+            });
+          }
+        }
+      );
+      console.error('  ✓ Registered tool: ocr.extractText');
+      }
+    } else {
+      console.error('⚠️  Vision Service not available');
+    }
+    } else {
+      console.error('⚠️  Vision capability is disabled, skipping registration');
+    }
+  } catch (error: any) {
+    console.error('⚠️  Failed to register Vision Service tools:', error.message);
+    console.error('Note: Vision Service tools will not be available');
+  }
+
+  return { server, app, allSkills, airbnbClient, postgresqlMcpService, browserbaseMcpService, googleMapsDirectService, weatherDirectService, railClient, fileExtractorClient, stripeClient, stripeDirectService, restaurantDirectService, currencyDirectService, hotelDirectService, translationDirectService, imageDirectService, visionService };
 }
 
 // Main function to start the server
@@ -2168,7 +2339,7 @@ async function main() {
     const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
     console.error('Initializing MCP Skills Server...');
     console.error('Calling createMcpServer...');
-    const { server, app, allSkills, airbnbClient: client, googleMapsDirectService: mapsService, weatherDirectService: weatherService, railClient: rail, fileExtractorClient: fileExtractor, stripeClient: stripe, stripeDirectService: stripeDirect, restaurantDirectService: restaurantDirect, currencyDirectService: currencyDirect, hotelDirectService: hotelDirect, translationDirectService: translationDirect, imageDirectService: imageDirect } = await createMcpServer();
+    const { server, app, allSkills, airbnbClient: client, googleMapsDirectService: mapsService, weatherDirectService: weatherService, railClient: rail, fileExtractorClient: fileExtractor, stripeClient: stripe, stripeDirectService: stripeDirect, restaurantDirectService: restaurantDirect, currencyDirectService: currencyDirect, hotelDirectService: hotelDirect, translationDirectService: translationDirect, imageDirectService: imageDirect, visionService: vision } = await createMcpServer();
     airbnbClient = client;
     googleMapsDirectService = mapsService;
     railClient = rail;

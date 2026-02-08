@@ -47,7 +47,7 @@ export class GoogleMapsDirectService implements OnModuleInit, OnModuleDestroy {
 
       this.axiosInstance = axios.create({
         baseURL: this.baseUrl,
-        timeout: 30000,
+        timeout: 10000, // 减少超时时间到10秒，避免长时间等待
         httpsAgent,
         proxy: false,
         headers: {
