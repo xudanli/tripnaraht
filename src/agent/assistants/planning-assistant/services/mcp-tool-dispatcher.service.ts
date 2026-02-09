@@ -16,6 +16,8 @@ import { WeatherDirectService } from '../../../../mcp/weather-direct.service';
 import { ExaService } from '../../../../mcp/exa.service';
 import { GoogleCalendarService } from '../../../../mcp/google-calendar.service';
 import { GoogleMapsDirectService } from '../../../../mcp/google-maps-direct.service';
+import { HotelDirectService } from '../../../../mcp/hotel-direct.service';
+import { AdvancedGeocodingService, LocationContext } from './advanced-geocoding.service';
 
 @Injectable()
 export class McpToolDispatcherService implements OnModuleInit {
@@ -206,9 +208,11 @@ export class McpToolDispatcherService implements OnModuleInit {
     @Optional() private readonly exaService?: ExaService,
     @Optional() private readonly googleCalendarService?: GoogleCalendarService,
     @Optional() private readonly googleMapsDirectService?: GoogleMapsDirectService,
+    @Optional() private readonly hotelDirectService?: HotelDirectService,
+    @Optional() private readonly advancedGeocodingService?: AdvancedGeocodingService,
   ) {
     this.logger.log('🚀 MCP Tool Dispatcher Service 初始化');
-    this.logger.log(`服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}`);
+    this.logger.log(`服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}, Hotel=${!!hotelDirectService}, AdvancedGeocoding=${!!advancedGeocodingService}`);
     if (!airbnbService) {
       this.logger.warn('⚠️ AirbnbService 未注入！');
     }
@@ -223,6 +227,12 @@ export class McpToolDispatcherService implements OnModuleInit {
     }
     if (!googleMapsDirectService) {
       this.logger.warn('⚠️ GoogleMapsDirectService 未注入！');
+    }
+    if (!hotelDirectService) {
+      this.logger.warn('⚠️ HotelDirectService 未注入！');
+    }
+    if (!advancedGeocodingService) {
+      this.logger.warn('⚠️ AdvancedGeocodingService 未注入！');
     }
   }
 
@@ -247,7 +257,14 @@ export class McpToolDispatcherService implements OnModuleInit {
     params: Record<string, any>,
     retries: number = 1
   ): Promise<any> {
-    this.logger.debug(`执行工具调用: ${serviceName}.${toolName}, params=${JSON.stringify(params)}`);
+    // 如果 toolName 已经包含服务名前缀（如 "hotel.search"），提取实际工具名
+    // 否则使用完整工具名
+    let actualToolName = toolName;
+    if (toolName.startsWith(`${serviceName}.`)) {
+      actualToolName = toolName.substring(serviceName.length + 1);
+    }
+    
+    this.logger.debug(`执行工具调用: ${serviceName}.${actualToolName} (原始: ${toolName}), params=${JSON.stringify(params)}`);
 
     let lastError: any;
     
@@ -256,13 +273,15 @@ export class McpToolDispatcherService implements OnModuleInit {
         // 根据服务名称路由到对应的服务
         switch (serviceName) {
           case 'airbnb':
-            return await this.executeAirbnbTool(toolName, params);
+            return await this.executeAirbnbTool(actualToolName.startsWith('airbnb.') ? actualToolName : `airbnb.${actualToolName}`, params);
           case 'weather':
-            return await this.executeWeatherTool(toolName, params);
+            return await this.executeWeatherTool(actualToolName.startsWith('weather.') ? actualToolName : `weather.${actualToolName}`, params);
           case 'exa':
-            return await this.executeExaTool(toolName, params);
+            return await this.executeExaTool(actualToolName.startsWith('exa.') ? actualToolName : `exa.${actualToolName}`, params);
           case 'google-calendar':
-            return await this.executeGoogleCalendarTool(toolName, params);
+            return await this.executeGoogleCalendarTool(actualToolName.startsWith('google-calendar.') ? actualToolName : `google-calendar.${actualToolName}`, params);
+          case 'hotel':
+            return await this.executeHotelTool(actualToolName.startsWith('hotel.') ? actualToolName : `hotel.${actualToolName}`, params);
           default:
             throw new Error(`未知的服务: ${serviceName}`);
         }
@@ -348,13 +367,19 @@ export class McpToolDispatcherService implements OnModuleInit {
       case 'weather.getCurrentWeather':
         // WeatherDirectService.getCurrentWeather 接受城市名称字符串
         const city = params.location || params.destination;
-        const normalizedCity = await this.normalizeLocationName(city);
+        const normalizedCity = await this.normalizeLocationName(city, {
+          selectedDestination: params.destination,
+          language: params.language,
+        });
         return await this.weatherDirectService.getCurrentWeather(normalizedCity);
 
       case 'weather.getWeatherByDatetimeRange':
         // WeatherDirectService.getWeatherByDatetimeRange 接受三个独立参数
         const location = params.location || params.destination;
-        const normalizedLocation = await this.normalizeLocationName(location);
+        const normalizedLocation = await this.normalizeLocationName(location, {
+          selectedDestination: params.destination,
+          language: params.language,
+        });
         const startDate = params.startDate || this.getDefaultStartDate();
         const endDate = params.endDate || this.getDefaultEndDate(startDate);
         return await this.weatherDirectService.getWeatherByDatetimeRange(
@@ -365,6 +390,261 @@ export class McpToolDispatcherService implements OnModuleInit {
 
       default:
         throw new Error(`未知的 Weather 工具: ${toolName}`);
+    }
+  }
+
+  /**
+   * 执行 Hotel 工具
+   * 
+   * 优先级：优先使用 Airbnb，如果 Airbnb 不可用或结果为空，再降级到 HotelDirectService
+   */
+  private async executeHotelTool(toolName: string, params: any): Promise<any> {
+    switch (toolName) {
+      case 'hotel.search':
+        // 处理位置参数（可能是字符串或坐标对象）
+        let location: { lat: number; lng: number } | undefined;
+        
+        // 策略1: 如果直接提供了 location 参数
+        if (params.location) {
+          if (typeof params.location === 'string') {
+            // 如果是字符串，尝试地理编码
+            const normalizedLocation = await this.normalizeLocationName(params.location, {
+              selectedDestination: params.destination,
+              language: params.language,
+            });
+            
+            // 使用高级地理编码服务获取坐标
+            if (this.advancedGeocodingService) {
+              const geocodeResult = await this.advancedGeocodingService.geocode(normalizedLocation, {
+                selectedDestination: params.destination,
+                language: params.language,
+              });
+              if (geocodeResult.coordinates) {
+                location = geocodeResult.coordinates;
+              }
+            } else if (this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
+              // 降级到 Google Maps 地理编码
+              const geocodeResult = await this.googleMapsDirectService.geocode({
+                address: normalizedLocation,
+                language: params.language || 'en',
+              });
+              if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+                const result = geocodeResult.data.results[0];
+                const coords = result.geometry?.location;
+                if (coords) {
+                  location = { lat: coords.lat, lng: coords.lng };
+                }
+              }
+            }
+            
+            if (!location) {
+              throw new Error(`无法解析位置: ${params.location}`);
+            }
+          } else if (params.location.lat && params.location.lng) {
+            // 如果已经是坐标对象
+            location = params.location;
+          }
+        }
+        
+        // 策略2: 如果没有 location，但有 countryCode，使用国家代码进行地理编码
+        if (!location && params.countryCode) {
+          this.logger.debug(`使用 countryCode 进行地理编码: ${params.countryCode}`);
+          const countryName = this.getCountryNameFromCode(params.countryCode);
+          
+          // 先尝试使用高级地理编码服务
+          if (this.advancedGeocodingService) {
+            try {
+              const geocodeResult = await this.advancedGeocodingService.geocode(countryName, {
+                selectedDestination: params.destination,
+                language: params.language,
+              });
+              if (geocodeResult.coordinates) {
+                location = geocodeResult.coordinates;
+                this.logger.debug(`通过 countryCode (高级地理编码) 获取坐标成功: ${countryName} -> (${location.lat}, ${location.lng})`);
+              }
+            } catch (error: any) {
+              this.logger.warn(`高级地理编码失败: ${error.message}，尝试 Google Maps 或预定义坐标`);
+            }
+          }
+          
+          // 如果高级地理编码失败，尝试 Google Maps
+          if (!location && this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
+            try {
+              const geocodeResult = await this.googleMapsDirectService.geocode({
+                address: countryName,
+                language: params.language || 'en',
+              });
+              if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+                const result = geocodeResult.data.results[0];
+                const coords = result.geometry?.location;
+                if (coords) {
+                  location = { lat: coords.lat, lng: coords.lng };
+                  this.logger.debug(`通过 countryCode (Google Maps) 获取坐标成功: ${countryName} -> (${location.lat}, ${location.lng})`);
+                }
+              }
+            } catch (error: any) {
+              this.logger.warn(`Google Maps 地理编码失败: ${error.message}，使用预定义坐标作为降级方案`);
+            }
+          }
+          
+          // 降级方案：如果所有地理编码都失败，使用预定义的国家中心坐标
+          if (!location) {
+            const predefinedCoords = this.getCountryCenterCoordinates(params.countryCode);
+            if (predefinedCoords) {
+              location = predefinedCoords;
+              this.logger.debug(`使用预定义国家中心坐标作为降级方案: ${params.countryCode} -> (${location.lat}, ${location.lng})`);
+            } else {
+              this.logger.warn(`无法获取 ${params.countryCode} 的坐标（地理编码失败且无预定义坐标）`);
+            }
+          }
+        }
+        
+        // 策略3: 如果没有 location，但有 destination，使用目的地进行地理编码
+        if (!location && params.destination) {
+          this.logger.debug(`使用 destination 进行地理编码: ${params.destination}`);
+          
+          if (this.advancedGeocodingService) {
+            const geocodeResult = await this.advancedGeocodingService.geocode(params.destination, {
+              selectedDestination: params.destination,
+              language: params.language,
+            });
+            if (geocodeResult.coordinates) {
+              location = geocodeResult.coordinates;
+              this.logger.debug(`通过 destination 获取坐标成功: ${params.destination} -> (${location.lat}, ${location.lng})`);
+            }
+          } else if (this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
+            const geocodeResult = await this.googleMapsDirectService.geocode({
+              address: params.destination,
+              language: params.language || 'en',
+            });
+            if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+              const result = geocodeResult.data.results[0];
+              const coords = result.geometry?.location;
+              if (coords) {
+                location = { lat: coords.lat, lng: coords.lng };
+                this.logger.debug(`通过 destination 获取坐标成功: ${params.destination} -> (${location.lat}, ${location.lng})`);
+              }
+            }
+          }
+        }
+        
+        // 策略4: 如果都没有，尝试从 naturalLanguage 中提取位置信息
+        if (!location && params.naturalLanguage) {
+          this.logger.debug(`尝试从 naturalLanguage 提取位置: ${params.naturalLanguage}`);
+          // 移除"推荐"、"酒店"等关键词，保留地点信息
+          const cleanedText = params.naturalLanguage.replace(/推荐|酒店|hotel|找|搜索/gi, '').trim();
+          if (cleanedText && cleanedText.length > 0) {
+            if (this.advancedGeocodingService) {
+              const geocodeResult = await this.advancedGeocodingService.geocode(cleanedText, {
+                selectedDestination: params.destination,
+                language: params.language,
+              });
+              if (geocodeResult.coordinates) {
+                location = geocodeResult.coordinates;
+                this.logger.debug(`通过 naturalLanguage 获取坐标成功: ${cleanedText} -> (${location.lat}, ${location.lng})`);
+              }
+            }
+          }
+        }
+
+        if (!location) {
+          throw new Error('缺少必需参数: location。请提供位置信息（location、countryCode、destination 或 naturalLanguage）');
+        }
+
+        // 优先级1: 优先尝试 Airbnb
+        if (this.airbnbService) {
+          try {
+            this.logger.debug('酒店搜索：优先尝试 Airbnb...');
+            
+            // 构建 Airbnb 搜索参数
+            const airbnbParams: any = {
+              location: `${location.lat},${location.lng}`,
+              adults: params.guests || params.adults || 1,
+              checkin: params.checkIn,
+              checkout: params.checkOut,
+            };
+            
+            // 如果有 tripId 或 countryCode，记录日志（可用于后续增强）
+            if (params.tripId) {
+              this.logger.debug(`Airbnb 搜索使用 tripId: ${params.tripId}`);
+            }
+            if (params.countryCode) {
+              this.logger.debug(`Airbnb 搜索使用 countryCode: ${params.countryCode}`);
+            }
+            
+            const airbnbResult = await this.airbnbService.searchListings(airbnbParams);
+            
+            if (airbnbResult && airbnbResult.results && airbnbResult.results.length > 0) {
+              this.logger.debug(`Airbnb 搜索成功，找到 ${airbnbResult.results.length} 个房源`);
+              // 返回 Airbnb 结果，但标记为酒店搜索的结果
+              return {
+                success: true,
+                results: airbnbResult.results,
+                totalResults: airbnbResult.results.length,
+                source: 'airbnb', // 标记来源
+              };
+            } else {
+              this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirectService');
+            }
+          } catch (airbnbError: any) {
+            this.logger.warn(`Airbnb 搜索失败，降级到 HotelDirectService: ${airbnbError.message}`);
+          }
+        } else {
+          this.logger.debug('AirbnbService 不可用，降级到 HotelDirectService');
+        }
+
+        // 优先级2: 如果 Airbnb 不可用或结果为空，使用 HotelDirectService
+        if (!this.hotelDirectService) {
+          throw new Error('HotelDirectService 不可用: 服务未注入，请检查 HotelDirectModule 是否正确导入到 PlanningAssistantModule');
+        }
+
+        if (!this.hotelDirectService.isServiceAvailable()) {
+          throw new Error('HotelDirectService 不可用: Google Places API Key 未配置。请设置环境变量 GOOGLE_PLACES_API_KEY');
+        }
+
+        this.logger.debug('使用 HotelDirectService 搜索酒店...');
+        
+        // 构建酒店搜索参数
+        const hotelSearchParams: any = {
+          query: params.query,
+          location: location,
+          radius: params.radius || 10000,
+          type: params.type || 'lodging',
+          priceLevel: params.priceLevel,
+          minRating: params.minRating,
+          checkIn: params.checkIn,
+          checkOut: params.checkOut,
+          guests: params.guests,
+          language: params.language || 'en',
+        };
+        
+        // 如果有 tripId 或 countryCode，记录日志（可用于后续增强）
+        if (params.tripId) {
+          this.logger.debug(`HotelDirectService 搜索使用 tripId: ${params.tripId}`);
+        }
+        if (params.countryCode) {
+          this.logger.debug(`HotelDirectService 搜索使用 countryCode: ${params.countryCode}`);
+        }
+        
+        const hotelResult = await this.hotelDirectService.searchHotels(hotelSearchParams);
+
+        // 标记来源
+        return {
+          ...hotelResult,
+          source: 'hotel', // 标记来源
+        };
+
+      case 'hotel.getDetails':
+        if (!params.placeId) {
+          throw new Error('缺少必需参数: placeId');
+        }
+        return await this.hotelDirectService.getHotelDetails(
+          params.placeId,
+          params.language || 'en'
+        );
+
+      default:
+        throw new Error(`未知的 Hotel 工具: ${toolName}`);
     }
   }
 
@@ -516,18 +796,60 @@ export class McpToolDispatcherService implements OnModuleInit {
   /**
    * 标准化位置名称（将中文位置名称转换为英文或坐标）
    * 
+   * 使用高级地理编码服务（如果可用），否则使用基础策略
+   * 
    * 策略：
-   * 1. 首先检查常见的中文-英文映射（支持别名）
-   * 2. 检查地理编码缓存
-   * 3. 如果映射中没有，尝试使用 Google Maps 地理编码
-   * 4. 如果地理编码成功，缓存结果并返回英文名称或坐标
-   * 5. 如果都失败，返回原始名称（让天气服务自己处理）
+   * 1. 如果高级地理编码服务可用，使用它（支持地标识别、相对位置、上下文理解等）
+   * 2. 否则使用基础策略：
+   *    - 检查常见的中文-英文映射（支持别名）
+   *    - 检查地理编码缓存
+   *    - Google Maps 地理编码
+   *    - 返回原始名称（让天气服务自己处理）
    */
-  private async normalizeLocationName(location: string): Promise<string> {
+  private async normalizeLocationName(
+    location: string,
+    context?: { selectedDestination?: string; language?: string }
+  ): Promise<string> {
     if (!location || typeof location !== 'string') {
       return location;
     }
 
+    // 如果高级地理编码服务可用，优先使用它
+    if (this.advancedGeocodingService) {
+      try {
+        const locationContext: LocationContext = {
+          selectedDestination: context?.selectedDestination,
+          language: context?.language || 'en',
+        };
+
+        const geocodeResult = await this.advancedGeocodingService.geocode(location, locationContext);
+        
+        if (geocodeResult.confidence >= 0.6) {
+          this.logger.debug(`高级地理编码成功: "${location}" -> "${geocodeResult.normalizedName}" (confidence=${geocodeResult.confidence}, source=${geocodeResult.source})`);
+          
+          // 如果有坐标，可以返回坐标格式（某些服务支持）
+          if (geocodeResult.coordinates) {
+            // 对于天气服务，优先返回城市名称
+            return geocodeResult.normalizedName;
+          }
+          
+          return geocodeResult.normalizedName;
+        } else {
+          this.logger.debug(`高级地理编码置信度较低(${geocodeResult.confidence})，降级到基础策略`);
+        }
+      } catch (error: any) {
+        this.logger.warn(`高级地理编码失败: "${location}", error: ${error.message}，降级到基础策略`);
+      }
+    }
+
+    // 降级到基础策略
+    return this.normalizeLocationNameBasic(location);
+  }
+
+  /**
+   * 基础位置名称标准化（原有逻辑）
+   */
+  private async normalizeLocationNameBasic(location: string): Promise<string> {
     // 清理位置名称（移除多余的空格和标点）
     const cleanedLocation = location.trim().replace(/[，,。.？?！!]/g, '');
 
@@ -604,5 +926,104 @@ export class McpToolDispatcherService implements OnModuleInit {
         this.geocodeCache.delete(key);
       }
     }
+  }
+
+  /**
+   * 从国家代码获取国家名称（用于地理编码）
+   */
+  private getCountryNameFromCode(countryCode: string): string {
+    const countryCodeMap: Record<string, string> = {
+      'IS': 'Iceland',
+      'JP': 'Japan',
+      'TH': 'Thailand',
+      'IT': 'Italy',
+      'NZ': 'New Zealand',
+      'ES': 'Spain',
+      'CH': 'Switzerland',
+      'MV': 'Maldives',
+      'CN': 'China',
+      'US': 'United States',
+      'GB': 'United Kingdom',
+      'FR': 'France',
+      'DE': 'Germany',
+      'AU': 'Australia',
+      'CA': 'Canada',
+      'KR': 'South Korea',
+      'SG': 'Singapore',
+      'MY': 'Malaysia',
+      'VN': 'Vietnam',
+      'GL': 'Greenland',
+      'SJ': 'Svalbard',
+      'AR': 'Argentina',
+      'NO': 'Norway',
+      'NP': 'Nepal',
+    };
+    
+    return countryCodeMap[countryCode.toUpperCase()] || countryCode;
+  }
+
+  /**
+   * 获取预定义的国家中心坐标（降级方案）
+   * 当 Google Maps API 超时或失败时使用
+   */
+  private getCountryCenterCoordinates(countryCode: string): { lat: number; lng: number } | null {
+    const countryCenters: Record<string, { lat: number; lng: number }> = {
+      // 冰岛 - 使用雷克雅未克附近（黄金圈区域）
+      'IS': { lat: 64.9631, lng: -19.0208 },
+      // 日本 - 东京
+      'JP': { lat: 35.6762, lng: 139.6503 },
+      // 泰国 - 曼谷
+      'TH': { lat: 13.7563, lng: 100.5018 },
+      // 意大利 - 罗马
+      'IT': { lat: 41.9028, lng: 12.4964 },
+      // 新西兰 - 奥克兰
+      'NZ': { lat: -36.8485, lng: 174.7633 },
+      // 西班牙 - 马德里
+      'ES': { lat: 40.4168, lng: -3.7038 },
+      // 瑞士 - 苏黎世
+      'CH': { lat: 47.3769, lng: 8.5417 },
+      // 马尔代夫 - 马累
+      'MV': { lat: 4.1755, lng: 73.5093 },
+      // 中国 - 北京
+      'CN': { lat: 39.9042, lng: 116.4074 },
+      // 美国 - 纽约
+      'US': { lat: 40.7128, lng: -74.0060 },
+      // 英国 - 伦敦
+      'GB': { lat: 51.5074, lng: -0.1278 },
+      // 法国 - 巴黎
+      'FR': { lat: 48.8566, lng: 2.3522 },
+      // 德国 - 柏林
+      'DE': { lat: 52.5200, lng: 13.4050 },
+      // 澳大利亚 - 悉尼
+      'AU': { lat: -33.8688, lng: 151.2093 },
+      // 加拿大 - 多伦多
+      'CA': { lat: 43.6532, lng: -79.3832 },
+      // 韩国 - 首尔
+      'KR': { lat: 37.5665, lng: 126.9780 },
+      // 新加坡
+      'SG': { lat: 1.3521, lng: 103.8198 },
+      // 马来西亚 - 吉隆坡
+      'MY': { lat: 3.1390, lng: 101.6869 },
+      // 越南 - 河内
+      'VN': { lat: 21.0285, lng: 105.8542 },
+      // 格陵兰
+      'GL': { lat: 64.1814, lng: -51.6941 },
+      // 斯瓦尔巴
+      'SJ': { lat: 78.2232, lng: 15.6267 },
+      // 阿根廷 - 布宜诺斯艾利斯
+      'AR': { lat: -34.6037, lng: -58.3816 },
+      // 挪威 - 奥斯陆
+      'NO': { lat: 59.9139, lng: 10.7522 },
+      // 尼泊尔 - 加德满都
+      'NP': { lat: 27.7172, lng: 85.3240 },
+    };
+    
+    const coords = countryCenters[countryCode.toUpperCase()];
+    if (coords) {
+      this.logger.debug(`使用预定义国家中心坐标: ${countryCode} -> (${coords.lat}, ${coords.lng})`);
+      return coords;
+    }
+    
+    return null;
   }
 }

@@ -375,5 +375,55 @@ export class McpToolRegistryService implements OnModuleInit {
         authRequired: true,
       }
     ]);
+
+    // Hotel 工具
+    this.registerTools('hotel', [
+      {
+        serviceName: 'hotel',
+        toolName: 'hotel.search',
+        displayName: '搜索酒店',
+        description: '根据位置、日期、价格、评分等条件搜索酒店',
+        category: 'accommodation',
+        parameters: [
+          { name: 'query', type: 'string', required: false, description: '搜索查询（自然语言，如 "纽约市中心酒店"）' },
+          { name: 'location', type: 'string', required: false, description: '位置（城市名称、地址或坐标对象，如 "Reykjavik" 或 {lat: 64.1466, lng: -21.9426}）' },
+          { name: 'radius', type: 'number', required: false, description: '搜索半径（米）', defaultValue: 10000 },
+          { name: 'priceLevel', type: 'number', required: false, description: '价格等级（1=便宜，4=昂贵）' },
+          { name: 'minRating', type: 'number', required: false, description: '最低评分（0-5）' },
+          { name: 'checkIn', type: 'string', required: false, description: '入住日期（YYYY-MM-DD）' },
+          { name: 'checkOut', type: 'string', required: false, description: '退房日期（YYYY-MM-DD）' },
+          { name: 'guests', type: 'number', required: false, description: '入住人数' },
+          { name: 'language', type: 'string', required: false, description: '语言代码', defaultValue: 'en' },
+        ],
+        returnType: 'HotelDetails[]',
+        examples: [
+          '搜索冰岛的酒店',
+          '找东京的酒店',
+          '推荐巴黎的酒店',
+          '冰岛有什么酒店',
+          '搜索纽约市中心的高评分酒店'
+        ],
+        authRequired: false,
+      },
+      {
+        serviceName: 'hotel',
+        toolName: 'hotel.getDetails',
+        displayName: '获取酒店详情',
+        description: '获取酒店的详细信息，包括地址、评分、价格、评价等',
+        category: 'accommodation',
+        parameters: [
+          { name: 'placeId', type: 'string', required: true, description: '酒店 Place ID（例如从搜索结果中获取）' },
+          { name: 'language', type: 'string', required: false, description: '语言代码', defaultValue: 'en' },
+        ],
+        returnType: 'HotelDetails',
+        examples: [
+          '这个酒店怎么样？Place ID 是 ChIJ...',
+          '查看酒店详情',
+          '这个酒店有什么设施？',
+          '酒店详情'
+        ],
+        authRequired: false,
+      }
+    ]);
   }
 }

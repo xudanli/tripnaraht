@@ -18,6 +18,7 @@ import { SmartRouterService } from './services/smart-router.service';
 import { McpToolRegistryService } from './services/mcp-tool-registry.service';
 import { McpToolDispatcherService } from './services/mcp-tool-dispatcher.service';
 import { LlmToolSelectorService } from './services/llm-tool-selector.service';
+import { AdvancedGeocodingService } from './services/advanced-geocoding.service';
 import { LlmModule } from '../../../llm/llm.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { PlanningWorkbenchAgentService } from '../../services/planning-workbench-agent.service';
@@ -86,6 +87,7 @@ const throttlerConfig = disableThrottler
     McpToolRegistryService, // MCP 工具注册表
     McpToolDispatcherService, // MCP 工具分发器
     LlmToolSelectorService, // LLM 工具选择器
+    AdvancedGeocodingService, // 高级地理编码服务
     PlanningWorkbenchAgentService, // 保留用于 CoreGateway 内部路由
     PersonaShellService,
     {

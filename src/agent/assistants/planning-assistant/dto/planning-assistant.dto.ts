@@ -31,6 +31,16 @@ export class RequestContextDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @ApiPropertyOptional({ description: '行程ID（规划工作台场景下必需）' })
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
+  @ApiPropertyOptional({ description: '国家代码（ISO 3166-1 alpha-2，规划工作台场景下必需）', example: 'IS' })
+  @IsOptional()
+  @IsString()
+  countryCode?: string;
 }
 
 /**

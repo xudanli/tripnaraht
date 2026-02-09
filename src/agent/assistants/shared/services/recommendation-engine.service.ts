@@ -158,9 +158,21 @@ export class RecommendationEngineService {
     );
 
     // 4. 排序并返回
-    return scoredCandidates
+    const sortedCandidates = scoredCandidates
       .sort((a, b) => b.scores.total - a.scores.total)
       .slice(0, limit);
+    
+    // 记录推荐结果日志
+    this.logger.debug(
+      `[推荐引擎] 推荐完成: 候选数=${candidates.length}, ` +
+      `返回数=${sortedCandidates.length}, ` +
+      `匹配度范围=${sortedCandidates.length > 0 ? 
+        `${sortedCandidates[sortedCandidates.length - 1].destination.matchScore.toFixed(1)}-${sortedCandidates[0].destination.matchScore.toFixed(1)}` : 
+        'N/A'}, ` +
+      `前3名: ${sortedCandidates.slice(0, 3).map(s => `${s.destination.nameCN}(${s.destination.matchScore.toFixed(1)})`).join(', ')}`
+    );
+    
+    return sortedCandidates;
   }
 
   /**
@@ -389,14 +401,60 @@ export class RecommendationEngineService {
       total: 0,
     };
 
-    scores.total = scores.budget + scores.season + scores.preference + scores.travelers + scores.popularity;
+    // 计算原始总分
+    const rawTotal = scores.budget + scores.season + scores.preference + scores.travelers + scores.popularity;
+    
+    // 应用加权和差异化策略，增加区分度
+    // 1. 对高匹配项给予额外加分（非线性加权）
+    let weightedTotal = rawTotal;
+    
+    // 2. 如果多个维度都高分，给予额外奖励（协同效应）
+    const highScoreCount = [
+      scores.budget >= 20,
+      scores.season >= 18,
+      scores.preference >= 20,
+      scores.travelers >= 12,
+      scores.popularity >= 12,
+    ].filter(Boolean).length;
+    
+    if (highScoreCount >= 3) {
+      // 3个以上维度高分，给予5-10分奖励
+      weightedTotal += 5 + (highScoreCount - 3) * 2;
+    }
+    
+    // 3. 如果预算和偏好都高分，给予额外奖励（核心匹配）
+    if (scores.budget >= 20 && scores.preference >= 20) {
+      weightedTotal += 3;
+    }
+    
+    // 4. 如果季节匹配度高，给予额外奖励（时间敏感）
+    if (scores.season >= 18) {
+      weightedTotal += 2;
+    }
+    
+    // 5. 对低匹配项进行惩罚（避免所有目的地得分接近）
+    if (rawTotal < 50) {
+      weightedTotal -= (50 - rawTotal) * 0.3; // 低分项进一步降低
+    }
+    
+    // 6. 确保分数在合理范围内（0-100），并保留一位小数以增加区分度
+    scores.total = Math.max(0, Math.min(100, weightedTotal));
+    
+    // 记录调试信息
+    this.logger.debug(
+      `[推荐引擎] ${destination.nameCN} (${destination.id}): ` +
+      `预算=${scores.budget}, 季节=${scores.season}, 偏好=${scores.preference}, ` +
+      `人数=${scores.travelers}, 热门=${scores.popularity}, ` +
+      `原始总分=${rawTotal.toFixed(1)}, 加权总分=${scores.total.toFixed(1)}, ` +
+      `高分维度数=${highScoreCount}`
+    );
 
     const { matchReasons, matchReasonsCN } = this.generateMatchReasons(destination, preferences, scores);
 
     return {
       destination: {
         ...destination,
-        matchScore: Math.round(scores.total),
+        matchScore: Math.round(scores.total * 10) / 10, // 保留一位小数，增加区分度
         matchReasons,
         matchReasonsCN,
       },
@@ -408,23 +466,42 @@ export class RecommendationEngineService {
 
   /**
    * 计算预算匹配分 (0-25)
+   * 优化：增加区分度，避免所有目的地得分相同
    */
   private calculateBudgetScore(destination: DestinationRecommendation, preferences: UserPreferences): number {
-    if (!preferences.budget?.total) return 15; // 没有预算偏好，给中等分
+    if (!preferences.budget?.total) return 12; // 没有预算偏好，给略低于中等的分数，避免所有目的地相同
 
     const userBudget = preferences.budget.total;
     const avgCost = (destination.estimatedBudget.min + destination.estimatedBudget.max) / 2;
+    const budgetRange = destination.estimatedBudget.max - destination.estimatedBudget.min;
 
-    // 预算充足
-    if (userBudget >= destination.estimatedBudget.max) return 25;
-    // 预算适中
-    if (userBudget >= avgCost) return 20;
-    // 预算紧张但可行
-    if (userBudget >= destination.estimatedBudget.min) return 15;
-    // 预算不足
-    if (userBudget >= destination.estimatedBudget.min * 0.8) return 8;
+    // 预算充足（超过最大值）
+    if (userBudget >= destination.estimatedBudget.max) {
+      // 如果预算远超，给予更高分
+      const excessRatio = (userBudget - destination.estimatedBudget.max) / budgetRange;
+      return Math.min(25, 25 + excessRatio * 2);
+    }
+    
+    // 预算适中（在平均值和最大值之间）
+    if (userBudget >= avgCost) {
+      const ratio = (userBudget - avgCost) / (destination.estimatedBudget.max - avgCost);
+      return 20 + ratio * 5; // 20-25分之间
+    }
+    
+    // 预算紧张但可行（在最小值和平均值之间）
+    if (userBudget >= destination.estimatedBudget.min) {
+      const ratio = (userBudget - destination.estimatedBudget.min) / (avgCost - destination.estimatedBudget.min);
+      return 12 + ratio * 8; // 12-20分之间
+    }
+    
+    // 预算不足（在最小值的80%-100%之间）
+    if (userBudget >= destination.estimatedBudget.min * 0.8) {
+      const ratio = (userBudget - destination.estimatedBudget.min * 0.8) / (destination.estimatedBudget.min * 0.2);
+      return 5 + ratio * 7; // 5-12分之间
+    }
+    
     // 预算严重不足
-    return 3;
+    return Math.max(0, 5 * (userBudget / (destination.estimatedBudget.min * 0.8)));
   }
 
   /**
@@ -472,32 +549,62 @@ export class RecommendationEngineService {
 
   /**
    * 计算偏好匹配分 (0-25)
+   * 优化：增加区分度，根据匹配程度给予不同分数
    */
   private calculatePreferenceScore(destination: DestinationRecommendation, preferences: UserPreferences): number {
     if (!preferences.destination?.type && !preferences.activities?.preferred) {
-      return 15;
+      return 12; // 没有偏好，给略低于中等的分数
     }
 
     let score = 0;
     const destTags = destination.tags.map(t => t.toLowerCase());
+    let matchCount = 0;
+    let totalPreferenceCount = 0;
 
     // 目的地类型匹配
-    if (preferences.destination?.type) {
+    if (preferences.destination?.type && preferences.destination.type.length > 0) {
+      totalPreferenceCount += preferences.destination.type.length;
       const typeMatches = preferences.destination.type.filter(type => 
         destTags.includes(type.toLowerCase())
       );
-      score += Math.min(typeMatches.length * 8, 15);
+      matchCount += typeMatches.length;
+      // 完全匹配给予更高分，部分匹配给予中等分
+      if (typeMatches.length === preferences.destination.type.length) {
+        score += 18; // 完全匹配
+      } else if (typeMatches.length > 0) {
+        score += 10 + (typeMatches.length / preferences.destination.type.length) * 8; // 部分匹配
+      }
     }
 
     // 活动偏好匹配
-    if (preferences.activities?.preferred) {
+    if (preferences.activities?.preferred && preferences.activities.preferred.length > 0) {
+      totalPreferenceCount += preferences.activities.preferred.length;
       const activityMatches = preferences.activities.preferred.filter(activity =>
         destTags.some(tag => tag.includes(activity.toLowerCase()) || activity.toLowerCase().includes(tag))
       );
-      score += Math.min(activityMatches.length * 5, 10);
+      matchCount += activityMatches.length;
+      // 完全匹配给予更高分
+      if (activityMatches.length === preferences.activities.preferred.length) {
+        score += 12; // 完全匹配
+      } else if (activityMatches.length > 0) {
+        score += 5 + (activityMatches.length / preferences.activities.preferred.length) * 7; // 部分匹配
+      }
     }
 
-    return Math.min(score, 25);
+    // 如果完全没有匹配，给予低分
+    if (matchCount === 0 && totalPreferenceCount > 0) {
+      return 3;
+    }
+
+    // 根据匹配比例给予额外奖励
+    if (totalPreferenceCount > 0) {
+      const matchRatio = matchCount / totalPreferenceCount;
+      if (matchRatio >= 0.8) {
+        score += 2; // 高匹配比例奖励
+      }
+    }
+
+    return Math.min(Math.max(score, 0), 25);
   }
 
   /**

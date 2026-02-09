@@ -1,9 +1,14 @@
 # Planning Assistant V2 API 完整接口文档
 
-**版本**: 2.1.0  
-**最后更新**: 2026-02-08  
+**版本**: 2.1.1  
+**最后更新**: 2026-02-09  
 **基础路径**: `/api/agent/planning-assistant/v2`  
 **状态**: ✅ **生产就绪**
+
+**最新更新 (v2.1.1)**:
+- ✅ 添加 `tripId` 和 `countryCode` 到 `RequestContextDto`
+- ✅ 规划工作台场景下，`tripId` 和 `countryCode` 为必需参数
+- ✅ 酒店搜索优先使用 Airbnb，降级到 HotelDirectService
 
 ---
 
@@ -20,9 +25,23 @@
 
 ---
 
-## 🆕 最新更新 (v2.1.0)
+## 🆕 最新更新 (v2.1.1)
 
-### 2026-02-08 更新
+### 2026-02-09 更新
+
+#### ✨ 新增功能
+
+1. **规划工作台场景支持**
+   - `POST /chat` 接口的 `context` 参数新增 `tripId` 和 `countryCode` 字段
+   - 规划工作台场景下（当 `context.tripId` 或 `context.countryCode` 存在时），这两个参数为**必需参数**
+   - 工具调用时自动传递 `tripId` 和 `countryCode` 参数，用于上下文感知
+
+2. **酒店搜索优先级调整**
+   - 酒店搜索（`hotel` 路由目标）现在**优先使用 Airbnb 搜索**
+   - 如果 Airbnb 不可用或结果为空，自动降级到 Google Places API 的酒店搜索
+   - 响应中可能包含 `airbnbListings` 或 `hotels` 字段，取决于实际使用的服务
+
+### 2026-02-08 更新 (v2.1.0)
 
 #### ✨ 新增功能
 
@@ -49,9 +68,10 @@
 5. **酒店搜索功能**
    - `POST /chat` 接口新增 `hotel` 路由目标
    - 支持通过自然语言搜索酒店（如："冰岛酒店"、"搜索酒店"）
-   - 响应中新增 `hotels` 字段，包含酒店详细信息
-   - **默认排除 Airbnb**：搜索结果自动过滤掉 Airbnb 房源
+   - 响应中新增 `hotels` 或 `airbnbListings` 字段，包含酒店/房源详细信息
+   - **优先级：Airbnb > HotelDirectService**：优先使用 Airbnb 搜索，如果 Airbnb 不可用或结果为空，再降级到 Google Places API 的酒店搜索
    - 支持地理编码：自动将目的地名称转换为坐标进行搜索
+   - **规划工作台场景支持**：支持传递 `tripId` 和 `countryCode` 进行上下文感知搜索
 
 6. **🆕 MCP 服务自然语言调用（完整支持）**
    - **所有 14 个 MCP 服务**都支持通过自然语言调用
@@ -390,9 +410,36 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
   "message": "我想去冰岛旅行，预算5万，7天",
   "userId": "user_123456",  // 可选，但建议提供
-  "language": "zh"  // 可选，en 或 zh
+  "language": "zh",  // 可选，en 或 zh
+  "context": {  // 可选，请求上下文信息
+    "currentLocation": {
+      "lat": 39.9042,
+      "lng": 116.4074
+    },
+    "timezone": "Asia/Shanghai",
+    "tripId": "trip_123456",  // 可选，行程ID。规划工作台场景下必需
+    "countryCode": "IS"  // 可选，国家代码（ISO 3166-1 alpha-2）。规划工作台场景下必需
+  }
 }
 ```
+
+**请求参数说明**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sessionId` | string | ✅ | 会话ID，通过创建会话接口获取 |
+| `message` | string | ✅ | 用户发送的消息内容 |
+| `userId` | string | ❌ | 用户ID（可选，但建议提供） |
+| `language` | 'en' \| 'zh' | ❌ | 语言偏好，默认为 'zh' |
+| `context` | object | ❌ | 请求上下文信息 |
+| `context.currentLocation` | object | ❌ | 当前位置信息 `{lat: number, lng: number}` |
+| `context.timezone` | string | ❌ | 时区（如 "Asia/Shanghai"） |
+| `context.tripId` | string | ⚠️ 条件必填 | 行程ID。**规划工作台场景下必需**（当 `context.tripId` 或 `context.countryCode` 存在时，视为规划工作台场景） |
+| `context.countryCode` | string | ⚠️ 条件必填 | 国家代码（ISO 3166-1 alpha-2，如 "IS"、"JP"）。**规划工作台场景下必需**（当 `context.tripId` 或 `context.countryCode` 存在时，视为规划工作台场景） |
+
+**重要说明**：
+- **规划工作台场景**：如果提供了 `context.tripId` 或 `context.countryCode`，系统会判定为规划工作台场景。在此场景下，`tripId` 和 `countryCode` 都是**必需参数**，缺少任何一个都会返回 `400 BadRequestException`。
+- **普通场景**：如果不提供这些参数，系统会按普通对话场景处理，这些参数为可选。
 
 **响应** (200):
 ```json
@@ -545,8 +592,9 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `roomTypes` | string[] | 房型列表 |
 
 **注意**: 
-- 酒店搜索结果**默认排除 Airbnb**（通过名称、地址、类型过滤）
+- **酒店搜索优先级**：当路由到 `hotel` 目标时，系统会**优先使用 Airbnb 搜索**。如果 Airbnb 不可用或结果为空，再降级到 Google Places API 的酒店搜索。
 - 如果用户消息中包含目的地名称（如"冰岛酒店"），系统会自动进行地理编码
+- 规划工作台场景下，`tripId` 和 `countryCode` 会自动传递给工具调用，用于上下文感知
 - 搜索结果按评分和相关性排序，最多返回 10 个结果
 
 **前端使用建议**: 

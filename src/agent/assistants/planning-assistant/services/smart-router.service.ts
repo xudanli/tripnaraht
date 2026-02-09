@@ -243,9 +243,17 @@ export class SmartRouterService {
         'translate', 'currency', 'image'
       ];
       
-      if (keywordResult.confidence >= 0.8 && 
+      // 对于酒店搜索，降低置信度阈值，确保即使置信度稍低也能正确路由
+      const confidenceThreshold = keywordResult.target === 'hotel' ? 0.75 : 0.8;
+      
+      if (keywordResult.confidence >= confidenceThreshold && 
           specificServiceTargets.includes(keywordResult.target)) {
-        this.logger.debug(`关键词路由匹配到具体服务: ${keywordResult.target} (confidence=${keywordResult.confidence}), destination=${keywordResult.extractedParams?.destination || 'none'}`);
+        this.logger.debug(
+          `[智能路由] 关键词路由匹配到具体服务: ${keywordResult.target} ` +
+          `(confidence=${keywordResult.confidence.toFixed(2)}), ` +
+          `destination=${keywordResult.extractedParams?.destination || 'none'}, ` +
+          `message="${message.substring(0, 30)}..."`
+        );
         return keywordResult;
       }
 
@@ -254,7 +262,27 @@ export class SmartRouterService {
         const llmResult = await this.routeWithLLM(message, sessionState);
         // 降低置信度阈值，让更多请求能够路由到具体服务
         if (llmResult && llmResult.confidence > 0.6) {
-          // 如果 LLM 路由到具体服务，且关键词也匹配到具体服务，优先使用关键词结果（更可靠）
+          // 优先级规则1: 如果关键词路由匹配到具体服务（如 hotel），且置信度足够高（>= 0.8），优先使用关键词结果
+          // 这可以防止 LLM 将"推荐酒店"误判为 recommendations
+          if (specificServiceTargets.includes(keywordResult.target) && 
+              keywordResult.confidence >= 0.8) {
+            // 如果 LLM 也路由到具体服务，且与关键词路由一致，使用关键词结果（更可靠）
+            if (specificServiceTargets.includes(llmResult.target) && 
+                llmResult.target === keywordResult.target) {
+              this.logger.debug(`关键词路由与LLM路由一致，使用关键词结果: ${keywordResult.target}`);
+              return keywordResult;
+            }
+            // 如果 LLM 路由到 recommendations 或其他非具体服务，但关键词路由匹配到具体服务，优先使用关键词路由
+            if (!specificServiceTargets.includes(llmResult.target) || 
+                llmResult.target === 'recommendations') {
+              this.logger.debug(
+                `关键词路由优先级更高（${keywordResult.target}, confidence=${keywordResult.confidence}），` +
+                `覆盖LLM路由（${llmResult.target}, confidence=${llmResult.confidence}）`
+              );
+              return keywordResult;
+            }
+          }
+          // 优先级规则2: 如果 LLM 路由到具体服务，且关键词也匹配到具体服务，优先使用关键词结果（更可靠）
           if (specificServiceTargets.includes(llmResult.target) && 
               specificServiceTargets.includes(keywordResult.target) &&
               keywordResult.confidence >= 0.8) {
@@ -305,8 +333,13 @@ export class SmartRouterService {
 会话上下文:
 ${contextInfo}
 
+**重要规则**：
+1. 如果消息包含"酒店"、"hotel"、"推荐酒店"、"找酒店"等关键词，**必须**路由到 hotel，不要路由到 recommendations
+2. 如果会话中已选定目的地（selectedDestination不为空），且用户请求具体服务（如酒店、餐厅），应该路由到具体服务，而不是 recommendations
+3. 只有在用户明确要求推荐新目的地（如"推荐一些目的地"、"我想去日本"）时，才路由到 recommendations
+
 可选接口（按优先级排序，具体服务优先于通用推荐）:
-- hotel: 用户想要搜索酒店（例如："推荐冰岛的酒店"、"找酒店"、"搜索酒店"、"冰岛酒店"、"推荐酒店"）- 如果消息包含"酒店"或"hotel"，优先路由到这里
+- hotel: 用户想要搜索酒店（例如："推荐冰岛的酒店"、"找酒店"、"搜索酒店"、"冰岛酒店"、"推荐酒店"）- **如果消息包含"酒店"或"hotel"，必须路由到这里，不要路由到 recommendations**
 - airbnb: 用户想要搜索 Airbnb/民宿（例如："推荐 Airbnb"、"找民宿"、"短租"、"Airbnb 房源"）- 如果消息包含"airbnb"、"民宿"、"bnb"，优先路由到这里
 - accommodation: 用户想要搜索住宿（包括酒店和 Airbnb）（例如："推荐住宿"、"找住处"、"住宿推荐"）- 如果消息只包含"住宿"且不包含"酒店"或"airbnb"，路由到这里
 - restaurant: 用户想要搜索餐厅（例如："推荐餐厅"、"找餐厅"、"附近有什么好吃的"、"餐厅推荐"）- 如果消息包含"餐厅"、"restaurant"、"美食"，优先路由到这里
@@ -451,10 +484,22 @@ ${contextInfo}
       };
     }
     
-    // 酒店搜索关键词
-    if (lowerMessage.includes('酒店') || lowerMessage.includes('hotel') || 
-        lowerMessage.includes('找酒店') || lowerMessage.includes('搜索酒店') ||
-        (lowerMessage.includes('推荐') && lowerMessage.includes('酒店'))) {
+    // 酒店搜索关键词（增强匹配，确保"推荐酒店"按钮正确路由）
+    const hotelKeywords = [
+      '酒店', 'hotel', '找酒店', '搜索酒店', '推荐酒店',
+      '酒店推荐', '酒店搜索', '找住宿', '住宿推荐'
+    ];
+    const hasHotelKeyword = hotelKeywords.some(keyword => lowerMessage.includes(keyword));
+    
+    // 特殊处理："推荐酒店"必须路由到 hotel，不能路由到 recommendations
+    const isRecommendHotel = lowerMessage.includes('推荐') && lowerMessage.includes('酒店');
+    
+    if (hasHotelKeyword || isRecommendHotel) {
+      this.logger.debug(
+        `[关键词路由] 酒店关键词匹配: message="${message}", ` +
+        `hasHotelKeyword=${hasHotelKeyword}, isRecommendHotel=${isRecommendHotel}, ` +
+        `lowerMessage="${lowerMessage}"`
+      );
       // 优先使用会话中的目的地，如果没有则从消息中提取
       let destination = contextDestination;
       
@@ -462,24 +507,32 @@ ${contextInfo}
         // 尝试从消息中提取目的地（移除"推荐"、"酒店"等关键词）
         destination = message;
         // 移除常见关键词，保留地点信息
-        destination = destination.replace(/推荐|酒店|hotel|找|搜索/gi, '').trim();
+        destination = destination.replace(/推荐|酒店|hotel|找|搜索|住宿|推荐|的/gi, '').trim();
         // 如果移除后还有内容，作为目的地
         if (destination && destination.length > 0) {
           destination = destination.trim();
         } else {
-          destination = message; // 如果移除后为空，使用原始消息
+          // 如果移除后为空，且没有上下文目的地，destination 设为 undefined（让服务端处理）
+          destination = undefined;
         }
       }
       
+      // 记录路由决策日志
+      this.logger.debug(
+        `[关键词路由] 酒店搜索匹配: message="${message}", ` +
+        `contextDestination=${contextDestination || 'none'}, ` +
+        `extractedDestination=${destination || 'none'}`
+      );
+      
       return {
         target: 'hotel',
-        confidence: 0.9, // 提高置信度，确保优先匹配
-        reason: contextDestination ? `User wants to search for hotels in ${contextDestination}` : 'User wants to search for hotels',
-        reasonCN: contextDestination ? `用户想要搜索${contextDestination}的酒店` : '用户想要搜索酒店',
+        confidence: 0.95, // 进一步提高置信度，确保优先匹配
+        reason: destination ? `User wants to search for hotels in ${destination}` : 'User wants to search for hotels',
+        reasonCN: destination ? `用户想要搜索${destination}的酒店` : '用户想要搜索酒店',
         extractedParams: {
           naturalLanguage: message,
-          destination: destination,
-          excludeAirbnb: true, // 默认排除 Airbnb
+          ...(destination && { destination: destination }),
+          excludeAirbnb: false, // 改为 false，因为现在优先使用 Airbnb
         },
       };
     }
@@ -896,7 +949,8 @@ ${contextInfo}
       'airbnb': 'airbnb',
       'weather': 'weather',
       'search': 'exa',
-      'hotel': 'hotel',
+      'hotel': 'hotel', // 酒店搜索（服务层会优先使用 Airbnb）
+      'accommodation': 'hotel', // 住宿搜索映射到 hotel 服务（业务层会同时搜索酒店和 Airbnb）
       'restaurant': 'restaurant',
       'flight': 'amadeus',
       'rail': 'rail',
