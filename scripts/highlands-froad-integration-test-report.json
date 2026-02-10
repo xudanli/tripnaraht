@@ -1,0 +1,72 @@
+{
+  "routeDirectionUuid": "8afd4b2e-7dd1-4837-8169-d3efed748138",
+  "timestamp": "2026-02-10T15:52:11.072Z",
+  "summary": {
+    "total": 6,
+    "pass": 6,
+    "fail": 0,
+    "skip": 0
+  },
+  "results": [
+    {
+      "testName": "corridorGeom提取",
+      "status": "PASS",
+      "message": "corridorGeom存在，包含10个点，长度997.4km",
+      "details": {
+        "pointCount": 10,
+        "lengthMeters": "997446"
+      }
+    },
+    {
+      "testName": "corridorGeom解析",
+      "status": "PASS",
+      "message": "成功解析10个路线点",
+      "details": {
+        "routePoints": 10
+      }
+    },
+    {
+      "testName": "philosophy读取",
+      "status": "PASS",
+      "message": "philosophy字段完整，包含核心陈述、3个必须体验、4条不可协商规则",
+      "details": {
+        "coreStatement": "从文明进入高地，再回到人间",
+        "mustVisitTagsCount": 3,
+        "nonNegotiableRulesCount": 4
+      }
+    },
+    {
+      "testName": "failureProfile读取",
+      "status": "PASS",
+      "message": "failureProfile完整，包含2个常见失败日期、3个失败场景",
+      "details": {
+        "commonFailureDays": [
+          3,
+          4
+        ],
+        "failureScenariosCount": 3,
+        "rescueDifficulty": "HIGH"
+      }
+    },
+    {
+      "testName": "antiPersona过滤",
+      "status": "PASS",
+      "message": "antiPersona包含10条规则，测试过滤2/3个用户画像",
+      "details": {
+        "antiPersonaCount": 10,
+        "testProfiles": 3,
+        "filteredCount": 2
+      }
+    },
+    {
+      "testName": "查询性能",
+      "status": "PASS",
+      "message": "查询性能: countryCode+status=10ms, tags=6ms, uuid=4ms",
+      "details": {
+        "countryCodeStatusQuery": 10,
+        "tagsQuery": 6,
+        "uuidQuery": 4
+      }
+    }
+  ]
+}

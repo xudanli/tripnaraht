@@ -13,6 +13,9 @@ import { RewardSignalExtractorService } from './reward-signal-extractor.service'
 import { RollTrajectoryAdapterService } from './roll-trajectory-adapter.service';
 import { GateResult } from '../../interfaces/trip-plan.interface';
 import { RewardSignal } from '../interfaces/trajectory.interface';
+// 护城河扩展：用户反馈学习系统
+import { UserFeedbackService, SubmitFeedbackRequest } from '../../../skills/world/services/user-feedback.service';
+import { UserCapabilityLearningService } from '../../../skills/world/services/user-capability-learning.service';
 
 /**
  * TrajectoryCollectionService
@@ -28,6 +31,9 @@ export class TrajectoryCollectionService {
     private readonly validator: TrajectoryValidatorService,
     private readonly rewardExtractor: RewardSignalExtractorService,
     @Optional() private readonly rollTrajectoryAdapter?: RollTrajectoryAdapterService,
+    // 护城河扩展：用户反馈学习系统
+    @Optional() private readonly userFeedbackService?: UserFeedbackService,
+    @Optional() private readonly userCapabilityLearningService?: UserCapabilityLearningService,
   ) {}
 
   /**
@@ -232,5 +238,108 @@ export class TrajectoryCollectionService {
     return {
       trajectoryId: trajectory?.trajectoryId || null,
     };
+  }
+
+  /**
+   * 根据 tripId 查找轨迹
+   */
+  async findTrajectoryByTripId(
+    tripId: string,
+  ): Promise<{ trajectoryId: string | null }> {
+    const trajectory = await this.prisma.validatedTrajectory.findFirst({
+      where: { tripId },
+      orderBy: { createdAt: 'desc' },
+      select: { trajectoryId: true },
+    });
+
+    return {
+      trajectoryId: trajectory?.trajectoryId || null,
+    };
+  }
+
+  /**
+   * 收集用户反馈（护城河扩展）
+   * 
+   * 整合用户反馈学习系统到RL基础设施
+   */
+  async collectUserFeedback(
+    tripId: string,
+    userId: string,
+    feedback: {
+      type: 'TRIP_COMPLETED' | 'POI_SKIPPED' | 'DAY_FAILED' | 'POI_ADDED';
+      data: {
+        actualDays?: number;
+        actualAscent?: number;
+        actualDifficulty?: number;
+        overallSatisfaction?: number;
+        skippedPoiIds?: string[];
+        skipReason?: string;
+        failedDayNumbers?: number[];
+        failureReason?: string;
+        addedPoiIds?: string[];
+      };
+    },
+  ): Promise<void> {
+    this.logger.log(
+      `[TrajectoryCollection] 收集用户反馈: tripId=${tripId}, userId=${userId}, type=${feedback.type}`,
+    );
+
+    if (!this.userFeedbackService || !this.userCapabilityLearningService) {
+      this.logger.warn(
+        `[TrajectoryCollection] 用户反馈服务未配置，跳过反馈收集`,
+      );
+      return;
+    }
+
+    try {
+      // 1. 存储用户反馈
+      await this.userFeedbackService.submitFeedback({
+        tripId,
+        userId,
+        feedbackType: feedback.type,
+        data: feedback.data,
+      });
+
+      // 2. 学习用户能力（异步）
+      await this.userCapabilityLearningService.learnUserCapability(userId, feedback);
+
+      // 3. 提取Reward信号（整合到RL流程）
+      const rewardSignals = this.rewardExtractor.extractFromUserFeedback?.(feedback);
+      
+      // 4. 更新轨迹（如果轨迹已存在）
+      const trajectory = await this.findTrajectoryByTripId(tripId);
+      if (trajectory.trajectoryId && rewardSignals) {
+        const existingTrajectory = await this.prisma.validatedTrajectory.findUnique({
+          where: { trajectoryId: trajectory.trajectoryId },
+        });
+
+        if (existingTrajectory) {
+          const existingRewardSignals = (existingTrajectory.rewardSignals as unknown as RewardSignal[]) || [];
+          const mergedRewardSignals = this.rewardExtractor.mergeSignals(
+            existingRewardSignals,
+            rewardSignals,
+          );
+          const totalReward = this.rewardExtractor.calculateTotalReward(mergedRewardSignals);
+
+          await this.prisma.validatedTrajectory.update({
+            where: { trajectoryId: trajectory.trajectoryId },
+            data: {
+              rewardSignals: mergedRewardSignals as any,
+              totalReward,
+            },
+          });
+        }
+      }
+
+      this.logger.log(
+        `[TrajectoryCollection] 用户反馈已收集并整合到RL流程: tripId=${tripId}`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `[TrajectoryCollection] 收集用户反馈失败: ${error?.message}`,
+        error?.stack,
+      );
+      // 不抛出错误，避免影响主流程
+    }
   }
 }

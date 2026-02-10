@@ -10,26 +10,31 @@
  */
 export interface TripHealth {
   overall: 'healthy' | 'warning' | 'critical';
+  overallScore?: number; // 0-100，总体健康度分数（用于前端显示百分比）
   dimensions: {
     schedule: {
       status: 'healthy' | 'warning' | 'critical';
       score: number; // 0-100
       issues: string[];
+      weight?: number; // 维度权重（用于指标详细说明），默认 0.30
     };
     budget: {
       status: 'healthy' | 'warning' | 'critical';
       score: number; // 0-100
       issues: string[];
+      weight?: number; // 维度权重（用于指标详细说明），默认 0.25
     };
     pace: {
       status: 'healthy' | 'warning' | 'critical';
       score: number; // 0-100
       issues: string[];
+      weight?: number; // 维度权重（用于指标详细说明），默认 0.25
     };
     feasibility: {
       status: 'healthy' | 'warning' | 'critical';
       score: number; // 0-100
       issues: string[];
+      weight?: number; // 维度权重（用于指标详细说明），默认 0.20
     };
   };
 }

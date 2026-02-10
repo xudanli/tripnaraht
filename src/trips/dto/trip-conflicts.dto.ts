@@ -62,6 +62,9 @@ export class ConflictDto {
   @ApiProperty({ description: '受影响的行程项 ID 数组' })
   affectedItemIds!: string[];
 
+  @ApiPropertyOptional({ description: '时间重叠分钟数（仅TIME_CONFLICT类型）' })
+  overlapMinutes?: number;
+
   @ApiPropertyOptional({ description: '建议列表', type: [ConflictSuggestionDto] })
   suggestions?: ConflictSuggestionDto[];
 }

@@ -141,8 +141,31 @@ export class TripDetailController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, `无效的维度: ${dimension}`);
       }
 
+      // 维度权重定义（来自文档：.claude/product-decisions/trip-detail-page-key-decisions.md）
+      // 优先使用维度数据中的 weight，如果不存在则使用文档定义的权重
+      const defaultWeights: Record<string, number> = {
+        schedule: 0.30,    // 时间安排最重要
+        budget: 0.25,      // 预算次重要
+        pace: 0.25,        // 节奏同样重要
+        feasibility: 0.20  // 可达性相对次要（因为可以调整）
+      };
+
+      // 计算 weight 和 contribution
+      // weight: 每个维度的权重（优先从维度数据获取，否则使用文档定义的权重）
+      const dimensionWeight = (dimensionData as any).weight || defaultWeights[dimension] || 0.25;
+      
+      // contribution: 该维度对总体健康度的贡献（score * weight）
+      // 注意：整体健康度使用加权平均，contribution 反映该维度对总体健康度的实际贡献
+      const contribution = dimensionData.score * dimensionWeight;
+
       // 生成解释信息
-      const explanation = this.generateMetricExplanation(dimension, dimensionData, health.overall);
+      const explanation = this.generateMetricExplanation(
+        dimension, 
+        dimensionData, 
+        health.overall,
+        dimensionWeight,
+        contribution
+      );
 
       return successResponse(explanation);
     } catch (error: any) {
@@ -186,13 +209,23 @@ export class TripDetailController {
       score: number;
       issues: string[];
     },
-    overallStatus: 'healthy' | 'warning' | 'critical'
+    overallStatus: 'healthy' | 'warning' | 'critical',
+    weight: number = 0.25,
+    contribution: number = 0
   ) {
     const dimensionNames = {
       schedule: '时间安排',
       budget: '预算',
       pace: '节奏',
       feasibility: '行程可行性',
+    };
+
+    // 映射关系：metricName -> displayName
+    const displayNames = {
+      schedule: '时间灵活性',
+      budget: '预算控制',
+      pace: '节奏合理性',
+      feasibility: '可达性',
     };
 
     const dimensionDescriptions = {
@@ -239,17 +272,34 @@ export class TripDetailController {
     }
 
     return {
+      // 添加 metricName 和 displayName（必需字段）
+      metricName: dimension,
+      displayName: displayNames[dimension],
+      // 保留原有字段以保持向后兼容
       dimension,
       dimensionName: dimensionNames[dimension],
       description: dimensionDescriptions[dimension],
+      definition: dimensionDescriptions[dimension], // 添加 definition 字段
       currentScore: dimensionData.score,
       currentStatus: dimensionData.status,
       overallStatus,
       calculationMethod: calculationMethods[dimension],
+      calculation: {
+        method: calculationMethods[dimension],
+        score: dimensionData.score,
+      },
       idealRange: idealRanges[dimension],
+      currentState: {
+        score: dimensionData.score,
+        status: dimensionData.status,
+        issues: dimensionData.issues,
+      },
       issues: dimensionData.issues,
       suggestions,
       impact: dimensionData.status === 'critical' ? 'high' : dimensionData.status === 'warning' ? 'medium' : 'low',
+      // 添加 weight 和 contribution
+      weight: weight,
+      contribution: contribution,
       lastUpdated: new Date().toISOString(),
     };
   }

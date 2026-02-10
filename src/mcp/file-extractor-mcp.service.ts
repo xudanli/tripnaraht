@@ -21,17 +21,36 @@ export class FileExtractorMcpService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    // 检查是否禁用 MCP 服务（优先使用 Direct Service）
+    const enableMcpService = process.env.ENABLE_FILE_EXTRACTOR_MCP !== 'false';
+    
+    if (!enableMcpService) {
+      this.logger.log('File Extractor MCP service disabled (ENABLE_FILE_EXTRACTOR_MCP=false), using Direct Service');
+      this.isAvailableFlag = false;
+      this.useDirectService = this.directService?.isServiceAvailable() || false;
+      if (this.useDirectService) {
+        this.logger.log('✅ File Extractor Direct Service is available');
+      }
+      return;
+    }
+
+    // 尝试连接 MCP 服务
     try {
       this.client = new FileExtractorMcpClient();
       await this.client.connect();
       this.isAvailableFlag = true;
       this.useDirectService = false;
-      this.logger.log('File Extractor MCP service initialized');
+      this.logger.log('✅ File Extractor MCP service initialized');
     } catch (error: any) {
       this.logger.warn('Failed to initialize File Extractor MCP service:', error.message);
       this.logger.log('Will use direct service as fallback if available');
       this.isAvailableFlag = false;
       this.useDirectService = this.directService?.isServiceAvailable() || false;
+      if (this.useDirectService) {
+        this.logger.log('✅ File Extractor Direct Service is available as fallback');
+      } else {
+        this.logger.warn('⚠️  Neither MCP nor Direct Service is available');
+      }
     }
   }
 

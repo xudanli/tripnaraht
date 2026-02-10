@@ -2,6 +2,8 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { GeoAgent, GeoPoint, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { DEMElevationService } from '../../../trips/dem/services/dem-elevation.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+// 护城河扩展：实时世界状态更新
+import { RealtimeRoadStatusService } from '../../../skills/world/services/realtime-road-status.service';
 
 @Injectable()
 export class GeoAgentService implements GeoAgent {
@@ -10,6 +12,8 @@ export class GeoAgentService implements GeoAgent {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly demService?: DEMElevationService,
+    // 护城河扩展：实时道路状态服务
+    @Optional() private readonly realtimeRoadStatusService?: RealtimeRoadStatusService,
   ) {
     this.logger.log('[GeoAgent] Initialized');
   }
@@ -129,6 +133,30 @@ export class GeoAgentService implements GeoAgent {
       reachable = false;
     }
     if (this.demService && terrain.elevation_profile.length > 0) confidence += 0.2;
+
+    // 护城河扩展：查询实时道路状态（仅对DRIVE模式）
+    if (transportMode === 'DRIVE' && this.realtimeRoadStatusService) {
+      try {
+        // TODO: 从路线中提取roadId（需要路线数据）
+        // 这里简化处理，实际应该从RouteDirection或路线数据中提取roadId
+        // const roadId = await this.extractRoadIdFromRoute(origin, destination);
+        // if (roadId) {
+        //   const realtimeStatus = await this.realtimeRoadStatusService.getRoadStatus(roadId);
+        //   if (realtimeStatus && realtimeStatus.currentStatus === 'CLOSED') {
+        //     blockingFactors.push(`Road ${roadId} is currently closed`);
+        //     reachable = false;
+        //   } else if (realtimeStatus && realtimeStatus.currentStatus === 'CONDITIONAL') {
+        //     blockingFactors.push(`Road ${roadId} has conditional restrictions`);
+        //     confidence -= 0.1;
+        //   }
+        // }
+      } catch (error: any) {
+        this.logger.warn(
+          `[GeoAgent] 获取实时道路状态失败: ${error?.message}`,
+        );
+        // 不抛出错误，降级到静态数据
+      }
+    }
 
     evidence.push({
       evidence_id: `geo_feasibility_${Date.now()}`,

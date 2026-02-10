@@ -447,4 +447,119 @@ export class RewardSignalExtractorService {
   mergeSignals(...signalArrays: RewardSignal[][]): RewardSignal[] {
     return signalArrays.flat();
   }
+
+  /**
+   * 从用户反馈提取Reward信号（护城河扩展）
+   * 
+   * 整合用户反馈学习系统到RL基础设施
+   */
+  extractFromUserFeedback(feedback: {
+    type: 'TRIP_COMPLETED' | 'POI_SKIPPED' | 'DAY_FAILED' | 'POI_ADDED';
+    data: {
+      actualDays?: number;
+      actualAscent?: number;
+      actualDifficulty?: number;
+      overallSatisfaction?: number;
+      skippedPoiIds?: string[];
+      skipReason?: string;
+      failedDayNumbers?: number[];
+      failureReason?: string;
+      addedPoiIds?: string[];
+    };
+  }): TripNARARewardSignal[] {
+    this.logger.debug(
+      `[RewardExtractor] 从用户反馈提取reward: type=${feedback.type}`,
+    );
+
+    const signals: TripNARARewardSignal[] = [];
+
+    switch (feedback.type) {
+      case 'TRIP_COMPLETED':
+        // 执行成功 → +0.8 reward（如果满意度 >= 4）
+        if (feedback.data.overallSatisfaction !== undefined && feedback.data.overallSatisfaction >= 4) {
+          signals.push({
+            type: 'EXECUTION_SUCCESS',
+            value: 0.8,
+            timestamp: new Date().toISOString(),
+            source: 'USER',
+            is_gate_signal: false,
+            metadata: {
+              trip_completed: true,
+              overall_satisfaction: feedback.data.overallSatisfaction,
+              actual_days: feedback.data.actualDays,
+              actual_ascent: feedback.data.actualAscent,
+            },
+          });
+        } else if (feedback.data.overallSatisfaction !== undefined && feedback.data.overallSatisfaction < 3) {
+          // 执行失败（满意度低）→ -0.3 reward
+          signals.push({
+            type: 'EXECUTION_FAILURE',
+            value: -0.3,
+            timestamp: new Date().toISOString(),
+            source: 'USER',
+            is_gate_signal: false,
+            metadata: {
+              trip_completed: true,
+              overall_satisfaction: feedback.data.overallSatisfaction,
+              actual_days: feedback.data.actualDays,
+            },
+          });
+        }
+        break;
+
+      case 'DAY_FAILED':
+        // 执行失败 → -0.3 reward
+        signals.push({
+          type: 'EXECUTION_FAILURE',
+          value: -0.3,
+          timestamp: new Date().toISOString(),
+          source: 'USER',
+          is_gate_signal: false,
+          metadata: {
+            day_failed: true,
+            failed_day_numbers: feedback.data.failedDayNumbers,
+            failure_reason: feedback.data.failureReason,
+          },
+        });
+        break;
+
+      case 'POI_SKIPPED':
+        // POI跳过 → -0.1 reward（如果跳过核心POI）
+        // TODO: 需要检查POI是否是核心POI（需要RouteDirection数据）
+        signals.push({
+          type: 'CORE_POI_SKIPPED',
+          value: -0.1,
+          timestamp: new Date().toISOString(),
+          source: 'USER',
+          is_gate_signal: false,
+          metadata: {
+            poi_skipped: true,
+            skipped_poi_ids: feedback.data.skippedPoiIds,
+            skip_reason: feedback.data.skipReason,
+          },
+        });
+        break;
+
+      case 'POI_ADDED':
+        // POI添加 → +0.1 reward（用户主动添加POI，说明计划不够完整）
+        signals.push({
+          type: 'POI_ADDED',
+          value: 0.1,
+          timestamp: new Date().toISOString(),
+          source: 'USER',
+          is_gate_signal: false,
+          metadata: {
+            poi_added: true,
+            added_poi_ids: feedback.data.addedPoiIds,
+          },
+        });
+        break;
+    }
+
+    this.logger.debug(
+      `[RewardExtractor] 从用户反馈提取到 ${signals.length} 个reward信号，总值: ${signals.reduce((sum, s) => sum + s.value, 0)}`,
+    );
+
+    return signals;
+  }
 }

@@ -68,6 +68,9 @@ import { WeatherAgentService } from './domain-agents/weather-agent.service';
 import { CostAgentService } from './domain-agents/cost-agent.service';
 import { ExperienceAgentService } from './domain-agents/experience-agent.service';
 import { DecisionOutput, DecisionNode } from '../interfaces/decision-node.interface';
+// 护城河扩展：预测性世界模型
+import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
+import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 
 /**
  * Claude Orchestrator Service
@@ -103,6 +106,9 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly weatherAgent?: WeatherAgentService,
     @Optional() private readonly costAgent?: CostAgentService,
     @Optional() private readonly experienceAgent?: ExperienceAgentService,
+    // 护城河扩展：预测性世界模型
+    @Optional() private readonly weatherPredictionService?: WeatherPredictionService,
+    @Optional() private readonly failureRiskPredictionService?: FailureRiskPredictionService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -2606,6 +2612,9 @@ ${JSON.stringify(routingDecision, null, 2)}
 
         // 6. Domain Agents - World Model Data
         await this.collectWorldModelData(tripRequest, researchData, evidenceRefs);
+
+        // 7. 护城河扩展：预测数据（并行获取）
+        await this.collectPredictionData(tripRequest, researchData, evidenceRefs, request);
       }
 
       state.research_data = researchData;
@@ -2707,6 +2716,51 @@ ${JSON.stringify(routingDecision, null, 2)}
         } catch (error: any) {
           this.logger.warn(`[Claude Orchestrator] 准备度检查失败: ${error?.message}`, error?.stack);
           // 准备度检查失败不影响 Gate 评估，继续执行
+        }
+      }
+
+      // ========== 1.5. 护城河扩展：失败风险预测检查 ==========
+      if (
+        this.failureRiskPredictionService &&
+        state.research_data?.failure_risk_prediction &&
+        request.route_direction_id
+      ) {
+        try {
+          const failureRiskPrediction = state.research_data.failure_risk_prediction;
+          const highRiskDays = failureRiskPrediction.predictions.filter(
+            (p: any) => p.riskLevel === 'HIGH',
+          );
+
+          if (highRiskDays.length > 0) {
+            // 如果有高风险日期，添加到violations
+            if (!readinessBlockers) {
+              readinessBlockers = [];
+            }
+            readinessBlockers.push({
+              type: 'FAILURE_RISK',
+              severity: 'HARD',
+              message: {
+                zh: `预测到第${highRiskDays.map((d: any) => d.day).join(', ')}天存在高风险，建议调整行程日期`,
+                en: `High risk predicted for days ${highRiskDays.map((d: any) => d.day).join(', ')}, consider adjusting dates`,
+              },
+              evidence: [
+                {
+                  sourceId: `failure_risk_prediction_${Date.now()}`,
+                  source: 'FailureRiskPredictionService',
+                },
+              ],
+            });
+
+            this.logger.debug(
+              `[Claude Orchestrator] 失败风险预测检查: 发现${highRiskDays.length}个高风险日期`,
+            );
+          }
+        } catch (error: any) {
+          this.logger.warn(
+            `[Claude Orchestrator] 失败风险预测检查失败: ${error?.message}`,
+            error?.stack,
+          );
+          // 失败风险预测检查失败不影响 Gate 评估，继续执行
         }
       }
 
@@ -4723,6 +4777,86 @@ ${JSON.stringify(routingDecision, null, 2)}
           tripRequest.party?.count || 2
         ).then(r => { researchData.cost_estimate = r; r.evidence.forEach(e => evidenceRefs.push(e.evidence_id)); })
           .catch(e => this.logger.warn(`[CostAgent] Failed: ${e?.message}`))
+      );
+    }
+
+    await Promise.all(promises);
+  }
+
+  /**
+   * 收集预测数据（护城河扩展）
+   */
+  private async collectPredictionData(
+    tripRequest: TripPlanRequest,
+    researchData: Record<string, any>,
+    evidenceRefs: string[],
+    request: RouteAndRunRequestDto,
+  ): Promise<void> {
+    this.logger.debug(`[Orchestrator] Collecting prediction data (护城河扩展)`);
+
+    const promises: Promise<void>[] = [];
+
+    // 1. 天气预测
+    if (this.weatherPredictionService && tripRequest.date_range) {
+      promises.push(
+        this.weatherPredictionService
+          .predictWeather('IS', {
+            start: new Date(tripRequest.date_range.start_date),
+            end: new Date(tripRequest.date_range.end_date),
+          })
+          .then((predictions) => {
+            researchData.weather_predictions = predictions;
+            evidenceRefs.push(`weather_predictions_${Date.now()}`);
+          })
+          .catch((e) =>
+            this.logger.warn(`[WeatherPredictionService] Failed: ${e?.message}`),
+          ),
+      );
+    }
+
+    // 2. 失败风险预测
+    if (
+      this.failureRiskPredictionService &&
+      tripRequest.date_range &&
+      request.route_direction_id
+    ) {
+      promises.push(
+        this.failureRiskPredictionService
+          .predictFailureRisk(
+            request.route_direction_id,
+            {
+              userId: request.user_id,
+              riskTolerance: tripRequest.party_profile?.risk_tolerance as any,
+              fitness: tripRequest.party_profile?.fitness as any,
+            },
+            {
+              start: new Date(tripRequest.date_range.start_date),
+              end: new Date(tripRequest.date_range.end_date),
+            },
+          )
+          .then((prediction) => {
+            researchData.failure_risk_prediction = prediction;
+            evidenceRefs.push(`failure_risk_prediction_${Date.now()}`);
+
+            // 提前预警高风险日期
+            const highRiskDays = prediction.predictions
+              .filter((p) => p.riskLevel === 'HIGH')
+              .map((p) => p.day);
+
+            if (highRiskDays.length > 0) {
+              if (!researchData.warnings) {
+                researchData.warnings = [];
+              }
+              researchData.warnings.push({
+                type: 'HIGH_RISK_DAYS',
+                days: highRiskDays,
+                message: `预测到第${highRiskDays.join(', ')}天存在高风险`,
+              });
+            }
+          })
+          .catch((e) =>
+            this.logger.warn(`[FailureRiskPredictionService] Failed: ${e?.message}`),
+          ),
       );
     }
 

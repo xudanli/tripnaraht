@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { WeatherAgent, GeoPoint, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { DataSourceRouterService } from '../../../data-contracts/services/data-source-router.service';
+// 护城河扩展：实时世界状态更新
+import { RealtimeWeatherService } from '../../../skills/world/services/realtime-weather.service';
 
 @Injectable()
 export class WeatherAgentService implements WeatherAgent {
@@ -8,6 +10,8 @@ export class WeatherAgentService implements WeatherAgent {
 
   constructor(
     @Optional() private readonly dataRouter?: DataSourceRouterService,
+    // 护城河扩展：实时天气服务
+    @Optional() private readonly realtimeWeatherService?: RealtimeWeatherService,
   ) {
     this.logger.log('[WeatherAgent] Initialized');
   }
@@ -91,6 +95,58 @@ export class WeatherAgentService implements WeatherAgent {
             timestamp: new Date().toISOString(),
             data: { location, days_requested: days, source: 'DATA_ROUTER' },
           });
+
+          // 护城河扩展：查询实时天气预警
+          if (this.realtimeWeatherService) {
+            try {
+              // 获取区域代码（简化处理，实际应该根据location获取）
+              const region = 'IS'; // TODO: 根据location获取实际区域代码
+              const realtimeAlerts = await this.realtimeWeatherService.getWeatherAlerts(
+                region,
+                { start: startDate, end: endDate },
+              );
+
+              if (realtimeAlerts.length > 0) {
+                // 将实时预警添加到evidence
+                evidence.push({
+                  evidence_id: `realtime_weather_alerts_${Date.now()}`,
+                  source: 'RealtimeWeatherService.getWeatherAlerts',
+                  timestamp: new Date().toISOString(),
+                  data: {
+                    alerts_count: realtimeAlerts.length,
+                    alerts: realtimeAlerts.map((a) => ({
+                      type: a.alertType,
+                      severity: a.severity,
+                      impact: a.impact,
+                    })),
+                  },
+                });
+
+                // 如果有CRITICAL或HIGH级别的预警，更新forecasts的travel_suitability
+                const criticalAlerts = realtimeAlerts.filter(
+                  (a) => a.severity === 'CRITICAL' || a.severity === 'HIGH',
+                );
+                if (criticalAlerts.length > 0) {
+                  forecasts.forEach((forecast) => {
+                    // 检查预警是否影响该日期
+                    const forecastDate = new Date(forecast.date);
+                    const affected = criticalAlerts.some(
+                      (alert) =>
+                        forecastDate >= alert.startTime && forecastDate <= alert.endTime,
+                    );
+                    if (affected) {
+                      forecast.travel_suitability = 'DANGEROUS';
+                    }
+                  });
+                }
+              }
+            } catch (error: any) {
+              this.logger.warn(
+                `[WeatherAgent] 获取实时天气预警失败: ${error?.message}`,
+              );
+              // 不抛出错误，降级到静态数据
+            }
+          }
         }
       }
 

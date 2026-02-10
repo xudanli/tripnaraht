@@ -9,22 +9,39 @@
 
 ## ✅ 已实现的决策
 
-### 1. 健康度计算逻辑：木桶效应 ✅
+### 1. 健康度计算逻辑：加权平均 ✅（2026-02-10 更新）
 
-**决策**: 采用木桶效应（取最低分）
+**决策**: 采用加权平均（考虑各维度重要性）
 
 **实现位置**: `src/skills/detail/detail-analyze-health.skill.ts`
 
 **代码变更**:
 ```typescript
-// 修改前：简单平均
-const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-
-// 修改后：木桶效应（取最低分）
+// 修改前：木桶效应（取最低分）
 const overallScore = Math.min(...scores);
+
+// 修改后：加权平均
+const dimensionWeights = {
+  schedule: 0.30,    // 时间安排最重要
+  budget: 0.25,      // 预算次重要
+  pace: 0.25,        // 节奏同样重要
+  feasibility: 0.20  // 可达性相对次要
+};
+
+const overallScore = 
+  schedule.score * dimensionWeights.schedule +
+  budget.score * dimensionWeights.budget +
+  pace.score * dimensionWeights.pace +
+  feasibility.score * dimensionWeights.feasibility;
 ```
 
-**影响**: 所有健康度展示将使用此公式，确保所有维度都健康
+**权重定义**:
+- schedule: 0.30 (30%)
+- budget: 0.25 (25%)
+- pace: 0.25 (25%)
+- feasibility: 0.20 (20%)
+
+**影响**: 所有健康度展示将使用加权平均公式，更合理地反映整体健康度
 
 ---
 

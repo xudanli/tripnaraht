@@ -129,12 +129,17 @@ export class DEMEffortMetadataService {
       throw new Error('路线至少需要2个点');
     }
 
-    // 1. 获取所有点的海拔
+    // 1. 获取所有点的海拔（使用批量查询优化）
+    const elevationResults = await this.demService.getElevations(
+      points.map(p => ({ lat: p.lat, lng: p.lng }))
+    );
+    
+    // 处理查询结果，填充null值
     const elevations: number[] = [];
-    for (const point of points) {
-      const elevation = await this.demService.getElevation(point.lat, point.lng);
+    for (let i = 0; i < elevationResults.length; i++) {
+      const elevation = elevationResults[i];
       if (elevation === null) {
-        this.logger.warn(`无法获取海拔 (${point.lat}, ${point.lng})，使用前一点海拔或0`);
+        this.logger.warn(`无法获取海拔 (${points[i].lat}, ${points[i].lng})，使用前一点海拔或0`);
         elevations.push(elevations.length > 0 ? elevations[elevations.length - 1] : 0);
       } else {
         elevations.push(elevation);
@@ -322,11 +327,11 @@ export class DEMEffortMetadataService {
     steepestSegment: { startIndex: number; endIndex: number; slope: number };
     mountainPasses: Array<{ index: number; lat: number; lng: number; elevation: number }>;
   }> {
-    const elevations: number[] = [];
-    for (const point of points) {
-      const elevation = await this.demService.getElevation(point.lat, point.lng);
-      elevations.push(elevation ?? 0);
-    }
+    // 使用批量查询优化
+    const elevationResults = await this.demService.getElevations(
+      points.map(p => ({ lat: p.lat, lng: p.lng }))
+    );
+    const elevations = elevationResults.map(e => e ?? 0);
 
     // 找到最高点
     const maxElevation = Math.max(...elevations);

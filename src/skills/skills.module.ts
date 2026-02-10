@@ -19,6 +19,8 @@ import { LlmModule } from '../llm/llm.module';
 import { TransportModule } from '../transport/transport.module';
 import { DataContractsModule } from '../data-contracts/data-contracts.module';
 import { ExaModule } from '../mcp/exa.module';
+import { CacheModule } from '../common/cache/cache.module';
+import { CountryConfigService } from './world/services/country-config.service';
 
 // DEM Skills
 import { DemGetProfileSkill } from './dem/dem-get-profile.skill';
@@ -42,7 +44,22 @@ import { TripQuickEvaluateSkill } from './trip/trip-quick-evaluate.skill';
 
 // World Skills
 import { WorldBuildContextSkill } from './world/world-build-context.skill';
+import { WorldModelEvidenceController } from './world/world-model-evidence.controller';
+import { WorldModelEvidenceService } from './world/services/world-model-evidence.service';
 import { WorldController } from './world/world.controller';
+// 护城河扩展World Skills
+import { WorldRealtimeWeatherSkill } from './world/world-realtime-weather.skill';
+import { WorldWeatherPredictionSkill } from './world/world-weather-prediction.skill';
+import { WorldFailureRiskPredictionSkill } from './world/world-failure-risk-prediction.skill';
+import { WorldAdaptiveParametersSkill } from './world/world-adaptive-parameters.skill';
+import { WorldMultimodalPerceptionSkill } from './world/world-multimodal-perception.skill';
+import { WorldCollaborativeDataSkill } from './world/world-collaborative-data.skill';
+import { CollaborativeWorldModelService } from './world/services/collaborative-world-model.service';
+import { CausalReasoningService } from './world/services/causal-reasoning.service';
+import { MultiAgentCollaborationService } from './world/services/multi-agent-collaboration.service';
+import { WorldModelVersionService } from './world/services/world-model-version.service';
+import { WorldModelEventsService } from './world/services/world-model-events.service';
+import { WorldModelMonitoringService } from './world/services/world-model-monitoring.service';
 
 // Decision Skills (additional)
 import { DecisionRunThreeGuardiansSkill } from './decision/decision-run-three-guardians.skill';
@@ -223,9 +240,11 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     forwardRef(() => LlmModule), // 导入 LlmModule 以支持规划技能使用 LlmService
     forwardRef(() => DataContractsModule), // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
     ExaModule, // 导入 ExaModule 以支持 WorldBuildContextSkill 使用 ExaIntegrationService
+    CacheModule, // 导入 CacheModule 以支持 WorldBuildContextSkill 使用缓存
   ],
   controllers: [
     WorldController,
+    WorldModelEvidenceController,
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
@@ -237,8 +256,25 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
       : []),
     
     // World Skills
+    CountryConfigService, // 国家配置服务
     WorldBuildContextSkill,
     { provide: SKILL_WORLD_BUILD_CONTEXT, useExisting: WorldBuildContextSkill },
+    WorldModelEvidenceService, // 世界模型证据服务
+    WorldModelEvidenceService,
+    // 护城河扩展World Services（作为降级策略）
+    CollaborativeWorldModelService, // 协作世界模型服务
+    CausalReasoningService, // 因果推理服务
+    MultiAgentCollaborationService, // 多智能体协作服务
+    WorldModelVersionService, // 世界模型版本管理服务
+    WorldModelEventsService, // 世界模型事件服务（Code Review P2-3修复）
+    WorldModelMonitoringService, // 世界模型监控服务（Code Review P2-4修复）
+    // 护城河扩展World Skills（使用@Skill装饰器自动注册）
+    WorldRealtimeWeatherSkill,
+    WorldWeatherPredictionSkill,
+    WorldFailureRiskPredictionSkill,
+    WorldAdaptiveParametersSkill,
+    WorldMultimodalPerceptionSkill,
+    WorldCollaborativeDataSkill,
     
     // Decision Skills
     ...(enableDecisionSkills
@@ -429,6 +465,13 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     SKILLS_REGISTRY_TOKEN,
     ...(enableReadinessModule ? [DemGetProfileSkill] : []),
     WorldBuildContextSkill,
+    // 护城河扩展World Skills
+    WorldRealtimeWeatherSkill,
+    WorldWeatherPredictionSkill,
+    WorldFailureRiskPredictionSkill,
+    WorldAdaptiveParametersSkill,
+    WorldMultimodalPerceptionSkill,
+    WorldCollaborativeDataSkill,
     ...(enableDecisionSkills
       ? [
           DecisionAbuCheckSkill,

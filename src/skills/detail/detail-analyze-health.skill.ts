@@ -7,9 +7,11 @@
  * System 1 技能：快速分析
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { TripHealth } from './shared/detail-state.types';
+import { TripConflictsService } from '../../trips/services/trip-conflicts.service';
+import { ConflictType, ConflictSeverity } from '../../trips/dto/trip-conflicts.dto';
 
 export interface DetailAnalyzeHealthInput extends SkillInput {
   /** Trip ID */
@@ -31,6 +33,10 @@ export interface DetailAnalyzeHealthOutput extends SkillOutput {
 export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput, DetailAnalyzeHealthOutput> {
   private readonly logger = new Logger(DetailAnalyzeHealthSkill.name);
 
+  constructor(
+    @Optional() private readonly tripConflictsService?: TripConflictsService
+  ) {}
+
   metadata = {
     name: 'detail.analyzeHealth',
     description: '分析行程健康度（时间、预算、节奏、可达性），识别问题和风险',
@@ -43,17 +49,42 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
     this.logger.debug(`执行 detail.analyzeHealth: tripId=${input.tripId}`);
 
     try {
-      // 分析各个维度
-      const schedule = this.analyzeSchedule(input.tripData, input.planState);
-      const budget = this.analyzeBudget(input.tripData, input.planState);
-      const pace = this.analyzePace(input.tripData, input.planState);
-      const feasibility = this.analyzeFeasibility(input.tripData, input.planState);
+      // 维度权重定义（来自文档：.claude/product-decisions/trip-detail-page-key-decisions.md）
+      // 注意：整体健康度使用加权平均，权重用于计算总体健康度和指标详细说明
+      const dimensionWeights = {
+        schedule: 0.30,    // 时间安排最重要
+        budget: 0.25,      // 预算次重要
+        pace: 0.25,        // 节奏同样重要
+        feasibility: 0.20  // 可达性相对次要（因为可以调整）
+      };
 
-      // 计算总体健康度（木桶效应：取最低分）
-      // 决策：采用木桶效应，确保所有维度都健康
+      // 分析各个维度
+      const schedule = {
+        ...await this.analyzeSchedule(input.tripId, input.tripData, input.planState),
+        weight: dimensionWeights.schedule,
+      };
+      const budget = {
+        ...this.analyzeBudget(input.tripData, input.planState),
+        weight: dimensionWeights.budget,
+      };
+      const pace = {
+        ...this.analyzePace(input.tripData, input.planState),
+        weight: dimensionWeights.pace,
+      };
+      const feasibility = {
+        ...this.analyzeFeasibility(input.tripData, input.planState),
+        weight: dimensionWeights.feasibility,
+      };
+
+      // 计算总体健康度（加权平均）
+      // 决策：使用加权平均，根据各维度重要性计算总体健康度
       // 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
-      const scores = [schedule.score, budget.score, pace.score, feasibility.score];
-      const overallScore = Math.min(...scores);
+      // 权重：schedule(0.30), budget(0.25), pace(0.25), feasibility(0.20)
+      const overallScore = 
+        schedule.score * dimensionWeights.schedule +
+        budget.score * dimensionWeights.budget +
+        pace.score * dimensionWeights.pace +
+        feasibility.score * dimensionWeights.feasibility;
       
       let overall: TripHealth['overall'] = 'healthy';
       if (overallScore < 50) {
@@ -64,6 +95,7 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
 
       const health: TripHealth = {
         overall,
+        overallScore: Math.round(overallScore), // 添加总体健康度分数（0-100），用于前端显示百分比
         dimensions: {
           schedule,
           budget,
@@ -81,12 +113,61 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
     }
   }
 
-  private analyzeSchedule(tripData: any, planState: any): TripHealth['dimensions']['schedule'] {
+  private async analyzeSchedule(
+    tripId: string,
+    tripData: any,
+    planState: any
+  ): Promise<TripHealth['dimensions']['schedule']> {
     const issues: string[] = [];
     let score = 100;
 
-    // 检查时间冲突
-    // TODO: 从 tripData 中检查时间冲突
+    // 检查时间冲突（使用 TripConflictsService）
+    if (this.tripConflictsService) {
+      try {
+        const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
+        const timeConflicts = conflictsResult.conflicts.filter(
+          c => c.type === ConflictType.TIME_CONFLICT
+        );
+
+        if (timeConflicts.length > 0) {
+          // 根据时间冲突数量和严重程度扣分（方案C：差异化扣分）
+          // HIGH（红线）级别: 每个扣 25 分
+          // MEDIUM（警告）级别: 每个扣 15 分
+          // LOW（信息）级别: 每个扣 5 分
+          // 最大扣分: 90 分
+          const conflictPenalty = timeConflicts.reduce((sum, conflict) => {
+            if (conflict.severity === ConflictSeverity.HIGH) {
+              return sum + 25;  // 红线级别，严重问题
+            } else if (conflict.severity === ConflictSeverity.MEDIUM) {
+              return sum + 15;  // 警告级别，中等问题
+            } else {
+              return sum + 5;   // 信息级别，轻微问题
+            }
+          }, 0);
+          const finalPenalty = Math.min(conflictPenalty, 90); // 最多扣90分
+          score -= finalPenalty;
+          
+          // 添加问题描述
+          if (timeConflicts.length === 1) {
+            issues.push(`1 个时间冲突：${timeConflicts[0].description}`);
+          } else {
+            issues.push(`${timeConflicts.length} 个时间冲突`);
+            // 添加前3个冲突的详细描述
+            timeConflicts.slice(0, 3).forEach(conflict => {
+              issues.push(`- ${conflict.description}`);
+            });
+            if (timeConflicts.length > 3) {
+              issues.push(`... 还有 ${timeConflicts.length - 3} 个时间冲突`);
+            }
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`获取时间冲突失败: ${error.message}`);
+        // 如果获取失败，不影响其他检查
+      }
+    } else {
+      this.logger.warn('TripConflictsService 未注入，无法检查时间冲突');
+    }
 
     // 检查时间窗
     if (planState?.pace?.timeWindows) {

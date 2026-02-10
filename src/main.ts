@@ -415,6 +415,7 @@ async function bootstrap() {
     .addTag('browserbase-mcp', 'Browserbase MCP 接口（浏览器自动化）')
     .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
     .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
+    .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')
     .addServer('http://47.253.148.159', '生产环境')
     .addCookieAuth('refresh_token')
     .addBearerAuth()

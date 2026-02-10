@@ -222,13 +222,137 @@ export class DEMElevationService {
       return [];
     }
 
-    // 对于批量查询，逐个查询（PostGIS 栅格查询较慢，批量优化需要更复杂的实现）
-    // 每个点会自动按优先级查询：合并城市DEM -> 区域DEM -> 全球DEM
-    const results = await Promise.all(
-      points.map(point => this.getElevation(point.lat, point.lng, fallbackTable))
-    );
+    // 使用批量查询优化（PostGIS空间函数）
+    // 如果点数较少，直接批量查询；如果点数很多，分批查询
+    const batchSize = 100;
+    if (points.length <= batchSize) {
+      return this.batchQueryElevations(points, fallbackTable);
+    }
+
+    // 分批查询
+    const results: Array<number | null> = [];
+    for (let i = 0; i < points.length; i += batchSize) {
+      const batch = points.slice(i, i + batchSize);
+      const batchResults = await this.batchQueryElevations(batch, fallbackTable);
+      results.push(...batchResults);
+    }
 
     return results;
+  }
+
+  /**
+   * 批量查询海拔（使用PostGIS空间函数优化）
+   */
+  private async batchQueryElevations(
+    points: Array<{ lat: number; lng: number }>,
+    fallbackTable: string = 'geo_dem_xizang'
+  ): Promise<Array<number | null>> {
+    if (points.length === 0) {
+      return [];
+    }
+
+    // 检查是否有冰岛坐标
+    const hasIcelandPoints = points.some(p => this.isInIcelandBounds(p.lat, p.lng));
+    
+    // 1. 如果坐标在冰岛范围内，优先查询冰岛专用高精度DEM表
+    if (hasIcelandPoints) {
+      try {
+        const icelandTableExists = await this.checkDEMTableExists('geo_dem_iceland_20m');
+        if (icelandTableExists) {
+          const results = await this.batchQueryFromTable(points, 'geo_dem_iceland_20m', 5327);
+          if (results.every(r => r !== null)) {
+            return results;
+          }
+        }
+      } catch (error) {
+        this.logger.debug(`冰岛DEM表批量查询失败，尝试其他表`);
+      }
+    }
+
+    // 2. 查询合并的城市DEM表
+    try {
+      const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
+      if (mergedTableExists) {
+        const results = await this.batchQueryFromTable(points, 'geo_dem_cities_merged');
+        if (results.every(r => r !== null)) {
+          return results;
+        }
+      }
+    } catch (error) {
+      this.logger.debug(`合并城市DEM表批量查询失败，尝试后备表`);
+    }
+
+    // 3. 查询区域后备表
+    try {
+      const results = await this.batchQueryFromTable(points, fallbackTable);
+      if (results.every(r => r !== null)) {
+        return results;
+      }
+    } catch (error) {
+      this.logger.debug(`区域DEM表批量查询失败，尝试全球表`);
+    }
+
+    // 4. 查询全球DEM表
+    try {
+      const globalTableExists = await this.checkDEMTableExists('geo_dem_global');
+      if (globalTableExists) {
+        return await this.batchQueryFromTable(points, 'geo_dem_global');
+      }
+    } catch (error) {
+      this.logger.debug(`全球DEM表批量查询失败`);
+    }
+
+    return new Array(points.length).fill(null);
+  }
+
+  /**
+   * 从指定DEM表批量查询海拔
+   */
+  private async batchQueryFromTable(
+    points: Array<{ lat: number; lng: number }>,
+    demTable: string,
+    srid: number = 4326
+  ): Promise<Array<number | null>> {
+    try {
+      const lngs = points.map(p => p.lng);
+      const lats = points.map(p => p.lat);
+
+      const query = `
+        WITH points AS (
+          SELECT 
+            row_number() OVER () as idx,
+            ST_SetSRID(ST_MakePoint(lng, lat), ${srid}) as geom
+          FROM unnest($1::float[], $2::float[]) AS t(lng, lat)
+        )
+        SELECT 
+          p.idx,
+          ST_Value(r.rast, p.geom)::INTEGER as elevation
+        FROM points p
+        CROSS JOIN LATERAL (
+          SELECT rast
+          FROM ${demTable}
+          WHERE ST_Intersects(rast, p.geom)
+          LIMIT 1
+        ) r
+        ORDER BY p.idx;
+      `;
+
+      const result = await (this.prisma as any).$queryRawUnsafe(
+        query,
+        lngs,
+        lats
+      ) as Array<{ idx: number; elevation: number | null }>;
+
+      const elevationMap = new Map<number, number | null>();
+      for (const row of result) {
+        elevationMap.set(row.idx, row.elevation !== null ? Math.round(row.elevation) : null);
+      }
+
+      return points.map((_, idx) => elevationMap.get(idx + 1) ?? null);
+    } catch (error: any) {
+      this.logger.warn(`批量查询DEM失败 (表: ${demTable}): ${error.message}`);
+      return new Array(points.length).fill(null);
+    }
   }
 
   /**

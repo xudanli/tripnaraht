@@ -131,7 +131,8 @@
     "test:evidence-apis": "npx tsx scripts/test-evidence-apis.ts",
     "test:evidence-apis:http": "npx tsx scripts/test-evidence-apis-http.ts",
     "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts",
-    "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts"
+    "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts",
+    "test:world-model-api-interfaces": "npx tsx scripts/test-world-model-api-interfaces-simple.ts"
   },
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",

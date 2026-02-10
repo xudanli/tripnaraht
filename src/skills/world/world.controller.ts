@@ -1,14 +1,18 @@
 // src/skills/world/world.controller.ts
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, HttpCode, HttpStatus, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { WorldBuildContextSkill } from './world-build-context.skill';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
+import { WorldModelMonitoringService } from './services/world-model-monitoring.service';
 
 @ApiTags('world')
 @Controller('world')
 export class WorldController {
-  constructor(private readonly worldBuildContextSkill: WorldBuildContextSkill) {}
+  constructor(
+    private readonly worldBuildContextSkill: WorldBuildContextSkill,
+    @Optional() private readonly monitoringService?: WorldModelMonitoringService,
+  ) {}
 
   /**
    * 构建世界模型上下文
@@ -109,6 +113,39 @@ export class WorldController {
       return errorResponse(
         error.status === 404 ? ErrorCode.NOT_FOUND : ErrorCode.INTERNAL_ERROR,
         error.message || '构建世界模型失败',
+      );
+    }
+  }
+
+  /**
+   * 获取世界模型性能指标（Code Review P2-4修复）
+   */
+  @Public()
+  @Get('metrics')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '获取世界模型性能指标',
+    description: '返回世界模型构建的性能指标、错误率和缓存命中率',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回性能指标',
+  })
+  async getMetrics() {
+    if (!this.monitoringService) {
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        '监控服务不可用',
+      );
+    }
+
+    try {
+      const metrics = this.monitoringService.getPerformanceMetrics();
+      return successResponse(metrics);
+    } catch (error: any) {
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error.message || '获取性能指标失败',
       );
     }
   }

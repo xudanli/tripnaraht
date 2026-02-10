@@ -1,0 +1,160 @@
+{
+  "timestamp": "2026-02-10T18:37:30.330Z",
+  "summary": {
+    "total": 12,
+    "passed": 11,
+    "failed": 0,
+    "skipped": 1,
+    "passRate": "91.67%"
+  },
+  "results": [
+    {
+      "name": "Google Traffic API - 服务可用性检查",
+      "status": "SKIP",
+      "message": "Google Maps API Key未配置"
+    },
+    {
+      "name": "VisionService - 分析图像（Buffer）",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "confidence": 0.5
+      }
+    },
+    {
+      "name": "VisionService - 分析图像（URL）",
+      "status": "PASS",
+      "duration": 0,
+      "data": {
+        "success": true,
+        "confidence": 0.3
+      }
+    },
+    {
+      "name": "NLP文本分析 - 文本1 (POSITIVE)",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "text": "这个地方太美了！风景壮观，值得推荐！...",
+        "sentiment": "POSITIVE",
+        "expectedSentiment": "POSITIVE",
+        "match": true,
+        "keywords": [
+          "风景",
+          "壮观",
+          "推荐",
+          "值得"
+        ],
+        "topics": [],
+        "confidence": 0.5
+      }
+    },
+    {
+      "name": "NLP文本分析 - 文本2 (NEGATIVE)",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "text": "不推荐这个地方，路况很差，天气也不好。...",
+        "sentiment": "NEGATIVE",
+        "expectedSentiment": "NEGATIVE",
+        "match": true,
+        "keywords": [
+          "推荐",
+          "天气",
+          "路况"
+        ],
+        "topics": [],
+        "confidence": 0.5
+      }
+    },
+    {
+      "name": "NLP文本分析 - 文本3 (NEUTRAL)",
+      "status": "PASS",
+      "duration": 0,
+      "data": {
+        "text": "冰岛的F208公路非常难走，需要四驱车。...",
+        "sentiment": "NEUTRAL",
+        "expectedSentiment": "NEUTRAL",
+        "match": true,
+        "keywords": [
+          "冰岛"
+        ],
+        "topics": [],
+        "confidence": 0.5
+      }
+    },
+    {
+      "name": "NLP文本分析 - 文本4 (POSITIVE)",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "text": "The scenery is amazing! Highly recommend visiting ...",
+        "sentiment": "POSITIVE",
+        "expectedSentiment": "POSITIVE",
+        "match": true,
+        "keywords": [
+          "amazing",
+          "recommend"
+        ],
+        "topics": [],
+        "confidence": 0.5
+      }
+    },
+    {
+      "name": "Road.is API - 道路F208",
+      "status": "PASS",
+      "duration": 5,
+      "data": {
+        "roadId": "F208",
+        "found": false,
+        "status": "N/A",
+        "source": "N/A",
+        "confidence": 0
+      }
+    },
+    {
+      "name": "Road.is API - 道路F26",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "roadId": "F26",
+        "found": false,
+        "status": "N/A",
+        "source": "N/A",
+        "confidence": 0
+      }
+    },
+    {
+      "name": "Road.is API - 道路Route1",
+      "status": "PASS",
+      "duration": 0,
+      "data": {
+        "roadId": "Route1",
+        "found": false,
+        "status": "N/A",
+        "source": "N/A",
+        "confidence": 0
+      }
+    },
+    {
+      "name": "Road.is API - 道路1",
+      "status": "PASS",
+      "duration": 1,
+      "data": {
+        "roadId": "1",
+        "found": false,
+        "status": "N/A",
+        "source": "N/A",
+        "confidence": 0
+      }
+    },
+    {
+      "name": "多模态感知 - 图像分析整合",
+      "status": "PASS",
+      "duration": 0,
+      "data": {
+        "confidence": 0.5
+      }
+    }
+  ]
+}

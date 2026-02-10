@@ -69,6 +69,103 @@ export class GoogleMapsDirectService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 获取交通状态（Traffic API）
+   * 
+   * 用于Phase 2: 实时世界状态更新
+   * 获取非冰岛国家的道路状态
+   */
+  async getTrafficStatus(params: {
+    roadId: string;
+    location: { lat: number; lng: number };
+    radius?: number; // 搜索半径（米），默认5000
+  }): Promise<{
+    status: 'OPEN' | 'CLOSED' | 'CONDITIONAL' | 'SLOW' | 'MODERATE';
+    severity: 'LOW' | 'MEDIUM' | 'HIGH';
+    description?: string;
+    confidence: number;
+  } | null> {
+    if (!this.isServiceAvailable()) {
+      this.logger.warn('Google Maps API Key not configured, cannot get traffic status');
+      return null;
+    }
+
+    try {
+      // 使用Google Maps Roads API获取道路信息
+      // 注意：Google Maps没有直接的Traffic Status API，我们使用Roads API + Directions API组合
+      const radius = params.radius || 5000;
+
+      // 方法1: 使用Directions API获取路线状态
+      try {
+        const directionsResponse = await this.axiosInstance.get('/directions/json', {
+          params: {
+            origin: `${params.location.lat},${params.location.lng}`,
+            destination: `${params.location.lat + 0.01},${params.location.lng + 0.01}`, // 附近点
+            key: this.apiKey!,
+            alternatives: false,
+            traffic_model: 'best_guess',
+            departure_time: 'now',
+          },
+        });
+
+        if (directionsResponse.data?.routes?.[0]) {
+          const route = directionsResponse.data.routes[0];
+          const leg = route.legs?.[0];
+          
+          // 检查是否有交通信息
+          if (leg?.duration_in_traffic && leg?.duration) {
+            const trafficDelay = leg.duration_in_traffic.value - leg.duration.value;
+            const delayMinutes = Math.floor(trafficDelay / 60);
+            
+            // 根据延迟判断状态
+            let status: 'OPEN' | 'CLOSED' | 'CONDITIONAL' | 'SLOW' | 'MODERATE' = 'OPEN';
+            let severity: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+            
+            if (delayMinutes > 30) {
+              status = 'SLOW';
+              severity = 'HIGH';
+            } else if (delayMinutes > 15) {
+              status = 'MODERATE';
+              severity = 'MEDIUM';
+            } else if (delayMinutes > 5) {
+              status = 'SLOW';
+              severity = 'LOW';
+            }
+
+            return {
+              status,
+              severity,
+              description: delayMinutes > 0 
+                ? `预计延迟 ${delayMinutes} 分钟`
+                : '交通畅通',
+              confidence: 0.8,
+            };
+          }
+        }
+      } catch (directionsError: any) {
+        this.logger.warn(
+          `[GoogleMapsDirect] Directions API调用失败: ${directionsError.message}`,
+        );
+      }
+
+      // 方法2: 使用Roads API获取道路信息（如果有）
+      // 注意：Roads API主要用于snap to roads，不直接提供交通状态
+      // 这里返回默认状态
+      return {
+        status: 'OPEN',
+        severity: 'LOW',
+        description: '无法获取实时交通状态，假设道路开放',
+        confidence: 0.5,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `[GoogleMapsDirect] 获取交通状态失败: ${error.message}`,
+        error.stack,
+      );
+      return null;
+    }
+  }
+
+  /**
    * 检查服务是否可用
    */
   isServiceAvailable(): boolean {

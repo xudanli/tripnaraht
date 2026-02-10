@@ -125,14 +125,18 @@ export class TripConflictsService {
 
       // 如果当前活动结束时间晚于下一个活动开始时间，存在时间冲突
       if (currentEnd > nextStart) {
+        // 计算实际重叠时间（分钟）
+        const overlapMinutes = Math.ceil(currentEnd.diff(nextStart, 'minutes').minutes);
+        
         conflicts.push({
           id: `time-conflict-${current.id}-${next.id}`,
           type: ConflictType.TIME_CONFLICT,
           severity: ConflictSeverity.HIGH,
           title: '时间冲突',
-          description: `活动 "${current.Place?.nameCN || current.Place?.nameEN || '未知'}" 与 "${next.Place?.nameCN || next.Place?.nameEN || '未知'}" 时间重叠`,
+          description: `活动 "${current.Place?.nameCN || current.Place?.nameEN || '未知'}" 与 "${next.Place?.nameCN || next.Place?.nameEN || '未知'}" 时间重叠 ${overlapMinutes} 分钟`,
           affectedDays: [date],
           affectedItemIds: [current.id, next.id],
+          overlapMinutes: overlapMinutes, // 添加重叠时间信息
           suggestions: [
             {
               action: '调整时间',

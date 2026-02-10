@@ -68,4 +68,5 @@ export interface CausalReasoningOptions {
   minConfidence?: number;        // 最小置信度
   maxChainLength?: number;       // 最大链长度
   includeIndirect?: boolean;    // 是否包含间接原因
+  enableCounterfactuals?: boolean; // 是否启用反事实推理
 }

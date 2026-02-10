@@ -314,4 +314,257 @@ export class VisionService {
     // 其他 → LOW
     return 'LOW';
   }
+
+  /**
+   * 分析图像（场景识别、对象检测、天气识别）
+   * 
+   * 用于Phase 5: 多模态世界感知
+   * 
+   * @param image 图片 Buffer 或 URL
+   * @param opts 选项（位置、语言等）
+   * @returns 图像分析结果
+   */
+  async analyzeImage(
+    image: Buffer | string,
+    opts?: {
+      lat?: number;
+      lng?: number;
+      locale?: string;
+    }
+  ): Promise<StandardResponse<{
+    sceneType?: 'NATURAL' | 'URBAN' | 'CULTURAL' | 'ADVENTURE' | 'RELAXATION';
+    detectedObjects?: string[];
+    weatherConditions?: 'SUNNY' | 'CLOUDY' | 'RAINY' | 'SNOWY';
+    crowdLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+    accessibility?: 'ACCESSIBLE' | 'MODERATE' | 'CHALLENGING';
+    location?: {
+      lat: number;
+      lng: number;
+      confidence: number;
+    };
+    confidence: number;
+  }>> {
+    const requestId = randomUUID();
+    
+    try {
+      // 验证输入
+      let imageBuffer: Buffer;
+      if (typeof image === 'string') {
+        // 如果是URL，需要下载图片（简化处理，实际应该使用HTTP客户端）
+        this.logger.warn(`[${requestId}] URL image analysis not fully implemented, using OCR fallback`);
+        // 暂时返回基础结果
+        return successResponse({
+          confidence: 0.3,
+        });
+      } else {
+        imageBuffer = image;
+      }
+
+      if (!imageBuffer || imageBuffer.length === 0) {
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          'image is required',
+          { field: 'image' }
+        );
+      }
+
+      this.logger.log(
+        `[${requestId}] Analyzing image: size=${imageBuffer.length}, lat=${opts?.lat}, lng=${opts?.lng}`
+      );
+
+      const result: {
+        sceneType?: 'NATURAL' | 'URBAN' | 'CULTURAL' | 'ADVENTURE' | 'RELAXATION';
+        detectedObjects?: string[];
+        weatherConditions?: 'SUNNY' | 'CLOUDY' | 'RAINY' | 'SNOWY';
+        crowdLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+        accessibility?: 'ACCESSIBLE' | 'MODERATE' | 'CHALLENGING';
+        location?: {
+          lat: number;
+          lng: number;
+          confidence: number;
+        };
+        confidence: number;
+      } = {
+        confidence: 0.5,
+      };
+
+      // 1. OCR提取文字（用于场景推断）
+      let ocrResult;
+      try {
+        ocrResult = await this.mockOcrProvider.extractText(imageBuffer, {
+          locale: opts?.locale || 'zh-CN',
+        });
+        
+        // 基于OCR文本推断场景类型
+        result.sceneType = this.inferSceneType(ocrResult.fullText);
+        
+        // 提取检测到的对象（从OCR文本中）
+        result.detectedObjects = this.extractObjectsFromText(ocrResult.fullText);
+        
+        // 推断天气条件
+        result.weatherConditions = this.inferWeatherFromText(ocrResult.fullText);
+        
+        // 推断人群密度
+        result.crowdLevel = this.inferCrowdLevelFromText(ocrResult.fullText);
+        
+        // 推断可访问性
+        result.accessibility = this.inferAccessibilityFromText(ocrResult.fullText);
+        
+        result.confidence = 0.6; // OCR分析置信度
+      } catch (error: any) {
+        this.logger.warn(`[${requestId}] OCR analysis failed: ${error.message}`);
+      }
+
+      // 2. 如果有位置信息，添加到结果中
+      if (opts?.lat && opts?.lng) {
+        result.location = {
+          lat: opts.lat,
+          lng: opts.lng,
+          confidence: 0.9, // GPS位置置信度高
+        };
+      }
+
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`[${requestId}] Image analysis error: ${error.message}`, error.stack);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error.message || '图像分析时发生错误',
+        { requestId }
+      );
+    }
+  }
+
+  /**
+   * 从文本推断场景类型
+   */
+  private inferSceneType(text: string): 'NATURAL' | 'URBAN' | 'CULTURAL' | 'ADVENTURE' | 'RELAXATION' {
+    const lowerText = text.toLowerCase();
+    
+    // 自然风光关键词
+    const naturalKeywords = ['山', '海', '湖', '森林', '瀑布', '峡谷', '冰川', '火山', '自然', '风景'];
+    // 城市关键词
+    const urbanKeywords = ['城市', '建筑', '街道', '广场', '购物', '商业', '都市'];
+    // 文化关键词
+    const culturalKeywords = ['博物馆', '教堂', '寺庙', '历史', '文化', '艺术', '古迹', '遗址'];
+    // 冒险关键词
+    const adventureKeywords = ['徒步', '登山', '攀岩', '漂流', '滑雪', '探险', '挑战', '难度'];
+    // 休闲关键词
+    const relaxationKeywords = ['海滩', '温泉', '度假', '休闲', '放松', 'spa', '按摩'];
+
+    let naturalScore = 0;
+    let urbanScore = 0;
+    let culturalScore = 0;
+    let adventureScore = 0;
+    let relaxationScore = 0;
+
+    for (const keyword of naturalKeywords) {
+      if (lowerText.includes(keyword)) naturalScore++;
+    }
+    for (const keyword of urbanKeywords) {
+      if (lowerText.includes(keyword)) urbanScore++;
+    }
+    for (const keyword of culturalKeywords) {
+      if (lowerText.includes(keyword)) culturalScore++;
+    }
+    for (const keyword of adventureKeywords) {
+      if (lowerText.includes(keyword)) adventureScore++;
+    }
+    for (const keyword of relaxationKeywords) {
+      if (lowerText.includes(keyword)) relaxationScore++;
+    }
+
+    const scores = [
+      { type: 'NATURAL' as const, score: naturalScore },
+      { type: 'URBAN' as const, score: urbanScore },
+      { type: 'CULTURAL' as const, score: culturalScore },
+      { type: 'ADVENTURE' as const, score: adventureScore },
+      { type: 'RELAXATION' as const, score: relaxationScore },
+    ];
+
+    scores.sort((a, b) => b.score - a.score);
+    
+    return scores[0].score > 0 ? scores[0].type : 'NATURAL'; // 默认自然
+  }
+
+  /**
+   * 从文本提取检测到的对象
+   */
+  private extractObjectsFromText(text: string): string[] {
+    const lowerText = text.toLowerCase();
+    const objects: string[] = [];
+    
+    const commonObjects = [
+      '人', '车', '船', '飞机', '建筑', '树', '花', '动物', '鸟', '鱼',
+      '山', '海', '湖', '桥', '路', '标志', '广告', '菜单', '路牌',
+    ];
+
+    for (const obj of commonObjects) {
+      if (lowerText.includes(obj)) {
+        objects.push(obj);
+      }
+    }
+
+    return objects;
+  }
+
+  /**
+   * 从文本推断天气条件
+   */
+  private inferWeatherFromText(text: string): 'SUNNY' | 'CLOUDY' | 'RAINY' | 'SNOWY' {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('雪') || lowerText.includes('snow')) {
+      return 'SNOWY';
+    }
+    if (lowerText.includes('雨') || lowerText.includes('rain')) {
+      return 'RAINY';
+    }
+    if (lowerText.includes('云') || lowerText.includes('cloud') || lowerText.includes('阴')) {
+      return 'CLOUDY';
+    }
+    if (lowerText.includes('晴') || lowerText.includes('sun') || lowerText.includes('阳光')) {
+      return 'SUNNY';
+    }
+    
+    return 'SUNNY'; // 默认晴天
+  }
+
+  /**
+   * 从文本推断人群密度
+   */
+  private inferCrowdLevelFromText(text: string): 'LOW' | 'MEDIUM' | 'HIGH' {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('拥挤') || lowerText.includes('人多') || lowerText.includes('繁忙') || lowerText.includes('crowded')) {
+      return 'HIGH';
+    }
+    if (lowerText.includes('适中') || lowerText.includes('一般') || lowerText.includes('moderate')) {
+      return 'MEDIUM';
+    }
+    if (lowerText.includes('空旷') || lowerText.includes('人少') || lowerText.includes('安静') || lowerText.includes('quiet')) {
+      return 'LOW';
+    }
+    
+    return 'MEDIUM'; // 默认中等
+  }
+
+  /**
+   * 从文本推断可访问性
+   */
+  private inferAccessibilityFromText(text: string): 'ACCESSIBLE' | 'MODERATE' | 'CHALLENGING' {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('困难') || lowerText.includes('难') || lowerText.includes('挑战') || lowerText.includes('challenging')) {
+      return 'CHALLENGING';
+    }
+    if (lowerText.includes('中等') || lowerText.includes('适中') || lowerText.includes('moderate')) {
+      return 'MODERATE';
+    }
+    if (lowerText.includes('容易') || lowerText.includes('简单') || lowerText.includes('accessible') || lowerText.includes('easy')) {
+      return 'ACCESSIBLE';
+    }
+    
+    return 'MODERATE'; // 默认中等
+  }
 }

@@ -1,5 +1,5 @@
 // src/trips/services/trip-suggestions.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { 
   SuggestionDto, 
@@ -16,10 +16,13 @@ import {
 } from '../dto/suggestions.dto';
 import { TripsService } from '../trips.service';
 import { TripConflictsService } from './trip-conflicts.service';
+import { TripMetricsService } from './trip-metrics.service';
+import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { PersonaAlertDto, PersonaType, AlertSeverity } from '../dto/persona-alerts.dto';
 import { ConflictDto, ConflictSeverity } from '../dto/trip-conflicts.dto';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
+import { ImpactMetricsDto } from '../dto/suggestions.dto';
 
 @Injectable()
 export class TripSuggestionsService {
@@ -31,7 +34,9 @@ export class TripSuggestionsService {
   constructor(
     private prisma: PrismaService,
     private tripsService: TripsService,
-    private conflictsService: TripConflictsService
+    private conflictsService: TripConflictsService,
+    private tripMetricsService: TripMetricsService,
+    @Optional() private itineraryItemsService?: ItineraryItemsService
   ) {}
 
   /**
@@ -203,10 +208,53 @@ export class TripSuggestionsService {
   }
 
   /**
+   * 计算指标差异（应用建议前后对比）
+   */
+  private async calculateMetricsImpact(
+    tripId: string,
+    beforeMetrics: { fatigue: number; buffer: number; cost: number },
+    afterMetrics: { fatigue: number; buffer: number; cost: number }
+  ): Promise<ImpactMetricsDto> {
+    return {
+      fatigue: afterMetrics.fatigue - beforeMetrics.fatigue,
+      buffer: afterMetrics.buffer - beforeMetrics.buffer,
+      cost: afterMetrics.cost - beforeMetrics.cost,
+    };
+  }
+
+  /**
+   * 获取行程当前指标
+   */
+  private async getCurrentTripMetrics(tripId: string): Promise<{
+    fatigue: number;
+    buffer: number;
+    cost: number;
+  }> {
+    try {
+      const metrics = await this.tripMetricsService.getTripMetrics(tripId);
+      return {
+        fatigue: metrics.summary.totalFatigue || 0,
+        buffer: metrics.summary.totalBuffer || 0,
+        cost: metrics.summary.totalCost || 0,
+      };
+    } catch (error: any) {
+      this.logger.warn(`获取行程指标失败: ${error.message}，使用默认值`);
+      // 如果获取失败，返回默认值（避免影响功能）
+      return {
+        fatigue: 0,
+        buffer: 0,
+        cost: 0,
+      };
+    }
+  }
+
+  /**
    * 批量应用高优先级建议（Auto综合功能）
    * 
    * 决策：只应用高优先级建议（severity === BLOCKER）
    * 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
+   * 
+   * 改进：使用实际指标计算影响，而不是硬编码固定值
    */
   async applyHighPrioritySuggestions(
     tripId: string,
@@ -246,8 +294,18 @@ export class TripSuggestionsService {
       };
     }
 
-    // 如果是预览模式，只返回影响分析
+    // 如果是预览模式，尝试模拟计算影响（使用当前指标作为基准）
     if (options?.preview) {
+      // 预览模式：使用当前指标作为基准，估算影响
+      // 注意：预览模式无法准确计算，因为建议还未应用
+      const currentMetrics = await this.getCurrentTripMetrics(tripId);
+      
+      // 根据建议类型估算影响（比硬编码更合理）
+      const estimatedImpact = this.estimateImpactBySuggestionType(
+        highPrioritySuggestions,
+        currentMetrics
+      );
+
       return {
         success: true,
         appliedCount: highPrioritySuggestions.length,
@@ -258,15 +316,14 @@ export class TripSuggestionsService {
           applied: false,
         })),
         impact: {
-          metrics: {
-            fatigue: -highPrioritySuggestions.length * 5,
-            buffer: highPrioritySuggestions.length * 30,
-            cost: highPrioritySuggestions.length * 50,
-          },
+          metrics: estimatedImpact,
           risks: [],
         },
       };
     }
+
+    // 实际应用模式：记录应用前的指标
+    const beforeMetrics = await this.getCurrentTripMetrics(tripId);
 
     // 批量应用高优先级建议
     const results: Array<{
@@ -317,18 +374,85 @@ export class TripSuggestionsService {
       }
     }
 
+    // 应用建议后，重新计算指标
+    const afterMetrics = await this.getCurrentTripMetrics(tripId);
+    
+    // 计算实际影响
+    const actualImpact = await this.calculateMetricsImpact(
+      tripId,
+      beforeMetrics,
+      afterMetrics
+    );
+
     return {
       success: successCount > 0,
       appliedCount: successCount,
       suggestions: results,
       impact: {
-        metrics: {
-          fatigue: -successCount * 5,
-          buffer: successCount * 30,
-          cost: successCount * 50,
-        },
+        metrics: actualImpact,
         risks: [],
       },
+    };
+  }
+
+  /**
+   * 根据建议类型估算影响（用于预览模式）
+   */
+  private estimateImpactBySuggestionType(
+    suggestions: SuggestionDto[],
+    currentMetrics: { fatigue: number; buffer: number; cost: number }
+  ): ImpactMetricsDto {
+    let fatigueDelta = 0;
+    let bufferDelta = 0;
+    let costDelta = 0;
+
+    for (const suggestion of suggestions) {
+      const conflictType = (suggestion.metadata as any)?.conflictType;
+      
+      switch (conflictType) {
+        case 'TIME_CONFLICT':
+          // 时间冲突：基于实际重叠时间计算影响
+          // 从建议的metadata中获取冲突信息（包含overlapMinutes）
+          const conflictData = (suggestion.metadata as any)?.conflict;
+          const overlapMinutes = conflictData?.overlapMinutes || 30; // 默认30分钟（向后兼容）
+          
+          // 解决时间冲突后，通常会增加等于或大于重叠时间的缓冲
+          // 至少增加15分钟缓冲，最多增加重叠时间的1.5倍
+          const bufferIncrease = Math.max(overlapMinutes, 15);
+          bufferDelta += bufferIncrease;
+          
+          // 疲劳改善：基于重叠时间，重叠越多，改善越明显
+          // 公式：-2 到 -5，基于重叠时间（15-60分钟）
+          const fatigueDecrease = Math.min(Math.max(-2, -Math.floor(overlapMinutes / 15)), -5);
+          fatigueDelta += fatigueDecrease;
+          
+          // 时间冲突通常不涉及费用变化
+          costDelta += 0;
+          break;
+        case 'FATIGUE_EXCEEDED':
+          // 疲劳超标：主要改善疲劳，可能略微增加缓冲
+          fatigueDelta -= 10; // 疲劳超标建议主要改善疲劳
+          bufferDelta += 15; // 可能略微增加缓冲
+          costDelta -= 30; // 可能涉及减少活动，费用可能降低
+          break;
+        case 'BUFFER_INSUFFICIENT':
+          // 缓冲不足：主要增加缓冲时间
+          bufferDelta += 60; // 缓冲不足建议主要增加缓冲时间
+          fatigueDelta -= 2; // 可能略微改善疲劳
+          costDelta += 100; // 可能涉及添加住宿，费用增加
+          break;
+        default:
+          // 默认：使用保守的估算值
+          fatigueDelta -= 5;
+          bufferDelta += 30;
+          costDelta += 50;
+      }
+    }
+
+    return {
+      fatigue: fatigueDelta,
+      buffer: bufferDelta,
+      cost: costDelta,
     };
   }
 
@@ -357,28 +481,106 @@ export class TripSuggestionsService {
       throw new NotFoundException(`建议 ID ${suggestionId} 不存在`);
     }
 
-    // 如果是预览模式，只返回影响分析
+    // 如果是预览模式，尝试估算影响
     if (request.preview) {
+      const currentMetrics = await this.getCurrentTripMetrics(tripId);
+      const estimatedImpact = this.estimateImpactBySuggestionType(
+        [suggestion],
+        currentMetrics
+      );
+
       return {
         success: true,
         suggestionId,
         appliedChanges: [],
         impact: {
-          metrics: {
-            fatigue: -5,
-            buffer: 30,
-            cost: 50,
-          },
+          metrics: estimatedImpact,
           risks: [],
         },
       };
     }
 
+    // 实际应用模式：记录应用前的指标
+    const beforeMetrics = await this.getCurrentTripMetrics(tripId);
+
     // 根据操作类型执行相应操作
     const appliedChanges: Array<{ type: string; description: string }> = [];
     const triggeredSuggestions: string[] = [];
 
-    // 根据 actionId 执行操作
+    // 根据建议类型和操作类型执行实际的数据修改
+    const conflictType = (suggestion.metadata as any)?.conflictType;
+    
+    // 如果是时间冲突建议，实际修改行程项时间
+    if (conflictType === 'TIME_CONFLICT' && suggestion.metadata?.conflict) {
+      const conflict = suggestion.metadata.conflict as ConflictDto;
+      const affectedItemIds = conflict.affectedItemIds || [];
+      
+      if (affectedItemIds.length >= 2 && this.itineraryItemsService) {
+        try {
+          // 获取受影响的行程项
+          const items = await Promise.all(
+            affectedItemIds.map(id => 
+              this.prisma.itineraryItem.findUnique({
+                where: { id },
+                include: { TripDay: true },
+              })
+            )
+          );
+          
+          const validItems = items.filter(item => item !== null);
+          
+          if (validItems.length >= 2) {
+            // 按开始时间排序
+            validItems.sort((a, b) => {
+              if (!a.startTime || !b.startTime) return 0;
+              return a.startTime.getTime() - b.startTime.getTime();
+            });
+            
+            const firstItem = validItems[0];
+            const secondItem = validItems[1];
+            
+            if (firstItem.endTime && secondItem.startTime) {
+              const firstEnd = DateTime.fromJSDate(firstItem.endTime);
+              const secondStart = DateTime.fromJSDate(secondItem.startTime);
+              
+              // 如果第一个活动结束时间晚于第二个活动开始时间，调整第二个活动的开始时间
+              if (firstEnd > secondStart) {
+                // 计算新的开始时间：第一个活动结束时间 + 15分钟缓冲
+                const newStartTime = firstEnd.plus({ minutes: 15 });
+                
+                // 计算新的结束时间：保持原有时长
+                const originalDuration = secondItem.endTime
+                  ? DateTime.fromJSDate(secondItem.endTime).diff(secondStart, 'minutes').minutes
+                  : 120; // 默认2小时
+                const newEndTime = newStartTime.plus({ minutes: originalDuration });
+                
+                // 更新第二个行程项的时间
+                await this.itineraryItemsService.update(
+                  secondItem.id,
+                  {
+                    startTime: newStartTime.toISO(),
+                    endTime: newEndTime.toISO(),
+                    cascadeMode: 'auto', // 自动调整后续行程项
+                  }
+                );
+                
+                appliedChanges.push({
+                  type: 'time_adjustment',
+                  description: `已调整活动时间，解决时间冲突`,
+                });
+                
+                this.logger.debug(`已解决时间冲突: 调整了行程项 ${secondItem.id} 的时间`);
+              }
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`解决时间冲突失败: ${error.message}`, error.stack);
+          // 继续执行，至少更新建议状态
+        }
+      }
+    }
+
+    // 根据 actionId 执行其他操作
     switch (request.actionId) {
       case 'apply_alternative':
         // 应用替代方案
@@ -405,10 +607,12 @@ export class TripSuggestionsService {
         break;
 
       default:
-        appliedChanges.push({
-          type: 'generic',
-          description: `已应用建议：${suggestion.title}`,
-        });
+        if (appliedChanges.length === 0) {
+          appliedChanges.push({
+            type: 'generic',
+            description: `已应用建议：${suggestion.title}`,
+          });
+        }
     }
 
     // 更新建议状态
@@ -423,21 +627,58 @@ export class TripSuggestionsService {
     );
     triggeredSuggestions.push(...relatedSuggestions.slice(0, 3).map(s => s.id));
 
+    // 应用建议后，重新计算指标
+    const afterMetrics = await this.getCurrentTripMetrics(tripId);
+    
+    // 计算实际影响
+    const actualImpact = await this.calculateMetricsImpact(
+      tripId,
+      beforeMetrics,
+      afterMetrics
+    );
+
+    // 根据实际影响生成风险提示
+    const risks: Array<{
+      id: string;
+      severity: SuggestionSeverity;
+      title: string;
+    }> = [];
+
+    if (actualImpact.buffer && actualImpact.buffer > 0) {
+      risks.push({
+        id: 'risk-buffer-improved',
+        severity: SuggestionSeverity.INFO,
+        title: '缓冲时间已增加',
+      });
+    }
+
+    if (actualImpact.fatigue && actualImpact.fatigue < 0) {
+      risks.push({
+        id: 'risk-fatigue-improved',
+        severity: SuggestionSeverity.INFO,
+        title: '疲劳指数已改善',
+      });
+    }
+
+    if (actualImpact.cost && actualImpact.cost > 100) {
+      risks.push({
+        id: 'risk-cost-increased',
+        severity: SuggestionSeverity.WARN,
+        title: '费用有所增加',
+      });
+    }
+
     return {
       success: true,
       suggestionId,
       appliedChanges,
       impact: {
-        metrics: {
-          fatigue: -5,
-          buffer: 30,
-          cost: 50,
-        },
-        risks: [
+        metrics: actualImpact,
+        risks: risks.length > 0 ? risks : [
           {
-            id: 'risk-002',
+            id: 'risk-generic',
             severity: SuggestionSeverity.INFO,
-            title: '新增缓冲时间充足',
+            title: '建议已应用',
           },
         ],
       },
@@ -661,6 +902,15 @@ export class TripSuggestionsService {
         metadata: {
           conflictType: conflict.type,
           affectedItemIds: conflict.affectedItemIds,
+          conflict: {
+            // 传递完整的冲突信息，包括overlapMinutes
+            id: conflict.id,
+            type: conflict.type,
+            severity: conflict.severity,
+            overlapMinutes: conflict.overlapMinutes, // 时间冲突的重叠时间（分钟）
+            affectedDays: conflict.affectedDays,
+            affectedItemIds: conflict.affectedItemIds,
+          },
         },
       };
 

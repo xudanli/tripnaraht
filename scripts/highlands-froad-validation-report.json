@@ -1,0 +1,194 @@
+{
+  "routeDirectionUuid": "8afd4b2e-7dd1-4837-8169-d3efed748138",
+  "timestamp": "2026-02-10T15:48:07.664Z",
+  "summary": {
+    "total": 15,
+    "pass": 14,
+    "warn": 1,
+    "fail": 0
+  },
+  "results": [
+    {
+      "category": "基础数据",
+      "field": "必填字段",
+      "status": "PASS",
+      "message": "所有必填字段存在"
+    },
+    {
+      "category": "基础数据",
+      "field": "标签",
+      "status": "PASS",
+      "message": "标签符合预期",
+      "details": {
+        "tags": [
+          "F路（砂石路、河流穿越、极端地形）",
+          "extreme",
+          "high"
+        ]
+      }
+    },
+    {
+      "category": "基础数据",
+      "field": "描述",
+      "status": "PASS",
+      "message": "描述完整",
+      "details": {
+        "length": 30
+      }
+    },
+    {
+      "category": "季节性",
+      "field": "最佳季节",
+      "status": "PASS",
+      "message": "最佳季节正确",
+      "details": [
+        "7月",
+        "8月"
+      ]
+    },
+    {
+      "category": "季节性",
+      "field": "开放时间",
+      "status": "PASS",
+      "message": "开放时间描述正确",
+      "details": {
+        "closing": "约9月15日",
+        "opening": "约6月15日（取决于积雪融化）",
+        "best_months": [
+          "7月",
+          "8月"
+        ],
+        "only_season": "夏季（6月中旬至9月中旬）",
+        "winter_status": "完全关闭，违法进入"
+      }
+    },
+    {
+      "category": "约束条件",
+      "field": "车辆要求",
+      "status": "PASS",
+      "message": "车辆要求正确",
+      "details": "四驱SUV（必须，强制要求）"
+    },
+    {
+      "category": "约束条件",
+      "field": "难度等级",
+      "status": "PASS",
+      "message": "难度等级正确",
+      "details": "extreme"
+    },
+    {
+      "category": "约束条件",
+      "field": "距离和天数",
+      "status": "PASS",
+      "message": "距离和天数已指定",
+      "details": {
+        "totalDistance": 500,
+        "durationDays": 5
+      }
+    },
+    {
+      "category": "风险画像",
+      "field": "风险等级",
+      "status": "PASS",
+      "message": "风险等级正确",
+      "details": "high"
+    },
+    {
+      "category": "标志性POI",
+      "field": "POI覆盖",
+      "status": "PASS",
+      "message": "主要POI已覆盖",
+      "details": {
+        "found": [
+          "Landmannalaugar",
+          "Þórsmörk",
+          "Askja",
+          "Kerlingarfjöll"
+        ],
+        "total": 9
+      }
+    },
+    {
+      "category": "RouteTemplate",
+      "field": "存在性",
+      "status": "PASS",
+      "message": "RouteTemplate存在",
+      "details": {
+        "count": 1
+      }
+    },
+    {
+      "category": "RouteTemplate",
+      "field": "POI完整性",
+      "status": "PASS",
+      "message": "每天都有POI",
+      "details": {
+        "days": 5
+      }
+    },
+    {
+      "category": "RouteTemplate",
+      "field": "关键POI",
+      "status": "WARN",
+      "message": "部分关键POI缺失",
+      "details": {
+        "found": [],
+        "expected": [
+          "Landmannalaugar",
+          "Þórsmörk",
+          "Askja"
+        ]
+      }
+    },
+    {
+      "category": "数据一致性",
+      "field": "道路状态",
+      "status": "PASS",
+      "message": "主要F路存在于道路状态数据",
+      "details": {
+        "found": [
+          "F208",
+          "F26",
+          "F35",
+          "F225",
+          "F249"
+        ]
+      }
+    },
+    {
+      "category": "数据完整性",
+      "field": "路线哲学",
+      "status": "PASS",
+      "message": "路线哲学存在",
+      "details": {
+        "metadata": {
+          "riskLevel": "high",
+          "routeType": "F-road",
+          "difficulty": "extreme"
+        },
+        "coreStatement": "从文明进入高地，再回到人间",
+        "flexibleParts": [
+          "具体 F-road 选择（F26 / F35 / F208 / F225 / F910）",
+          "中间停留点（POI 可替换）",
+          "天数（5-7 天范围内）"
+        ],
+        "mustVisitTags": [
+          "高地荒原",
+          "温泉",
+          "火山"
+        ],
+        "nonNegotiableRules": [
+          "必须有一晚住高地 hut 或营地",
+          "必须经过至少一个 F-road 路段",
+          "必须从 Ring Road 进入高地，再回到 Ring Road",
+          "必须使用四驱SUV（法律要求）"
+        ],
+        "durationFlexibility": {
+          "maxDays": 7,
+          "minDays": 5,
+          "preferredDays": 5
+        }
+      }
+    }
+  ]
+}
