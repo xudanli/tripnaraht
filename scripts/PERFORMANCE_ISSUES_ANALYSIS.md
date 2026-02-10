@@ -141,55 +141,55 @@ async getElevations(points: Array<{lat: number, lng: number}>): Promise<Array<nu
 ### 2. ⚠️ 地理特征数据覆盖率不足 (GEOGRAPHIC_FEATURES_COVERAGE_LOW)
 
 **问题描述**:
-- COASTLINES（海岸线）覆盖率：0.0%
-- 冰岛是岛国，海岸线数据对路线规划很重要
+- COASTLINES（海岸线）覆盖率显示：0.0%
+- **实际情况**：数据库中已有海岸线数据（总计 390,655 条，冰岛范围内 898 条）
+- **问题原因**：监控服务的告警规则中，冰岛(IS)未包含在监控国家列表中
 
 **影响**:
-- 无法准确计算海岸线距离
-- 无法识别沿海路线
-- 准备度检查可能不完整
+- 误报告警（数据实际存在但显示为 0%）
+- 可能误导后续优化决策
 
 **解决方案**:
 
-#### 2.1 导入海岸线数据
+#### 2.1 修复监控服务告警规则
 
-```bash
-# 使用 OpenStreetMap 数据或 Natural Earth 数据
-# 1. 下载冰岛海岸线数据（从 Natural Earth）
-wget https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/
+**问题**：告警规则中只监控 `['CH', 'NO', 'PE']`，未包含冰岛(IS)
 
-# 2. 转换为 PostGIS 格式
-ogr2ogr -f "PostgreSQL" \
-  PG:"$DATABASE_URL" \
-  ne_10m_coastline.shp \
-  -nln geo_coastlines \
-  -lco GEOMETRY_NAME=geom \
-  -lco SPATIAL_INDEX=GIST \
-  -where "ST_Intersects(geom, ST_MakeEnvelope(-25, 63, -13, 67, 4326))"
+**修复**：更新 `GeographicDataQualityMonitoringService.checkGeographicAlertRules` 方法
 
-# 3. 验证导入
-psql "$DATABASE_URL" -c "
-SELECT COUNT(*) as count, 
-       ST_Length(geom::geography) / 1000 as length_km
-FROM geo_coastlines 
-WHERE ST_Intersects(geom, ST_MakeEnvelope(-25, 63, -13, 67, 4326));
-"
+```typescript
+// 修改前
+if (
+  config.dataType !== 'DEM' &&
+  config.coverageRate < 0.9 &&
+  ['CH', 'NO', 'PE'].includes(config.countryCode)
+) { ... }
+
+// 修改后
+if (
+  config.dataType !== 'DEM' &&
+  config.coverageRate < 0.9 &&
+  (['CH', 'NO', 'PE'].includes(config.countryCode) || 
+   (config.dataType === 'COASTLINES' && ['IS', 'GL', 'FO', 'NZ'].includes(config.countryCode)))
+) { ... }
 ```
 
-#### 2.2 使用 OSM 数据
+#### 2.2 验证海岸线数据
 
 ```bash
-# 从 Geofabrik 下载冰岛 OSM 数据
-wget https://download.geofabrik.de/europe/iceland-latest-free.shp.zip
+# 验证冰岛海岸线数据
+psql "$DATABASE_URL" -c "
+SELECT 
+  COUNT(*) as count,
+  ST_Length(ST_Collect(geom)::geography) / 1000 as total_length_km
+FROM geo_coastlines 
+WHERE ST_Intersects(
+  geom,
+  ST_MakeEnvelope(-24.5, 63.3, -13.5, 66.6, 4326)
+);
+"
 
-# 解压并导入海岸线
-unzip iceland-latest-free.shp.zip
-ogr2ogr -f "PostgreSQL" \
-  PG:"$DATABASE_URL" \
-  iceland-latest-free.shp/gis_osm_coastlines_free_1.shp \
-  -nln geo_coastlines \
-  -lco GEOMETRY_NAME=geom \
-  -lco SPATIAL_INDEX=GIST
+# 预期结果：count > 0, total_length_km > 0
 ```
 
 ### 3. ⚠️ LLM API 503 错误
