@@ -42,6 +42,7 @@ import { TripQuickEvaluateSkill } from './trip/trip-quick-evaluate.skill';
 
 // World Skills
 import { WorldBuildContextSkill } from './world/world-build-context.skill';
+import { WorldController } from './world/world.controller';
 
 // Decision Skills (additional)
 import { DecisionRunThreeGuardiansSkill } from './decision/decision-run-three-guardians.skill';
@@ -222,6 +223,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     forwardRef(() => LlmModule), // 导入 LlmModule 以支持规划技能使用 LlmService
     forwardRef(() => DataContractsModule), // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
     ExaModule, // 导入 ExaModule 以支持 WorldBuildContextSkill 使用 ExaIntegrationService
+  ],
+  controllers: [
+    WorldController,
   ],
   providers: [
     // DEM Skills（依赖 ReadinessModule）
