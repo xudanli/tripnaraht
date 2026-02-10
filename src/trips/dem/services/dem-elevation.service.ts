@@ -61,12 +61,21 @@ export class DEMElevationService {
   }
 
   /**
+   * 检查坐标是否在冰岛范围内
+   * 冰岛大致范围：纬度 63.3°N - 66.5°N，经度 -24.5°W - -13.5°W
+   */
+  private isInIcelandBounds(lat: number, lng: number): boolean {
+    return lat >= 63.3 && lat <= 66.5 && lng >= -24.5 && lng <= -13.5;
+  }
+
+  /**
    * 从 DEM 数据获取坐标点的海拔
    * 
    * 查询优先级：
-   * 1. 合并的城市 DEM 表（geo_dem_cities_merged）- 最优先，包含所有城市数据，性能最佳
-   * 2. 区域 DEM 表（如 geo_dem_xizang）- 作为后备
-   * 3. 全球 DEM 表（geo_dem_global）- 最终后备（覆盖全球）
+   * 1. 冰岛专用高精度 DEM 表（geo_dem_iceland_20m）- 如果坐标在冰岛范围内，最优先使用20m精度数据
+   * 2. 合并的城市 DEM 表（geo_dem_cities_merged）- 包含所有城市数据，性能最佳
+   * 3. 区域 DEM 表（如 geo_dem_xizang）- 作为后备
+   * 4. 全球 DEM 表（geo_dem_global）- 最终后备（覆盖全球）
    * 
    * @param lat 纬度
    * @param lng 经度
@@ -78,7 +87,23 @@ export class DEMElevationService {
     lng: number,
     fallbackTable: string = 'geo_dem_xizang'
   ): Promise<number | null> {
-    // 1. 优先查询合并的城市 DEM 表（性能最佳）
+    // 1. 如果坐标在冰岛范围内，优先查询冰岛专用高精度DEM表（20m精度）
+    if (this.isInIcelandBounds(lat, lng)) {
+      try {
+        const icelandTableExists = await this.checkDEMTableExists('geo_dem_iceland_20m');
+        if (icelandTableExists) {
+          const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_iceland_20m', 5327);
+          if (elevation !== null) {
+            this.logger.debug(`从冰岛20m DEM表获取海拔: ${elevation}m`);
+            return elevation;
+          }
+        }
+      } catch (error) {
+        this.logger.debug(`冰岛DEM表查询失败，尝试其他表`);
+      }
+    }
+
+    // 2. 优先查询合并的城市 DEM 表（性能最佳）
     try {
       const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
       if (mergedTableExists) {
@@ -92,7 +117,7 @@ export class DEMElevationService {
       this.logger.debug(`合并城市DEM表查询失败，尝试后备表`);
     }
 
-    // 2. 如果合并表查询失败，使用区域后备表
+    // 3. 如果合并表查询失败，使用区域后备表
     if (fallbackTable) {
       try {
         const elevation = await this.queryElevationFromTable(lat, lng, fallbackTable);
@@ -105,7 +130,7 @@ export class DEMElevationService {
       }
     }
 
-    // 3. 最终后备：全球 DEM 表（如果存在）
+    // 4. 最终后备：全球 DEM 表（如果存在）
     try {
       const globalTableExists = await this.checkDEMTableExists('geo_dem_global');
       if (globalTableExists) {
@@ -124,19 +149,45 @@ export class DEMElevationService {
 
   /**
    * 从指定表查询海拔
+   * 
+   * @param lat 纬度
+   * @param lng 经度
+   * @param demTable DEM表名
+   * @param rasterSrid 栅格数据的SRID（默认4326，如果是ISN2016则使用5327）
    */
   private async queryElevationFromTable(
     lat: number,
     lng: number,
-    demTable: string
+    demTable: string,
+    rasterSrid: number = 4326
   ): Promise<number | null> {
     try {
-      const result = await (this.prisma as any).$queryRawUnsafe(`
-        SELECT ST_Value(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))::INTEGER as elevation
-        FROM ${demTable}
-        WHERE ST_Intersects(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
-        LIMIT 1;
-      `) as Array<{ elevation: number | null }>;
+      let query: string;
+      
+      // 如果栅格使用ISN2016坐标系，需要转换坐标
+      if (rasterSrid === 5327) {
+        query = `
+          SELECT ST_Value(
+            rast, 
+            ST_Transform(ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326), 5327)
+          )::INTEGER as elevation
+          FROM ${demTable}
+          WHERE ST_Intersects(
+            rast, 
+            ST_Transform(ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326), 5327)
+          )
+          LIMIT 1;
+        `;
+      } else {
+        query = `
+          SELECT ST_Value(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))::INTEGER as elevation
+          FROM ${demTable}
+          WHERE ST_Intersects(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
+          LIMIT 1;
+        `;
+      }
+
+      const result = await (this.prisma as any).$queryRawUnsafe(query) as Array<{ elevation: number | null }>;
 
       if (result.length === 0 || result[0].elevation === null) {
         return null;

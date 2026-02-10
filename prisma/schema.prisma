@@ -1027,6 +1027,17 @@ model geo_dem_xizang {
   filename String?
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+/// 冰岛 DEM 20m 精度数据（ISN2016坐标系）
+model geo_dem_iceland_20m {
+  rid      Int                    @id @default(autoincrement())
+  rast     Unsupported("raster")?
+  filename String?
+
+  @@ignore
+}
+
 model geo_mountains_standard {
   gid        Int                      @id @default(autoincrement())
   geom       Unsupported("geometry")?
