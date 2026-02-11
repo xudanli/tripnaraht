@@ -9,6 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import { WorldModelEvidenceService } from '../src/skills/world/services/world-model-evidence.service';
 import { WorldBuildContextSkill } from '../src/skills/world/world-build-context.skill';
 import { WorldModelEvidenceRequestDto } from '../src/skills/world/dto/world-model-evidence.dto';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 const colors = {
   reset: '\x1b[0m',
@@ -309,8 +310,9 @@ async function main() {
 
   try {
     // 创建Service实例
+    // 使用类型断言绕过PrismaService完整实现的检查（测试脚本中可接受）
     const worldBuildContextSkill = new WorldBuildContextSkill(
-      prisma,
+      prisma as unknown as PrismaService,
       undefined, // routeDirectionsService
       undefined, // exaIntegration
       undefined, // demEffortMetadataService
@@ -319,7 +321,7 @@ async function main() {
     );
 
     const service = new WorldModelEvidenceService(
-      prisma,
+      prisma as unknown as PrismaService,
       worldBuildContextSkill,
     );
 

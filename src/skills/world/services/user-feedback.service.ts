@@ -119,10 +119,12 @@ export class UserFeedbackService {
       this.logger.log(`[UserFeedback] 用户反馈已存储: id=${feedbackId}`);
 
       return feedbackId;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `[UserFeedback] 提交用户反馈失败: ${error.message}`,
-        error.stack,
+        `[UserFeedback] 提交用户反馈失败: ${errorMessage}`,
+        errorStack,
       );
       throw error;
     }

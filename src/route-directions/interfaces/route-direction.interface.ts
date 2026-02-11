@@ -114,13 +114,41 @@ export interface ItinerarySkeleton {
  * PART 1.1: RouteDirection Pack 必须有「失败画像」
  * 不是只有 best case，而是记录典型失败场景
  */
+/**
+ * 失败原因类型
+ * 基础类型 + 扩展类型（支持各种特殊场景）
+ */
+export type FailureReasonType = 
+  // 基础类型
+  | 'fatigue' | 'weather' | 'altitude' | 'slope' | 'distance' | 'logistics'
+  // 技术类
+  | 'technical_difficulty' | 'rock_quality' | 'rappelling_accident' | 'glacier_crossing_failure'
+  // 环境类
+  | 'river_crossing_failure' | 'vehicle_failure' | 'weather_closure' | 'road_closure'
+  | 'extreme_weather' | 'flash_flooding' | 'ice_conditions' | 'ice_calving' | 'avalanche'
+  // 身体类
+  | 'altitude_sickness' | 'acute_mountain_sickness' | 'altitude_exhaustion' | 'altitude_pulmonary_edema'
+  | 'exhaustion' | 'dehydration' | 'injury' | 'seasickness'
+  // 野外类
+  | 'polar_bear_encounter' | 'snow_bridge_collapse' | 'peat_bog_accident'
+  | 'cliff_accident' | 'sneaker_wave_accident' | 'sea_wave_incident'
+  // 装备/后勤类
+  | 'equipment_failure' | 'fuel_shortage' | 'ticket_unavailable' | 'medical_emergency'
+  // 通用扩展
+  | string; // 允许自定义原因
+
+/**
+ * 救援难度类型
+ */
+export type RescueDifficultyType = 'EXTREME' | 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
+
 export interface FailureProfile {
   /** 常见失败日期（从1开始，如 [3,4] 表示第3-4天） */
   commonFailureDays: number[];
   /** 典型失败原因 */
-  typicalFailureReason: ('fatigue' | 'weather' | 'altitude' | 'slope' | 'distance' | 'logistics')[];
+  typicalFailureReason: FailureReasonType[];
   /** 救援难度 */
-  rescueDifficulty: 'HIGH' | 'MEDIUM' | 'LOW';
+  rescueDifficulty: RescueDifficultyType;
   /** 失败场景描述（可选） */
   failureScenarios?: Array<{
     day: number;

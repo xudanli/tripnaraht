@@ -81,3 +81,6 @@ export * from './adapters/sense-tools.adapter';
 // 模块
 export * from './decision.module';
 
+// Phase 1/2/3: 优化模块
+export * from './optimization';
+

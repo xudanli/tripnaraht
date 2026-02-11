@@ -52,7 +52,10 @@ export type RewardSignalType =
   | 'FEASIBILITY_PASS'    // 可执行通过
   | 'EVIDENCE_QUALITY'    // 证据质量
   | 'RISK_DISCLOSURE'     // 风险披露
-  | 'PREFERENCE_BONUS';   // 偏好加分
+  | 'PREFERENCE_BONUS'    // 偏好加分
+  // POI 相关信号
+  | 'CORE_POI_SKIPPED'    // 核心 POI 被跳过
+  | 'POI_ADDED';          // POI 被添加
 
 /**
  * Reward信号

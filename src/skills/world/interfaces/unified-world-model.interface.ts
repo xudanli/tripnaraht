@@ -15,12 +15,16 @@ import { RouteDirectionWithPhilosophy } from '../../../trips/decision/shared/wor
  * 实时天气预警
  */
 export interface WeatherAlert {
+  id?: string;
+  title?: string;
+  description?: string;
   region: string;
-  alertType: 'WIND' | 'SNOW' | 'FLOOD' | 'VOLCANIC';
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  alertType: 'WIND' | 'SNOW' | 'FLOOD' | 'VOLCANIC' | 'RAIN' | 'FOG' | 'HEAT' | 'COLD' | 'STORM';
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'info' | 'warning' | 'critical';
   startTime: Date;
   endTime: Date;
-  impact: string;
+  impact?: string;
+  source?: string;
 }
 
 /**
@@ -55,21 +59,33 @@ export interface RealtimeWorldState {
 }
 
 /**
+ * 天气状况类型
+ */
+export type WeatherCondition = 'SUNNY' | 'CLOUDY' | 'RAINY' | 'SNOWY' | 'FOGGY' | 'WINDY' | 'STORMY' | 'HAZY' | 'UNKNOWN';
+
+/**
  * 天气预测
  */
 export interface WeatherPrediction {
+  id?: string;
   date: Date;
   temperature: number;
   windSpeed: number;
   precipitation: number;
-  visibility: number;
-  accessibilityScore: number; // 0-1
-  riskFactors: string[];
+  visibility?: number;
+  accessibilityScore?: number; // 0-1
+  riskFactors?: string[];
+  // 扩展字段（支持多种天气服务）
+  condition?: WeatherCondition;
+  windDirection?: number;
+  humidity?: number;
+  source?: string;
+  region?: string;
   confidence: {
     lower: number;
     upper: number;
     level: 'LOW' | 'MEDIUM' | 'HIGH';
-  };
+  } | number; // 支持简单数值或详细对象
 }
 
 /**
@@ -96,7 +112,7 @@ export interface FailureRiskPrediction {
   date: Date;
   predictions: {
     day: number;
-    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     riskFactors: string[];
     mitigation: string[];
     confidence: {
@@ -158,6 +174,10 @@ export interface RouteDifficultyCorrection {
 export interface LearnedCapabilities {
   userCapability: LearnedUserCapability | null;
   routeDifficultyCorrection: RouteDifficultyCorrection | null;
+  // 用户实际能力指标（来自因果推理）
+  actualMaxAscent?: number;       // 实际最大爬升能力（米）
+  actualRiskTolerance?: 'LOW' | 'MEDIUM' | 'HIGH';  // 实际风险承受能力
+  actualPace?: 'slow' | 'moderate' | 'fast';        // 实际行进节奏
 }
 
 /**
@@ -310,6 +330,7 @@ export interface UnifiedWorldModelRequest {
     riskTolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
   };
   routeDirectionId?: string;
+  poiId?: string;
   userId?: string;
   dateRange?: {
     start: Date;

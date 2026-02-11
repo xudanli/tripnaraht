@@ -98,6 +98,12 @@ export class CollaborativeWorldModelService {
       // 2. 创建贡献记录
       const contributionId = `contrib_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
+      // 计算状态：如果质量评分高，自动批准；否则需要专家审核
+      const status: UserContribution['status'] =
+        qualityScore >= QualityScoreThresholds.AUTO_APPROVE
+          ? 'APPROVED'
+          : 'NEEDS_REVIEW';
+      
       // 存储到user_contribution表
       try {
         await this.prisma.$executeRawUnsafe(`
@@ -169,12 +175,6 @@ export class CollaborativeWorldModelService {
           throw error;
         }
       }
-
-      // 3. 如果质量评分高，自动批准；否则需要专家审核
-      const status: UserContribution['status'] =
-        qualityScore >= QualityScoreThresholds.AUTO_APPROVE
-          ? 'APPROVED'
-          : 'NEEDS_REVIEW';
 
       const contribution: UserContribution = {
         id: contributionId,

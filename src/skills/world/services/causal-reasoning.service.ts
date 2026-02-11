@@ -330,9 +330,18 @@ export class CausalReasoningService {
       });
     }
 
+    // 计算根节点和叶节点
+    const nodeIds = Array.from(nodes.keys());
+    const edgeTargets = new Set(Array.from(edges.values()).map(e => e.to));
+    const edgeSources = new Set(Array.from(edges.values()).map(e => e.from));
+    const rootNodes = nodeIds.filter(id => !edgeTargets.has(id));
+    const leafNodes = nodeIds.filter(id => !edgeSources.has(id));
+
     return {
       nodes,
       edges,
+      rootNodes,
+      leafNodes,
     };
   }
 

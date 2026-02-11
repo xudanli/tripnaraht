@@ -596,9 +596,9 @@ export class CountryConfigService {
   }
 
   /**
-   * 获取国家特定的地理编码坐标（如果国家中心坐标不存在，返回undefined）
+   * 获取国家特定的地理编码坐标（同步版本，如果国家中心坐标不存在，返回undefined）
    */
-  getGeocodingCoordinates(countryCode: string): { latitude: number; longitude: number } | undefined {
+  getGeocodingCoordinatesSync(countryCode: string): { latitude: number; longitude: number } | undefined {
     return this.getCenterCoordinates(countryCode);
   }
 }

@@ -29,6 +29,11 @@ export interface TripPlanRequest {
     has_elderly?: boolean;
     fitness_level?: 'low' | 'medium' | 'high';
   };
+  // 团队资料（护城河扩展）
+  party_profile?: {
+    risk_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+    fitness?: 'low' | 'medium' | 'high';
+  };
   constraints?: {
     budget?: {
       total?: number;

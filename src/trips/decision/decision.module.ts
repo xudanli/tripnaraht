@@ -97,6 +97,14 @@ import { ApprovalService } from './services/approval.service';
 import { AgentResumeService } from './services/agent-resume.service';
 import { ApprovalController } from './controllers/approval.controller';
 import { ApprovalCleanupScheduler } from './schedulers/approval-cleanup.scheduler';
+import { FitnessAssessmentService } from './services/fitness-assessment.service';
+import { FitnessAssessmentController } from './controllers/fitness-assessment.controller';
+// Phase 2: 体能数据分析服务
+import { FitnessAnalyticsService } from './services/fitness-analytics.service';
+import { FitnessABTestingService } from './services/fitness-ab-testing.service';
+import { CalibrationSchedulerService } from './services/calibration-scheduler.service';
+import { WearableIntegrationService } from './services/wearable-integration.service';
+import { FitnessAnalyticsController } from './controllers/fitness-analytics.controller';
 import { DecisionStateManagerService } from './services/decision-state-manager.service';
 import { ThreeLayerExplanationService } from './services/three-layer-explanation.service';
 import { DecisionSupportService } from './services/decision-support.service';
@@ -106,6 +114,9 @@ import { TrainingModule } from '../../agent/training/training.module';
 import { ExaModule } from '../../mcp/exa.module';
 import { AirbnbModule } from '../../mcp/airbnb.module';
 import { BookingComModule } from '../../mcp/booking-com.module';
+
+// Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
+import { OptimizationModule } from './optimization/optimization.module';
 
 // 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
 let DataQualityModule: any;
@@ -138,11 +149,14 @@ try {
     ExaModule, // Exa 集成模块（实时信息搜索）
     AirbnbModule, // Airbnb 集成模块（住宿搜索）
     BookingComModule, // Booking.com 集成模块（租车搜索）
+    OptimizationModule, // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
     DecisionStatsController, // 恢复：决策统计控制器
     ApprovalController, // 恢复：审批控制器
+    FitnessAssessmentController, // Phase 1：体能评估控制器
+    FitnessAnalyticsController, // Phase 2：体能数据分析控制器
   ],
   providers: [
     TripDecisionEngineService,
@@ -213,6 +227,12 @@ try {
     ApprovalService, // 恢复：ApprovalController 需要
     AgentResumeService, // 恢复：ApprovalController 需要
     // ApprovalCleanupScheduler,
+    FitnessAssessmentService, // Phase 1：体能评估服务
+    // Phase 2：体能数据分析服务
+    FitnessAnalyticsService,
+    FitnessABTestingService,
+    CalibrationSchedulerService,
+    WearableIntegrationService,
   ],
   exports: [
     TripDecisionEngineService,
@@ -281,6 +301,14 @@ try {
     ReadinessAgentService, // 必需：SkillsModule 需要它
     ApprovalService, // 恢复：ApprovalController 需要
     AgentResumeService, // 恢复：ApprovalController 需要
+    FitnessAssessmentService, // Phase 1：体能评估服务
+    // Phase 2：体能数据分析服务
+    FitnessAnalyticsService,
+    FitnessABTestingService,
+    CalibrationSchedulerService,
+    WearableIntegrationService,
+    // Phase 1/2/3: 优化模块服务（通过 re-export）
+    // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
   ],
 })
 export class DecisionModule {}

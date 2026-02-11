@@ -160,6 +160,15 @@ export class RouteAndRunRequestDto {
   @IsString()
   trip_id?: string | null;
 
+  @ApiPropertyOptional({ 
+    description: '关联的路线方向 ID（可选，用于护城河扩展的失败风险预测）',
+    example: 'route-dir-789',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  route_direction_id?: string | null;
+
   @ApiProperty({ 
     description: '用户输入消息',
     example: '推荐新宿拉面',

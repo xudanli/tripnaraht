@@ -82,6 +82,9 @@ export class WorldModelVersionService {
   /** Code Review P2-2修复：版本比较结果缓存 */
   private readonly cacheKeyPrefix = 'version_comparison:';
   private readonly cacheTtl = 7200; // 2小时
+  
+  /** 内存版本缓存（用于快速访问最近使用的版本） */
+  private readonly versions = new Map<string, WorldModelVersion>();
 
   constructor(
     private prisma: PrismaService,
@@ -915,5 +918,48 @@ export class WorldModelVersionService {
     }
 
     return 'CONTINUE_MONITORING';
+  }
+
+  /**
+   * 收集性能指标
+   */
+  private async collectPerformanceMetrics(versionId: string): Promise<{
+    userSatisfaction: number;
+    predictionAccuracy: number;
+    usageCount: number;
+    averageConfidence: number;
+  }> {
+    // 从数据库或缓存中收集性能指标
+    // 这是一个简化的实现，实际项目中应该从实际使用数据中收集
+    this.logger.debug(`[WorldModelVersion] 收集版本 ${versionId} 的性能指标`);
+    
+    return {
+      userSatisfaction: 0.75,
+      predictionAccuracy: 0.8,
+      usageCount: 0,
+      averageConfidence: 0.85,
+    };
+  }
+
+  /**
+   * 更新性能指标
+   */
+  private async updatePerformanceMetrics(
+    versionId: string,
+    metrics: {
+      userSatisfaction: number;
+      predictionAccuracy: number;
+      usageCount: number;
+      averageConfidence: number;
+    },
+  ): Promise<void> {
+    // 更新数据库或缓存中的性能指标
+    this.logger.debug(`[WorldModelVersion] 更新版本 ${versionId} 的性能指标`);
+    
+    const version = this.versions.get(versionId);
+    if (version) {
+      version.performanceMetrics = metrics;
+      this.versions.set(versionId, version);
+    }
   }
 }

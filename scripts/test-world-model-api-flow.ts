@@ -5,6 +5,9 @@
  * 使用指定的行程ID测试所有改进功能
  */
 
+// 声明为模块，避免全局作用域污染
+export {};
+
 const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',

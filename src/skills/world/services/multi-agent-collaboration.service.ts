@@ -768,4 +768,39 @@ export class MultiAgentCollaborationService {
       return 'CRITICAL';
     }
   }
+
+  /**
+   * 计算智能体权重（基于历史表现和置信度）
+   */
+  private calculateAgentWeights(
+    contributions: Map<string, AgentWorldModelContribution>,
+  ): Map<string, number> {
+    const weights = new Map<string, number>();
+
+    for (const [agentId, contribution] of contributions) {
+      // 基础权重 = 置信度
+      let weight = contribution.confidence;
+
+      // 基于智能体类型调整权重
+      const typeWeights: Record<AgentType, number> = {
+        GATEKEEPER_AGENT: 1.2,    // 门控智能体权重最高
+        CORE_DECISION_AGENT: 1.15, // 核心决策智能体次之
+        WEATHER_AGENT: 1.1,       // 天气智能体
+        GEO_AGENT: 1.05,          // 地理智能体
+        PLANNER_AGENT: 1.0,       // 规划智能体
+        COST_AGENT: 0.95,         // 成本智能体
+        EXPERIENCE_AGENT: 0.9,    // 体验智能体
+        LOCAL_INSIGHT_AGENT: 0.85, // 本地洞察智能体
+      };
+
+      weight *= typeWeights[contribution.agentType] || 1.0;
+
+      // 归一化权重到 0-1 范围
+      weight = Math.min(1.0, Math.max(0.0, weight));
+
+      weights.set(agentId, weight);
+    }
+
+    return weights;
+  }
 }

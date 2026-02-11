@@ -457,6 +457,7 @@ async function createMcpServer() {
       }
     );
     console.error('  ✓ Registered tool: airbnb.listingDetails');
+    }
   } catch (error: any) {
     // Airbnb 工具是可选的，如果连接失败也不影响其他功能
     console.error('⚠️  Failed to register Airbnb tools:', error.message);
@@ -502,10 +503,10 @@ async function createMcpServer() {
       googleMapsDirectService = app.get(GoogleMapsDirectService, { strict: false });
       
       if (googleMapsDirectService && googleMapsDirectService.isServiceAvailable()) {
-      console.error('Google Maps Direct API service available, registering tools...');
+        console.error('Google Maps Direct API service available, registering tools...');
 
-    // 注册 google_maps.getRoute 工具（直接使用 Google Maps API）
-    server.registerTool(
+        // 注册 google_maps.getRoute 工具（直接使用 Google Maps API）
+        server.registerTool(
       'google_maps.getRoute',
       {
         description: '计算两个地点之间的路线。支持多种交通方式（驾车、步行、骑行、公交）和路线偏好。',
@@ -754,8 +755,9 @@ async function createMcpServer() {
       }
     );
     console.error('  ✓ Registered tool: google_maps.searchPlaces');
-    } else {
-      console.error('⚠️  Google Maps Direct API service not available (API Key not configured)');
+      } else {
+        console.error('⚠️  Google Maps Direct API service not available (API Key not configured)');
+      }
     }
   } catch (error: any) {
     // Google Maps 工具是可选的，如果连接失败也不影响其他功能
@@ -875,8 +877,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: weather.getCurrentDateTime');
-    } else {
-      console.error('⚠️  Weather Direct API service not available');
+      } else {
+        console.error('⚠️  Weather Direct API service not available');
+      }
     }
   } catch (error: any) {
     // Weather 工具是可选的，如果连接失败也不影响其他功能
@@ -991,15 +994,18 @@ async function createMcpServer() {
             }
           }
         );
-        console.error(`  ✓ Registered tool: file_extractor.${tool.name}`);
-      } catch (error: any) {
-        console.error(`  ⚠️  Failed to register tool file_extractor.${tool.name}:`, error.message);
+          console.error(`  ✓ Registered tool: file_extractor.${tool.name}`);
+        } catch (error: any) {
+          console.error(`  ⚠️  Failed to register tool file_extractor.${tool.name}:`, error.message);
+        }
       }
+    } catch (error: any) {
+      // File Extractor 工具是可选的，如果连接失败也不影响其他功能
+      console.error('⚠️  Failed to register File Extractor MCP tools:', error.message);
+      console.error('Note: File Extractor tools will not be available');
     }
-  } catch (error: any) {
-    // File Extractor 工具是可选的，如果连接失败也不影响其他功能
-    console.error('⚠️  Failed to register File Extractor MCP tools:', error.message);
-    console.error('Note: File Extractor tools will not be available');
+  } else {
+    console.error('ℹ️  Rail/File Extractor MCP 已禁用');
   }
 
   // 注册 Stripe Direct API 工具（直接使用 Stripe API，用户级别认证存储在数据库）
@@ -1191,6 +1197,7 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: stripe.refundPayment');
+      }
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Stripe Direct API tools:', error.message);
@@ -1454,12 +1461,8 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: browserbase.evaluate');
-      }
     } else {
       console.error('⚠️  Browserbase MCP service not available, skipping tool registration');
-    }
-    } else {
-      console.error('⚠️  Browserbase capability is disabled, skipping registration');
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Browserbase MCP tools:', error.message);

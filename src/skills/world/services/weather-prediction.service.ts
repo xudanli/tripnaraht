@@ -389,9 +389,9 @@ export class WeatherPredictionService {
   }
 
   /**
-   * 计算可达性评分（基于天气预测）
+   * 计算可达性评分（基于天气预测，公开方法）
    */
-  calculateAccessibilityScore(prediction: WeatherPrediction): number {
+  calculateAccessibilityScoreFromPrediction(prediction: WeatherPrediction): number {
     let score = 1.0;
 
     // 风速影响（>20m/s 降低可达性）

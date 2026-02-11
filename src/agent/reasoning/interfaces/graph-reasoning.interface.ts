@@ -9,7 +9,15 @@ export type NodeType =
   | 'ENVIRONMENT'     // 环境节点
   | 'FEATURE'         // 特征节点
   | 'JUDGMENT'        // 判断节点
-  | 'EVIDENCE';       // 证据节点
+  | 'EVIDENCE'        // 证据节点
+  // World Model 扩展类型
+  | 'WEATHER'         // 天气节点
+  | 'ROAD_STATUS'     // 道路状态节点
+  | 'USER_CAPABILITY' // 用户能力节点
+  | 'ROUTE_DIFFICULTY'// 路线难度节点
+  | 'PREDICTION'      // 预测节点
+  | 'TRIP_SUCCESS'    // 行程成功节点
+  | 'TRIP_FAILURE';   // 行程失败节点
 
 /**
  * 边类型
@@ -31,6 +39,7 @@ export interface GraphNode {
     confidence?: number;      // 置信度（0-1）
     source?: string;          // 数据来源
     timestamp?: string;       // 时间戳
+    worldModelType?: string;  // World Model 节点类型
   };
 }
 

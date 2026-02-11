@@ -120,6 +120,20 @@ export class WeatherWindowDto {
 }
 
 /**
+ * 天数弹性区间
+ */
+export class DurationFlexibilityDto {
+  @ApiProperty({ description: '最小天数', example: 7 })
+  minDays: number;
+
+  @ApiProperty({ description: '最大天数', example: 10 })
+  maxDays: number;
+
+  @ApiPropertyOptional({ description: '推荐天数', example: 8 })
+  preferredDays?: number;
+}
+
+/**
  * 路线哲学响应
  */
 export class RoutePhilosophyDto {
@@ -137,6 +151,26 @@ export class RoutePhilosophyDto {
 
   @ApiProperty({ description: '核心体验覆盖情况', example: { '高地荒原': true, '温泉': true, '火山': true } })
   coverageStatus: Record<string, boolean>;
+
+  @ApiPropertyOptional({ description: '天数弹性区间', type: DurationFlexibilityDto })
+  durationFlexibility?: DurationFlexibilityDto;
+}
+
+/**
+ * 失败场景详情
+ */
+export class FailureScenarioDto {
+  @ApiProperty({ description: '失败日期（从1开始）', example: 3 })
+  day: number;
+
+  @ApiProperty({ description: '失败原因', example: '河流穿越失败' })
+  reason: string;
+
+  @ApiProperty({ description: '缓解措施', example: '建议跟随向导' })
+  mitigation: string;
+
+  @ApiPropertyOptional({ description: '典型用户画像', example: '首次高地驾驶用户' })
+  typicalUserProfile?: string;
 }
 
 /**
@@ -149,15 +183,15 @@ export class FailureProfileDto {
   @ApiProperty({ description: '典型失败原因', example: ['河流穿越失败', '天气突变'] })
   typicalFailureReasons: string[];
 
-  @ApiProperty({ description: '救援难度', enum: ['LOW', 'MEDIUM', 'HIGH'], example: 'HIGH' })
-  rescueDifficulty: 'LOW' | 'MEDIUM' | 'HIGH';
+  @ApiProperty({ description: '救援难度', enum: ['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH', 'EXTREME'], example: 'HIGH' })
+  rescueDifficulty: 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY_HIGH' | 'EXTREME';
 
-  @ApiProperty({ description: '失败场景', example: [{ day: 3, reason: '河流穿越失败', mitigation: '建议跟随向导' }] })
-  failureScenarios: Array<{
-    day: number;
-    reason: string;
-    mitigation: string;
-  }>;
+  @ApiProperty({ 
+    description: '失败场景', 
+    type: [FailureScenarioDto],
+    example: [{ day: 3, reason: '河流穿越失败', mitigation: '建议跟随向导', typicalUserProfile: '首次高地驾驶用户' }] 
+  })
+  failureScenarios: FailureScenarioDto[];
 }
 
 /**

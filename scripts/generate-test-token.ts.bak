@@ -1,0 +1,108 @@
+#!/usr/bin/env npx tsx
+/**
+ * 生成测试用 JWT Token
+ * 
+ * 用于本地开发和测试，生成一个有效的 JWT token
+ * 
+ * 使用方法:
+ *   npx tsx scripts/generate-test-token.ts
+ *   
+ * 输出:
+ *   - 打印 JWT token
+ *   - 可直接用于 TEST_JWT_TOKEN 环境变量
+ */
+
+import jwt from 'jsonwebtoken';
+
+// 声明为模块
+export {};
+
+// 配置
+const JWT_SECRET = process.env.JWT_SECRET || 'tripnara-dev-secret-key-for-testing-only';
+const TEST_USER_ID = process.env.TEST_USER_ID || 'test-user-001';
+const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL || 'test@tripnara.dev';
+const EXPIRES_IN = process.env.TOKEN_EXPIRES_IN || '24h';
+
+// Token payload（与 TokenService 保持一致）
+interface TripNaraAccessTokenPayload {
+  sub: string;        // 用户 ID
+  email: string;      // 邮箱
+  type: 'access';     // Token 类型
+  iat?: number;       // 签发时间
+  exp?: number;       // 过期时间
+}
+
+function generateToken(): string {
+  const payload: TripNaraAccessTokenPayload = {
+    sub: TEST_USER_ID,
+    email: TEST_USER_EMAIL,
+    type: 'access',
+  };
+  
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: EXPIRES_IN as jwt.SignOptions['expiresIn'],
+  });
+}
+
+function main() {
+  console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║         TripNARA 测试 Token 生成器                           ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+
+  console.log('📋 配置信息:');
+  console.log(`   用户 ID: ${TEST_USER_ID}`);
+  console.log(`   邮箱: ${TEST_USER_EMAIL}`);
+  console.log(`   有效期: ${EXPIRES_IN}`);
+  console.log(`   JWT Secret: ${JWT_SECRET.substring(0, 20)}...`);
+  console.log('');
+  
+  try {
+    const token = generateToken();
+    
+    console.log('✅ Token 生成成功!\n');
+    console.log('━'.repeat(60));
+    console.log(token);
+    console.log('━'.repeat(60));
+    console.log('');
+    
+    // 解码显示
+    const decoded = jwt.decode(token) as TripNaraAccessTokenPayload & { iat: number; exp: number };
+    if (decoded) {
+      console.log('📄 Token 内容:');
+      console.log(`   sub (用户ID): ${decoded.sub}`);
+      console.log(`   email: ${decoded.email}`);
+      console.log(`   type: ${decoded.type}`);
+      console.log(`   签发时间: ${new Date(decoded.iat * 1000).toISOString()}`);
+      console.log(`   过期时间: ${new Date(decoded.exp * 1000).toISOString()}`);
+    }
+    console.log('');
+    
+    console.log('💡 使用方法:');
+    console.log('');
+    console.log('   方式 1: 设置环境变量');
+    console.log(`   export TEST_JWT_TOKEN="${token}"`);
+    console.log('   npx tsx scripts/test-optimization-api-http.ts');
+    console.log('');
+    console.log('   方式 2: 单次运行');
+    console.log(`   TEST_JWT_TOKEN="${token}" npx tsx scripts/test-optimization-api-http.ts`);
+    console.log('');
+    console.log('   方式 3: curl 测试');
+    console.log(`   curl -H "Authorization: Bearer ${token.substring(0, 50)}..." \\`);
+    console.log('        http://localhost:3000/api/v2/admin/optimization/stats');
+    console.log('');
+    
+    // 验证 secret 是否与服务器一致的提示
+    console.log('⚠️  注意:');
+    console.log('   此 Token 使用的 JWT_SECRET 必须与服务器配置一致');
+    console.log('   如果服务器返回 401，请检查 .env 文件中的 JWT_SECRET');
+    console.log('');
+    
+  } catch (error: any) {
+    console.error('❌ Token 生成失败:', error.message);
+    process.exit(1);
+  }
+}
+
+main();

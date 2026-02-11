@@ -45,10 +45,12 @@ export class UserCapabilityLearningService {
       await this.upsertLearnedCapability(userId, learnedCapability);
 
       this.logger.log(`[UserCapabilityLearning] 用户能力学习完成: userId=${userId}`);
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `[UserCapabilityLearning] 学习用户能力失败: ${error.message}`,
-        error.stack,
+        `[UserCapabilityLearning] 学习用户能力失败: ${errorMessage}`,
+        errorStack,
       );
       throw error;
     }

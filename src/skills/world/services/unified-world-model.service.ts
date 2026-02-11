@@ -159,17 +159,20 @@ export class UnifiedWorldModelService {
 
       this.logger.log(`[UnifiedWorldModel] 统一世界模型构建完成 (耗时: ${buildTimeMs}ms)`);
       return unifiedWorldModel;
-    } catch (error) {
+    } catch (error: unknown) {
       // Code Review P2-4修复：记录错误
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
       if (this.worldModelMonitoringService) {
         this.worldModelMonitoringService.recordError(
           'BUILD_FAILED',
-          error.message,
+          errorMessage,
           request.countryCode,
         );
       }
       
-      this.logger.error(`[UnifiedWorldModel] 构建失败: ${error.message}`, error.stack);
+      this.logger.error(`[UnifiedWorldModel] 构建失败: ${errorMessage}`, errorStack);
       throw error;
     }
   }
@@ -181,12 +184,26 @@ export class UnifiedWorldModelService {
     request: UnifiedWorldModelRequest,
   ): Promise<WorldModelContext> {
     // 使用现有的 WorldBuildContextSkill
+    // 转换 partyProfile 中的类型（从 'LOW'|'MEDIUM'|'HIGH' 到 'low'|'medium'|'high'）
+    // 以及 pace（从 'slow'|'moderate'|'fast' 到 'relaxed'|'moderate'|'intense'）
+    const paceMapping: Record<string, 'relaxed' | 'moderate' | 'intense'> = {
+      slow: 'relaxed',
+      moderate: 'moderate',
+      fast: 'intense',
+    };
+    
+    const convertedPartyProfile = request.partyProfile ? {
+      fitness: request.partyProfile.fitness,
+      riskTolerance: request.partyProfile.riskTolerance?.toLowerCase() as 'low' | 'medium' | 'high' | undefined,
+      pace: request.partyProfile.pace ? paceMapping[request.partyProfile.pace] : undefined,
+    } : undefined;
+    
     const result = await this.worldBuildContextSkill.execute({
       tripId: request.tripId,
       countryCode: request.countryCode,
       season: request.season,
       duration: request.duration,
-      partyProfile: request.partyProfile,
+      partyProfile: convertedPartyProfile,
       routeDirectionId: request.routeDirectionId,
     });
 
@@ -362,7 +379,7 @@ export class UnifiedWorldModelService {
               routeDirectionId: request.routeDirectionId,
               userProfile: {
                 userId: request.userId,
-                riskTolerance: request.partyProfile?.risk_tolerance as any,
+                riskTolerance: request.partyProfile?.riskTolerance as any,
                 fitness: request.partyProfile?.fitness as any,
               },
               dateRange: { start: startDate, end: endDate },
@@ -388,7 +405,7 @@ export class UnifiedWorldModelService {
               request.routeDirectionId,
               {
                 userId: request.userId,
-                riskTolerance: request.partyProfile?.risk_tolerance as any,
+                riskTolerance: request.partyProfile?.riskTolerance as any,
                 fitness: request.partyProfile?.fitness as any,
               },
               { start: startDate, end: endDate },
