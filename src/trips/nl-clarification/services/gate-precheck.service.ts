@@ -136,14 +136,29 @@ export class GatePrecheckService {
 
   /**
    * 检查触发条件
+   * 
+   * 🆕 重要改进：只在用户明确提供的字段上触发 Gate 检查
+   * 如果字段是 LLM 推断的（在 inferredFields 中），则不触发检查
+   * 这样可以避免用户还没说预算就被预算警告阻止的问题
    */
   private checkTriggerConditions(
     conditions: GatePrecheckConfig['triggerConditions'],
     currentParams: Record<string, any>
   ): boolean {
+    // 获取推断字段列表
+    const inferredFields: string[] = currentParams.inferredFields || [];
+    
     // 检查必需字段
     for (const field of conditions.requiredFields) {
       const fieldValue = currentParams[field];
+      
+      // 🆕 检查字段是否是推断的（而非用户明确提供的）
+      // 如果是推断字段，不应触发 Gate 检查，应该先让用户确认
+      if (inferredFields.includes(field)) {
+        this.logger.debug(`Gate 触发条件检查跳过: 字段 ${field} 是推断值（未经用户确认），不触发预检查`);
+        return false;
+      }
+      
       if (!fieldValue) {
         this.logger.debug(`Gate 触发条件检查失败: 缺少必需字段 ${field}`);
         return false;
@@ -159,6 +174,13 @@ export class GatePrecheckService {
     if (conditions.fieldConditions && conditions.fieldConditions.length > 0) {
       for (const condition of conditions.fieldConditions) {
         const fieldValue = currentParams[condition.fieldId];
+        
+        // 🆕 同样检查字段条件中的字段是否是推断的
+        if (inferredFields.includes(condition.fieldId)) {
+          this.logger.debug(`Gate 触发条件检查跳过: 条件字段 ${condition.fieldId} 是推断值`);
+          return false;
+        }
+        
         if (!this.evaluateFieldCondition(fieldValue, condition.operator, condition.value)) {
           return false;
         }

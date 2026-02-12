@@ -859,6 +859,15 @@ export class TripsController {
         ...(existingContext.partialParams || {}),
         [fieldName]: actionValue,
       };
+      
+      // 🆕 用户明确选择后，将该字段从 inferredFields 中移除
+      // 这样后续的 Gate 检查可以正常触发（因为字段不再是推断的）
+      if (updatedParams.inferredFields && Array.isArray(updatedParams.inferredFields)) {
+        updatedParams.inferredFields = updatedParams.inferredFields.filter(
+          (f: string) => f !== fieldName && f !== 'totalBudget' // 用户选择增加预算时也移除 totalBudget
+        );
+        this.logger.debug(`用户确认字段 ${fieldName}，从 inferredFields 移除，剩余: ${JSON.stringify(updatedParams.inferredFields)}`);
+      }
 
       await this.nlConversationContextService.updateContext(dto.sessionId, userId, {
         partialParams: updatedParams,
@@ -941,6 +950,17 @@ export class TripsController {
         ...currentParams,
         ...parseResult.params,
       };
+      
+      // 🆕 确保 inferredFields 被正确保留和累积
+      // 这对于 Gate 预检查跳过推断字段的逻辑非常重要
+      const paramsWithInferred = parseResult.params as Record<string, any>;
+      if (paramsWithInferred?.inferredFields) {
+        const existingInferred = currentParams.inferredFields || [];
+        const newInferred = paramsWithInferred.inferredFields || [];
+        // 合并并去重
+        mergedParams.inferredFields = [...new Set([...existingInferred, ...newInferred])];
+        this.logger.debug(`累积推断字段: ${JSON.stringify(mergedParams.inferredFields)}`);
+      }
       
       // 🆕 修复：将 preferences.activityType 或 preferences.activityTypes 转换为根级别的 activityTypes 数组
       // LLM 可能返回 preferences.activityType（字符串）或 preferences.activityTypes（数组），但配置需要根级别的 activityTypes（数组）
