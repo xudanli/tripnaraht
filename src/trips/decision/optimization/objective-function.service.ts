@@ -722,8 +722,8 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
     const dayProfiles = this.buildDayProfiles(plan, world);
-    const human = world.human;
-    const threshold = human.rollingAscent3DaysM;
+    const human = world?.human;
+    const threshold = human?.rollingAscent3DaysM || 3000; // 默认 3000m
     
     let maxRolling = 0;
     for (let i = 0; i < dayProfiles.length - 2; i++) {
