@@ -10,7 +10,7 @@ export class ContactNotificationService {
   private readonly notificationEmail: string;
 
   constructor(@Optional() private configService?: ConfigService) {
-    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.exmail.qq.com';
     const smtpPort = parseInt(this.configService?.get<string>('SMTP_PORT') || '587', 10);
     const smtpUser = this.configService?.get<string>('SMTP_USER');
     const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || 
@@ -18,9 +18,9 @@ export class ContactNotificationService {
     const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
     const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 
-    // 客服邮箱，从环境变量读取，默认为 contact@tripnara.com
+    // 客服邮箱，从环境变量读取，默认为 support@tripnara.com
     this.notificationEmail = this.configService?.get<string>('CONTACT_NOTIFICATION_EMAIL') || 
-                            'contact@tripnara.com';
+                            'support@tripnara.com';
 
     if (!smtpUser || !smtpPassword) {
       this.logger.warn('SMTP 配置未完整，邮件通知功能不可用');

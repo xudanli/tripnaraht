@@ -15,14 +15,14 @@ export class EmailVerificationService {
     private prisma: PrismaService,
     @Optional() private configService?: ConfigService,
   ) {
-    // 配置邮件发送器
-    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.gmail.com';
-    const smtpPort = parseInt(this.configService?.get<string>('SMTP_PORT') || '587', 10);
+    // 配置邮件发送器 - 默认使用企业微信邮箱
+    const smtpHost = this.configService?.get<string>('SMTP_HOST') || 'smtp.exmail.qq.com';
+    const smtpPort = parseInt(this.configService?.get<string>('SMTP_PORT') || '465', 10);
     const smtpUser = this.configService?.get<string>('SMTP_USER');
     // 支持 SMTP_PASSWORD 和 SMTP_PASS 两种环境变量名
     const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || this.configService?.get<string>('SMTP_PASS');
     const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
-    // 支持 SMTP_SECURE 环境变量（true/false 字符串）
+    // 支持 SMTP_SECURE 环境变量（true/false 字符串），企业微信邮箱 465 端口需要 SSL
     const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 
     if (!smtpUser || !smtpPassword) {

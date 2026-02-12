@@ -279,7 +279,7 @@ CONTACT_OSS_BUCKET=tripnara-contact  # 默认值
 |---------|-------|------|
 | CONTACT_OSS_BUCKET | tripnara-contact | OSS Bucket 名称 |
 | CONTACT_UPLOAD_DIR | uploads/contact | 本地上传目录（降级方案） |
-| CONTACT_NOTIFICATION_EMAIL | contact@tripnara.com | 客服通知邮箱 |
+| CONTACT_NOTIFICATION_EMAIL | support@tripnara.com | 客服通知邮箱 |
 
 ---
 
