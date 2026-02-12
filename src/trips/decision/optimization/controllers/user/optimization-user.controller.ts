@@ -7,6 +7,7 @@
 
 import { Controller, Post, Get, Body, Param, Logger, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { Public } from '../../../../../auth/decorators/public.decorator';
 import { IsNotEmpty, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -419,6 +420,33 @@ export class OptimizationUserController {
         abstain: result.votes.filter(v => v.vote === 'ABSTAIN').length,
       },
     };
+  }
+
+  // ========== 测试端点（无需认证） ==========
+
+  @Public()
+  @Post('test/negotiation')
+  @ApiOperation({ 
+    summary: '[测试] 获取三守护者协商结论',
+    description: '测试端点，无需认证。返回 Abu/Dre/Neptune 三智能体对计划的评估和协商结果'
+  })
+  @ApiResponse({ status: 200, description: '返回协商摘要' })
+  @ApiResponse({ status: 400, description: '请求参数错误' })
+  async testGetNegotiationSummary(@Body() dto: NegotiatePlanDto): Promise<NegotiationSummary> {
+    this.logger.log('[Test] 测试协商端点');
+    return this.getNegotiationSummary(dto);
+  }
+
+  @Public()
+  @Post('test/evaluate')
+  @ApiOperation({ 
+    summary: '[测试] 评估计划得分',
+    description: '测试端点，无需认证。评估计划的 8 维度效用值'
+  })
+  @ApiResponse({ status: 200, description: '返回评估结果' })
+  async testEvaluatePlan(@Body() dto: EvaluatePlanDto): Promise<ObjectiveEvaluationResult> {
+    this.logger.log('[Test] 测试评估端点');
+    return this.evaluatePlan(dto);
   }
 
   // ========== 反馈与偏好 ==========

@@ -663,27 +663,40 @@ GET /api/v2/user/realtime/state/:tripId/exists
 **前端处理逻辑建议**
 
 ```typescript
-// 推荐的前端轮询逻辑
+// 方式一（推荐）：使用 autoInit 参数自动初始化
 async function getRealtimeState(tripId: string) {
+  try {
+    // 直接请求，系统自动处理初始化
+    const response = await fetch(`/api/v2/user/realtime/state/${tripId}?autoInit=true`);
+    return await response.json();
+  } catch (error) {
+    console.error('获取实时状态失败', error);
+    return null;
+  }
+}
+
+// 方式二：手动检查并初始化（适合需要自定义初始化参数的场景）
+async function getRealtimeStateManual(tripId: string) {
   try {
     // 1. 先检查状态是否存在
     const checkRes = await fetch(`/api/v2/user/realtime/state/${tripId}/exists`);
     const { exists } = await checkRes.json();
     
     if (!exists) {
-      // 2. 如果不存在，初始化状态
+      // 2. 如果不存在，使用自定义参数初始化
       await fetch('/api/v2/user/realtime/state/initialize', {
         method: 'POST',
-        body: JSON.stringify({ tripId })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          tripId,
+          weather: { temperatureC: 10 },  // 自定义初始值
+          human: { fatigueLevel: 0.2 }
+        })
       });
     }
     
     // 3. 获取状态
     const stateRes = await fetch(`/api/v2/user/realtime/state/${tripId}`);
-    if (stateRes.status === 404) {
-      // 状态未初始化，停止轮询并显示提示
-      return { initialized: false, message: '实时状态暂不可用' };
-    }
     return await stateRes.json();
   } catch (error) {
     console.error('获取实时状态失败', error);
@@ -737,7 +750,16 @@ DELETE /api/v2/user/realtime/subscribe/:subscriptionId
 
 ```
 GET /api/v2/user/realtime/state/:tripId
+GET /api/v2/user/realtime/state/:tripId?autoInit=true
 ```
+
+**查询参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `autoInit` | boolean | 否 | 状态不存在时是否自动初始化（默认 `false`）|
+
+> **推荐**：使用 `?autoInit=true` 参数可以简化前端逻辑，系统会自动为未初始化的行程创建默认状态。
 
 **响应**
 
@@ -766,13 +788,31 @@ GET /api/v2/user/realtime/state/:tripId
 }
 ```
 
+**简化的前端调用示例**
+
+```typescript
+// 推荐方式：使用 autoInit 自动初始化
+async function getRealtimeState(tripId: string) {
+  const response = await fetch(`/api/v2/user/realtime/state/${tripId}?autoInit=true`);
+  return await response.json();
+}
+```
+
 ---
 
 #### 3.6 预测未来状态
 
 ```
 GET /api/v2/user/realtime/state/:tripId/predict?hoursAhead=24
+GET /api/v2/user/realtime/state/:tripId/predict?hoursAhead=24&autoInit=true
 ```
+
+**查询参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `hoursAhead` | number | 是 | 预测未来小时数 |
+| `autoInit` | boolean | 否 | 状态不存在时是否自动初始化（默认 `false`）|
 
 **响应**
 

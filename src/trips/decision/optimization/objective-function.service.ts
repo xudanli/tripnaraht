@@ -340,10 +340,17 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   private computeSafetyScore(plan: RoutePlanDraft, world: WorldModelContext): number {
     let score = 1.0;
 
-    const physical = world.physical;
+    const physical = world?.physical;
+    
+    // 如果没有物理世界数据，返回默认安全分数
+    if (!physical) {
+      this.logger.warn('[ObjectiveFunction] 缺少物理世界数据，使用默认安全分数');
+      return 0.7;
+    }
 
     // 1. DEM 违规惩罚
-    const demViolations = physical.demEvidence.filter(
+    const demEvidence = physical.demEvidence || [];
+    const demViolations = demEvidence.filter(
       e => e.violation !== 'NONE' && !e.segmentId.includes('placeholder')
     );
     const hardDemViolations = demViolations.filter(e => e.violation === 'HARD');
@@ -355,18 +362,20 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     score -= softDemViolations.length * 0.1; // 软违规小幅扣分
 
     // 2. 道路状态惩罚
-    const closedRoads = physical.roadStates.filter(r => r.status === 'CLOSED');
-    const restrictedRoads = physical.roadStates.filter(r => r.status === 'RESTRICTED' || r.status === 'SEASONAL');
+    const roadStates = physical.roadStates || [];
+    const closedRoads = roadStates.filter(r => r.status === 'CLOSED');
+    const restrictedRoads = roadStates.filter(r => r.status === 'RESTRICTED' || r.status === 'SEASONAL');
     
     score -= closedRoads.length * 0.3;
     score -= restrictedRoads.length * 0.1;
 
     // 3. 危险区域惩罚
-    const highRiskHazards = physical.hazardZones.filter(
+    const hazardZones = physical.hazardZones || [];
+    const highRiskHazards = hazardZones.filter(
       h => h.level === 'HIGH' && 
            (h.seasonality?.highRiskMonths?.includes(physical.month) ?? false)
     );
-    const mediumRiskHazards = physical.hazardZones.filter(
+    const mediumRiskHazards = hazardZones.filter(
       h => h.level === 'MEDIUM'
     );
 
@@ -402,8 +411,9 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     let score = 0.7; // 基础分
 
     // 1. 路段数量（体验密度）
-    const segmentCount = plan.segments.length;
-    const daysCount = new Set(plan.segments.map(s => s.dayIndex)).size;
+    const segments = plan?.segments || [];
+    const segmentCount = segments.length;
+    const daysCount = new Set(segments.map(s => s.dayIndex)).size;
     const avgSegmentsPerDay = daysCount > 0 ? segmentCount / daysCount : 0;
 
     // 理想密度：每天 3-5 段
@@ -414,7 +424,7 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     }
 
     // 2. 路线哲学中的核心体验覆盖
-    const philosophy = world.routeDirection.philosophy;
+    const philosophy = world?.routeDirection?.philosophy;
     if (philosophy && typeof philosophy === 'object') {
       // 检查是否覆盖核心体验
       score += 0.1; // 简化处理
@@ -429,15 +439,18 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   private computePhilosophyScore(plan: RoutePlanDraft, world: WorldModelContext): number {
     let score = 0.8; // 基础分
 
-    const routeDirection = world.routeDirection;
+    const routeDirection = world?.routeDirection;
+    if (!routeDirection) {
+      return 0.7; // 没有路线方向数据，返回默认分数
+    }
 
     // 1. 检查是否使用了正确的 RouteDirection
-    if (plan.routeDirectionId === routeDirection.id) {
+    if (plan?.routeDirectionId === routeDirection.id) {
       score += 0.1;
     }
 
     // 2. 检查约束遵守情况
-    const constraints = routeDirection.constraints;
+    const constraints = routeDirection?.constraints;
     if (constraints) {
       // 硬约束遵守
       const hardConstraints = constraints.hard || {};
@@ -563,7 +576,8 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     plan: RoutePlanDraft,
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
-    const violations = world.physical.demEvidence.filter(
+    const demEvidence = world?.physical?.demEvidence || [];
+    const violations = demEvidence.filter(
       e => e.violation === 'HARD' && !e.segmentId.includes('placeholder')
     );
 
@@ -586,7 +600,8 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     plan: RoutePlanDraft,
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
-    const closedRoads = world.physical.roadStates.filter(r => r.status === 'CLOSED');
+    const roadStates = world?.physical?.roadStates || [];
+    const closedRoads = roadStates.filter(r => r.status === 'CLOSED');
 
     return {
       constraintId: constraint.id,
@@ -604,10 +619,11 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     plan: RoutePlanDraft,
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
-    const physical = world.physical;
-    const highRiskHazards = physical.hazardZones.filter(
+    const physical = world?.physical;
+    const hazardZones = physical?.hazardZones || [];
+    const highRiskHazards = hazardZones.filter(
       h => h.level === 'HIGH' && 
-           (h.seasonality?.highRiskMonths?.includes(physical.month) ?? false)
+           (h.seasonality?.highRiskMonths?.includes(physical?.month) ?? false)
     );
 
     return {
@@ -643,12 +659,13 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     plan: RoutePlanDraft,
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
-    const human = world.human;
-    const maxUserAltitude = human.maxElevationM || 6000;
+    const human = world?.human;
+    const maxUserAltitude = human?.maxElevationM || 6000;
     
     // 从 DEM 证据中获取最高海拔
     let maxRouteAltitude = 0;
-    for (const dem of world.physical.demEvidence) {
+    const demEvidence = world?.physical?.demEvidence || [];
+    for (const dem of demEvidence) {
       if (dem.metadata?.elevationRange?.max) {
         maxRouteAltitude = Math.max(maxRouteAltitude, dem.metadata.elevationRange.max);
       }
@@ -772,7 +789,16 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     world: WorldModelContext
   ): ConstraintSatisfactionResult {
     // Phase 1 简化：检查是否使用正确的 RouteDirection
-    const routeMatch = plan.routeDirectionId === world.routeDirection.id;
+    const routeDirection = world?.routeDirection;
+    if (!routeDirection) {
+      return {
+        constraintId: constraint.id,
+        satisfied: true,
+        satisfactionScore: 0.7,
+        violationDegree: 0,
+      };
+    }
+    const routeMatch = plan?.routeDirectionId === routeDirection.id;
 
     return {
       constraintId: constraint.id,
@@ -888,8 +914,9 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   ): DayProfile[] {
     const pace = this.buildPaceConstraints(world);
     const daysMap = new Map<number, RouteSegment[]>();
+    const segments = plan?.segments || [];
     
-    for (const seg of plan.segments) {
+    for (const seg of segments) {
       const list = daysMap.get(seg.dayIndex) ?? [];
       list.push(seg);
       daysMap.set(seg.dayIndex, list);
@@ -928,21 +955,26 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
    * 构建节奏约束
    */
   private buildPaceConstraints(world: WorldModelContext): PaceConstraints {
-    const human = world.human;
-    const softConstraints = world.routeDirection.constraints?.soft || {};
+    const human = world?.human;
+    const softConstraints = world?.routeDirection?.constraints?.soft || {};
+
+    // 提供默认值以处理 human 为 undefined 的情况
+    const maxAscent = human?.maxDailyAscentM || 1200;
+    const preferredPace = human?.preferredPace;
+    const rollingAscent = human?.rollingAscent3DaysM || 3000;
 
     return {
       maxDailyAscentM: Math.min(
-        human.maxDailyAscentM,
+        maxAscent,
         softConstraints.maxDailyAscentM || Infinity
       ),
-      maxDailyDistanceKm: human.preferredPace === 'SLOW' ? 18 
-        : human.preferredPace === 'FAST' ? 24 
+      maxDailyDistanceKm: preferredPace === 'SLOW' ? 18 
+        : preferredPace === 'FAST' ? 24 
         : 22,
-      maxMovingHours: human.preferredPace === 'SLOW' ? 7 
-        : human.preferredPace === 'FAST' ? 10 
+      maxMovingHours: preferredPace === 'SLOW' ? 7 
+        : preferredPace === 'FAST' ? 10 
         : 9,
-      rollingAscent3DaysM: human.rollingAscent3DaysM,
+      rollingAscent3DaysM: rollingAscent,
     };
   }
 }

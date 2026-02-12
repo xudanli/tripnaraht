@@ -7,6 +7,7 @@
 
 import { Controller, Post, Get, Delete, Body, Param, Query, Logger, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { Public } from '../../../../../auth/decorators/public.decorator';
 
 import { RealtimeWorldStateService } from '../../realtime/realtime-world-state.service';
 import {
@@ -227,6 +228,72 @@ export class RealtimeUserController {
     return { exists, tripId };
   }
 
+  // ========== 测试端点（无需认证） ==========
+
+  @Public()
+  @Get('test/state/:tripId')
+  @ApiOperation({ 
+    summary: '[测试] 获取当前状态',
+    description: '测试端点，无需认证。返回行程的当前实时状态，支持 autoInit 自动初始化。'
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ 
+    name: 'autoInit', 
+    description: '状态不存在时是否自动初始化（默认 true）', 
+    required: false, 
+    type: Boolean,
+  })
+  @ApiResponse({ status: 200, description: '返回当前状态' })
+  async testGetCurrentState(
+    @Param('tripId') tripId: string,
+    @Query('autoInit') autoInit?: string | boolean,
+  ): Promise<CurrentStateResponse> {
+    // 测试端点默认开启 autoInit
+    const shouldAutoInit = autoInit === undefined || autoInit === true || autoInit === 'true';
+    let state = await this.realtimeService.getCurrentState(tripId);
+    
+    if (!state && shouldAutoInit) {
+      this.logger.log(`[Test] 自动初始化行程实时状态: ${tripId}`);
+      const defaultDto: InitializeUserStateDto = { tripId };
+      const initialState = this.buildDefaultProbabilisticState(defaultDto);
+      this.realtimeService.initializeState(tripId, initialState);
+      state = initialState;
+    }
+    
+    if (!state) {
+      throw new NotFoundException(`行程 ${tripId} 的实时状态未初始化`);
+    }
+    
+    const weather = state.physical?.weather;
+    const roads = state.physical?.roadStatuses || [];
+    const human = state.human;
+    
+    return {
+      tripId,
+      updatedAt: new Date().toISOString(),
+      weather: {
+        temperatureC: weather?.temperature?.params?.mean || 15,
+        windSpeedMs: weather?.windSpeed?.params?.mean || 5,
+        precipitationProbability: weather?.precipitation?.params?.mean || 0.1,
+        visibility: this.mapVisibility(weather?.visibility),
+        alerts: this.extractWeatherAlerts(state),
+      },
+      roads: roads.map(road => ({
+        segmentId: road.roadId,
+        status: this.mapRoadStatus(road),
+        accessProbability: this.getBetaMean(road.conditionQuality) || 1,
+        warning: (this.getBetaMean(road.conditionQuality) || 1) < 0.7 ? '通行可能受限' : undefined,
+      })),
+      human: {
+        fatigueLevel: human?.fatigueThreshold?.params?.mean 
+          ? (1 - human.fatigueThreshold.params.mean / 2) : 0.3,
+        altitudeSicknessRisk: human?.altitudeAdaptation 
+          ? (1 - this.getBetaMean(human.altitudeAdaptation)) : 0,
+        recommendations: this.generateHumanRecommendations(state),
+      },
+    };
+  }
+
   /**
    * 根据用户提供的简化参数构建默认的概率世界模型
    */
@@ -440,22 +507,42 @@ export class RealtimeUserController {
   @Get('state/:tripId')
   @ApiOperation({ 
     summary: '获取当前状态',
-    description: '返回行程的当前实时状态（天气、道路、人体）'
+    description: '返回行程的当前实时状态（天气、道路、人体）。如果状态未初始化，可通过 autoInit=true 自动创建默认状态。'
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ 
+    name: 'autoInit', 
+    description: '状态不存在时是否自动初始化（默认 false）', 
+    required: false, 
+    type: Boolean,
+  })
   @ApiResponse({ status: 200, description: '返回当前状态' })
-  @ApiResponse({ status: 404, description: '行程状态未初始化' })
-  async getCurrentState(@Param('tripId') tripId: string): Promise<CurrentStateResponse> {
-    const state = await this.realtimeService.getCurrentState(tripId);
+  @ApiResponse({ status: 404, description: '行程状态未初始化（仅当 autoInit=false 时）' })
+  async getCurrentState(
+    @Param('tripId') tripId: string,
+    @Query('autoInit') autoInit?: string | boolean,
+  ): Promise<CurrentStateResponse> {
+    let state = await this.realtimeService.getCurrentState(tripId);
     
-    // 如果状态不存在，返回 404
+    // 如果状态不存在，检查是否需要自动初始化
     if (!state) {
-      throw new NotFoundException({
-        statusCode: 404,
-        error: 'Not Found',
-        message: `行程 ${tripId} 的实时状态未初始化`,
-        hint: '请先调用 POST /api/v2/user/realtime/state/initialize 初始化状态，或使用 GET /api/v2/user/realtime/state/:tripId/exists 检查状态是否存在',
-      });
+      const shouldAutoInit = autoInit === true || autoInit === 'true';
+      
+      if (shouldAutoInit) {
+        this.logger.log(`[User] 自动初始化行程实时状态: ${tripId}`);
+        // 使用默认参数自动初始化
+        const defaultDto: InitializeUserStateDto = { tripId };
+        const initialState = this.buildDefaultProbabilisticState(defaultDto);
+        this.realtimeService.initializeState(tripId, initialState);
+        state = initialState;
+      } else {
+        throw new NotFoundException({
+          statusCode: 404,
+          error: 'Not Found',
+          message: `行程 ${tripId} 的实时状态未初始化`,
+          hint: '请先调用 POST /api/v2/user/realtime/state/initialize 初始化状态，或在请求中添加 ?autoInit=true 自动初始化默认状态',
+        });
+      }
     }
     
     const weather = state.physical?.weather;
@@ -492,26 +579,43 @@ export class RealtimeUserController {
   @Get('state/:tripId/predict')
   @ApiOperation({ 
     summary: '预测未来状态',
-    description: '预测指定小时后的状态'
+    description: '预测指定小时后的状态。如果状态未初始化，可通过 autoInit=true 自动创建默认状态后进行预测。'
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiQuery({ name: 'hoursAhead', description: '预测未来小时数', required: true, type: Number })
+  @ApiQuery({ 
+    name: 'autoInit', 
+    description: '状态不存在时是否自动初始化（默认 false）', 
+    required: false, 
+    type: Boolean,
+  })
   @ApiResponse({ status: 200, description: '返回预测结果' })
-  @ApiResponse({ status: 404, description: '行程状态未初始化' })
+  @ApiResponse({ status: 404, description: '行程状态未初始化（仅当 autoInit=false 时）' })
   async predictFutureState(
     @Param('tripId') tripId: string,
     @Query('hoursAhead') hoursAhead: number,
+    @Query('autoInit') autoInit?: string | boolean,
   ): Promise<PredictionResponse> {
-    const currentState = await this.realtimeService.getCurrentState(tripId);
+    let currentState = await this.realtimeService.getCurrentState(tripId);
     
-    // 如果状态不存在，返回 404
+    // 如果状态不存在，检查是否需要自动初始化
     if (!currentState) {
-      throw new NotFoundException({
-        statusCode: 404,
-        error: 'Not Found',
-        message: `行程 ${tripId} 的实时状态未初始化，无法预测`,
-        hint: '请先调用 POST /api/v2/user/realtime/state/initialize 初始化状态',
-      });
+      const shouldAutoInit = autoInit === true || autoInit === 'true';
+      
+      if (shouldAutoInit) {
+        this.logger.log(`[User] 自动初始化行程实时状态以进行预测: ${tripId}`);
+        const defaultDto: InitializeUserStateDto = { tripId };
+        const initialState = this.buildDefaultProbabilisticState(defaultDto);
+        this.realtimeService.initializeState(tripId, initialState);
+        currentState = initialState;
+      } else {
+        throw new NotFoundException({
+          statusCode: 404,
+          error: 'Not Found',
+          message: `行程 ${tripId} 的实时状态未初始化，无法预测`,
+          hint: '请先调用 POST /api/v2/user/realtime/state/initialize 初始化状态，或在请求中添加 ?autoInit=true 自动初始化',
+        });
+      }
     }
     
     const predictedState = await this.realtimeService.predictFutureState(currentState, hoursAhead);

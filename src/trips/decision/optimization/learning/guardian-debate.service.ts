@@ -216,6 +216,7 @@ export class GuardianDebateService {
   ): string[] {
     const concerns: string[] = [];
     const breakdown = evaluation.breakdown;
+    const constraints = evaluation.constraints || { hardViolations: [], softViolations: [] };
     
     // Abu 关注点
     if (values.persona === 'ABU') {
@@ -225,8 +226,8 @@ export class GuardianDebateService {
       if (breakdown.weatherRiskPenalty > 0.2) {
         concerns.push('存在显著天气风险');
       }
-      if (evaluation.constraints.hardViolations.length > 0) {
-        concerns.push(`存在 ${evaluation.constraints.hardViolations.length} 个硬约束违反`);
+      if ((constraints.hardViolations || []).length > 0) {
+        concerns.push(`存在 ${constraints.hardViolations.length} 个硬约束违反`);
       }
     }
     
@@ -265,12 +266,13 @@ export class GuardianDebateService {
   ): string[] {
     const positives: string[] = [];
     const breakdown = evaluation.breakdown;
+    const constraints = evaluation.constraints || { hardViolations: [], softViolations: [] };
     
     if (values.persona === 'ABU') {
       if (breakdown.safetyScore >= 0.8) {
         positives.push('安全性良好');
       }
-      if (evaluation.constraints.hardViolations.length === 0) {
+      if ((constraints.hardViolations || []).length === 0) {
         positives.push('所有硬约束满足');
       }
     }
@@ -305,9 +307,10 @@ export class GuardianDebateService {
     world: WorldModelContext
   ): string[] {
     const suggestions: string[] = [];
+    const constraints = evaluation.constraints || { hardViolations: [], softViolations: [] };
     
     if (values.persona === 'ABU') {
-      if (evaluation.constraints.softViolations.length > 0) {
+      if ((constraints.softViolations || []).length > 0) {
         suggestions.push('建议处理软约束以降低风险');
       }
     }
