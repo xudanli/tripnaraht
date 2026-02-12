@@ -70,6 +70,31 @@ const SEASONALITY_CONFIG: Record<string, {
     lowSeason: [4, 10, 11],
     notes: 'Winter sports Dec-Mar',
   },
+  AR: {  // 阿根廷
+    highSeason: [11, 12, 1, 2, 3],
+    shoulderSeason: [10, 4],
+    lowSeason: [5, 6, 7, 8, 9],
+    notes: 'Southern hemisphere - summer Nov-Mar',
+  },
+  AL: {  // 阿尔巴尼亚
+    highSeason: [6, 7, 8, 9],
+    shoulderSeason: [5, 10],
+    lowSeason: [11, 12, 1, 2, 3, 4],
+    notes: 'Mediterranean climate',
+  },
+  NZ: {  // 新西兰
+    highSeason: [12, 1, 2, 3],
+    shoulderSeason: [11, 4],
+    lowSeason: [5, 6, 7, 8, 9, 10],
+    notes: 'Southern hemisphere - summer Dec-Feb',
+  },
+  FO: {  // 法罗群岛
+    highSeason: [6, 7, 8],
+    shoulderSeason: [5, 9],
+    lowSeason: [1, 2, 3, 4, 10, 11, 12],
+    hazardMonths: [11, 12, 1, 2],
+    notes: 'Atlantic weather, unpredictable year-round',
+  },
 };
 
 // 地形类型推断规则
