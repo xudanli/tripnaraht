@@ -503,10 +503,10 @@ async function createMcpServer() {
       googleMapsDirectService = app.get(GoogleMapsDirectService, { strict: false });
       
       if (googleMapsDirectService && googleMapsDirectService.isServiceAvailable()) {
-        console.error('Google Maps Direct API service available, registering tools...');
+      console.error('Google Maps Direct API service available, registering tools...');
 
-        // 注册 google_maps.getRoute 工具（直接使用 Google Maps API）
-        server.registerTool(
+    // 注册 google_maps.getRoute 工具（直接使用 Google Maps API）
+    server.registerTool(
       'google_maps.getRoute',
       {
         description: '计算两个地点之间的路线。支持多种交通方式（驾车、步行、骑行、公交）和路线偏好。',
@@ -994,18 +994,16 @@ async function createMcpServer() {
             }
           }
         );
-          console.error(`  ✓ Registered tool: file_extractor.${tool.name}`);
-        } catch (error: any) {
-          console.error(`  ⚠️  Failed to register tool file_extractor.${tool.name}:`, error.message);
-        }
+        console.error(`  ✓ Registered tool: file_extractor.${tool.name}`);
+      } catch (error: any) {
+        console.error(`  ⚠️  Failed to register tool file_extractor.${tool.name}:`, error.message);
       }
-    } catch (error: any) {
-      // File Extractor 工具是可选的，如果连接失败也不影响其他功能
-      console.error('⚠️  Failed to register File Extractor MCP tools:', error.message);
-      console.error('Note: File Extractor tools will not be available');
     }
-  } else {
-    console.error('ℹ️  Rail/File Extractor MCP 已禁用');
+    }
+  } catch (error: any) {
+    // File Extractor 工具是可选的，如果连接失败也不影响其他功能
+    console.error('⚠️  Failed to register File Extractor MCP tools:', error.message);
+    console.error('Note: File Extractor tools will not be available');
   }
 
   // 注册 Stripe Direct API 工具（直接使用 Stripe API，用户级别认证存储在数据库）
@@ -1603,8 +1601,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: currency.getRateTrend');
-    } else {
-      console.error('⚠️  Currency Direct API service not available');
+      } else {
+        console.error('⚠️  Currency Direct API service not available');
+      }
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Currency Direct API tools:', error.message);
@@ -1865,8 +1864,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: hotel.recommend');
-    } else {
-      console.error('⚠️  Hotel Direct API service not available');
+      } else {
+        console.error('⚠️  Hotel Direct API service not available');
+      }
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Hotel Direct API tools:', error.message);
@@ -2044,8 +2044,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: translation.smartTranslate');
-    } else {
-      console.error('⚠️  Translation Direct API service not available');
+      } else {
+        console.error('⚠️  Translation Direct API service not available');
+      }
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Translation Direct API tools:', error.message);
@@ -2206,8 +2207,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: image.recommend');
-    } else {
-      console.error('⚠️  Image Direct API service not available');
+      } else {
+        console.error('⚠️  Image Direct API service not available');
+      }
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Image Direct API tools:', error.message);
@@ -2318,12 +2320,9 @@ async function createMcpServer() {
         }
       );
       console.error('  ✓ Registered tool: ocr.extractText');
+      } else {
+        console.error('⚠️  Vision Service not available');
       }
-    } else {
-      console.error('⚠️  Vision Service not available');
-    }
-    } else {
-      console.error('⚠️  Vision capability is disabled, skipping registration');
     }
   } catch (error: any) {
     console.error('⚠️  Failed to register Vision Service tools:', error.message);
