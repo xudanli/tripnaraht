@@ -6,6 +6,7 @@ import { TripPlanRequest, OrchestratorState, GateResult, EvidenceRef } from '../
 import { PlanGateRunThreeGuardiansSkill } from '../../../skills/plan/gate/plan-gate-run-three-guardians.skill';
 import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-precheck.skill';
 import { checkHardGate, HardGateResult } from '../../../trips/decision/tot/hard-gate';
+import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
@@ -21,9 +22,10 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
   constructor(
     @Optional() private readonly gateRunThreeGuardians?: PlanGateRunThreeGuardiansSkill,
     @Optional() private readonly gatePrecheck?: PlanGatePrecheckSkill,
+    @Optional() private readonly fRoadCheck?: FRoadCheckSkill,
   ) {
     this.logger.log(`[GatekeeperAgent] 已初始化`);
-    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}`);
+    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}`);
   }
 
   /**
@@ -37,6 +39,49 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     this.logger.debug(`[GatekeeperAgent] 执行 Gate 评估: request_id=${request.request_id}`);
 
     try {
+      // 0. 检查冰岛 F-road 状态（冰岛特定检查）
+      if (this.fRoadCheck && this.isIcelandTrip(request)) {
+        this.logger.debug(`[GatekeeperAgent] 检测到冰岛行程，执行 F-Road 检查`);
+        const fRoadResult = await this.fRoadCheck.execute({
+          request_id: request.request_id,
+          destination: this.toLocationString(request.destination) || '',
+          origin: this.toLocationString(request.origin),
+          date_range: request.date_range,
+        });
+
+        // 如果有道路关闭，直接返回 BLOCK
+        if (!fRoadResult.can_proceed) {
+          this.logger.warn(`[GatekeeperAgent] F-Road 检查失败: ${fRoadResult.blocked_roads.length} 条道路关闭`);
+          return {
+            gate_result: 'BLOCK',
+            violations: fRoadResult.blocked_roads.map(r => ({
+              type: 'REACHABILITY' as const,
+              severity: 'HARD' as const,
+              detail: `${r.roadId} is ${r.currentStatus}: ${r.reason}${r.unverified ? ' (UNVERIFIED - requires manual verification)' : ''}`,
+            })),
+            required_adjustments: (fRoadResult.alternative_routes || []).map(alt => ({
+              action: 'REPLACE_SEGMENT' as const,
+              why: alt,
+            })),
+            confidence: 0.9,
+            evidence_refs: fRoadResult.evidence_refs.map(ref => ({
+              evidence_id: ref.evidence_id,
+              source: ref.source,
+              last_verified_at: ref.last_verified_at.toISOString(),
+              confidence: ref.confidence,
+            } as any)),
+          };
+        }
+
+        // 如果有告警，记录为软检查
+        if (fRoadResult.warnings.length > 0 || fRoadResult.required_actions.length > 0) {
+          this.logger.warn(`[GatekeeperAgent] F-Road 检查告警: ${fRoadResult.warnings.length} 条`);
+          researchData.f_road_warnings = fRoadResult.warnings;
+          researchData.f_road_required_actions = fRoadResult.required_actions;
+          researchData.f_road_evidence_refs = fRoadResult.evidence_refs;
+        }
+      }
+
       // 1. 硬门控检查（快速失败）
       const hardGateResult = this.checkHardGate(request, researchData);
       if (!hardGateResult.allowed) {
@@ -84,7 +129,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       return gateResult;
     } catch (error: any) {
       this.logger.error(`[GatekeeperAgent] Gate 评估失败: ${error?.message}`, error?.stack);
-      
+
       // 降级：返回需要用户确认
       return {
         gate_result: 'NEED_USER_CONFIRM',
@@ -234,5 +279,33 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       return 'DATA_MISSING';
     }
     return 'DATA_MISSING'; // 默认
+  }
+
+  /**
+   * 检查是否为冰岛行程
+   */
+  private isIcelandTrip(request: TripPlanRequest): boolean {
+    const destination = typeof request.destination === 'string'
+      ? request.destination.toLowerCase()
+      : '';
+    const origin = request.origin && typeof request.origin === 'string'
+      ? request.origin.toLowerCase()
+      : '';
+
+    return destination.includes('iceland') ||
+           destination.includes('冰岛') ||
+           origin.includes('iceland') ||
+           origin.includes('冰岛') ||
+           /F\d{1,3}/i.test(destination) ||
+           /F\d{1,3}/i.test(origin);
+  }
+
+  /**
+   * 将 TripPlanRequest 的 destination/origin 转换为字符串
+   */
+  private toLocationString(location: string | { lat: number; lng: number } | undefined): string | undefined {
+    if (!location) return undefined;
+    if (typeof location === 'string') return location;
+    return `${location.lat},${location.lng}`;
   }
 }
