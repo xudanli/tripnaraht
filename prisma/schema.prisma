@@ -217,6 +217,9 @@ model Place {
   nameCN                          String
   description                     String?
   embedding                       Unsupported("vector")?
+  lastVerifiedAt                  DateTime?                 @map("last_verified_at") @db.Timestamptz(6)
+  dataSource                      String?                   @map("data_source") @db.VarChar(50)
+  dataFreshness                   String?                   @map("data_freshness") @db.VarChar(20)
   ItineraryItem                   ItineraryItem[]
   City                            City?                     @relation(fields: [cityId], references: [id])
   Trail_Trail_endPlaceIdToPlace   Trail[]                   @relation("Trail_endPlaceIdToPlace")
@@ -224,6 +227,8 @@ model Place {
   TrailWaypoint                   TrailWaypoint[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
+  @@index([lastVerifiedAt])
+  @@index([dataFreshness])
 }
 
 model RailPassProfile {
@@ -2398,6 +2403,67 @@ model world_model_versions {
   @@index([metadata], type: Gin)
   @@index([version_id])
   @@index([version])
+}
+
+/// F-road 实时状态存储表
+/// 存储冰岛高地道路 (F-road) 的实时状态和历史记录
+/// 用于Should-Exist Gate 评估和用户提醒
+model RoadStatusRealtime {
+  id               String   @id @default(uuid()) @db.Uuid
+  roadId           String   @map("road_id") @db.VarChar(10)
+  roadName         String?  @map("road_name") @db.VarChar(255)
+  currentStatus    String   @map("current_status") @db.VarChar(20)
+  statusMessage    String?  @map("status_message")
+  lastVerifiedAt   DateTime @map("last_verified_at") @db.Timestamptz(6)
+  dataSource       String   @map("data_source") @db.VarChar(50)
+  apiResponse      Json?    @map("api_response")
+  hazards          Json     @default("[]")
+  confidence       Float    @default(0.9)
+  seasonalFallback Boolean  @default(false) @map("seasonal_fallback")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([roadId])
+  @@index([currentStatus])
+  @@index([lastVerifiedAt(sort: Desc)])
+  @@index([roadId, lastVerifiedAt(sort: Desc)], map: "idx_road_status_road_verified")
+  @@index([dataSource])
+  @@map("road_status_realtime")
+}
+
+/// 冰岛天气预报存储表
+/// 存储冰岛各区域的天气预报数据
+/// 支持区域查询和时间范围查询
+model WeatherForecastRealtime {
+  id            String                    @id @default(uuid()) @db.Uuid
+  regionKey     String                    @map("region_key") @db.VarChar(50)
+  regionName    String                    @map("region_name") @db.VarChar(255)
+  location      Unsupported("geography")?
+  forecastTime  DateTime                  @map("forecast_time") @db.Timestamptz(6)
+  validFrom     DateTime                  @map("valid_from") @db.Timestamptz(6)
+  validUntil    DateTime                  @map("valid_until") @db.Timestamptz(6)
+  temperature   Float?
+  windSpeed     Float?                    @map("wind_speed")
+  windDirection Int?                      @map("wind_direction")
+  precipitation Float?
+  visibility    Float?
+  conditions    String?                   @db.VarChar(100)
+  weatherCode   String?                   @map("weather_code") @db.VarChar(20)
+  warnings      Json                      @default("[]")
+  hazards       Json                      @default("[]")
+  dataSource    String                    @map("data_source") @db.VarChar(50)
+  apiResponse   Json?                     @map("api_response")
+  confidence    Float                     @default(0.9)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([regionKey])
+  @@index([forecastTime])
+  @@index([validFrom, validUntil], map: "idx_weather_valid_range")
+  @@index([regionKey, forecastTime])
+  @@index([location], type: Gist)
+  @@index([dataSource])
+  @@map("weather_forecast_realtime")
 }
 
 enum ItemType {
