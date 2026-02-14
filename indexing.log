@@ -1,0 +1,38 @@
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+🚀 开始索引冰岛知识库...
+
+📁 知识库路径: ./docs/iceland
+
+📚 加载知识库文件...
+
+✅ 已加载: feasibility-matrix.json
+✅ 已加载: rhythm-patterns.json
+✅ 已加载: user-personas.json
+✅ 已加载: climate.json
+✅ 已加载: seasonal-features.json
+✅ 已加载: terrain.json
+✅ 已加载: accommodations.json
+✅ 已加载: attractions.json
+✅ 已加载: services.json
+✅ 已加载: supplies.json
+✅ 已加载: car-rental-guide.json
+✅ 已加载: local-rules.json
+✅ 已加载: packing-guide.json
+✅ 已加载: accessibility.json
+✅ 已加载: safety-alerts.json
+✅ 已加载: terrain-risks.json
+✅ 已加载: weather-risks.json
+✅ 已加载: golden-circle.json
+✅ 已加载: highlands.json
+✅ 已加载: ring-road-full.json
+✅ 已加载: ring-road-south.json
+✅ 已加载: snaefellsnes.json
+✅ 已加载: westfjords.json
+
+📊 总共加载 23 个文件
+
+
+📝 处理文件: feasibility-matrix.json
+  ✅ 文件记录已保存: ec0a87f5-e8a3-4ff5-a9c8-9190cc3a6f87
+  ✂️  生成 1 个chunks
+  🔢 开始向量化...

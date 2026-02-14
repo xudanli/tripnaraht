@@ -1,0 +1,45 @@
+import { OnModuleInit } from '@nestjs/common';
+import { Registry } from 'prom-client';
+export declare class ContextPrometheusMetricsService implements OnModuleInit {
+    private readonly registry;
+    private contextBuildCounter;
+    private contextBuildDuration;
+    private contextBuildCacheHitCounter;
+    private contextBuildCacheMissCounter;
+    private contextCacheHitsCounter;
+    private contextCacheMissesCounter;
+    private contextCacheSizeGauge;
+    private contextCacheOperationDuration;
+    private contextTokenUsageGauge;
+    private contextTokenBudgetGauge;
+    private contextTokenOverBudgetCounter;
+    private contextBlockCountGauge;
+    private contextBlockTypeCounter;
+    private contextBlockPriorityDistribution;
+    private contextLearningEventCounter;
+    private contextLearningProcessingDuration;
+    private contextLearningConfidenceGauge;
+    private contextLearningSampleSizeGauge;
+    private contextLearningUpdatedPrioritiesCounter;
+    constructor();
+    onModuleInit(): Promise<void>;
+    private initializeContextBuildMetrics;
+    private initializeCacheMetrics;
+    private initializeTokenMetrics;
+    private initializeBlockMetrics;
+    recordBuild(phase: string, agent: string, buildTimeMs: number, cacheHit: boolean, cacheLevel?: 'L1' | 'L2' | 'L3' | 'none'): void;
+    recordCacheOperation(cacheLevel: 'L1' | 'L2' | 'L3', operation: 'get' | 'set' | 'del', durationMs: number, hit?: boolean): void;
+    updateCacheSize(cacheLevel: 'L1' | 'L2' | 'L3', size: number): void;
+    recordTokenUsage(phase: string, agent: string, tokenUsage: number, tokenBudget: number): void;
+    recordBlockStats(phase: string, agent: string, blocks: Array<{
+        type: string;
+        priority: number;
+        visibility: string;
+    }>): void;
+    getMetrics(): Promise<string>;
+    private initializeContextLearningMetrics;
+    recordLearningEvent(eventType: string, phase: string, agent: string, processingTimeMs: number): void;
+    updateLearningStats(phase: string, agent: string, blockKey: string, confidence: number, sampleSize: number): void;
+    recordPriorityUpdate(phase: string, agent: string, blockType: string, count?: number): void;
+    getRegistry(): Registry;
+}

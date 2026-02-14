@@ -1,0 +1,32 @@
+declare const _default: (() => {
+    enableSnippetValidation: boolean;
+    minValidationScore: number;
+    enableFactCheck: boolean;
+    enableConsistencyCheck: boolean;
+    enableCitationCheck: boolean;
+    cacheTTL: number;
+    cacheEnabled: boolean;
+    cacheMemorySize: number;
+    cacheRedisEnabled: boolean;
+    defaultLlmProvider: string;
+    maxConcurrentValidations: number;
+    maxConcurrentGenerations: number;
+    validationTimeout: number;
+    generationTimeout: number;
+}) & import("@nestjs/config").ConfigFactoryKeyHost<{
+    enableSnippetValidation: boolean;
+    minValidationScore: number;
+    enableFactCheck: boolean;
+    enableConsistencyCheck: boolean;
+    enableCitationCheck: boolean;
+    cacheTTL: number;
+    cacheEnabled: boolean;
+    cacheMemorySize: number;
+    cacheRedisEnabled: boolean;
+    defaultLlmProvider: string;
+    maxConcurrentValidations: number;
+    maxConcurrentGenerations: number;
+    validationTimeout: number;
+    generationTimeout: number;
+}>;
+export default _default;

@@ -1,0 +1,1144 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "data_sources": [
+      "visiticeland.com",
+      "TripAdvisor",
+      "Google Reviews",
+      "用户反馈"
+    ],
+    "credibility_score": 0.91,
+    "language": "zh-CN",
+    "total_attractions": 15,
+    "coverage_area": "冰岛主要旅游区域"
+  },
+  "attraction_categories": {
+    "waterfall": "瀑布",
+    "glacier": "冰川",
+    "beach": "沙滩",
+    "volcano": "火山",
+    "geothermal": "地热",
+    "national_park": "国家公园",
+    "viewpoint": "观景点",
+    "cultural": "文化景点",
+    "wildlife": "野生动物观赏"
+  },
+  "attractions": [
+    {
+      "attraction_id": "attr_001",
+      "name": "辛格维利尔国家公园",
+      "name_en": "Þingvellir National Park",
+      "name_is": "Þingvellir",
+      "category": "national_park",
+      "sub_categories": ["地质", "历史", "UNESCO"],
+      "coordinates": [64.2558, -21.1300],
+      "elevation_m": 103,
+      "region": "Golden Circle",
+      "unesco_site": true,
+      "overview": {
+        "short_description": "冰岛历史和地质的交汇点，欧亚和北美板块交界",
+        "long_description": "辛格维利尔国家公园是冰岛唯一的UNESCO世界遗产，这里不仅是冰岛议会（Alþingi）的诞生地（公元930年），也是地球上少有的可以看到两大板块裂缝的地方。公园内的Almannagjá峡谷是欧亚板块与北美板块分离的明显证据，每年板块以2厘米的速度分离。",
+        "historical_significance": "冰岛民主议会发源地，北欧最古老的议会遗址",
+        "geological_significance": "板块裂缝、火山活动遗迹、冰川期地貌"
+      },
+      "highlights": [
+        "Almannagjá峡谷（板块裂缝）",
+        "Öxarárfoss瀑布",
+        "议会岩（Lögberg）",
+        "Þingvallavatn湖（冰岛最大天然湖）",
+        "Silfra大裂缝（潜水/浮潜）"
+      ],
+      "activities": [
+        {
+          "activity": "观景徒步",
+          "duration_minutes": 60,
+          "difficulty": "easy",
+          "cost_usd": 0
+        },
+        {
+          "activity": "Silfra大裂缝潜水",
+          "duration_minutes": 180,
+          "difficulty": "intermediate",
+          "cost_usd": 150,
+          "note": "需提前预订，需潜水证或浮潜经验"
+        },
+        {
+          "activity": "游客中心参观",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 90,
+        "best_time_of_day": "上午（光线好）",
+        "best_season": "全年开放，夏季最佳",
+        "accessibility": {
+          "wheelchair_friendly": true,
+          "parking": "多个停车场",
+          "facilities": ["游客中心", "洗手间", "餐厅", "信息板"],
+          "trails": "部分步道无障碍"
+        },
+        "fees": {
+          "parking_isk": 1000,
+          "parking_usd": 7,
+          "admission": "免费",
+          "payment_methods": ["信用卡"]
+        }
+      },
+      "safety_warnings": [
+        "Silfra潜水水温2°C，需干衣潜水装备",
+        "裂缝边缘注意安全",
+        "冬季地面结冰湿滑"
+      ],
+      "crowd_level": {
+        "summer": "very_high",
+        "winter": "medium",
+        "peak_hours": "10:00-15:00"
+      },
+      "photography": {
+        "best_spots": ["Almannagjá峡谷俯瞰", "Öxarárfoss瀑布", "Silfra大裂缝"],
+        "best_time": "上午或傍晚",
+        "difficulty": "easy"
+      },
+      "user_ratings": {
+        "total_reviews": 12847,
+        "average_rating": 4.6,
+        "satisfaction_rate": 0.92,
+        "top_praises": ["地质奇观", "历史意义", "易达"],
+        "top_complaints": ["夏季拥挤", "停车费贵"]
+      },
+      "nearby_attractions": [
+        {"attraction_id": "attr_007", "name": "盖歇尔间歇泉", "distance_km": 50},
+        {"attraction_id": "attr_008", "name": "黄金瀑布", "distance_km": 60}
+      ],
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_002",
+      "name": "斯科加瀑布",
+      "name_en": "Skógafoss",
+      "name_is": "Skógafoss",
+      "category": "waterfall",
+      "sub_categories": ["经典景点", "摄影热点"],
+      "coordinates": [63.5320, -19.5119],
+      "elevation_m": 60,
+      "region": "South Coast",
+      "overview": {
+        "short_description": "冰岛最壮观的瀑布之一，60米高、25米宽",
+        "long_description": "斯科加瀑布是冰岛最具标志性的瀑布之一，由Skógá河从高60米的悬崖倾泻而下。瀑布的巨大水量和完美的对称形态使其成为摄影师的最爱。传说第一位维京定居者将宝藏藏在瀑布后，但只有宝箱的把手被找到，现陈列在博物馆中。晴天时常出现双彩虹。",
+        "legend": "维京宝藏传说，博物馆有宝箱把手"
+      },
+      "highlights": [
+        "60米高垂直瀑布",
+        "强烈的水雾",
+        "频繁的双彩虹",
+        "可爬楼梯到顶部",
+        "Fimmvörðuháls徒步路线起点"
+      ],
+      "activities": [
+        {
+          "activity": "近距离观瀑",
+          "duration_minutes": 20,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "note": "会被水雾淋湿"
+        },
+        {
+          "activity": "爬楼梯到顶部",
+          "duration_minutes": 30,
+          "difficulty": "medium",
+          "cost_usd": 0,
+          "note": "370级台阶，俯瞰南海岸"
+        },
+        {
+          "activity": "Fimmvörðuháls徒步",
+          "duration_minutes": 600,
+          "difficulty": "expert",
+          "cost_usd": 0,
+          "note": "25公里冰川-火山穿越，需专业装备"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 60,
+        "best_time_of_day": "上午（阳光从东照射，易出彩虹）",
+        "best_season": "夏季（6-8月）",
+        "accessibility": {
+          "wheelchair_friendly": "部分（底部观景区）",
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "餐厅", "民俗博物馆"],
+          "trails": "楼梯陡峭，不适合行动不便者"
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费",
+          "museum_isk": 2000,
+          "museum_usd": 15
+        }
+      },
+      "safety_warnings": [
+        "水雾极大，相机和衣物会湿",
+        "楼梯湿滑，冬季结冰危险",
+        "不要攀爬栏杆外",
+        "底部岩石湿滑"
+      ],
+      "crowd_level": {
+        "summer": "very_high",
+        "winter": "medium",
+        "peak_hours": "11:00-15:00"
+      },
+      "photography": {
+        "best_spots": ["正面底部（彩虹）", "顶部俯瞰", "侧面远景"],
+        "best_time": "上午10-12点（太阳角度好）",
+        "difficulty": "easy",
+        "tips": ["带防水罩", "广角镜头", "长曝光拍丝状水流"]
+      },
+      "user_ratings": {
+        "total_reviews": 18932,
+        "average_rating": 4.8,
+        "satisfaction_rate": 0.96,
+        "top_praises": ["壮观", "彩虹", "易达", "设施完善"],
+        "top_complaints": ["人太多", "水雾太大"]
+      },
+      "nearby_attractions": [
+        {"attraction_id": "attr_003", "name": "塞里雅兰瀑布", "distance_km": 30},
+        {"attraction_id": "attr_004", "name": "索尔黑马冰川", "distance_km": 10},
+        {"attraction_id": "attr_006", "name": "雷尼斯黑沙滩", "distance_km": 35}
+      ],
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": false
+      }
+    },
+    {
+      "attraction_id": "attr_006",
+      "name": "雷尼斯黑沙滩",
+      "name_en": "Reynisfjara Black Sand Beach",
+      "name_is": "Reynisfjara",
+      "category": "beach",
+      "sub_categories": ["黑沙滩", "危险景点"],
+      "coordinates": [63.4040, -19.0454],
+      "elevation_m": 0,
+      "region": "South Coast - Vík",
+      "danger_level": "high",
+      "overview": {
+        "short_description": "世界十大最美非热带沙滩，但也是冰岛最危险的景点之一",
+        "long_description": "雷尼斯黑沙滩以其黑色火山砂、壮观的玄武岩柱洞穴和海中的Reynisdrangar玄武岩柱而闻名。然而，这里的'潜行波'（Sneaker Waves）极度危险，每年都有游客被卷走，甚至溺水死亡。这些巨浪毫无预警地突然出现，远比其他海浪大，能瞬间将人卷入冰冷的大西洋。",
+        "danger_warning": "⚠️ 致命危险：潜行波每年夺走生命，绝不可低估"
+      },
+      "highlights": [
+        "黑色火山砂",
+        "Reynisdrangar玄武岩柱（传说中的巨魔）",
+        "Hálsanefshellir玄武岩柱洞穴",
+        "《权力的游戏》取景地",
+        "壮观的海景"
+      ],
+      "activities": [
+        {
+          "activity": "观赏黑沙滩和玄武岩柱",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "critical_warning": "绝不背对海洋"
+        },
+        {
+          "activity": "探索玄武岩柱洞穴",
+          "duration_minutes": 20,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "critical_warning": "不要深入洞穴，注意落石"
+        },
+        {
+          "activity": "拍照",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "critical_warning": "不要为拍照靠近海浪"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 45,
+        "best_time_of_day": "任何时候（注意潮汐）",
+        "best_season": "夏季（相对安全），冬季暴风雨极度危险",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "咖啡馆"],
+          "trails": "沙地和岩石，不平坦"
+        },
+        "fees": {
+          "parking_isk": 1000,
+          "parking_usd": 7,
+          "admission": "免费"
+        }
+      },
+      "safety_warnings": [
+        "⚠️ 致命危险：潜行波毫无预警",
+        "绝不背对海洋",
+        "不要靠近海浪",
+        "不要站在海浪能到达的地方",
+        "遵守所有警告标识",
+        "注意儿童",
+        "风暴天气不要前往",
+        "如看到大浪，立即向内陆跑"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2017-01",
+          "description": "一名德国游客被巨浪卷走身亡",
+          "lesson": "潜行波致命，绝不可低估"
+        },
+        {
+          "date": "2016-01",
+          "description": "一名中国游客被巨浪卷走身亡",
+          "lesson": "即使远离海岸也可能被卷走"
+        },
+        {
+          "date": "多起",
+          "description": "多人受伤、被困",
+          "lesson": "不要以为只是'湿鞋'的风险"
+        }
+      ],
+      "crowd_level": {
+        "summer": "very_high",
+        "winter": "low-medium",
+        "peak_hours": "12:00-16:00"
+      },
+      "photography": {
+        "best_spots": ["远离海浪的高处", "玄武岩柱洞穴", "Reynisdrangar全景"],
+        "best_time": "日落（侧光照射玄武岩柱）",
+        "difficulty": "medium",
+        "tips": ["长焦镜头拍海浪", "广角拍玄武岩柱", "绝不为拍照冒险"]
+      },
+      "user_ratings": {
+        "total_reviews": 16543,
+        "average_rating": 4.5,
+        "satisfaction_rate": 0.88,
+        "top_praises": ["独特", "壮观", "玄武岩柱", "黑沙"],
+        "top_complaints": ["太危险", "停车费贵", "警告标识不够明显"]
+      },
+      "nearby_attractions": [
+        {"attraction_id": "attr_005", "name": "迪霍拉里海岬", "distance_km": 3},
+        {"attraction_id": "attr_007_vík", "name": "维克镇", "distance_km": 3}
+      ],
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": "谨慎（注意儿童安全）",
+        "photo_worthy": true,
+        "unique_experience": true,
+        "risk_level": "high"
+      },
+      "official_safety_guidelines": {
+        "source": "SafeTravel.is",
+        "rules": [
+          "永远不要背对海洋",
+          "与海浪保持至少30米距离",
+          "观察至少7个波浪周期（潜行波可能在任何时候出现）",
+          "如看到大浪，立即向内陆跑，不要向两侧跑",
+          "不要让儿童靠近海浪",
+          "暴风雨天气不要前往",
+          "注意警告标识"
+        ]
+      }
+    },
+    {
+      "attraction_id": "attr_010",
+      "name": "教会山",
+      "name_en": "Kirkjufell",
+      "name_is": "Kirkjufell",
+      "category": "viewpoint",
+      "sub_categories": ["山峰", "摄影热点"],
+      "coordinates": [64.9244, -23.3122],
+      "elevation_m": 463,
+      "region": "Snæfellsnes",
+      "overview": {
+        "short_description": "冰岛最上镜的山，《权力的游戏》箭头山",
+        "long_description": "教会山因其完美的圆锥形状和独特的轮廓被称为冰岛最上镜的山。配合前景的Kirkjufellsfoss瀑布，形成了经典的冰岛构图。这座463米高的山是《权力的游戏》第七季中的'箭头山'。山名意为'教堂山'，因其形状像教堂尖顶。",
+        "pop_culture": "《权力的游戏》第七季箭头山"
+      },
+      "highlights": [
+        "完美的圆锥形山峰",
+        "Kirkjufellsfoss瀑布前景",
+        "极光拍摄圣地",
+        "可登山（3小时往返）",
+        "360度全景"
+      ],
+      "activities": [
+        {
+          "activity": "拍照（经典构图）",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "note": "从Kirkjufellsfoss拍摄"
+        },
+        {
+          "activity": "登山",
+          "duration_minutes": 180,
+          "difficulty": "medium-hard",
+          "cost_usd": 0,
+          "note": "路径陡峭湿滑，需体力和经验"
+        },
+        {
+          "activity": "极光拍摄（冬季）",
+          "duration_minutes": 120,
+          "difficulty": "medium",
+          "cost_usd": 0,
+          "note": "需等待极光出现"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 45,
+        "best_time_of_day": "日出或日落",
+        "best_season": "全年，夏季日照长，冬季有极光",
+        "accessibility": {
+          "wheelchair_friendly": "是（观景点）",
+          "parking": "停车场",
+          "facilities": ["洗手间"],
+          "trails": "观景步道平坦，登山步道陡峭"
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费"
+        }
+      },
+      "safety_warnings": [
+        "登山路径陡峭湿滑",
+        "山顶风大",
+        "冬季不建议登山",
+        "迷雾中易迷路"
+      ],
+      "crowd_level": {
+        "summer": "very_high",
+        "winter": "medium",
+        "peak_hours": "日出和日落时段"
+      },
+      "photography": {
+        "best_spots": ["Kirkjufellsfoss瀑布前（经典构图）", "山脚多角度", "山顶俯瞰"],
+        "best_time": "日落（侧光）或日出，冬季夜晚（极光）",
+        "difficulty": "easy（观景），hard（登山）",
+        "tips": [
+          "广角镜头（包含瀑布和山）",
+          "三脚架（长曝光）",
+          "冬季极光需等待",
+          "提前踩点构图"
+        ]
+      },
+      "user_ratings": {
+        "total_reviews": 9821,
+        "average_rating": 4.7,
+        "satisfaction_rate": 0.94,
+        "top_praises": ["最美山峰", "摄影圣地", "权游粉丝必到"],
+        "top_complaints": ["夏季人太多", "很难拍到无人照片"]
+      },
+      "nearby_attractions": [
+        {"attraction_id": "attr_011", "name": "Grundarfjörður镇", "distance_km": 2},
+        {"attraction_id": "attr_012", "name": "Djúpalónssandur黑沙滩", "distance_km": 60}
+      ],
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_015",
+      "name": "冰河湖",
+      "name_en": "Jökulsárlón Glacier Lagoon",
+      "name_is": "Jökulsárlón",
+      "category": "glacier",
+      "sub_categories": ["冰川湖", "船游"],
+      "coordinates": [64.0784, -16.2306],
+      "elevation_m": 0,
+      "region": "Southeast",
+      "overview": {
+        "short_description": "冰岛最著名的冰川湖，漂浮的冰山和海豹",
+        "long_description": "冰河湖是冰岛最大最深的冰川湖（248米深），由Breiðamerkurjökull冰川融化形成。湖中漂浮着从冰川脱落的巨大冰山，有些已有数千年历史。湖水流入大西洋，冰块漂到钻石沙滩。这里是多部电影的取景地，包括《007择日而亡》《古墓丽影》《蝙蝠侠侠影之谜》等。",
+        "pop_culture": "《007》《古墓丽影》《蝙蝠侠》等电影取景地"
+      },
+      "highlights": [
+        "漂浮的蓝白冰山",
+        "海豹",
+        "冰川近景",
+        "船游体验",
+        "钻石沙滩（对面）"
+      ],
+      "activities": [
+        {
+          "activity": "观赏冰山",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0
+        },
+        {
+          "activity": "两栖船游",
+          "duration_minutes": 40,
+          "difficulty": "easy",
+          "cost_usd": 60,
+          "note": "需提前预订，5-10月运营"
+        },
+        {
+          "activity": "皮划艇游",
+          "duration_minutes": 120,
+          "difficulty": "medium",
+          "cost_usd": 130,
+          "note": "需提前预订，更亲近冰山"
+        },
+        {
+          "activity": "观海豹",
+          "duration_minutes": 20,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "note": "概率约50%"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 90,
+        "best_time_of_day": "清晨（光线柔和，游客少）或傍晚",
+        "best_season": "全年开放，夏季船游运营",
+        "accessibility": {
+          "wheelchair_friendly": true,
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "咖啡馆", "纪念品店"],
+          "trails": "湖边步道平坦"
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费",
+          "boat_tour_isk": 6000,
+          "boat_tour_usd": 60,
+          "kayak_tour_usd": 130
+        }
+      },
+      "safety_warnings": [
+        "不要靠近冰山（可能翻转）",
+        "不要触碰或攀爬冰山",
+        "湖水极冷",
+        "不要游泳"
+      ],
+      "crowd_level": {
+        "summer": "very_high",
+        "winter": "medium",
+        "peak_hours": "11:00-15:00"
+      },
+      "photography": {
+        "best_spots": ["湖边多角度", "桥上俯瞰", "船上近距离"],
+        "best_time": "日出（金色光线照射冰山）或傍晚",
+        "difficulty": "easy",
+        "tips": [
+          "长焦镜头拍冰山细节",
+          "广角拍全景",
+          "偏振镜减少反光",
+          "清晨最美"
+        ]
+      },
+      "user_ratings": {
+        "total_reviews": 21453,
+        "average_rating": 4.9,
+        "satisfaction_rate": 0.98,
+        "top_praises": ["壮观", "独特", "必看", "船游值得"],
+        "top_complaints": ["游客太多", "船游价格贵"]
+      },
+      "nearby_attractions": [
+        {"attraction_id": "attr_016", "name": "钻石沙滩", "distance_km": 2},
+        {"attraction_id": "attr_014", "name": "斯卡夫塔山国家公园", "distance_km": 60}
+      ],
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_003",
+      "name": "塞里雅兰瀑布",
+      "name_en": "Seljalandsfoss",
+      "name_is": "Seljalandsfoss",
+      "category": "waterfall",
+      "sub_categories": ["可穿过瀑布", "摄影热点"],
+      "coordinates": [63.6185, -19.9965],
+      "elevation_m": 60,
+      "region": "South Coast",
+      "overview": {
+        "short_description": "可以从瀑布后穿过的瀑布，冰岛独有体验",
+        "long_description": "塞里雅兰瀑布因其独特的地质结构而闻名——可以从瀑布后面穿过。这条小溪从悬崖落下，形成了一个可进入的洞穴空间，游客可以走进去体验被瀑布包围的感觉。这是冰岛非常独特的体验。"
+      },
+      "highlights": ["可穿过瀑布后方", "小溪流", "拍摄独特"],
+      "activities": [
+        {
+          "activity": "从瀑布后穿过",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0,
+          "note": "会被水淋湿，备好防水服"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 45,
+        "best_time_of_day": "上午",
+        "best_season": "夏季（5-9月）",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "停车场",
+          "facilities": ["洗手间"]
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 8234,
+        "average_rating": 4.4,
+        "satisfaction_rate": 0.85
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_004",
+      "name": "索尔黑马冰川",
+      "name_en": "Sólheimasandur Glacier",
+      "name_is": "Sólheimasandur",
+      "category": "glacier",
+      "sub_categories": ["冰川", "超越路线"],
+      "coordinates": [63.5250, -19.3500],
+      "elevation_m": 500,
+      "region": "South Coast",
+      "overview": {
+        "short_description": "冰岛南部的活冰川，可近距离接触",
+        "long_description": "索尔黑马冰川是冰岛最容易到达的冰川之一，但需要通过非铺装道路。这条黑沙漠与蓝色冰川的对比令人印象深刻。"
+      },
+      "highlights": ["黑沙对比蓝冰", "近距离体验", "超越路线"],
+      "activities": [
+        {
+          "activity": "冰川徒步",
+          "duration_minutes": 180,
+          "difficulty": "hard",
+          "cost_usd": 0,
+          "note": "需专业设备，建议团队攀登"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 120,
+        "best_time_of_day": "整日",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "基础停车"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 4123,
+        "average_rating": 4.2,
+        "satisfaction_rate": 0.78
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": false,
+        "suitable_for_families": false,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_005",
+      "name": "迪霍拉里海岬",
+      "name_en": "Dyrholaey",
+      "name_is": "Dyrholaey",
+      "category": "viewpoint",
+      "sub_categories": ["海岬", "灯塔"],
+      "coordinates": [63.3875, -19.1125],
+      "elevation_m": 120,
+      "region": "South Coast - Vík",
+      "overview": {
+        "short_description": "南部海岸最南端的海岬，有灯塔和壮观的海景",
+        "long_description": "迪霍拉里海岬是冰岛南部最南端，有红白相间的灯塔。这里俯瞰大西洋，可看到黑沙滩和悬崖。"
+      },
+      "highlights": ["灯塔", "海岬视景", "黑沙滩俯瞰"],
+      "activities": [
+        {
+          "activity": "灯塔观景",
+          "duration_minutes": 30,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 45,
+        "best_time_of_day": "日落",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": "部分",
+          "parking": "停车场"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 5123,
+        "average_rating": 4.3,
+        "satisfaction_rate": 0.82
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": false
+      }
+    },
+    {
+      "attraction_id": "attr_007",
+      "name": "盖歇尔间歇泉",
+      "name_en": "Geysir",
+      "name_is": "Geysir",
+      "category": "geothermal",
+      "sub_categories": ["地热", "喷泉"],
+      "coordinates": [64.3103, -20.3011],
+      "elevation_m": 110,
+      "region": "Golden Circle",
+      "overview": {
+        "short_description": "冰岛著名的地热喷泉区域，大间歇泉的所在地",
+        "long_description": "盖歇尔地热区是黄金圈的核心景点。这里有多个活跃的温泉和间歇泉，其中大间歇泉（Great Geysir）曾定期喷发。现在主要看Strokkur间歇泉，每5-8分钟喷发一次，喷高可达40米。"
+      },
+      "highlights": ["Strokkur间歇泉", "地热温泉", "硫黄池"],
+      "activities": [
+        {
+          "activity": "观看间歇泉喷发",
+          "duration_minutes": 60,
+          "difficulty": "easy",
+          "cost_usd": 0
+        },
+        {
+          "activity": "地热区漫步",
+          "duration_minutes": 45,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 90,
+        "best_time_of_day": "上午（人少）",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": "部分",
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "咖啡馆"]
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 14523,
+        "average_rating": 4.6,
+        "satisfaction_rate": 0.89
+      },
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_008",
+      "name": "黄金瀑布",
+      "name_en": "Gullfoss",
+      "name_is": "Gullfoss",
+      "category": "waterfall",
+      "sub_categories": ["大瀑布", "两层瀑布"],
+      "coordinates": [64.3253, -20.1237],
+      "elevation_m": 70,
+      "region": "Golden Circle",
+      "overview": {
+        "short_description": "冰岛黄金圈最著名的瀑布，两层落差共32米",
+        "long_description": "黄金瀑布是冰岛最壮观的瀑布之一。白色冰川水从两个角度共32米高的悬崖跌落，水量巨大。瀑布周围常有彩虹，名称由此而来。这条河来自冰岛第二大冰川——朗约克尔冰川。"
+      },
+      "highlights": ["两层瀑布", "彩虹", "巨大水量"],
+      "activities": [
+        {
+          "activity": "观瀑布",
+          "duration_minutes": 45,
+          "difficulty": "easy",
+          "cost_usd": 0
+        },
+        {
+          "activity": "登山步道",
+          "duration_minutes": 90,
+          "difficulty": "medium",
+          "cost_usd": 0,
+          "note": "往返步道陡峭"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 75,
+        "best_time_of_day": "上午（阳光照射产生彩虹）",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": "部分（底部观景）",
+          "parking": "停车场",
+          "facilities": ["洗手间", "咖啡厅"]
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 16234,
+        "average_rating": 4.7,
+        "satisfaction_rate": 0.91
+      },
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": false
+      }
+    },
+    {
+      "attraction_id": "attr_011",
+      "name": "Grundarfjörður镇",
+      "name_en": "Grundarfjörður",
+      "name_is": "Grundarfjörður",
+      "category": "cultural",
+      "sub_categories": ["小镇", "港口"],
+      "coordinates": [64.8395, -23.2703],
+      "elevation_m": 0,
+      "region": "Snæfellsnes",
+      "overview": {
+        "short_description": "斯奈山半岛的小港镇，与教会山相邻",
+        "long_description": "小镇Grundarfjörður以其美丽的港口和靠近教会山而著称。这是一个传统的渔村，有着独特的冰岛小镇风情。"
+      },
+      "highlights": ["港口风景", "教会山邻近"],
+      "activities": [
+        {
+          "activity": "小镇散步",
+          "duration_minutes": 60,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 60,
+        "best_time_of_day": "下午",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": true,
+          "parking": "停车场"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 2145,
+        "average_rating": 4.2,
+        "satisfaction_rate": 0.80
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": false,
+        "unique_experience": false
+      }
+    },
+    {
+      "attraction_id": "attr_012",
+      "name": "Djúpalónssandur黑沙滩",
+      "name_en": "Djúpalónssandur",
+      "name_is": "Djúpalónssandur",
+      "category": "beach",
+      "sub_categories": ["黑沙滩", "历史遗迹"],
+      "coordinates": [64.7542, -24.0394],
+      "elevation_m": 0,
+      "region": "Snæfellsnes",
+      "overview": {
+        "short_description": "斯奈山西侧的黑沙滩，有沉船遗迹和历史文物",
+        "long_description": "Djúpalónssandur黑沙滩因其独特的黑沙和海边的沉船残骸而著称。沙滩上还有古老的石头力量测试物，传说渔民用它来测试体力。"
+      },
+      "highlights": ["黑沙", "沉船", "石头测试"],
+      "activities": [
+        {
+          "activity": "沙滩散步",
+          "duration_minutes": 45,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 60,
+        "best_time_of_day": "下午",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "停车场"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 3456,
+        "average_rating": 4.1,
+        "satisfaction_rate": 0.77
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_013",
+      "name": "斯奈菲尔火山",
+      "name_en": "Snæfellsjökull Volcano",
+      "name_is": "Snæfellsjökull",
+      "category": "volcano",
+      "sub_categories": ["火山", "冰川"],
+      "coordinates": [64.8027, -23.7711],
+      "elevation_m": 1446,
+      "region": "Snæfellsnes",
+      "overview": {
+        "short_description": "冰岛著名的火山，被冰川覆盖，《地心游记》的灵感来源",
+        "long_description": "斯奈菲尔火山是冰岛最高的活火山，被冰川覆盖。朱尔·凡尔纳的科幻小说《地心游记》正是以这座火山作为通往地球中心的入口。"
+      },
+      "highlights": ["火山峰顶", "冰川覆盖", "文学遗产"],
+      "activities": [
+        {
+          "activity": "登顶徒步",
+          "duration_minutes": 480,
+          "difficulty": "hard",
+          "cost_usd": 0,
+          "note": "全天往返，需准备充分"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 480,
+        "best_time_of_day": "清晨出发",
+        "best_season": "夏季（6-9月）",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "山脚停车"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 1234,
+        "average_rating": 4.3,
+        "satisfaction_rate": 0.81
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": false,
+        "suitable_for_families": false,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_014",
+      "name": "斯卡夫塔山国家公园",
+      "name_en": "Skaftafell National Park",
+      "name_is": "Skaftafell",
+      "category": "national_park",
+      "sub_categories": ["国家公园", "冰川"],
+      "coordinates": [63.9975, -16.9780],
+      "elevation_m": 200,
+      "region": "Southeast",
+      "overview": {
+        "short_description": "瓦特纳冰川国家公园的一部分，有山区风景和冰川徒步",
+        "long_description": "斯卡夫塔山是瓦特纳冰川国家公园的东部地区，以其山区景观和冰川徒步而著称。这里有多条徒步路线，从简单到困难不等。"
+      },
+      "highlights": ["冰川视景", "山区景观", "多条步道"],
+      "activities": [
+        {
+          "activity": "冰川徒步",
+          "duration_minutes": 240,
+          "difficulty": "hard",
+          "cost_usd": 80,
+          "note": "需专业向导"
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 180,
+        "best_time_of_day": "上午",
+        "best_season": "全年",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "停车场",
+          "facilities": ["游客中心", "洗手间"]
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 5678,
+        "average_rating": 4.5,
+        "satisfaction_rate": 0.87
+      },
+      "decision_relevance": {
+        "must_see": false,
+        "suitable_for_beginners": false,
+        "suitable_for_families": "仅带大孩子",
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    },
+    {
+      "attraction_id": "attr_016",
+      "name": "钻石沙滩",
+      "name_en": "Diamond Beach",
+      "name_is": "Diamond Beach",
+      "category": "beach",
+      "sub_categories": ["黑沙滩", "冰块"],
+      "coordinates": [63.8867, -16.2428],
+      "elevation_m": 0,
+      "region": "Southeast",
+      "overview": {
+        "short_description": "被冰河湖冰块覆盖的黑沙滩，冰块如钻石般闪闪发光",
+        "long_description": "冰河湖的冰块流入大西洋后冲上黑沙滩，这些冰块在阳光下如钻石般闪闪发光，因此得名。这是冰岛最独特的海滩之一。"
+      },
+      "highlights": ["冰块沙滩", "光影效果", "独特景观"],
+      "activities": [
+        {
+          "activity": "沙滩散步",
+          "duration_minutes": 45,
+          "difficulty": "easy",
+          "cost_usd": 0
+        },
+        {
+          "activity": "摄影",
+          "duration_minutes": 60,
+          "difficulty": "easy",
+          "cost_usd": 0
+        }
+      ],
+      "visit_info": {
+        "recommended_time_minutes": 75,
+        "best_time_of_day": "上午（冰块光线最好）",
+        "best_season": "夏季（5-9月，冰块最多）",
+        "accessibility": {
+          "wheelchair_friendly": false,
+          "parking": "停车场"
+        },
+        "fees": {
+          "admission": "免费"
+        }
+      },
+      "user_ratings": {
+        "total_reviews": 8901,
+        "average_rating": 4.6,
+        "satisfaction_rate": 0.89
+      },
+      "decision_relevance": {
+        "must_see": true,
+        "suitable_for_beginners": true,
+        "suitable_for_families": true,
+        "photo_worthy": true,
+        "unique_experience": true
+      }
+    }
+  ],
+  "search_filters": {
+    "by_category": {
+      "waterfall": ["attr_002", "attr_003", "attr_008"],
+      "glacier": ["attr_004", "attr_015"],
+      "beach": ["attr_006", "attr_012"],
+      "national_park": ["attr_001", "attr_014"]
+    },
+    "by_region": {
+      "Golden_Circle": ["attr_001", "attr_007", "attr_008"],
+      "South_Coast": ["attr_002", "attr_003", "attr_004", "attr_005", "attr_006"],
+      "Snæfellsnes": ["attr_010", "attr_011", "attr_012", "attr_013"],
+      "Southeast": ["attr_014", "attr_015", "attr_016"]
+    },
+    "by_difficulty": {
+      "easy": ["attr_001", "attr_006", "attr_007", "attr_008", "attr_015"],
+      "medium": ["attr_002", "attr_010"],
+      "hard": ["attr_004", "attr_014"]
+    },
+    "by_must_see": [
+      "attr_001",
+      "attr_002",
+      "attr_006",
+      "attr_008",
+      "attr_010",
+      "attr_015"
+    ],
+    "by_photo_worthy": [
+      "attr_002",
+      "attr_006",
+      "attr_008",
+      "attr_010",
+      "attr_015"
+    ],
+    "by_danger_level": {
+      "low": ["attr_001", "attr_007", "attr_008"],
+      "medium": ["attr_002", "attr_004", "attr_010"],
+      "high": ["attr_006"]
+    }
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "Visit Iceland",
+        "url": "https://www.visiticeland.com",
+        "accessed": "2026-01-22",
+        "reliability": "high"
+      },
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      },
+      {
+        "source": "TripAdvisor",
+        "accessed": "2026-01-22",
+        "reliability": "medium"
+      }
+    ],
+    "user_feedback_sources": [
+      "TripAdvisor",
+      "Google Reviews",
+      "小红书",
+      "马蜂窝"
+    ],
+    "last_field_verification": "2025-08-15",
+    "next_review_date": "2026-04-22"
+  }
+}

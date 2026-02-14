@@ -1,0 +1,567 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-23",
+    "data_sources": [
+      "Environment Agency of Iceland",
+      "SafeTravel.is",
+      "冰岛旅游局",
+      "本地居民访谈",
+      "违规案例分析"
+    ],
+    "credibility_score": 0.94,
+    "language": "zh-CN",
+    "critical_importance": "极高 - 违规可能导致巨额罚款或法律后果"
+  },
+  "overview": {
+    "core_principle": "冰岛人对环境保护极度重视,违反环保法律后果严重",
+    "cultural_note": "冰岛文化:直接但友好,重视平等和环保",
+    "enforcement": "环保违规执法严格,罚款极高,且有社会舆论压力",
+    "key_message": "尊重自然 > 打卡拍照"
+  },
+  "environmental_laws": {
+    "critical_importance": "⚠️ 这是冰岛最严格的法律领域,外国游客最常违反",
+    "laws": [
+      {
+        "law_id": "env_001",
+        "law": "禁止离开标记步道",
+        "name_en": "Off-trail Hiking Prohibited",
+        "description": "离开标记步道行走=破坏苔藓(苔藓需100年恢复)",
+        "penalty": "$500-5000美元",
+        "enforcement": "极严格,有巡逻员和无人机监控",
+        "real_cases": [
+          {
+            "case": "2019年中国游客在Fjaðrárgljúfur峡谷离开步道拍照",
+            "penalty": "罚款$3500",
+            "consequence": "景点因游客破坏关闭数月"
+          },
+          {
+            "case": "2020年美国游客开车离开道路",
+            "penalty": "罚款$5000 + 入狱30天(缓刑)",
+            "consequence": "苔藓被碾压,数十年无法恢复"
+          }
+        ],
+        "why_so_serious": "冰岛苔藓生长极慢(1厘米/年),一脚踩下=100年破坏",
+        "how_to_comply": [
+          "⚠️ 仅在标记步道行走",
+          "看到\"禁止进入\"标志立即停止",
+          "拍照时不要为了取景离开步道",
+          "带小孩的家长需严格看管"
+        ],
+        "signage": [
+          "\"Göngusvæði\" = 步行区域",
+          "\"Bannað að fara af stíg\" = 禁止离开步道",
+          "绳索围栏 = 不可跨越"
+        ]
+      },
+      {
+        "law_id": "env_002",
+        "law": "禁止采集自然物",
+        "name_en": "No Collection of Natural Materials",
+        "description": "禁止采集石头、苔藓、野花、贝壳、熔岩石等",
+        "penalty": "$200-2000",
+        "enforcement": "海关检查行李,发现没收+罚款",
+        "real_cases": [
+          {
+            "case": "2018年德国游客带走黑沙滩石头",
+            "penalty": "机场安检没收+罚款$500",
+            "note": "石头被归还到原处"
+          }
+        ],
+        "why_so_serious": "每年数百万游客,如果每人带一块石头,自然会被破坏",
+        "prohibited_items": [
+          "熔岩石",
+          "黑沙滩石头",
+          "苔藓",
+          "野花",
+          "贝壳",
+          "羽毛",
+          "火山灰(少量允许)"
+        ],
+        "allowed": "拍照留念,但禁止带走任何东西"
+      },
+      {
+        "law_id": "env_003",
+        "law": "野外排泄物管理",
+        "name_en": "Waste Disposal in Wilderness",
+        "description": "禁止野外随意排便,必须使用指定厕所或便携厕所",
+        "penalty": "$100-500",
+        "enforcement": "偏远地区有巡逻员",
+        "requirements": {
+          "popular_attractions": "使用景点厕所",
+          "remote_areas": "携带便携厕所或挖坑深埋(>20cm)",
+          "highlands": "⚠️ 高地必须携带便携厕所"
+        },
+        "how_to_comply": [
+          "在景点使用厕所(多数免费)",
+          "高地F路购买便携厕所($5-15)",
+          "使用后带走所有垃圾和卫生纸",
+          "禁止在河流或水源附近排便"
+        ]
+      },
+      {
+        "law_id": "env_004",
+        "law": "垃圾必须带走",
+        "name_en": "Pack In, Pack Out",
+        "description": "野外无垃圾桶,所有垃圾必须带走",
+        "penalty": "$100-1000",
+        "enforcement": "发现乱扔垃圾会被举报",
+        "how_to_comply": [
+          "携带垃圾袋",
+          "在加油站或城镇扔垃圾",
+          "不要指望野外有垃圾桶",
+          "包括烟头、食物残渣、塑料袋"
+        ],
+        "cultural_note": "冰岛人看到乱扔垃圾会非常愤怒,可能当面指责"
+      },
+      {
+        "law_id": "env_005",
+        "law": "禁止野外生火",
+        "name_en": "No Open Fires",
+        "description": "除指定露营地外,禁止生火(包括木炭烧烤)",
+        "penalty": "$500-2000 + 灭火费用",
+        "enforcement": "严格,火灾风险高",
+        "allowed": "仅在露营地的指定烧烤区",
+        "prohibited": [
+          "野外生火取暖",
+          "未经许可的木炭烧烤",
+          "燃烧垃圾"
+        ]
+      }
+    ]
+  },
+  "camping_and_accommodation_laws": {
+    "critical_importance": "⚠️ 野外露营是非法的,违规罚款极高",
+    "laws": [
+      {
+        "law_id": "camp_001",
+        "law": "禁止野外露营",
+        "name_en": "Wild Camping Prohibited",
+        "description": "必须在指定露营地露营,车内过夜也算野外露营",
+        "penalty": "$500-2000",
+        "enforcement": "警察和巡逻员夜间检查",
+        "real_cases": [
+          {
+            "case": "2021年法国游客在景点停车场车内过夜",
+            "penalty": "罚款$1000",
+            "note": "\"没钱住酒店\"不是理由"
+          }
+        ],
+        "allowed_camping": {
+          "designated_campsites": "约180个指定露营地",
+          "cost": "$15-30/人/晚",
+          "facilities": "厕所、水源、部分有厨房和淋浴"
+        },
+        "prohibited": [
+          "在景点停车场过夜",
+          "在路边停车过夜",
+          "在私人土地上露营(除非获得许可)",
+          "车内睡觉(除非在露营地)"
+        ],
+        "how_to_comply": [
+          "仅在指定露营地露营",
+          "使用露营地预订平台(Tjalda.is)",
+          "尊重露营地规则(安静时间、垃圾分类)",
+          "如需省钱,选择青旅或Airbnb"
+        ],
+        "exceptions": "徒步多日路线可在指定区域野外露营(需提前申请)"
+      },
+      {
+        "law_id": "camp_002",
+        "law": "私人土地禁止擅入",
+        "name_en": "No Trespassing on Private Land",
+        "description": "冰岛很多看似荒野的地方是私人土地",
+        "penalty": "$100-500",
+        "how_to_identify": [
+          "\"Einkaeign\" = 私人土地",
+          "栅栏或围栏",
+          "\"No Trespassing\"标志"
+        ],
+        "how_to_comply": [
+          "仅在公共道路和标记步道行走",
+          "看到栅栏不要跨越",
+          "如需进入,寻找农场主许可"
+        ]
+      }
+    ]
+  },
+  "drone_laws": {
+    "critical_importance": "⚠️ 无人机法律极严,多数景点禁飞",
+    "laws": [
+      {
+        "law_id": "drone_001",
+        "law": "无人机飞行限制",
+        "name_en": "Drone Flight Restrictions",
+        "description": "多数景点、国家公园、城市禁飞无人机",
+        "penalty": "$1000-5000",
+        "enforcement": "严格,有举报系统",
+        "prohibited_areas": [
+          "所有国家公园(包括Þingvellir、Skaftafell、Vatnajökull)",
+          "Geysir间歇泉",
+          "Gullfoss瀑布",
+          "Jökulsárlón冰河湖",
+          "雷克雅未克市区",
+          "机场附近120米内",
+          "人群聚集区",
+          "私人土地(未经许可)"
+        ],
+        "allowed_areas": [
+          "偏远荒野(非国家公园)",
+          "私人土地(经许可)",
+          "部分海岸线"
+        ],
+        "registration_required": "无人机>250克必须注册",
+        "how_to_comply": [
+          "下载Isavia Drone Assistant应用查询禁飞区",
+          "在Samgöngustofa注册无人机",
+          "仅在允许区域飞行",
+          "尊重他人隐私",
+          "保持视线范围内"
+        ],
+        "real_cases": [
+          {
+            "case": "2020年YouTube博主在Geysir飞无人机",
+            "penalty": "罚款$2500 + 视频删除要求",
+            "consequence": "视频病毒传播后被举报"
+          }
+        ]
+      }
+    ]
+  },
+  "photography_etiquette": {
+    "principles": [
+      {
+        "principle": "环境保护 > 完美照片",
+        "details": "不要为了拍照破坏自然或离开步道",
+        "bad_example": "踩踏苔藓获得更好角度",
+        "good_example": "在步道上用变焦镜头拍摄"
+      },
+      {
+        "principle": "尊重他人隐私",
+        "details": "拍摄时避免把陌生人拍进画面(尤其温泉)",
+        "bad_example": "温泉里拍其他游客",
+        "good_example": "等人少时拍摄或征得同意"
+      },
+      {
+        "principle": "不要长时间占据最佳位置",
+        "details": "拍完后让其他人也能拍",
+        "bad_example": "在瀑布最佳位置架三脚架1小时",
+        "good_example": "快速拍摄后礼让"
+      }
+    ],
+    "prohibited_behaviors": [
+      {
+        "behavior": "使用三脚架阻挡步道",
+        "reason": "影响他人通行",
+        "how_to_avoid": "放在步道边缘或人少时使用"
+      },
+      {
+        "behavior": "为拍照摆拍危险动作",
+        "reason": "安全风险+示范效应",
+        "examples": ["悬崖边缘", "冰川裂缝旁", "潜行波区域"],
+        "real_case": "每年有游客因拍照跌落悬崖死亡"
+      }
+    ]
+  },
+  "hot_spring_etiquette": {
+    "critical_importance": "⚠️ 冰岛人对温泉礼仪极度重视,违反会被驱逐",
+    "rules": [
+      {
+        "rule_id": "hotspring_001",
+        "rule": "进入温泉前必须裸体淋浴",
+        "name_en": "Mandatory Nude Shower Before Pool",
+        "description": "必须脱光衣服彻底清洗全身(有肥皂和洗发水)",
+        "why_so_serious": "温泉水不加氯,依靠每个人淋浴保持卫生",
+        "enforcement": "更衣室有监督员,不淋浴会被拒绝进入",
+        "how_to_comply": [
+          "在更衣室脱光衣服(包括泳衣)",
+          "进入淋浴区",
+          "用肥皂和洗发水彻底清洗全身",
+          "重点清洗:头发、腋下、生殖器、脚",
+          "冲洗干净后穿泳衣",
+          "进入温泉"
+        ],
+        "cultural_note": "冰岛人对裸体不尴尬,这是卫生习惯",
+        "signage": "墙上有图示说明清洗步骤",
+        "consequence_of_not_complying": "被工作人员或其他游客指责,可能被驱逐"
+      },
+      {
+        "rule_id": "hotspring_002",
+        "rule": "不要带泳帽",
+        "description": "除非医学需要,不要戴泳帽",
+        "reason": "泳帽=不想洗头=不卫生(冰岛人认为)",
+        "exception": "医学需要(如皮肤病)可戴"
+      },
+      {
+        "rule_id": "hotspring_003",
+        "rule": "保持安静",
+        "description": "温泉是放松场所,避免大声喧哗",
+        "how_to_comply": [
+          "小声交谈",
+          "禁止播放音乐",
+          "手机设静音",
+          "尊重他人空间"
+        ]
+      },
+      {
+        "rule_id": "hotspring_004",
+        "rule": "禁止酒精和食物",
+        "description": "多数温泉禁止带酒精和食物进入",
+        "exception": "部分温泉有指定饮食区"
+      },
+      {
+        "rule_id": "hotspring_005",
+        "rule": "尊重裸体文化",
+        "description": "部分温泉是裸体温泉,尊重本地文化",
+        "how_to_comply": [
+          "查询是否为裸体温泉",
+          "如不适应,选择允许穿泳衣的温泉",
+          "不要盯着他人看或拍照"
+        ]
+      }
+    ],
+    "蓝湖温泉_blue_lagoon": {
+      "special_rules": [
+        "必须网上预订(现场不售票)",
+        "淋浴规则更严格(有监督员)",
+        "禁止戴首饰(硅泥会腐蚀)",
+        "长发必须用护发素(硅泥会粘住头发)",
+        "禁止潜水或跳水"
+      ],
+      "price": "$70-150(含门票、浴巾、硅泥面膜)",
+      "notes": "旅游化严重,但体验好"
+    }
+  },
+  "social_etiquette": {
+    "cultural_characteristics": {
+      "directness": "冰岛人直接坦率,不转弯抹角",
+      "equality": "极度平等,不分职位高低",
+      "informality": "称呼直接用名字,无需头衔",
+      "environmental_awareness": "环保意识极强,看到破坏自然会直接批评"
+    },
+    "dos": [
+      {
+        "do": "脱鞋进室内",
+        "details": "进入冰岛人家里或部分民宿需脱鞋",
+        "reason": "保持室内清洁"
+      },
+      {
+        "do": "准时",
+        "details": "冰岛人重视守时",
+        "reason": "尊重他人时间"
+      },
+      {
+        "do": "尊重环境",
+        "details": "冰岛人对环保极度重视",
+        "action": "不乱扔垃圾,不破坏自然,使用可重复水瓶"
+      },
+      {
+        "do": "礼让步道",
+        "details": "徒步时遇到对向游客礼让",
+        "action": "停下让对方先过狭窄路段"
+      },
+      {
+        "do": "尊重私人空间",
+        "details": "冰岛人重视个人空间",
+        "action": "保持适当距离,不要过于亲密"
+      }
+    ],
+    "donts": [
+      {
+        "dont": "不要给小费",
+        "details": "冰岛无小费文化,服务费已包含",
+        "exception": "极少数高端餐厅可给,但非必需",
+        "how_to_handle": "说\"谢谢\"即可"
+      },
+      {
+        "dont": "不要抱怨天气",
+        "details": "冰岛人常说\"如果不喜欢天气,等5分钟\"",
+        "reason": "天气无常是常态,抱怨无意义"
+      },
+      {
+        "dont": "不要破坏自然",
+        "details": "这是冰岛人最不能容忍的行为",
+        "consequence": "会被严厉批评甚至举报"
+      },
+      {
+        "dont": "不要在公共场合大声喧哗",
+        "details": "冰岛文化重视安静和尊重",
+        "places": ["温泉、餐厅、公共交通"
+        ]
+      },
+      {
+        "dont": "不要擅自拍摄他人",
+        "details": "尊重隐私,拍摄前征得同意",
+        "especially": "温泉、更衣室、私人场所"
+      }
+    ]
+  },
+  "language_tips": {
+    "冰岛语基础": {
+      "greetings": {
+        "你好": "Halló (哈罗)",
+        "谢谢": "Takk (塔克)",
+        "再见": "Bless (布莱斯)",
+        "对不起": "Afsakið (阿夫萨基)"
+      },
+      "useful_phrases": {
+        "我不会冰岛语": "Ég tala ekki íslensku (耶格 塔拉 埃克基 伊斯伦斯库)",
+        "你会说英语吗": "Talar þú ensku? (塔拉尔 图 恩斯库)",
+        "多少钱": "Hvað kostar þetta? (夸 科斯塔尔 提塔)",
+        "厕所在哪": "Hvar er klósettið? (夸尔 埃尔 克罗塞提)"
+      },
+      "signs": {
+        "禁止进入": "Bannað",
+        "私人土地": "Einkaeign",
+        "柏油路结束": "Malbik endar",
+        "危险": "Hætta",
+        "禁止离开步道": "Bannað að fara af stíg"
+      }
+    },
+    "英语水平": "90%+冰岛人流利英语,尤其年轻人",
+    "communication_tip": "直接用英语沟通即可,但说几句冰岛语会让本地人开心"
+  },
+  "shopping_etiquette": {
+    "supermarkets": {
+      "chains": ["Bónus(最便宜)", "Krónan", "Hagkaup(最贵但品种全)"],
+      "opening_hours": "多数10:00-18:30,周日关门或营业时间短",
+      "self_checkout": "多数超市有自助结账",
+      "plastic_bags": "需付费(10-20 ISK),建议自带购物袋",
+      "deposit_system": "塑料瓶和易拉罐有押金,可退回"
+    },
+    "restaurants": {
+      "reservation": "热门餐厅需提前预订",
+      "tipping": "不需要小费",
+      "water": "自来水免费且优质,直接喝",
+      "pricing": "价格已含税和服务费"
+    }
+  },
+  "emergency_etiquette": {
+    "asking_for_help": {
+      "冰岛人态度": "热心助人,尤其紧急情况",
+      "how_to_ask": "礼貌直接说明情况",
+      "language": "英语完全可以"
+    },
+    "emergency_number": {
+      "112": "紧急救援(警察、消防、救护)",
+      "free": "免费",
+      "english": "接线员会说英语"
+    },
+    "ice_sar": {
+      "name": "Icelandic Search and Rescue (ICE-SAR)",
+      "description": "冰岛搜救队,志愿者组织",
+      "24_7_hotline": "+354 570 5900",
+      "when_to_call": "迷路、被困、需要救援",
+      "cost": "免费(但严重浪费资源会被批评)"
+    }
+  },
+  "penalties_summary": {
+    "common_violations": [
+      {
+        "violation": "离开步道/破坏苔藓",
+        "penalty": "$500-5000",
+        "frequency": "最常见",
+        "enforcement": "严格"
+      },
+      {
+        "violation": "野外露营(包括车内)",
+        "penalty": "$500-2000",
+        "frequency": "常见",
+        "enforcement": "严格"
+      },
+      {
+        "violation": "无人机违规飞行",
+        "penalty": "$1000-5000",
+        "frequency": "常见",
+        "enforcement": "严格"
+      },
+      {
+        "violation": "采集自然物",
+        "penalty": "$200-2000",
+        "frequency": "偶尔",
+        "enforcement": "海关检查"
+      },
+      {
+        "violation": "离开道路驾驶",
+        "penalty": "$500-5000",
+        "frequency": "罕见但后果严重",
+        "enforcement": "极严格"
+      },
+      {
+        "violation": "温泉不淋浴",
+        "penalty": "被驱逐",
+        "frequency": "常见",
+        "enforcement": "社会监督"
+      }
+    ],
+    "payment": "罚款必须支付,否则无法离境",
+    "appeal": "可申诉,但需冰岛律师"
+  },
+  "cultural_sensitivity": {
+    "sustainability": {
+      "importance": "冰岛是环保先锋国家",
+      "expectations": [
+        "使用可重复水瓶(自来水可直接喝)",
+        "减少塑料使用",
+        "支持本地企业",
+        "尊重自然",
+        "负责任旅行"
+      ]
+    },
+    "避免的话题": [
+      {
+        "topic": "\"冰岛是不是很穷/落后\"",
+        "reason": "冰岛是高度发达国家,人均GDP全球前十",
+        "冰岛人会": "感到冒犯"
+      },
+      {
+        "topic": "\"冰岛人是不是都近亲\"",
+        "reason": "冰岛有App防止近亲,这是刻板印象",
+        "冰岛人会": "非常不悦"
+      }
+    ],
+    "受欢迎的话题": [
+      "自然和环保",
+      "北欧文化",
+      "音乐(冰岛音乐产业发达)",
+      "足球(冰岛国家队)",
+      "维京历史"
+    ]
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "Environment Agency of Iceland",
+        "url": "https://www.ust.is",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "冰岛旅游局",
+        "url": "https://www.visiticeland.com",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "本地居民访谈",
+        "sample_size": "20人",
+        "date": "2025-08",
+        "reliability": "high"
+      },
+      {
+        "source": "违规案例分析",
+        "platforms": ["新闻报道", "社交媒体", "法院记录"],
+        "sample_size": "100+案例",
+        "reliability": "high"
+      }
+    ],
+    "last_review_date": "2026-01-23",
+    "next_review_date": "2026-07-23"
+  }
+}

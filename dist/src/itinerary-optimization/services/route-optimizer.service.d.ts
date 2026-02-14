@@ -1,0 +1,31 @@
+import { PlaceNode, RouteSolution, OptimizationConfig } from '../interfaces/route-optimization.interface';
+import { SpatialClusteringService } from './spatial-clustering.service';
+import { HappinessScorerService } from './happiness-scorer.service';
+import { SmartRoutesService } from '../../transport/services/smart-routes.service';
+import { RouteCacheService } from '../../transport/services/route-cache.service';
+import { VRPTWOptimizerService } from './vrptw-optimizer.service';
+export declare class RouteOptimizerService {
+    private clusteringService;
+    private scorerService;
+    private smartRoutesService;
+    private routeCacheService;
+    private vrptwOptimizer;
+    private readonly logger;
+    private timeMatrix;
+    constructor(clusteringService: SpatialClusteringService, scorerService: HappinessScorerService, smartRoutesService: SmartRoutesService, routeCacheService: RouteCacheService, vrptwOptimizer: VRPTWOptimizerService);
+    optimizeRoute(places: PlaceNode[], config: OptimizationConfig): Promise<RouteSolution>;
+    private precomputeTimeMatrix;
+    private fetchAndCacheTransportTime;
+    private setTimeInMatrix;
+    private getTimeFromMatrix;
+    private generateInitialRoute;
+    private simulatedAnnealing;
+    private swapTwoNodes;
+    private calculateTotalScore;
+    private optimizeWithVRPTW;
+    private generateSchedule;
+    private estimateTransportTime;
+    private fallbackEstimateTransportTime;
+    private calculateDistance;
+    private toRadians;
+}

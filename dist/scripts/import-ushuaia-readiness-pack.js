@@ -1,0 +1,1577 @@
+#!/usr/bin/env ts-node
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.main = main;
+const client_1 = require("@prisma/client");
+const crypto_1 = require("crypto");
+const fs_1 = require("fs");
+const path_1 = require("path");
+const prisma = new client_1.PrismaClient();
+const colors = {
+    reset: '\x1b[0m',
+    green: '\x1b[32m',
+    red: '\x1b[31m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    cyan: '\x1b[36m',
+};
+function logSuccess(message) {
+    console.log(`${colors.green}✅ ${message}${colors.reset}`);
+}
+function logError(message) {
+    console.log(`${colors.red}❌ ${message}${colors.reset}`);
+}
+function logInfo(message) {
+    console.log(`${colors.blue}ℹ️  ${message}${colors.reset}`);
+}
+function logWarning(message) {
+    console.log(`${colors.yellow}⚠️  ${message}${colors.reset}`);
+}
+function extractLocalizedFields(value) {
+    if (!value) {
+        return { default: undefined, en: undefined, cn: undefined };
+    }
+    if (typeof value === 'string') {
+        return { default: value, en: value, cn: undefined };
+    }
+    return {
+        default: value.en,
+        en: value.en,
+        cn: value.zh,
+    };
+}
+async function savePack(pack) {
+    try {
+        const existing = await prisma.readinessPack.findUnique({
+            where: { packId: pack.packId },
+        });
+        const displayNameFields = extractLocalizedFields(pack.displayName);
+        const regionFields = extractLocalizedFields(pack.geo.region);
+        const cityFields = extractLocalizedFields(pack.geo.city);
+        const packData = {
+            packId: pack.packId,
+            destinationId: pack.destinationId,
+            displayName: displayNameFields.default || '',
+            displayNameEN: displayNameFields.en,
+            displayNameCN: displayNameFields.cn,
+            version: pack.version,
+            lastReviewedAt: new Date(pack.lastReviewedAt),
+            countryCode: pack.geo.countryCode,
+            region: regionFields.default,
+            regionEN: regionFields.en,
+            regionCN: regionFields.cn,
+            city: cityFields.default,
+            cityEN: cityFields.en,
+            cityCN: cityFields.cn,
+            latitude: pack.geo.lat,
+            longitude: pack.geo.lng,
+            packData: pack,
+            isActive: true,
+            updatedAt: new Date(),
+        };
+        if (existing) {
+            await prisma.readinessPack.update({
+                where: { packId: pack.packId },
+                data: packData,
+            });
+            logSuccess(`已更新 Pack: ${pack.packId}`);
+        }
+        else {
+            await prisma.readinessPack.create({
+                data: {
+                    ...packData,
+                    id: packData.packId || (0, crypto_1.randomUUID)(),
+                },
+            });
+            logSuccess(`已创建 Pack: ${pack.packId}`);
+        }
+        return true;
+    }
+    catch (error) {
+        logError(`保存 Pack 失败 ${pack.packId}: ${error.message}`);
+        console.error(error);
+        return false;
+    }
+}
+async function importPackFromFile(filePath) {
+    try {
+        if (!(0, fs_1.existsSync)(filePath)) {
+            logError(`文件不存在: ${filePath}`);
+            return false;
+        }
+        logInfo(`读取文件: ${filePath}`);
+        const content = (0, fs_1.readFileSync)(filePath, 'utf-8');
+        const pack = JSON.parse(content);
+        if (!pack.packId || !pack.destinationId || !pack.rules) {
+            throw new Error('Invalid pack format: missing required fields');
+        }
+        return await savePack(pack);
+    }
+    catch (error) {
+        logError(`从文件导入 Pack 失败 ${filePath}: ${error.message}`);
+        console.error(error);
+        return false;
+    }
+}
+async function importPackFromJson(pack) {
+    try {
+        if (!pack.packId || !pack.destinationId || !pack.rules) {
+            throw new Error('Invalid pack format: missing required fields');
+        }
+        return await savePack(pack);
+    }
+    catch (error) {
+        logError(`从 JSON 导入 Pack 失败: ${error.message}`);
+        console.error(error);
+        return false;
+    }
+}
+async function main() {
+    var _a;
+    console.log(`${colors.cyan}
+╔══════════════════════════════════════════════════════════════╗
+║       乌斯怀亚准备度 Pack 导入工具                            ║
+╚══════════════════════════════════════════════════════════════╝${colors.reset}\n`);
+    const ushuaiaPack = {
+        "packId": "pack.ar.ushuaia",
+        "destinationId": "AR-USHUAIA",
+        "displayName": {
+            "en": "Ushuaia Travel Readiness",
+            "zh": "乌斯怀亚旅行准备度"
+        },
+        "version": "1.0.0",
+        "lastReviewedAt": "2026-01-30T00:00:00Z",
+        "geo": {
+            "countryCode": "AR",
+            "region": "Tierra del Fuego",
+            "city": "Ushuaia",
+            "lat": -54.8019,
+            "lng": -68.3030
+        },
+        "supportedSeasons": ["summer", "winter", "shoulder", "all"],
+        "sources": [
+            {
+                "sourceId": "src.ushuaia.tourism",
+                "authority": "Ushuaia Tourism Board",
+                "type": "manual",
+                "title": {
+                    "en": "Ushuaia Travel Safety & Weather Information",
+                    "zh": "乌斯怀亚旅行安全和天气信息"
+                },
+                "canonicalUrl": "https://www.ushuaia.gov.ar"
+            },
+            {
+                "sourceId": "src.smn.argentina",
+                "authority": "Servicio Meteorologico Nacional Argentina",
+                "type": "html",
+                "title": {
+                    "en": "Argentina Weather Forecasts & Warnings",
+                    "zh": "阿根廷天气预报和预警"
+                },
+                "canonicalUrl": "https://www.smn.gob.ar"
+            },
+            {
+                "sourceId": "src.parques.argentina",
+                "authority": "Argentina National Parks Administration",
+                "type": "html",
+                "title": {
+                    "en": "Tierra del Fuego National Park Information",
+                    "zh": "火地岛国家公园信息"
+                },
+                "canonicalUrl": "https://www.argentina.gob.ar/parquesnacionales"
+            }
+        ],
+        "rules": [
+            {
+                "id": "rule.ar.peat-bog-boardwalk",
+                "category": "safety_critical",
+                "severity": "extreme",
+                "appliesTo": {
+                    "seasons": ["summer", "shoulder"],
+                    "activities": ["hiking", "laguna-esmeralda", "national-park"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["hiking", "laguna-esmeralda", "national-park"]
+                            }
+                        },
+                        {
+                            "containsAny": {
+                                "path": "itinerary.poiCanonicalTypes",
+                                "values": ["HIKING_TRAIL_LAKE", "HIKING_TRAIL_COASTAL"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "blocker",
+                    "message": {
+                        "en": "⚠️ LAYER 1 RED LINE: Never leave the boardwalk in peat bog areas (Laguna Esmeralda, National Park). Peat bogs appear solid but can be several meters deep. Falling in can be fatal. Always follow marked wooden boardwalks, even if they seem to take a longer route.",
+                        "zh": "⚠️ 第1层红线：在泥炭沼泽区域（翡翠湖、国家公园）绝不离开木栈道。泥炭沼泽看似坚实但可能深达数米。陷入可能致命。始终遵循标记的木栈道，即使它们看起来绕远了。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Review peat bog safety video before hiking",
+                                "zh": "徒步前观看泥炭沼泽安全视频"
+                            },
+                            "dueOffsetDays": -3,
+                            "tags": ["safety", "education"]
+                        },
+                        {
+                            "title": {
+                                "en": "Inform someone of your hiking route and expected return time",
+                                "zh": "告知他人您的徒步路线和预计返回时间"
+                            },
+                            "dueOffsetDays": -1,
+                            "tags": ["safety", "communication"]
+                        },
+                        {
+                            "title": {
+                                "en": "Carry emergency whistle and first aid kit",
+                                "zh": "携带应急哨子和急救包"
+                            },
+                            "dueOffsetDays": -1,
+                            "tags": ["gear", "safety"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Do you understand the peat bog hazard and will strictly follow boardwalks?",
+                            "zh": "您了解泥炭沼泽危险并会严格遵循木栈道吗？"
+                        },
+                        {
+                            "en": "Have you hiked in similar terrain before?",
+                            "zh": "您之前在类似地形中徒步过吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.parques.argentina",
+                        "sectionId": "safety_alerts",
+                        "quote": "Peat bogs are extremely dangerous. Never leave marked boardwalks. Falling in can result in death.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This is a Layer 1 red line rule - violation can be fatal. TripNARA must enforce this strictly.",
+                    "zh": "这是第1层红线规则 - 违反可能致命。TripNARA必须严格执行。"
+                }
+            },
+            {
+                "id": "rule.ar.weather-extreme-change",
+                "category": "safety_critical",
+                "severity": "extreme",
+                "appliesTo": {
+                    "seasons": ["all"],
+                    "activities": ["hiking", "outdoor", "water", "adventure"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["hiking", "outdoor", "water", "adventure", "glacier", "kayaking"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "blocker",
+                    "message": {
+                        "en": "⚠️ LAYER 1 RED LINE: Ushuaia weather can change from clear to blizzard in hours. Never persist with outdoor activities in severe weather. Check weather forecast (SMN Argentina) before departure. If weather deteriorates, return immediately. Hypothermia risk is extreme.",
+                        "zh": "⚠️ 第1层红线：乌斯怀亚天气可在数小时内从晴天变成暴风雪。在恶劣天气中绝不坚持户外活动。出发前查看天气预报（阿根廷气象局）。如果天气恶化，立即返回。失温风险极高。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Check SMN Argentina weather forecast before each outdoor activity",
+                                "zh": "每次户外活动前查看阿根廷气象局天气预报"
+                            },
+                            "dueOffsetDays": -1,
+                            "tags": ["safety", "planning"]
+                        },
+                        {
+                            "title": {
+                                "en": "Pack emergency shelter, extra layers, and high-calorie food",
+                                "zh": "打包应急庇护所、额外衣物和高热量食物"
+                            },
+                            "dueOffsetDays": -3,
+                            "tags": ["gear", "safety"]
+                        },
+                        {
+                            "title": {
+                                "en": "Learn hypothermia symptoms and treatment",
+                                "zh": "学习失温症状和治疗方法"
+                            },
+                            "dueOffsetDays": -7,
+                            "tags": ["education", "safety"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Are you experienced in assessing weather conditions and making go/no-go decisions?",
+                            "zh": "您有评估天气条件和做出出发/不出发决定的经验吗？"
+                        },
+                        {
+                            "en": "Do you have proper cold-weather gear for extreme conditions?",
+                            "zh": "您有适合极端条件的适当冷天气装备吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.smn.argentina",
+                        "sectionId": "weather_risks",
+                        "quote": "Ushuaia weather is extremely variable. Rapid changes from clear to severe conditions are common, especially in spring and autumn.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This rule applies to all outdoor activities year-round. Weather is the primary hazard in Ushuaia.",
+                    "zh": "此规则适用于全年所有户外活动。天气是乌斯怀亚的主要危险。"
+                }
+            },
+            {
+                "id": "rule.ar.glacier-guide-equipment",
+                "category": "safety_critical",
+                "severity": "extreme",
+                "appliesTo": {
+                    "seasons": ["summer", "shoulder"],
+                    "activities": ["glacier-trekking", "ice-climbing"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["glacier-trekking", "ice-climbing", "martial-glacier"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "blocker",
+                    "message": {
+                        "en": "⚠️ LAYER 1 RED LINE: Never enter glacier areas without professional guide and equipment. Glacier crevasses are hidden and falling in is fatal. Mandatory equipment: crampons, ice axe, helmet, safety rope. Book only with licensed operators.",
+                        "zh": "⚠️ 第1层红线：没有专业向导和装备，绝不进入冰川区域。冰川裂隙隐蔽，坠落可能致命。强制装备：冰爪、冰镐、头盔、安全绳。仅与持证运营商预订。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Book glacier activity with licensed operator (Canal Fun, Ushuaia Extremo)",
+                                "zh": "与持证运营商预订冰川活动（Canal Fun、Ushuaia Extremo）"
+                            },
+                            "dueOffsetDays": -14,
+                            "tags": ["booking", "safety"]
+                        },
+                        {
+                            "title": {
+                                "en": "Confirm all safety equipment is included and properly fitted",
+                                "zh": "确认所有安全装备已包含并正确安装"
+                            },
+                            "dueOffsetDays": -1,
+                            "tags": ["safety", "verification"]
+                        },
+                        {
+                            "title": {
+                                "en": "Review glacier safety briefing materials",
+                                "zh": "查看冰川安全简报材料"
+                            },
+                            "dueOffsetDays": -3,
+                            "tags": ["education", "safety"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Have you done glacier activities before?",
+                            "zh": "您之前做过冰川活动吗？"
+                        },
+                        {
+                            "en": "Are you comfortable with heights and exposed terrain?",
+                            "zh": "您对高度和暴露地形感到舒适吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.parques.argentina",
+                        "sectionId": "glacier_safety",
+                        "quote": "Glacier areas are extremely dangerous. Crevasses can be hidden under snow bridges. Professional guides and equipment are mandatory.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This is a Layer 1 red line rule. Self-guided glacier activities are prohibited.",
+                    "zh": "这是第1层红线规则。禁止自助冰川活动。"
+                }
+            },
+            {
+                "id": "rule.ar.sea-water-temperature",
+                "category": "safety_critical",
+                "severity": "extreme",
+                "appliesTo": {
+                    "seasons": ["summer", "shoulder"],
+                    "activities": ["kayaking", "boating", "water-sports"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["kayaking", "boating", "water-sports", "beagle-channel"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "blocker",
+                    "message": {
+                        "en": "⚠️ LAYER 1 RED LINE: Beagle Channel water temperature is 4-10°C. Falling in causes hypothermia within 15-30 minutes. Mandatory: wear dry suit provided by operator, life jacket, and follow all safety instructions. Never underestimate water temperature.",
+                        "zh": "⚠️ 第1层红线：比格尔海峡水温为4-10°C。落水会在15-30分钟内导致失温。强制：穿着运营商提供的干式服装、救生衣并遵循所有安全指示。永远不要低估水温。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Confirm dry suit and life jacket are provided by operator",
+                                "zh": "确认运营商提供干式服装和救生衣"
+                            },
+                            "dueOffsetDays": -3,
+                            "tags": ["safety", "verification"]
+                        },
+                        {
+                            "title": {
+                                "en": "Learn hypothermia symptoms and cold water survival techniques",
+                                "zh": "学习失温症状和冷水生存技术"
+                            },
+                            "dueOffsetDays": -7,
+                            "tags": ["education", "safety"]
+                        },
+                        {
+                            "title": {
+                                "en": "Verify you can swim and are comfortable in water",
+                                "zh": "验证您会游泳并对水感到舒适"
+                            },
+                            "dueOffsetDays": -14,
+                            "tags": ["assessment", "safety"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Can you swim?",
+                            "zh": "您会游泳吗？"
+                        },
+                        {
+                            "en": "Are you comfortable wearing a tight dry suit?",
+                            "zh": "您对穿着紧身干式服装感到舒适吗？"
+                        },
+                        {
+                            "en": "Do you have any heart conditions or cold sensitivity?",
+                            "zh": "您有心脏病或对冷敏感吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.ushuaia.tourism",
+                        "sectionId": "water_safety",
+                        "quote": "Beagle Channel water is extremely cold (4-10°C). Hypothermia can occur within minutes of immersion.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This is a Layer 1 red line rule. Water temperature is the primary hazard for water activities.",
+                    "zh": "这是第1层红线规则。水温是水上活动的主要危险。"
+                }
+            },
+            {
+                "id": "rule.ar.antarctica-insurance",
+                "category": "logistics_critical",
+                "severity": "extreme",
+                "appliesTo": {
+                    "seasons": ["summer"],
+                    "activities": ["antarctica-expedition"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["antarctica-expedition"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "blocker",
+                    "message": {
+                        "en": "⚠️ LAYER 1 RED LINE: Antarctica expedition REQUIRES travel insurance with medical evacuation coverage (minimum USD 100,000). No insurance = no boarding. Medical evacuation from Antarctica costs USD 100,000+. Most operators will refuse to board uninsured passengers.",
+                        "zh": "⚠️ 第1层红线：南极探险需要包含医疗撤离保险（最低USD 100,000）。无保险=无法登船。从南极医疗撤离费用超过USD 100,000。大多数运营商会拒绝无保险乘客登船。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Purchase travel insurance with medical evacuation coverage (USD 100,000+)",
+                                "zh": "购买包含医疗撤离保险的旅行保险（USD 100,000+）"
+                            },
+                            "dueOffsetDays": -60,
+                            "tags": ["booking", "insurance", "critical"]
+                        },
+                        {
+                            "title": {
+                                "en": "Verify insurance covers Drake Passage and Antarctica activities",
+                                "zh": "验证保险涵盖德雷克海峡和南极活动"
+                            },
+                            "dueOffsetDays": -45,
+                            "tags": ["verification", "insurance"]
+                        },
+                        {
+                            "title": {
+                                "en": "Obtain insurance certificate and carry it with you",
+                                "zh": "获取保险证书并随身携带"
+                            },
+                            "dueOffsetDays": -7,
+                            "tags": ["documentation"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Do you have existing travel insurance? Does it cover Antarctica and medical evacuation?",
+                            "zh": "您有现有旅行保险吗？它涵盖南极和医疗撤离吗？"
+                        },
+                        {
+                            "en": "Are you aware of the extreme conditions and risks of Antarctica?",
+                            "zh": "您了解南极的极端条件和风险吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.ushuaia.tourism",
+                        "sectionId": "antarctica_safety",
+                        "quote": "Travel insurance with medical evacuation is mandatory for Antarctica expeditions. Evacuation costs can exceed USD 100,000.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This is a Layer 1 red line rule. Insurance is non-negotiable for Antarctica.",
+                    "zh": "这是第1层红线规则。保险对南极是不可协商的。"
+                }
+            },
+            {
+                "id": "rule.ar.layered-clothing",
+                "category": "gear_packing",
+                "severity": "high",
+                "appliesTo": {
+                    "seasons": ["all"],
+                    "activities": ["hiking", "outdoor", "adventure"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "containsAny": {
+                                "path": "itinerary.activities",
+                                "values": ["hiking", "outdoor", "adventure", "glacier", "kayaking"]
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "must",
+                    "message": {
+                        "en": "Ushuaia weather is unpredictable. Pack layered clothing: waterproof/windproof shell, warm mid-layer (fleece/wool), thermal base layer. Even in summer, bring warm layers. Wind chill can make it feel 10-15°C colder than actual temperature.",
+                        "zh": "乌斯怀亚天气不可预测。准备分层衣物：防水/防风外层、保暖中层（抓绒/羊毛）、保暖内衣。即使在夏季，也要带保暖衣物。风寒可使体感温度比实际温度低10-15°C。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Prepare layered clothing system for Ushuaia weather",
+                                "zh": "为乌斯怀亚天气准备分层衣物系统"
+                            },
+                            "dueOffsetDays": -14,
+                            "tags": ["gear", "safety"]
+                        },
+                        {
+                            "title": {
+                                "en": "Pack waterproof/windproof shell jacket and pants",
+                                "zh": "打包防水/防风外套和裤子"
+                            },
+                            "dueOffsetDays": -7,
+                            "tags": ["gear"]
+                        },
+                        {
+                            "title": {
+                                "en": "Pack headlamp + spare batteries (essential for winter)",
+                                "zh": "打包头灯 + 备用电池（冬季必需）"
+                            },
+                            "dueOffsetDays": -7,
+                            "tags": ["gear", "safety"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Do you have proper waterproof/windproof gear?",
+                            "zh": "您有适当的防水/防风装备吗？"
+                        },
+                        {
+                            "en": "Are you familiar with layering clothing for extreme weather?",
+                            "zh": "您熟悉极端天气下的分层穿衣吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.smn.argentina",
+                        "sectionId": "climate",
+                        "quote": "Ushuaia experiences subantarctic climate with strong winds and rapid weather changes. Layered clothing is essential.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This rule applies to all outdoor activities in Ushuaia, regardless of season.",
+                    "zh": "此规则适用于乌斯怀亚的所有户外活动，无论季节。"
+                }
+            },
+            {
+                "id": "rule.ar.flight-delays",
+                "category": "logistics",
+                "severity": "high",
+                "appliesTo": {
+                    "seasons": ["winter"],
+                    "activities": ["travel"],
+                    "travelerTags": []
+                },
+                "when": {
+                    "any": [
+                        {
+                            "eq": {
+                                "path": "itinerary.season",
+                                "value": "winter"
+                            }
+                        }
+                    ]
+                },
+                "then": {
+                    "level": "must",
+                    "message": {
+                        "en": "Winter flights to Ushuaia have higher cancellation rates due to weather. Book flexible tickets, add 1-2 days buffer before/after your trip, and have backup plans. Check flight status regularly.",
+                        "zh": "冬季飞往乌斯怀亚的航班因天气原因取消率较高。预订灵活机票，在行程前后增加1-2天缓冲，并制定备选计划。定期检查航班状态。"
+                    },
+                    "tasks": [
+                        {
+                            "title": {
+                                "en": "Book flexible/refundable flight tickets for winter travel",
+                                "zh": "为冬季旅行预订灵活/可退款机票"
+                            },
+                            "dueOffsetDays": -60,
+                            "tags": ["booking", "logistics"]
+                        },
+                        {
+                            "title": {
+                                "en": "Add 1-2 days buffer before/after trip for flight delays",
+                                "zh": "在行程前后增加1-2天缓冲以应对航班延误"
+                            },
+                            "dueOffsetDays": -30,
+                            "tags": ["planning"]
+                        },
+                        {
+                            "title": {
+                                "en": "Check flight status 24 hours before departure",
+                                "zh": "出发前24小时检查航班状态"
+                            },
+                            "dueOffsetDays": -1,
+                            "tags": ["verification"]
+                        }
+                    ],
+                    "askUser": [
+                        {
+                            "en": "Are you flexible with your travel dates?",
+                            "zh": "您对旅行日期有灵活性吗？"
+                        },
+                        {
+                            "en": "Do you have backup accommodation if your flight is delayed?",
+                            "zh": "如果航班延误，您有备选住宿吗？"
+                        }
+                    ]
+                },
+                "evidence": [
+                    {
+                        "sourceId": "src.ushuaia.tourism",
+                        "sectionId": "accessibility",
+                        "quote": "Winter flights to Ushuaia have moderate cancellation rates due to weather conditions.",
+                        "retrievedAt": "2026-01-30T00:00:00Z"
+                    }
+                ],
+                "notes": {
+                    "en": "This rule applies specifically to winter travel (June-September).",
+                    "zh": "此规则特别适用于冬季旅行（6月-9月）。"
+                }
+            }
+        ],
+        "checklists": [
+            {
+                "id": "chk.ar.weather-gear",
+                "category": "gear_packing",
+                "appliesToSeasons": ["all"],
+                "items": [
+                    {
+                        "en": "Waterproof/windproof shell jacket (CRITICAL - must have)",
+                        "zh": "防水/防风外套（关键 - 必须有）"
+                    },
+                    {
+                        "en": "Waterproof/windproof pants",
+                        "zh": "防水/防风裤"
+                    },
+                    {
+                        "en": "Warm mid-layer: fleece or wool sweater x2",
+                        "zh": "保暖中层：抓绒或羊毛毛衣 x2"
+                    },
+                    {
+                        "en": "Thermal base layer x2-3",
+                        "zh": "保暖内衣 x2-3"
+                    },
+                    {
+                        "en": "Waterproof hiking boots with good grip (CRITICAL)",
+                        "zh": "防水登山靴，具有良好的抓地力（关键）"
+                    },
+                    {
+                        "en": "Warm hat/beanie",
+                        "zh": "保暖帽/毛线帽"
+                    },
+                    {
+                        "en": "Gloves or mittens",
+                        "zh": "手套或连指手套"
+                    },
+                    {
+                        "en": "Scarf or neck gaiter",
+                        "zh": "围巾或颈套"
+                    },
+                    {
+                        "en": "Headlamp with spare batteries (CRITICAL for winter)",
+                        "zh": "头灯和备用电池（冬季关键）"
+                    },
+                    {
+                        "en": "Sunscreen and lip balm with SPF",
+                        "zh": "防晒霜和含SPF的唇膏"
+                    },
+                    {
+                        "en": "Sunglasses",
+                        "zh": "太阳镜"
+                    },
+                    {
+                        "en": "Emergency shelter or bivvy bag",
+                        "zh": "应急庇护所或露营袋"
+                    },
+                    {
+                        "en": "First aid kit with blister treatment",
+                        "zh": "急救包，含水泡处理"
+                    },
+                    {
+                        "en": "Emergency whistle",
+                        "zh": "应急哨子"
+                    },
+                    {
+                        "en": "Check weather forecast (SMN Argentina) before each activity",
+                        "zh": "每次活动前查看天气预报（阿根廷气象局）"
+                    }
+                ]
+            },
+            {
+                "id": "chk.ar.peat-bog-safety",
+                "category": "safety_hazards",
+                "appliesToSeasons": ["summer", "shoulder"],
+                "items": [
+                    {
+                        "en": "Understand peat bog hazard: appears solid but can be several meters deep",
+                        "zh": "了解泥炭沼泽危险：看似坚实但可能深达数米"
+                    },
+                    {
+                        "en": "NEVER leave marked wooden boardwalks in peat bog areas",
+                        "zh": "在泥炭沼泽区域绝不离开标记的木栈道"
+                    },
+                    {
+                        "en": "Follow boardwalks even if they seem to take a longer route",
+                        "zh": "遵循木栈道，即使它们看起来绕远了"
+                    },
+                    {
+                        "en": "Wear waterproof boots with good grip",
+                        "zh": "穿着防水靴，具有良好的抓地力"
+                    },
+                    {
+                        "en": "Carry emergency whistle and first aid kit",
+                        "zh": "携带应急哨子和急救包"
+                    },
+                    {
+                        "en": "Inform someone of your hiking route and expected return time",
+                        "zh": "告知他人您的徒步路线和预计返回时间"
+                    },
+                    {
+                        "en": "Hike with a partner, never alone",
+                        "zh": "与伙伴一起徒步，永远不要独自行动"
+                    },
+                    {
+                        "en": "Carry mobile phone with emergency numbers saved",
+                        "zh": "携带手机并保存紧急号码"
+                    }
+                ]
+            },
+            {
+                "id": "chk.ar.glacier-safety",
+                "category": "safety_hazards",
+                "appliesToSeasons": ["summer", "shoulder"],
+                "items": [
+                    {
+                        "en": "Book glacier activity ONLY with licensed operators (Canal Fun, Ushuaia Extremo)",
+                        "zh": "仅与持证运营商预订冰川活动（Canal Fun、Ushuaia Extremo）"
+                    },
+                    {
+                        "en": "Verify all safety equipment is included: crampons, ice axe, helmet, safety rope",
+                        "zh": "验证所有安全装备已包含：冰爪、冰镐、头盔、安全绳"
+                    },
+                    {
+                        "en": "Never enter glacier areas without professional guide",
+                        "zh": "没有专业向导，绝不进入冰川区域"
+                    },
+                    {
+                        "en": "Understand crevasse hazard: hidden cracks can be fatal",
+                        "zh": "了解裂隙危险：隐蔽的裂缝可能致命"
+                    },
+                    {
+                        "en": "Wear proper footwear with good grip",
+                        "zh": "穿着适当的鞋类，具有良好的抓地力"
+                    },
+                    {
+                        "en": "Follow all guide instructions without exception",
+                        "zh": "无一例外地遵循所有向导指示"
+                    },
+                    {
+                        "en": "Carry extra layers and high-calorie snacks",
+                        "zh": "携带额外衣物和高热量零食"
+                    }
+                ]
+            },
+            {
+                "id": "chk.ar.water-safety",
+                "category": "safety_hazards",
+                "appliesToSeasons": ["summer", "shoulder"],
+                "items": [
+                    {
+                        "en": "Understand water temperature: 4-10°C causes hypothermia in 15-30 minutes",
+                        "zh": "了解水温：4-10°C会在15-30分钟内导致失温"
+                    },
+                    {
+                        "en": "ALWAYS wear dry suit provided by operator",
+                        "zh": "始终穿着运营商提供的干式服装"
+                    },
+                    {
+                        "en": "ALWAYS wear life jacket",
+                        "zh": "始终穿着救生衣"
+                    },
+                    {
+                        "en": "Verify you can swim before water activities",
+                        "zh": "水上活动前验证您会游泳"
+                    },
+                    {
+                        "en": "Follow all operator safety instructions",
+                        "zh": "遵循所有运营商安全指示"
+                    },
+                    {
+                        "en": "Know hypothermia symptoms: shivering, confusion, slurred speech",
+                        "zh": "了解失温症状：发抖、困惑、言语不清"
+                    },
+                    {
+                        "en": "Never underestimate water temperature",
+                        "zh": "永远不要低估水温"
+                    },
+                    {
+                        "en": "Inform someone of your water activity and expected return time",
+                        "zh": "告知他人您的水上活动和预计返回时间"
+                    }
+                ]
+            },
+            {
+                "id": "chk.ar.antarctica-preparation",
+                "category": "logistics_critical",
+                "appliesToSeasons": ["summer"],
+                "items": [
+                    {
+                        "en": "Purchase travel insurance with medical evacuation coverage (USD 100,000+)",
+                        "zh": "购买包含医疗撤离保险的旅行保险（USD 100,000+）"
+                    },
+                    {
+                        "en": "Verify insurance covers Drake Passage and Antarctica activities",
+                        "zh": "验证保险涵盖德雷克海峡和南极活动"
+                    },
+                    {
+                        "en": "Carry insurance certificate with you",
+                        "zh": "随身携带保险证书"
+                    },
+                    {
+                        "en": "Book Antarctica expedition 6-12 months in advance",
+                        "zh": "提前6-12个月预订南极探险"
+                    },
+                    {
+                        "en": "Prepare for extreme cold: -10°C to -20°C",
+                        "zh": "为极端寒冷做准备：-10°C至-20°C"
+                    },
+                    {
+                        "en": "Pack extra warm layers and waterproof gear",
+                        "zh": "打包额外的保暖衣物和防水装备"
+                    },
+                    {
+                        "en": "Prepare for Drake Passage: 2-day crossing with potential rough seas",
+                        "zh": "为德雷克海峡做准备：2天穿越，可能有粗浪"
+                    },
+                    {
+                        "en": "Pack seasickness medication if prone to motion sickness",
+                        "zh": "如果容易晕船，打包晕船药"
+                    },
+                    {
+                        "en": "Understand physical requirements: ability to board Zodiac boats",
+                        "zh": "了解体能要求：能够登上Zodiac小艇"
+                    },
+                    {
+                        "en": "Review operator's safety briefing materials",
+                        "zh": "查看运营商的安全简报材料"
+                    }
+                ]
+            },
+            {
+                "id": "chk.ar.winter-specific",
+                "category": "gear_packing",
+                "appliesToSeasons": ["winter"],
+                "items": [
+                    {
+                        "en": "Heavy-duty waterproof/windproof jacket and pants",
+                        "zh": "重型防水/防风外套和裤子"
+                    },
+                    {
+                        "en": "Thermal base layer x3-4",
+                        "zh": "保暖内衣 x3-4"
+                    },
+                    {
+                        "en": "Warm mid-layer x2-3",
+                        "zh": "保暖中层 x2-3"
+                    },
+                    {
+                        "en": "Down jacket or heavy fleece",
+                        "zh": "羽绒服或厚抓绒"
+                    },
+                    {
+                        "en": "Waterproof boots with insulation and good grip",
+                        "zh": "防水靴，带绝缘和良好的抓地力"
+                    },
+                    {
+                        "en": "Crampons or ice cleats for icy surfaces",
+                        "zh": "冰爪或冰面防滑鞋"
+                    },
+                    {
+                        "en": "Warm hat, balaclava, and neck gaiter",
+                        "zh": "保暖帽、巴拉克拉法帽和颈套"
+                    },
+                    {
+                        "en": "Insulated gloves or mittens",
+                        "zh": "绝缘手套或连指手套"
+                    },
+                    {
+                        "en": "Headlamp with extra batteries (only 7-9 hours daylight)",
+                        "zh": "头灯和备用电池（仅7-9小时日照）"
+                    },
+                    {
+                        "en": "Emergency shelter and high-calorie food",
+                        "zh": "应急庇护所和高热量食物"
+                    },
+                    {
+                        "en": "Check road conditions (road.is equivalent) before driving",
+                        "zh": "驾驶前检查路况"
+                    }
+                ]
+            }
+        ],
+        "hazards": [
+            {
+                "type": "weather_extreme",
+                "severity": "extreme",
+                "summary": {
+                    "en": "Ushuaia weather changes from clear to blizzard in hours. Strong Patagonian winds (30-50 km/h average, gusts 80-120 km/h) are common. Hypothermia risk is extreme.",
+                    "zh": "乌斯怀亚天气可在数小时内从晴天变成暴风雪。巴塔哥尼亚强风（平均30-50公里/小时，阵风80-120公里/小时）很常见。失温风险极高。"
+                },
+                "mitigations": [
+                    {
+                        "en": "Check weather forecast (SMN Argentina) before each outdoor activity",
+                        "zh": "每次户外活动前查看天气预报（阿根廷气象局）"
+                    },
+                    {
+                        "en": "Pack layered clothing: waterproof/windproof shell, warm mid-layer, thermal base layer",
+                        "zh": "准备分层衣物：防水/防风外层、保暖中层、保暖内衣"
+                    },
+                    {
+                        "en": "Be prepared to turn back immediately if weather deteriorates",
+                        "zh": "如果天气恶化，准备立即返回"
+                    },
+                    {
+                        "en": "Avoid outdoor activities in severe weather conditions",
+                        "zh": "避免在恶劣天气条件下进行户外活动"
+                    },
+                    {
+                        "en": "Carry emergency shelter and high-calorie food",
+                        "zh": "携带应急庇护所和高热量食物"
+                    }
+                ]
+            },
+            {
+                "type": "terrain_peat_bog",
+                "severity": "extreme",
+                "summary": {
+                    "en": "Peat bogs appear solid but can be several meters deep. Falling in is fatal. Found in Laguna Esmeralda and National Park areas.",
+                    "zh": "泥炭沼泽看似坚实但可能深达数米。陷入可能致命。位于翡翠湖和国家公园区域。"
+                },
+                "mitigations": [
+                    {
+                        "en": "NEVER leave marked wooden boardwalks in peat bog areas",
+                        "zh": "在泥炭沼泽区域绝不离开标记的木栈道"
+                    },
+                    {
+                        "en": "Follow boardwalks even if they seem to take a longer route",
+                        "zh": "遵循木栈道，即使它们看起来绕远了"
+                    },
+                    {
+                        "en": "Wear waterproof boots with good grip",
+                        "zh": "穿着防水靴，具有良好的抓地力"
+                    },
+                    {
+                        "en": "Hike with a partner, never alone",
+                        "zh": "与伙伴一起徒步，永远不要独自行动"
+                    },
+                    {
+                        "en": "Carry emergency whistle and first aid kit",
+                        "zh": "携带应急哨子和急救包"
+                    }
+                ]
+            },
+            {
+                "type": "terrain_glacier",
+                "severity": "extreme",
+                "summary": {
+                    "en": "Glacier crevasses are hidden and falling in is fatal. Martial Glacier and other glaciers present extreme hazards. Professional guide and equipment are mandatory.",
+                    "zh": "冰川裂隙隐蔽，坠落可能致命。Martial冰川和其他冰川存在极端危险。专业向导和装备是强制性的。"
+                },
+                "mitigations": [
+                    {
+                        "en": "Book glacier activity ONLY with licensed operators",
+                        "zh": "仅与持证运营商预订冰川活动"
+                    },
+                    {
+                        "en": "Never enter glacier areas without professional guide and equipment",
+                        "zh": "没有专业向导和装备，绝不进入冰川区域"
+                    },
+                    {
+                        "en": "Mandatory equipment: crampons, ice axe, helmet, safety rope",
+                        "zh": "强制装备：冰爪、冰镐、头盔、安全绳"
+                    },
+                    {
+                        "en": "Follow all guide instructions without exception",
+                        "zh": "无一例外地遵循所有向导指示"
+                    }
+                ]
+            },
+            {
+                "type": "water_cold",
+                "severity": "extreme",
+                "summary": {
+                    "en": "Beagle Channel water temperature is 4-10°C. Falling in causes hypothermia within 15-30 minutes. Affects kayaking, boating, and water sports.",
+                    "zh": "比格尔海峡水温为4-10°C。落水会在15-30分钟内导致失温。影响皮划艇、划船和水上运动。"
+                },
+                "mitigations": [
+                    {
+                        "en": "ALWAYS wear dry suit provided by operator",
+                        "zh": "始终穿着运营商提供的干式服装"
+                    },
+                    {
+                        "en": "ALWAYS wear life jacket",
+                        "zh": "始终穿着救生衣"
+                    },
+                    {
+                        "en": "Verify you can swim before water activities",
+                        "zh": "水上活动前验证您会游泳"
+                    },
+                    {
+                        "en": "Know hypothermia symptoms and treatment",
+                        "zh": "了解失温症状和治疗方法"
+                    },
+                    {
+                        "en": "Never underestimate water temperature",
+                        "zh": "永远不要低估水温"
+                    }
+                ]
+            },
+            {
+                "type": "logistics_remote",
+                "severity": "high",
+                "summary": {
+                    "en": "Remote areas have limited fuel and supply access. Long distances between services, especially in Highlands and National Park areas.",
+                    "zh": "偏远地区燃料和补给有限。服务点之间距离很长，特别是在高地和国家公园区域。"
+                },
+                "mitigations": [
+                    {
+                        "en": "Plan fuel stops before entering remote areas",
+                        "zh": "进入偏远地区前规划好加油站"
+                    },
+                    {
+                        "en": "Carry extra food, water, and emergency supplies",
+                        "zh": "携带额外的食物、水和应急用品"
+                    },
+                    {
+                        "en": "Check road conditions before heading to remote areas",
+                        "zh": "前往偏远地区前查看路况"
+                    },
+                    {
+                        "en": "Inform someone of your route and expected return time",
+                        "zh": "告知他人您的路线和预计返回时间"
+                    }
+                ]
+            },
+            {
+                "type": "logistics_flight",
+                "severity": "high",
+                "summary": {
+                    "en": "Winter flights to Ushuaia have higher cancellation rates due to weather. Flight delays are common.",
+                    "zh": "冬季飞往乌斯怀亚的航班因天气原因取消率较高。航班延误很常见。"
+                },
+                "mitigations": [
+                    {
+                        "en": "Book flexible/refundable flight tickets for winter travel",
+                        "zh": "为冬季旅行预订灵活/可退款机票"
+                    },
+                    {
+                        "en": "Add 1-2 days buffer before/after trip for flight delays",
+                        "zh": "在行程前后增加1-2天缓冲以应对航班延误"
+                    },
+                    {
+                        "en": "Check flight status 24 hours before departure",
+                        "zh": "出发前24小时检查航班状态"
+                    },
+                    {
+                        "en": "Have backup accommodation if your flight is delayed",
+                        "zh": "如果航班延误，有备选住宿"
+                    }
+                ]
+            }
+        ],
+        "packing": {
+            "packingTemplate": {
+                "version": "1.0.0",
+                "lastUpdated": "2026-01-30T00:00:00.000Z",
+                "data": {
+                    "metadata": {
+                        "version": "1.0.0",
+                        "last_updated": "2026-01-30",
+                        "data_sources": [
+                            "weather-risks.json",
+                            "climate.json",
+                            "seasonal-features.json"
+                        ]
+                    },
+                    "quick_checklist_summer": {
+                        "description": "Summer Quick Checklist (11-3月)",
+                        "description_zh": "夏季快速清单（11-3月）",
+                        "bestFor": "Summer travel with relatively mild weather",
+                        "bestFor_zh": "夏季旅行，天气相对温和",
+                        "estimatedItems": "50-60 items",
+                        "items": [
+                            "T-shirt x3-4",
+                            "Long-sleeve shirt x2",
+                            "Shorts x2",
+                            "Long pants x2-3",
+                            "Waterproof/windproof shell jacket (CRITICAL)",
+                            "Fleece or wool mid-layer x2",
+                            "Thermal base layer x2",
+                            "Waterproof hiking boots (CRITICAL)",
+                            "Casual shoes x1",
+                            "Warm hat/beanie",
+                            "Gloves",
+                            "Scarf or neck gaiter",
+                            "Sunscreen SPF 50+",
+                            "Lip balm with SPF",
+                            "Sunglasses",
+                            "Headlamp with spare batteries",
+                            "Emergency shelter/bivvy bag",
+                            "First aid kit",
+                            "Emergency whistle",
+                            "Swimsuit (for hot springs if available)",
+                            "Underwear x5-7",
+                            "Socks x5-7 (bring extra, get wet easily)",
+                            "Toiletries",
+                            "Medications",
+                            "Phone charger",
+                            "Camera",
+                            "Backpack (30-40L for day hikes)",
+                            "Water bottle (2L)",
+                            "Snacks and energy bars",
+                            "Insect repellent"
+                        ],
+                        "whatToSkip": [
+                            "Heavy down jacket (unless going to Highlands)",
+                            "Crampons (unless glacier trekking)",
+                            "Winter-specific gear"
+                        ],
+                        "whatMustNotSkip": [
+                            "Waterproof/windproof shell jacket (most important!)",
+                            "Waterproof hiking boots",
+                            "Headlamp and spare batteries",
+                            "Emergency shelter",
+                            "First aid kit"
+                        ],
+                        "criticalReminders": [
+                            "Even in summer, prepare for cold and rain",
+                            "Weather can change rapidly",
+                            "Wind chill makes it feel 10-15°C colder",
+                            "Bring more socks than you think you need"
+                        ]
+                    },
+                    "quick_checklist_transition": {
+                        "description": "Transition Season Quick Checklist (4月, 10月)",
+                        "description_zh": "过渡季快速清单（4月、10月）",
+                        "bestFor": "Unpredictable weather, variable conditions",
+                        "bestFor_zh": "天气不可预测，条件多变",
+                        "estimatedItems": "65-75 items",
+                        "items": [
+                            "T-shirt x2-3",
+                            "Long-sleeve shirt x3",
+                            "Long pants x3",
+                            "Waterproof/windproof shell jacket x1",
+                            "Waterproof/windproof pants x1",
+                            "Fleece or wool mid-layer x2-3",
+                            "Thermal base layer x2-3",
+                            "Light down jacket or heavy fleece x1",
+                            "Waterproof hiking boots (CRITICAL)",
+                            "Casual shoes x1",
+                            "Warm hat/beanie",
+                            "Gloves x2",
+                            "Scarf or neck gaiter",
+                            "Headlamp with spare batteries x2",
+                            "Emergency shelter/bivvy bag",
+                            "First aid kit",
+                            "Emergency whistle",
+                            "Sunscreen and lip balm",
+                            "Sunglasses",
+                            "Underwear x6-8",
+                            "Socks x6-8",
+                            "Toiletries",
+                            "Medications",
+                            "Phone charger",
+                            "Camera",
+                            "Backpack (30-40L)",
+                            "Water bottle (2L)",
+                            "Snacks and energy bars"
+                        ]
+                    },
+                    "quick_checklist_winter": {
+                        "description": "Winter Quick Checklist (6-9月)",
+                        "description_zh": "冬季快速清单（6-9月）",
+                        "bestFor": "Cold, snowy conditions with short daylight",
+                        "bestFor_zh": "寒冷、多雪的条件，白天短",
+                        "estimatedItems": "90-100 items",
+                        "items": [
+                            "Thermal base layer x4-5",
+                            "Fleece or wool mid-layer x3-4",
+                            "Heavy down jacket or parka x1",
+                            "Waterproof/windproof shell jacket x1",
+                            "Waterproof/windproof pants x2",
+                            "Warm hat/balaclava x1",
+                            "Neck gaiter or scarf x1",
+                            "Insulated gloves or mittens x2",
+                            "Waterproof boots with insulation (CRITICAL)",
+                            "Crampons or ice cleats",
+                            "Casual shoes x1",
+                            "Headlamp with extra batteries x2-3 (only 7-9 hours daylight)",
+                            "Emergency shelter/bivvy bag",
+                            "First aid kit",
+                            "Emergency whistle",
+                            "Sunscreen and lip balm",
+                            "Sunglasses",
+                            "Underwear x7-10",
+                            "Socks x8-10 (wool preferred)",
+                            "Toiletries",
+                            "Medications",
+                            "Phone charger with power bank",
+                            "Camera with extra batteries",
+                            "Backpack (30-40L)",
+                            "Water bottle (2L, insulated)",
+                            "Thermos for hot drinks",
+                            "High-calorie snacks",
+                            "Hand warmers",
+                            "Lip balm (prevent chapping)",
+                            "Moisturizer (prevent dry skin)"
+                        ],
+                        "whatMustNotSkip": [
+                            "Waterproof/windproof jacket and pants",
+                            "Insulated waterproof boots",
+                            "Crampons or ice cleats",
+                            "Headlamp (only 7-9 hours daylight)",
+                            "Extra batteries",
+                            "Emergency shelter",
+                            "High-calorie food"
+                        ],
+                        "criticalReminders": [
+                            "Winter daylight is only 7-9 hours",
+                            "Must prepare for extreme cold (-5 to -15°C)",
+                            "Blizzards can occur suddenly",
+                            "Roads may close without warning",
+                            "Bring more socks and gloves than you think"
+                        ]
+                    },
+                    "packing_order_steps": [
+                        {
+                            "name": "Gather all items",
+                            "items": "Lay out all items on bed or floor",
+                            "why": "Ensure nothing is forgotten"
+                        },
+                        {
+                            "name": "Organize by category",
+                            "categories": [
+                                "Documents and valuables (highest priority)",
+                                "Electronics and chargers",
+                                "Clothing (outer layer, mid-layer, base layer)",
+                                "Hygiene and toiletries (waterproof containers)",
+                                "Gear and accessories",
+                                "Snacks and food"
+                            ],
+                            "why": "Easy to find critical items quickly"
+                        },
+                        {
+                            "name": "Pack critical items (carry-on)",
+                            "items": [
+                                "Passport, driver's license, credit cards",
+                                "Insurance certificate",
+                                "Flight tickets",
+                                "Emergency contact information"
+                            ],
+                            "container": "Small waterproof bag, front pocket of backpack",
+                            "why": "Irreplaceable items, need quick access"
+                        },
+                        {
+                            "name": "Pack clothing by layer",
+                            "order": [
+                                "Base layers (thermal underwear)",
+                                "Mid-layers (fleece, wool)",
+                                "Outer layers (shell jacket, pants)",
+                                "Accessories (hat, gloves, scarf)"
+                            ],
+                            "why": "Easy to find and organize for layering"
+                        },
+                        {
+                            "name": "Pack gear and safety items",
+                            "items": [
+                                "Headlamp and batteries",
+                                "First aid kit",
+                                "Emergency shelter",
+                                "Emergency whistle",
+                                "Water bottle",
+                                "Snacks"
+                            ],
+                            "why": "Critical for safety and survival"
+                        }
+                    ],
+                    "pre_departure_final_checklist": {
+                        "oneDayBefore": [
+                            "☐ Passport check: Valid? Visa attached? Copies made?",
+                            "☐ Flight tickets: Printed or screenshot? Offline saved?",
+                            "☐ Car rental confirmation: Pickup time and location clear?",
+                            "☐ Accommodation confirmation: First night address and contact saved?",
+                            "☐ Weather forecast: Check SMN Argentina for next week",
+                            "☐ Road conditions: Check for any closures or warnings",
+                            "☐ Travel insurance: Verify coverage, especially for activities"
+                        ],
+                        "threeHoursBefore": [
+                            "☐ All devices charged: Phone, power bank, camera batteries",
+                            "☐ Clothing final check: All packed? Tried on?",
+                            "☐ Documents final check: Passport, driver's license, credit cards?",
+                            "☐ Critical items in carry-on: Passport, wallet, phone, power bank"
+                        ],
+                        "thirtyMinutesBefore": [
+                            "☐ Confirm all luggage packed",
+                            "☐ Confirm critical documents in carry-on",
+                            "☐ Close all home appliances"
+                        ],
+                        "criticalItemsAbsoluteMustHave": [
+                            "✅ Passport",
+                            "✅ Driver's license + International Driving Permit",
+                            "✅ Credit card x2",
+                            "✅ Travel insurance certificate",
+                            "✅ Waterproof/windproof shell jacket",
+                            "✅ Waterproof hiking boots",
+                            "✅ Headlamp with batteries",
+                            "✅ Emergency shelter"
+                        ]
+                    }
+                }
+            },
+            "packingGuide": {
+                "version": "1.0.0",
+                "lastUpdated": "2026-01-30T00:00:00.000Z",
+                "data": {
+                    "metadata": {
+                        "version": "1.0.0",
+                        "last_updated": "2026-01-30"
+                    },
+                    "layering_system": {
+                        "base_layer": {
+                            "description": "Base Layer (skin contact)",
+                            "description_zh": "基础层（贴身）",
+                            "materials": ["Merino wool", "Synthetic fiber"],
+                            "function": "Moisture-wicking, insulation",
+                            "function_zh": "排汗、保暖",
+                            "quantity": {
+                                "summer": "2 sets",
+                                "winter": "4-5 sets"
+                            }
+                        },
+                        "mid_layer": {
+                            "description": "Mid Layer (insulation)",
+                            "description_zh": "中层（保暖）",
+                            "materials": ["Fleece", "Wool", "Down"],
+                            "function": "Insulation, breathability",
+                            "function_zh": "保暖、透气",
+                            "quantity": {
+                                "summer": "2 pieces",
+                                "winter": "3-4 pieces"
+                            }
+                        },
+                        "outer_layer": {
+                            "description": "Outer Layer (protection)",
+                            "description_zh": "外层（防护）",
+                            "materials": ["Gore-Tex", "Waterproof coating"],
+                            "function": "Waterproof, windproof",
+                            "function_zh": "防水、防风",
+                            "quantity": "1 piece (MANDATORY)"
+                        }
+                    },
+                    "footwear": {
+                        "recommendations": [
+                            {
+                                "type": "Waterproof hiking boots",
+                                "when": "All seasons",
+                                "features": ["Waterproof", "Anti-slip", "High ankle"],
+                                "brands": ["Salomon", "Merrell", "Columbia", "Scarpa"]
+                            },
+                            {
+                                "type": "Casual shoes",
+                                "when": "Summer city exploration",
+                                "features": ["Lightweight", "Breathable"]
+                            }
+                        ],
+                        "winter_specific": [
+                            "Crampons or ice cleats (MANDATORY for winter)",
+                            "Anti-slip chains (if driving)"
+                        ]
+                    },
+                    "packing_tips": [
+                        "Use compression bags to save space",
+                        "Keep critical items in carry-on",
+                        "Protect electronics with waterproof bags",
+                        "Bring more socks than you think (get wet easily)",
+                        "Use plastic bags for wet clothing",
+                        "Pack items in order of use (last used on top)",
+                        "Label all bags for easy identification"
+                    ],
+                    "what_not_to_bring": [
+                        "Don't bring too much cash (most places accept credit cards)",
+                        "Don't bring non-waterproof shoes",
+                        "Don't bring clothing that doesn't layer well",
+                        "Don't bring devices without spare batteries",
+                        "Don't bring heavy items you won't use",
+                        "Don't bring more than 2 pairs of shoes"
+                    ],
+                    "ushuaia_specific_tips": [
+                        "Bring more warm layers than you think you need",
+                        "Wind chill is extreme - waterproof shell is critical",
+                        "Socks get wet easily - bring 8-10 pairs",
+                        "Headlamp is essential, especially in winter",
+                        "Emergency shelter can save your life",
+                        "Bring high-calorie snacks for remote areas",
+                        "Sunscreen is important even in winter (UV reflection from snow)",
+                        "Bring moisturizer (dry climate and wind)",
+                        "Lip balm is essential (prevent chapping)"
+                    ]
+                }
+            }
+        },
+        "metadata": {
+            "totalRules": 7,
+            "totalChecklists": 6,
+            "totalHazards": 6,
+            "region": "Ushuaia, Tierra del Fuego, Argentina",
+            "countryCode": "AR",
+            "timezone": "America/Argentina/Ushuaia",
+            "lastUpdated": "2026-01-30T00:00:00Z",
+            "dataSource": "TripNARA Knowledge Base",
+            "layer1RedLines": 5,
+            "layer2Warnings": 6,
+            "criticalSafetyItems": [
+                "Waterproof/windproof shell jacket",
+                "Waterproof hiking boots",
+                "Headlamp with spare batteries",
+                "Emergency shelter",
+                "First aid kit",
+                "Travel insurance (for Antarctica)"
+            ]
+        }
+    };
+    try {
+        logInfo(`开始导入 Pack: ${ushuaiaPack.packId}`);
+        const packsDir = (0, path_1.join)(__dirname, '../src/trips/readiness/data/packs');
+        const filePath = (0, path_1.join)(packsDir, 'pack.ar.ushuaia.json');
+        const fs = require('fs');
+        if (!(0, fs_1.existsSync)(packsDir)) {
+            fs.mkdirSync(packsDir, { recursive: true });
+        }
+        logInfo(`保存 JSON 文件到: ${filePath}`);
+        (0, fs_1.writeFileSync)(filePath, JSON.stringify(ushuaiaPack, null, 2), 'utf-8');
+        logSuccess(`JSON 文件已保存`);
+        const result = await importPackFromJson(ushuaiaPack);
+        if (result) {
+            logSuccess('导入完成！');
+            console.log(`\n${colors.cyan}Pack 信息:${colors.reset}`);
+            console.log(`  Pack ID: ${ushuaiaPack.packId}`);
+            console.log(`  目的地: ${ushuaiaPack.destinationId}`);
+            console.log(`  版本: ${ushuaiaPack.version}`);
+            const displayName = typeof ushuaiaPack.displayName === 'string'
+                ? ushuaiaPack.displayName
+                : `${ushuaiaPack.displayName.en} / ${ushuaiaPack.displayName.zh || ''}`;
+            console.log(`  显示名称: ${displayName}`);
+            console.log(`  规则数: ${ushuaiaPack.rules.length}`);
+            console.log(`  清单数: ${ushuaiaPack.checklists.length}`);
+            console.log(`  风险数: ${((_a = ushuaiaPack.hazards) === null || _a === void 0 ? void 0 : _a.length) || 0}`);
+        }
+        else {
+            logError('导入失败！');
+            process.exit(1);
+        }
+    }
+    catch (error) {
+        logError(`导入过程中发生错误: ${error.message}`);
+        console.error(error);
+        process.exit(1);
+    }
+    finally {
+        await prisma.$disconnect();
+    }
+}
+if (require.main === module) {
+    main().catch((error) => {
+        console.error('未捕获的错误:', error);
+        process.exit(1);
+    });
+}
+//# sourceMappingURL=import-ushuaia-readiness-pack.js.map

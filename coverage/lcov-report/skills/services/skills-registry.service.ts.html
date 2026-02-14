@@ -1,0 +1,541 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for skills/services/skills-registry.service.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">skills/services</a> skills-registry.service.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/97</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/160</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/7</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/68</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// src/skills/services/skills-registry.service.ts
+/**
+ * Skills Registry Service
+ * 
+ * 统一注册和管理所有 Skills
+ */
+&nbsp;
+<span class="cstat-no" title="statement not covered" >import { Inject, Injectable, Optional, Logger } from '@nestjs/common';</span>
+<span class="cstat-no" title="statement not covered" >import { Skill } from '../interfaces/skill.interface';</span>
+<span class="cstat-no" title="statement not covered" >import {</span>
+  SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
+  SKILL_COUNTRY_PACK_NEW_SKELETON,
+  SKILL_COUNTRY_PACK_VALIDATE,
+  SKILL_DECISION_ABU_CHECK,
+  SKILL_DECISION_DRDRE_PACE,
+  SKILL_DECISION_NEPTUNE_REPAIR,
+  SKILL_DECISION_RUN_THREE_GUARDIANS,
+  SKILL_DECISION_EXPLAIN_FOR_HUMAN,
+  SKILL_DEM_GET_PROFILE,
+  SKILL_READINESS_GENERATE_CHECKLIST,
+  SKILL_READINESS_SUMMARIZE_RISKS,
+  SKILL_READINESS_CHECK_VISA_WINDOW,
+  SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT,
+  SKILL_ROUTE_DIRECTION_LIST_FOR_COUNTRY,
+  SKILL_TRIP_QUICK_EVALUATE,
+  SKILL_COUNTRY_PACK_SUGGEST_IMPROVEMENTS,
+  SKILL_WORLD_BUILD_CONTEXT,
+  SKILL_COUNTRY_PACK_GET_BLOCKS,
+  SKILL_COUNTRY_PACK_RANK_BLOCKS,
+  SKILL_CONTEXT_BUILD,
+  SKILL_CONTEXT_COMPRESS,
+  SKILL_CONTEXT_EVALUATE,
+  SKILL_CONTEXT_REGRESSION_TESTS,
+  SKILL_PLAN_SELECT_SLICES,
+  SKILL_TOOLS_SELECT,
+  SKILL_DECISION_LOG_APPEND,
+} from '../skills.tokens';
+&nbsp;
+@Injectable()
+export class <span class="cstat-no" title="statement not covered" ><span class="cstat-no" title="statement not covered" >SkillsRegistryService<span class="cstat-no" title="statement not covered" > </span>{</span></span>
+  private readonly <span class="cstat-no" title="statement not covered" >skills = new Map&lt;string, Skill&gt;();</span>
+  private readonly <span class="cstat-no" title="statement not covered" >logger = new Logger(SkillsRegistryService.name);</span>
+&nbsp;
+<span class="fstat-no" title="function not covered" >  constructor(</span>
+    @Optional() @Inject(SKILL_DEM_GET_PROFILE) private readonly <span class="cstat-no" title="statement not covered" >demGetProfile?: S</span>kill,
+    @Optional() @Inject(SKILL_WORLD_BUILD_CONTEXT) private readonly <span class="cstat-no" title="statement not covered" >worldBuildContext?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_ABU_CHECK) private readonly <span class="cstat-no" title="statement not covered" >decisionAbuCheck?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_DRDRE_PACE) private readonly <span class="cstat-no" title="statement not covered" >decisionDrdrePace?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_NEPTUNE_REPAIR) private readonly <span class="cstat-no" title="statement not covered" >decisionNeptuneRepair?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_RUN_THREE_GUARDIANS) private readonly <span class="cstat-no" title="statement not covered" >decisionRunThreeGuardians?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_EXPLAIN_FOR_HUMAN) private readonly <span class="cstat-no" title="statement not covered" >decisionExplainForHuman?: S</span>kill,
+    @Optional()
+    @Inject(SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT)
+    private readonly <span class="cstat-no" title="statement not covered" >routeDirectionPickForIntent?: S</span>kill,
+    @Optional()
+    @Inject(SKILL_ROUTE_DIRECTION_LIST_FOR_COUNTRY)
+    private readonly <span class="cstat-no" title="statement not covered" >routeDirectionListForCountry?: S</span>kill,
+    @Optional()
+    @Inject(SKILL_READINESS_GENERATE_CHECKLIST)
+    private readonly <span class="cstat-no" title="statement not covered" >readinessGenerateChecklist?: S</span>kill,
+    @Optional() @Inject(SKILL_READINESS_SUMMARIZE_RISKS) private readonly <span class="cstat-no" title="statement not covered" >readinessSummarizeRisks?: S</span>kill,
+    @Optional() @Inject(SKILL_READINESS_CHECK_VISA_WINDOW) private readonly <span class="cstat-no" title="statement not covered" >readinessCheckVisaWindow?: S</span>kill,
+    @Optional() @Inject(SKILL_TRIP_QUICK_EVALUATE) private readonly <span class="cstat-no" title="statement not covered" >tripQuickEvaluate?: S</span>kill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_NEW_SKELETON) private readonly <span class="cstat-no" title="statement not covered" >countryPackNewSkeleton?: S</span>kill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_VALIDATE) private readonly <span class="cstat-no" title="statement not covered" >countryPackValidate?: S</span>kill,
+    @Optional()
+    @Inject(SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS)
+    private readonly <span class="cstat-no" title="statement not covered" >countryPackGenerateRegressionTests?: S</span>kill,
+    @Optional()
+    @Inject(SKILL_COUNTRY_PACK_SUGGEST_IMPROVEMENTS)
+    private readonly <span class="cstat-no" title="statement not covered" >countryPackSuggestImprovements?: S</span>kill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_GET_BLOCKS) private readonly <span class="cstat-no" title="statement not covered" >countryPackGetBlocks?: S</span>kill,
+    @Optional() @Inject(SKILL_COUNTRY_PACK_RANK_BLOCKS) private readonly <span class="cstat-no" title="statement not covered" >countryPackRankBlocks?: S</span>kill,
+    @Optional() @Inject(SKILL_CONTEXT_BUILD) private readonly <span class="cstat-no" title="statement not covered" >contextBuild?: S</span>kill,
+    @Optional() @Inject(SKILL_CONTEXT_COMPRESS) private readonly <span class="cstat-no" title="statement not covered" >contextCompress?: S</span>kill,
+    @Optional() @Inject(SKILL_CONTEXT_EVALUATE) private readonly <span class="cstat-no" title="statement not covered" >contextEvaluate?: S</span>kill,
+    @Optional() @Inject(SKILL_CONTEXT_REGRESSION_TESTS) private readonly <span class="cstat-no" title="statement not covered" >contextRegressionTests?: S</span>kill,
+    @Optional() @Inject(SKILL_PLAN_SELECT_SLICES) private readonly <span class="cstat-no" title="statement not covered" >planSelectSlices?: S</span>kill,
+    @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly <span class="cstat-no" title="statement not covered" >toolsSelect?: S</span>kill,
+    @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly <span class="cstat-no" title="statement not covered" >decisionLogAppend?: S</span>kill,
+  ) {
+<span class="cstat-no" title="statement not covered" >    this.logger.log('[SkillsRegistryService] 构造函数开始执行...');</span>
+    // 注册所有 Skills（只注册成功注入的）
+<span class="cstat-no" title="statement not covered" >    this.logger.debug('[SkillsRegistryService] 开始注册 Skills...');</span>
+<span class="cstat-no" title="statement not covered" >    if (this.demGetProfile) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.demGetProfile);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.worldBuildContext) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.worldBuildContext);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionAbuCheck) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionAbuCheck);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionDrdrePace) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionDrdrePace);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionNeptuneRepair) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionNeptuneRepair);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionRunThreeGuardians) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionRunThreeGuardians);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionExplainForHuman) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionExplainForHuman);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.routeDirectionPickForIntent) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.routeDirectionPickForIntent);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.routeDirectionListForCountry) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.routeDirectionListForCountry);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.readinessGenerateChecklist) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.readinessGenerateChecklist);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.readinessSummarizeRisks) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.readinessSummarizeRisks);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.readinessCheckVisaWindow) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.readinessCheckVisaWindow);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.tripQuickEvaluate) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.tripQuickEvaluate);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackNewSkeleton) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackNewSkeleton);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackValidate) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackValidate);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackGenerateRegressionTests) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackGenerateRegressionTests);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackSuggestImprovements) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackSuggestImprovements);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackGetBlocks) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackGetBlocks);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.countryPackRankBlocks) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.countryPackRankBlocks);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.contextBuild) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.contextBuild);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.contextCompress) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.contextCompress);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.contextEvaluate) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.contextEvaluate);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.contextRegressionTests) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.contextRegressionTests);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.planSelectSlices) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.planSelectSlices);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.toolsSelect) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.toolsSelect);</span></span>
+<span class="cstat-no" title="statement not covered" >    if (this.decisionLogAppend) <span class="cstat-no" title="statement not covered" >this.registerSkill(this.decisionLogAppend);</span></span>
+<span class="cstat-no" title="statement not covered" >    this.logger.log(`[SkillsRegistryService] 构造函数完成，已注册 ${this.skills.size} 个 Skills`);</span>
+  }
+&nbsp;
+  /**
+   * 注册 Skill
+   */
+<span class="fstat-no" title="function not covered" >  registerSkill(</span>skill: Skill): void {
+<span class="cstat-no" title="statement not covered" >    if (!skill || !skill.metadata) {</span>
+<span class="cstat-no" title="statement not covered" >      return;</span>
+    }
+<span class="cstat-no" title="statement not covered" >    this.skills.set(skill.metadata.name, skill);</span>
+  }
+&nbsp;
+  /**
+   * 获取 Skill
+   */
+<span class="fstat-no" title="function not covered" >  getSkill(</span>name: string): Skill | undefined {
+<span class="cstat-no" title="statement not covered" >    return this.skills.get(name);</span>
+  }
+&nbsp;
+  /**
+   * 检查 Skill 是否已注册
+   */
+<span class="fstat-no" title="function not covered" >  hasSkill(</span>name: string): boolean {
+<span class="cstat-no" title="statement not covered" >    return this.skills.has(name);</span>
+  }
+&nbsp;
+  /**
+   * 获取所有 Skills
+   */
+<span class="fstat-no" title="function not covered" >  getAllSkills(</span>): Skill[] {
+<span class="cstat-no" title="statement not covered" >    return Array.from(this.skills.values());</span>
+  }
+&nbsp;
+  /**
+   * 获取所有 Skill 元数据
+   */
+<span class="fstat-no" title="function not covered" >  getAllSkillMetadata(</span>) {
+<span class="cstat-no" title="statement not covered" >    return Array.from(this.skills.values()).map(<span class="fstat-no" title="function not covered" >skill </span>=&gt; <span class="cstat-no" title="statement not covered" >skill.metadata)</span>;</span>
+  }
+}
+&nbsp;
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-01-24T18:17:16.011Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -1,0 +1,30 @@
+import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
+import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
+import { DecisionResult } from '../shared/decision-result.types';
+import { SpatialReplacementService } from '../services/spatial-replacement.service';
+import { SpatialIssueDetectorService } from '../services/spatial-issue-detector.service';
+import { RouteDirectionsService } from '../../../route-directions/route-directions.service';
+import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
+import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
+import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
+export declare class NeptuneStrategy implements DecisionPersonaStrategy {
+    private readonly spatialReplacement;
+    private readonly spatialIssueDetector;
+    private readonly routeDirectionsService?;
+    private readonly exaIntegration?;
+    private readonly airbnbIntegration?;
+    private readonly bookingComIntegration?;
+    private readonly logger;
+    readonly personaName: "NEPTUNE";
+    constructor(spatialReplacement: SpatialReplacementService, spatialIssueDetector: SpatialIssueDetectorService, routeDirectionsService?: RouteDirectionsService, exaIntegration?: ExaIntegrationService, airbnbIntegration?: AirbnbIntegrationService, bookingComIntegration?: BookingComIntegrationService);
+    evaluate(world: WorldModelContext, plan: RoutePlanDraft): Promise<DecisionResult>;
+    private detectAdditionalSpatialIssues;
+    private extractRoutePhilosophy;
+    private handleIssue;
+    private searchExaAlternatives;
+    private searchCarRentalAlternatives;
+    private searchAirbnbAlternatives;
+    private applyReplacement;
+    private validateSpatialConstraint;
+    private getRouteDirection;
+}

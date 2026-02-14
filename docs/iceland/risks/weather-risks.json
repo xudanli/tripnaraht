@@ -1,0 +1,540 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "data_sources": [
+      "SafeTravel.is",
+      "Icelandic Met Office",
+      "ICE-SAR (冰岛搜救队)"
+    ],
+    "credibility_score": 0.97,
+    "language": "zh-CN",
+    "update_frequency": "daily"
+  },
+  "risk_assessment_framework": {
+    "risk_score_calculation": "risk_score = probability × severity × exposure",
+    "risk_levels": {
+      "low": "0.0-0.3",
+      "medium": "0.3-0.6",
+      "high": "0.6-0.8",
+      "extreme": "0.8-1.0"
+    },
+    "probability_scale": {
+      "rare": 0.1,
+      "occasional": 0.3,
+      "frequent": 0.6,
+      "very_frequent": 0.9
+    },
+    "severity_scale": {
+      "minor": 0.2,
+      "moderate": 0.5,
+      "severe": 0.8,
+      "catastrophic": 1.0
+    }
+  },
+  "weather_risks": [
+    {
+      "risk_id": "wx_001",
+      "risk_name": "暴风雪",
+      "risk_name_en": "Blizzard / Snowstorm",
+      "risk_type": "weather",
+      "severity": "severe",
+      "severity_score": 0.8,
+      "probability_by_season": {
+        "winter": {"level": "very_frequent", "score": 0.9},
+        "spring": {"level": "frequent", "score": 0.6},
+        "summer": {"level": "rare", "score": 0.1},
+        "autumn": {"level": "frequent", "score": 0.6}
+      },
+      "affected_areas": [
+        "全国，尤其南海岸和西峡湾",
+        "高地（内陆高地）",
+        "山区道路"
+      ],
+      "affected_routes": [
+        "ring_road_full",
+        "westfjords",
+        "highlands"
+      ],
+      "peak_risk_months": ["11月", "12月", "1月", "2月", "3月"],
+      "characteristics": {
+        "wind_speed": "通常 > 20m/s，阵风 > 30m/s",
+        "visibility": "< 100米",
+        "snow_accumulation": "每小时数厘米",
+        "temperature_drop": "体感温度可达 -20°C 以下",
+        "duration": "数小时至数日"
+      },
+      "impact_on_travel": {
+        "road_conditions": "完全不可通行",
+        "visibility": "极差，无法驾驶",
+        "vehicle_damage": "车门可能被冻住，雪堆掩埋",
+        "rescue_difficulty": "救援困难，等待时间长"
+      },
+      "warning_signs": [
+        "气象局发布暴风警报",
+        "风力迅速增强",
+        "能见度下降",
+        "降雪开始"
+      ],
+      "mitigation_strategies": [
+        "查看 vedur.is 和 road.is 实时信息",
+        "如遇暴风雪，立即寻找庇护所",
+        "不要强行开车",
+        "准备应急物资（食物、水、毯子、充电宝）",
+        "告知他人行程",
+        "考虑租用四驱车并购买全险"
+      ],
+      "emergency_actions": [
+        "留在车内，保持发动机运转（注意排气管不被雪堵）",
+        "拨打 112 求救",
+        "等待救援，不要徒步离开",
+        "使用应急物资保暖"
+      ],
+      "real_time_data_sources": [
+        "https://en.vedur.is/alerts",
+        "https://www.road.is",
+        "https://safetravel.is"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2022-01-15",
+          "location": "南海岸1号公路",
+          "description": "暴风雪导致数十辆车被困，救援持续12小时",
+          "lessons": "不要低估冰岛天气，务必听从官方建议"
+        }
+      ]
+    },
+    {
+      "risk_id": "wx_002",
+      "risk_name": "强风",
+      "risk_name_en": "Strong Wind / Gale",
+      "risk_type": "weather",
+      "severity": "moderate",
+      "severity_score": 0.5,
+      "probability_by_season": {
+        "winter": {"level": "very_frequent", "score": 0.9},
+        "spring": {"level": "frequent", "score": 0.6},
+        "summer": {"level": "occasional", "score": 0.3},
+        "autumn": {"level": "very_frequent", "score": 0.9}
+      },
+      "affected_areas": [
+        "开阔地带",
+        "南海岸",
+        "西峡湾",
+        "桥梁和高架路段"
+      ],
+      "affected_routes": [
+        "ring_road_south",
+        "westfjords",
+        "highlands"
+      ],
+      "peak_risk_months": ["10月", "11月", "12月", "1月", "2月", "3月"],
+      "characteristics": {
+        "wind_speed": "15-25m/s（阵风可达 > 30m/s）",
+        "wind_direction": "多变，主要为西南风",
+        "gust_frequency": "频繁且突然",
+        "affected_vehicles": "高侧面车辆（SUV、房车）尤其危险"
+      },
+      "impact_on_travel": {
+        "driving_difficulty": "车辆可能被吹离车道",
+        "door_damage": "车门可能被风吹坏",
+        "bridge_crossing": "桥梁上极度危险",
+        "walking": "站立困难，碎石飞溅"
+      },
+      "warning_signs": [
+        "气象局发布大风警报",
+        "车辆摇晃",
+        "其他车辆减速或停车",
+        "风声异常强烈"
+      ],
+      "mitigation_strategies": [
+        "查看 vedur.is 风速预报",
+        "避免在大风中开车",
+        "桥梁和开阔地段极度谨慎",
+        "开车门时用双手紧握，防止被吹飞",
+        "减速慢行，双手紧握方向盘",
+        "考虑租用低重心车辆"
+      ],
+      "emergency_actions": [
+        "如风力过大，停车等待",
+        "寻找有遮挡的区域",
+        "不要在桥梁或高架路段停车",
+        "开车门前先观察风向"
+      ],
+      "real_time_data_sources": [
+        "https://en.vedur.is/weather/forecasts/wind"
+      ],
+      "special_notes": [
+        "冰岛的风力常被低估，即使夏季也可能遇到强风",
+        "车门被风吹坏是常见的租车保险索赔项"
+      ]
+    },
+    {
+      "risk_id": "wx_003",
+      "risk_name": "突发天气变化",
+      "risk_name_en": "Sudden Weather Change",
+      "risk_type": "weather",
+      "severity": "moderate",
+      "severity_score": 0.5,
+      "probability_by_season": {
+        "winter": {"level": "very_frequent", "score": 0.9},
+        "spring": {"level": "very_frequent", "score": 0.9},
+        "summer": {"level": "frequent", "score": 0.6},
+        "autumn": {"level": "very_frequent", "score": 0.9}
+      },
+      "affected_areas": ["全国"],
+      "affected_routes": ["all"],
+      "peak_risk_months": ["全年"],
+      "characteristics": {
+        "change_speed": "数分钟至数小时",
+        "unpredictability": "高",
+        "typical_changes": [
+          "晴天 → 暴雨",
+          "温和 → 暴风雪",
+          "平静 → 强风"
+        ],
+        "micro_climates": "山区和海岸尤其多变"
+      },
+      "impact_on_travel": {
+        "planning_difficulty": "难以精确规划",
+        "equipment_needs": "需准备多种装备",
+        "time_buffer": "需要充足的时间缓冲",
+        "flexibility": "行程需保持灵活"
+      },
+      "warning_signs": [
+        "云层快速变化",
+        "气压变化",
+        "风向转变",
+        "温度骤降"
+      ],
+      "mitigation_strategies": [
+        "每天早晚查看天气预报",
+        "准备分层穿衣系统",
+        "携带防水装备",
+        "预留足够时间缓冲",
+        "制定备选计划",
+        "学会识别天气变化征兆"
+      ],
+      "emergency_actions": [
+        "遇天气恶化立即寻找庇护所",
+        "不要继续前往偏远地区",
+        "联系住宿取消或延期",
+        "关注实时预报"
+      ],
+      "real_time_data_sources": [
+        "https://en.vedur.is"
+      ],
+      "cultural_note": "冰岛有句谚语：'如果你不喜欢现在的天气，等五分钟'"
+    },
+    {
+      "risk_id": "wx_004",
+      "risk_name": "白化（Whiteout）",
+      "risk_name_en": "Whiteout Conditions",
+      "risk_type": "weather",
+      "severity": "severe",
+      "severity_score": 0.8,
+      "probability_by_season": {
+        "winter": {"level": "frequent", "score": 0.6},
+        "spring": {"level": "occasional", "score": 0.3},
+        "summer": {"level": "rare", "score": 0.05},
+        "autumn": {"level": "occasional", "score": 0.3}
+      },
+      "affected_areas": [
+        "内陆高地",
+        "雪地地区",
+        "开阔平原"
+      ],
+      "affected_routes": [
+        "highlands",
+        "ring_road_north（冬季）"
+      ],
+      "peak_risk_months": ["12月", "1月", "2月", "3月"],
+      "characteristics": {
+        "visibility": "接近零，无法区分地面和天空",
+        "disorientation": "极易迷失方向",
+        "depth_perception": "完全丧失",
+        "causes": [
+          "暴雪",
+          "地面雪被吹起",
+          "浓雾 + 雪地反光"
+        ]
+      },
+      "impact_on_travel": {
+        "driving": "完全无法判断道路",
+        "walking": "容易迷路或跌落",
+        "navigation": "GPS无用，无法看见地标",
+        "danger_level": "致命"
+      },
+      "warning_signs": [
+        "能见度急剧下降",
+        "无法看到远处物体",
+        "分不清地面和天空",
+        "失去方向感"
+      ],
+      "mitigation_strategies": [
+        "避免在冬季前往高地或偏远地区",
+        "遇白化立即停车",
+        "等待能见度改善",
+        "不要徒步离开车辆或营地",
+        "使用GPS坐标记录位置",
+        "告知他人确切位置"
+      ],
+      "emergency_actions": [
+        "立即停止移动",
+        "留在车内或帐篷内",
+        "拨打 112",
+        "等待救援",
+        "不要尝试'摸索前进'"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2019-02-10",
+          "location": "内陆高地Kjölur路线",
+          "description": "两名徒步者在白化条件下迷路，幸得救援",
+          "lessons": "白化是致命的，绝不可低估"
+        }
+      ]
+    },
+    {
+      "risk_id": "wx_005",
+      "risk_name": "冰雨/冻雨",
+      "risk_name_en": "Freezing Rain / Ice Storm",
+      "risk_type": "weather",
+      "severity": "severe",
+      "severity_score": 0.8,
+      "probability_by_season": {
+        "winter": {"level": "occasional", "score": 0.3},
+        "spring": {"level": "occasional", "score": 0.3},
+        "summer": {"level": "rare", "score": 0.01},
+        "autumn": {"level": "occasional", "score": 0.3}
+      },
+      "affected_areas": [
+        "南海岸",
+        "东部",
+        "道路和停车场"
+      ],
+      "affected_routes": ["all（冬春季）"],
+      "peak_risk_months": ["11月", "12月", "1月", "2月", "3月", "4月"],
+      "characteristics": {
+        "formation": "雨滴接触冰冷地面立即结冰",
+        "surface": "路面、车辆、栏杆极滑",
+        "transparency": "冰层透明，难以察觉",
+        "danger": "刹车和转向完全失效"
+      },
+      "impact_on_travel": {
+        "driving": "极度危险，车辆失控",
+        "walking": "容易滑倒受伤",
+        "visibility": "车窗结冰",
+        "accident_rate": "显著增加"
+      },
+      "warning_signs": [
+        "温度在 0°C 左右",
+        "降雨但地面冰冷",
+        "路面异常光滑",
+        "其他车辆滑行"
+      ],
+      "mitigation_strategies": [
+        "避免在冰雨中驾驶",
+        "减速至极慢速度",
+        "保持安全距离",
+        "租用带钉胎的车辆（冬季）",
+        "使用防滑鞋套",
+        "停车等待冰雨结束"
+      ],
+      "emergency_actions": [
+        "车辆失控不要急刹车",
+        "轻点刹车，缓慢转向",
+        "如无法控制，停车等待",
+        "撒沙或盐化冰"
+      ],
+      "real_time_data_sources": [
+        "https://www.road.is（路况报告）"
+      ]
+    },
+    {
+      "risk_id": "wx_006",
+      "risk_name": "雾天",
+      "risk_name_en": "Dense Fog",
+      "risk_type": "weather",
+      "severity": "moderate",
+      "severity_score": 0.5,
+      "probability_by_season": {
+        "winter": {"level": "occasional", "score": 0.3},
+        "spring": {"level": "frequent", "score": 0.6},
+        "summer": {"level": "frequent", "score": 0.6},
+        "autumn": {"level": "frequent", "score": 0.6}
+      },
+      "affected_areas": [
+        "沿海地区",
+        "峡湾",
+        "地热区"
+      ],
+      "affected_routes": [
+        "westfjords",
+        "east_fjords",
+        "geothermal_areas"
+      ],
+      "peak_risk_months": ["全年，尤其春夏秋"],
+      "characteristics": {
+        "visibility": "< 50米",
+        "sudden_onset": "可能突然出现",
+        "duration": "数小时",
+        "types": [
+          "海雾（沿海）",
+          "山雾（山区）",
+          "蒸汽雾（地热区）"
+        ]
+      },
+      "impact_on_travel": {
+        "driving": "能见度低，危险",
+        "navigation": "容易错过转弯",
+        "景观": "无法看到景点",
+        "hiking": "容易迷路"
+      },
+      "warning_signs": [
+        "湿度增加",
+        "温度变化",
+        "远处景物模糊"
+      ],
+      "mitigation_strategies": [
+        "打开雾灯（不是远光灯）",
+        "减速慢行",
+        "保持安全距离",
+        "使用道路标线导航",
+        "等待雾散",
+        "不要徒步远离车辆"
+      ],
+      "emergency_actions": [
+        "如雾太浓，停车等待",
+        "打开危险警示灯",
+        "尽量停在安全区域",
+        "不要停在道路中间"
+      ]
+    }
+  ],
+  "risk_mitigation_framework": {
+    "pre_trip_preparation": [
+      "研究目的地天气模式",
+      "下载离线地图和应急应用",
+      "购买适当保险",
+      "准备应急装备",
+      "了解应急电话和程序",
+      "告知他人行程计划"
+    ],
+    "daily_routine": [
+      "每天早晚查看天气预报",
+      "查看道路状况（road.is）",
+      "检查SafeTravel警报",
+      "调整行程计划",
+      "确认住宿和景点状态"
+    ],
+    "emergency_kit": [
+      "食物和水（至少2天）",
+      "保暖毯或睡袋",
+      "充电宝和充电线",
+      "急救包",
+      "手电筒",
+      "铲子（冬季）",
+      "拖车绳",
+      "反光背心",
+      "哨子",
+      "打火机或火柴"
+    ],
+    "communication_plan": [
+      "保存紧急电话（112）",
+      "告知他人每日行程",
+      "定期报平安",
+      "携带便携式电源",
+      "了解手机信号覆盖区"
+    ]
+  },
+  "seasonal_risk_summary": {
+    "summer": {
+      "overall_risk": "low-medium",
+      "primary_risks": ["突发天气变化", "强风", "雾天"],
+      "recommendation": "最安全的旅行季节，但仍需防范天气多变"
+    },
+    "winter": {
+      "overall_risk": "high-extreme",
+      "primary_risks": ["暴风雪", "强风", "白化", "冰雨"],
+      "recommendation": "仅适合有冰雪驾驶经验者，需充分准备"
+    },
+    "spring_autumn": {
+      "overall_risk": "medium-high",
+      "primary_risks": ["强风", "突发天气变化", "雾天"],
+      "recommendation": "天气多变，需灵活行程，准备多种装备"
+    }
+  },
+  "emergency_contacts": [
+    {
+      "service": "紧急救援（Emergency）",
+      "number": "112",
+      "note": "任何紧急情况"
+    },
+    {
+      "service": "道路信息（Road Info）",
+      "number": "1777",
+      "note": "路况查询"
+    },
+    {
+      "service": "SafeTravel 24/7",
+      "number": "+354 570 5900",
+      "note": "旅行安全咨询"
+    },
+    {
+      "service": "冰岛气象局（Weather Info）",
+      "number": "+354 522 6000",
+      "note": "天气咨询"
+    }
+  ],
+  "real_time_monitoring_sources": {
+    "weather_forecasts": [
+      {
+        "name": "Icelandic Met Office",
+        "url": "https://en.vedur.is",
+        "update_frequency": "每小时",
+        "reliability": "very_high"
+      }
+    ],
+    "road_conditions": [
+      {
+        "name": "Road.is",
+        "url": "https://www.road.is",
+        "update_frequency": "实时",
+        "reliability": "very_high"
+      }
+    ],
+    "safety_alerts": [
+      {
+        "name": "SafeTravel",
+        "url": "https://safetravel.is",
+        "update_frequency": "实时",
+        "reliability": "very_high"
+      }
+    ]
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      },
+      {
+        "source": "Icelandic Met Office",
+        "url": "https://en.vedur.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      },
+      {
+        "source": "ICE-SAR",
+        "url": "https://www.landsbjorg.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      }
+    ],
+    "last_field_verification": "2025-08-15",
+    "next_review_date": "2026-04-22"
+  }
+}

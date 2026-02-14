@@ -1,0 +1,35 @@
+import { LlmService } from '../../llm/services/llm.service';
+import { ChainOfWorkService } from '../../chain-of-work/services/chain-of-work.service';
+import { DecisionTypeToStepDraftMapper } from '../mapping/decision-type-to-step-draft.mapper';
+import { DecisionDraftObservabilityService } from './decision-draft-observability.service';
+import { DecisionDebugCollectorService } from './decision-debug-collector.service';
+import { DecisionDraft, DecisionStep, DecisionDraftGenerationConfig } from '../interfaces/decision-draft.interface';
+import { TripPlanRequest, OrchestratorState, OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
+export declare class DecisionDraftGeneratorService {
+    private readonly llmService;
+    private readonly chainOfWorkService;
+    private readonly decisionTypeMapper;
+    private readonly observability?;
+    private readonly debugCollector?;
+    private readonly logger;
+    constructor(llmService: LlmService, chainOfWorkService: ChainOfWorkService, decisionTypeMapper: DecisionTypeToStepDraftMapper, observability?: DecisionDraftObservabilityService, debugCollector?: DecisionDebugCollectorService);
+    generateDecisionDraft(userInput: string, tripPlanRequest: TripPlanRequest, config?: DecisionDraftGenerationConfig): Promise<DecisionDraft>;
+    private generateDecisionSteps;
+    private identifyDecisionTypes;
+    private generateDecisionStep;
+    private mapDecisionStepsToStepDrafts;
+    private buildDecisionTypeClassificationPrompt;
+    private buildDecisionStepGenerationPrompt;
+    private parseDecisionStep;
+    private generateTemplateDecisionStep;
+    private inferDecisionTypes;
+    private getDecisionTypeTitle;
+    private getDecisionTypeDescription;
+    private extractJSON;
+    private mapModelToProvider;
+    generateDecisionStepFromOrchestrationState(state: OrchestratorState, orchestrationStep: OrchestrationStep, subAgent?: SubAgentType): Promise<DecisionStep | null>;
+    private mapOrchestrationStepToDecisionType;
+    private extractUserInputFromState;
+    private getDecisionTypeClassificationSchema;
+    private getDecisionStepGenerationSchema;
+}

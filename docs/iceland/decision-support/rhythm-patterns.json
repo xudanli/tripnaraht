@@ -1,0 +1,553 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "data_sources": [
+      "TripNARA route-structure-theory-v1.0.md",
+      "用户行为研究",
+      "旅行心理学理论"
+    ],
+    "credibility_score": 0.92,
+    "language": "zh-CN",
+    "purpose": "定义路线的节奏模式，用于匹配用户状态和路线特征"
+  },
+  "rhythm_framework": {
+    "definition": "节奏是路线的'呼吸'方式，描述路线的强度、变化和恢复模式",
+    "core_philosophy": "不同的节奏适合不同的用户状态，没有'最好'的节奏，只有'合适'的节奏",
+    "three_dimensions": {
+      "pace": {
+        "definition": "路线的整体速度和密度",
+        "levels": ["slow", "moderate", "fast"],
+        "measurement": "景点密度、停留时间、行程紧凑度"
+      },
+      "intensity_variation": {
+        "definition": "强度变化的剧烈程度",
+        "levels": ["consistent", "gradual", "dramatic"],
+        "measurement": "体能需求波动、决策压力变化"
+      },
+      "recovery_time": {
+        "definition": "路线提供的恢复和休息机会",
+        "levels": ["minimal", "moderate", "ample"],
+        "measurement": "休息点频率、可调节性"
+      }
+    }
+  },
+  "rhythm_patterns": [
+    {
+      "rhythm_id": "relaxed_sightseeing",
+      "rhythm_name": "轻松观光节奏",
+      "rhythm_name_en": "Relaxed Sightseeing Rhythm",
+      "category": "低强度-一致性",
+      "pace": "slow",
+      "intensity_variation": "consistent",
+      "recovery_time": "ample",
+      "description": "像散步一样轻松，景点之间有充足的缓冲，可随时调整",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "缓慢开始，不赶时间",
+          "midday": "充足的午餐和休息时间",
+          "afternoon": "轻松游览，可随时停下",
+          "evening": "早早结束，充分休息"
+        },
+        "intensity_curve": "平缓的低强度曲线，无明显波峰波谷",
+        "decision_pressure": "极低，几乎无需做艰难选择",
+        "flexibility": "极高，可随时改变计划",
+        "social_demand": "低，可独处或轻松社交"
+      },
+      "suitable_for": {
+        "user_states": [
+          "初次旅行者",
+          "想放松休息",
+          "不想思考太多",
+          "带老人或儿童",
+          "恢复期（身体或心理）",
+          "度假心态"
+        ],
+        "user_characteristics": {
+          "energy_level": "low-medium",
+          "experience": "any",
+          "decision_capacity": "any",
+          "time_availability": "flexible",
+          "stress_tolerance": "low"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "寻求刺激",
+          "想挑战自我",
+          "时间极度紧张",
+          "追求效率"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_golden_circle_001",
+          "route_name": "黄金圈",
+          "why": "景点简单易达，每个点都有休息设施，可快可慢"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "低（每小时0.5-1个景点）",
+        "停留时间": "长（每个景点1小时以上）",
+        "驾驶时间占比": "30-40%",
+        "休息时间占比": "30-40%",
+        "活动时间占比": "20-40%"
+      },
+      "emotional_journey": {
+        "起点": "放松、期待",
+        "过程": "舒适、愉悦、偶尔惊喜",
+        "终点": "满足、不疲惫、想再来"
+      }
+    },
+    {
+      "rhythm_id": "scenic_exploration",
+      "rhythm_name": "风景巡礼节奏",
+      "rhythm_name_en": "Scenic Exploration Rhythm",
+      "category": "中强度-渐进性",
+      "pace": "moderate",
+      "intensity_variation": "gradual",
+      "recovery_time": "moderate",
+      "description": "稳定的中等强度，景点丰富但不赶，逐渐展开",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "按时出发，适度节奏",
+          "midday": "密集游览，午餐简短",
+          "afternoon": "继续游览，强度略降",
+          "evening": "留出晚餐和休息时间"
+        },
+        "intensity_curve": "缓慢上升后平稳，晚间下降",
+        "decision_pressure": "中等，需要一些规划",
+        "flexibility": "中等，可微调但不宜大改",
+        "social_demand": "中等，需要一定协调"
+      },
+      "suitable_for": {
+        "user_states": [
+          "想深度体验",
+          "摄影爱好者",
+          "愿意投入精力",
+          "有一定体能",
+          "享受旅行过程"
+        ],
+        "user_characteristics": {
+          "energy_level": "medium",
+          "experience": "novice-intermediate",
+          "decision_capacity": "medium",
+          "time_availability": "2-3天",
+          "stress_tolerance": "medium"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "极度疲惫",
+          "只想休息",
+          "时间只有1天",
+          "追求极限挑战"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_ring_road_south_001",
+          "route_name": "环岛南线",
+          "why": "景点丰富，节奏适中，有维克镇过夜恢复"
+        },
+        {
+          "route_id": "iceland_snaefellsnes_001",
+          "route_name": "斯奈山半岛",
+          "why": "风光多样，景点间距适中，强度渐进"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "中（每小时1-2个景点）",
+        "停留时间": "中（每个景点30-60分钟）",
+        "驾驶时间占比": "40-50%",
+        "休息时间占比": "20-30%",
+        "活动时间占比": "30-40%"
+      },
+      "emotional_journey": {
+        "起点": "期待、兴奋",
+        "过程": "投入、满足、偶尔疲惫",
+        "终点": "成就感、充实、适度疲惫"
+      }
+    },
+    {
+      "rhythm_id": "adventure_challenge",
+      "rhythm_name": "探险挑战节奏",
+      "rhythm_name_en": "Adventure Challenge Rhythm",
+      "category": "高强度-剧烈性",
+      "pace": "fast",
+      "intensity_variation": "dramatic",
+      "recovery_time": "minimal",
+      "description": "高强度、大起大落，考验体能和心理，刺激且有风险",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "早起，快速出发",
+          "midday": "高强度活动，简餐",
+          "afternoon": "继续挑战，可能遇到困难",
+          "evening": "疲惫但兴奋，晚餐后立即休息"
+        },
+        "intensity_curve": "剧烈波动，有明显高峰和低谷",
+        "decision_pressure": "高，需要不断做关键决策",
+        "flexibility": "低，计划需严格执行",
+        "social_demand": "高，需要团队协作和沟通"
+      },
+      "suitable_for": {
+        "user_states": [
+          "寻求刺激",
+          "想挑战自我",
+          "经验丰富",
+          "体能充沛",
+          "心理强大",
+          "享受不确定性"
+        ],
+        "user_characteristics": {
+          "energy_level": "high",
+          "experience": "intermediate-advanced",
+          "decision_capacity": "high",
+          "time_availability": "flexible",
+          "stress_tolerance": "high"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "初次旅行",
+          "想放松",
+          "体能不足",
+          "厌恶风险",
+          "决策能力弱"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_highlands_001",
+          "route_name": "内陆高地",
+          "why": "F路四驱，河流穿越，天气极端，需要专业技能"
+        },
+        {
+          "route_id": "iceland_fimmvorduhals_trek",
+          "route_name": "Fimmvörðuháls徒步",
+          "why": "25公里，1000米爬升，冰川-火山穿越"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "高（每小时2-3个决策点）",
+        "停留时间": "短（快速通过或长时间投入）",
+        "驾驶/徒步时间占比": "60-70%",
+        "休息时间占比": "10-20%",
+        "活动时间占比": "70-80%"
+      },
+      "emotional_journey": {
+        "起点": "紧张、兴奋、忐忑",
+        "过程": "全神贯注、挑战、恐惧、兴奋交替",
+        "终点": "成就感爆棚、深度疲惫、难忘体验"
+      },
+      "risk_warning": "这种节奏适合有经验且准备充分的旅行者，不要轻易尝试"
+    },
+    {
+      "rhythm_id": "cultural_immersion",
+      "rhythm_name": "文化沉浸节奏",
+      "rhythm_name_en": "Cultural Immersion Rhythm",
+      "category": "低强度-渐进性",
+      "pace": "slow",
+      "intensity_variation": "gradual",
+      "recovery_time": "ample",
+      "description": "慢节奏深度体验，注重互动和理解，而非打卡",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "随意开始，可能有本地活动",
+          "midday": "长时间停留一个地方，深度体验",
+          "afternoon": "继续沉浸，可能与当地人交流",
+          "evening": "本地餐厅或活动，融入生活"
+        },
+        "intensity_curve": "平缓，无明显波动",
+        "decision_pressure": "低，随遇而安",
+        "flexibility": "极高，根据体验调整",
+        "social_demand": "高，需要与当地人互动"
+      },
+      "suitable_for": {
+        "user_states": [
+          "对文化感兴趣",
+          "喜欢慢旅行",
+          "愿意交流",
+          "不赶时间",
+          "追求深度体验"
+        ],
+        "user_characteristics": {
+          "energy_level": "any",
+          "experience": "intermediate-advanced",
+          "decision_capacity": "high（对不确定性）",
+          "time_availability": "充裕",
+          "stress_tolerance": "medium-high"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "想看风光",
+          "时间紧张",
+          "语言不通且不愿尝试",
+          "只想打卡"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_westfjords_villages",
+          "route_name": "西峡湾渔村深度游",
+          "why": "停留在Ísafjörður和小渔村，参与捕鱼、听故事"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "极低（可能一天只去1-2个地方）",
+        "停留时间": "极长（数小时至一整天）",
+        "驾驶时间占比": "10-20%",
+        "休息时间占比": "30-40%",
+        "活动时间占比": "40-60%（但强度低）"
+      },
+      "emotional_journey": {
+        "起点": "好奇、开放",
+        "过程": "深入、理解、连接",
+        "终点": "满足、感动、有归属感"
+      }
+    },
+    {
+      "rhythm_id": "photography_pursuit",
+      "rhythm_name": "摄影追逐节奏",
+      "rhythm_name_en": "Photography Pursuit Rhythm",
+      "category": "中高强度-剧烈性",
+      "pace": "variable（取决于光线和天气）",
+      "intensity_variation": "dramatic",
+      "recovery_time": "minimal",
+      "description": "为光线和构图而生，早起晚睡，等待时机",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "极早起（日出前1-2小时）",
+          "midday": "休息或踩点（光线不好）",
+          "afternoon": "准备傍晚拍摄",
+          "evening": "日落拍摄，可能持续到深夜"
+        },
+        "intensity_curve": "双峰（日出和日落），中间低谷",
+        "decision_pressure": "高，需要快速判断和移动",
+        "flexibility": "极低，受天气和光线限制",
+        "social_demand": "低（独自）或高（团队协作）"
+      },
+      "suitable_for": {
+        "user_states": [
+          "摄影师",
+          "追求完美构图",
+          "愿意等待",
+          "体力充沛（早起晚睡）",
+          "对天气敏感"
+        ],
+        "user_characteristics": {
+          "energy_level": "high",
+          "experience": "intermediate-advanced",
+          "decision_capacity": "high",
+          "time_availability": "flexible",
+          "stress_tolerance": "high（等待的焦虑）"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "不拍照",
+          "需要规律作息",
+          "时间固定",
+          "不愿等待"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_kirkjufell_photography",
+          "route_name": "教会山摄影之旅",
+          "why": "日出日落都美，可能需要等待数小时"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "低（精选少数最佳机位）",
+        "停留时间": "极长（等待光线）",
+        "驾驶时间占比": "20-30%",
+        "休息时间占比": "20-30%",
+        "活动时间占比": "40-60%（但集中在特定时段）"
+      },
+      "emotional_journey": {
+        "起点": "期待、焦虑",
+        "过程": "等待、失望、惊喜交替",
+        "终点": "满足（拍到好片）或遗憾（错过）"
+      }
+    },
+    {
+      "rhythm_id": "family_friendly",
+      "rhythm_name": "家庭友好节奏",
+      "rhythm_name_en": "Family Friendly Rhythm",
+      "category": "低强度-一致性",
+      "pace": "slow",
+      "intensity_variation": "minimal",
+      "recovery_time": "ample",
+      "description": "以孩子和老人为中心，频繁休息，安全优先",
+      "characteristics": {
+        "daily_rhythm": {
+          "morning": "按孩子作息开始",
+          "midday": "长午餐，可能午睡",
+          "afternoon": "轻松活动，频繁休息",
+          "evening": "早结束，充足休息"
+        },
+        "intensity_curve": "极平缓，无突变",
+        "decision_pressure": "低，预先规划好",
+        "flexibility": "高，随时应对突发情况",
+        "social_demand": "高（家庭内协调）"
+      },
+      "suitable_for": {
+        "user_states": [
+          "带儿童（尤其幼儿）",
+          "带老人",
+          "多代同行",
+          "安全第一",
+          "享受家庭时光"
+        ],
+        "user_characteristics": {
+          "energy_level": "low-medium",
+          "experience": "any",
+          "decision_capacity": "medium",
+          "time_availability": "flexible",
+          "stress_tolerance": "low-medium"
+        }
+      },
+      "not_suitable_for": {
+        "user_states": [
+          "想挑战",
+          "追求效率",
+          "独自旅行",
+          "时间紧张"
+        ]
+      },
+      "example_routes": [
+        {
+          "route_id": "iceland_golden_circle_001",
+          "route_name": "黄金圈",
+          "why": "景点简单，设施齐全，安全性高"
+        }
+      ],
+      "rhythm_indicators": {
+        "景点密度": "极低",
+        "停留时间": "极长（包括休息）",
+        "驾驶时间占比": "20-30%",
+        "休息时间占比": "40-50%",
+        "活动时间占比": "20-30%"
+      },
+      "emotional_journey": {
+        "起点": "期待、紧张（孩子会配合吗？）",
+        "过程": "耐心、应变、偶尔疲惫",
+        "终点": "温馨、满足、家庭回忆"
+      },
+      "special_considerations": [
+        "每个景点都有洗手间",
+        "餐厅儿童友好",
+        "住宿有家庭房",
+        "景点安全（无悬崖、深水）",
+        "可随时返回车内"
+      ]
+    }
+  ],
+  "rhythm_matching_framework": {
+    "description": "如何将用户状态与节奏模式匹配",
+    "matching_factors": {
+      "user_energy_level": {
+        "low": ["relaxed_sightseeing", "cultural_immersion", "family_friendly"],
+        "medium": ["scenic_exploration", "cultural_immersion"],
+        "high": ["adventure_challenge", "photography_pursuit"]
+      },
+      "user_experience": {
+        "novice": ["relaxed_sightseeing", "family_friendly"],
+        "intermediate": ["scenic_exploration", "cultural_immersion", "photography_pursuit"],
+        "advanced": ["adventure_challenge"]
+      },
+      "time_availability": {
+        "1_day": ["relaxed_sightseeing", "scenic_exploration"],
+        "2_3_days": ["scenic_exploration", "cultural_immersion"],
+        "flexible": ["adventure_challenge", "photography_pursuit", "cultural_immersion"]
+      },
+      "primary_motivation": {
+        "relax": ["relaxed_sightseeing", "family_friendly"],
+        "explore": ["scenic_exploration", "cultural_immersion"],
+        "challenge": ["adventure_challenge"],
+        "photograph": ["photography_pursuit"],
+        "family_time": ["family_friendly"]
+      }
+    },
+    "mismatch_warnings": {
+      "energy_mismatch": "用户体能与节奏不匹配，可能导致疲惫或无聊",
+      "experience_mismatch": "用户经验与节奏难度不符，可能危险或过于简单",
+      "time_mismatch": "时间不足以完成节奏要求，可能赶路或不满足",
+      "motivation_mismatch": "用户期待与节奏特性相悖，可能失望"
+    }
+  },
+  "rhythm_transition_guidance": {
+    "description": "如何在不同节奏间过渡",
+    "transitions": [
+      {
+        "from": "relaxed_sightseeing",
+        "to": "scenic_exploration",
+        "difficulty": "easy",
+        "advice": "逐渐增加景点数量和活动强度，保持充足休息"
+      },
+      {
+        "from": "scenic_exploration",
+        "to": "adventure_challenge",
+        "difficulty": "medium",
+        "advice": "需要适应期，先从短途挑战开始，确保装备和技能准备"
+      },
+      {
+        "from": "adventure_challenge",
+        "to": "relaxed_sightseeing",
+        "difficulty": "easy",
+        "advice": "给自己恢复时间，不要立即排满行程"
+      },
+      {
+        "from": "any",
+        "to": "family_friendly",
+        "difficulty": "medium",
+        "advice": "心态调整：从'我想做什么'到'什么对家庭最好'"
+      }
+    ]
+  },
+  "rhythm_adaptation_strategies": {
+    "description": "如何在旅行中调整节奏",
+    "strategies": [
+      {
+        "situation": "感到疲惫",
+        "action": "降低节奏，增加休息时间，减少景点",
+        "example": "从scenic_exploration切换到relaxed_sightseeing"
+      },
+      {
+        "situation": "天气恶劣",
+        "action": "灵活调整，避免高强度户外活动",
+        "example": "暂停adventure_challenge，改为cultural_immersion（室内博物馆）"
+      },
+      {
+        "situation": "感到无聊",
+        "action": "增加难度或多样性",
+        "example": "从relaxed_sightseeing加入一些photography_pursuit元素"
+      },
+      {
+        "situation": "团队分歧",
+        "action": "分组，不同节奏并行",
+        "example": "摄影师早起追日出，其他人睡懒觉，午后汇合"
+      }
+    ]
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "TripNARA产品哲学和路线结构理论",
+        "reliability": "high"
+      },
+      {
+        "source": "用户行为研究和反馈",
+        "reliability": "medium-high"
+      },
+      {
+        "source": "旅行心理学理论",
+        "reliability": "medium"
+      }
+    ],
+    "expert_validation": "产品团队、用户体验研究",
+    "next_review_date": "2026-04-22"
+  }
+}

@@ -1,0 +1,35 @@
+import { OnModuleInit } from '@nestjs/common';
+import { RoadStatusAdapter } from '../adapters/road-status.adapter.interface';
+import { WeatherAdapter } from '../adapters/weather.adapter.interface';
+import { TransportAdapter } from '../adapters/transport.adapter.interface';
+import { FerryAdapter } from '../adapters/ferry.adapter.interface';
+import { RoadStatusQuery, RoadStatus } from '../interfaces/road-status.interface';
+import { WeatherQuery, WeatherData } from '../interfaces/weather.interface';
+import { TransportQuery, TransportSchedule } from '../interfaces/transport-schedule.interface';
+import { FerryQuery, FerrySchedule } from '../interfaces/ferry-schedule.interface';
+export declare class DataSourceRouterService implements OnModuleInit {
+    private readonly logger;
+    private roadStatusAdapters;
+    private weatherAdapters;
+    private transportAdapters;
+    private ferryAdapters;
+    private roadStatusAdapterCache;
+    private weatherAdapterCache;
+    private transportAdapterCache;
+    private ferryAdapterCache;
+    registerRoadStatusAdapter(adapter: RoadStatusAdapter): void;
+    registerWeatherAdapter(adapter: WeatherAdapter): void;
+    registerTransportAdapter(adapter: TransportAdapter): void;
+    registerFerryAdapter(adapter: FerryAdapter): void;
+    getRoadStatus(query: RoadStatusQuery): Promise<RoadStatus>;
+    getRoadStatuses(query: RoadStatusQuery): Promise<RoadStatus[]>;
+    getWeather(query: WeatherQuery): Promise<WeatherData>;
+    getTransportSchedule(query: TransportQuery): Promise<TransportSchedule[]>;
+    getFerrySchedule(query: FerryQuery): Promise<FerrySchedule[]>;
+    private selectRoadStatusAdapter;
+    private selectWeatherAdapter;
+    private selectTransportAdapter;
+    private selectFerryAdapter;
+    private getCountryCode;
+    onModuleInit(): void;
+}

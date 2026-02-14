@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof:*)",
+      "Read(//Users/gaozitai/workspace/tripnara/tripnaraht/**)",
+      "Bash(xargs kill:*)"
+    ]
+  }
+}

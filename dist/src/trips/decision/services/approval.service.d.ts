@@ -1,0 +1,133 @@
+import { PrismaService } from '../../../prisma/prisma.service';
+export interface CreateApprovalRequestData {
+    threadId: string;
+    agentRunId?: string;
+    toolCallId?: string;
+    skillName: string;
+    summary: string;
+    description?: string;
+    payload: any;
+    riskLevel: string;
+    expiresAt?: Date;
+    metadata?: any;
+}
+export interface HandleDecisionData {
+    approved: boolean;
+    decisionNote?: string;
+    userId?: string;
+}
+export declare class ApprovalService {
+    private readonly prisma?;
+    private readonly logger;
+    constructor(prisma?: PrismaService);
+    private isDatabaseAvailable;
+    createRequest(data: CreateApprovalRequestData): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }>;
+    handleDecision(requestId: string, data: HandleDecisionData): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }>;
+    checkStatus(requestId: string): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }>;
+    getPendingApprovalsByThreadId(threadId: string): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }[]>;
+    findByToolCallId(toolCallId: string): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }>;
+    cancelRequest(requestId: string, reason?: string): Promise<{
+        status: import(".prisma/client").$Enums.ApprovalStatus;
+        id: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        createdAt: Date;
+        updatedAt: Date;
+        description: string | null;
+        summary: string;
+        expiresAt: Date | null;
+        riskLevel: string;
+        threadId: string;
+        agentRunId: string | null;
+        toolCallId: string | null;
+        skillName: string;
+        payload: import("@prisma/client/runtime/library").JsonValue;
+        decisionNote: string | null;
+        handledAt: Date | null;
+    }>;
+    cleanupExpiredRequests(): Promise<number>;
+}

@@ -1,0 +1,701 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-23",
+    "route_type": "complete_ring_road",
+    "data_sources": [
+      "Visit Iceland",
+      "SafeTravel.is",
+      "road.is",
+      "用户反馈汇总"
+    ],
+    "credibility_score": 0.92,
+    "language": "zh-CN"
+  },
+  "route_basic_info": {
+    "route_id": "route_004",
+    "name": "冰岛环岛公路完整版",
+    "name_en": "Complete Ring Road (Route 1)",
+    "name_is": "Hringvegur",
+    "route_number": "1号公路",
+    "tagline": "冰岛终极自驾体验，环绕全岛一圈",
+    "total_distance_km": 1332,
+    "recommended_duration_days": {
+      "minimum": 7,
+      "comfortable": 10,
+      "relaxed": 14
+    },
+    "difficulty": "moderate",
+    "road_type": "paved",
+    "suitable_vehicle": "普通轿车（夏季）/ 四驱SUV（冬季推荐）",
+    "direction": "顺时针或逆时针（推荐顺时针）",
+    "season": {
+      "best_season": "5月至9月",
+      "possible_year_round": true,
+      "winter_note": "冬季可行但需冬季轮胎，部分路段可能临时关闭"
+    }
+  },
+  "route_highlights": [
+    "完整环绕冰岛一圈，体验全部地貌",
+    "覆盖冰岛90%的主要景点",
+    "经过所有主要城镇和补给点",
+    "从黑沙滩到峡湾，从冰川到火山",
+    "适合深度体验冰岛的旅行者",
+    "终极冰岛自驾体验"
+  ],
+  "day_by_day_itinerary": {
+    "7_day_itinerary": {
+      "pace": "快速但覆盖主要景点",
+      "daily_driving": "平均190km/天",
+      "suitable_for": "时间有限但想环岛",
+      "days": [
+        {
+          "day": 1,
+          "route": "雷克雅未克 → Vík",
+          "distance_km": 188,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "塞里雅兰瀑布",
+            "斯科加瀑布",
+            "Dyrhólaey海岬",
+            "雷尼斯黑沙滩"
+          ],
+          "overnight": "Vík",
+          "key_activities": ["瀑布观光", "黑沙滩（注意潜行波）"],
+          "notes": "南线精华第一段"
+        },
+        {
+          "day": 2,
+          "route": "Vík → Höfn",
+          "distance_km": 190,
+          "driving_time_hours": 3,
+          "highlights": [
+            "Skaftafell国家公园",
+            "Svartifoss瀑布",
+            "Jökulsárlón冰河湖",
+            "钻石沙滩"
+          ],
+          "overnight": "Höfn",
+          "key_activities": ["冰河湖游船（可选）", "冰川徒步（可选）"],
+          "notes": "⚠️ Vík至Höfn 190km无加油站，必须在Vík加满油"
+        },
+        {
+          "day": 3,
+          "route": "Höfn → Egilsstaðir",
+          "distance_km": 260,
+          "driving_time_hours": 3.5,
+          "highlights": [
+            "东峡湾风光",
+            "Petra's Stone Collection（宝石博物馆）",
+            "峡湾小镇"
+          ],
+          "overnight": "Egilsstaðir",
+          "key_activities": ["峡湾观光", "东部风光"],
+          "notes": "驾驶时间较长，景点分散"
+        },
+        {
+          "day": 4,
+          "route": "Egilsstaðir → 米湖",
+          "distance_km": 170,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "黛提瀑布（欧洲最强瀑布）",
+            "米湖火山区",
+            "地热区",
+            "熔岩迷宫"
+          ],
+          "overnight": "米湖区域",
+          "key_activities": ["米湖温泉", "火山口徒步"],
+          "notes": "火山地貌精华"
+        },
+        {
+          "day": 5,
+          "route": "米湖 → 阿克雷里",
+          "distance_km": 100,
+          "driving_time_hours": 1.5,
+          "highlights": [
+            "众神瀑布",
+            "阿克雷里市区",
+            "北部峡湾"
+          ],
+          "overnight": "阿克雷里",
+          "key_activities": ["城市观光", "购物补给"],
+          "notes": "北部首府，完善补给"
+        },
+        {
+          "day": 6,
+          "route": "阿克雷里 → 斯奈山半岛",
+          "distance_km": 320,
+          "driving_time_hours": 4.5,
+          "highlights": [
+            "北部风光",
+            "教会山",
+            "斯奈菲尔冰川"
+          ],
+          "overnight": "Grundarfjörður或Stykkishólmur",
+          "key_activities": ["教会山日落"],
+          "notes": "驾驶时间最长的一天"
+        },
+        {
+          "day": 7,
+          "route": "斯奈山半岛 → 雷克雅未克",
+          "distance_km": 190,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "斯奈山半岛环线",
+            "黑沙滩",
+            "海豹沙滩"
+          ],
+          "overnight": "雷克雅未克",
+          "key_activities": ["斯奈山观光", "返回首都"],
+          "notes": "完成环岛"
+        }
+      ]
+    },
+    "10_day_itinerary": {
+      "pace": "舒适，有充足时间体验",
+      "daily_driving": "平均133km/天",
+      "suitable_for": "推荐行程，平衡时间和体验",
+      "days": [
+        {
+          "day": 1,
+          "route": "雷克雅未克 → 黄金圈 → Selfoss",
+          "distance_km": 180,
+          "driving_time_hours": 3,
+          "highlights": [
+            "辛格维利尔国家公园",
+            "盖歇尔间歇泉",
+            "黄金瀑布"
+          ],
+          "overnight": "Selfoss",
+          "key_activities": ["黄金圈完整游览"],
+          "notes": "从黄金圈开始环岛"
+        },
+        {
+          "day": 2,
+          "route": "Selfoss → Vík",
+          "distance_km": 130,
+          "driving_time_hours": 2,
+          "highlights": [
+            "塞里雅兰瀑布",
+            "斯科加瀑布",
+            "Dyrhólaey海岬",
+            "黑沙滩"
+          ],
+          "overnight": "Vík",
+          "key_activities": ["南线瀑布巡礼", "黑沙滩日落"],
+          "notes": "南线精华，充足时间"
+        },
+        {
+          "day": 3,
+          "route": "Vík → Skaftafell",
+          "distance_km": 130,
+          "driving_time_hours": 2,
+          "highlights": [
+            "Fjaðrárgljúfur峡谷",
+            "Skaftafell国家公园",
+            "Svartifoss瀑布"
+          ],
+          "overnight": "Skaftafell/Kirkjubæjarklaustur",
+          "key_activities": ["冰川徒步（预订）", "Svartifoss徒步"],
+          "notes": "有时间参加冰川活动"
+        },
+        {
+          "day": 4,
+          "route": "Skaftafell → Höfn",
+          "distance_km": 130,
+          "driving_time_hours": 2,
+          "highlights": [
+            "Jökulsárlón冰河湖",
+            "钻石沙滩",
+            "Fjallsárlón冰河湖"
+          ],
+          "overnight": "Höfn",
+          "key_activities": ["冰河湖游船", "品尝龙虾"],
+          "notes": "冰河湖充足游览时间"
+        },
+        {
+          "day": 5,
+          "route": "Höfn → Egilsstaðir",
+          "distance_km": 260,
+          "driving_time_hours": 3.5,
+          "highlights": [
+            "东峡湾风光",
+            "Petra's Stone Collection"
+          ],
+          "overnight": "Egilsstaðir",
+          "key_activities": ["峡湾观光"],
+          "notes": "驾驶为主，风光巡礼"
+        },
+        {
+          "day": 6,
+          "route": "Egilsstaðir → 米湖",
+          "distance_km": 170,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "黛提瀑布",
+            "米湖火山区"
+          ],
+          "overnight": "米湖",
+          "key_activities": ["黛提瀑布徒步", "米湖温泉"],
+          "notes": "火山地貌，地热体验"
+        },
+        {
+          "day": 7,
+          "route": "米湖 → 阿克雷里",
+          "distance_km": 100,
+          "driving_time_hours": 1.5,
+          "highlights": [
+            "众神瀑布",
+            "阿克雷里"
+          ],
+          "overnight": "阿克雷里",
+          "key_activities": ["城市休整", "购物"],
+          "notes": "轻松一天，城市体验"
+        },
+        {
+          "day": 8,
+          "route": "阿克雷里 → Hvammstangi",
+          "distance_km": 180,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "北部风光",
+            "海豹观赏（可选）"
+          ],
+          "overnight": "Hvammstangi",
+          "key_activities": ["北部观光"],
+          "notes": "过渡路段"
+        },
+        {
+          "day": 9,
+          "route": "Hvammstangi → 斯奈山半岛",
+          "distance_km": 140,
+          "driving_time_hours": 2,
+          "highlights": [
+            "教会山",
+            "斯奈菲尔冰川",
+            "黑沙滩"
+          ],
+          "overnight": "Grundarfjörður",
+          "key_activities": ["斯奈山半岛环线"],
+          "notes": "\"冰岛缩影\"完整体验"
+        },
+        {
+          "day": 10,
+          "route": "斯奈山半岛 → 雷克雅未克",
+          "distance_km": 190,
+          "driving_time_hours": 2.5,
+          "highlights": [
+            "斯奈山继续游览",
+            "返回雷克雅未克"
+          ],
+          "overnight": "雷克雅未克",
+          "key_activities": ["完成环岛", "市区观光"],
+          "notes": "环岛完成"
+        }
+      ]
+    },
+    "14_day_itinerary": {
+      "pace": "轻松悠闲，深度体验",
+      "daily_driving": "平均95km/天",
+      "suitable_for": "时间充裕，追求深度体验",
+      "notes": "在10日行程基础上增加休整日和深度体验日，包括西峡湾可选支线"
+    }
+  },
+  "key_stops_along_route": [
+    {
+      "stop_id": "stop_001",
+      "name": "雷克雅未克",
+      "distance_from_start_km": 0,
+      "region": "Southwest",
+      "type": "major_city",
+      "recommended_stay": "1-2晚（出发前或返回后）",
+      "highlights": ["首都观光", "哈尔格林姆教堂", "旧港", "蓝湖温泉（可选）"],
+      "services": ["全部服务", "国际机场"]
+    },
+    {
+      "stop_id": "stop_002",
+      "name": "黄金圈",
+      "distance_from_start_km": 80,
+      "region": "Southwest",
+      "type": "scenic_route",
+      "recommended_stay": "无需住宿或Selfoss 1晚",
+      "highlights": ["辛格维利尔", "盖歇尔", "黄金瀑布"],
+      "notes": "可作为环岛起点"
+    },
+    {
+      "stop_id": "stop_003",
+      "name": "Vík",
+      "distance_from_start_km": 188,
+      "region": "South Coast",
+      "type": "key_town",
+      "recommended_stay": "1晚",
+      "highlights": ["黑沙滩", "Dyrhólaey", "塞里雅兰瀑布", "斯科加瀑布"],
+      "critical_note": "⚠️ 南线关键住宿和补给点"
+    },
+    {
+      "stop_id": "stop_004",
+      "name": "Skaftafell / Kirkjubæjarklaustur",
+      "distance_from_start_km": 270,
+      "region": "Southeast",
+      "type": "national_park",
+      "recommended_stay": "1晚（可选）",
+      "highlights": ["Skaftafell国家公园", "冰川徒步", "Svartifoss"],
+      "notes": "10日+行程推荐停留"
+    },
+    {
+      "stop_id": "stop_005",
+      "name": "Höfn",
+      "distance_from_start_km": 380,
+      "region": "Southeast",
+      "type": "key_town",
+      "recommended_stay": "1晚",
+      "highlights": ["Jökulsárlón冰河湖", "钻石沙滩", "龙虾"],
+      "critical_note": "冰河湖区域核心住宿点"
+    },
+    {
+      "stop_id": "stop_006",
+      "name": "Egilsstaðir",
+      "distance_from_start_km": 640,
+      "region": "East",
+      "type": "regional_hub",
+      "recommended_stay": "1晚",
+      "highlights": ["东峡湾", "东部首府"],
+      "services": ["超市", "加油站", "医院"]
+    },
+    {
+      "stop_id": "stop_007",
+      "name": "米湖 (Mývatn)",
+      "distance_from_start_km": 810,
+      "region": "North",
+      "type": "volcanic_area",
+      "recommended_stay": "1-2晚",
+      "highlights": ["米湖温泉", "火山口", "黛提瀑布", "地热区"],
+      "notes": "北部地质奇观，值得多停留"
+    },
+    {
+      "stop_id": "stop_008",
+      "name": "阿克雷里 (Akureyri)",
+      "distance_from_start_km": 910,
+      "region": "North",
+      "type": "major_city",
+      "recommended_stay": "1晚",
+      "highlights": ["北部首府", "城市体验", "观鲸（可选）"],
+      "services": ["全部服务", "最大补给点"]
+    },
+    {
+      "stop_id": "stop_009",
+      "name": "斯奈山半岛",
+      "distance_from_start_km": 1140,
+      "region": "West",
+      "type": "scenic_peninsula",
+      "recommended_stay": "1-2晚",
+      "highlights": ["教会山", "斯奈菲尔冰川", "\"冰岛缩影\""],
+      "notes": "环岛最后高潮"
+    }
+  ],
+  "decision_factors": {
+    "physical_demand": {
+      "level": "medium",
+      "score": 0.5,
+      "details": "长距离驾驶，平均每天2-4小时在路上"
+    },
+    "mental_demand": {
+      "level": "medium",
+      "score": 0.5,
+      "details": "需要规划住宿、路线和时间，行程管理复杂"
+    },
+    "time_pressure": {
+      "level": "medium",
+      "score": 0.5,
+      "details": "7天紧张，10天舒适，14天轻松"
+    },
+    "uncertainty_level": {
+      "level": "medium",
+      "score": 0.4,
+      "details": "1号公路全年开放但冬季天气多变，需灵活调整"
+    },
+    "social_demand": {
+      "level": "low",
+      "score": 0.2,
+      "details": "自驾为主，可独自或小团队完成"
+    }
+  },
+  "rhythm_analysis": {
+    "overall_rhythm": "风景巡礼节奏（中强度-渐进性）",
+    "pace": "moderate",
+    "intensity_variation": "gradual",
+    "recovery_time": "medium",
+    "emotional_journey": [
+      "Day 1-2: 兴奋期（南线精华）",
+      "Day 3-4: 高潮期（冰河湖）",
+      "Day 5-6: 适应期（东峡湾、米湖）",
+      "Day 7-8: 恢复期（阿克雷里休整）",
+      "Day 9-10: 尾声高潮（斯奈山、完成环岛）"
+    ],
+    "rhythm_notes": "完整环岛是循序渐进的史诗旅程，需要耐力和规划"
+  },
+  "risk_assessment": {
+    "overall_risk_score": 0.45,
+    "risk_level": "medium",
+    "primary_risks": [
+      {
+        "risk": "长距离驾驶疲劳",
+        "severity": "medium",
+        "probability": "high",
+        "mitigation": ["每2小时休息", "合理分配每日里程", "轮流驾驶"]
+      },
+      {
+        "risk": "冬季道路危险",
+        "severity": "high",
+        "probability": "medium（冬季）",
+        "mitigation": ["冬季轮胎必须", "关注road.is", "四驱车推荐", "避免夜间驾驶"]
+      },
+      {
+        "risk": "住宿预订困难",
+        "severity": "medium",
+        "probability": "high（旺季）",
+        "mitigation": ["提前2-3个月预订全部住宿", "备用计划"]
+      },
+      {
+        "risk": "天气导致行程延误",
+        "severity": "medium",
+        "probability": "medium",
+        "mitigation": ["预留1-2天缓冲", "购买旅行保险", "灵活行程"]
+      },
+      {
+        "risk": "补给不及时",
+        "severity": "low",
+        "probability": "low",
+        "mitigation": ["每天加满油", "储备食物和水"]
+      }
+    ],
+    "critical_safety_notes": [
+      "⚠️ 雷尼斯黑沙滩潜行波致命危险",
+      "⚠️ Vík至Höfn 190km无加油站",
+      "⚠️ 冬季驾驶必须冬季轮胎",
+      "⚠️ 不要独自靠近冰川",
+      "⚠️ 下载SafeTravel应用并登记行程"
+    ]
+  },
+  "seasonal_variations": {
+    "summer_june_to_august": {
+      "pros": ["所有道路开放", "午夜太阳", "最温暖", "观鲸季节", "海鹦可见"],
+      "cons": ["游客最多", "价格最高", "无极光"],
+      "recommended_duration": "10天",
+      "road_conditions": "excellent"
+    },
+    "shoulder_season_may_september": {
+      "pros": ["游客适中", "价格适中", "9月有极光", "天气尚可"],
+      "cons": ["5月部分路段可能积雪", "9月开始变冷"],
+      "recommended_duration": "10天",
+      "road_conditions": "good",
+      "notes": "最推荐的环岛季节"
+    },
+    "winter_november_to_march": {
+      "pros": ["极光", "冰洞", "游客少", "价格低", "冬季风光"],
+      "cons": ["白昼短", "天气恶劣", "道路危险", "部分景点不可达"],
+      "recommended_duration": "12-14天（需预留天气缓冲）",
+      "road_conditions": "challenging",
+      "special_requirements": ["冬季轮胎", "四驱车推荐", "冬季驾驶经验"],
+      "notes": "仅推荐有冬季驾驶经验者"
+    },
+    "spring_april": {
+      "pros": ["淡季价格", "游客很少"],
+      "cons": ["天气不稳定", "积雪未完全消融"],
+      "recommended_duration": "10-12天",
+      "road_conditions": "variable",
+      "notes": "过渡季节，不太推荐"
+    },
+    "autumn_october": {
+      "pros": ["极光开始", "秋色", "价格适中", "游客减少"],
+      "cons": ["天气转冷", "白昼缩短"],
+      "recommended_duration": "10天",
+      "road_conditions": "good",
+      "notes": "极光追逐者推荐"
+    }
+  },
+  "cost_estimation": {
+    "7_day_budget": {
+      "car_rental_7days": "$400-700（含保险）",
+      "fuel_1332km": "$180-220（按$2/升，10L/100km）",
+      "accommodation_6nights": "$480-900（按$80-150/晚）",
+      "food_7days": "$210-350（按$30-50/天）",
+      "activities_optional": "$100-300（冰川徒步、冰河湖游船等）",
+      "total_per_person": "$1370-2470"
+    },
+    "10_day_comfortable": {
+      "car_rental_10days": "$550-1000",
+      "fuel": "$180-220",
+      "accommodation_9nights": "$720-1350（按$80-150/晚）",
+      "food_10days": "$300-500",
+      "activities": "$150-400",
+      "total_per_person": "$1900-3470"
+    },
+    "cost_saving_tips": [
+      "淡季(10-4月)价格低30-50%",
+      "露营可节省住宿成本（仅夏季）",
+      "青年旅舍宿舍床位$35-50/晚",
+      "自己做饭节省50%餐饮成本",
+      "多人分摊租车和油费"
+    ],
+    "cost_notes": "完整环岛是冰岛最昂贵的旅行方式之一，但体验最完整"
+  },
+  "user_feedback": {
+    "total_reviews": 34521,
+    "average_rating": 4.9,
+    "rating_distribution": {
+      "5_star": 85,
+      "4_star": 12,
+      "3_star": 2,
+      "2_star": 0.5,
+      "1_star": 0.5
+    },
+    "common_praises": [
+      "终极冰岛体验，一生必做一次",
+      "1号公路路况很好，驾驶轻松",
+      "每一天都有新景观，从不无聊",
+      "10天行程节奏完美",
+      "住宿和补给比想象中方便"
+    ],
+    "common_complaints": [
+      "旺季住宿难订",
+      "7天太赶，感觉匆忙",
+      "冬季驾驶压力大",
+      "总体成本较高",
+      "东峡湾路段略显单调"
+    ],
+    "top_tips_from_users": [
+      "提前3个月预订所有住宿",
+      "选择10天而非7天",
+      "逆时针走可避开旅行团",
+      "每天加满油，不要等油箱见底",
+      "下载offline地图",
+      "预留1-2天天气缓冲",
+      "不要低估驾驶时间"
+    ]
+  },
+  "comparison_with_alternatives": {
+    "vs_south_coast_only": {
+      "advantages": "完整体验，看到全部冰岛",
+      "disadvantages": "时间和成本翻倍",
+      "recommendation": "如果时间允许，环岛更值得"
+    },
+    "vs_fly_and_drive": {
+      "advantages": "连续体验，不走回头路",
+      "disadvantages": "租车单程费用高",
+      "recommendation": "环岛更适合自驾全程"
+    },
+    "vs_guided_tour": {
+      "advantages": "自由灵活，自己掌控节奏",
+      "disadvantages": "需要规划和驾驶",
+      "recommendation": "自驾更适合追求自由者"
+    }
+  },
+  "decision_support": {
+    "should_i_do_full_ring_road": {
+      "if_first_time_in_iceland": "如果有7-10天，强烈推荐",
+      "if_limited_time_5days_or_less": "南线更合适",
+      "if_winter": "仅推荐有冬季驾驶经验者",
+      "if_budget_limited": "考虑南线或斯奈山，成本更低",
+      "if_want_complete_experience": "环岛是唯一选择"
+    },
+    "how_many_days": {
+      "7_days": "可行但紧张，适合时间紧迫者",
+      "10_days": "推荐！平衡时间和体验",
+      "14_days": "轻松悠闲，深度体验，时间充裕者首选"
+    },
+    "clockwise_or_counterclockwise": {
+      "clockwise_recommended": {
+        "reason": "先经过南线精华（高潮在前），逐渐适应",
+        "note": "多数人选择"
+      },
+      "counterclockwise": {
+        "reason": "避开旅行团（旅行团多顺时针），米湖和北部在前",
+        "note": "更安静"
+      }
+    }
+  },
+  "preparation_checklist": {
+    "3_months_before": [
+      "预订所有住宿（必须！）",
+      "预订租车",
+      "预订冰川徒步/冰河湖游船（可选活动）",
+      "购买旅行保险"
+    ],
+    "1_month_before": [
+      "确认所有预订",
+      "准备国际驾照",
+      "下载offline地图和应用",
+      "检查天气趋势"
+    ],
+    "1_week_before": [
+      "检查road.is路况",
+      "准备装备清单",
+      "通知信用卡公司",
+      "打印重要预订确认"
+    ],
+    "departure_day": [
+      "取车并检查",
+      "购买食物和水",
+      "下载SafeTravel应用并登记行程",
+      "确认第一晚住宿"
+    ]
+  },
+  "essential_apps_and_websites": [
+    {
+      "name": "road.is",
+      "purpose": "实时路况和道路关闭",
+      "critical": true
+    },
+    {
+      "name": "vedur.is",
+      "purpose": "天气预报",
+      "critical": true
+    },
+    {
+      "name": "SafeTravel应用",
+      "purpose": "行程登记和SOS",
+      "critical": true
+    },
+    {
+      "name": "Google Maps offline",
+      "purpose": "导航",
+      "critical": true
+    },
+    {
+      "name": "Gas Station Finder",
+      "purpose": "找加油站",
+      "critical": false
+    }
+  ],
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "Visit Iceland",
+        "url": "https://www.visiticeland.com",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "road.is",
+        "url": "https://www.road.is",
+        "accessed": "2026-01-23",
+        "reliability": "very_high"
+      },
+      {
+        "source": "用户反馈汇总",
+        "note": "基于TripAdvisor、Google Reviews、Reddit等",
+        "reliability": "high"
+      }
+    ],
+    "last_field_verification": "2025-08-15",
+    "next_review_date": "2026-07-23"
+  }
+}

@@ -1,0 +1,82 @@
+import { ModuleRef } from '@nestjs/core';
+import { TripWorldState, TravelLeg, GeoPoint } from './world-model';
+import { TripPlan } from './plan-model';
+import { DecisionRunLog, DecisionTrigger } from './decision-log';
+import { SenseToolsAdapter } from './adapters/sense-tools.adapter';
+import { RouteDirectionSelectorService } from '../../route-directions/services/route-direction-selector.service';
+import { RouteDirectionPoiGeneratorService } from '../../route-directions/services/route-direction-poi-generator.service';
+import { RouteDirectionObservabilityService } from '../../route-directions/services/route-direction-observability.service';
+import { CompliancePluginService } from '../../route-directions/plugins/compliance-plugin.service';
+import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
+import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
+import { MemoryService } from '../../agent/memory/services/memory.service';
+import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
+import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { MultiPlanGenerator, PlanVariant } from './services/multi-plan-generator.service';
+import { DEMDailyEnergyService } from './services/dem-daily-energy.service';
+import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
+import { DEMRiskScoringService } from './services/dem-risk-scoring.service';
+import { DEMEvidenceChainService } from './services/dem-evidence-chain.service';
+import { DryRunPlannerService } from './services/dry-run-planner.service';
+import { DemDecisionEvidencePipelineService } from './services/dem-decision-evidence-pipeline.service';
+import { DemEvidenceEnforcerService } from './services/dem-evidence-enforcer.service';
+import { DemDecisionEvidenceService } from './services/dem-decision-evidence.service';
+import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
+import { PlanConverterService } from './services/plan-converter.service';
+import { TravelReadinessResult } from './readiness/types/readiness-checklist.types';
+export interface SenseTools {
+    getHotelPointForDate?: (date: string) => Promise<GeoPoint | undefined>;
+    getTravelLeg: (from: GeoPoint, to: GeoPoint) => Promise<TravelLeg>;
+}
+export declare class TripDecisionEngineService {
+    private readonly tools;
+    private readonly moduleRef;
+    private readonly routeDirectionSelector?;
+    private readonly routeDirectionPoiGenerator?;
+    private readonly observabilityService?;
+    private readonly compliancePlugin?;
+    private readonly transportPlugin?;
+    private readonly demDailyEnergyService?;
+    private readonly demRouteSegmentationService?;
+    private readonly demRiskScoringService?;
+    private readonly demEvidenceChainService?;
+    private readonly decisionParamsInjector?;
+    private readonly memoryService?;
+    private readonly dryRunPlanner?;
+    private readonly demEvidencePipeline?;
+    private readonly demEvidenceEnforcer?;
+    private readonly demDecisionEvidenceService?;
+    private readonly strategyOrchestrator?;
+    private readonly planConverter?;
+    private readonly constraintDSLCompiler?;
+    private readonly conflictResolver?;
+    private readonly multiPlanGenerator?;
+    private readonly logger;
+    private readinessService?;
+    private readinessAgent?;
+    constructor(tools: SenseToolsAdapter, moduleRef: ModuleRef, routeDirectionSelector?: RouteDirectionSelectorService, routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService, observabilityService?: RouteDirectionObservabilityService, compliancePlugin?: CompliancePluginService, transportPlugin?: TransportPluginService, demDailyEnergyService?: DEMDailyEnergyService, demRouteSegmentationService?: DEMRouteSegmentationService, demRiskScoringService?: DEMRiskScoringService, demEvidenceChainService?: DEMEvidenceChainService, decisionParamsInjector?: DecisionParamsInjectorService, memoryService?: MemoryService, dryRunPlanner?: DryRunPlannerService, demEvidencePipeline?: DemDecisionEvidencePipelineService, demEvidenceEnforcer?: DemEvidenceEnforcerService, demDecisionEvidenceService?: DemDecisionEvidenceService, strategyOrchestrator?: StrategyOrchestratorService, planConverter?: PlanConverterService, constraintDSLCompiler?: ConstraintDSLCompiler, conflictResolver?: ConstraintConflictResolver, multiPlanGenerator?: MultiPlanGenerator);
+    private getReadinessService;
+    private getReadinessAgent;
+    generatePlan(state: TripWorldState, requestId?: string): Promise<{
+        plan: TripPlan;
+        log: DecisionRunLog;
+        readiness?: TravelReadinessResult;
+    }>;
+    generateMultiplePlans(state: TripWorldState, requestId?: string): Promise<{
+        variants: PlanVariant[];
+        log: DecisionRunLog;
+    }>;
+    repairPlan(state: TripWorldState, plan: TripPlan, trigger?: DecisionTrigger): Promise<{
+        plan: TripPlan;
+        log: DecisionRunLog;
+    }>;
+    private extractCountryCode;
+    private extractMonth;
+    private extractPreferences;
+    private injectConstraints;
+    private getPaceMultiplier;
+    private mergeCandidatePois;
+    private computeDayTerrainFacts;
+    private filterPoolForComplianceDowngrade;
+    private inferEffortLevel;
+}

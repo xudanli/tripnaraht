@@ -1,0 +1,536 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "data_sources": [
+      "visiticeland.com",
+      "safetravel.is",
+      "road.is"
+    ],
+    "credibility_score": 0.95,
+    "language": "zh-CN"
+  },
+  "route": {
+    "route_id": "iceland_golden_circle_001",
+    "route_name": "黄金圈经典环线",
+    "route_name_en": "Golden Circle Classic Route",
+    "route_name_is": "Gullni hringurinn",
+    "route_type": "self-drive",
+    "duration_days": 1,
+    "total_distance_km": 300,
+    "difficulty_level": "easy",
+    "best_seasons": ["夏季(6-8月)", "秋季(9-10月)", "春季(4-5月)"],
+    "avoid_seasons": ["深冬(12-2月，路况复杂，日照短)"],
+    "risk_level": "low",
+    "rhythm_pattern": "轻松观光节奏",
+    "start_point": {
+      "name": "雷克雅未克",
+      "name_en": "Reykjavik",
+      "coordinates": [64.1466, -21.9426],
+      "elevation_m": 20
+    },
+    "end_point": {
+      "name": "雷克雅未克",
+      "name_en": "Reykjavik",
+      "coordinates": [64.1466, -21.9426],
+      "elevation_m": 20
+    },
+    "key_stops": [
+      {
+        "stop_id": "gc_001",
+        "name": "辛格维利尔国家公园",
+        "name_en": "Þingvellir National Park",
+        "type": "景点",
+        "coordinates": [64.2558, -21.1300],
+        "elevation_m": 103,
+        "unesco_site": true,
+        "recommended_time_minutes": 90,
+        "highlights": [
+          "欧亚板块与北美板块交界",
+          "冰岛历史议会遗址",
+          "丝浮拉大裂缝（潜水点）",
+          "壮观的裂谷景观"
+        ],
+        "accessibility": {
+          "wheelchair_friendly": "部分区域",
+          "parking": "有停车场",
+          "facilities": ["游客中心", "洗手间", "餐厅"]
+        },
+        "fees": {
+          "parking_isk": 1000,
+          "parking_usd": 7,
+          "admission": "免费"
+        }
+      },
+      {
+        "stop_id": "gc_002",
+        "name": "盖歇尔间歇泉地热区",
+        "name_en": "Geysir Geothermal Area",
+        "type": "景点",
+        "coordinates": [64.3140, -20.2990],
+        "elevation_m": 120,
+        "recommended_time_minutes": 60,
+        "highlights": [
+          "史托克间歇泉（Strokkur）每5-10分钟喷发",
+          "可达25-30米高",
+          "地热泥浆池",
+          "温泉池"
+        ],
+        "safety_warnings": [
+          "不要靠近热泉边缘",
+          "注意风向避免被热水溅到",
+          "地面可能很滑"
+        ],
+        "accessibility": {
+          "wheelchair_friendly": "是（主要观景区）",
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "餐厅", "纪念品店"]
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费"
+        }
+      },
+      {
+        "stop_id": "gc_003",
+        "name": "黄金瀑布",
+        "name_en": "Gullfoss Waterfall",
+        "type": "景点",
+        "coordinates": [64.3271, -20.1211],
+        "elevation_m": 70,
+        "recommended_time_minutes": 45,
+        "highlights": [
+          "冰岛最壮观的瀑布之一",
+          "32米落差的双层瀑布",
+          "彩虹景观（晴天）",
+          "白河（Hvítá）的磅礴水流"
+        ],
+        "safety_warnings": [
+          "栏杆外非常危险",
+          "冬季路面结冰",
+          "水雾较大，注意防水"
+        ],
+        "accessibility": {
+          "wheelchair_friendly": "是（上层观景台）",
+          "parking": "大型停车场",
+          "facilities": ["游客中心", "洗手间", "咖啡馆"]
+        },
+        "fees": {
+          "parking": "免费",
+          "admission": "免费"
+        }
+      },
+      {
+        "stop_id": "gc_004",
+        "name": "凯瑞斯火山口湖（可选）",
+        "name_en": "Kerið Crater",
+        "type": "景点",
+        "coordinates": [64.0414, -20.8851],
+        "elevation_m": 270,
+        "recommended_time_minutes": 30,
+        "highlights": [
+          "6500年历史的火山口",
+          "碧蓝色的湖泊",
+          "红色火山岩对比",
+          "环形步道"
+        ],
+        "accessibility": {
+          "wheelchair_friendly": "否（需要走台阶）",
+          "parking": "小型停车场",
+          "facilities": ["售票处", "洗手间"]
+        },
+        "fees": {
+          "parking": "免费",
+          "admission_isk": 400,
+          "admission_usd": 3
+        }
+      }
+    ],
+    "route_characteristics": {
+      "road_quality": {
+        "paved_percentage": 100,
+        "surface_type": "柏油路",
+        "condition": "excellent",
+        "4wd_required": false
+      },
+      "traffic": {
+        "level": "medium-high",
+        "peak_season": "6-8月",
+        "peak_hours": "10:00-16:00",
+        "parking_difficulty": "moderate"
+      },
+      "services": {
+        "gas_stations": ["雷克雅未克", "Selfoss", "Laugarvatn"],
+        "restaurants": ["多个游客中心和小镇"],
+        "accommodations": ["Selfoss", "Laugarvatn", "Reykholt"],
+        "medical_facilities": ["Selfoss有医院"]
+      }
+    },
+    "decision_factors": {
+      "physical_demand": {
+        "level": "low",
+        "description": "主要是开车和短距离步行",
+        "daily_walking_km": 2,
+        "elevation_gain_m": 50,
+        "suitable_for": ["所有体能水平", "老年人", "儿童", "行动不便者（部分景点）"]
+      },
+      "mental_demand": {
+        "level": "low",
+        "description": "路线清晰，不需要导航技能",
+        "navigation_difficulty": "very_easy",
+        "decision_points": 3,
+        "language_barrier": "low（主要景点有中文标识）"
+      },
+      "time_pressure": {
+        "level": "low",
+        "description": "时间安排灵活，可快可慢",
+        "minimum_duration_hours": 6,
+        "comfortable_duration_hours": 8,
+        "relaxed_duration_hours": 10,
+        "buffer_needed": "建议预留1-2小时缓冲"
+      },
+      "uncertainty_level": {
+        "level": "low",
+        "description": "成熟路线，不确定性很低",
+        "weather_variability": "medium",
+        "route_conditions": "stable",
+        "service_reliability": "high"
+      },
+      "social_demand": {
+        "level": "low",
+        "description": "可独立完成，不需要协调",
+        "group_coordination": "not_required",
+        "language_skills": "basic_english_helpful",
+        "local_interaction": "minimal"
+      }
+    },
+    "rhythm_analysis": {
+      "rhythm_pattern_id": "relaxed_sightseeing",
+      "pattern_name": "轻松观光节奏",
+      "pace": "slow",
+      "intensity_variation": "consistent",
+      "characteristics": {
+        "activity_intensity": [
+          {"time": "09:00-12:00", "level": "low", "activity": "开车+辛格维利尔"},
+          {"time": "12:00-13:00", "level": "very_low", "activity": "午餐"},
+          {"time": "13:00-15:00", "level": "low", "activity": "盖歇尔+黄金瀑布"},
+          {"time": "15:00-17:00", "level": "very_low", "activity": "返程或可选景点"}
+        ],
+        "rest_opportunities": "每个景点都有休息设施",
+        "flexibility": "high",
+        "recovery_time_needed": "minimal"
+      },
+      "suitable_for": {
+        "user_states": [
+          "初次来冰岛",
+          "家庭出游",
+          "时间有限",
+          "偏好舒适",
+          "不想冒险"
+        ],
+        "experience_levels": ["novice", "intermediate"],
+        "age_groups": ["all"],
+        "group_types": ["solo", "couple", "family", "senior", "group"]
+      }
+    },
+    "risk_assessment": {
+      "overall_risk_level": "low",
+      "risk_score": 0.15,
+      "risk_breakdown": {
+        "weather_risk": {
+          "score": 0.2,
+          "severity": "low",
+          "description": "夏季天气相对稳定，但仍需注意风雨",
+          "mitigation": [
+            "查看实时天气预报",
+            "准备防风防水衣物",
+            "冬季注意路面结冰"
+          ]
+        },
+        "terrain_risk": {
+          "score": 0.05,
+          "severity": "very_low",
+          "description": "全程柏油路，地形简单",
+          "mitigation": ["遵守交通规则", "注意停车安全"]
+        },
+        "accessibility_risk": {
+          "score": 0.1,
+          "severity": "very_low",
+          "description": "景点开放稳定，很少关闭",
+          "mitigation": ["出发前确认景点开放状态"]
+        },
+        "health_risk": {
+          "score": 0.1,
+          "severity": "very_low",
+          "description": "体能要求低，健康风险小",
+          "mitigation": ["注意地热区安全", "防止滑倒"]
+        },
+        "navigation_risk": {
+          "score": 0.05,
+          "severity": "very_low",
+          "description": "路线清晰，不会迷路",
+          "mitigation": ["下载离线地图", "使用GPS"]
+        },
+        "service_risk": {
+          "score": 0.1,
+          "severity": "very_low",
+          "description": "服务设施完善，供应充足",
+          "mitigation": ["提前加满油", "自带饮水和零食"]
+        }
+      },
+      "critical_safety_notes": [
+        "不要靠近地热区的热泉边缘",
+        "瀑布观景台外非常危险，不要翻越栏杆",
+        "冬季路面可能结冰，减速慢行",
+        "注意保管贵重物品（停车场偶有盗窃）"
+      ],
+      "emergency_contacts": [
+        {"service": "紧急救援", "number": "112"},
+        {"service": "道路信息", "number": "1777"},
+        {"service": "SafeTravel", "number": "+354 570 5900"}
+      ]
+    },
+    "seasonal_variations": {
+      "summer": {
+        "months": ["6月", "7月", "8月"],
+        "characteristics": {
+          "daylight_hours": "20-24小时（极昼）",
+          "temperature_celsius": "10-15",
+          "weather": "相对稳定，偶有雨",
+          "road_conditions": "excellent",
+          "tourist_volume": "非常高"
+        },
+        "pros": [
+          "天气最好",
+          "日照时间长",
+          "所有景点开放",
+          "服务设施齐全"
+        ],
+        "cons": [
+          "游客非常多",
+          "住宿价格高",
+          "停车可能困难",
+          "失去极光机会"
+        ],
+        "recommendation": "最适合初次来冰岛的游客"
+      },
+      "autumn": {
+        "months": ["9月", "10月"],
+        "characteristics": {
+          "daylight_hours": "12-16小时",
+          "temperature_celsius": "5-10",
+          "weather": "多变，风雨增多",
+          "road_conditions": "good",
+          "tourist_volume": "medium"
+        },
+        "pros": [
+          "游客相对较少",
+          "秋色美丽",
+          "可能看到极光",
+          "价格相对便宜"
+        ],
+        "cons": [
+          "天气不稳定",
+          "部分服务缩短营业时间",
+          "日照减少"
+        ],
+        "recommendation": "适合想避开人群且接受天气风险的游客"
+      },
+      "winter": {
+        "months": ["11月", "12月", "1月", "2月", "3月"],
+        "characteristics": {
+          "daylight_hours": "4-8小时",
+          "temperature_celsius": "-5-5",
+          "weather": "寒冷多变，暴风雪频繁",
+          "road_conditions": "fair-poor（结冰常见）",
+          "tourist_volume": "low-medium"
+        },
+        "pros": [
+          "可能看到极光",
+          "雪景壮观",
+          "游客较少",
+          "冰洞探险季节"
+        ],
+        "cons": [
+          "日照短",
+          "路况复杂",
+          "部分景点关闭",
+          "驾驶难度增加"
+        ],
+        "recommendation": "仅适合有冰雪驾驶经验的游客",
+        "special_requirements": [
+          "建议租用四驱车",
+          "必须携带冬季装备",
+          "需检查每日路况",
+          "建议购买全险"
+        ]
+      },
+      "spring": {
+        "months": ["4月", "5月"],
+        "characteristics": {
+          "daylight_hours": "14-20小时",
+          "temperature_celsius": "0-10",
+          "weather": "逐渐转暖，仍多变",
+          "road_conditions": "good（融雪期需注意）",
+          "tourist_volume": "medium"
+        },
+        "pros": [
+          "日照增加",
+          "游客较少",
+          "价格适中",
+          "春季景色"
+        ],
+        "cons": [
+          "天气仍不稳定",
+          "部分高地路线未开放"
+        ],
+        "recommendation": "平衡了天气和游客数量，性价比高"
+      }
+    },
+    "cost_estimation": {
+      "currency": "USD",
+      "per_person_costs": {
+        "car_rental_per_day": {
+          "budget": 50,
+          "standard": 80,
+          "premium": 150,
+          "note": "小型车足够，不需要四驱"
+        },
+        "fuel": {
+          "total": 40,
+          "note": "约300公里，油价高"
+        },
+        "parking_fees": {
+          "total": 7,
+          "note": "仅辛格维利尔收费"
+        },
+        "admission_fees": {
+          "total": 3,
+          "note": "仅凯瑞斯火山口收费（可选）"
+        },
+        "meals": {
+          "budget": 30,
+          "standard": 50,
+          "premium": 80,
+          "note": "午餐+晚餐，冰岛餐饮价格高"
+        },
+        "total_estimate": {
+          "budget": 130,
+          "standard": 180,
+          "premium": 280,
+          "note": "不含雷克雅未克住宿"
+        }
+      }
+    },
+    "user_feedback_summary": {
+      "total_reviews": 15847,
+      "average_rating": 4.7,
+      "satisfaction_rate": 0.94,
+      "common_praises": [
+        "景点壮观易达",
+        "路线非常成熟",
+        "适合初次来冰岛",
+        "一天时间安排合理"
+      ],
+      "common_complaints": [
+        "夏季游客太多",
+        "景点之间距离较远",
+        "停车场有时拥挤",
+        "餐饮价格昂贵"
+      ],
+      "tips_from_users": [
+        "早上8点前出发避开人群",
+        "自带午餐节省时间和费用",
+        "预留时间拍照，尤其是间歇泉",
+        "冬季务必查看路况"
+      ]
+    },
+    "recommended_extensions": [
+      {
+        "extension_name": "蓝湖温泉",
+        "extension_name_en": "Blue Lagoon",
+        "additional_time_hours": 3,
+        "additional_cost_usd": 80,
+        "description": "世界著名的地热温泉",
+        "note": "需要提前预订"
+      },
+      {
+        "extension_name": "南岸瀑布（塞里雅兰瀑布+斯科加瀑布）",
+        "extension_name_en": "South Coast Waterfalls",
+        "additional_time_hours": 4,
+        "additional_cost_usd": 30,
+        "description": "延长至2天行程，增加南岸景点"
+      },
+      {
+        "extension_name": "雷克雅未克城市游览",
+        "extension_name_en": "Reykjavik City Tour",
+        "additional_time_hours": 4,
+        "additional_cost_usd": 50,
+        "description": "哈尔格林姆教堂、哈帕音乐厅、旧港"
+      }
+    ],
+    "decision_support_summary": {
+      "should_you_go": "这条路线非常适合初次来冰岛的游客",
+      "ideal_for": [
+        "时间有限（只有1-2天）",
+        "不想冒险",
+        "偏好舒适",
+        "家庭出游",
+        "对冰岛自然景观感兴趣"
+      ],
+      "not_ideal_for": [
+        "寻求人迹罕至的体验",
+        "讨厌拥挤和商业化",
+        "希望挑战自我",
+        "更喜欢徒步而非开车"
+      ],
+      "key_decision_questions": [
+        {
+          "question": "你能接受夏季的大量游客吗？",
+          "if_yes": "夏季最佳，天气稳定",
+          "if_no": "考虑春秋季节，或冬季（需冰雪驾驶经验）"
+        },
+        {
+          "question": "你有冰雪驾驶经验吗？",
+          "if_yes": "冬季也可以去，但需谨慎",
+          "if_no": "建议5-10月前往"
+        },
+        {
+          "question": "你的预算是否允许？",
+          "if_yes": "冰岛物价高，但黄金圈相对经济",
+          "if_no": "自带食物可节省约30-50%餐费"
+        }
+      ]
+    }
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "Visit Iceland",
+        "url": "https://www.visiticeland.com/golden-circle",
+        "accessed": "2026-01-22",
+        "reliability": "high"
+      },
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-22",
+        "reliability": "high"
+      },
+      {
+        "source": "road.is",
+        "url": "https://www.road.is",
+        "accessed": "2026-01-22",
+        "reliability": "high"
+      }
+    ],
+    "user_feedback_sources": [
+      "TripAdvisor",
+      "Google Reviews",
+      "小红书",
+      "马蜂窝"
+    ],
+    "last_field_verification": "2025-08-15",
+    "next_review_date": "2026-04-22"
+  }
+}

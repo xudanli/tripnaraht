@@ -1,0 +1,1 @@
+{"version":3,"file":"data-pipeline.interface.js","sourceRoot":"","sources":["../../../../src/data-pipeline/interfaces/data-pipeline.interface.ts"],"names":[],"mappings":";;;AA8IA,MAAa,oBAAqB,SAAQ,KAAK;IAC7C,YACE,OAAe,EACC,iBAAsB;QAEtC,KAAK,CAAC,OAAO,CAAC,CAAC;QAFC,sBAAiB,GAAjB,iBAAiB,CAAK;QAGtC,IAAI,CAAC,IAAI,GAAG,sBAAsB,CAAC;IACrC,CAAC;CACF;AARD,oDAQC"}

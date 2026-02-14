@@ -1,0 +1,614 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "data_sources": [
+      "SafeTravel.is",
+      "ICE-SAR (冰岛搜救队)",
+      "Environment Agency of Iceland"
+    ],
+    "credibility_score": 0.95,
+    "language": "zh-CN",
+    "update_frequency": "weekly"
+  },
+  "risk_assessment_framework": {
+    "risk_score_calculation": "risk_score = probability × severity × exposure × mitigation_difficulty",
+    "risk_levels": {
+      "low": "0.0-0.3",
+      "medium": "0.3-0.6",
+      "high": "0.6-0.8",
+      "extreme": "0.8-1.0"
+    }
+  },
+  "terrain_risks": [
+    {
+      "risk_id": "tr_001",
+      "risk_name": "冰川裂缝",
+      "risk_name_en": "Glacier Crevasses",
+      "risk_type": "terrain",
+      "severity": "catastrophic",
+      "severity_score": 1.0,
+      "probability_by_activity": {
+        "远观冰川": {"level": "rare", "score": 0.05},
+        "接近冰川边缘": {"level": "occasional", "score": 0.3},
+        "独自上冰川": {"level": "very_frequent", "score": 0.9}
+      },
+      "affected_areas": [
+        "所有冰川",
+        "瓦特纳冰川",
+        "米达尔斯冰川",
+        "朗格冰川",
+        "索尔黑马冰川"
+      ],
+      "characteristics": {
+        "description": "冰川表面的深邃裂缝，深度可达数十米",
+        "visibility": "可能被雪覆盖，完全看不见",
+        "depth": "数米至上百米",
+        "width": "数厘米至数米",
+        "formation": "冰川移动造成的裂隙"
+      },
+      "danger_level": "extreme",
+      "consequences": [
+        "跌落致死",
+        "严重受伤",
+        "被困无法自救",
+        "体温过低"
+      ],
+      "warning_signs": [
+        "冰面上的细裂纹",
+        "雪桥（危险！）",
+        "冰面下的空洞声",
+        "向导警告区域"
+      ],
+      "mitigation_strategies": [
+        "⚠️ 绝不独自上冰川",
+        "必须雇佣专业向导",
+        "使用冰爪、绳索等专业装备",
+        "保持在向导指定路径",
+        "远观是最安全的选择"
+      ],
+      "emergency_actions": [
+        "如有人跌落，立即拨打112",
+        "不要试图自己救援（可能造成更多伤亡）",
+        "等待专业搜救队",
+        "提供准确GPS坐标"
+      ],
+      "activities_requiring_caution": [
+        "冰川徒步",
+        "冰洞探险",
+        "攀冰",
+        "雪地摩托"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2018-07",
+          "location": "Sólheimajökull冰川",
+          "description": "游客独自靠近冰川边缘，跌入裂缝受伤",
+          "lesson": "即使在冰川边缘也有裂缝危险"
+        }
+      ],
+      "special_notes": "即使是经验丰富的冰川向导也需要使用探测杆检查裂缝"
+    },
+    {
+      "risk_id": "tr_002",
+      "risk_name": "河流穿越",
+      "risk_name_en": "River Crossings",
+      "risk_type": "terrain",
+      "severity": "severe",
+      "severity_score": 0.9,
+      "probability_by_season": {
+        "summer": {"level": "frequent", "score": 0.7, "note": "冰川融水导致水位变化"},
+        "winter": {"level": "rare", "score": 0.1, "note": "F路封闭"}
+      },
+      "affected_areas": [
+        "内陆高地F路",
+        "F35 Kjölur",
+        "F208 Fjallabak",
+        "F210 内陆穿越"
+      ],
+      "characteristics": {
+        "description": "冰川河水流湍急，深度和流速变化大",
+        "water_temperature": "接近0°C",
+        "visibility": "含沙量高，看不清河床",
+        "flow_rate": "每小时数百立方米",
+        "depth_variation": "早晚差异大（午后水位最高）"
+      },
+      "danger_level": "extreme",
+      "consequences": [
+        "车辆被冲走",
+        "发动机进水报废",
+        "被困河中",
+        "体温过低",
+        "溺水"
+      ],
+      "warning_signs": [
+        "水流湍急",
+        "水深不明",
+        "其他车辆停下观察",
+        "上游天气变化"
+      ],
+      "mitigation_strategies": [
+        "⚠️ 必须使用四驱车",
+        "早上穿越（水位最低）",
+        "检查水深（徒步探路或询问其他司机）",
+        "斜向上游穿越（抵消水流）",
+        "保持低档位，稳定油门",
+        "跟随有经验司机的车辙",
+        "不确定就不要穿越",
+        "考虑雇佣本地向导"
+      ],
+      "emergency_actions": [
+        "如车辆被困，立即离开车辆",
+        "向下游岸边移动",
+        "拨打112求救",
+        "保暖避免失温"
+      ],
+      "depth_assessment": {
+        "safe": "< 30cm（轮胎中心以下）",
+        "caution": "30-50cm（需经验）",
+        "dangerous": "> 50cm（不建议）",
+        "extreme": "> 70cm（绝不尝试）"
+      },
+      "vehicle_requirements": [
+        "四驱车（必须）",
+        "高底盘",
+        "加固的前保险杠",
+        "涉水深度至少60cm"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2019-08",
+          "location": "F208河流穿越点",
+          "description": "游客普通SUV尝试穿越，车辆被冲走",
+          "lesson": "四驱车和经验缺一不可"
+        },
+        {
+          "date": "2020-07",
+          "location": "F35",
+          "description": "午后水位上涨，多辆车被困",
+          "lesson": "早上穿越，避开午后融水高峰"
+        }
+      ],
+      "special_notes": "每年都有车辆因河流穿越被冲走或损毁"
+    },
+    {
+      "risk_id": "tr_003",
+      "risk_name": "悬崖跌落",
+      "risk_name_en": "Cliff Falls",
+      "risk_type": "terrain",
+      "severity": "catastrophic",
+      "severity_score": 1.0,
+      "probability_by_location": {
+        "观景台内": {"level": "very_rare", "score": 0.02},
+        "栏杆外": {"level": "very_frequent", "score": 0.8}
+      },
+      "affected_areas": [
+        "雷尼斯黑沙滩悬崖",
+        "迪霍拉里海岬",
+        "Dyrhólaey",
+        "辛格维利尔裂谷",
+        "西峡湾悬崖"
+      ],
+      "characteristics": {
+        "description": "陡峭的海岸或内陆悬崖，高度从数米到数百米",
+        "height": "10-100米以上",
+        "stability": "部分地区岩石松动",
+        "edge_visibility": "边缘可能被植被或雪覆盖"
+      },
+      "danger_level": "extreme",
+      "consequences": [
+        "致命跌落",
+        "严重受伤",
+        "救援极度困难"
+      ],
+      "warning_signs": [
+        "警告标识",
+        "栏杆/围栏",
+        "松动的岩石",
+        "悬空的边缘"
+      ],
+      "mitigation_strategies": [
+        "⚠️ 绝不翻越栏杆",
+        "保持距离（至少2米）",
+        "不要站在悬崖边缘拍照",
+        "风大时远离悬崖",
+        "注意儿童",
+        "湿滑时格外小心"
+      ],
+      "emergency_actions": [
+        "如有人跌落，立即拨打112",
+        "不要试图攀爬救援",
+        "提供准确位置",
+        "等待专业搜救队"
+      ],
+      "high_risk_behaviors": [
+        "为拍照翻越栏杆",
+        "站在悬崖边缘",
+        "背对悬崖",
+        "在风大或湿滑时靠近",
+        "不看警告标识"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2016-09",
+          "location": "Reynisfjara黑沙滩悬崖",
+          "description": "游客为拍照翻越栏杆，跌落受伤",
+          "lesson": "栏杆存在是有原因的"
+        }
+      ],
+      "special_notes": "冰岛的悬崖边缘可能是悬空的，看似坚固实则危险"
+    },
+    {
+      "risk_id": "tr_004",
+      "risk_name": "火山爆发",
+      "risk_name_en": "Volcanic Eruption",
+      "risk_type": "terrain",
+      "severity": "extreme",
+      "severity_score": 1.0,
+      "probability": {"level": "occasional", "score": 0.2, "note": "每3-5年一次"},
+      "affected_areas": [
+        "Reykjanes半岛",
+        "Katla（米达尔斯冰川下）",
+        "Hekla",
+        "Grímsvötn（瓦特纳冰川）",
+        "Askja"
+      ],
+      "characteristics": {
+        "eruption_types": [
+          "裂缝喷发（如Fagradalsfjall）",
+          "冰下喷发（如Eyjafjallajökull）",
+          "爆炸性喷发（如Hekla）"
+        ],
+        "warning_time": "数小时至数日（地震增加）",
+        "duration": "数日至数月"
+      },
+      "danger_level": "extreme（发生时）",
+      "consequences": [
+        "岩浆流",
+        "火山灰云",
+        "气体释放（SO2、CO2）",
+        "冰川洪水（jökulhlaup）",
+        "地震",
+        "航空瘫痪"
+      ],
+      "warning_signs": [
+        "地震增加",
+        "地面隆起",
+        "气体释放增加",
+        "官方警报"
+      ],
+      "mitigation_strategies": [
+        "关注Icelandic Met Office警报",
+        "遵守禁入区",
+        "准备口罩和护目镜",
+        "了解疏散路线",
+        "不要靠近活跃喷发口",
+        "注意风向（避免火山灰和气体）"
+      ],
+      "emergency_actions": [
+        "遵循官方疏散命令",
+        "远离岩浆流路径",
+        "关闭车窗，打开空调内循环",
+        "戴口罩防止吸入火山灰",
+        "拨打112获取指示"
+      ],
+      "monitoring_sources": [
+        {
+          "source": "Icelandic Met Office",
+          "url": "https://en.vedur.is/earthquakes-and-volcanism/",
+          "update_frequency": "实时"
+        },
+        {
+          "source": "Civil Protection",
+          "url": "https://www.almannavarnir.is",
+          "update_frequency": "实时"
+        }
+      ],
+      "recent_eruptions": [
+        {
+          "volcano": "Fagradalsfjall",
+          "date": "2021-2023",
+          "type": "裂缝喷发",
+          "impact": "低（无人区，成为旅游景点）",
+          "lesson": "并非所有喷发都是灾难，但需谨慎"
+        },
+        {
+          "volcano": "Eyjafjallajökull",
+          "date": "2010",
+          "type": "冰下喷发",
+          "impact": "极高（欧洲航空瘫痪）",
+          "lesson": "火山灰对航空的影响巨大"
+        }
+      ],
+      "special_notes": "冰岛平均每3-5年一次火山爆发，大多数对旅行者影响有限"
+    },
+    {
+      "risk_id": "tr_005",
+      "risk_name": "冰川河涨水",
+      "risk_name_en": "Glacial River Flooding",
+      "risk_type": "terrain",
+      "severity": "severe",
+      "severity_score": 0.8,
+      "probability_by_time": {
+        "morning": {"level": "rare", "score": 0.1},
+        "afternoon": {"level": "frequent", "score": 0.6, "note": "午后融水高峰"},
+        "rainy_days": {"level": "very_frequent", "score": 0.8}
+      },
+      "affected_areas": [
+        "南海岸1号公路（部分路段）",
+        "F路穿越点",
+        "冰川附近营地"
+      ],
+      "characteristics": {
+        "description": "冰川融水导致河流水位快速上涨",
+        "rise_speed": "数小时内上涨数十厘米",
+        "peak_time": "午后2-5点",
+        "water_color": "灰白色（含冰川粉）",
+        "temperature": "接近0°C"
+      },
+      "danger_level": "medium-high",
+      "consequences": [
+        "道路淹没",
+        "车辆被困",
+        "营地被淹",
+        "失温"
+      ],
+      "warning_signs": [
+        "水位上涨",
+        "水流加快",
+        "上游天气转暖或降雨",
+        "午后时段"
+      ],
+      "mitigation_strategies": [
+        "早上穿越（水位低）",
+        "避开午后高峰",
+        "关注天气预报",
+        "不要在冰川河边缘露营",
+        "留意water.is水位监测"
+      ],
+      "emergency_actions": [
+        "水位上涨立即撤离",
+        "向高地移动",
+        "不要试图开车穿越涨水河流",
+        "拨打112"
+      ],
+      "special_events": {
+        "jökulhlaup": {
+          "name": "冰川洪水",
+          "description": "冰下火山喷发导致的突发性大规模洪水",
+          "severity": "catastrophic",
+          "warning": "官方会发布警报，立即撤离",
+          "affected_areas": ["Katla下游", "Grímsvötn下游"],
+          "historical": "Katla上次爆发（1918）洪水冲到海边"
+        }
+      }
+    },
+    {
+      "risk_id": "tr_006",
+      "risk_name": "熔岩地迷路",
+      "risk_name_en": "Getting Lost in Lava Fields",
+      "risk_type": "terrain",
+      "severity": "moderate",
+      "severity_score": 0.6,
+      "probability": {"level": "occasional", "score": 0.3},
+      "affected_areas": [
+        "Eldhraun熔岩地",
+        "Berserkjahraun",
+        "Dimmuborgir"
+      ],
+      "characteristics": {
+        "description": "熔岩地地形复杂，缺乏明显地标",
+        "visibility": "苔藓覆盖，难以辨认路径",
+        "navigation": "GPS信号可能不准确",
+        "terrain": "不平坦，易摔倒"
+      },
+      "danger_level": "medium",
+      "consequences": [
+        "迷路",
+        "体力耗尽",
+        "天黑被困",
+        "摔伤"
+      ],
+      "warning_signs": [
+        "失去方向感",
+        "看不到明显路径",
+        "周围景观相似"
+      ],
+      "mitigation_strategies": [
+        "坚持在标记路径上",
+        "不要踩踏苔藓（生长缓慢）",
+        "携带GPS或指南针",
+        "告知他人行程",
+        "预留充足时间返回"
+      ],
+      "emergency_actions": [
+        "停止前进",
+        "返回最后已知位置",
+        "如天黑，寻找庇护所",
+        "拨打112"
+      ],
+      "environmental_note": "熔岩地苔藓生长极度缓慢，踩踏破坏需数十年恢复"
+    },
+    {
+      "risk_id": "tr_007",
+      "risk_name": "高地迷路",
+      "risk_name_en": "Getting Lost in Highlands",
+      "risk_type": "terrain",
+      "severity": "severe",
+      "severity_score": 0.9,
+      "probability": {"level": "occasional", "score": 0.3},
+      "affected_areas": [
+        "内陆高地",
+        "Sprengisandur",
+        "Kjölur",
+        "Askja路线"
+      ],
+      "characteristics": {
+        "description": "广阔无人区，缺乏地标和服务",
+        "visibility": "天气变化快，白化常见",
+        "navigation": "路标稀少，GPS不可靠",
+        "distance": "数十至上百公里无人烟"
+      },
+      "danger_level": "extreme",
+      "consequences": [
+        "被困数日",
+        "燃料耗尽",
+        "食物短缺",
+        "失温",
+        "致命"
+      ],
+      "warning_signs": [
+        "路标消失",
+        "GPS定位不准",
+        "天气恶化",
+        "找不到其他车辆"
+      ],
+      "mitigation_strategies": [
+        "⚠️ 强烈建议雇佣向导或参加团队",
+        "提前规划路线",
+        "携带充足燃料、食物、水",
+        "携带应急装备（睡袋、炉具）",
+        "使用SafeTravel应用登记行程",
+        "携带卫星电话或PLB（个人定位信标）",
+        "至少两辆车同行"
+      ],
+      "emergency_actions": [
+        "停止前进，留在车内",
+        "节省燃料（间歇开暖气）",
+        "拨打112",
+        "启动PLB",
+        "不要徒步离开车辆"
+      ],
+      "required_equipment": [
+        "四驱车",
+        "备用燃料",
+        "食物（至少3天）",
+        "饮用水",
+        "睡袋",
+        "应急毯",
+        "头灯",
+        "卫星电话或PLB",
+        "纸质地图"
+      ],
+      "historical_incidents": [
+        {
+          "date": "2017-06",
+          "location": "Sprengisandur",
+          "description": "游客迷路，燃料耗尽，被困2天后获救",
+          "lesson": "高地不是开玩笑的地方"
+        }
+      ],
+      "special_notes": "内陆高地是冰岛最危险的旅行区域，每年都有搜救行动"
+    }
+  ],
+  "terrain_safety_guidelines": {
+    "general_rules": [
+      "遵守所有警告标识",
+      "不要独自前往偏远地区",
+      "告知他人行程",
+      "携带应急装备",
+      "关注天气预报",
+      "保持在标记路径上",
+      "尊重自然和私人财产"
+    ],
+    "hiking_safety": [
+      "穿合适的徒步鞋",
+      "携带足够的食物和水",
+      "带防风防水衣物",
+      "告知他人路线和预计返回时间",
+      "不要独自徒步偏远路线",
+      "使用SafeTravel应用"
+    ],
+    "driving_safety": [
+      "了解道路类型（柏油/砂石/F路）",
+      "减速慢行（尤其砂石路）",
+      "注意动物（羊）",
+      "不要off-road（违法且破坏环境）",
+      "检查road.is路况",
+      "冬季使用冬季轮胎"
+    ],
+    "glacier_safety": [
+      "⚠️ 绝不独自上冰川",
+      "必须雇佣专业向导",
+      "使用专业装备",
+      "远观是最安全的选择"
+    ],
+    "highlands_safety": [
+      "仅夏季6-9月",
+      "必须四驱车",
+      "至少两辆车同行",
+      "携带应急装备",
+      "登记行程",
+      "考虑雇佣向导"
+    ]
+  },
+  "emergency_contacts": [
+    {
+      "service": "紧急救援（Emergency）",
+      "number": "112",
+      "note": "任何紧急情况"
+    },
+    {
+      "service": "ICE-SAR（搜救队）",
+      "number": "112",
+      "website": "https://www.landsbjorg.is",
+      "note": "失踪、被困、救援"
+    },
+    {
+      "service": "SafeTravel 24/7",
+      "number": "+354 570 5900",
+      "website": "https://safetravel.is",
+      "note": "旅行安全咨询"
+    }
+  ],
+  "real_time_monitoring": {
+    "road_conditions": {
+      "source": "road.is",
+      "url": "https://www.road.is",
+      "update_frequency": "实时",
+      "info": "F路开放状态、河流水位、路况"
+    },
+    "volcanic_activity": {
+      "source": "Icelandic Met Office",
+      "url": "https://en.vedur.is/earthquakes-and-volcanism/",
+      "update_frequency": "实时",
+      "info": "地震、火山警报"
+    },
+    "weather": {
+      "source": "vedur.is",
+      "url": "https://en.vedur.is",
+      "update_frequency": "每小时",
+      "info": "天气预报、警告"
+    },
+    "safetravel_app": {
+      "name": "112 Iceland",
+      "platforms": ["iOS", "Android"],
+      "features": ["行程登记", "一键SOS", "离线地图", "安全提示"]
+    }
+  },
+  "data_provenance": {
+    "primary_sources": [
+      {
+        "source": "SafeTravel.is",
+        "url": "https://safetravel.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      },
+      {
+        "source": "ICE-SAR",
+        "url": "https://www.landsbjorg.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      },
+      {
+        "source": "Environment Agency of Iceland",
+        "url": "https://www.ust.is",
+        "accessed": "2026-01-22",
+        "reliability": "very_high"
+      }
+    ],
+    "incident_data": "基于历史搜救记录和事故报告",
+    "last_field_verification": "2025-08-15",
+    "next_review_date": "2026-04-22"
+  }
+}
