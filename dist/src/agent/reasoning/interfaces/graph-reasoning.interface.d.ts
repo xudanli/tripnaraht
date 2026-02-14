@@ -1,4 +1,4 @@
-export type NodeType = 'ROUTE' | 'USER' | 'ENVIRONMENT' | 'FEATURE' | 'JUDGMENT' | 'EVIDENCE';
+export type NodeType = 'ROUTE' | 'USER' | 'ENVIRONMENT' | 'FEATURE' | 'JUDGMENT' | 'EVIDENCE' | 'WEATHER' | 'ROAD_STATUS' | 'USER_CAPABILITY' | 'ROUTE_DIFFICULTY' | 'PREDICTION' | 'TRIP_SUCCESS' | 'TRIP_FAILURE';
 export type EdgeType = 'CONSTRAINT' | 'DERIVATION' | 'DATA_SOURCE';
 export interface GraphNode {
     id: string;
@@ -9,6 +9,7 @@ export interface GraphNode {
         confidence?: number;
         source?: string;
         timestamp?: string;
+        worldModelType?: string;
     };
 }
 export interface GraphEdge {

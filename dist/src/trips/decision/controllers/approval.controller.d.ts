@@ -15,8 +15,8 @@ export declare class ApprovalController {
         updatedAt: Date;
         description: string | null;
         summary: string;
-        expiresAt: Date | null;
         riskLevel: string;
+        expiresAt: Date | null;
         threadId: string;
         agentRunId: string | null;
         toolCallId: string | null;
@@ -33,8 +33,8 @@ export declare class ApprovalController {
         updatedAt: Date;
         description: string | null;
         summary: string;
-        expiresAt: Date | null;
         riskLevel: string;
+        expiresAt: Date | null;
         threadId: string;
         agentRunId: string | null;
         toolCallId: string | null;
@@ -58,8 +58,8 @@ export declare class ApprovalController {
             updatedAt: Date;
             description: string | null;
             summary: string;
-            expiresAt: Date | null;
             riskLevel: string;
+            expiresAt: Date | null;
             threadId: string;
             agentRunId: string | null;
             toolCallId: string | null;
@@ -82,8 +82,8 @@ export declare class ApprovalController {
             updatedAt: Date;
             description: string | null;
             summary: string;
-            expiresAt: Date | null;
             riskLevel: string;
+            expiresAt: Date | null;
             threadId: string;
             agentRunId: string | null;
             toolCallId: string | null;

@@ -22,6 +22,10 @@ export interface TripPlanRequest {
         has_elderly?: boolean;
         fitness_level?: 'low' | 'medium' | 'high';
     };
+    party_profile?: {
+        risk_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+        fitness?: 'low' | 'medium' | 'high';
+    };
     constraints?: {
         budget?: {
             total?: number;

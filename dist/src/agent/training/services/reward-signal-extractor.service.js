@@ -304,6 +304,86 @@ let RewardSignalExtractorService = RewardSignalExtractorService_1 = class Reward
     mergeSignals(...signalArrays) {
         return signalArrays.flat();
     }
+    extractFromUserFeedback(feedback) {
+        this.logger.debug(`[RewardExtractor] 从用户反馈提取reward: type=${feedback.type}`);
+        const signals = [];
+        switch (feedback.type) {
+            case 'TRIP_COMPLETED':
+                if (feedback.data.overallSatisfaction !== undefined && feedback.data.overallSatisfaction >= 4) {
+                    signals.push({
+                        type: 'EXECUTION_SUCCESS',
+                        value: 0.8,
+                        timestamp: new Date().toISOString(),
+                        source: 'USER',
+                        is_gate_signal: false,
+                        metadata: {
+                            trip_completed: true,
+                            overall_satisfaction: feedback.data.overallSatisfaction,
+                            actual_days: feedback.data.actualDays,
+                            actual_ascent: feedback.data.actualAscent,
+                        },
+                    });
+                }
+                else if (feedback.data.overallSatisfaction !== undefined && feedback.data.overallSatisfaction < 3) {
+                    signals.push({
+                        type: 'EXECUTION_FAILURE',
+                        value: -0.3,
+                        timestamp: new Date().toISOString(),
+                        source: 'USER',
+                        is_gate_signal: false,
+                        metadata: {
+                            trip_completed: true,
+                            overall_satisfaction: feedback.data.overallSatisfaction,
+                            actual_days: feedback.data.actualDays,
+                        },
+                    });
+                }
+                break;
+            case 'DAY_FAILED':
+                signals.push({
+                    type: 'EXECUTION_FAILURE',
+                    value: -0.3,
+                    timestamp: new Date().toISOString(),
+                    source: 'USER',
+                    is_gate_signal: false,
+                    metadata: {
+                        day_failed: true,
+                        failed_day_numbers: feedback.data.failedDayNumbers,
+                        failure_reason: feedback.data.failureReason,
+                    },
+                });
+                break;
+            case 'POI_SKIPPED':
+                signals.push({
+                    type: 'CORE_POI_SKIPPED',
+                    value: -0.1,
+                    timestamp: new Date().toISOString(),
+                    source: 'USER',
+                    is_gate_signal: false,
+                    metadata: {
+                        poi_skipped: true,
+                        skipped_poi_ids: feedback.data.skippedPoiIds,
+                        skip_reason: feedback.data.skipReason,
+                    },
+                });
+                break;
+            case 'POI_ADDED':
+                signals.push({
+                    type: 'POI_ADDED',
+                    value: 0.1,
+                    timestamp: new Date().toISOString(),
+                    source: 'USER',
+                    is_gate_signal: false,
+                    metadata: {
+                        poi_added: true,
+                        added_poi_ids: feedback.data.addedPoiIds,
+                    },
+                });
+                break;
+        }
+        this.logger.debug(`[RewardExtractor] 从用户反馈提取到 ${signals.length} 个reward信号，总值: ${signals.reduce((sum, s) => sum + s.value, 0)}`);
+        return signals;
+    }
 };
 exports.RewardSignalExtractorService = RewardSignalExtractorService;
 exports.RewardSignalExtractorService = RewardSignalExtractorService = RewardSignalExtractorService_1 = __decorate([

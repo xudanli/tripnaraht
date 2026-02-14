@@ -26,19 +26,35 @@ let FileExtractorMcpService = FileExtractorMcpService_1 = class FileExtractorMcp
         this.useDirectService = false;
     }
     async onModuleInit() {
-        var _a;
+        var _a, _b;
+        const enableMcpService = process.env.ENABLE_FILE_EXTRACTOR_MCP !== 'false';
+        if (!enableMcpService) {
+            this.logger.log('File Extractor MCP service disabled (ENABLE_FILE_EXTRACTOR_MCP=false), using Direct Service');
+            this.isAvailableFlag = false;
+            this.useDirectService = ((_a = this.directService) === null || _a === void 0 ? void 0 : _a.isServiceAvailable()) || false;
+            if (this.useDirectService) {
+                this.logger.log('✅ File Extractor Direct Service is available');
+            }
+            return;
+        }
         try {
             this.client = new file_extractor_client_1.FileExtractorMcpClient();
             await this.client.connect();
             this.isAvailableFlag = true;
             this.useDirectService = false;
-            this.logger.log('File Extractor MCP service initialized');
+            this.logger.log('✅ File Extractor MCP service initialized');
         }
         catch (error) {
             this.logger.warn('Failed to initialize File Extractor MCP service:', error.message);
             this.logger.log('Will use direct service as fallback if available');
             this.isAvailableFlag = false;
-            this.useDirectService = ((_a = this.directService) === null || _a === void 0 ? void 0 : _a.isServiceAvailable()) || false;
+            this.useDirectService = ((_b = this.directService) === null || _b === void 0 ? void 0 : _b.isServiceAvailable()) || false;
+            if (this.useDirectService) {
+                this.logger.log('✅ File Extractor Direct Service is available as fallback');
+            }
+            else {
+                this.logger.warn('⚠️  Neither MCP nor Direct Service is available');
+            }
         }
     }
     isAvailable() {

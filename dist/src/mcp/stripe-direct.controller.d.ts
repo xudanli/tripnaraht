@@ -21,11 +21,11 @@ export declare class StripeDirectController {
     }): Promise<{
         success: boolean;
         paymentIntent: {
-            id: any;
-            clientSecret: any;
-            status: any;
-            amount: any;
-            currency: any;
+            id: string;
+            clientSecret: string;
+            status: import("stripe").Stripe.PaymentIntent.Status;
+            amount: number;
+            currency: string;
         };
     }>;
     confirmPaymentIntent(paymentIntentId: string, body: {
@@ -33,20 +33,20 @@ export declare class StripeDirectController {
     }): Promise<{
         success: boolean;
         paymentIntent: {
-            id: any;
-            status: any;
-            amount: any;
-            currency: any;
+            id: string;
+            status: import("stripe").Stripe.PaymentIntent.Status;
+            amount: number;
+            currency: string;
         };
     }>;
     getPaymentIntent(paymentIntentId: string): Promise<{
         success: boolean;
         paymentIntent: {
-            id: any;
-            status: any;
-            amount: any;
-            currency: any;
-            metadata: any;
+            id: string;
+            status: import("stripe").Stripe.PaymentIntent.Status;
+            amount: number;
+            currency: string;
+            metadata: import("stripe").Stripe.Metadata;
         };
     }>;
     refundPayment(body: {
@@ -56,21 +56,21 @@ export declare class StripeDirectController {
     }): Promise<{
         success: boolean;
         refund: {
-            id: any;
-            amount: any;
-            currency: any;
-            status: any;
+            id: string;
+            amount: number;
+            currency: string;
+            status: string;
         };
     }>;
     getPaymentHistory(user: any, limit?: string, startingAfter?: string): Promise<{
         success: boolean;
         paymentIntents: {
-            id: any;
-            status: any;
-            amount: any;
-            currency: any;
-            created: any;
-            metadata: any;
+            id: string;
+            status: import("stripe").Stripe.PaymentIntent.Status;
+            amount: number;
+            currency: string;
+            created: number;
+            metadata: import("stripe").Stripe.Metadata;
         }[];
     }>;
     initiateConnectOAuth(user: any, redirectUri: string): Promise<{

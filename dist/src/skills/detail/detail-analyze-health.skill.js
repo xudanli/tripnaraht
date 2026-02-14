@@ -5,12 +5,21 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var DetailAnalyzeHealthSkill_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DetailAnalyzeHealthSkill = void 0;
 const common_1 = require("@nestjs/common");
+const trip_conflicts_service_1 = require("../../trips/services/trip-conflicts.service");
+const trip_conflicts_dto_1 = require("../../trips/dto/trip-conflicts.dto");
 let DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = class DetailAnalyzeHealthSkill {
-    constructor() {
+    constructor(tripConflictsService) {
+        this.tripConflictsService = tripConflictsService;
         this.logger = new common_1.Logger(DetailAnalyzeHealthSkill_1.name);
         this.metadata = {
             name: 'detail.analyzeHealth',
@@ -23,12 +32,32 @@ let DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = class DetailAnalyzeH
     async execute(input) {
         this.logger.debug(`执行 detail.analyzeHealth: tripId=${input.tripId}`);
         try {
-            const schedule = this.analyzeSchedule(input.tripData, input.planState);
-            const budget = this.analyzeBudget(input.tripData, input.planState);
-            const pace = this.analyzePace(input.tripData, input.planState);
-            const feasibility = this.analyzeFeasibility(input.tripData, input.planState);
-            const scores = [schedule.score, budget.score, pace.score, feasibility.score];
-            const overallScore = Math.min(...scores);
+            const dimensionWeights = {
+                schedule: 0.30,
+                budget: 0.25,
+                pace: 0.25,
+                feasibility: 0.20
+            };
+            const schedule = {
+                ...await this.analyzeSchedule(input.tripId, input.tripData, input.planState),
+                weight: dimensionWeights.schedule,
+            };
+            const budget = {
+                ...this.analyzeBudget(input.tripData, input.planState),
+                weight: dimensionWeights.budget,
+            };
+            const pace = {
+                ...this.analyzePace(input.tripData, input.planState),
+                weight: dimensionWeights.pace,
+            };
+            const feasibility = {
+                ...this.analyzeFeasibility(input.tripData, input.planState),
+                weight: dimensionWeights.feasibility,
+            };
+            const overallScore = schedule.score * dimensionWeights.schedule +
+                budget.score * dimensionWeights.budget +
+                pace.score * dimensionWeights.pace +
+                feasibility.score * dimensionWeights.feasibility;
             let overall = 'healthy';
             if (overallScore < 50) {
                 overall = 'critical';
@@ -38,6 +67,7 @@ let DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = class DetailAnalyzeH
             }
             const health = {
                 overall,
+                overallScore: Math.round(overallScore),
                 dimensions: {
                     schedule,
                     budget,
@@ -54,10 +84,49 @@ let DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = class DetailAnalyzeH
             throw error;
         }
     }
-    analyzeSchedule(tripData, planState) {
+    async analyzeSchedule(tripId, tripData, planState) {
         var _a;
         const issues = [];
         let score = 100;
+        if (this.tripConflictsService) {
+            try {
+                const conflictsResult = await this.tripConflictsService.getConflicts(tripId);
+                const timeConflicts = conflictsResult.conflicts.filter(c => c.type === trip_conflicts_dto_1.ConflictType.TIME_CONFLICT);
+                if (timeConflicts.length > 0) {
+                    const conflictPenalty = timeConflicts.reduce((sum, conflict) => {
+                        if (conflict.severity === trip_conflicts_dto_1.ConflictSeverity.HIGH) {
+                            return sum + 25;
+                        }
+                        else if (conflict.severity === trip_conflicts_dto_1.ConflictSeverity.MEDIUM) {
+                            return sum + 15;
+                        }
+                        else {
+                            return sum + 5;
+                        }
+                    }, 0);
+                    const finalPenalty = Math.min(conflictPenalty, 90);
+                    score -= finalPenalty;
+                    if (timeConflicts.length === 1) {
+                        issues.push(`1 个时间冲突：${timeConflicts[0].description}`);
+                    }
+                    else {
+                        issues.push(`${timeConflicts.length} 个时间冲突`);
+                        timeConflicts.slice(0, 3).forEach(conflict => {
+                            issues.push(`- ${conflict.description}`);
+                        });
+                        if (timeConflicts.length > 3) {
+                            issues.push(`... 还有 ${timeConflicts.length - 3} 个时间冲突`);
+                        }
+                    }
+                }
+            }
+            catch (error) {
+                this.logger.warn(`获取时间冲突失败: ${error.message}`);
+            }
+        }
+        else {
+            this.logger.warn('TripConflictsService 未注入，无法检查时间冲突');
+        }
         if ((_a = planState === null || planState === void 0 ? void 0 : planState.pace) === null || _a === void 0 ? void 0 : _a.timeWindows) {
             const insufficientDays = planState.pace.timeWindows.filter((tw) => {
                 const start = parseInt(tw.start.split(':')[0]);
@@ -125,6 +194,8 @@ let DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = class DetailAnalyzeH
 };
 exports.DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill;
 exports.DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill = DetailAnalyzeHealthSkill_1 = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __param(0, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [trip_conflicts_service_1.TripConflictsService])
 ], DetailAnalyzeHealthSkill);
 //# sourceMappingURL=detail-analyze-health.skill.js.map

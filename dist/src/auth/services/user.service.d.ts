@@ -22,20 +22,20 @@ export declare class AuthUserService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        displayName: string | null;
         email: string | null;
         googleSub: string | null;
         emailVerified: boolean | null;
+        displayName: string | null;
         avatarUrl: string | null;
     }>;
     findUserByEmail(email: string): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        displayName: string | null;
         email: string | null;
         googleSub: string | null;
         emailVerified: boolean | null;
+        displayName: string | null;
         avatarUrl: string | null;
     }>;
     createUserWithEmail(email: string, displayName?: string): Promise<UpsertUserResult>;

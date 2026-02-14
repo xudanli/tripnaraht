@@ -25,12 +25,12 @@ export declare class TripTemplatesService {
             };
             metadata: Record<string, any>;
         };
+        status: string | null;
         id: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
         name: string | null;
-        status: string | null;
         destination: string;
         startDate: Date;
         endDate: Date;

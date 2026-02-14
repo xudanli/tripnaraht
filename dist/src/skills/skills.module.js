@@ -28,6 +28,8 @@ const llm_module_1 = require("../llm/llm.module");
 const transport_module_1 = require("../transport/transport.module");
 const data_contracts_module_1 = require("../data-contracts/data-contracts.module");
 const exa_module_1 = require("../mcp/exa.module");
+const cache_module_1 = require("../common/cache/cache.module");
+const country_config_service_1 = require("./world/services/country-config.service");
 const dem_get_profile_skill_1 = require("./dem/dem-get-profile.skill");
 const decision_abu_check_skill_1 = require("./decision/decision-abu-check.skill");
 const decision_drdre_pace_skill_1 = require("./decision/decision-drdre-pace.skill");
@@ -39,7 +41,27 @@ const readiness_summarize_risks_skill_1 = require("./readiness/readiness-summari
 const readiness_check_visa_window_skill_1 = require("./readiness/readiness-check-visa-window.skill");
 const trip_quick_evaluate_skill_1 = require("./trip/trip-quick-evaluate.skill");
 const world_build_context_skill_1 = require("./world/world-build-context.skill");
+const world_model_evidence_controller_1 = require("./world/world-model-evidence.controller");
+const world_model_evidence_service_1 = require("./world/services/world-model-evidence.service");
 const world_controller_1 = require("./world/world.controller");
+const world_realtime_weather_skill_1 = require("./world/world-realtime-weather.skill");
+const world_weather_prediction_skill_1 = require("./world/world-weather-prediction.skill");
+const world_failure_risk_prediction_skill_1 = require("./world/world-failure-risk-prediction.skill");
+const world_adaptive_parameters_skill_1 = require("./world/world-adaptive-parameters.skill");
+const world_multimodal_perception_skill_1 = require("./world/world-multimodal-perception.skill");
+const world_collaborative_data_skill_1 = require("./world/world-collaborative-data.skill");
+const collaborative_world_model_service_1 = require("./world/services/collaborative-world-model.service");
+const causal_reasoning_service_1 = require("./world/services/causal-reasoning.service");
+const multi_agent_collaboration_service_1 = require("./world/services/multi-agent-collaboration.service");
+const world_model_version_service_1 = require("./world/services/world-model-version.service");
+const world_model_events_service_1 = require("./world/services/world-model-events.service");
+const world_model_monitoring_service_1 = require("./world/services/world-model-monitoring.service");
+const f_road_check_skill_1 = require("./world/f-road-check.skill");
+const weather_alert_skill_1 = require("./world/weather-alert.skill");
+const avalanche_risk_assessment_skill_1 = require("./world/avalanche-risk-assessment.skill");
+const road_status_realtime_service_1 = require("./world/services/road-status-realtime.service");
+const iceland_weather_realtime_service_1 = require("./world/services/iceland-weather-realtime.service");
+const unified_world_model_service_1 = require("./world/services/unified-world-model.service");
 const decision_run_three_guardians_skill_1 = require("./decision/decision-run-three-guardians.skill");
 const decision_explain_for_human_skill_1 = require("./decision/decision-explain-for-human.skill");
 const country_pack_new_skeleton_skill_1 = require("./country-pack/country-pack-new-skeleton.skill");
@@ -300,9 +322,11 @@ exports.SkillsModule = SkillsModule = SkillsModule_1 = __decorate([
             (0, common_1.forwardRef)(() => llm_module_1.LlmModule),
             (0, common_1.forwardRef)(() => data_contracts_module_1.DataContractsModule),
             exa_module_1.ExaModule,
+            cache_module_1.CacheModule,
         ],
         controllers: [
             world_controller_1.WorldController,
+            world_model_evidence_controller_1.WorldModelEvidenceController,
         ],
         providers: [
             ...(enableReadinessModule
@@ -311,8 +335,29 @@ exports.SkillsModule = SkillsModule = SkillsModule_1 = __decorate([
                     { provide: skills_tokens_1.SKILL_DEM_GET_PROFILE, useExisting: dem_get_profile_skill_1.DemGetProfileSkill },
                 ]
                 : []),
+            country_config_service_1.CountryConfigService,
             world_build_context_skill_1.WorldBuildContextSkill,
             { provide: skills_tokens_1.SKILL_WORLD_BUILD_CONTEXT, useExisting: world_build_context_skill_1.WorldBuildContextSkill },
+            world_model_evidence_service_1.WorldModelEvidenceService,
+            world_model_evidence_service_1.WorldModelEvidenceService,
+            collaborative_world_model_service_1.CollaborativeWorldModelService,
+            causal_reasoning_service_1.CausalReasoningService,
+            multi_agent_collaboration_service_1.MultiAgentCollaborationService,
+            world_model_version_service_1.WorldModelVersionService,
+            world_model_events_service_1.WorldModelEventsService,
+            world_model_monitoring_service_1.WorldModelMonitoringService,
+            world_realtime_weather_skill_1.WorldRealtimeWeatherSkill,
+            world_weather_prediction_skill_1.WorldWeatherPredictionSkill,
+            world_failure_risk_prediction_skill_1.WorldFailureRiskPredictionSkill,
+            world_adaptive_parameters_skill_1.WorldAdaptiveParametersSkill,
+            world_multimodal_perception_skill_1.WorldMultimodalPerceptionSkill,
+            world_collaborative_data_skill_1.WorldCollaborativeDataSkill,
+            road_status_realtime_service_1.RoadStatusRealtimeService,
+            iceland_weather_realtime_service_1.IcelandWeatherRealtimeService,
+            unified_world_model_service_1.UnifiedWorldModelService,
+            f_road_check_skill_1.FRoadCheckSkill,
+            weather_alert_skill_1.WeatherAlertSkill,
+            avalanche_risk_assessment_skill_1.AvalancheRiskAssessmentSkill,
             ...(enableDecisionSkills
                 ? [
                     decision_abu_check_skill_1.DecisionAbuCheckSkill,
@@ -451,6 +496,12 @@ exports.SkillsModule = SkillsModule = SkillsModule_1 = __decorate([
             skills_registry_token_1.SKILLS_REGISTRY_TOKEN,
             ...(enableReadinessModule ? [dem_get_profile_skill_1.DemGetProfileSkill] : []),
             world_build_context_skill_1.WorldBuildContextSkill,
+            world_realtime_weather_skill_1.WorldRealtimeWeatherSkill,
+            world_weather_prediction_skill_1.WorldWeatherPredictionSkill,
+            world_failure_risk_prediction_skill_1.WorldFailureRiskPredictionSkill,
+            world_adaptive_parameters_skill_1.WorldAdaptiveParametersSkill,
+            world_multimodal_perception_skill_1.WorldMultimodalPerceptionSkill,
+            world_collaborative_data_skill_1.WorldCollaborativeDataSkill,
             ...(enableDecisionSkills
                 ? [
                     decision_abu_check_skill_1.DecisionAbuCheckSkill,

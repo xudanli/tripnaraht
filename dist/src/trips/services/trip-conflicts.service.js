@@ -103,14 +103,16 @@ let TripConflictsService = TripConflictsService_1 = class TripConflictsService {
             const currentEnd = luxon_1.DateTime.fromJSDate(current.endTime);
             const nextStart = luxon_1.DateTime.fromJSDate(next.startTime);
             if (currentEnd > nextStart) {
+                const overlapMinutes = Math.ceil(currentEnd.diff(nextStart, 'minutes').minutes);
                 conflicts.push({
                     id: `time-conflict-${current.id}-${next.id}`,
                     type: trip_conflicts_dto_1.ConflictType.TIME_CONFLICT,
                     severity: trip_conflicts_dto_1.ConflictSeverity.HIGH,
                     title: '时间冲突',
-                    description: `活动 "${((_a = current.Place) === null || _a === void 0 ? void 0 : _a.nameCN) || ((_b = current.Place) === null || _b === void 0 ? void 0 : _b.nameEN) || '未知'}" 与 "${((_c = next.Place) === null || _c === void 0 ? void 0 : _c.nameCN) || ((_d = next.Place) === null || _d === void 0 ? void 0 : _d.nameEN) || '未知'}" 时间重叠`,
+                    description: `活动 "${((_a = current.Place) === null || _a === void 0 ? void 0 : _a.nameCN) || ((_b = current.Place) === null || _b === void 0 ? void 0 : _b.nameEN) || '未知'}" 与 "${((_c = next.Place) === null || _c === void 0 ? void 0 : _c.nameCN) || ((_d = next.Place) === null || _d === void 0 ? void 0 : _d.nameEN) || '未知'}" 时间重叠 ${overlapMinutes} 分钟`,
                     affectedDays: [date],
                     affectedItemIds: [current.id, next.id],
+                    overlapMinutes: overlapMinutes,
                     suggestions: [
                         {
                             action: '调整时间',

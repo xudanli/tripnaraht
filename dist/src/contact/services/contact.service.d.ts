@@ -32,10 +32,10 @@ export declare class ContactService {
     }): Promise<{
         messages: {
             images: any[];
+            status: string;
             id: string;
             createdAt: Date;
             updatedAt: Date;
-            status: string;
             message: string | null;
             userId: string | null;
         }[];
@@ -46,19 +46,19 @@ export declare class ContactService {
     }>;
     getContactMessageById(messageId: string): Promise<{
         images: any[];
+        status: string;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: string;
         message: string | null;
         userId: string | null;
     }>;
     updateContactMessageStatus(messageId: string, status: string): Promise<{
         images: any[];
+        status: string;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: string;
         message: string | null;
         userId: string | null;
     }>;

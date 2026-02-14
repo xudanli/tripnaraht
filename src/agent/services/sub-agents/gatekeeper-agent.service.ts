@@ -8,6 +8,7 @@ import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-prech
 import { checkHardGate, HardGateResult } from '../../../trips/decision/tot/hard-gate';
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
+import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
@@ -19,6 +20,7 @@ import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
  * 执行顺序:
  * Step 0: F-Road 检查（冰岛特定）
  * Step 0.5: 天气告警检查（冰岛特定）
+ * Step 0.6: 雪崩风险评估（冰岛特定）
  * Step 1: 硬门控检查
  * Step 2: 快速预检查
  * Step 3: 三人格评审
@@ -33,9 +35,10 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     @Optional() private readonly gatePrecheck?: PlanGatePrecheckSkill,
     @Optional() private readonly fRoadCheck?: FRoadCheckSkill,
     @Optional() private readonly weatherAlert?: WeatherAlertSkill,
+    @Optional() private readonly avalancheRisk?: AvalancheRiskAssessmentSkill,
   ) {
     this.logger.log(`[GatekeeperAgent] 已初始化`);
-    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}, WeatherAlert: ${!!this.weatherAlert}`);
+    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}, WeatherAlert: ${!!this.weatherAlert}, AvalancheRisk: ${!!this.avalancheRisk}`);
   }
 
   /**
@@ -195,6 +198,120 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         }
       }
 
+      // 0.6 检查冰岛雪崩风险（冰岛特定检查）
+      if (this.avalancheRisk && this.isIcelandTrip(request)) {
+        this.logger.debug(`[GatekeeperAgent] 检测到冰岛行程，执行雪崩风险评估`);
+
+        try {
+          // 提取路线点
+          const routePoints: Array<{ lat: number; lng: number; name?: string }> = [];
+
+          // 添加起点
+          if (request.origin) {
+            routePoints.push({
+              lat: typeof request.origin === 'string' ? 0 : request.origin.lat,
+              lng: typeof request.origin === 'string' ? 0 : request.origin.lng,
+              name: typeof request.origin === 'string' ? request.origin : '起点',
+            });
+          }
+
+          // 添加终点
+          if (request.destination) {
+            routePoints.push({
+              lat: typeof request.destination === 'string' ? 0 : request.destination.lat,
+              lng: typeof request.destination === 'string' ? 0 : request.destination.lng,
+              name: typeof request.destination === 'string' ? request.destination : '终点',
+            });
+          }
+
+          // 提取月份
+          let month = new Date().getMonth() + 1; // 默认当前月份
+          if (request.date_range) {
+            if ('start' in request.date_range && request.date_range.start instanceof Date) {
+              month = (request.date_range.start as Date).getMonth() + 1;
+            } else if ('start_date' in request.date_range) {
+              const startDate = new Date(request.date_range.start_date);
+              month = startDate.getMonth() + 1;
+            }
+          } else if (request.start_date) {
+            const startDate = new Date(request.start_date);
+            month = startDate.getMonth() + 1;
+          }
+
+          // 转换日期范围
+          let dateRangeForAvalanche: { start: Date; end: Date } | undefined;
+          if (request.date_range) {
+            if ('start' in request.date_range && request.date_range.start instanceof Date) {
+              dateRangeForAvalanche = {
+                start: request.date_range.start as Date,
+                end: (request.date_range as any).end as Date,
+              };
+            } else if ('start_date' in request.date_range) {
+              dateRangeForAvalanche = {
+                start: new Date(request.date_range.start_date),
+                end: new Date(request.date_range.end_date),
+              };
+            }
+          }
+
+          // 执行雪崩风险评估
+          const avalancheResult = await this.avalancheRisk.execute({
+            request_id: request.request_id,
+            route: routePoints.length > 0 ? routePoints : [
+              { lat: 64.1466, lng: -21.9426, name: 'Reykjavík' },
+              { lat: 64.75, lng: -18.0, name: 'Highlands' },
+            ],
+            countryCode: 'IS',
+            month,
+            dateRange: dateRangeForAvalanche,
+            riskTolerance: (request.party_profile as any)?.risk_tolerance || 'MEDIUM',
+          });
+
+          // 如果雪崩风险评估建议 BLOCK，直接返回
+          if (avalancheResult.gateRecommendation === 'BLOCK') {
+            this.logger.warn(`[GatekeeperAgent] 雪崩风险评估 BLOCK: ${avalancheResult.overallRisk}`);
+            return {
+              gate_result: 'BLOCK',
+              violations: avalancheResult.blockers.map(blocker => ({
+                type: 'SAFETY' as const,
+                severity: 'HARD' as const,
+                detail: blocker,
+              })),
+              required_adjustments: avalancheResult.adjustments.map(adj => ({
+                action: 'CHANGE_DATES' as const,
+                why: adj,
+              })),
+              confidence: 0.9,
+              evidence_refs: avalancheResult.evidence_refs.map(ref => ({
+                evidence_id: ref.evidence_id,
+                source: ref.source,
+                last_verified_at: ref.last_verified_at,
+                confidence: ref.confidence,
+              } as any)),
+            };
+          }
+
+          // 记录雪崩风险结果用于软检查
+          researchData.avalanche_risk_result = avalancheResult;
+          researchData.avalanche_gate_recommendation = avalancheResult.gateRecommendation;
+          researchData.avalanche_hazard_zones = avalancheResult.hazardZones;
+          researchData.avalanche_evidence_refs = avalancheResult.evidence_refs;
+
+          if (avalancheResult.gateRecommendation === 'ADJUST_REQUIRED' ||
+              avalancheResult.gateRecommendation === 'NEED_USER_CONFIRM') {
+            this.logger.warn(`[GatekeeperAgent] 雪崩风险评估告警: ${avalancheResult.summary}`);
+            if (avalancheResult.warnings.length > 0) {
+              researchData.avalanche_warnings = avalancheResult.warnings;
+            }
+          }
+        } catch (avalancheError: any) {
+          this.logger.warn(`[GatekeeperAgent] 雪崩风险评估出错 (降级处理): ${avalancheError?.message}`);
+          // 雪崩检查失败不应该阻止行程，只是记录
+          researchData.avalanche_check_failed = true;
+          researchData.avalanche_check_error = avalancheError?.message;
+        }
+      }
+
       // 1. 硬门控检查（快速失败）
       const hardGateResult = this.checkHardGate(request, researchData);
       if (!hardGateResult.allowed) {
@@ -346,6 +463,44 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       // TODO: 检查开放时间冲突
     }
 
+    // 检查雪崩风险（来自 Step 0.6）
+    if (researchData.avalanche_gate_recommendation === 'ADJUST_REQUIRED') {
+      violations.push({
+        type: 'SAFETY',
+        severity: 'SOFT',
+        detail: `雪崩风险需要调整: ${researchData.avalanche_risk_result?.summary || '路线存在雪崩风险'}`,
+      });
+
+      // 添加雪崩相关的调整建议
+      if (researchData.avalanche_risk_result?.adjustments) {
+        for (const adjustment of researchData.avalanche_risk_result.adjustments) {
+          adjustments.push({
+            action: 'CHANGE_DATES',
+            why: adjustment,
+          });
+        }
+      }
+      confidence -= 0.15;
+    } else if (researchData.avalanche_gate_recommendation === 'NEED_USER_CONFIRM') {
+      violations.push({
+        type: 'SAFETY',
+        severity: 'SOFT',
+        detail: `雪崩风险需要用户确认: ${researchData.avalanche_risk_result?.summary || '路线可能存在雪崩风险'}`,
+      });
+      confidence -= 0.05;
+    }
+
+    // 检查雪崩警告（即使建议是 ALLOW，也可能有警告）
+    if (researchData.avalanche_warnings && Array.isArray(researchData.avalanche_warnings)) {
+      for (const warning of researchData.avalanche_warnings) {
+        violations.push({
+          type: 'SAFETY',
+          severity: 'SOFT',
+          detail: `雪崩风险警告: ${warning}`,
+        });
+      }
+    }
+
     return {
       hasAdjustments: adjustments.length > 0,
       violations,
@@ -370,6 +525,11 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
 
     if (researchData.opening_hours_evidence && Array.isArray(researchData.opening_hours_evidence)) {
       evidenceRefs.push(...researchData.opening_hours_evidence.map((e: any) => e.evidence_id || e.id).filter(Boolean));
+    }
+
+    // 添加雪崩风险证据
+    if (researchData.avalanche_evidence_refs && Array.isArray(researchData.avalanche_evidence_refs)) {
+      evidenceRefs.push(...researchData.avalanche_evidence_refs.map((e: any) => e.evidence_id || e.id).filter(Boolean));
     }
 
     return evidenceRefs;

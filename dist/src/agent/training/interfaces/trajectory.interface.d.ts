@@ -20,7 +20,7 @@ export interface TrajectoryValidationResult {
     score: number;
     reasons: string[];
 }
-export type RewardSignalType = 'USER_APPROVAL' | 'PLAN_COMMIT' | 'DECISION_ALIGNMENT' | 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE' | 'GATE_PASS' | 'GATE_FAIL' | 'SAFETY_PASS' | 'COMPLIANCE_PASS' | 'FEASIBILITY_PASS' | 'EVIDENCE_QUALITY' | 'RISK_DISCLOSURE' | 'PREFERENCE_BONUS';
+export type RewardSignalType = 'USER_APPROVAL' | 'PLAN_COMMIT' | 'DECISION_ALIGNMENT' | 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE' | 'GATE_PASS' | 'GATE_FAIL' | 'SAFETY_PASS' | 'COMPLIANCE_PASS' | 'FEASIBILITY_PASS' | 'EVIDENCE_QUALITY' | 'RISK_DISCLOSURE' | 'PREFERENCE_BONUS' | 'CORE_POI_SKIPPED' | 'POI_ADDED';
 export interface RewardSignal {
     type: RewardSignalType;
     value: number;

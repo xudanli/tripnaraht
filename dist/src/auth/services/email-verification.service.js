@@ -59,8 +59,8 @@ let EmailVerificationService = EmailVerificationService_1 = class EmailVerificat
         this.logger = new common_1.Logger(EmailVerificationService_1.name);
         this.codeExpirationMinutes = 10;
         this.codeLength = 6;
-        const smtpHost = ((_a = this.configService) === null || _a === void 0 ? void 0 : _a.get('SMTP_HOST')) || 'smtp.gmail.com';
-        const smtpPort = parseInt(((_b = this.configService) === null || _b === void 0 ? void 0 : _b.get('SMTP_PORT')) || '587', 10);
+        const smtpHost = ((_a = this.configService) === null || _a === void 0 ? void 0 : _a.get('SMTP_HOST')) || 'smtp.exmail.qq.com';
+        const smtpPort = parseInt(((_b = this.configService) === null || _b === void 0 ? void 0 : _b.get('SMTP_PORT')) || '465', 10);
         const smtpUser = (_c = this.configService) === null || _c === void 0 ? void 0 : _c.get('SMTP_USER');
         const smtpPassword = ((_d = this.configService) === null || _d === void 0 ? void 0 : _d.get('SMTP_PASSWORD')) || ((_e = this.configService) === null || _e === void 0 ? void 0 : _e.get('SMTP_PASS'));
         const smtpFrom = ((_f = this.configService) === null || _f === void 0 ? void 0 : _f.get('SMTP_FROM')) || smtpUser;

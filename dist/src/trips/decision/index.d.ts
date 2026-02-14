@@ -23,3 +23,4 @@ export * from './monitoring';
 export * from './trip-decision-engine.service';
 export * from './adapters/sense-tools.adapter';
 export * from './decision.module';
+export * from './optimization';

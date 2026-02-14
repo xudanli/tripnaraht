@@ -61,6 +61,15 @@ import { WorldModelVersionService } from './world/services/world-model-version.s
 import { WorldModelEventsService } from './world/services/world-model-events.service';
 import { WorldModelMonitoringService } from './world/services/world-model-monitoring.service';
 
+// 冰岛特定 World Skills (Phase 6)
+import { FRoadCheckSkill } from './world/f-road-check.skill';
+import { WeatherAlertSkill } from './world/weather-alert.skill';
+import { AvalancheRiskAssessmentSkill } from './world/avalanche-risk-assessment.skill';
+import { RoadStatusRealtimeService } from './world/services/road-status-realtime.service';
+import { IcelandWeatherRealtimeService } from './world/services/iceland-weather-realtime.service';
+import { UnifiedWorldModelService } from './world/services/unified-world-model.service';
+
+
 // Decision Skills (additional)
 import { DecisionRunThreeGuardiansSkill } from './decision/decision-run-three-guardians.skill';
 import { DecisionExplainForHumanSkill } from './decision/decision-explain-for-human.skill';
@@ -275,7 +284,15 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     WorldAdaptiveParametersSkill,
     WorldMultimodalPerceptionSkill,
     WorldCollaborativeDataSkill,
-    
+
+    // 冰岛特定 World Skills (Phase 6 - Avalanche Risk Integration)
+    RoadStatusRealtimeService,
+    IcelandWeatherRealtimeService,
+    UnifiedWorldModelService,
+    FRoadCheckSkill,
+    WeatherAlertSkill,
+    AvalancheRiskAssessmentSkill,
+
     // Decision Skills
     ...(enableDecisionSkills
       ? [

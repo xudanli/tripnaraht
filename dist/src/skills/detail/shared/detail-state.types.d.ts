@@ -1,25 +1,30 @@
 export interface TripHealth {
     overall: 'healthy' | 'warning' | 'critical';
+    overallScore?: number;
     dimensions: {
         schedule: {
             status: 'healthy' | 'warning' | 'critical';
             score: number;
             issues: string[];
+            weight?: number;
         };
         budget: {
             status: 'healthy' | 'warning' | 'critical';
             score: number;
             issues: string[];
+            weight?: number;
         };
         pace: {
             status: 'healthy' | 'warning' | 'critical';
             score: number;
             issues: string[];
+            weight?: number;
         };
         feasibility: {
             status: 'healthy' | 'warning' | 'critical';
             score: number;
             issues: string[];
+            weight?: number;
         };
     };
 }

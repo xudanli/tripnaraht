@@ -66,6 +66,7 @@ async function generateOpenAPIDoc() {
         .addTag('contact', '联系我们接口（反馈消息和图片上传）')
         .addTag('google-calendar', 'Google Calendar 集成接口（行程同步、事件管理）')
         .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
+        .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')
         .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
         .addServer('http://47.253.148.159', '生产环境')
         .addServer('http://localhost:3000', '本地开发环境')

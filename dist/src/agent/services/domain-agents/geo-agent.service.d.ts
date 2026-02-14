@@ -1,11 +1,13 @@
 import { GeoAgent, GeoPoint, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { DEMElevationService } from '../../../trips/dem/services/dem-elevation.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { RealtimeRoadStatusService } from '../../../skills/world/services/realtime-road-status.service';
 export declare class GeoAgentService implements GeoAgent {
     private readonly prisma;
     private readonly demService?;
+    private readonly realtimeRoadStatusService?;
     private readonly logger;
-    constructor(prisma: PrismaService, demService?: DEMElevationService);
+    constructor(prisma: PrismaService, demService?: DEMElevationService, realtimeRoadStatusService?: RealtimeRoadStatusService);
     analyzeTerrain(route: GeoPoint[]): Promise<{
         elevation_profile: Array<{
             distance_km: number;

@@ -297,7 +297,8 @@ let GeographicDataQualityMonitoringService = GeographicDataQualityMonitoringServ
         }
         if (config.dataType !== 'DEM' &&
             config.coverageRate < 0.9 &&
-            ['CH', 'NO', 'PE'].includes(config.countryCode)) {
+            (['CH', 'NO', 'PE'].includes(config.countryCode) ||
+                (config.dataType === 'COASTLINES' && ['IS', 'GL', 'FO', 'NZ'].includes(config.countryCode)))) {
             await this.alertService.createAlert({
                 geographicMonitorId: monitor.id,
                 severity: 'MEDIUM',

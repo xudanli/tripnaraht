@@ -10,6 +10,19 @@ export declare class GoogleMapsDirectService implements OnModuleInit, OnModuleDe
     constructor(configService?: ConfigService);
     onModuleInit(): Promise<void>;
     onModuleDestroy(): Promise<void>;
+    getTrafficStatus(params: {
+        roadId: string;
+        location: {
+            lat: number;
+            lng: number;
+        };
+        radius?: number;
+    }): Promise<{
+        status: 'OPEN' | 'CLOSED' | 'CONDITIONAL' | 'SLOW' | 'MODERATE';
+        severity: 'LOW' | 'MEDIUM' | 'HIGH';
+        description?: string;
+        confidence: number;
+    } | null>;
     isServiceAvailable(): boolean;
     getRoute(params: {
         origin: string;

@@ -17,30 +17,32 @@ export declare class DataQualityAlertService {
     resolveAlert(alertId: string): Promise<void>;
     getPendingAlerts(limit?: number): Promise<({
         monitor: {
+            status: string;
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            dataSource: string;
             countryCode: string;
-            status: string;
             lastUpdated: Date;
+            dataType: string;
             accuracy: number;
             lastVerified: Date;
             completeness: number;
             timeliness: number;
             overallScore: number;
             recordCount: number;
-            dataSource: string;
-            dataType: string;
             consistency: number;
             traceability: number;
         };
         geographicMonitor: {
+            status: string;
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            dataSource: string;
             countryCode: string;
-            status: string;
             lastUpdated: Date;
+            dataType: string;
             accuracy: number;
             coverageRate: number | null;
             lastVerified: Date;
@@ -48,8 +50,6 @@ export declare class DataQualityAlertService {
             timeliness: number;
             overallScore: number;
             recordCount: number;
-            dataSource: string;
-            dataType: string;
             consistency: number;
             traceability: number;
             spatialAccuracy: number;
@@ -63,18 +63,18 @@ export declare class DataQualityAlertService {
             missingRegions: import("@prisma/client/runtime/library").JsonValue | null;
         };
     } & {
+        status: string;
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        status: string;
-        details: import("@prisma/client/runtime/library").JsonValue | null;
         message: string;
+        details: import("@prisma/client/runtime/library").JsonValue | null;
         severity: string;
+        alertType: string;
         acknowledgedAt: Date | null;
         resolvedAt: Date | null;
         monitorId: string | null;
         geographicMonitorId: string | null;
-        alertType: string;
         acknowledgedBy: string | null;
     })[]>;
     checkDataExpiry(): Promise<void>;

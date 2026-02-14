@@ -187,6 +187,16 @@ __decorate([
     __metadata("design:type", String)
 ], RouteAndRunRequestDto.prototype, "trip_id", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        description: '关联的路线方向 ID（可选，用于护城河扩展的失败风险预测）',
+        example: 'route-dir-789',
+        nullable: true,
+    }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], RouteAndRunRequestDto.prototype, "route_direction_id", void 0);
+__decorate([
     (0, swagger_1.ApiProperty)({
         description: '用户输入消息',
         example: '推荐新宿拉面',

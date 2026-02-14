@@ -17,10 +17,12 @@ exports.GeoAgentService = void 0;
 const common_1 = require("@nestjs/common");
 const dem_elevation_service_1 = require("../../../trips/dem/services/dem-elevation.service");
 const prisma_service_1 = require("../../../prisma/prisma.service");
+const realtime_road_status_service_1 = require("../../../skills/world/services/realtime-road-status.service");
 let GeoAgentService = GeoAgentService_1 = class GeoAgentService {
-    constructor(prisma, demService) {
+    constructor(prisma, demService, realtimeRoadStatusService) {
         this.prisma = prisma;
         this.demService = demService;
+        this.realtimeRoadStatusService = realtimeRoadStatusService;
         this.logger = new common_1.Logger(GeoAgentService_1.name);
         this.logger.log('[GeoAgent] Initialized');
     }
@@ -114,6 +116,13 @@ let GeoAgentService = GeoAgentService_1 = class GeoAgentService {
         }
         if (this.demService && terrain.elevation_profile.length > 0)
             confidence += 0.2;
+        if (transportMode === 'DRIVE' && this.realtimeRoadStatusService) {
+            try {
+            }
+            catch (error) {
+                this.logger.warn(`[GeoAgent] 获取实时道路状态失败: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+        }
         evidence.push({
             evidence_id: `geo_feasibility_${Date.now()}`,
             source: 'GeoAgent.checkRouteFeasibility',
@@ -208,7 +217,9 @@ exports.GeoAgentService = GeoAgentService;
 exports.GeoAgentService = GeoAgentService = GeoAgentService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(1, (0, common_1.Optional)()),
+    __param(2, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        dem_elevation_service_1.DEMElevationService])
+        dem_elevation_service_1.DEMElevationService,
+        realtime_road_status_service_1.RealtimeRoadStatusService])
 ], GeoAgentService);
 //# sourceMappingURL=geo-agent.service.js.map

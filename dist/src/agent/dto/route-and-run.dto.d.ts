@@ -24,6 +24,7 @@ export declare class RouteAndRunRequestDto {
     request_id: string;
     user_id: string;
     trip_id?: string | null;
+    route_direction_id?: string | null;
     message: string;
     conversation_context?: ConversationContextDto;
     options?: AgentOptionsDto;

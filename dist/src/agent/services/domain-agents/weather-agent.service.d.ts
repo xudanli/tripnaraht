@@ -1,9 +1,11 @@
 import { WeatherAgent, GeoPoint, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { DataSourceRouterService } from '../../../data-contracts/services/data-source-router.service';
+import { RealtimeWeatherService } from '../../../skills/world/services/realtime-weather.service';
 export declare class WeatherAgentService implements WeatherAgent {
     private readonly dataRouter?;
+    private readonly realtimeWeatherService?;
     private readonly logger;
-    constructor(dataRouter?: DataSourceRouterService);
+    constructor(dataRouter?: DataSourceRouterService, realtimeWeatherService?: RealtimeWeatherService);
     getForecast(location: GeoPoint, dateRange: {
         start: string;
         end: string;

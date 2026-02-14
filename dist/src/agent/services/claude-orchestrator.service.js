@@ -41,8 +41,10 @@ const geo_agent_service_1 = require("./domain-agents/geo-agent.service");
 const weather_agent_service_1 = require("./domain-agents/weather-agent.service");
 const cost_agent_service_1 = require("./domain-agents/cost-agent.service");
 const experience_agent_service_1 = require("./domain-agents/experience-agent.service");
+const weather_prediction_service_1 = require("../../skills/world/services/weather-prediction.service");
+const failure_risk_prediction_service_1 = require("../../skills/world/services/failure-risk-prediction.service");
 let ClaudeOrchestratorService = ClaudeOrchestratorService_1 = class ClaudeOrchestratorService {
-    constructor(llmService, skillsRegistry, actionRegistry, plannerAgent, gatekeeperAgent, complianceAgent, localInsightAgent, coreDecisionAgent, narratorAgent, skillInputValidator, hallucinationDetection, trajectoryCollection, readinessService, userDecisionService, decisionDraftGenerator, geoAgent, weatherAgent, costAgent, experienceAgent) {
+    constructor(llmService, skillsRegistry, actionRegistry, plannerAgent, gatekeeperAgent, complianceAgent, localInsightAgent, coreDecisionAgent, narratorAgent, skillInputValidator, hallucinationDetection, trajectoryCollection, readinessService, userDecisionService, decisionDraftGenerator, geoAgent, weatherAgent, costAgent, experienceAgent, weatherPredictionService, failureRiskPredictionService) {
         this.llmService = llmService;
         this.skillsRegistry = skillsRegistry;
         this.actionRegistry = actionRegistry;
@@ -62,6 +64,8 @@ let ClaudeOrchestratorService = ClaudeOrchestratorService_1 = class ClaudeOrches
         this.weatherAgent = weatherAgent;
         this.costAgent = costAgent;
         this.experienceAgent = experienceAgent;
+        this.weatherPredictionService = weatherPredictionService;
+        this.failureRiskPredictionService = failureRiskPredictionService;
         this.logger = new common_1.Logger(ClaudeOrchestratorService_1.name);
         this.worldCache = new orchestration_utils_1.SimpleLruCache(64, 10 * 60 * 1000);
         this.logger.log(`[ClaudeOrchestratorService] Initialized`);
@@ -1947,6 +1951,7 @@ ${JSON.stringify(routingDecision, null, 2)}
                     }
                 }
                 await this.collectWorldModelData(tripRequest, researchData, evidenceRefs);
+                await this.collectPredictionData(tripRequest, researchData, evidenceRefs, request);
             }
             state.research_data = researchData;
             state.decision_log.push({
@@ -1971,6 +1976,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         }
     }
     async executeGateEvalStep(request, context, state, provider) {
+        var _a;
         state.current_step = 'GATE_EVAL';
         const stepStartTime = Date.now();
         this.logger.debug(`[Claude Orchestrator] 执行 GATE_EVAL 步骤...`);
@@ -2012,6 +2018,37 @@ ${JSON.stringify(routingDecision, null, 2)}
                 }
                 catch (error) {
                     this.logger.warn(`[Claude Orchestrator] 准备度检查失败: ${error === null || error === void 0 ? void 0 : error.message}`, error === null || error === void 0 ? void 0 : error.stack);
+                }
+            }
+            if (this.failureRiskPredictionService &&
+                ((_a = state.research_data) === null || _a === void 0 ? void 0 : _a.failure_risk_prediction) &&
+                request.route_direction_id) {
+                try {
+                    const failureRiskPrediction = state.research_data.failure_risk_prediction;
+                    const highRiskDays = failureRiskPrediction.predictions.filter((p) => p.riskLevel === 'HIGH');
+                    if (highRiskDays.length > 0) {
+                        if (!readinessBlockers) {
+                            readinessBlockers = [];
+                        }
+                        readinessBlockers.push({
+                            type: 'FAILURE_RISK',
+                            severity: 'HARD',
+                            message: {
+                                zh: `预测到第${highRiskDays.map((d) => d.day).join(', ')}天存在高风险，建议调整行程日期`,
+                                en: `High risk predicted for days ${highRiskDays.map((d) => d.day).join(', ')}, consider adjusting dates`,
+                            },
+                            evidence: [
+                                {
+                                    sourceId: `failure_risk_prediction_${Date.now()}`,
+                                    source: 'FailureRiskPredictionService',
+                                },
+                            ],
+                        });
+                        this.logger.debug(`[Claude Orchestrator] 失败风险预测检查: 发现${highRiskDays.length}个高风险日期`);
+                    }
+                }
+                catch (error) {
+                    this.logger.warn(`[Claude Orchestrator] 失败风险预测检查失败: ${error === null || error === void 0 ? void 0 : error.message}`, error === null || error === void 0 ? void 0 : error.stack);
                 }
             }
             if (readinessBlockers.length > 0 && rulesNeedingDecision.length === 0) {
@@ -3524,6 +3561,55 @@ ${JSON.stringify(routingDecision, null, 2)}
         }
         await Promise.all(promises);
     }
+    async collectPredictionData(tripRequest, researchData, evidenceRefs, request) {
+        var _a, _b;
+        this.logger.debug(`[Orchestrator] Collecting prediction data (护城河扩展)`);
+        const promises = [];
+        if (this.weatherPredictionService && tripRequest.date_range) {
+            promises.push(this.weatherPredictionService
+                .predictWeather('IS', {
+                start: new Date(tripRequest.date_range.start_date),
+                end: new Date(tripRequest.date_range.end_date),
+            })
+                .then((predictions) => {
+                researchData.weather_predictions = predictions;
+                evidenceRefs.push(`weather_predictions_${Date.now()}`);
+            })
+                .catch((e) => this.logger.warn(`[WeatherPredictionService] Failed: ${e === null || e === void 0 ? void 0 : e.message}`)));
+        }
+        if (this.failureRiskPredictionService &&
+            tripRequest.date_range &&
+            request.route_direction_id) {
+            promises.push(this.failureRiskPredictionService
+                .predictFailureRisk(request.route_direction_id, {
+                userId: request.user_id,
+                riskTolerance: (_a = tripRequest.party_profile) === null || _a === void 0 ? void 0 : _a.risk_tolerance,
+                fitness: (_b = tripRequest.party_profile) === null || _b === void 0 ? void 0 : _b.fitness,
+            }, {
+                start: new Date(tripRequest.date_range.start_date),
+                end: new Date(tripRequest.date_range.end_date),
+            })
+                .then((prediction) => {
+                researchData.failure_risk_prediction = prediction;
+                evidenceRefs.push(`failure_risk_prediction_${Date.now()}`);
+                const highRiskDays = prediction.predictions
+                    .filter((p) => p.riskLevel === 'HIGH')
+                    .map((p) => p.day);
+                if (highRiskDays.length > 0) {
+                    if (!researchData.warnings) {
+                        researchData.warnings = [];
+                    }
+                    researchData.warnings.push({
+                        type: 'HIGH_RISK_DAYS',
+                        days: highRiskDays,
+                        message: `预测到第${highRiskDays.join(', ')}天存在高风险`,
+                    });
+                }
+            })
+                .catch((e) => this.logger.warn(`[FailureRiskPredictionService] Failed: ${e === null || e === void 0 ? void 0 : e.message}`)));
+        }
+        await Promise.all(promises);
+    }
     buildFailResult(started, stepsExecuted, decisionLog, errorType, message, missingParams, solutions) {
         let userFriendlyMessage = message;
         if (message.includes('itinerary') || message.includes('PlanState') || message.includes('skill')) {
@@ -3572,6 +3658,8 @@ exports.ClaudeOrchestratorService = ClaudeOrchestratorService = ClaudeOrchestrat
     __param(16, (0, common_1.Optional)()),
     __param(17, (0, common_1.Optional)()),
     __param(18, (0, common_1.Optional)()),
+    __param(19, (0, common_1.Optional)()),
+    __param(20, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [llm_service_1.LlmService,
         skills_registry_service_1.SkillsRegistryService,
         action_registry_service_1.ActionRegistryService,
@@ -3590,6 +3678,8 @@ exports.ClaudeOrchestratorService = ClaudeOrchestratorService = ClaudeOrchestrat
         geo_agent_service_1.GeoAgentService,
         weather_agent_service_1.WeatherAgentService,
         cost_agent_service_1.CostAgentService,
-        experience_agent_service_1.ExperienceAgentService])
+        experience_agent_service_1.ExperienceAgentService,
+        weather_prediction_service_1.WeatherPredictionService,
+        failure_risk_prediction_service_1.FailureRiskPredictionService])
 ], ClaudeOrchestratorService);
 //# sourceMappingURL=claude-orchestrator.service.js.map

@@ -35,6 +35,9 @@ export declare class PlacesService {
         updatedAt: Date;
         nameCN: string;
         description: string | null;
+        lastVerifiedAt: Date | null;
+        dataSource: string | null;
+        dataFreshness: string | null;
     }>;
     findNearby(lat: number, lng: number, radius?: number, category?: PlaceCategory): Promise<PlaceWithDistance[]>;
     findNearbyRestaurants(lat: number, lng: number, radiusMeters?: number, paymentMethod?: string): Promise<PlaceWithDistance[]>;

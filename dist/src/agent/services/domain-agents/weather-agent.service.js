@@ -16,9 +16,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WeatherAgentService = void 0;
 const common_1 = require("@nestjs/common");
 const data_source_router_service_1 = require("../../../data-contracts/services/data-source-router.service");
+const realtime_weather_service_1 = require("../../../skills/world/services/realtime-weather.service");
 let WeatherAgentService = WeatherAgentService_1 = class WeatherAgentService {
-    constructor(dataRouter) {
+    constructor(dataRouter, realtimeWeatherService) {
         this.dataRouter = dataRouter;
+        this.realtimeWeatherService = realtimeWeatherService;
         this.logger = new common_1.Logger(WeatherAgentService_1.name);
         this.logger.log('[WeatherAgent] Initialized');
     }
@@ -72,6 +74,40 @@ let WeatherAgentService = WeatherAgentService_1 = class WeatherAgentService {
                         timestamp: new Date().toISOString(),
                         data: { location, days_requested: days, source: 'DATA_ROUTER' },
                     });
+                    if (this.realtimeWeatherService) {
+                        try {
+                            const region = 'IS';
+                            const realtimeAlerts = await this.realtimeWeatherService.getWeatherAlerts(region, { start: startDate, end: endDate });
+                            if (realtimeAlerts.length > 0) {
+                                evidence.push({
+                                    evidence_id: `realtime_weather_alerts_${Date.now()}`,
+                                    source: 'RealtimeWeatherService.getWeatherAlerts',
+                                    timestamp: new Date().toISOString(),
+                                    data: {
+                                        alerts_count: realtimeAlerts.length,
+                                        alerts: realtimeAlerts.map((a) => ({
+                                            type: a.alertType,
+                                            severity: a.severity,
+                                            impact: a.impact,
+                                        })),
+                                    },
+                                });
+                                const criticalAlerts = realtimeAlerts.filter((a) => a.severity === 'CRITICAL' || a.severity === 'HIGH');
+                                if (criticalAlerts.length > 0) {
+                                    forecasts.forEach((forecast) => {
+                                        const forecastDate = new Date(forecast.date);
+                                        const affected = criticalAlerts.some((alert) => forecastDate >= alert.startTime && forecastDate <= alert.endTime);
+                                        if (affected) {
+                                            forecast.travel_suitability = 'DANGEROUS';
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        catch (error) {
+                            this.logger.warn(`[WeatherAgent] 获取实时天气预警失败: ${error === null || error === void 0 ? void 0 : error.message}`);
+                        }
+                    }
                 }
             }
             if (forecasts.length === 0) {
@@ -340,6 +376,8 @@ exports.WeatherAgentService = WeatherAgentService;
 exports.WeatherAgentService = WeatherAgentService = WeatherAgentService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, common_1.Optional)()),
-    __metadata("design:paramtypes", [data_source_router_service_1.DataSourceRouterService])
+    __param(1, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [data_source_router_service_1.DataSourceRouterService,
+        realtime_weather_service_1.RealtimeWeatherService])
 ], WeatherAgentService);
 //# sourceMappingURL=weather-agent.service.js.map

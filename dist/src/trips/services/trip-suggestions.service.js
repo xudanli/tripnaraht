@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var TripSuggestionsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TripSuggestionsService = void 0;
@@ -16,14 +19,18 @@ const prisma_service_1 = require("../../prisma/prisma.service");
 const suggestions_dto_1 = require("../dto/suggestions.dto");
 const trips_service_1 = require("../trips.service");
 const trip_conflicts_service_1 = require("./trip-conflicts.service");
+const trip_metrics_service_1 = require("./trip-metrics.service");
+const itinerary_items_service_1 = require("../../itinerary-items/itinerary-items.service");
 const persona_alerts_dto_1 = require("../dto/persona-alerts.dto");
 const trip_conflicts_dto_1 = require("../dto/trip-conflicts.dto");
 const luxon_1 = require("luxon");
 let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsService {
-    constructor(prisma, tripsService, conflictsService) {
+    constructor(prisma, tripsService, conflictsService, tripMetricsService, itineraryItemsService) {
         this.prisma = prisma;
         this.tripsService = tripsService;
         this.conflictsService = conflictsService;
+        this.tripMetricsService = tripMetricsService;
+        this.itineraryItemsService = itineraryItemsService;
         this.logger = new common_1.Logger(TripSuggestionsService_1.name);
         this.suggestionStatuses = new Map();
     }
@@ -141,6 +148,31 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
             byScope,
         };
     }
+    async calculateMetricsImpact(tripId, beforeMetrics, afterMetrics) {
+        return {
+            fatigue: afterMetrics.fatigue - beforeMetrics.fatigue,
+            buffer: afterMetrics.buffer - beforeMetrics.buffer,
+            cost: afterMetrics.cost - beforeMetrics.cost,
+        };
+    }
+    async getCurrentTripMetrics(tripId) {
+        try {
+            const metrics = await this.tripMetricsService.getTripMetrics(tripId);
+            return {
+                fatigue: metrics.summary.totalFatigue || 0,
+                buffer: metrics.summary.totalBuffer || 0,
+                cost: metrics.summary.totalCost || 0,
+            };
+        }
+        catch (error) {
+            this.logger.warn(`获取行程指标失败: ${error.message}，使用默认值`);
+            return {
+                fatigue: 0,
+                buffer: 0,
+                cost: 0,
+            };
+        }
+    }
     async applyHighPrioritySuggestions(tripId, options) {
         const allSuggestions = await this.getSuggestions(tripId, {
             severity: suggestions_dto_1.SuggestionSeverity.BLOCKER,
@@ -159,6 +191,8 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
             };
         }
         if (options === null || options === void 0 ? void 0 : options.preview) {
+            const currentMetrics = await this.getCurrentTripMetrics(tripId);
+            const estimatedImpact = this.estimateImpactBySuggestionType(highPrioritySuggestions, currentMetrics);
             return {
                 success: true,
                 appliedCount: highPrioritySuggestions.length,
@@ -169,15 +203,12 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
                     applied: false,
                 })),
                 impact: {
-                    metrics: {
-                        fatigue: -highPrioritySuggestions.length * 5,
-                        buffer: highPrioritySuggestions.length * 30,
-                        cost: highPrioritySuggestions.length * 50,
-                    },
+                    metrics: estimatedImpact,
                     risks: [],
                 },
             };
         }
+        const beforeMetrics = await this.getCurrentTripMetrics(tripId);
         const results = [];
         let successCount = 0;
         for (const suggestion of highPrioritySuggestions) {
@@ -216,21 +247,59 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
                 });
             }
         }
+        const afterMetrics = await this.getCurrentTripMetrics(tripId);
+        const actualImpact = await this.calculateMetricsImpact(tripId, beforeMetrics, afterMetrics);
         return {
             success: successCount > 0,
             appliedCount: successCount,
             suggestions: results,
             impact: {
-                metrics: {
-                    fatigue: -successCount * 5,
-                    buffer: successCount * 30,
-                    cost: successCount * 50,
-                },
+                metrics: actualImpact,
                 risks: [],
             },
         };
     }
+    estimateImpactBySuggestionType(suggestions, currentMetrics) {
+        var _a, _b;
+        let fatigueDelta = 0;
+        let bufferDelta = 0;
+        let costDelta = 0;
+        for (const suggestion of suggestions) {
+            const conflictType = (_a = suggestion.metadata) === null || _a === void 0 ? void 0 : _a.conflictType;
+            switch (conflictType) {
+                case 'TIME_CONFLICT':
+                    const conflictData = (_b = suggestion.metadata) === null || _b === void 0 ? void 0 : _b.conflict;
+                    const overlapMinutes = (conflictData === null || conflictData === void 0 ? void 0 : conflictData.overlapMinutes) || 30;
+                    const bufferIncrease = Math.max(overlapMinutes, 15);
+                    bufferDelta += bufferIncrease;
+                    const fatigueDecrease = Math.min(Math.max(-2, -Math.floor(overlapMinutes / 15)), -5);
+                    fatigueDelta += fatigueDecrease;
+                    costDelta += 0;
+                    break;
+                case 'FATIGUE_EXCEEDED':
+                    fatigueDelta -= 10;
+                    bufferDelta += 15;
+                    costDelta -= 30;
+                    break;
+                case 'BUFFER_INSUFFICIENT':
+                    bufferDelta += 60;
+                    fatigueDelta -= 2;
+                    costDelta += 100;
+                    break;
+                default:
+                    fatigueDelta -= 5;
+                    bufferDelta += 30;
+                    costDelta += 50;
+            }
+        }
+        return {
+            fatigue: fatigueDelta,
+            buffer: bufferDelta,
+            cost: costDelta,
+        };
+    }
     async applySuggestion(tripId, suggestionId, request) {
+        var _a, _b;
         const trip = await this.prisma.trip.findUnique({
             where: { id: tripId },
         });
@@ -243,22 +312,68 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
             throw new common_1.NotFoundException(`建议 ID ${suggestionId} 不存在`);
         }
         if (request.preview) {
+            const currentMetrics = await this.getCurrentTripMetrics(tripId);
+            const estimatedImpact = this.estimateImpactBySuggestionType([suggestion], currentMetrics);
             return {
                 success: true,
                 suggestionId,
                 appliedChanges: [],
                 impact: {
-                    metrics: {
-                        fatigue: -5,
-                        buffer: 30,
-                        cost: 50,
-                    },
+                    metrics: estimatedImpact,
                     risks: [],
                 },
             };
         }
+        const beforeMetrics = await this.getCurrentTripMetrics(tripId);
         const appliedChanges = [];
         const triggeredSuggestions = [];
+        const conflictType = (_a = suggestion.metadata) === null || _a === void 0 ? void 0 : _a.conflictType;
+        if (conflictType === 'TIME_CONFLICT' && ((_b = suggestion.metadata) === null || _b === void 0 ? void 0 : _b.conflict)) {
+            const conflict = suggestion.metadata.conflict;
+            const affectedItemIds = conflict.affectedItemIds || [];
+            if (affectedItemIds.length >= 2 && this.itineraryItemsService) {
+                try {
+                    const items = await Promise.all(affectedItemIds.map(id => this.prisma.itineraryItem.findUnique({
+                        where: { id },
+                        include: { TripDay: true },
+                    })));
+                    const validItems = items.filter(item => item !== null);
+                    if (validItems.length >= 2) {
+                        validItems.sort((a, b) => {
+                            if (!a.startTime || !b.startTime)
+                                return 0;
+                            return a.startTime.getTime() - b.startTime.getTime();
+                        });
+                        const firstItem = validItems[0];
+                        const secondItem = validItems[1];
+                        if (firstItem.endTime && secondItem.startTime) {
+                            const firstEnd = luxon_1.DateTime.fromJSDate(firstItem.endTime);
+                            const secondStart = luxon_1.DateTime.fromJSDate(secondItem.startTime);
+                            if (firstEnd > secondStart) {
+                                const newStartTime = firstEnd.plus({ minutes: 15 });
+                                const originalDuration = secondItem.endTime
+                                    ? luxon_1.DateTime.fromJSDate(secondItem.endTime).diff(secondStart, 'minutes').minutes
+                                    : 120;
+                                const newEndTime = newStartTime.plus({ minutes: originalDuration });
+                                await this.itineraryItemsService.update(secondItem.id, {
+                                    startTime: newStartTime.toISO(),
+                                    endTime: newEndTime.toISO(),
+                                    cascadeMode: 'auto',
+                                });
+                                appliedChanges.push({
+                                    type: 'time_adjustment',
+                                    description: `已调整活动时间，解决时间冲突`,
+                                });
+                                this.logger.debug(`已解决时间冲突: 调整了行程项 ${secondItem.id} 的时间`);
+                            }
+                        }
+                    }
+                }
+                catch (error) {
+                    this.logger.warn(`解决时间冲突失败: ${error.message}`, error.stack);
+                }
+            }
+        }
         switch (request.actionId) {
             case 'apply_alternative':
                 appliedChanges.push({
@@ -279,31 +394,53 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
                 });
                 break;
             default:
-                appliedChanges.push({
-                    type: 'generic',
-                    description: `已应用建议：${suggestion.title}`,
-                });
+                if (appliedChanges.length === 0) {
+                    appliedChanges.push({
+                        type: 'generic',
+                        description: `已应用建议：${suggestion.title}`,
+                    });
+                }
         }
         this.suggestionStatuses.set(suggestionId, suggestions_dto_1.SuggestionStatus.APPLIED);
         const relatedSuggestions = allSuggestions.items.filter(s => s.id !== suggestionId &&
             s.scope === suggestion.scope &&
             s.scopeId === suggestion.scopeId);
         triggeredSuggestions.push(...relatedSuggestions.slice(0, 3).map(s => s.id));
+        const afterMetrics = await this.getCurrentTripMetrics(tripId);
+        const actualImpact = await this.calculateMetricsImpact(tripId, beforeMetrics, afterMetrics);
+        const risks = [];
+        if (actualImpact.buffer && actualImpact.buffer > 0) {
+            risks.push({
+                id: 'risk-buffer-improved',
+                severity: suggestions_dto_1.SuggestionSeverity.INFO,
+                title: '缓冲时间已增加',
+            });
+        }
+        if (actualImpact.fatigue && actualImpact.fatigue < 0) {
+            risks.push({
+                id: 'risk-fatigue-improved',
+                severity: suggestions_dto_1.SuggestionSeverity.INFO,
+                title: '疲劳指数已改善',
+            });
+        }
+        if (actualImpact.cost && actualImpact.cost > 100) {
+            risks.push({
+                id: 'risk-cost-increased',
+                severity: suggestions_dto_1.SuggestionSeverity.WARN,
+                title: '费用有所增加',
+            });
+        }
         return {
             success: true,
             suggestionId,
             appliedChanges,
             impact: {
-                metrics: {
-                    fatigue: -5,
-                    buffer: 30,
-                    cost: 50,
-                },
-                risks: [
+                metrics: actualImpact,
+                risks: risks.length > 0 ? risks : [
                     {
-                        id: 'risk-002',
+                        id: 'risk-generic',
                         severity: suggestions_dto_1.SuggestionSeverity.INFO,
-                        title: '新增缓冲时间充足',
+                        title: '建议已应用',
                     },
                 ],
             },
@@ -481,6 +618,14 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
                 metadata: {
                     conflictType: conflict.type,
                     affectedItemIds: conflict.affectedItemIds,
+                    conflict: {
+                        id: conflict.id,
+                        type: conflict.type,
+                        severity: conflict.severity,
+                        overlapMinutes: conflict.overlapMinutes,
+                        affectedDays: conflict.affectedDays,
+                        affectedItemIds: conflict.affectedItemIds,
+                    },
                 },
             };
             suggestions.push(suggestion);
@@ -504,8 +649,11 @@ let TripSuggestionsService = TripSuggestionsService_1 = class TripSuggestionsSer
 exports.TripSuggestionsService = TripSuggestionsService;
 exports.TripSuggestionsService = TripSuggestionsService = TripSuggestionsService_1 = __decorate([
     (0, common_1.Injectable)(),
+    __param(4, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         trips_service_1.TripsService,
-        trip_conflicts_service_1.TripConflictsService])
+        trip_conflicts_service_1.TripConflictsService,
+        trip_metrics_service_1.TripMetricsService,
+        itinerary_items_service_1.ItineraryItemsService])
 ], TripSuggestionsService);
 //# sourceMappingURL=trip-suggestions.service.js.map

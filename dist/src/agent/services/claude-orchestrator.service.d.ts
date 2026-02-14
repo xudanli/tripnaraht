@@ -19,6 +19,8 @@ import { GeoAgentService } from './domain-agents/geo-agent.service';
 import { WeatherAgentService } from './domain-agents/weather-agent.service';
 import { CostAgentService } from './domain-agents/cost-agent.service';
 import { ExperienceAgentService } from './domain-agents/experience-agent.service';
+import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
+import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 export declare class ClaudeOrchestratorService {
     private llmService;
     private skillsRegistry?;
@@ -39,9 +41,11 @@ export declare class ClaudeOrchestratorService {
     private readonly weatherAgent?;
     private readonly costAgent?;
     private readonly experienceAgent?;
+    private readonly weatherPredictionService?;
+    private readonly failureRiskPredictionService?;
     private readonly logger;
     private readonly worldCache;
-    constructor(llmService: LlmService, skillsRegistry?: SkillsRegistryService, actionRegistry?: ActionRegistryService, plannerAgent?: ClaudePlannerAgentService, gatekeeperAgent?: ClaudeGatekeeperAgentService, complianceAgent?: ClaudeComplianceAgentService, localInsightAgent?: ClaudeLocalInsightAgentService, coreDecisionAgent?: ClaudeCoreDecisionAgentService, narratorAgent?: ClaudeNarratorAgentService, skillInputValidator?: SkillInputValidatorService, hallucinationDetection?: HallucinationDetectionService, trajectoryCollection?: TrajectoryCollectionService, readinessService?: ReadinessService, userDecisionService?: UserDecisionService, decisionDraftGenerator?: DecisionDraftGeneratorService, geoAgent?: GeoAgentService, weatherAgent?: WeatherAgentService, costAgent?: CostAgentService, experienceAgent?: ExperienceAgentService);
+    constructor(llmService: LlmService, skillsRegistry?: SkillsRegistryService, actionRegistry?: ActionRegistryService, plannerAgent?: ClaudePlannerAgentService, gatekeeperAgent?: ClaudeGatekeeperAgentService, complianceAgent?: ClaudeComplianceAgentService, localInsightAgent?: ClaudeLocalInsightAgentService, coreDecisionAgent?: ClaudeCoreDecisionAgentService, narratorAgent?: ClaudeNarratorAgentService, skillInputValidator?: SkillInputValidatorService, hallucinationDetection?: HallucinationDetectionService, trajectoryCollection?: TrajectoryCollectionService, readinessService?: ReadinessService, userDecisionService?: UserDecisionService, decisionDraftGenerator?: DecisionDraftGeneratorService, geoAgent?: GeoAgentService, weatherAgent?: WeatherAgentService, costAgent?: CostAgentService, experienceAgent?: ExperienceAgentService, weatherPredictionService?: WeatherPredictionService, failureRiskPredictionService?: FailureRiskPredictionService);
     private getLlmProvider;
     private getFallbackProviders;
     private callLlmWithFallback;
@@ -115,5 +119,6 @@ export declare class ClaudeOrchestratorService {
     private worldCacheKey;
     private skillTimeoutMs;
     private collectWorldModelData;
+    private collectPredictionData;
     private buildFailResult;
 }

@@ -578,6 +578,10 @@ let TripsController = TripsController_1 = class TripsController {
                 ...(existingContext.partialParams || {}),
                 [fieldName]: actionValue,
             };
+            if (updatedParams.inferredFields && Array.isArray(updatedParams.inferredFields)) {
+                updatedParams.inferredFields = updatedParams.inferredFields.filter((f) => f !== fieldName && f !== 'totalBudget');
+                this.logger.debug(`用户确认字段 ${fieldName}，从 inferredFields 移除，剩余: ${JSON.stringify(updatedParams.inferredFields)}`);
+            }
             await this.nlConversationContextService.updateContext(dto.sessionId, userId, {
                 partialParams: updatedParams,
             });
@@ -622,6 +626,13 @@ let TripsController = TripsController_1 = class TripsController {
                 ...currentParams,
                 ...parseResult.params,
             };
+            const paramsWithInferred = parseResult.params;
+            if (paramsWithInferred === null || paramsWithInferred === void 0 ? void 0 : paramsWithInferred.inferredFields) {
+                const existingInferred = currentParams.inferredFields || [];
+                const newInferred = paramsWithInferred.inferredFields || [];
+                mergedParams.inferredFields = [...new Set([...existingInferred, ...newInferred])];
+                this.logger.debug(`累积推断字段: ${JSON.stringify(mergedParams.inferredFields)}`);
+            }
             if (!mergedParams.activityTypes) {
                 let activityTypes = [];
                 if ((_a = mergedParams.preferences) === null || _a === void 0 ? void 0 : _a.activityType) {

@@ -18,9 +18,11 @@ const swagger_1 = require("@nestjs/swagger");
 const public_decorator_1 = require("../../auth/decorators/public.decorator");
 const world_build_context_skill_1 = require("./world-build-context.skill");
 const standard_response_dto_1 = require("../../common/dto/standard-response.dto");
+const world_model_monitoring_service_1 = require("./services/world-model-monitoring.service");
 let WorldController = class WorldController {
-    constructor(worldBuildContextSkill) {
+    constructor(worldBuildContextSkill, monitoringService) {
         this.worldBuildContextSkill = worldBuildContextSkill;
+        this.monitoringService = monitoringService;
     }
     async buildContext(input) {
         try {
@@ -29,6 +31,18 @@ let WorldController = class WorldController {
         }
         catch (error) {
             return (0, standard_response_dto_1.errorResponse)(error.status === 404 ? standard_response_dto_1.ErrorCode.NOT_FOUND : standard_response_dto_1.ErrorCode.INTERNAL_ERROR, error.message || '构建世界模型失败');
+        }
+    }
+    async getMetrics() {
+        if (!this.monitoringService) {
+            return (0, standard_response_dto_1.errorResponse)(standard_response_dto_1.ErrorCode.INTERNAL_ERROR, '监控服务不可用');
+        }
+        try {
+            const metrics = this.monitoringService.getPerformanceMetrics();
+            return (0, standard_response_dto_1.successResponse)(metrics);
+        }
+        catch (error) {
+            return (0, standard_response_dto_1.errorResponse)(standard_response_dto_1.ErrorCode.INTERNAL_ERROR, error.message || '获取性能指标失败');
         }
     }
 };
@@ -115,9 +129,27 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], WorldController.prototype, "buildContext", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Get)('metrics'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取世界模型性能指标',
+        description: '返回世界模型构建的性能指标、错误率和缓存命中率',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功返回性能指标',
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], WorldController.prototype, "getMetrics", null);
 exports.WorldController = WorldController = __decorate([
     (0, swagger_1.ApiTags)('world'),
     (0, common_1.Controller)('world'),
-    __metadata("design:paramtypes", [world_build_context_skill_1.WorldBuildContextSkill])
+    __param(1, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [world_build_context_skill_1.WorldBuildContextSkill,
+        world_model_monitoring_service_1.WorldModelMonitoringService])
 ], WorldController);
 //# sourceMappingURL=world.controller.js.map

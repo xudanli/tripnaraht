@@ -38,4 +38,5 @@ export interface CausalReasoningOptions {
     minConfidence?: number;
     maxChainLength?: number;
     includeIndirect?: boolean;
+    enableCounterfactuals?: boolean;
 }

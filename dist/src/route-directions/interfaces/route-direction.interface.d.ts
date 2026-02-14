@@ -66,10 +66,12 @@ export interface ItinerarySkeleton {
     restDaysRequired?: number[];
     [key: string]: any;
 }
+export type FailureReasonType = 'fatigue' | 'weather' | 'altitude' | 'slope' | 'distance' | 'logistics' | 'technical_difficulty' | 'rock_quality' | 'rappelling_accident' | 'glacier_crossing_failure' | 'river_crossing_failure' | 'vehicle_failure' | 'weather_closure' | 'road_closure' | 'extreme_weather' | 'flash_flooding' | 'ice_conditions' | 'ice_calving' | 'avalanche' | 'altitude_sickness' | 'acute_mountain_sickness' | 'altitude_exhaustion' | 'altitude_pulmonary_edema' | 'exhaustion' | 'dehydration' | 'injury' | 'seasickness' | 'polar_bear_encounter' | 'snow_bridge_collapse' | 'peat_bog_accident' | 'cliff_accident' | 'sneaker_wave_accident' | 'sea_wave_incident' | 'equipment_failure' | 'fuel_shortage' | 'ticket_unavailable' | 'medical_emergency' | string;
+export type RescueDifficultyType = 'EXTREME' | 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
 export interface FailureProfile {
     commonFailureDays: number[];
-    typicalFailureReason: ('fatigue' | 'weather' | 'altitude' | 'slope' | 'distance' | 'logistics')[];
-    rescueDifficulty: 'HIGH' | 'MEDIUM' | 'LOW';
+    typicalFailureReason: FailureReasonType[];
+    rescueDifficulty: RescueDifficultyType;
     failureScenarios?: Array<{
         day: number;
         reason: string;

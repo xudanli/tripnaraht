@@ -55,7 +55,7 @@ let ContactNotificationService = ContactNotificationService_1 = class ContactNot
         var _a, _b, _c, _d, _e, _f, _g, _h;
         this.configService = configService;
         this.logger = new common_1.Logger(ContactNotificationService_1.name);
-        const smtpHost = ((_a = this.configService) === null || _a === void 0 ? void 0 : _a.get('SMTP_HOST')) || 'smtp.gmail.com';
+        const smtpHost = ((_a = this.configService) === null || _a === void 0 ? void 0 : _a.get('SMTP_HOST')) || 'smtp.exmail.qq.com';
         const smtpPort = parseInt(((_b = this.configService) === null || _b === void 0 ? void 0 : _b.get('SMTP_PORT')) || '587', 10);
         const smtpUser = (_c = this.configService) === null || _c === void 0 ? void 0 : _c.get('SMTP_USER');
         const smtpPassword = ((_d = this.configService) === null || _d === void 0 ? void 0 : _d.get('SMTP_PASSWORD')) ||
@@ -63,7 +63,7 @@ let ContactNotificationService = ContactNotificationService_1 = class ContactNot
         const smtpFrom = ((_f = this.configService) === null || _f === void 0 ? void 0 : _f.get('SMTP_FROM')) || smtpUser;
         const smtpSecure = ((_g = this.configService) === null || _g === void 0 ? void 0 : _g.get('SMTP_SECURE')) === 'true' || smtpPort === 465;
         this.notificationEmail = ((_h = this.configService) === null || _h === void 0 ? void 0 : _h.get('CONTACT_NOTIFICATION_EMAIL')) ||
-            'contact@tripnara.com';
+            'support@tripnara.com';
         if (!smtpUser || !smtpPassword) {
             this.logger.warn('SMTP 配置未完整，邮件通知功能不可用');
             this.transporter = null;

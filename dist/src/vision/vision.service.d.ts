@@ -28,4 +28,26 @@ export declare class VisionService {
     }>>;
     private deduplicateAndSortCandidates;
     private calculateConfidence;
+    analyzeImage(image: Buffer | string, opts?: {
+        lat?: number;
+        lng?: number;
+        locale?: string;
+    }): Promise<StandardResponse<{
+        sceneType?: 'NATURAL' | 'URBAN' | 'CULTURAL' | 'ADVENTURE' | 'RELAXATION';
+        detectedObjects?: string[];
+        weatherConditions?: 'SUNNY' | 'CLOUDY' | 'RAINY' | 'SNOWY';
+        crowdLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+        accessibility?: 'ACCESSIBLE' | 'MODERATE' | 'CHALLENGING';
+        location?: {
+            lat: number;
+            lng: number;
+            confidence: number;
+        };
+        confidence: number;
+    }>>;
+    private inferSceneType;
+    private extractObjectsFromText;
+    private inferWeatherFromText;
+    private inferCrowdLevelFromText;
+    private inferAccessibilityFromText;
 }

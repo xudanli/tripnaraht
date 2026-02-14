@@ -46,11 +46,12 @@ let DEMEffortMetadataService = DEMEffortMetadataService_1 = class DEMEffortMetad
         if (points.length < 2) {
             throw new Error('路线至少需要2个点');
         }
+        const elevationResults = await this.demService.getElevations(points.map(p => ({ lat: p.lat, lng: p.lng })));
         const elevations = [];
-        for (const point of points) {
-            const elevation = await this.demService.getElevation(point.lat, point.lng);
+        for (let i = 0; i < elevationResults.length; i++) {
+            const elevation = elevationResults[i];
             if (elevation === null) {
-                this.logger.warn(`无法获取海拔 (${point.lat}, ${point.lng})，使用前一点海拔或0`);
+                this.logger.warn(`无法获取海拔 (${points[i].lat}, ${points[i].lng})，使用前一点海拔或0`);
                 elevations.push(elevations.length > 0 ? elevations[elevations.length - 1] : 0);
             }
             else {
@@ -177,11 +178,8 @@ let DEMEffortMetadataService = DEMEffortMetadataService_1 = class DEMEffortMetad
         };
     }
     async detectKeyPoints(points) {
-        const elevations = [];
-        for (const point of points) {
-            const elevation = await this.demService.getElevation(point.lat, point.lng);
-            elevations.push(elevation !== null && elevation !== void 0 ? elevation : 0);
-        }
+        const elevationResults = await this.demService.getElevations(points.map(p => ({ lat: p.lat, lng: p.lng })));
+        const elevations = elevationResults.map(e => e !== null && e !== void 0 ? e : 0);
         const maxElevation = Math.max(...elevations);
         const highestIndex = elevations.indexOf(maxElevation);
         const highestPoint = {

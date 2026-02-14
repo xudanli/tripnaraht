@@ -25,6 +25,7 @@ export declare class ConflictDto {
     description: string;
     affectedDays: string[];
     affectedItemIds: string[];
+    overlapMinutes?: number;
     suggestions?: ConflictSuggestionDto[];
 }
 export declare class ConflictsResponseDto {

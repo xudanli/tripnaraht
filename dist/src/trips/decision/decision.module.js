@@ -52,6 +52,13 @@ const readiness_agent_service_1 = require("./readiness/readiness-agent.service")
 const approval_service_1 = require("./services/approval.service");
 const agent_resume_service_1 = require("./services/agent-resume.service");
 const approval_controller_1 = require("./controllers/approval.controller");
+const fitness_assessment_service_1 = require("./services/fitness-assessment.service");
+const fitness_assessment_controller_1 = require("./controllers/fitness-assessment.controller");
+const fitness_analytics_service_1 = require("./services/fitness-analytics.service");
+const fitness_ab_testing_service_1 = require("./services/fitness-ab-testing.service");
+const calibration_scheduler_service_1 = require("./services/calibration-scheduler.service");
+const wearable_integration_service_1 = require("./services/wearable-integration.service");
+const fitness_analytics_controller_1 = require("./controllers/fitness-analytics.controller");
 const decision_state_manager_service_1 = require("./services/decision-state-manager.service");
 const three_layer_explanation_service_1 = require("./services/three-layer-explanation.service");
 const rhythm_matching_service_1 = require("./services/rhythm-matching.service");
@@ -60,6 +67,7 @@ const training_module_1 = require("../../agent/training/training.module");
 const exa_module_1 = require("../../mcp/exa.module");
 const airbnb_module_1 = require("../../mcp/airbnb.module");
 const booking_com_module_1 = require("../../mcp/booking-com.module");
+const optimization_module_1 = require("./optimization/optimization.module");
 let DataQualityModule;
 let DataModelingModule;
 try {
@@ -91,11 +99,14 @@ exports.DecisionModule = DecisionModule = __decorate([
             exa_module_1.ExaModule,
             airbnb_module_1.AirbnbModule,
             booking_com_module_1.BookingComModule,
+            optimization_module_1.OptimizationModule,
         ],
         controllers: [
             decision_controller_1.DecisionController,
             decision_stats_controller_1.DecisionStatsController,
             approval_controller_1.ApprovalController,
+            fitness_assessment_controller_1.FitnessAssessmentController,
+            fitness_analytics_controller_1.FitnessAnalyticsController,
         ],
         providers: [
             trip_decision_engine_service_1.TripDecisionEngineService,
@@ -126,6 +137,11 @@ exports.DecisionModule = DecisionModule = __decorate([
             readiness_agent_service_1.ReadinessAgentService,
             approval_service_1.ApprovalService,
             agent_resume_service_1.AgentResumeService,
+            fitness_assessment_service_1.FitnessAssessmentService,
+            fitness_analytics_service_1.FitnessAnalyticsService,
+            fitness_ab_testing_service_1.FitnessABTestingService,
+            calibration_scheduler_service_1.CalibrationSchedulerService,
+            wearable_integration_service_1.WearableIntegrationService,
         ],
         exports: [
             trip_decision_engine_service_1.TripDecisionEngineService,
@@ -155,6 +171,11 @@ exports.DecisionModule = DecisionModule = __decorate([
             readiness_agent_service_1.ReadinessAgentService,
             approval_service_1.ApprovalService,
             agent_resume_service_1.AgentResumeService,
+            fitness_assessment_service_1.FitnessAssessmentService,
+            fitness_analytics_service_1.FitnessAnalyticsService,
+            fitness_ab_testing_service_1.FitnessABTestingService,
+            calibration_scheduler_service_1.CalibrationSchedulerService,
+            wearable_integration_service_1.WearableIntegrationService,
         ],
     })
 ], DecisionModule);

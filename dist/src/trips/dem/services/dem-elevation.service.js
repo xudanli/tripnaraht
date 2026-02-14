@@ -46,7 +46,25 @@ let DEMElevationService = DEMElevationService_1 = class DEMElevationService {
             return [];
         }
     }
+    isInIcelandBounds(lat, lng) {
+        return lat >= 63.3 && lat <= 66.5 && lng >= -24.5 && lng <= -13.5;
+    }
     async getElevation(lat, lng, fallbackTable = 'geo_dem_xizang') {
+        if (this.isInIcelandBounds(lat, lng)) {
+            try {
+                const icelandTableExists = await this.checkDEMTableExists('geo_dem_iceland_20m');
+                if (icelandTableExists) {
+                    const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_iceland_20m', 5327);
+                    if (elevation !== null) {
+                        this.logger.debug(`从冰岛20m DEM表获取海拔: ${elevation}m`);
+                        return elevation;
+                    }
+                }
+            }
+            catch (error) {
+                this.logger.debug(`冰岛DEM表查询失败，尝试其他表`);
+            }
+        }
         try {
             const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
             if (mergedTableExists) {
@@ -87,14 +105,32 @@ let DEMElevationService = DEMElevationService_1 = class DEMElevationService {
         }
         return null;
     }
-    async queryElevationFromTable(lat, lng, demTable) {
+    async queryElevationFromTable(lat, lng, demTable, rasterSrid = 4326) {
         try {
-            const result = await this.prisma.$queryRawUnsafe(`
-        SELECT ST_Value(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))::INTEGER as elevation
-        FROM ${demTable}
-        WHERE ST_Intersects(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
-        LIMIT 1;
-      `);
+            let query;
+            if (rasterSrid === 5327) {
+                query = `
+          SELECT ST_Value(
+            rast, 
+            ST_Transform(ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326), 5327)
+          )::INTEGER as elevation
+          FROM ${demTable}
+          WHERE ST_Intersects(
+            rast, 
+            ST_Transform(ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326), 5327)
+          )
+          LIMIT 1;
+        `;
+            }
+            else {
+                query = `
+          SELECT ST_Value(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))::INTEGER as elevation
+          FROM ${demTable}
+          WHERE ST_Intersects(rast, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
+          LIMIT 1;
+        `;
+            }
+            const result = await this.prisma.$queryRawUnsafe(query);
             if (result.length === 0 || result[0].elevation === null) {
                 return null;
             }
@@ -113,8 +149,103 @@ let DEMElevationService = DEMElevationService_1 = class DEMElevationService {
         if (points.length === 0) {
             return [];
         }
-        const results = await Promise.all(points.map(point => this.getElevation(point.lat, point.lng, fallbackTable)));
+        const batchSize = 100;
+        if (points.length <= batchSize) {
+            return this.batchQueryElevations(points, fallbackTable);
+        }
+        const results = [];
+        for (let i = 0; i < points.length; i += batchSize) {
+            const batch = points.slice(i, i + batchSize);
+            const batchResults = await this.batchQueryElevations(batch, fallbackTable);
+            results.push(...batchResults);
+        }
         return results;
+    }
+    async batchQueryElevations(points, fallbackTable = 'geo_dem_xizang') {
+        if (points.length === 0) {
+            return [];
+        }
+        const hasIcelandPoints = points.some(p => this.isInIcelandBounds(p.lat, p.lng));
+        if (hasIcelandPoints) {
+            try {
+                const icelandTableExists = await this.checkDEMTableExists('geo_dem_iceland_20m');
+                if (icelandTableExists) {
+                    const results = await this.batchQueryFromTable(points, 'geo_dem_iceland_20m', 5327);
+                    if (results.every(r => r !== null)) {
+                        return results;
+                    }
+                }
+            }
+            catch (error) {
+                this.logger.debug(`冰岛DEM表批量查询失败，尝试其他表`);
+            }
+        }
+        try {
+            const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
+            if (mergedTableExists) {
+                const results = await this.batchQueryFromTable(points, 'geo_dem_cities_merged');
+                if (results.every(r => r !== null)) {
+                    return results;
+                }
+            }
+        }
+        catch (error) {
+            this.logger.debug(`合并城市DEM表批量查询失败，尝试后备表`);
+        }
+        try {
+            const results = await this.batchQueryFromTable(points, fallbackTable);
+            if (results.every(r => r !== null)) {
+                return results;
+            }
+        }
+        catch (error) {
+            this.logger.debug(`区域DEM表批量查询失败，尝试全球表`);
+        }
+        try {
+            const globalTableExists = await this.checkDEMTableExists('geo_dem_global');
+            if (globalTableExists) {
+                return await this.batchQueryFromTable(points, 'geo_dem_global');
+            }
+        }
+        catch (error) {
+            this.logger.debug(`全球DEM表批量查询失败`);
+        }
+        return new Array(points.length).fill(null);
+    }
+    async batchQueryFromTable(points, demTable, srid = 4326) {
+        try {
+            const lngs = points.map(p => p.lng);
+            const lats = points.map(p => p.lat);
+            const query = `
+        WITH points AS (
+          SELECT 
+            row_number() OVER () as idx,
+            ST_SetSRID(ST_MakePoint(lng, lat), ${srid}) as geom
+          FROM unnest($1::float[], $2::float[]) AS t(lng, lat)
+        )
+        SELECT 
+          p.idx,
+          ST_Value(r.rast, p.geom)::INTEGER as elevation
+        FROM points p
+        CROSS JOIN LATERAL (
+          SELECT rast
+          FROM ${demTable}
+          WHERE ST_Intersects(rast, p.geom)
+          LIMIT 1
+        ) r
+        ORDER BY p.idx;
+      `;
+            const result = await this.prisma.$queryRawUnsafe(query, lngs, lats);
+            const elevationMap = new Map();
+            for (const row of result) {
+                elevationMap.set(row.idx, row.elevation !== null ? Math.round(row.elevation) : null);
+            }
+            return points.map((_, idx) => { var _a; return (_a = elevationMap.get(idx + 1)) !== null && _a !== void 0 ? _a : null; });
+        }
+        catch (error) {
+            this.logger.warn(`批量查询DEM失败 (表: ${demTable}): ${error.message}`);
+            return new Array(points.length).fill(null);
+        }
     }
     async checkDEMTableExists(demTable = 'geo_dem_xizang') {
         var _a;

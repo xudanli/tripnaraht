@@ -39,6 +39,9 @@ export declare class TripExtendedService {
                         updatedAt: Date;
                         nameCN: string;
                         description: string | null;
+                        lastVerifiedAt: Date | null;
+                        dataSource: string | null;
+                        dataFreshness: string | null;
                     };
                     Trail: {
                         TrailWaypoint: ({
@@ -57,6 +60,9 @@ export declare class TripExtendedService {
                                 updatedAt: Date;
                                 nameCN: string;
                                 description: string | null;
+                                lastVerifiedAt: Date | null;
+                                dataSource: string | null;
+                                dataFreshness: string | null;
                             };
                         } & {
                             id: number;
@@ -80,6 +86,9 @@ export declare class TripExtendedService {
                             updatedAt: Date;
                             nameCN: string;
                             description: string | null;
+                            lastVerifiedAt: Date | null;
+                            dataSource: string | null;
+                            dataFreshness: string | null;
                         };
                         Place_Trail_startPlaceIdToPlace: {
                             id: number;
@@ -96,6 +105,9 @@ export declare class TripExtendedService {
                             updatedAt: Date;
                             nameCN: string;
                             description: string | null;
+                            lastVerifiedAt: Date | null;
+                            dataSource: string | null;
+                            dataFreshness: string | null;
                         };
                     } & {
                         id: number;
@@ -134,21 +146,21 @@ export declare class TripExtendedService {
                     tripDayId: string;
                     note: string | null;
                     trailId: number | null;
-                    order: number | null;
-                    estimatedCost: number | null;
                     actualCost: number | null;
-                    currency: string | null;
                     costCategory: string | null;
                     costNote: string | null;
+                    currency: string | null;
+                    estimatedCost: number | null;
                     isPaid: boolean;
                     paidBy: string | null;
-                    travelFromPreviousDuration: number | null;
-                    travelFromPreviousDistance: number | null;
-                    travelMode: string | null;
-                    bookingStatus: string | null;
-                    bookingConfirmation: string | null;
-                    bookingUrl: string | null;
                     bookedAt: Date | null;
+                    bookingConfirmation: string | null;
+                    bookingStatus: string | null;
+                    bookingUrl: string | null;
+                    travelFromPreviousDistance: number | null;
+                    travelFromPreviousDuration: number | null;
+                    travelMode: string | null;
+                    order: number | null;
                 })[];
             } & {
                 id: string;
@@ -156,12 +168,12 @@ export declare class TripExtendedService {
                 tripId: string;
             })[];
         } & {
+            status: string | null;
             id: string;
             metadata: import("@prisma/client/runtime/library").JsonValue | null;
             createdAt: Date;
             updatedAt: Date;
             name: string | null;
-            status: string | null;
             destination: string;
             startDate: Date;
             endDate: Date;
@@ -239,12 +251,12 @@ export declare class TripExtendedService {
             tripId: string;
             userId: string;
         }[];
+        status: string | null;
         id: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
         name: string | null;
-        status: string | null;
         destination: string;
         startDate: Date;
         endDate: Date;

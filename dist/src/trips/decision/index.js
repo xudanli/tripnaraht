@@ -40,4 +40,5 @@ __exportStar(require("./monitoring"), exports);
 __exportStar(require("./trip-decision-engine.service"), exports);
 __exportStar(require("./adapters/sense-tools.adapter"), exports);
 __exportStar(require("./decision.module"), exports);
+__exportStar(require("./optimization"), exports);
 //# sourceMappingURL=index.js.map

@@ -57,7 +57,15 @@ let TripDetailController = class TripDetailController {
             if (!dimensionData) {
                 return (0, standard_response_dto_1.errorResponse)(standard_response_dto_1.ErrorCode.VALIDATION_ERROR, `无效的维度: ${dimension}`);
             }
-            const explanation = this.generateMetricExplanation(dimension, dimensionData, health.overall);
+            const defaultWeights = {
+                schedule: 0.30,
+                budget: 0.25,
+                pace: 0.25,
+                feasibility: 0.20
+            };
+            const dimensionWeight = dimensionData.weight || defaultWeights[dimension] || 0.25;
+            const contribution = dimensionData.score * dimensionWeight;
+            const explanation = this.generateMetricExplanation(dimension, dimensionData, health.overall, dimensionWeight, contribution);
             return (0, standard_response_dto_1.successResponse)(explanation);
         }
         catch (error) {
@@ -76,12 +84,18 @@ let TripDetailController = class TripDetailController {
             return (0, standard_response_dto_1.errorResponse)(standard_response_dto_1.ErrorCode.INTERNAL_ERROR, error.message);
         }
     }
-    generateMetricExplanation(dimension, dimensionData, overallStatus) {
+    generateMetricExplanation(dimension, dimensionData, overallStatus, weight = 0.25, contribution = 0) {
         const dimensionNames = {
             schedule: '时间安排',
             budget: '预算',
             pace: '节奏',
             feasibility: '行程可行性',
+        };
+        const displayNames = {
+            schedule: '时间灵活性',
+            budget: '预算控制',
+            pace: '节奏合理性',
+            feasibility: '可达性',
         };
         const dimensionDescriptions = {
             schedule: '评估行程的时间安排是否合理，包括时间冲突、可用时间窗等',
@@ -125,17 +139,31 @@ let TripDetailController = class TripDetailController {
             }
         }
         return {
+            metricName: dimension,
+            displayName: displayNames[dimension],
             dimension,
             dimensionName: dimensionNames[dimension],
             description: dimensionDescriptions[dimension],
+            definition: dimensionDescriptions[dimension],
             currentScore: dimensionData.score,
             currentStatus: dimensionData.status,
             overallStatus,
             calculationMethod: calculationMethods[dimension],
+            calculation: {
+                method: calculationMethods[dimension],
+                score: dimensionData.score,
+            },
             idealRange: idealRanges[dimension],
+            currentState: {
+                score: dimensionData.score,
+                status: dimensionData.status,
+                issues: dimensionData.issues,
+            },
             issues: dimensionData.issues,
             suggestions,
             impact: dimensionData.status === 'critical' ? 'high' : dimensionData.status === 'warning' ? 'medium' : 'low',
+            weight: weight,
+            contribution: contribution,
             lastUpdated: new Date().toISOString(),
         };
     }

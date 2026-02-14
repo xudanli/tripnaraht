@@ -74,6 +74,10 @@ __decorate([
     __metadata("design:type", Array)
 ], ConflictDto.prototype, "affectedItemIds", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({ description: '时间重叠分钟数（仅TIME_CONFLICT类型）' }),
+    __metadata("design:type", Number)
+], ConflictDto.prototype, "overlapMinutes", void 0);
+__decorate([
     (0, swagger_1.ApiPropertyOptional)({ description: '建议列表', type: [ConflictSuggestionDto] }),
     __metadata("design:type", Array)
 ], ConflictDto.prototype, "suggestions", void 0);

@@ -1,7 +1,9 @@
 import { WorldBuildContextSkill } from './world-build-context.skill';
+import { WorldModelMonitoringService } from './services/world-model-monitoring.service';
 export declare class WorldController {
     private readonly worldBuildContextSkill;
-    constructor(worldBuildContextSkill: WorldBuildContextSkill);
+    private readonly monitoringService?;
+    constructor(worldBuildContextSkill: WorldBuildContextSkill, monitoringService?: WorldModelMonitoringService);
     buildContext(input: {
         tripId?: string;
         countryCode?: string;
@@ -15,4 +17,5 @@ export declare class WorldController {
         };
         routeDirectionId?: string;
     }): Promise<import("../../common/dto/standard-response.dto").StandardResponse<any>>;
+    getMetrics(): Promise<import("../../common/dto/standard-response.dto").StandardResponse<any>>;
 }

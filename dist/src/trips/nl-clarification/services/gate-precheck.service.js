@@ -89,8 +89,13 @@ let GatePrecheckService = GatePrecheckService_1 = class GatePrecheckService {
         }
     }
     checkTriggerConditions(conditions, currentParams) {
+        const inferredFields = currentParams.inferredFields || [];
         for (const field of conditions.requiredFields) {
             const fieldValue = currentParams[field];
+            if (inferredFields.includes(field)) {
+                this.logger.debug(`Gate 触发条件检查跳过: 字段 ${field} 是推断值（未经用户确认），不触发预检查`);
+                return false;
+            }
             if (!fieldValue) {
                 this.logger.debug(`Gate 触发条件检查失败: 缺少必需字段 ${field}`);
                 return false;
@@ -103,6 +108,10 @@ let GatePrecheckService = GatePrecheckService_1 = class GatePrecheckService {
         if (conditions.fieldConditions && conditions.fieldConditions.length > 0) {
             for (const condition of conditions.fieldConditions) {
                 const fieldValue = currentParams[condition.fieldId];
+                if (inferredFields.includes(condition.fieldId)) {
+                    this.logger.debug(`Gate 触发条件检查跳过: 条件字段 ${condition.fieldId} 是推断值`);
+                    return false;
+                }
                 if (!this.evaluateFieldCondition(fieldValue, condition.operator, condition.value)) {
                     return false;
                 }
