@@ -1,58 +1,48 @@
-# Prometheus 配置文件
-# TripNARA RAG 监控
+# prometheus.yml - Prometheus Configuration for TripNARA
 
 global:
-  scrape_interval: 15s # 每15秒抓取一次指标
-  evaluation_interval: 15s # 每15秒评估一次规则
+  scrape_interval: 15s
+  evaluation_interval: 15s
   external_labels:
-    cluster: 'tripnara'
-    service: 'rag'
+    cluster: 'tripnara-iceland'
+    environment: 'production'
 
-# 告警管理器配置（可选）
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#           - 'alertmanager:9093'
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
 
-# 规则文件
+# Load rules once and periodically evaluate them
 rule_files:
-  - 'alerts.yml'
+  - '/etc/prometheus/rules/prometheus-alerts.yml'
 
-# 抓取配置
 scrape_configs:
-  # TripNARA RAG应用指标
-  - job_name: 'tripnara-rag'
-    metrics_path: '/rag/prometheus-metrics'
-    scrape_interval: 10s # RAG指标更新较快，10秒抓取一次
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:3000'] # 修改为实际的应用地址
-        labels:
-          env: 'development' # 修改为实际环境: development, staging, production
-          service: 'rag'
+      - targets: ['localhost:9090']
 
-  # TripNARA Context Engine 指标
-  - job_name: 'tripnara-context-engine'
-    metrics_path: '/context/prometheus-metrics'
-    scrape_interval: 10s # Context Engine指标更新较快，10秒抓取一次
+  # TripNARA Application Metrics
+  - job_name: 'tripnara-iceland'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
     static_configs:
       - targets: ['localhost:3000']
-        labels:
-          env: 'development'
-          service: 'context-engine'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__scheme__]
+        target_label: scheme
 
-  # Node.js进程指标（如果启用）
-  # - job_name: 'tripnara-nodejs'
-  #   metrics_path: '/metrics'
-  #   static_configs:
-  #     - targets: ['localhost:3000']
+  # Node Exporter (System Metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
 
-  # Redis指标（如果启用 redis_exporter）
-  # - job_name: 'redis'
-  #   static_configs:
-  #     - targets: ['localhost:9121']
-
-  # PostgreSQL指标（如果启用 postgres_exporter）
-  # - job_name: 'postgres'
-  #   static_configs:
-  #     - targets: ['localhost:9187']
+  # PostgreSQL Exporter (Database Metrics)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:9187']

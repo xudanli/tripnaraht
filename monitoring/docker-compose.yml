@@ -1,69 +1,62 @@
-# TripNARA RAG 监控堆栈
-# 启动方式: cd monitoring && docker-compose up -d
-
 version: '3.8'
 
 services:
-  # Prometheus - 指标收集
   prometheus:
     image: prom/prometheus:latest
     container_name: tripnara-prometheus
-    ports:
-      - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./alerts.yml:/etc/prometheus/alerts.yml
+      - ./prometheus-alerts.yml:/etc/prometheus/rules/prometheus-alerts.yml
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
+    ports:
+      - "9090:9090"
     networks:
       - monitoring
+    restart: unless-stopped
 
-  # Grafana - 可视化
   grafana:
     image: grafana/grafana:latest
     container_name: tripnara-grafana
-    ports:
-      - "3001:3000" # 避免与应用端口3000冲突
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin # 生产环境请修改
-      - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana-dashboard-rag.json:/etc/grafana/provisioning/dashboards/rag.json
-      - ./grafana-dashboard-context-engine.json:/etc/grafana/provisioning/dashboards/context-engine.json
-      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
-    restart: unless-stopped
+      - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/iceland-world-model.json
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
     networks:
       - monitoring
+    restart: unless-stopped
     depends_on:
       - prometheus
 
-  # Node Exporter (可选) - 系统指标
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: tripnara-node-exporter
-    ports:
-      - "9100:9100"
-    command:
-      - '--path.rootfs=/host'
-    pid: host
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: tripnara-alertmanager
     volumes:
-      - '/:/host:ro,rslave'
-    restart: unless-stopped
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "9093:9093"
     networks:
       - monitoring
-
-networks:
-  monitoring:
-    driver: bridge
+    restart: unless-stopped
 
 volumes:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
+
+networks:
+  monitoring:
+    driver: bridge

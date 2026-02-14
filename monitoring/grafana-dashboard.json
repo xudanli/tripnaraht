@@ -1,0 +1,197 @@
+{
+  "dashboard": {
+    "title": "TripNARA Iceland World Model - Production Dashboard",
+    "tags": ["tripnara", "iceland", "world-model", "production"],
+    "timezone": "UTC",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Gate Evaluations (Total)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(tripnara_gate_evaluations_total[5m])) by (result)",
+            "legendFormat": "{{result}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Gate Evaluation Duration (P95)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(tripnara_gate_evaluation_duration_seconds_bucket[5m])) by (le, country_code))",
+            "legendFormat": "{{country_code}} P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(tripnara_gate_evaluation_duration_seconds_bucket[5m])) by (le, country_code))",
+            "legendFormat": "{{country_code}} P50"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Weather API Success Rate",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(tripnara_weather_api_calls_total{status=\"success\"}[5m])) / sum(rate(tripnara_weather_api_calls_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 80, "color": "yellow" },
+              { "value": 95, "color": "green" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Road API Success Rate",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(tripnara_road_api_calls_total{status=\"success\"}[5m])) / sum(rate(tripnara_road_api_calls_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "green" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Road Cache Hit Rate",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(tripnara_road_cache_hits_total[5m])) / sum(rate(tripnara_road_api_calls_total[5m])) * 100",
+            "legendFormat": "Cache Hit Rate %"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 50, "color": "yellow" },
+              { "value": 70, "color": "green" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Weather Data Freshness",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+        "targets": [
+          {
+            "expr": "max(tripnara_weather_data_freshness_seconds) / 3600",
+            "legendFormat": "Max Age (hours)"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 6, "color": "yellow" },
+              { "value": 12, "color": "red" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Gate Blocks by Violation Type",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "targets": [
+          {
+            "expr": "sum(rate(tripnara_gate_blocks_total[5m])) by (violation_type)",
+            "legendFormat": "{{violation_type}}"
+          }
+        ],
+        "options": {
+          "legend": { "show": true, "placement": "bottom" }
+        }
+      },
+      {
+        "id": 8,
+        "title": "World Model Build Duration",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(tripnara_world_model_build_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(tripnara_world_model_build_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P50"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "API Errors (Last 5m)",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+        "targets": [
+          {
+            "expr": "topk(10, sum(increase(tripnara_weather_api_errors_total[5m])) by (error_type, region))",
+            "format": "table",
+            "legendFormat": "Weather API Errors"
+          },
+          {
+            "expr": "topk(10, sum(increase(tripnara_road_api_errors_total[5m])) by (error_type, road_id))",
+            "format": "table",
+            "legendFormat": "Road API Errors"
+          }
+        ]
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "changes(tripnara_gate_evaluations_total[1m]) > 0"
+        }
+      ]
+    }
+  }
+}

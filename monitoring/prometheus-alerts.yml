@@ -1,0 +1,155 @@
+# Prometheus Alert Rules for TripNARA Iceland World Model
+
+groups:
+  - name: tripnara_iceland_world_model
+    interval: 30s
+    rules:
+      # Gate Evaluation Alerts
+      - alert: HighGateEvaluationFailureRate
+        expr: |
+          sum(rate(tripnara_gate_evaluations_total{result!="ALLOW"}[5m])) /
+          sum(rate(tripnara_gate_evaluations_total[5m])) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: gate_evaluation
+        annotations:
+          summary: "High gate evaluation failure rate"
+          description: "Gate evaluation failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      - alert: GateEvaluationSlowResponse
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(tripnara_gate_evaluation_duration_seconds_bucket[5m])) by (le, country_code)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: gate_evaluation
+        annotations:
+          summary: "Gate evaluation slow response (P95 > 2s)"
+          description: "Gate evaluation P95 latency is {{ $value }}s for {{ $labels.country_code }}"
+
+      - alert: GateEvaluationVerySlowResponse
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(tripnara_gate_evaluation_duration_seconds_bucket[5m])) by (le, country_code)
+          ) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: gate_evaluation
+        annotations:
+          summary: "Gate evaluation very slow response (P95 > 5s)"
+          description: "Gate evaluation P95 latency is {{ $value }}s for {{ $labels.country_code }}"
+
+      # Weather API Alerts
+      - alert: WeatherAPIHighErrorRate
+        expr: |
+          sum(rate(tripnara_weather_api_calls_total{status="error"}[5m])) /
+          sum(rate(tripnara_weather_api_calls_total[5m])) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: weather_api
+        annotations:
+          summary: "Weather API high error rate"
+          description: "Weather API error rate is {{ $value | humanizePercentage }} (threshold: 20%)"
+
+      - alert: WeatherAPIDown
+        expr: |
+          sum(rate(tripnara_weather_api_calls_total{status="error"}[5m])) /
+          sum(rate(tripnara_weather_api_calls_total[5m])) > 0.80
+        for: 2m
+        labels:
+          severity: critical
+          component: weather_api
+        annotations:
+          summary: "Weather API appears to be down"
+          description: "Weather API error rate is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      - alert: WeatherDataStale
+        expr: max(tripnara_weather_data_freshness_seconds) > 43200
+        for: 5m
+        labels:
+          severity: warning
+          component: weather_api
+        annotations:
+          summary: "Weather data is stale (> 12 hours)"
+          description: "Weather data age is {{ $value | humanizeDuration }} for {{ $labels.region }}"
+
+      # Road API Alerts
+      - alert: RoadAPIHighErrorRate
+        expr: |
+          sum(rate(tripnara_road_api_calls_total{status="error"}[5m])) /
+          sum(rate(tripnara_road_api_calls_total[5m])) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: road_api
+        annotations:
+          summary: "Road API high error rate"
+          description: "Road API error rate is {{ $value | humanizePercentage }} (threshold: 20%)"
+
+      - alert: RoadCacheLowHitRate
+        expr: |
+          sum(rate(tripnara_road_cache_hits_total[5m])) /
+          sum(rate(tripnara_road_api_calls_total[5m])) < 0.50
+        for: 10m
+        labels:
+          severity: warning
+          component: road_api
+        annotations:
+          summary: "Road cache hit rate is low"
+          description: "Road cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%)"
+
+      # World Model Build Alerts
+      - alert: WorldModelBuildHighErrorRate
+        expr: |
+          sum(rate(tripnara_world_model_builds_total{status="error"}[5m])) /
+          sum(rate(tripnara_world_model_builds_total[5m])) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: world_model
+        annotations:
+          summary: "World model build high error rate"
+          description: "World model build error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      - alert: WorldModelBuildSlowResponse
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(tripnara_world_model_build_duration_seconds_bucket[5m])) by (le)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: world_model
+        annotations:
+          summary: "World model build slow response (P95 > 5s)"
+          description: "World model build P95 latency is {{ $value }}s"
+
+      # High Block Rate Alert (Business Critical)
+      - alert: HighGateBlockRate
+        expr: |
+          sum(rate(tripnara_gate_blocks_total[5m])) /
+          sum(rate(tripnara_gate_evaluations_total[5m])) > 0.50
+        for: 10m
+        labels:
+          severity: warning
+          component: gate_evaluation
+          business_impact: high
+        annotations:
+          summary: "High gate block rate (> 50%)"
+          description: "Gate block rate is {{ $value | humanizePercentage }} - this may indicate issues with data quality or overly strict rules"
+
+      # Evidence Confidence Alerts
+      - alert: LowEvidenceConfidence
+        expr: avg(tripnara_evidence_confidence) < 0.6
+        for: 10m
+        labels:
+          severity: warning
+          component: evidence_chain
+        annotations:
+          summary: "Low average evidence confidence"
+          description: "Average evidence confidence is {{ $value }} (threshold: 0.6)"
