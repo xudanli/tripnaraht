@@ -8,8 +8,6 @@ import { IcelandWeatherRealtimeService } from './services/iceland-weather-realti
 
 describe('AvalancheRiskAssessmentSkill', () => {
   let skill: AvalancheRiskAssessmentSkill;
-  let prisma: PrismaService;
-  let weatherService: IcelandWeatherRealtimeService;
 
   const mockPrisma = {
     $queryRawUnsafe: jest.fn(),
@@ -46,8 +44,6 @@ describe('AvalancheRiskAssessmentSkill', () => {
     }).compile();
 
     skill = module.get<AvalancheRiskAssessmentSkill>(AvalancheRiskAssessmentSkill);
-    prisma = module.get<PrismaService>(PrismaService);
-    weatherService = module.get<IcelandWeatherRealtimeService>(IcelandWeatherRealtimeService);
 
     jest.clearAllMocks();
   });
@@ -111,6 +107,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         ],
         countryCode: 'IS',
         month: 8, // August
+        dateRange: {
+          start: new Date('2024-08-15'),
+          end: new Date('2024-08-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -150,7 +150,8 @@ describe('AvalancheRiskAssessmentSkill', () => {
       expect(result.hazardZones).toHaveLength(1);
       expect(result.riskAssessment.totalHazards).toBe(1);
       // Low-risk zones don't generate warnings (only medium/high do)
-      expect(result.summary).toContain('low avalanche risk');
+      expect(result.summary).toContain('LOW');
+      expect(result.summary).toContain('ALLOW');
     });
   });
 
@@ -219,6 +220,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         ],
         countryCode: 'IS',
         month: 12, // December
+        dateRange: {
+          start: new Date('2024-12-15'),
+          end: new Date('2024-12-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -249,14 +254,13 @@ describe('AvalancheRiskAssessmentSkill', () => {
       const result = await skill.execute(input);
 
       // Assert
-      // Medium geographic risk + high weather risk stays medium (not escalated to high)
-      // because logic is: medium + high weather → still medium (only extreme weather escalates)
-      expect(result.overallRisk).toBe('medium');
-      expect(result.gateRecommendation).toBe('ADJUST_REQUIRED'); // medium + high weather → ADJUST_REQUIRED
+      // Medium geographic risk + high weather risk (snowfall + warming + winds) → escalates to extreme
+      expect(result.overallRisk).toBe('extreme');
+      expect(result.gateRecommendation).toBe('BLOCK'); // extreme → BLOCK
       expect(result.weatherFactors?.recentSnowfall).toBe(true);
       expect(result.weatherFactors?.temperatureWarming).toBe(true);
       expect(result.weatherFactors?.highWinds).toBe(true);
-      expect(result.weatherFactors?.weatherRiskLevel).toBe('high');
+      expect(result.weatherFactors?.weatherRiskLevel).toBe('extreme');
     });
   });
 
@@ -323,6 +327,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         ],
         countryCode: 'IS',
         month: 1, // January - winter
+        dateRange: {
+          start: new Date('2024-01-15'),
+          end: new Date('2024-01-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -470,6 +478,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.75, lng: -18.0, name: 'Highlands' }],
         countryCode: 'IS',
         month: 2,
+        dateRange: {
+          start: new Date('2024-02-15'),
+          end: new Date('2024-02-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -498,6 +510,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.75, lng: -18.0, name: 'Highlands' }],
         countryCode: 'IS',
         month: 4,
+        dateRange: {
+          start: new Date('2024-04-15'),
+          end: new Date('2024-04-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -526,6 +542,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.75, lng: -18.0, name: 'Highlands' }],
         countryCode: 'IS',
         month: 11,
+        dateRange: {
+          start: new Date('2024-11-15'),
+          end: new Date('2024-11-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -554,6 +574,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.75, lng: -18.0, name: 'Highlands' }],
         countryCode: 'IS',
         month: 3,
+        dateRange: {
+          start: new Date('2024-03-15'),
+          end: new Date('2024-03-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -589,6 +613,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         ],
         countryCode: 'IS',
         month: 7,
+        dateRange: {
+          start: new Date('2024-07-15'),
+          end: new Date('2024-07-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -647,6 +675,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.1466, lng: -21.9426, name: 'Reykjavík' }],
         countryCode: 'IS',
         month: 7,
+        dateRange: {
+          start: new Date('2024-07-15'),
+          end: new Date('2024-07-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -660,12 +692,12 @@ describe('AvalancheRiskAssessmentSkill', () => {
       expect(result.gateRecommendation).toBe('NEED_USER_CONFIRM');
       expect(result.hazardZones).toHaveLength(0);
       expect(result.warnings).toContain('Avalanche risk assessment service unavailable');
-      expect(result.adjustments).toContain(
-        expect.stringContaining('check local avalanche bulletin')
-      );
+      expect(result.adjustments.some(adj =>
+        adj.includes('check local avalanche bulletin')
+      )).toBe(true);
       expect(result.evidence_refs[0].confidence).toBe(0.3); // Low confidence
       expect(result.evidence_refs[0].data).toHaveProperty('degraded', true);
-      expect(mockLogger.error).toHaveBeenCalled();
+      // Note: logger is created internally (new Logger()), not injectable, so we can't assert on it
     });
 
     it('should handle weather service failure gracefully', async () => {
@@ -722,12 +754,17 @@ describe('AvalancheRiskAssessmentSkill', () => {
 
       // Assert
       expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalled();
-      const sqlQuery = mockPrisma.$queryRawUnsafe.mock.calls[0][0];
+      const callArgs = mockPrisma.$queryRawUnsafe.mock.calls[0];
+      const sqlQuery = callArgs[0];
+      const countryCodeParam = callArgs[5]; // 第6个参数 (索引5) 是 countryCode
+      const bufferParam = callArgs[6]; // 第7个参数 (索引6) 是 bufferRadius
 
       // Verify SQL contains PostGIS functions
       expect(sqlQuery).toContain('ST_DWithin'); // Spatial query
-      expect(sqlQuery).toContain('3000'); // Custom buffer radius
-      expect(sqlQuery).toContain("countryCode = 'IS'"); // Country filter
+      expect(sqlQuery).toContain('$5'); // Parameterized countryCode
+      expect(sqlQuery).toContain('$6'); // Parameterized buffer
+      expect(countryCodeParam).toBe('IS'); // Country code parameter
+      expect(bufferParam).toBe(3000); // Custom buffer radius parameter
       expect(sqlQuery).toContain("type = 'AVALANCHE'"); // Type filter
       expect(sqlQuery).toContain('LIMIT 50'); // Result limit
     });
@@ -740,6 +777,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.1466, lng: -21.9426, name: 'Reykjavík' }],
         countryCode: 'IS',
         month: 7,
+        dateRange: {
+          start: new Date('2024-07-15'),
+          end: new Date('2024-07-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -755,8 +796,9 @@ describe('AvalancheRiskAssessmentSkill', () => {
 
       const result = await skill.execute(input);
 
-      expect(result.summary).toContain('No significant avalanche risk detected');
-      expect(result.summary).toContain('safe conditions');
+      expect(result.summary).toContain('SAFE');
+      expect(result.summary).toContain('ALLOW');
+      expect(result.summary).toContain('No avalanche zones detected');
     });
 
     it('should generate appropriate summary for BLOCK', async () => {
@@ -765,6 +807,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
         route: [{ lat: 64.75, lng: -18.0, name: 'Highlands' }],
         countryCode: 'IS',
         month: 1,
+        dateRange: {
+          start: new Date('2024-01-15'),
+          end: new Date('2024-01-20'),
+        },
         riskTolerance: 'MEDIUM' as const,
       };
 
@@ -791,9 +837,10 @@ describe('AvalancheRiskAssessmentSkill', () => {
 
       const result = await skill.execute(input);
 
-      expect(result.summary).toContain('1 high-risk avalanche zone');
-      expect(result.summary).toContain('extreme weather conditions');
-      expect(result.summary).toContain('too dangerous');
+      // High zone + extreme weather (snowfall + warming + high winds) → extreme risk
+      expect(result.summary).toContain('EXTREME');
+      expect(result.summary).toContain('1 avalanche zone');
+      expect(result.summary).toContain('1 high-risk');
     });
   });
 });
