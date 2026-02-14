@@ -7,13 +7,22 @@ import { PlanGateRunThreeGuardiansSkill } from '../../../skills/plan/gate/plan-g
 import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-precheck.skill';
 import { checkHardGate, HardGateResult } from '../../../trips/decision/tot/hard-gate';
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
+import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
- * 
+ *
  * 职责：Should-Exist Gate 规则执行（硬门控+软评分）
- * 
+ *
  * 强制：Gate 在 Plan 之前执行
+ *
+ * 执行顺序:
+ * Step 0: F-Road 检查（冰岛特定）
+ * Step 0.5: 天气告警检查（冰岛特定）
+ * Step 1: 硬门控检查
+ * Step 2: 快速预检查
+ * Step 3: 三人格评审
+ * Step 4: 软评分检查
  */
 @Injectable()
 export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
@@ -23,9 +32,10 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     @Optional() private readonly gateRunThreeGuardians?: PlanGateRunThreeGuardiansSkill,
     @Optional() private readonly gatePrecheck?: PlanGatePrecheckSkill,
     @Optional() private readonly fRoadCheck?: FRoadCheckSkill,
+    @Optional() private readonly weatherAlert?: WeatherAlertSkill,
   ) {
     this.logger.log(`[GatekeeperAgent] 已初始化`);
-    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}`);
+    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}, WeatherAlert: ${!!this.weatherAlert}`);
   }
 
   /**
@@ -79,6 +89,109 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
           researchData.f_road_warnings = fRoadResult.warnings;
           researchData.f_road_required_actions = fRoadResult.required_actions;
           researchData.f_road_evidence_refs = fRoadResult.evidence_refs;
+        }
+      }
+
+      // 0.5 检查冰岛天气条件（冰岛特定检查）
+      if (this.weatherAlert && this.isIcelandTrip(request)) {
+        this.logger.debug(`[GatekeeperAgent] 检测到冰岛行程，执行天气告警检查`);
+
+        // 提取行程位置
+        const locations: Array<{ lat: number; lng: number; name?: string; type?: 'start' | 'end' | 'waypoint' }> = [];
+
+        // 添加起点
+        if (request.origin) {
+          locations.push({
+            lat: typeof request.origin === 'string' ? 0 : request.origin.lat,
+            lng: typeof request.origin === 'string' ? 0 : request.origin.lng,
+            name: typeof request.origin === 'string' ? request.origin : '起点',
+            type: 'start' as const,
+          });
+        }
+
+        // 添加终点
+        if (request.destination) {
+          locations.push({
+            lat: typeof request.destination === 'string' ? 0 : request.destination.lat,
+            lng: typeof request.destination === 'string' ? 0 : request.destination.lng,
+            name: typeof request.destination === 'string' ? request.destination : '终点',
+            type: 'end' as const,
+          });
+        }
+
+        // 转换日期范围
+        let dateRange: { start: Date; end: Date };
+        if (request.date_range) {
+          if ('start' in request.date_range && 'end' in request.date_range) {
+            dateRange = request.date_range as { start: Date; end: Date };
+          } else if ('start_date' in request.date_range && 'end_date' in request.date_range) {
+            dateRange = {
+              start: new Date(request.date_range.start_date),
+              end: new Date(request.date_range.end_date),
+            };
+          } else {
+            dateRange = {
+              start: new Date(),
+              end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            };
+          }
+        } else {
+          dateRange = {
+            start: new Date(),
+            end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          };
+        }
+
+        // 执行天气检查
+        try {
+          const weatherResult = await this.weatherAlert.execute({
+            locations: locations.length > 0 ? locations : [
+              { lat: 64.1466, lng: -21.9426, name: 'Reykjavík', type: 'start' },
+              { lat: 64.75, lng: -18.0, name: 'Highlands', type: 'end' },
+            ],
+            dateRange,
+            riskTolerance: 'medium',
+          });
+
+          // 如果天气条件极端，直接返回 BLOCK
+          if (weatherResult.gateRecommendation === 'BLOCK') {
+            this.logger.warn(`[GatekeeperAgent] 天气检查 BLOCK: ${weatherResult.overallRisk}`);
+            return {
+              gate_result: 'BLOCK',
+              violations: weatherResult.locationWeather.flatMap(lw =>
+                lw.blockers.map(b => ({
+                  type: 'SAFETY' as const,
+                  severity: 'HARD' as const,
+                  detail: `${lw.location.name}: ${b}`,
+                }))
+              ),
+              required_adjustments: weatherResult.adjustments.map(adj => ({
+                action: 'CHANGE_DATES' as const,
+                why: adj,
+              })),
+              confidence: weatherResult.evidenceRefs[0]?.confidence || 0.8,
+              evidence_refs: weatherResult.evidenceRefs.map(ref => ({
+                evidence_id: ref.location,
+                source: ref.source,
+                last_verified_at: ref.timestamp.toISOString(),
+                confidence: ref.confidence,
+              } as any)),
+            };
+          }
+
+          // 记录天气结果用于软检查
+          researchData.weather_alert_result = weatherResult;
+          researchData.weather_gate_recommendation = weatherResult.gateRecommendation;
+
+          if (weatherResult.gateRecommendation === 'ADJUST_REQUIRED' ||
+              weatherResult.gateRecommendation === 'NEED_USER_CONFIRM') {
+            this.logger.warn(`[GatekeeperAgent] 天气检查告警: ${weatherResult.summary}`);
+          }
+        } catch (weatherError: any) {
+          this.logger.warn(`[GatekeeperAgent] 天气检查出错 (降级处理): ${weatherError?.message}`);
+          // 天气检查失败不应该阻止行程，只是记录
+          researchData.weather_check_failed = true;
+          researchData.weather_check_error = weatherError?.message;
         }
       }
 
