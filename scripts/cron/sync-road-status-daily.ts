@@ -113,36 +113,62 @@ async function syncRoadStatusDaily() {
     console.log('第 2 步: 存储到数据库');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    // 注: 这里需要创建 RoadStatusRealtime 表
-    // 当前只能创建表但无法实际执行数据库操作
-    // 真实环境中应使用 Prisma:
-    // await prisma.roadStatusRealtime.create({ data: { ... } })
+    let dbWriteSuccess = 0;
+    let dbWriteFailed = 0;
 
     for (const status of results.statuses) {
-      console.log(`   📍 ${status.roadId}: ${status.currentStatus} (${status.lastVerifiedAt.toISOString()})`);
-      // TODO: 创建数据库记录
-      // await prisma.roadStatusRealtime.create({
-      //   data: {
-      //     roadId: status.roadId,
-      //     currentStatus: status.currentStatus,
-      //     statusMessage: status.statusMessage,
-      //     lastVerifiedAt: status.lastVerifiedAt,
-      //     dataSource: status.dataSource,
-      //     apiResponse: status.apiResponse,
-      //     hazards: status.hazards,
-      //   },
-      // });
+      try {
+        await prisma.roadStatusRealtime.create({
+          data: {
+            roadId: status.roadId,
+            roadName: status.roadName || null,
+            currentStatus: status.currentStatus,
+            statusMessage: status.statusMessage || null,
+            lastVerifiedAt: status.lastVerifiedAt,
+            dataSource: status.dataSource,
+            apiResponse: status.apiResponse,
+            hazards: status.hazards,
+            confidence: status.dataSource === 'road.is_api' ? 0.9 : 0.6,
+            seasonalFallback: status.dataSource === 'static_seasonal_data',
+          },
+        });
+        dbWriteSuccess++;
+        console.log(`   ✅ ${status.roadId}: ${status.currentStatus} 已写入数据库`);
+      } catch (error) {
+        dbWriteFailed++;
+        console.error(`   ❌ ${status.roadId} 写入失败:`, error instanceof Error ? error.message : error);
+      }
     }
 
-    // 4. 生成报告
+    console.log(`\n   数据库写入: ${dbWriteSuccess}/${results.statuses.length} 成功\n`);
+
+    // 4. 清理 90 天前的旧数据
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('第 3 步: 清理旧数据');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const deleted = await prisma.roadStatusRealtime.deleteMany({
+      where: {
+        lastVerifiedAt: {
+          lt: ninetyDaysAgo,
+        },
+      },
+    });
+
+    console.log(`   🗑️  清理 ${deleted.count} 条过期记录 (> 90 天)\n`);
+
+    // 5. 生成报告
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ 同步完成！');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     console.log('📊 同步统计:');
-    console.log(`   - 成功: ${results.success} 条`);
-    console.log(`   - 失败: ${results.failed} 条`);
-    console.log(`   - 已存储: ${results.statuses.length} 条\n`);
+    console.log(`   - API 成功: ${results.success} 条`);
+    console.log(`   - API 失败: ${results.failed} 条`);
+    console.log(`   - 数据库写入: ${dbWriteSuccess} 条`);
+    console.log(`   - 写入失败: ${dbWriteFailed} 条`);
+    console.log(`   - 清理旧数据: ${deleted.count} 条\n`);
 
     // 状态分布
     const statusDistribution: Record<string, number> = {};
@@ -286,11 +312,11 @@ function generateFallbackStatuses(): RoadStatusSnapshot[] {
 
 // 执行同步
 syncRoadStatusDaily()
-  .then(result => {
-    console.log('同步任务完成');
+  .then(() => {
+    console.log('✅ 同步任务完成');
     process.exit(0);
   })
   .catch(error => {
-    console.error('同步任务失败:', error);
+    console.error('❌ 同步任务失败:', error);
     process.exit(1);
   });
