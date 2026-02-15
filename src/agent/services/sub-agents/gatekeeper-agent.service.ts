@@ -87,11 +87,18 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         }
 
         // 如果有告警，记录为软检查
-        if (fRoadResult.warnings.length > 0 || fRoadResult.required_actions.length > 0) {
-          this.logger.warn(`[GatekeeperAgent] F-Road 检查告警: ${fRoadResult.warnings.length} 条`);
-          researchData.f_road_warnings = fRoadResult.warnings;
-          researchData.f_road_required_actions = fRoadResult.required_actions;
-          researchData.f_road_evidence_refs = fRoadResult.evidence_refs;
+        if ((fRoadResult.warnings && fRoadResult.warnings.length > 0) ||
+            (fRoadResult.required_actions && fRoadResult.required_actions.length > 0)) {
+          this.logger.warn(`[GatekeeperAgent] F-Road 检查告警: ${fRoadResult.warnings?.length || 0} 条`);
+          if (fRoadResult.warnings) {
+            researchData.f_road_warnings = fRoadResult.warnings;
+          }
+          if (fRoadResult.required_actions) {
+            researchData.f_road_required_actions = fRoadResult.required_actions;
+          }
+          if (fRoadResult.evidence_refs) {
+            researchData.f_road_evidence_refs = fRoadResult.evidence_refs;
+          }
         }
       }
 
@@ -302,6 +309,9 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
             this.logger.warn(`[GatekeeperAgent] 雪崩风险评估告警: ${avalancheResult.summary}`);
             if (avalancheResult.warnings.length > 0) {
               researchData.avalanche_warnings = avalancheResult.warnings;
+            }
+            if (avalancheResult.adjustments.length > 0) {
+              researchData.avalanche_adjustments = avalancheResult.adjustments;
             }
           }
         } catch (avalancheError: any) {
@@ -558,6 +568,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
    * 检查是否为冰岛行程
    */
   private isIcelandTrip(request: TripPlanRequest): boolean {
+    // 检查字符串地址
     const destination = typeof request.destination === 'string'
       ? request.destination.toLowerCase()
       : '';
@@ -565,12 +576,30 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       ? request.origin.toLowerCase()
       : '';
 
-    return destination.includes('iceland') ||
+    // 字符串检查
+    const stringCheck = destination.includes('iceland') ||
            destination.includes('冰岛') ||
            origin.includes('iceland') ||
            origin.includes('冰岛') ||
            /F\d{1,3}/i.test(destination) ||
            /F\d{1,3}/i.test(origin);
+
+    if (stringCheck) return true;
+
+    // 坐标检查：冰岛边界 (63°N-67°N, 13°W-25°W)
+    // 冰岛坐标范围: lat 63-67, lng -25 to -13
+    const isIcelandCoord = (loc: { lat: number; lng: number }) =>
+      loc.lat >= 63 && loc.lat <= 67 && loc.lng >= -25 && loc.lng <= -13;
+
+    if (request.destination && typeof request.destination !== 'string') {
+      if (isIcelandCoord(request.destination)) return true;
+    }
+
+    if (request.origin && typeof request.origin !== 'string') {
+      if (isIcelandCoord(request.origin)) return true;
+    }
+
+    return false;
   }
 
   /**

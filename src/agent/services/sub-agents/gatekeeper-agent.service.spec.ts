@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { ClaudeGatekeeperAgentService } from './gatekeeper-agent.service';
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
+import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
 import { PlanGateRunThreeGuardiansSkill } from '../../../skills/plan/gate/plan-gate-run-three-guardians.skill';
 import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-precheck.skill';
 import { TripPlanRequest, OrchestratorState } from '../../interfaces/trip-plan.interface';
@@ -13,12 +14,17 @@ describe('ClaudeGatekeeperAgentService', () => {
   let service: ClaudeGatekeeperAgentService;
   let fRoadCheck: FRoadCheckSkill;
   let weatherAlert: WeatherAlertSkill;
+  let avalancheRisk: AvalancheRiskAssessmentSkill;
 
   const mockFRoadCheck = {
     execute: jest.fn(),
   };
 
   const mockWeatherAlert = {
+    execute: jest.fn(),
+  };
+
+  const mockAvalancheRisk = {
     execute: jest.fn(),
   };
 
@@ -50,6 +56,10 @@ describe('ClaudeGatekeeperAgentService', () => {
           useValue: mockWeatherAlert,
         },
         {
+          provide: AvalancheRiskAssessmentSkill,
+          useValue: mockAvalancheRisk,
+        },
+        {
           provide: Logger,
           useValue: mockLogger,
         },
@@ -59,6 +69,7 @@ describe('ClaudeGatekeeperAgentService', () => {
     service = module.get<ClaudeGatekeeperAgentService>(ClaudeGatekeeperAgentService);
     fRoadCheck = module.get<FRoadCheckSkill>(FRoadCheckSkill);
     weatherAlert = module.get<WeatherAlertSkill>(WeatherAlertSkill);
+    avalancheRisk = module.get<AvalancheRiskAssessmentSkill>(AvalancheRiskAssessmentSkill);
 
     jest.clearAllMocks();
   });
@@ -538,6 +549,345 @@ describe('ClaudeGatekeeperAgentService', () => {
           },
         })
       );
+    });
+  });
+
+  describe('evaluateGate - Avalanche Risk Integration', () => {
+    it('should execute avalanche check for Iceland trips', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-001',
+        origin: { lat: 64.1466, lng: -21.9426 }, // Reykjavík
+        destination: { lat: 64.75, lng: -18.0 }, // Highlands
+        date_range: {
+          start: new Date('2026-02-15'),
+          end: new Date('2026-02-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      // F-Road passes
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      // Weather passes
+      mockWeatherAlert.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        locationWeather: [],
+        adjustments: [],
+        evidenceRefs: [],
+      });
+
+      // Avalanche passes
+      mockAvalancheRisk.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        hazardZones: [],
+        riskAssessment: { totalHazards: 0, hasHighRisk: false, hasMediumRisk: false },
+        blockers: [],
+        warnings: [],
+        adjustments: [],
+        summary: 'No avalanche zones detected',
+        evidence_refs: [],
+      });
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('ALLOW');
+      expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
+      expect(mockWeatherAlert.execute).toHaveBeenCalledTimes(1);
+      expect(mockAvalancheRisk.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return BLOCK when avalanche risk is extreme', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-002',
+        origin: { lat: 64.1466, lng: -21.9426 },
+        destination: { lat: 64.75, lng: -18.0 },
+        date_range: {
+          start: new Date('2026-01-15'),
+          end: new Date('2026-01-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      // F-Road passes
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      // Weather passes
+      mockWeatherAlert.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        locationWeather: [],
+        adjustments: [],
+        evidenceRefs: [],
+      });
+
+      // Avalanche BLOCKS
+      mockAvalancheRisk.execute.mockResolvedValue({
+        overallRisk: 'extreme',
+        gateRecommendation: 'BLOCK',
+        hazardZones: [
+          {
+            zoneId: 'AVL-IS-HIGH-001',
+            level: 'HIGH',
+            distance: 200,
+            lat: 64.75,
+            lng: -18.0,
+            description: 'High-risk avalanche zone',
+          },
+        ],
+        riskAssessment: {
+          totalHazards: 1,
+          hasHighRisk: true,
+          hasMediumRisk: false,
+        },
+        blockers: ['Extreme avalanche risk - travel not recommended'],
+        warnings: [],
+        adjustments: [],
+        summary: 'Extreme avalanche risk detected',
+        evidence_refs: [],
+      });
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('BLOCK');
+      expect(result.violations.length).toBeGreaterThan(0);
+      expect(result.violations.some(v => v.type === 'SAFETY')).toBe(true);
+      expect(result.violations.some(v => v.detail.includes('avalanche'))).toBe(true);
+      expect(mockAvalancheRisk.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('should record ADJUST_REQUIRED in researchData for soft checks', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-003',
+        origin: { lat: 64.1466, lng: -21.9426 },
+        destination: { lat: 64.75, lng: -18.0 },
+        date_range: {
+          start: new Date('2026-03-15'),
+          end: new Date('2026-03-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      mockWeatherAlert.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        locationWeather: [],
+        adjustments: [],
+        evidenceRefs: [],
+      });
+
+      // Avalanche suggests adjustments
+      mockAvalancheRisk.execute.mockResolvedValue({
+        overallRisk: 'high',
+        gateRecommendation: 'ADJUST_REQUIRED',
+        hazardZones: [
+          {
+            zoneId: 'AVL-IS-HIGH-001',
+            level: 'HIGH',
+            distance: 500,
+            lat: 64.75,
+            lng: -18.0,
+            description: 'High-risk zone',
+          },
+        ],
+        riskAssessment: {
+          totalHazards: 1,
+          hasHighRisk: true,
+          hasMediumRisk: false,
+        },
+        blockers: [],
+        warnings: ['High avalanche risk detected'],
+        adjustments: ['Hire local guide', 'Check avalanche forecast'],
+        summary: 'High avalanche risk - adjustments required',
+        evidence_refs: [],
+      });
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('ADJUST_REQUIRED'); // Soft check triggers ADJUST_REQUIRED
+      expect(researchData['avalanche_risk_result']).toBeDefined();
+      expect(researchData['avalanche_gate_recommendation']).toBe('ADJUST_REQUIRED');
+      expect(researchData['avalanche_warnings']).toBeDefined();
+      expect(researchData['avalanche_adjustments']).toBeDefined();
+    });
+
+    it('should reduce confidence when avalanche returns NEED_USER_CONFIRM', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-004',
+        origin: { lat: 64.1466, lng: -21.9426 },
+        destination: { lat: 64.75, lng: -18.0 },
+        date_range: {
+          start: new Date('2026-10-15'),
+          end: new Date('2026-10-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      mockWeatherAlert.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        locationWeather: [],
+        adjustments: [],
+        evidenceRefs: [],
+      });
+
+      // Avalanche needs user confirmation
+      mockAvalancheRisk.execute.mockResolvedValue({
+        overallRisk: 'medium',
+        gateRecommendation: 'NEED_USER_CONFIRM',
+        hazardZones: [
+          {
+            zoneId: 'AVL-IS-MED-001',
+            level: 'MEDIUM',
+            distance: 800,
+            lat: 64.6,
+            lng: -18.5,
+            description: 'Medium-risk zone',
+          },
+        ],
+        riskAssessment: {
+          totalHazards: 1,
+          hasHighRisk: false,
+          hasMediumRisk: true,
+        },
+        blockers: [],
+        warnings: ['Medium avalanche risk detected'],
+        adjustments: ['Consider local guide'],
+        summary: 'Medium risk - user confirmation needed',
+        evidence_refs: [],
+      });
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('ALLOW');
+      expect(result.confidence).toBeLessThan(0.8); // Confidence reduced
+      expect(researchData['avalanche_gate_recommendation']).toBe('NEED_USER_CONFIRM');
+    });
+
+    it('should handle avalanche service failure gracefully', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-005',
+        origin: { lat: 64.1466, lng: -21.9426 },
+        destination: { lat: 64.75, lng: -18.0 },
+        date_range: {
+          start: new Date('2026-02-15'),
+          end: new Date('2026-02-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      mockWeatherAlert.execute.mockResolvedValue({
+        overallRisk: 'safe',
+        gateRecommendation: 'ALLOW',
+        locationWeather: [],
+        adjustments: [],
+        evidenceRefs: [],
+      });
+
+      // Avalanche service fails
+      mockAvalancheRisk.execute.mockRejectedValue(new Error('Avalanche database unavailable'));
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('ALLOW'); // Degraded - doesn't block
+      expect(researchData['avalanche_check_failed']).toBe(true);
+      expect(researchData['avalanche_check_error']).toBe('Avalanche database unavailable');
+      // Note: logger is created internally (new Logger()), not injectable, so we can't assert on it
+    });
+
+    it('should skip avalanche check for non-Iceland trips', async () => {
+      // Arrange
+      const request: TripPlanRequest = {
+        request_id: 'test-avalanche-006',
+        origin: 'Paris, France',
+        destination: 'London, UK',
+        date_range: {
+          start: new Date('2026-07-15'),
+          end: new Date('2026-07-18'),
+        },
+      };
+
+      const researchData = {};
+      const context: OrchestratorState = {
+        current_step: 'GATE_EVAL',
+        request_id: request.request_id,
+      };
+
+      // Act
+      const result = await service.evaluateGate(request, researchData, context);
+
+      // Assert
+      expect(result.gate_result).toBe('ALLOW');
+      expect(mockFRoadCheck.execute).not.toHaveBeenCalled();
+      expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
+      expect(mockAvalancheRisk.execute).not.toHaveBeenCalled(); // Skipped
     });
   });
 });

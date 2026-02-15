@@ -11,7 +11,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { RoadStatusRealtimeService, RoadStatus } from '../../world/services/road-status-realtime.service';
+import { RoadStatusRealtimeService, RoadStatus } from './services/road-status-realtime.service';
 
 export interface FRoadCheckInput {
   request_id: string;
