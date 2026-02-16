@@ -180,18 +180,21 @@ export interface Itinerary {
  * 必须输出结构化决策日志：检查了什么、用了哪些证据、为什么允许/拒绝/调整
  */
 export type OrchestrationStep = 
-  | 'INTAKE'       // 解析用户需求 (Planner)
-  | 'RESEARCH'     // 收集硬数据 (Domain Agents)
-  | 'GATE_EVAL'    // Should-Exist Gate (Gatekeeper/Abu)
-  | 'PLAN_GEN'     // 生成多方案 (Planner)
-  | 'VERIFY'       // 验证可执行性 (CoreDecision/Dr.Dre)
-  | 'COMPLIANCE'   // 风险合规检查 (Compliance)
-  | 'REPAIR'       // 空间修复 (LocalInsight/Neptune)
-  | 'NARRATE'      // 决策可视化 (Narrator)
-  | 'FEEDBACK'     // RLHF信号采集 (Execution)
-  | 'DONE'         // 完成
-  | 'FAILED'       // 失败
-  | 'TIMEOUT'      // 超时
+  | 'INTAKE'           // 解析用户需求 (Planner)
+  | 'STATE_UPDATE'     // Phase 2.3: Kernel 状态同步 (DSO 更新)
+  | 'RESEARCH'         // 收集硬数据 (Domain Agents)
+  | 'GATE_EVAL'        // Should-Exist Gate (Gatekeeper/Abu)，含 CONSTRAINT_CHECK
+  | 'CONTEXT_BUILD'    // Phase 2.3: 构建 Context Package (Kernel)
+  | 'PLAN_GEN'         // 生成多方案 (Planner)
+  | 'OPTIMIZE'         // Phase 2.3: 抽取 Optimization Hints (Kernel)
+  | 'VERIFY'           // 验证可执行性 (CoreDecision/Dr.Dre)
+  | 'COMPLIANCE'       // 风险合规检查 (Compliance)
+  | 'REPAIR'           // 空间修复 (LocalInsight/Neptune)
+  | 'NARRATE'          // 决策可视化 (Narrator)
+  | 'FEEDBACK'         // RLHF信号采集 (Execution)
+  | 'DONE'             // 完成
+  | 'FAILED'           // 失败
+  | 'TIMEOUT'          // 超时
   | 'HALLUCINATION_DETECTION'; // 幻觉检测
 
 /**

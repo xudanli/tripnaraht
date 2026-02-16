@@ -21,6 +21,7 @@ import { ExplainabilityService } from './explainability/explainability.service';
 import { LearningService } from './learning/learning.service';
 import { AdvancedConstraintsService } from './constraints/advanced-constraints.service';
 import { ConstraintChecker } from './constraints/constraint-checker';
+import { ConstraintEngineService } from './constraints/constraint-engine.service';
 import { RouteDirectionConstraintsService } from './constraints/route-direction-constraints.service';
 import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
@@ -78,6 +79,13 @@ import { StrategyOrchestratorService } from './services/strategy-orchestrator.se
 import { SpatialReplacementService } from './services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from './services/spatial-issue-detector.service';
 import { FatigueCalculatorService } from './services/fatigue-calculator.service';
+import { TdfpmCalculatorService } from './services/tdfpm-calculator.service';
+import {
+  DailyUtilityCalculatorService,
+  UserProfileWeightsService,
+} from './optimization/daily-utility';
+import { ExpectedUtilityLogService } from './services/expected-utility-log.service';
+import { PlanModificationLogService } from './services/plan-modification-log.service';
 import { AbuStrategy } from './strategies/abu-strategy.service';
 import { DrDreStrategy } from './strategies/dr-dre-strategy.service';
 import { NeptuneStrategy } from './strategies/neptune-strategy.service';
@@ -118,6 +126,9 @@ import { BookingComModule } from '../../mcp/booking-com.module';
 // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
 import { OptimizationModule } from './optimization/optimization.module';
 
+// Phase 2: 数据飞轮（Decision → Outcome → Parameter Update → Better Decision）
+import { FlywheelModule } from './flywheel/flywheel.module';
+
 // 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
 let DataQualityModule: any;
 let DataModelingModule: any;
@@ -150,6 +161,7 @@ try {
     AirbnbModule, // Airbnb 集成模块（住宿搜索）
     BookingComModule, // Booking.com 集成模块（租车搜索）
     OptimizationModule, // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
+    FlywheelModule, // Phase 2: 数据飞轮
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
@@ -173,6 +185,7 @@ try {
     // LearningService,
     // AdvancedConstraintsService,
     ConstraintChecker, // 恢复：约束检查器（集成冲突检测）
+    ConstraintEngineService, // Phase 0：isFeasible 统一入口
     ConstraintDSLCompiler, // 新增：约束DSL编译器
     ConstraintConflictResolver, // 新增：约束冲突解析器
     MultiPlanGenerator, // 新增：多方案生成器
@@ -215,6 +228,10 @@ try {
     ThreeLayerExplanationService, // 三层解释服务
     RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）
     MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
+    DailyUtilityCalculatorService, // Phase 2：日级 Utility 计算
+    UserProfileWeightsService, // Phase 2 扩展：个性化权重 w = f(user_profile)
+    ExpectedUtilityLogService, // Phase 3：ExpectedUtility 评估日志
+    PlanModificationLogService, // Phase 3：用户修改行为日志
     // E2ECaseStorageService,
     // E2EReplayService,
     DecisionLogClusteringService, // 恢复：DecisionStatsController 需要
@@ -248,6 +265,11 @@ try {
     // LearningService,
     // AdvancedConstraintsService,
     ConstraintChecker, // 恢复：约束检查器（集成冲突检测）
+    ConstraintEngineService, // Phase 0：isFeasible 统一入口
+    DailyUtilityCalculatorService, // Phase 2：日级 Utility 计算
+    UserProfileWeightsService, // Phase 2 扩展：个性化权重 w = f(user_profile)
+    ExpectedUtilityLogService, // Phase 3：ExpectedUtility 评估日志
+    PlanModificationLogService, // Phase 3：用户修改行为日志
     ConstraintDSLCompiler, // 新增：约束DSL编译器
     ConstraintConflictResolver, // 新增：约束冲突解析器
     MultiPlanGenerator, // 新增：多方案生成器
@@ -309,6 +331,7 @@ try {
     WearableIntegrationService,
     // Phase 1/2/3: 优化模块服务（通过 re-export）
     // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
+    TdfpmCalculatorService, // P1: TDFPM → fatigueTrend（ClaudeOrchestrator 接入）
   ],
 })
 export class DecisionModule {}

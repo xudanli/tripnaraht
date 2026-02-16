@@ -39,6 +39,7 @@ import { WeightPersistenceService } from './learning/weight-persistence.service'
 
 // 中期：多用户协同
 import { TeamCollaborationService } from './collaboration/team-collaboration.service';
+import { NegotiateContextLoaderService } from './collaboration/negotiate-context-loader.service';
 
 // 中期：实时状态更新
 import { RealtimeWorldStateService } from './realtime/realtime-world-state.service';
@@ -70,9 +71,11 @@ import { AxiomAdminController } from './controllers/admin/axiom-admin.controller
 
 // 依赖
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
+import { TdfpmCalculatorService } from '../services/tdfpm-calculator.service';
+import { PrismaModule } from '../../../prisma/prisma.module';
 
 @Module({
-  imports: [],
+  imports: [PrismaModule],
   controllers: [
     // 旧版（保留兼容，/api/v2/...）
     OptimizationController,
@@ -110,6 +113,7 @@ import { FatigueCalculatorService } from '../services/fatigue-calculator.service
     
     // 中期：多用户协同
     TeamCollaborationService,
+    NegotiateContextLoaderService,
     
     // 中期：实时状态更新
     RealtimeWorldStateService,
@@ -123,6 +127,7 @@ import { FatigueCalculatorService } from '../services/fatigue-calculator.service
     
     // 依赖（如果 DecisionModule 未提供）
     FatigueCalculatorService,
+    TdfpmCalculatorService,
   ],
   exports: [
     // Phase 1
@@ -148,6 +153,9 @@ import { FatigueCalculatorService } from '../services/fatigue-calculator.service
     // 公理系统
     AxiomValidatorService,
     HierarchicalUtilityService,
+
+    // P1: TDFPM → fatigueTrend（Decision Kernel 接入）
+    TdfpmCalculatorService,
   ],
 })
 export class OptimizationModule {}

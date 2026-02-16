@@ -65,9 +65,12 @@ export interface WorldBuildContextInput extends SkillInput {
     riskTolerance?: 'low' | 'medium' | 'high';
     fitness?: 'low' | 'medium' | 'high';
     pace?: 'relaxed' | 'moderate' | 'intense';
+    drivingFatiguePreferences?: import('../../trips/decision/models/human-capability.model').DrivingFatiguePreferencesInput;
   };
   /** 路线方向 ID（可选） */
   routeDirectionId?: string;
+  /** 用户 ID（可选，用于从 Memory 读取 UserTravelProfile.drivingFatiguePreferences） */
+  userId?: string;
 }
 
 export interface WorldBuildContextOutput extends SkillOutput {
@@ -191,11 +194,14 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         
         // 从 trip 提取 partyProfile
         const pacingConfig = trip.pacingConfig as any;
+        const tripMeta = trip.metadata as any;
         partyProfile = {
           mobilityProfile: pacingConfig?.mobilityProfile,
           riskTolerance: pacingConfig?.riskTolerance,
           fitness: pacingConfig?.fitness,
           pace: pacingConfig?.pace,
+          drivingFatiguePreferences:
+            pacingConfig?.drivingFatiguePreferences ?? tripMeta?.userProfile?.drivingFatiguePreferences,
         };
       } else {
         // 使用原始参数
@@ -627,6 +633,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         pace: paceMap[partyProfile.pace || 'moderate'] || 'normal',
         fitness: partyProfile.fitness || 'medium',
         riskTolerance: partyProfile.riskTolerance || 'medium',
+        drivingFatiguePreferences: partyProfile.drivingFatiguePreferences,
       }
     );
   }

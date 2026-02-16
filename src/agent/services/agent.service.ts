@@ -75,26 +75,32 @@ export class AgentService {
     current_step_detail?: string; // 🆕 当前步骤详细说明
   } {
     const stepProgressMap: Record<OrchestrationStep, number> = {
-      INTAKE: 10.0,
-      RESEARCH: 20.0,
-      GATE_EVAL: 30.0,
-      PLAN_GEN: 40.0,
-      VERIFY: 50.0,
-      COMPLIANCE: 60.0,
-      REPAIR: 70.0,
-      NARRATE: 80.0,
-      FEEDBACK: 90.0,
+      INTAKE: 8.0,
+      STATE_UPDATE: 10.0,
+      RESEARCH: 18.0,
+      GATE_EVAL: 28.0,
+      CONTEXT_BUILD: 32.0,
+      PLAN_GEN: 42.0,
+      OPTIMIZE: 48.0,
+      VERIFY: 55.0,
+      COMPLIANCE: 62.0,
+      REPAIR: 72.0,
+      NARRATE: 82.0,
+      FEEDBACK: 92.0,
       DONE: 100.0,
       FAILED: 0,
       TIMEOUT: 0,
-      HALLUCINATION_DETECTION: 95.0,
+      HALLUCINATION_DETECTION: 96.0,
     };
 
     const stepMessageMap: Record<OrchestrationStep, string> = {
       INTAKE: '正在解析请求...',
+      STATE_UPDATE: '正在更新决策状态...',
       RESEARCH: '正在收集数据...',
       GATE_EVAL: '正在评估行程可行性...',
+      CONTEXT_BUILD: '正在构建上下文...',
       PLAN_GEN: '正在生成行程安排...',
+      OPTIMIZE: '正在抽取优化提示...',
       VERIFY: '正在验证行程...',
       COMPLIANCE: '正在检查风险合规...',
       REPAIR: '正在修复行程问题...',
@@ -109,9 +115,12 @@ export class AgentService {
     // 🆕 步骤预计时间（毫秒，基于历史数据或经验值）
     const stepEstimatedTimeMap: Record<OrchestrationStep, number> = {
       INTAKE: 2000,      // 2秒
+      STATE_UPDATE: 100, // 0.1秒（Kernel 同步）
       RESEARCH: 8000,    // 8秒
       GATE_EVAL: 5000,   // 5秒
+      CONTEXT_BUILD: 3000, // 3秒
       PLAN_GEN: 10000,   // 10秒
+      OPTIMIZE: 100,     // 0.1秒
       VERIFY: 6000,      // 6秒
       COMPLIANCE: 3000,  // 3秒
       REPAIR: 4000,      // 4秒（条件执行）
@@ -126,9 +135,12 @@ export class AgentService {
     // 🆕 步骤详细说明
     const stepDetailMap: Record<OrchestrationStep, string> = {
       INTAKE: '分析您的需求，提取关键信息（目的地、日期、预算等）',
+      STATE_UPDATE: '同步 OrchestratorState 到 Decision Kernel',
       RESEARCH: '查询交通、POI、开放时间、DEM地形等数据',
       GATE_EVAL: '评估路线安全性、可达性和可行性（三人格评审）',
+      CONTEXT_BUILD: '构建 Context Package 供 PLAN 使用',
       PLAN_GEN: '生成详细的行程安排，包括时间、地点、交通方式',
+      OPTIMIZE: '抽取安全/疲劳趋势等优化提示',
       VERIFY: '验证时间冲突、换乘时间、开放时间等',
       COMPLIANCE: '检查风险分类、合规要求和免责留痕',
       REPAIR: '修复发现的问题，优化行程（如需要）',
@@ -388,6 +400,13 @@ export class AgentService {
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
     const startTime = Date.now();
     this.logger.debug(`Processing request: ${request.request_id}`);
+
+    // Phase 0：战略收敛 - 个性化降级显式日志（user_id=anonymous 时 Memory/UserProfile 不可用）
+    if (!request.user_id || request.user_id === 'anonymous') {
+      this.logger.warn(
+        `[Phase0] user_id 缺失或为 anonymous，个性化能力（Memory、UserTravelProfile）不可用。request_id=${request.request_id}`,
+      );
+    }
 
     // === 创建 TripRun 记录 ===
     let tripRunId: string | null = null;

@@ -215,6 +215,9 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
     roadStates: WorldModelContext['physical']['roadStates'],
     config: UncertaintyConfig
   ): ProbabilisticRoadStatus[] {
+    if (!Array.isArray(roadStates)) {
+      return [];
+    }
     return roadStates.map(road => {
       // 根据当前状态确定概率分布
       // 内部使用 OPEN/RESTRICTED/CLOSED 三态（RESTRICTED 包含 SEASONAL 和 RESTRICTED）
@@ -264,6 +267,9 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
     hazardZones: WorldModelContext['physical']['hazardZones'],
     config: UncertaintyConfig
   ): ProbabilisticHazard[] {
+    if (!Array.isArray(hazardZones)) {
+      return [];
+    }
     return hazardZones.map(hazard => {
       // 风险等级分布
       let levelProbs: number[];

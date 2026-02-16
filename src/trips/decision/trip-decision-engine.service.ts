@@ -29,6 +29,7 @@ import { MemoryService } from '../../agent/memory/services/memory.service';
 import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
 import { ConstraintDSL } from './constraints/constraint-dsl.types';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { ConstraintEngineService } from './constraints/constraint-engine.service';
 import { MultiPlanGenerator, PlanVariant } from './services/multi-plan-generator.service';
 import { DEMDailyEnergyService, DailyEnergyBudget } from './services/dem-daily-energy.service';
 import { DEMRouteSegmentationService } from './services/dem-route-segmentation.service';
@@ -87,6 +88,7 @@ export class TripDecisionEngineService {
     @Optional() private readonly planConverter?: PlanConverterService,
     @Optional() private readonly constraintDSLCompiler?: ConstraintDSLCompiler,
     @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
+    @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
@@ -1188,6 +1190,33 @@ export class TripDecisionEngineService {
       } catch (error) {
         this.logger.warn(`约束冲突检测失败: ${error instanceof Error ? error.message : String(error)}`);
         // 不阻断返回，只记录警告
+      }
+    }
+
+    // Phase 0：约束前置 - 硬约束违规即淘汰，不返回方案
+    if (this.constraintEngine) {
+      try {
+        const feasibilityResult = await this.constraintEngine.isFeasible(state, finalPlan);
+        if (!feasibilityResult.feasible) {
+          this.logger.warn(
+            `方案因硬约束违规被淘汰: ${feasibilityResult.infeasibilityExplanation?.summary || '详见 violations'}`,
+          );
+          log.constraintEngineRejection = {
+            infeasibilityExplanation: feasibilityResult.infeasibilityExplanation,
+            violations: feasibilityResult.violations.map(v => ({
+              code: v.code,
+              severity: v.severity,
+              message: v.message,
+            })),
+          };
+          log.explanation =
+            feasibilityResult.infeasibilityExplanation?.summary ||
+            '方案违反硬约束，已被淘汰';
+          return { plan: null as any, log, readiness };
+        }
+      } catch (error) {
+        this.logger.warn(`约束引擎检查失败: ${error instanceof Error ? error.message : String(error)}`);
+        // 不阻断返回，降级为放行
       }
     }
 

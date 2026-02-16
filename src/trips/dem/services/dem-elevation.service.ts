@@ -314,15 +314,36 @@ export class DEMElevationService {
     srid: number = 4326
   ): Promise<Array<number | null>> {
     try {
-      const lngs = points.map(p => p.lng);
-      const lats = points.map(p => p.lat);
+      const lngs = points.map(p => Number(p.lng));
+      const lats = points.map(p => Number(p.lat));
+      if (lngs.some(v => !Number.isFinite(v)) || lats.some(v => !Number.isFinite(v))) {
+        this.logger.warn('批量查询DEM: 坐标含非法数值');
+        return new Array(points.length).fill(null);
+      }
+
+      // Prisma $queryRawUnsafe 对 JS 数组绑定 Postgres float[] 可能失败，改用 ARRAY 字面量
+      const lngsArr = `ARRAY[${lngs.join(',')}]`;
+      const latsArr = `ARRAY[${lats.join(',')}]`;
+
+      // 表名白名单，防 SQL 注入
+      const allowedTables = ['geo_dem_iceland_20m', 'geo_dem_cities_merged', 'geo_dem_global', 'geo_dem_xizang'];
+      if (!allowedTables.includes(demTable)) {
+        this.logger.warn(`批量查询DEM: 非法表名 ${demTable}`);
+        return new Array(points.length).fill(null);
+      }
+
+      // 冰岛 geo_dem_iceland_20m 使用 ISN2016 (SRID 5327)，输入为 WGS84 度，需先 4326 再 Transform
+      const geomExpr =
+        srid === 5327
+          ? 'ST_Transform(ST_SetSRID(ST_MakePoint(lng, lat), 4326), 5327)'
+          : `ST_SetSRID(ST_MakePoint(lng, lat), ${srid})`;
 
       const query = `
         WITH points AS (
           SELECT 
             row_number() OVER () as idx,
-            ST_SetSRID(ST_MakePoint(lng, lat), ${srid}) as geom
-          FROM unnest($1::float[], $2::float[]) AS t(lng, lat)
+            ${geomExpr} as geom
+          FROM unnest(${lngsArr}::float[], ${latsArr}::float[]) AS t(lng, lat)
         )
         SELECT 
           p.idx,
@@ -338,14 +359,13 @@ export class DEMElevationService {
       `;
 
       const result = await (this.prisma as any).$queryRawUnsafe(
-        query,
-        lngs,
-        lats
+        query
       ) as Array<{ idx: number; elevation: number | null }>;
 
       const elevationMap = new Map<number, number | null>();
       for (const row of result) {
-        elevationMap.set(row.idx, row.elevation !== null ? Math.round(row.elevation) : null);
+        const k = typeof row.idx === 'bigint' ? Number(row.idx) : row.idx;
+        elevationMap.set(k, row.elevation !== null ? Math.round(Number(row.elevation)) : null);
       }
 
       return points.map((_, idx) => elevationMap.get(idx + 1) ?? null);

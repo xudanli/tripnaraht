@@ -7,6 +7,7 @@
  */
 
 import { ISODatetime, ISODate } from './world-model';
+import { DecisionPersona, DecisionAction } from './shared/decision-result.types';
 import { TripPlan } from './plan-model';
 import { ConstraintConflict } from './constraints/constraint-dsl.types';
 
@@ -77,8 +78,8 @@ export interface DecisionRunLog {
 
   // PART 3: 三人格策略日志（用于前端展示）
   strategyLogs?: Array<{
-    persona: 'ABU' | 'DR_DRE' | 'NEPTUNE';
-    action: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    persona: DecisionPersona;
+    action: DecisionAction;
     explanation: string;
     reasonCodes: string[];
     timestamp: string;
@@ -209,5 +210,19 @@ export interface DecisionRunLog {
 
   // 约束冲突检测结果
   conflicts?: ConstraintConflict[];
+
+  /** Phase 0: 约束引擎拒绝（硬约束违规，方案淘汰） */
+  constraintEngineRejection?: {
+    infeasibilityExplanation?: {
+      feasible: boolean;
+      reasons: Array<{
+        constraint: string;
+        description: string;
+        fix_suggestions: string[];
+      }>;
+      summary?: string;
+    };
+    violations?: Array<{ code: string; severity: string; message: string }>;
+  };
 }
 

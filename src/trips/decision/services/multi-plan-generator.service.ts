@@ -12,6 +12,8 @@ import { TripPlan } from '../plan-model';
 import { ConstraintDSL } from '../constraints/constraint-dsl.types';
 import { TripDecisionEngineService } from '../trip-decision-engine.service';
 import { ConstraintChecker } from '../constraints/constraint-checker';
+import { ConstraintEngineService } from '../constraints/constraint-engine.service';
+import { DailyUtilityCalculatorService } from '../optimization/daily-utility';
 
 export interface PlanVariant {
   id: string; // 'conservative' | 'balanced' | 'aggressive'
@@ -51,7 +53,9 @@ export class MultiPlanGenerator {
 
   constructor(
     @Optional() private readonly decisionEngine?: TripDecisionEngineService,
-    @Optional() private readonly constraintChecker?: ConstraintChecker
+    @Optional() private readonly constraintChecker?: ConstraintChecker,
+    @Optional() private readonly constraintEngine?: ConstraintEngineService,
+    @Optional() private readonly dailyUtilityCalculator?: DailyUtilityCalculatorService
   ) {}
 
   /**
@@ -124,26 +128,20 @@ export class MultiPlanGenerator {
       }
 
       // 生成计划
-      const { plan, log } = await this.decisionEngine!.generatePlan(stateCopy);
+      const { plan } = await this.decisionEngine!.generatePlan(stateCopy);
+      if (!plan) return null;
 
-      // 检查可行性
-      let feasibility = {
-        isValid: true,
-        violations: 0,
-        conflicts: 0,
-      };
-
-      if (this.constraintChecker) {
-        const checkResult = await this.constraintChecker.checkPlan(stateCopy, plan);
-        feasibility = {
-          isValid: checkResult.isValid,
-          violations: checkResult.summary.errorCount + checkResult.summary.warningCount,
-          conflicts: checkResult.conflicts?.conflicts.length || 0,
-        };
+      // Phase 0：约束前置 - 硬约束违规即淘汰，不进入评分
+      const feasibilityResult = await this.checkFeasibility(stateCopy, plan);
+      if (!feasibilityResult.feasible) {
+        this.logger.debug(
+          `[${strategy}] 方案因硬约束违规被淘汰: ${feasibilityResult.infeasibilityExplanation?.summary || '详见 violations'}`,
+        );
+        return null;
       }
 
-      // 评分
-      const score = this.scorePlan(plan, constraints, strategy, stateCopy);
+      // 评分（仅可行方案）：优先使用 DailyUtilityCalculator（Phase 2），否则用原有 scorePlan
+      const score = this.scorePlanWithUtility(plan, constraints, strategy, stateCopy);
 
       // 分析权衡
       const tradeoffs = this.analyzeTradeoffs(plan, constraints, strategy, stateCopy);
@@ -153,12 +151,67 @@ export class MultiPlanGenerator {
         plan,
         score,
         tradeoffs,
-        feasibility,
+        feasibility: {
+          isValid: true,
+          violations: feasibilityResult.rawCheckResult.summary.warningCount + feasibilityResult.rawCheckResult.summary.infoCount,
+          conflicts: feasibilityResult.rawCheckResult.conflicts?.conflicts.length || 0,
+        },
       };
     } catch (error) {
       this.logger.warn(`生成${strategy}方案失败: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+  }
+
+  /**
+   * 检查可行性（Phase 0：优先使用 ConstraintEngineService.isFeasible 统一入口）
+   */
+  private async checkFeasibility(
+    state: TripWorldState,
+    plan: TripPlan,
+  ): Promise<{ feasible: boolean; rawCheckResult: any; infeasibilityExplanation?: any }> {
+    if (this.constraintEngine) {
+      return this.constraintEngine.isFeasible(state, plan);
+    }
+    if (this.constraintChecker) {
+      const checkResult = await this.constraintChecker.checkPlan(state, plan);
+      return {
+        feasible: checkResult.isValid,
+        rawCheckResult: checkResult,
+        infeasibilityExplanation: checkResult.infeasibilityExplanation,
+      };
+    }
+    return {
+      feasible: true,
+      rawCheckResult: {
+        summary: { errorCount: 0, warningCount: 0, infoCount: 0 },
+        conflicts: undefined,
+      },
+    };
+  }
+
+  /**
+   * 评分：Phase 2 优先使用 DailyUtilityCalculator，否则用原有 scorePlan
+   */
+  private scorePlanWithUtility(
+    plan: TripPlan,
+    constraints: ConstraintDSL,
+    strategy: StrategyType,
+    state: TripWorldState
+  ): PlanScore {
+    if (this.dailyUtilityCalculator) {
+      const result = this.dailyUtilityCalculator.compute(plan, state);
+      return {
+        total: result.totalExpectedUtility,
+        breakdown: {
+          satisfaction: result.dayUtilities.reduce((s, d) => s + d.breakdown.experienceScore, 0) / Math.max(1, result.dayUtilities.length),
+          violationRisk: 1 - result.penalties.totalPenalty,
+          robustness: 1 - result.penalties.riskPenalty,
+          cost: result.dayUtilities.reduce((s, d) => s + d.breakdown.costEfficiency, 0) / Math.max(1, result.dayUtilities.length),
+        },
+      };
+    }
+    return this.scorePlan(plan, constraints, strategy, state);
   }
 
   /**

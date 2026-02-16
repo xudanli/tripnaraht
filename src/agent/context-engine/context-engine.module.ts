@@ -8,6 +8,10 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ContextEngineerService } from './services/context-engineer.service';
+import { DynamicContextSelectorService } from './services/dynamic-context-selector.service';
+import { TripTaskMemoryService } from './services/trip-task-memory.service';
+import { ExecutionHistoryCompressorService } from './services/execution-history-compressor.service';
+import { IncrementalItineraryGeneratorService } from './services/incremental-itinerary-generator.service';
 import { ContextMetricsService } from './services/context-metrics.service';
 import { ContextLearningService } from './services/context-learning.service';
 import { ContextPrometheusMetricsService } from './services/context-prometheus-metrics.service';
@@ -17,6 +21,7 @@ import { ContextPerformanceAnalysisService } from './services/context-performanc
 import { ContextController } from './context.controller';
 import { SkillsModule } from '../../skills/skills.module';
 import { RedisModule } from '../../redis/redis.module';
+import { MemoryModule } from '../../agent/memory/memory.module';
 import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
 
 @Global()
@@ -26,10 +31,15 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     forwardRef(() => SkillsModule), // 使用 forwardRef 避免循环依赖
     RedisModule, // 提供 RedisService（用于持久化缓存）
     forwardRef(() => RagModule), // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
+    forwardRef(() => MemoryModule), // Context Orchestrator: 读取 UserTravelProfile
   ],
   controllers: [ContextController],
   providers: [
     ContextEngineerService,
+    DynamicContextSelectorService,
+    TripTaskMemoryService,
+    ExecutionHistoryCompressorService,
+    IncrementalItineraryGeneratorService, // 分段规划 POC: Day1→Day2→Day3
     ContextMetricsService,
     ContextLearningService,
     ContextPrometheusMetricsService, // Phase 1.4 优化: Prometheus 指标收集
@@ -40,6 +50,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
   ],
   exports: [
     ContextEngineerService,
+    IncrementalItineraryGeneratorService,
     ContextMetricsService,
     ContextLearningService,
     ContextPrometheusMetricsService, // Phase 1.4 优化: 导出 Prometheus 指标服务

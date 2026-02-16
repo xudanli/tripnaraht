@@ -10,8 +10,9 @@
  * const status = await service.getRoadStatus('F208');
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
 
 /**
@@ -73,7 +74,7 @@ export class RoadStatusRealtimeService {
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 分钟
   private readonly REQUEST_TIMEOUT_MS = 5000; // 5 秒超时
   private readonly httpClient: AxiosInstance;
-  private readonly prisma: PrismaClient;
+  private readonly prisma: PrismaService | PrismaClient;
 
   // 关键 F-road 列表
   private readonly F_ROADS = [
@@ -82,8 +83,10 @@ export class RoadStatusRealtimeService {
     'F985', 'F233', 'F347', 'F578', 'F622', 'F980',
   ];
 
-  constructor(prisma?: PrismaClient) {
-    this.prisma = prisma || new PrismaClient();
+  constructor(
+    @Optional() prisma?: PrismaService | PrismaClient,
+  ) {
+    this.prisma = prisma ?? new PrismaClient();
     this.httpClient = axios.create({
       timeout: this.REQUEST_TIMEOUT_MS,
       validateStatus: () => true, // 不抛出错误，手动处理状态码

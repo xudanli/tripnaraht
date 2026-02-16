@@ -106,6 +106,13 @@ interface NegotiationSummaryResponse {
     reject: number;
     abstain: number;
   };
+  fatiguePrediction?: Array<{
+    dayIndex: number;
+    fatigueScore: number;
+    riskLevel: string;
+    recommendation: string;
+    confidence?: number;
+  }>;
 }
 
 @ApiTags('Optimization')
@@ -299,6 +306,7 @@ export class OptimizationController {
       },
       debateHighlights,
       votingResult,
+      fatiguePrediction: result.fatiguePrediction,
     };
   }
 

@@ -81,9 +81,12 @@ export class DecisionLogMigrator {
   private static normalizeStepToLegacy(step: OrchestrationStep): string {
     const stepMap: Record<OrchestrationStep, string> = {
       INTAKE: 'intent_analysis',
+      STATE_UPDATE: 'state_update',
       RESEARCH: 'research',
       GATE_EVAL: 'gate_eval',
+      CONTEXT_BUILD: 'context_build',
       PLAN_GEN: 'plan_gen',
+      OPTIMIZE: 'optimize',
       VERIFY: 'verify',
       COMPLIANCE: 'compliance',
       REPAIR: 'repair',
@@ -106,17 +109,22 @@ export class DecisionLogMigrator {
       'intent_analysis': 'INTAKE',
       'routing decision': 'INTAKE',
       'routing_decision': 'INTAKE',
+      'state_update': 'STATE_UPDATE',
       'research': 'RESEARCH',
       'gate eval': 'GATE_EVAL',
       'gate_eval': 'GATE_EVAL',
+      'context_build': 'CONTEXT_BUILD',
       'plan gen': 'PLAN_GEN',
       'plan_gen': 'PLAN_GEN',
+      'optimize': 'OPTIMIZE',
       'verify': 'VERIFY',
       'repair': 'REPAIR',
       'narrate': 'NARRATE',
       'done': 'DONE',
       'failed': 'FAILED',
       'error': 'FAILED',
+      'timeout': 'TIMEOUT',
+      'hallucination_detection': 'HALLUCINATION_DETECTION',
     };
     
     const normalized = step.toLowerCase().trim();

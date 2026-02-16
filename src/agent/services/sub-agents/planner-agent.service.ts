@@ -220,6 +220,9 @@ export class ClaudePlannerAgentService implements PlannerAgent {
       metadata: {
         tripRunId: context.request_id,
         attemptNumber: 1,
+        // Context Orchestrator：供 buildContextForNode / UserTravelProfile 使用
+        userId: context.metadata?.userId,
+        tripId: context.metadata?.tripId,
       },
     };
   }

@@ -19,9 +19,12 @@ export class SubAgentMappingService {
   // 步骤类型到 Sub-Agent 的映射规则（10步完整流程）
   private readonly stepToSubAgentMap: Record<OrchestrationStep, SubAgentType> = {
     'INTAKE': 'Planner',
+    'STATE_UPDATE': 'Orchestrator',
     'RESEARCH': 'Planner', // RESEARCH 步骤通过 Domain Agents 调用 Skills
     'GATE_EVAL': 'Gatekeeper',
+    'CONTEXT_BUILD': 'Orchestrator',
     'PLAN_GEN': 'Planner',
+    'OPTIMIZE': 'Orchestrator',
     'VERIFY': 'CoreDecision',
     'COMPLIANCE': 'Compliance',
     'REPAIR': 'LocalInsight',

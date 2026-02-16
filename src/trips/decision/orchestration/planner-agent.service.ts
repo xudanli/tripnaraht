@@ -15,7 +15,7 @@ import { TripNaraCoreToolInput } from '../tools/tripnara-core-tool.interface';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
-import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage } from '../../../agent/context-engine/utils/langgraph-context-integration';
+import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage, mapPhaseToTripTaskPhase } from '../../../agent/context-engine/utils/langgraph-context-integration';
 
 @Injectable()
 export class PlannerAgentService implements IPlannerAgent {
@@ -84,6 +84,8 @@ export class PlannerAgentService implements IPlannerAgent {
             await writeBackFromNode(state, this.contextEngineer, {
               tripRunId: state.metadata.tripRunId as string,
               attemptNumber: (state.metadata.attemptNumber as number) || 1,
+              tripId: state.metadata?.tripId as string | undefined,
+              phase: mapPhaseToTripTaskPhase(state.planningPhase || 'DRAFTING'),
               scratchpad: {
                 planOutline: `Planner 分析完成: intent=${result.intent}, nextStep=${result.nextStep}`,
                 nextActions: [result.nextStep],
@@ -110,6 +112,8 @@ export class PlannerAgentService implements IPlannerAgent {
         await writeBackFromNode(state, this.contextEngineer, {
           tripRunId: state.metadata.tripRunId as string,
           attemptNumber: (state.metadata.attemptNumber as number) || 1,
+          tripId: state.metadata?.tripId as string | undefined,
+          phase: mapPhaseToTripTaskPhase(state.planningPhase || 'DRAFTING'),
           scratchpad: {
             planOutline: `Planner 分析完成（规则匹配）: intent=${result.intent}, nextStep=${result.nextStep}`,
             nextActions: [result.nextStep],

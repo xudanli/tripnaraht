@@ -8,6 +8,7 @@
 import { ContextEngineerService } from '../services/context-engineer.service';
 import { ContextPackageOptions, ContextPackage } from '../types/context-package.types';
 import { LangGraphState } from '../../../trips/decision/orchestration/langgraph-orchestrator.interface';
+import type { TripTaskPhase } from '../interfaces/trip-task-memory.interface';
 
 /**
  * 在每个节点开始时构建上下文包
@@ -37,6 +38,7 @@ export async function buildContextForNode(
 ): Promise<{ contextPackage: ContextPackage; projection?: any }> {
   const contextOptions: ContextPackageOptions = {
     tripId: state.metadata?.tripId as string | undefined,
+    userId: state.metadata?.userId as string | undefined,
     phase: options.phase,
     agent: options.agent,
     userQuery: state.userQuery,
@@ -82,6 +84,7 @@ export async function buildContextForNode(
  *       },
  *       decisionLogDelta: [...],
  *       artifactsRefs: {...},
+ *       phase: 'decision',  // 可选，用于 TripTaskMemory.currentPhase 更新
  *     }
  *   );
  * }
@@ -93,6 +96,8 @@ export async function writeBackFromNode(
   data: {
     tripRunId: string;
     attemptNumber?: number;
+    tripId?: string; // 可选，用于 TripTaskMemory 更新（若无则从 tripRunId 解析）
+    phase?: TripTaskPhase; // 可选，用于 TripTaskMemory.currentPhase 更新
     scratchpad: {
       planOutline?: string;
       openQuestions?: string[];
@@ -110,7 +115,20 @@ export async function writeBackFromNode(
     data.scratchpad,
     data.decisionLogDelta,
     data.artifactsRefs,
+    data.tripId || data.phase ? { tripId: data.tripId, phase: data.phase } : undefined,
   );
+}
+
+/** 将 planningPhase / phase 字符串映射为 TripTaskPhase */
+export function mapPhaseToTripTaskPhase(phase?: string): TripTaskPhase | undefined {
+  if (!phase) return undefined;
+  const p = phase.toLowerCase();
+  if (p.includes('intake') || p.includes('drafting')) return 'intake';
+  if (p.includes('route') || p.includes('selection')) return 'route_selection';
+  if (p.includes('poi') || p.includes('candidate')) return 'poi_candidate';
+  if (p.includes('decision') || p.includes('adjustment') || p.includes('repair')) return 'decision';
+  if (p.includes('confirm') || p.includes('finaliz') || p.includes('readiness') || p === 'done') return 'confirm';
+  return undefined;
 }
 
 /**

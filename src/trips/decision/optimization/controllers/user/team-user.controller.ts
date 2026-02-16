@@ -5,10 +5,13 @@
  * 提供多用户（家庭/团队）协同决策功能
  */
 
-import { Controller, Post, Get, Delete, Body, Param, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Req, Logger, BadRequestException } from '@nestjs/common';
+import { Request } from 'express';
+import { IsOptional, IsString, IsObject, IsArray, ValidateNested } from 'class-validator';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 
 import { TeamCollaborationService } from '../../collaboration/team-collaboration.service';
+import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
 import {
   TeamConfig,
   TeamMember,
@@ -22,20 +25,28 @@ import { RoutePlanDraft, WorldModelContext } from '../../../shared/world-model.t
 
 export class CreateTeamDto {
   /** 团队名称 */
-  name!: string;
+  @IsOptional()
+  @IsString()
+  name?: string;
   /** 团队类型 */
-  type!: 'FAMILY' | 'FRIENDS' | 'EXPEDITION' | 'TOUR_GROUP' | 'CUSTOM';
-  /** 决策权重模式 */
-  decisionWeightMode!: DecisionWeightMode;
+  @IsOptional()
+  @IsString()
+  type?: string;
+  /** 决策权重模式（EQUAL | LEADER_PRIORITY | CAPABILITY_BASED | EXPERIENCE_BASED | CUSTOM，非法时后端用 EQUAL） */
+  @IsOptional()
+  @IsString()
+  decisionWeightMode?: string;
   /** 成员列表 */
-  members!: TeamMemberInput[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  members?: TeamMemberInput[];
   /** 团队约束配置 */
+  @IsOptional()
+  @IsObject()
   teamConstraints?: {
-    /** 是否使用最弱链原则 */
     useWeakestLink: boolean;
-    /** 最大可接受分歧度 */
     maxAcceptableDisagreement: number;
-    /** 需要全票通过的决策类型 */
     unanimityRequired: string[];
   };
 }
@@ -73,10 +84,20 @@ export class TeamMemberInput {
 export class AddMemberDto extends TeamMemberInput {}
 
 export class TeamNegotiateDto {
-  /** 待协商的计划 */
-  plan!: RoutePlanDraft;
+  /** 待协商的计划（与 world 二选一：若只传 tripId 则后端按 tripId 加载 plan + world） */
+  @IsOptional()
+  @IsObject()
+  plan?: RoutePlanDraft;
+
   /** 世界模型上下文 */
-  world!: WorldModelContext;
+  @IsOptional()
+  @IsObject()
+  world?: WorldModelContext;
+
+  /** 行程 ID：仅当不传 plan/world 时使用，后端将根据 tripId 加载行程并构建 plan 与 world 再协商 */
+  @IsOptional()
+  @IsString()
+  tripId?: string;
 }
 
 // ========== Response Types ==========
@@ -111,6 +132,7 @@ export class TeamUserController {
 
   constructor(
     private readonly teamService: TeamCollaborationService,
+    private readonly negotiateLoader: NegotiateContextLoaderService,
   ) {}
 
   // ========== 团队管理 ==========
@@ -121,14 +143,21 @@ export class TeamUserController {
     description: '创建新的协作团队，设置成员和决策模式'
   })
   @ApiResponse({ status: 201, description: '返回创建的团队' })
-  async createTeam(@Body() dto: CreateTeamDto): Promise<TeamConfig> {
-    this.logger.log(`[User] 创建团队: ${dto.name}`);
-    
+  async createTeam(@Body() dto: CreateTeamDto, @Req() req: Request): Promise<TeamConfig> {
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const name = (dto.name ?? raw.name ?? raw.team_name) as string;
+    const typeRaw = String(dto.type ?? raw.type ?? 'CUSTOM').toUpperCase();
+    const type = ['FAMILY', 'FRIENDS', 'EXPEDITION', 'TOUR_GROUP', 'CUSTOM'].includes(typeRaw) ? typeRaw : 'CUSTOM';
+    const modeRaw = String(dto.decisionWeightMode ?? raw.decisionWeightMode ?? raw.decision_weight_mode ?? 'EQUAL').toUpperCase();
+    const decisionWeightMode = ['EQUAL', 'LEADER_PRIORITY', 'CAPABILITY_BASED', 'EXPERIENCE_BASED', 'CUSTOM'].includes(modeRaw) ? modeRaw : 'EQUAL';
+    this.logger.log(`[User] 创建团队: ${name || '(未命名)'}`);
+
+    const members = Array.isArray(dto.members) ? dto.members : (Array.isArray(raw.members) ? raw.members : []) as TeamMemberInput[];
     return this.teamService.createTeam({
-      name: dto.name,
-      type: dto.type,
-      decisionWeightMode: dto.decisionWeightMode,
-      members: dto.members.map(m => ({
+      name: name || '未命名团队',
+      type: type as TeamConfig['type'],
+      decisionWeightMode: decisionWeightMode as DecisionWeightMode,
+      members: members.map((m: TeamMemberInput) => ({
         ...m,
         joinedAt: new Date().toISOString(),
       })),
@@ -148,7 +177,7 @@ export class TeamUserController {
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   @ApiResponse({ status: 200, description: '返回团队信息' })
   async getTeam(@Param('teamId') teamId: string): Promise<TeamConfig | null> {
-    return this.teamService.getTeam(teamId) || null;
+    return (await this.teamService.getTeam(teamId)) ?? null;
   }
 
   @Post(':teamId/members')
@@ -161,9 +190,21 @@ export class TeamUserController {
   async addMember(
     @Param('teamId') teamId: string,
     @Body() dto: AddMemberDto,
+    @Req() req: Request,
   ): Promise<TeamConfig> {
-    this.logger.log(`[User] 添加成员: ${dto.displayName} -> ${teamId}`);
-    return this.teamService.addMember(teamId, dto);
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const member: AddMemberDto = {
+      userId: (dto.userId ?? raw.userId ?? raw.user_id ?? '') as string,
+      displayName: (dto.displayName ?? raw.displayName ?? raw.display_name ?? '') as string,
+      role: (dto.role ?? raw.role ?? 'MEMBER') as AddMemberDto['role'],
+      decisionWeight: Number(dto.decisionWeight ?? raw.decisionWeight ?? raw.decision_weight ?? 1),
+      fitnessLevel: (dto.fitnessLevel ?? raw.fitnessLevel ?? raw.fitness_level ?? 'INTERMEDIATE') as AddMemberDto['fitnessLevel'],
+      experienceLevel: (dto.experienceLevel ?? raw.experienceLevel ?? raw.experience_level ?? 'SOME_EXPERIENCE') as AddMemberDto['experienceLevel'],
+      personalWeights: (dto.personalWeights ?? raw.personalWeights ?? raw.personal_weights ?? {}) as ObjectiveFunctionWeights,
+      specialConstraints: (dto.specialConstraints ?? raw.specialConstraints ?? raw.special_constraints) as AddMemberDto['specialConstraints'],
+    };
+    this.logger.log(`[User] 添加成员: ${member.displayName || member.userId} -> ${teamId}`);
+    return this.teamService.addMember(teamId, member);
   }
 
   @Delete(':teamId/members/:userId')
@@ -194,9 +235,34 @@ export class TeamUserController {
   async negotiate(
     @Param('teamId') teamId: string,
     @Body() dto: TeamNegotiateDto,
+    @Req() req: Request,
   ): Promise<TeamNegotiationResult> {
     this.logger.log(`[User] 团队协商: ${teamId}`);
-    return this.teamService.negotiateAsTeam(teamId, dto.plan, dto.world);
+
+    let plan: RoutePlanDraft;
+    let world: WorldModelContext;
+
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const tripIdFromBody =
+      dto?.tripId ?? (dto as Record<string, unknown>)?.trip_id ?? raw?.tripId ?? raw?.trip_id;
+    const tripIdStr =
+      typeof tripIdFromBody === 'string' ? tripIdFromBody.trim() : '';
+
+    if (dto?.plan != null && dto?.world != null) {
+      plan = dto.plan;
+      world = dto.world;
+    } else if (tripIdStr) {
+      const loaded = await this.negotiateLoader.loadPlanAndWorld(tripIdStr);
+      plan = loaded.plan;
+      world = loaded.world;
+    } else {
+      if (dto?.plan == null) {
+        throw new BadRequestException('请求体缺少 plan（待协商的计划）；或仅传 tripId 由后端加载');
+      }
+      throw new BadRequestException('请求体缺少 world（世界模型上下文）；或仅传 tripId 由后端加载');
+    }
+
+    return this.teamService.negotiateAsTeam(teamId, plan, world);
   }
 
   @Get(':teamId/weights')
@@ -207,7 +273,7 @@ export class TeamUserController {
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   @ApiResponse({ status: 200, description: '返回团队权重' })
   async getTeamWeights(@Param('teamId') teamId: string): Promise<TeamWeightsResponse | null> {
-    const team = this.teamService.getTeam(teamId);
+    const team = await this.teamService.getTeam(teamId);
     if (!team) {
       return null;
     }
@@ -236,7 +302,7 @@ export class TeamUserController {
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   @ApiResponse({ status: 200, description: '返回团队约束' })
   async getTeamConstraints(@Param('teamId') teamId: string): Promise<TeamConstraintsResponse | null> {
-    const team = this.teamService.getTeam(teamId);
+    const team = await this.teamService.getTeam(teamId);
     if (!team) {
       return null;
     }

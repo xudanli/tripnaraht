@@ -22,7 +22,7 @@ async function testGatekeeperWeatherIntegration() {
     // 初始化服务和 Skills
     const roadStatusService = new RoadStatusRealtimeService(prisma);
     const weatherService = new IcelandWeatherRealtimeService(prisma);
-    const fRoadSkill = new FRoadCheckSkill(roadStatusService, prisma);
+    const fRoadSkill = new FRoadCheckSkill(roadStatusService);
     const weatherSkill = new WeatherAlertSkill(weatherService);
 
     // 初始化 GatekeeperAgent

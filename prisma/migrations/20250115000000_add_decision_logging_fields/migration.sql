@@ -1,6 +1,12 @@
 -- Add decision logging fields to decision_logs table
 -- This migration adds fields for decision point tracking, user choices, and system recommendations
 
+-- Ensure decision_logs exists (for shadow DB: may run before add_decision_stage)
+CREATE TABLE IF NOT EXISTS "decision_logs" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT "decision_logs_pkey" PRIMARY KEY ("id")
+);
+
 -- Add new columns to decision_logs table
 ALTER TABLE "decision_logs" 
 ADD COLUMN IF NOT EXISTS "available_options" JSONB,

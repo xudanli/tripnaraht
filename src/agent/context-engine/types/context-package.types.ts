@@ -190,6 +190,14 @@ export interface ContextPackageOptions {
   
   /** 需要的 API 文档类别（可选） */
   apiDocCategories?: ApiDocCategory[];
+
+  /** 是否包含工具选择（Context Orchestrator 统一调度 tools.select，默认 true） */
+  includeToolSelection?: boolean;
+
+  /** 分段规划：当前目标日索引（1-based），仅注入当天 + 前日摘要 */
+  targetDayIndex?: number;
+  /** 分段规划：前几日压缩摘要（DaySummary[]），供 buildPlanBlocks 按需注入 */
+  previousDaysSummary?: Array<{ day: number; date: string; itemCount: number; keyLocations: string[] }>;
 }
 
 /**

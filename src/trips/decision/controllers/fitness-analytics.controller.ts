@@ -63,7 +63,7 @@ import {
 @ApiTags('Fitness Analytics (Phase 2)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/fitness/analytics')
+@Controller('v1/fitness/analytics')
 export class FitnessAnalyticsController {
   constructor(
     private readonly analyticsService: FitnessAnalyticsService,

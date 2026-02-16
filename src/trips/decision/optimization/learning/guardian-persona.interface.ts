@@ -215,6 +215,15 @@ export interface NegotiationResult {
   /** 需要人类判断的问题（如果需要人类介入） */
   humanDecisionPoints?: string[];
   
+  /** TDFPM 疲劳预测（按天） */
+  fatiguePrediction?: Array<{
+    dayIndex: number;
+    fatigueScore: number;
+    riskLevel: string;
+    recommendation: string;
+    confidence?: number;
+  }>;
+  
   /** 协商摘要 */
   summary: string;
 }
@@ -301,4 +310,78 @@ export const DEFAULT_NEGOTIATION_CONFIG: NegotiationConfig = {
   votingWeightMode: 'DOMAIN_BASED',
   allowConditionalApproval: true,
   humanInterventionThreshold: 0.4,
+};
+
+/**
+ * 驾驶时间估算配置（可配置，非硬编码）
+ * 通过 GUARDIAN_DRIVING_SPEED_KMH 环境变量覆盖默认值
+ */
+export const DRIVING_ESTIMATION_CONFIG = {
+  /** 默认平均车速 km/h（混合路况） */
+  defaultSpeedKmH: Number(process.env.GUARDIAN_DRIVING_SPEED_KMH) || 50,
+  /** 道路类型关键词 → 车速 km/h（从 world.routeDirection.metadata 推断时使用） */
+  roadTypeSpeedMap: {
+    gravel: 35,
+    '砂石': 35,
+    highway: 70,
+    '高速': 70,
+    'motorway': 70,
+    paved: 55,
+    '柏油': 55,
+  } as Record<string, number>,
+};
+
+/**
+ * 道路类型 → 驾驶强度系数（TDFPM Intensity）
+ * 用于 DrivingLoad = DrivingHours × Intensity
+ */
+export const ROAD_INTENSITY_MAP: Record<string, number> = {
+  highway: 1.0,
+  '高速': 1.0,
+  motorway: 1.0,
+  paved: 1.2,
+  '柏油': 1.2,
+  gravel: 1.8,
+  '砂石': 1.8,
+  'F路': 1.8,
+  '山路': 1.8,
+  // 可扩展：city_traffic: 1.5, extreme_weather: 2.2
+};
+
+/**
+ * 道路类型 → 疲劳系数（RoadFactor）
+ * 路况越复杂，安全驾驶能力下降
+ */
+export const ROAD_FATIGUE_FACTOR_MAP: Record<string, number> = {
+  highway: 1.0,
+  '高速': 1.0,
+  motorway: 1.0,
+  paved: 0.9,
+  '柏油': 0.9,
+  gravel: 0.75,
+  '砂石': 0.75,
+  'F路': 0.75,
+  '山路': 0.75,
+};
+
+/**
+ * 驾驶疲劳与安全模型（基于人体工效学与 2-15-8 法则）
+ *
+ * 参考标准：
+ * - 普通人安全驾驶上限 ≈ 8h/天，超过 10h 事故率明显上升
+ * - TripNara：超过 6h 应提示「今日行程偏紧，建议拆分」
+ * - 2-15-8 法则：每 2h 一停、15min 休息、8h 上限
+ *
+ * 疲劳公式：DrivingCapacity = Base × SleepFactor × RoadFactor × BreakFactor × StressFactor × AgeFactor
+ * 当缺少 Sleep/Break/Stress 数据时，使用默认 1.0
+ */
+export const DRIVING_SAFETY_CONFIG = {
+  /** 基础安全驾驶能力 h */
+  baseSafeHours: 8,
+  /** 建议拆分比例（effectiveSafeHours × 0.75，默认 6h） */
+  warningRatio: 0.75,
+  /** 危险区比例（effectiveSafeHours × 1.25，默认 10h） */
+  dangerRatio: 1.25,
+  /** 物理极限 h（纯驾驶时间超过此值单日无法完成） */
+  physicalLimitHours: 24,
 };

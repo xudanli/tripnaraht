@@ -12,7 +12,7 @@ import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';
-import { DecisionStage, DecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
+import { DecisionStage, DecisionLogEntry, DecisionPersona, DecisionSource } from '../../trips/decision/shared/decision-result.types';
 
 export interface DecisionStageInput extends BaseSkillInput {
   /** Trip ID */
@@ -49,8 +49,8 @@ export interface DecisionStageOutput extends SkillOutput {
   summary: {
     totalLogs: number;
     stageDistribution: Record<DecisionStage, number>;
-    personaDistribution: Record<'ABU' | 'DR_DRE' | 'NEPTUNE', number>;
-    sourceDistribution: Record<'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC', number>;
+    personaDistribution: Record<DecisionPersona, number>;
+    sourceDistribution: Record<DecisionSource, number>;
   };
 }
 
@@ -95,8 +95,8 @@ export class DecisionStageSkill implements Skill<DecisionStageInput, DecisionSta
 
       // 按阶段分组
       const stageMap = new Map<DecisionStage, DecisionLogEntry[]>();
-      const personaMap = new Map<'ABU' | 'DR_DRE' | 'NEPTUNE', number>();
-      const sourceMap = new Map<'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC', number>();
+      const personaMap = new Map<DecisionPersona, number>();
+      const sourceMap = new Map<DecisionSource, number>();
 
       // 所有可能的阶段
       const allStages: DecisionStage[] = [
@@ -107,6 +107,8 @@ export class DecisionStageSkill implements Skill<DecisionStageInput, DecisionSta
         'SPATIAL_REPAIR',
         'READINESS',
         'FINALIZE',
+        'PLAN_SCORE',
+        'PLAN_EDIT',
       ];
 
       // 初始化所有阶段
@@ -140,6 +142,8 @@ export class DecisionStageSkill implements Skill<DecisionStageInput, DecisionSta
         SPATIAL_REPAIR: 0,
         READINESS: 0,
         FINALIZE: 0,
+        PLAN_SCORE: 0,
+        PLAN_EDIT: 0,
       };
 
       for (const [stage, stageLogs] of stageMap.entries()) {
@@ -164,6 +168,8 @@ export class DecisionStageSkill implements Skill<DecisionStageInput, DecisionSta
             SPATIAL_REPAIR: 5,
             READINESS: 6,
             FINALIZE: 7,
+            PLAN_SCORE: 8,
+            PLAN_EDIT: 9,
           };
           return stageOrder[a.stage] - stageOrder[b.stage];
         });
@@ -177,12 +183,16 @@ export class DecisionStageSkill implements Skill<DecisionStageInput, DecisionSta
             ABU: personaMap.get('ABU') || 0,
             DR_DRE: personaMap.get('DR_DRE') || 0,
             NEPTUNE: personaMap.get('NEPTUNE') || 0,
+            EXPECTED_UTILITY: personaMap.get('EXPECTED_UTILITY') || 0,
+            USER_ACTION: personaMap.get('USER_ACTION') || 0,
           },
           sourceDistribution: {
             PHYSICAL: sourceMap.get('PHYSICAL') || 0,
             HUMAN: sourceMap.get('HUMAN') || 0,
             PHILOSOPHY: sourceMap.get('PHILOSOPHY') || 0,
             HEURISTIC: sourceMap.get('HEURISTIC') || 0,
+            UTILITY: sourceMap.get('UTILITY') || 0,
+            USER: sourceMap.get('USER') || 0,
           },
         },
       };

@@ -134,8 +134,12 @@
     "test:evidence-apis": "npx tsx scripts/test-evidence-apis.ts",
     "test:evidence-apis:http": "npx tsx scripts/test-evidence-apis-http.ts",
     "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts",
+    "test:constraint-consistency-baseline": "npx tsx scripts/constraint-consistency-baseline.ts",
+    "test:constraint-consistency-baseline:quick": "npx tsx scripts/constraint-consistency-baseline.ts --quick",
+    "test:rollback-drill": "npx tsx scripts/verify-rollback-drill.ts",
     "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts",
-    "test:world-model-api-interfaces": "npx tsx scripts/test-world-model-api-interfaces-simple.ts"
+    "test:world-model-api-interfaces": "npx tsx scripts/test-world-model-api-interfaces-simple.ts",
+    "postinstall": "node scripts/patch-zod-bg-locale.js"
   },
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",

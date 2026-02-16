@@ -13,6 +13,10 @@ import { DecisionLogClusteringService } from './evaluation/decision-log-clusteri
 import { AdminDecisionLogListQueryDto, AdminDecisionStatsQueryDto } from './dto/admin-decision.dto';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
 import { ConstraintChecker } from './constraints/constraint-checker';
+import { ConstraintEngineService } from './constraints/constraint-engine.service';
+import { DailyUtilityCalculatorService } from './optimization/daily-utility';
+import { PlanModificationLogService } from './services/plan-modification-log.service';
+import { PlanModificationEventDto } from './dto/plan-modification.dto';
 import { MultiPlanGenerator } from './services/multi-plan-generator.service';
 import { ConstraintDSLDto, DetectConflictsRequestDto, GenerateMultiplePlansRequestDto } from './dto/constraint-dsl.dto';
 import { TripWorldState } from './world-model';
@@ -41,6 +45,9 @@ export class DecisionController {
     private readonly clusteringService: DecisionLogClusteringService,
     @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
     @Optional() private readonly constraintChecker?: ConstraintChecker,
+    @Optional() private readonly constraintEngine?: ConstraintEngineService,
+    @Optional() private readonly dailyUtilityCalculator?: DailyUtilityCalculatorService,
+    @Optional() private readonly planModificationLog?: PlanModificationLogService,
     @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
     @Optional() private readonly feedbackCollector?: FeedbackCollectorService,
     @Optional() private readonly qualityAssessor?: QualityAssessorService,
@@ -765,8 +772,24 @@ export class DecisionController {
     @Body() body: { state: TripWorldState; plan: TripPlan }
   ) {
     try {
+      // Phase 0: 优先使用 ConstraintEngineService.isFeasible 统一入口
+      if (this.constraintEngine) {
+        if (!body.state || !body.plan) {
+          return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
+        }
+        const result = await this.constraintEngine.isFeasible(body.state, body.plan);
+        return successResponse({
+          feasible: result.feasible,
+          isValid: result.feasible, // 兼容旧字段
+          violations: result.violations,
+          summary: result.rawCheckResult.summary,
+          conflicts: result.rawCheckResult.conflicts,
+          infeasibilityExplanation: result.infeasibilityExplanation,
+        });
+      }
+
       if (!this.constraintChecker) {
-        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintChecker 不可用');
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintChecker / ConstraintEngine 不可用');
       }
 
       if (!body.state || !body.plan) {
@@ -776,6 +799,7 @@ export class DecisionController {
       const checkResult = await this.constraintChecker.checkPlan(body.state, body.plan);
 
       return successResponse({
+        feasible: checkResult.isValid,
         isValid: checkResult.isValid,
         violations: checkResult.violations,
         summary: checkResult.summary,
@@ -784,6 +808,72 @@ export class DecisionController {
       });
     } catch (error: any) {
       this.logger.error(`约束检查失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('compute-daily-utility')
+  @ApiOperation({
+    summary: '计算日级 ExpectedUtility',
+    description: 'Phase 2 ExpectedUtility v1：ExperienceScore、CostEfficiency、TimeEfficiency、ComfortScore、SafetyScore + 三项惩罚',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['state', 'plan'],
+      properties: {
+        state: { type: 'object', description: 'TripWorldState' },
+        plan: { type: 'object', description: 'TripPlan' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '计算完成', type: ApiSuccessResponseDto })
+  async computeDailyUtility(@Body() body: { state: TripWorldState; plan: TripPlan }) {
+    try {
+      if (!this.dailyUtilityCalculator) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'DailyUtilityCalculator 不可用');
+      }
+      if (!body.state || !body.plan) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
+      }
+      const result = this.dailyUtilityCalculator.compute(body.plan, body.state);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`DailyUtility 计算失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('log-plan-modification')
+  @ApiOperation({
+    summary: '记录用户修改行为',
+    description: 'Phase 3：用于反向学习、用户修改热力图分析。前端在用户修改方案后调用',
+  })
+  @ApiBody({ type: PlanModificationEventDto })
+  @ApiResponse({ status: 200, description: '记录完成', type: ApiSuccessResponseDto })
+  async logPlanModification(@Body() body: PlanModificationEventDto) {
+    try {
+      if (!this.planModificationLog) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanModificationLog 不可用');
+      }
+      if (!body.planId || !body.modificationType) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'planId 和 modificationType 是必需的');
+      }
+      await this.planModificationLog.logModification({
+        planId: body.planId,
+        tripId: body.tripId,
+        modificationType: body.modificationType,
+        affectedDate: body.affectedDate,
+        affectedSlotId: body.affectedSlotId,
+        beforeSummary: body.beforeSummary,
+        afterSummary: body.afterSummary,
+        context: body.context,
+      });
+      return successResponse({ logged: true });
+    } catch (error: any) {
+      this.logger.error(`用户修改日志记录失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

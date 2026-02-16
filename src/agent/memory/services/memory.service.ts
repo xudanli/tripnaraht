@@ -10,7 +10,15 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { UserTravelProfile, createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
+import { FlywheelOutcomeService } from '../../../trips/decision/flywheel/flywheel-outcome.service';
+import {
+  UserTravelProfile,
+  createDefaultUserTravelProfile,
+  CompanionsInfo,
+  DeviceInfo,
+  TimeWindowConstraint,
+  EmotionalState,
+} from '../interfaces/user-travel-profile.interface';
 import { RouteDirectionDecisionMemory } from '../interfaces/route-direction-decision-memory.interface';
 import { RouteDirectionHealth } from '../interfaces/route-direction-health.interface';
 import { TripOutcomeFeedback } from '../interfaces/trip-outcome-feedback.interface';
@@ -20,7 +28,10 @@ export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
   private readonly useDatabase: boolean;
 
-  constructor(@Optional() private readonly prisma?: PrismaService) {
+  constructor(
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly flywheelOutcome?: FlywheelOutcomeService,
+  ) {
     this.useDatabase = !!prisma && prisma.isDbConnected();
     if (this.useDatabase) {
       this.logger.log('MemoryService: Using database storage');
@@ -53,6 +64,7 @@ export class MemoryService {
         });
 
         if (dbProfile) {
+          const extended = (dbProfile as any).extendedProfile as Record<string, unknown> | null;
           return {
             userId: dbProfile.userId,
             pacePreference: dbProfile.pacePreference as any,
@@ -60,6 +72,11 @@ export class MemoryService {
             riskTolerance: dbProfile.riskTolerance as any,
             travelPhilosophy: dbProfile.travelPhilosophy as any,
             preferredRouteTypes: dbProfile.preferredRouteTypes as any,
+            companions: extended?.companions as CompanionsInfo | undefined,
+            deviceInfo: extended?.deviceInfo as DeviceInfo | undefined,
+            timeWindow: extended?.timeWindow as TimeWindowConstraint | undefined,
+            emotionalState: extended?.emotionalState as EmotionalState | undefined,
+            drivingFatiguePreferences: extended?.drivingFatiguePreferences as UserTravelProfile['drivingFatiguePreferences'],
             confidence: dbProfile.confidence,
             source: dbProfile.source as any,
             updatedAt: dbProfile.updatedAt,
@@ -88,6 +105,23 @@ export class MemoryService {
 
     if (this.useDatabase && this.prisma) {
       try {
+        const extendedProfile =
+          profile.companions ||
+          profile.deviceInfo ||
+          profile.timeWindow ||
+          profile.emotionalState ||
+          profile.drivingFatiguePreferences
+            ? {
+                ...(profile.companions && { companions: profile.companions }),
+                ...(profile.deviceInfo && { deviceInfo: profile.deviceInfo }),
+                ...(profile.timeWindow && { timeWindow: profile.timeWindow }),
+                ...(profile.emotionalState && { emotionalState: profile.emotionalState }),
+                ...(profile.drivingFatiguePreferences && {
+                  drivingFatiguePreferences: profile.drivingFatiguePreferences,
+                }),
+              }
+            : undefined;
+
         await this.prisma.userTravelProfile.upsert({
           where: { userId: profile.userId },
           create: {
@@ -99,6 +133,7 @@ export class MemoryService {
             preferredRouteTypes: profile.preferredRouteTypes || [],
             confidence: profile.confidence,
             source: profile.source,
+            extendedProfile: extendedProfile as any,
             updatedAt: profile.updatedAt,
           },
           update: {
@@ -109,6 +144,7 @@ export class MemoryService {
             preferredRouteTypes: profile.preferredRouteTypes || [],
             confidence: profile.confidence,
             source: profile.source,
+            extendedProfile: extendedProfile as any,
             updatedAt: profile.updatedAt,
           },
         });
@@ -436,6 +472,25 @@ export class MemoryService {
     // 内存存储
     this.tripFeedbacks.push(feedback);
     this.logger.debug(`Saved trip outcome feedback to memory for trip: ${feedback.tripId}`);
+
+    // Phase 2：数据飞轮 Layer 3
+    if (this.flywheelOutcome) {
+      this.flywheelOutcome
+        .upsertOutcome({
+          tripId: feedback.tripId,
+          userId: feedback.userId,
+          subjectiveFeedback: {
+            fatigueLevel: feedback.fatigueLevel,
+            satisfaction: feedback.satisfaction,
+          },
+          failureSignals: {
+            planAbandoned: feedback.abandoned,
+            earlyReturn: feedback.abandoned || !feedback.overallSuccess,
+            daySkipped: feedback.failurePoints,
+          },
+        })
+        .catch(() => {});
+    }
 
     // 自动触发学习更新
     await this.learnFromFeedback(feedback);

@@ -209,6 +209,19 @@ export class WriteBackDto {
   @IsOptional()
   @IsObject()
   artifactsRefs?: Record<string, string>;
+
+  @ApiPropertyOptional({ description: 'Trip ID（用于 TripTaskMemory 更新，可选）' })
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TripTaskMemory currentPhase（intake | route_selection | poi_candidate | decision | confirm）',
+    enum: ['intake', 'route_selection', 'poi_candidate', 'decision', 'confirm'],
+  })
+  @IsOptional()
+  @IsString()
+  phase?: string;
 }
 
 /**

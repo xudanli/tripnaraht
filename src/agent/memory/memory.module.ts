@@ -8,6 +8,7 @@ import { PersonaIdentificationService } from './services/persona-identification.
 import { PersonaStateManagerService } from './services/persona-state-manager.service';
 import { MultiPersonaManagerService } from './services/multi-persona-manager.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { FlywheelModule } from '../../trips/decision/flywheel/flywheel.module';
 
 /**
  * Memory Module
@@ -19,7 +20,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
  * - L4: 行为反馈记忆
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, FlywheelModule],
   providers: [
     MemoryService,
     UserProfileMapperService,

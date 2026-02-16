@@ -325,6 +325,44 @@ export function calculateConfidenceLevel(
 }
 
 /**
+ * 驾驶疲劳偏好（与 UserTravelProfile.drivingFatiguePreferences 兼容）
+ */
+export interface DrivingFatiguePreferencesInput {
+  sleepQuality?: 'adequate' | 'short' | 'poor' | 'very_poor';
+  breakHabit?: 'regular' | 'sometimes' | 'rarely' | 'none';
+  stressLevel?: 'low' | 'medium' | 'high';
+}
+
+const SLEEP_FACTOR_MAP: Record<string, number> = {
+  adequate: 1.0,
+  short: 0.85,
+  poor: 0.7,
+  very_poor: 0.5,
+};
+const BREAK_FACTOR_MAP: Record<string, number> = {
+  regular: 1.0,
+  sometimes: 0.9,
+  rarely: 0.7,
+  none: 0.7,
+};
+const STRESS_FACTOR_MAP: Record<string, number> = {
+  low: 1.0,
+  medium: 0.9,
+  high: 0.8,
+};
+
+function mapDrivingFatigueToFactors(
+  prefs?: DrivingFatiguePreferencesInput
+): { sleepFactor: number; breakFactor: number; stressFactor: number } | undefined {
+  if (!prefs || (!prefs.sleepQuality && !prefs.breakHabit && !prefs.stressLevel)) return undefined;
+  return {
+    sleepFactor: prefs.sleepQuality ? (SLEEP_FACTOR_MAP[prefs.sleepQuality] ?? 1.0) : 1.0,
+    breakFactor: prefs.breakHabit ? (BREAK_FACTOR_MAP[prefs.breakHabit] ?? 1.0) : 1.0,
+    stressFactor: prefs.stressLevel ? (STRESS_FACTOR_MAP[prefs.stressLevel] ?? 1.0) : 1.0,
+  };
+}
+
+/**
  * 从用户画像关键词生成人体能力模型（旧方式，兼容保留）
  * 
  * @deprecated 建议使用 createHumanCapabilityModelFromQuestionnaire
@@ -336,6 +374,7 @@ export function createHumanCapabilityModelFromProfile(
     fitness?: 'low' | 'medium' | 'high' | 'extreme';
     riskTolerance?: 'low' | 'medium' | 'high';
     highAltitudeExperience?: 'none' | 'basic' | 'advanced';
+    drivingFatiguePreferences?: DrivingFatiguePreferencesInput;
   }
 ): HumanCapabilityModel {
   // 根据关键词映射到能力参数
@@ -413,6 +452,8 @@ export function createHumanCapabilityModelFromProfile(
     weatherRiskWeight = 0.3;
   }
 
+  const drivingFatigueFactors = mapDrivingFatigueToFactors(keywords.drivingFatiguePreferences);
+
   return {
     profileId,
     maxDailyAscentM,
@@ -428,6 +469,9 @@ export function createHumanCapabilityModelFromProfile(
     // Phase 1: 标记为旧方式，置信度低
     assessmentSource: 'USER_SELF_REPORT',
     confidenceLevel: 'LOW',
+    ...(drivingFatigueFactors && {
+      metadata: { drivingFatigueFactors },
+    }),
   };
 }
 

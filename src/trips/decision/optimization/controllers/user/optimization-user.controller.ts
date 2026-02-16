@@ -5,7 +5,7 @@
  * 提供用户可直接调用的优化功能
  */
 
-import { Controller, Post, Get, Body, Param, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Req, Logger, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Public } from '../../../../../auth/decorators/public.decorator';
 import { IsNotEmpty, IsOptional, ValidateNested } from 'class-validator';
@@ -20,6 +20,7 @@ import { GuardianDebateService } from '../../learning/guardian-debate.service';
 import { NegotiationResult, DEFAULT_NEGOTIATION_CONFIG, DebateArgument } from '../../learning/guardian-persona.interface';
 import { WeightLearnerService, FeedbackRecord } from '../../learning/weight-learner.service';
 import { WeightPersistenceService } from '../../learning/weight-persistence.service';
+import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
 import { RoutePlanDraft, WorldModelContext } from '../../../shared/world-model.types';
 
 // ========== Request DTOs ==========
@@ -53,34 +54,36 @@ export class ComparePlansDto {
 }
 
 export class OptimizePlanDto {
-  /** 待优化的计划 */
-  plan!: RoutePlanDraft;
-  /** 世界模型上下文 */
-  world!: WorldModelContext;
+  /** 可选：仅传 tripId 时由后端加载 plan + world */
+  @IsOptional()
+  tripId?: string;
+  /** 待优化的计划（与 tripId 二选一） */
+  plan?: RoutePlanDraft;
+  /** 世界模型上下文（与 tripId 二选一） */
+  world?: WorldModelContext;
 }
 
 export class ComputeRiskDto {
+  /** 可选：仅传 tripId 时由后端加载 plan + world */
+  @IsOptional()
+  tripId?: string;
   /** 待评估的计划 */
-  @IsNotEmpty({ message: 'plan 字段不能为空' })
-  plan!: RoutePlanDraft;
-  
+  plan?: RoutePlanDraft;
   /** 世界模型上下文 */
-  @IsNotEmpty({ message: 'world 字段不能为空' })
-  world!: WorldModelContext;
-  
+  world?: WorldModelContext;
   /** 蒙特卡洛采样数量（默认 1000） */
   @IsOptional()
   sampleSize?: number;
 }
 
 export class NegotiatePlanDto {
+  /** 可选：仅传 tripId 时由后端加载 plan + world */
+  @IsOptional()
+  tripId?: string;
   /** 待协商的计划 */
-  @IsNotEmpty({ message: 'plan 字段不能为空' })
-  plan!: RoutePlanDraft;
-  
+  plan?: RoutePlanDraft;
   /** 世界模型上下文 */
-  @IsNotEmpty({ message: 'world 字段不能为空' })
-  world!: WorldModelContext;
+  world?: WorldModelContext;
 }
 
 export class RecordFeedbackDto {
@@ -154,6 +157,14 @@ export interface NegotiationSummary {
     reject: number;
     abstain: number;
   };
+  /** TDFPM 疲劳预测（按天） */
+  fatiguePrediction?: Array<{
+    dayIndex: number;
+    fatigueScore: number;
+    riskLevel: string;
+    recommendation: string;
+    confidence?: number;
+  }>;
 }
 
 export interface UserWeightsResponse {
@@ -179,6 +190,7 @@ export class OptimizationUserController {
     private readonly guardianDebate: GuardianDebateService,
     private readonly weightLearner: WeightLearnerService,
     private readonly weightPersistence: WeightPersistenceService,
+    private readonly negotiateLoader: NegotiateContextLoaderService,
   ) {}
 
   // ========== 计划评估 ==========
@@ -233,32 +245,35 @@ export class OptimizationUserController {
   })
   @ApiResponse({ status: 200, description: '返回比较结果' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
-  async comparePlans(@Body() dto: ComparePlansDto): Promise<CompareResult> {
-    // 参数验证
-    if (!dto.planA) {
+  async comparePlans(@Body() dto: ComparePlansDto, @Req() req: { body?: Record<string, unknown> }): Promise<CompareResult> {
+    const raw = req?.body ?? {};
+    // 兼容驼峰 planA/planB/world 与蛇形 plan_a/plan_b
+    const planA = (dto?.planA ?? raw.plan_a) as RoutePlanDraft | undefined;
+    const planB = (dto?.planB ?? raw.plan_b) as RoutePlanDraft | undefined;
+    const world = (dto?.world ?? raw.world) as WorldModelContext | undefined;
+    if (!planA) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
-        message: 'planA 字段不能为空',
+        message: 'planA / plan_a 字段不能为空',
       });
     }
-    if (!dto.planB) {
+    if (!planB) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
-        message: 'planB 字段不能为空',
+        message: 'planB / plan_b 字段不能为空',
       });
     }
-    if (!dto.world) {
+    if (!world) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
         message: 'world 字段不能为空',
       });
     }
-    
-    const evalA = this.objectiveFunction.evaluate(dto.planA, dto.world);
-    const evalB = this.objectiveFunction.evaluate(dto.planB, dto.world);
+    const evalA = this.objectiveFunction.evaluate(planA, world);
+    const evalB = this.objectiveFunction.evaluate(planB, world);
     
     const diff = evalA.totalUtility - evalB.totalUtility;
     
@@ -300,9 +315,33 @@ export class OptimizationUserController {
     description: '执行完整优化流程（约束检查 → 排程优化 → 稳定性修复）'
   })
   @ApiResponse({ status: 200, description: '返回优化后的计划' })
-  async optimizePlan(@Body() dto: OptimizePlanDto): Promise<StrategyOrchestrationResultV2> {
+  async optimizePlan(@Body() dto: OptimizePlanDto, @Req() req: { body?: Record<string, unknown> }): Promise<StrategyOrchestrationResultV2> {
     this.logger.log('[User] 一键优化计划');
-    return this.orchestratorV2.run(dto.world, dto.plan);
+    let plan: RoutePlanDraft;
+    let world: WorldModelContext;
+    // 兼容 tripId（驼峰）与 trip_id（蛇形），前端可能传其一
+    const raw = req?.body ?? {};
+    const tripIdStr = (typeof dto?.tripId === 'string' ? dto.tripId : typeof raw.trip_id === 'string' ? raw.trip_id : '').trim();
+    if (dto?.plan != null && dto?.world != null) {
+      plan = dto.plan;
+      world = dto.world;
+    } else if (tripIdStr) {
+      const loaded = await this.negotiateLoader.loadPlanAndWorld(tripIdStr);
+      plan = loaded.plan;
+      world = loaded.world;
+    } else {
+      const bodyKeys = raw && typeof raw === 'object' ? Object.keys(raw).join(', ') : '(空)';
+      this.logger.warn(`[User] 一键优化缺少参数，请求体 keys: ${bodyKeys}`);
+      throw new BadRequestException({
+        message: '请提供 plan + world，或仅传 tripId / trip_id 由后端加载',
+        hint: '请求体: { "plan": { "tripId": "...", "days": [...] }, "world": { ... } } 或 { "tripId": "行程UUID" } 或 { "trip_id": "行程UUID" }',
+      });
+    }
+    const result = await this.orchestratorV2.run(world, plan);
+    if (result.summary && Number.isNaN(result.summary.finalUtility)) {
+      result.summary.finalUtility = 0;
+    }
+    return result;
   }
 
   // ========== 风险评估 ==========
@@ -314,27 +353,40 @@ export class OptimizationUserController {
   })
   @ApiResponse({ status: 200, description: '返回风险评估结果' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
-  async assessRisk(@Body() dto: ComputeRiskDto): Promise<ExpectedUtilityResult> {
+  async assessRisk(@Body() dto: ComputeRiskDto, @Req() req: { body?: Record<string, unknown> }): Promise<ExpectedUtilityResult> {
     this.logger.log('[User] 风险评估');
-    
-    // 参数验证
-    if (!dto.plan) {
+    const raw = req?.body ?? {};
+    // 兼容多种前端可能传的 trip 标识：tripId, trip_id, id
+    const tripIdStr = (
+      (typeof dto?.tripId === 'string' ? dto.tripId : null) ??
+      (typeof raw.tripId === 'string' ? raw.tripId : null) ??
+      (typeof raw.trip_id === 'string' ? raw.trip_id : null) ??
+      (typeof raw.id === 'string' ? raw.id : null) ??
+      ''
+    ).trim();
+    let plan: RoutePlanDraft;
+    let world: WorldModelContext;
+    if (dto?.plan != null && dto?.world != null) {
+      plan = dto.plan;
+      world = dto.world;
+    } else if (raw.plan != null && raw.world != null) {
+      plan = raw.plan as RoutePlanDraft;
+      world = raw.world as WorldModelContext;
+    } else if (tripIdStr) {
+      const loaded = await this.negotiateLoader.loadPlanAndWorld(tripIdStr);
+      plan = loaded.plan;
+      world = loaded.world;
+    } else {
+      const bodyKeys = raw && typeof raw === 'object' ? Object.keys(raw).join(', ') : '(空)';
+      this.logger.warn(`[User] 风险评估缺少参数，请求体 keys: ${bodyKeys}`);
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
-        message: 'plan 字段不能为空',
-        hint: '请求格式: { "plan": { "tripId": "...", "days": [...] }, "world": { "physical": {...}, "human": {...}, "routeDirection": {...} }, "sampleSize": 1000 }',
+        message: '请提供 plan + world，或仅传 tripId / trip_id / id 由后端加载',
+        hint: '请求格式: { "plan": { "tripId": "...", "days": [...] }, "world": { ... }, "sampleSize": 1000 } 或 { "tripId": "行程UUID" }',
       });
     }
-    if (!dto.world) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: 'Bad Request',
-        message: 'world 字段不能为空',
-        hint: '请提供 WorldModelContext: { "physical": {...}, "human": {...}, "routeDirection": {...} }',
-      });
-    }
-    if (!dto.world.physical) {
+    if (!world.physical) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -342,7 +394,7 @@ export class OptimizationUserController {
         hint: 'WorldModelContext.physical 需要包含天气、地形等物理现实数据',
       });
     }
-    if (!dto.world.human) {
+    if (!world.human) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -350,7 +402,7 @@ export class OptimizationUserController {
         hint: 'WorldModelContext.human 需要包含用户体能、疲劳等人体状态数据',
       });
     }
-    if (!dto.world.routeDirection) {
+    if (!world.routeDirection) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -358,15 +410,27 @@ export class OptimizationUserController {
         hint: 'WorldModelContext.routeDirection 需要包含路线哲学和方向信息',
       });
     }
-    
-    const probabilisticContext = this.probabilisticWorldModel.fromDeterministicModel(dto.world);
-    
-    return this.expectedUtility.computeExpectedUtility(
-      dto.plan,
+    const sampleSize = (dto?.sampleSize ?? raw.sampleSize) ?? 1000;
+    const probabilisticContext = this.probabilisticWorldModel.fromDeterministicModel(world);
+    const result = this.expectedUtility.computeExpectedUtility(
+      plan,
       probabilisticContext,
       this.objectiveFunction.weights,
-      { sampleSize: dto.sampleSize || 1000 },
+      { sampleSize: Number(sampleSize) || 1000 },
     );
+    const safe = (n: number) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
+    return {
+      ...result,
+      expectedUtility: safe(result.expectedUtility),
+      feasibilityProbability: safe(result.feasibilityProbability),
+      confidenceInterval: {
+        ...result.confidenceInterval,
+        lower: safe(result.confidenceInterval?.lower),
+        upper: safe(result.confidenceInterval?.upper),
+        level: result.confidenceInterval?.level ?? 0.95,
+      },
+      downsideRisk: safe(result.riskMetrics?.downRiskProbability),
+    };
   }
 
   // ========== 协商结果 ==========
@@ -378,47 +442,83 @@ export class OptimizationUserController {
   })
   @ApiResponse({ status: 200, description: '返回协商摘要' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
-  async getNegotiationSummary(@Body() dto: NegotiatePlanDto): Promise<NegotiationSummary> {
-    // 参数验证
-    if (!dto.plan) {
-      throw new BadRequestException('请求错误: plan 字段不能为空。请提供 { plan: RoutePlanDraft, world: WorldModelContext }');
+  async getNegotiationSummary(@Body() dto: NegotiatePlanDto, @Req() req: { body?: Record<string, unknown> }): Promise<NegotiationSummary> {
+    const raw = req?.body ?? {};
+    const tripIdStr = (
+      (typeof dto?.tripId === 'string' ? dto.tripId : null) ??
+      (typeof raw.tripId === 'string' ? raw.tripId : null) ??
+      (typeof raw.trip_id === 'string' ? raw.trip_id : null) ??
+      (typeof raw.id === 'string' ? raw.id : null) ??
+      ''
+    ).trim();
+    let plan: RoutePlanDraft;
+    let world: WorldModelContext;
+    if (dto?.plan != null && dto?.world != null) {
+      plan = dto.plan;
+      world = dto.world;
+    } else if (raw.plan != null && raw.world != null) {
+      plan = raw.plan as RoutePlanDraft;
+      world = raw.world as WorldModelContext;
+    } else if (tripIdStr) {
+      const loaded = await this.negotiateLoader.loadPlanAndWorld(tripIdStr);
+      plan = loaded.plan;
+      world = loaded.world;
+    } else {
+      const bodyKeys = raw && typeof raw === 'object' ? Object.keys(raw).join(', ') : '(空)';
+      this.logger.warn(`[User] 协商缺少参数，请求体 keys: ${bodyKeys}`);
+      throw new BadRequestException({
+        message: '请提供 plan + world，或仅传 tripId / trip_id / id 由后端加载',
+        hint: '请求体: { "plan": { "tripId": "...", "days": [...] }, "world": { ... } } 或 { "tripId": "行程UUID" }',
+      });
     }
-    if (!dto.plan.tripId) {
+    if (!plan.tripId) {
       throw new BadRequestException('请求错误: plan.tripId 不能为空。plan 对象必须包含 tripId 字段');
     }
-    if (!dto.world) {
-      throw new BadRequestException('请求错误: world 字段不能为空。请提供有效的 WorldModelContext 对象');
-    }
-    
-    const result = await this.guardianDebate.negotiate(dto.plan, dto.world, DEFAULT_NEGOTIATION_CONFIG);
+    const result = await this.guardianDebate.negotiate(plan, world, DEFAULT_NEGOTIATION_CONFIG);
     
     const abuEval = result.evaluations.find(e => e.persona === 'ABU');
     const dreEval = result.evaluations.find(e => e.persona === 'DRE');
     const neptuneEval = result.evaluations.find(e => e.persona === 'NEPTUNE');
     
+    // 合并各角色关注点与建议，去重，用户可读（无 [ABU] 等前缀），用于展示「具体问题」
+    const seen = new Set<string>();
     const criticalConcerns: string[] = [];
     for (const evaluation of result.evaluations) {
-      const concerns = evaluation.primaryConcerns.slice(0, 2);
-      criticalConcerns.push(...concerns.map(c => `[${evaluation.persona}] ${c}`));
+      const items = [
+        ...(evaluation.primaryConcerns || []),
+        ...(evaluation.suggestedAdjustments || []),
+      ];
+      for (const text of items) {
+        const t = String(text).trim();
+        if (t && !seen.has(t)) {
+          seen.add(t);
+          criticalConcerns.push(t);
+        }
+      }
     }
+
+    const decision = result.decision === 'CONDITIONAL_APPROVE' ? 'APPROVE_WITH_CONDITIONS'
+      : result.decision === 'REQUIRES_HUMAN' ? 'NEEDS_HUMAN'
+      : result.decision;
     
     return {
-      decision: result.decision,
-      consensusLevel: result.consensusLevel,
-      keyTradeoffs: result.keyTradeoffs,
-      conditions: result.conditions,
-      humanDecisionPoints: result.humanDecisionPoints,
+      decision,
+      consensusLevel: result.consensusLevel ?? 0,
+      keyTradeoffs: Array.isArray(result.keyTradeoffs) ? result.keyTradeoffs : [],
+      conditions: Array.isArray(result.conditions) ? result.conditions : [],
+      humanDecisionPoints: Array.isArray(result.humanDecisionPoints) ? result.humanDecisionPoints : [],
       evaluationSummary: {
-        abuUtility: abuEval?.utility || 0,
-        dreUtility: dreEval?.utility || 0,
-        neptuneUtility: neptuneEval?.utility || 0,
+        abuUtility: abuEval?.utility ?? 0,
+        dreUtility: dreEval?.utility ?? 0,
+        neptuneUtility: neptuneEval?.utility ?? 0,
         criticalConcerns,
       },
       votingResult: {
-        approve: result.votes.filter(v => v.vote === 'APPROVE').length,
-        reject: result.votes.filter(v => v.vote === 'REJECT').length,
-        abstain: result.votes.filter(v => v.vote === 'ABSTAIN').length,
+        approve: Math.max(0, result.votes.filter(v => v.vote === 'APPROVE').length),
+        reject: Math.max(0, result.votes.filter(v => v.vote === 'REJECT').length),
+        abstain: Math.max(0, result.votes.filter(v => v.vote === 'ABSTAIN').length),
       },
+      fatiguePrediction: result.fatiguePrediction,
     };
   }
 
@@ -432,9 +532,9 @@ export class OptimizationUserController {
   })
   @ApiResponse({ status: 200, description: '返回协商摘要' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
-  async testGetNegotiationSummary(@Body() dto: NegotiatePlanDto): Promise<NegotiationSummary> {
+  async testGetNegotiationSummary(@Body() dto: NegotiatePlanDto, @Req() req: { body?: Record<string, unknown> }): Promise<NegotiationSummary> {
     this.logger.log('[Test] 测试协商端点');
-    return this.getNegotiationSummary(dto);
+    return this.getNegotiationSummary(dto, req);
   }
 
   @Public()

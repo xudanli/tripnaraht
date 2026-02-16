@@ -153,10 +153,13 @@ export class FatigueCalculatorService {
     pace: PaceConstraints,
     context?: FatigueContext
   ): number {
-    // 1. 基础比值计算
-    const ascentRatio = day.totalAscentM / pace.maxDailyAscentM;
-    const distRatio = day.totalDistanceKm / pace.maxDailyDistanceKm;
-    const hoursRatio = day.estMovingHours / pace.maxMovingHours;
+    // 1. 基础比值计算（避免除零）
+    const maxAscent = pace.maxDailyAscentM > 0 ? pace.maxDailyAscentM : 1;
+    const maxDist = pace.maxDailyDistanceKm > 0 ? pace.maxDailyDistanceKm : 1;
+    const maxHours = pace.maxMovingHours > 0 ? pace.maxMovingHours : 1;
+    const ascentRatio = day.totalAscentM / maxAscent;
+    const distRatio = day.totalDistanceKm / maxDist;
+    const hoursRatio = day.estMovingHours / maxHours;
 
     // 取最大值作为基础疲劳指数
     let baseFatigue = Math.max(ascentRatio, distRatio, hoursRatio);

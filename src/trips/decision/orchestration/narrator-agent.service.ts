@@ -15,7 +15,7 @@ import { TripNaraCoreToolOutput } from '../tools/tripnara-core-tool.interface';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
-import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage } from '../../../agent/context-engine/utils/langgraph-context-integration';
+import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage, mapPhaseToTripTaskPhase } from '../../../agent/context-engine/utils/langgraph-context-integration';
 
 @Injectable()
 export class NarratorAgentService implements INarratorAgent {
@@ -88,6 +88,8 @@ export class NarratorAgentService implements INarratorAgent {
         await writeBackFromNode(state, this.contextEngineer, {
           tripRunId: state.metadata.tripRunId as string,
           attemptNumber: (state.metadata.attemptNumber as number) || 1,
+          tripId: state.metadata?.tripId as string | undefined,
+          phase: mapPhaseToTripTaskPhase(state.planningPhase || 'FINALIZING'),
           scratchpad: {
             planOutline: `Narrator 生成解释完成: ${coreToolOutput.allowed ? 'ALLOWED' : 'REJECTED'}`,
           },

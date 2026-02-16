@@ -138,7 +138,8 @@ export class StrategyOrchestratorV2Service {
     
     // 0. 评估原始计划
     const originalEvaluation = this.objectiveFunction.evaluate(plan, world);
-    this.logger.debug(`[OrchestratorV2] 原始效用: ${originalEvaluation.totalUtility.toFixed(3)}`);
+    const rawUtil = originalEvaluation.totalUtility;
+    this.logger.debug(`[OrchestratorV2] 原始效用: ${typeof rawUtil === 'number' && !Number.isNaN(rawUtil) ? rawUtil.toFixed(3) : 'NaN(已兜底)'}`);
 
     // 1. Abu 约束评估
     this.logger.debug('[OrchestratorV2] 执行 Abu 约束优化...');
@@ -202,7 +203,8 @@ export class StrategyOrchestratorV2Service {
       
       if (dreResult.needsAdjustment && config.autoApplyOptimization) {
         currentPlan = dreResult.recommendedCandidate.plan;
-        this.logger.debug(`[OrchestratorV2] Dre 优化效用提升: ${dreResult.summary.improvementPct.toFixed(1)}%`);
+        const pct = dreResult.summary?.improvementPct;
+        this.logger.debug(`[OrchestratorV2] Dre 优化效用提升: ${typeof pct === 'number' && !Number.isNaN(pct) ? pct.toFixed(1) : 0}%`);
       }
     } else {
       // 如果不启用 Dre，创建一个空结果
@@ -271,17 +273,19 @@ export class StrategyOrchestratorV2Service {
     finalEvaluation: ObjectiveEvaluationResult,
     abuResult: AbuOptimizationResponse
   ): StrategyOrchestrationResultV2['summary'] {
-    const improvement = finalEvaluation.totalUtility - originalEvaluation.totalUtility;
-    
+    const orig = typeof originalEvaluation.totalUtility === 'number' && !Number.isNaN(originalEvaluation.totalUtility)
+      ? originalEvaluation.totalUtility : 0;
+    const final_ = typeof finalEvaluation.totalUtility === 'number' && !Number.isNaN(finalEvaluation.totalUtility)
+      ? finalEvaluation.totalUtility : 0;
+    const improvement = final_ - orig;
+    const improvementPct = orig > 0 ? (improvement / orig) * 100 : 0;
     return {
-      originalUtility: originalEvaluation.totalUtility,
-      finalUtility: finalEvaluation.totalUtility,
-      improvementPct: originalEvaluation.totalUtility > 0 
-        ? (improvement / originalEvaluation.totalUtility) * 100 
-        : 0,
-      safetyScore: finalEvaluation.breakdown.safetyScore,
-      constraintSatisfaction: abuResult.evaluation.overallSatisfaction,
-      confidence: abuResult.evaluation.confidence,
+      originalUtility: orig,
+      finalUtility: final_,
+      improvementPct: Number.isNaN(improvementPct) ? 0 : improvementPct,
+      safetyScore: finalEvaluation.breakdown?.safetyScore ?? 0,
+      constraintSatisfaction: abuResult.evaluation?.overallSatisfaction ?? 0,
+      confidence: abuResult.evaluation?.confidence ?? 0,
     };
   }
 

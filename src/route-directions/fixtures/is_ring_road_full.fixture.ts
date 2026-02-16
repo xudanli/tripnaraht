@@ -117,6 +117,7 @@ export const IS_RING_ROAD_FULL: RouteDirection = {
   },
 
   metadata: {
+    route_basic_info: { road_type: '柏油路为主（环岛公路）' },
     routeType: 'ROAD_TRIP',
     totalDistanceKm: 1332,
     estimatedDuration: 10,

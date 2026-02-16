@@ -128,6 +128,7 @@ export const IS_HIGHLANDS: RouteDirection = {
   },
 
   metadata: {
+    route_basic_info: { road_type: 'F路（砂石路、河流穿越、极端地形）' },
     routeType: 'ROAD_TRIP',
     totalDistanceKm: 500,
     estimatedDuration: 5,

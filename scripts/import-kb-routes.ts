@@ -70,7 +70,12 @@ async function main() {
           SELECT id FROM "RouteDirection" WHERE uuid = ${routeUuid}
         `;
         
-        const metadata = JSON.stringify({ knowledgeBase: data, source: file });
+        const metadata = JSON.stringify({
+          knowledgeBase: data,
+          source: file,
+          route_basic_info: data.route_basic_info ?? undefined,
+          roadType: data.route_basic_info?.road_type ?? undefined,
+        });
         
         if (existing.length > 0) {
           await prisma.$executeRaw`

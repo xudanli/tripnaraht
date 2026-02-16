@@ -1,10 +1,10 @@
 // src/agent/dto/route-and-run.dto.ts
-import { IsString, IsOptional, IsObject, IsBoolean, IsNumber, ValidateNested, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
-import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay } from '../interfaces/trip-plan.interface';
+import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep } from '../interfaces/trip-plan.interface';
 import { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 import { ErrorType } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
@@ -145,10 +145,12 @@ export class RouteAndRunRequestDto {
   request_id!: string;
 
   @ApiProperty({ 
-    description: '用户 ID',
+    description: '用户 ID（战略收敛：全局强制字段，不允许空；匿名用户请传 "anonymous"）',
     example: 'user-123',
   })
+  @IsNotEmpty({ message: 'user_id 是必需字段，缺失将导致个性化能力不可用。匿名用户请传 "anonymous"' })
   @IsString()
+  @MinLength(1, { message: 'user_id 不能为空字符串' })
   user_id!: string;
 
   @ApiPropertyOptional({ 
@@ -222,7 +224,7 @@ export class RouteAndRunResponseDto {
   })
   ui_state?: {
     /** 当前状态机步骤（10步完整流程） */
-    phase: 'INTAKE' | 'RESEARCH' | 'GATE_EVAL' | 'PLAN_GEN' | 'VERIFY' | 'COMPLIANCE' | 'REPAIR' | 'NARRATE' | 'FEEDBACK' | 'DONE' | 'FAILED' | 'TIMEOUT' | 'HALLUCINATION_DETECTION';
+    phase: OrchestrationStep;
     /** UI 状态（映射自状态机步骤） */
     ui_status: 'thinking' | 'browsing' | 'verifying' | 'repairing' | 'awaiting_consent' | 'awaiting_confirmation' | 'done' | 'failed';
     /** 进度百分比（0-100） */

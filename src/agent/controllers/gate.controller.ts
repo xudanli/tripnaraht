@@ -54,12 +54,13 @@ export class GateController {
       // 校验 Agent 输出
       const validation = validateGateResult(result);
       if (!validation.success) {
+        const issues = validation.error.issues;
         this.logger.error(
           `[${request.request_id}] Invalid GateResult from agent`,
-          validation.error.errors
+          issues
         );
         throw new InternalServerErrorException(
-          'Agent produced invalid output: ' + validation.error.errors
+          'Agent produced invalid output: ' + issues
             .map((e) => `${e.path.join('.')}: ${e.message}`)
             .join('; ')
         );

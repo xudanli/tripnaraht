@@ -65,6 +65,7 @@ import { FileExtractorDirectModule } from './mcp/file-extractor-direct.module';
 import { McpOAuthModule } from './mcp/mcp-oauth.module';
 import { McpCapabilityModule } from './mcp/mcp-capability.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { DecisionKernelModule } from './decision/decision-kernel.module';
 
 @Module({
   imports: [
@@ -123,6 +124,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     RagModule, // 恢复：RAG 模块（用于增强对话）
     AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
     ContextEngineModule, // Context Engine 模块（上下文编译器）
+    DecisionKernelModule, // Decision Kernel 模块（Phase 2: DSO + Kernel 入口）
     // SkillsModule, // Skills 模块（能力颗粒层）
     UploadModule, // 图片上传模块（阿里云 OSS）
     ChainOfWorkModule, // Chain-of-Work 引擎模块（步骤草案显性化）

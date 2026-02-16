@@ -663,12 +663,16 @@ export class TripsService {
       };
     }
 
-    if (dto.travelers !== undefined) {
-      // 更新旅行者信息（存储在 metadata 中）
-      const existingMetadata = (existingTrip.metadata as any) || {};
+    // 合并 metadata：支持 travelers 与任意 metadata 字段（如 teamId）
+    const hasTravelers = dto.travelers !== undefined;
+    const dtoWithMeta = dto as { metadata?: Record<string, unknown> };
+    const hasMeta = dtoWithMeta.metadata !== undefined && typeof dtoWithMeta.metadata === 'object';
+    if (hasTravelers || hasMeta) {
+      const existing = (existingTrip.metadata as Record<string, unknown>) || {};
       updateData.metadata = {
-        ...existingMetadata,
-        travelers: dto.travelers,
+        ...existing,
+        ...(hasTravelers ? { travelers: dto.travelers } : {}),
+        ...(hasMeta ? dtoWithMeta.metadata : {}),
       };
     }
 

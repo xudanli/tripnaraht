@@ -14,12 +14,14 @@ export type DecisionAction =
   | 'ALLOW'
   | 'REJECT'
   | 'ADJUST'
-  | 'REPLACE';
+  | 'REPLACE'
+  | 'EVALUATE'   // Phase 3: ExpectedUtility 评估
+  | 'MODIFY';   // Phase 3: 用户修改方案
 
 /**
  * 决策人格
  */
-export type DecisionPersona = 'ABU' | 'DR_DRE' | 'NEPTUNE';
+export type DecisionPersona = 'ABU' | 'DR_DRE' | 'NEPTUNE' | 'EXPECTED_UTILITY' | 'USER_ACTION';
 
 /**
  * 决策来源
@@ -30,7 +32,7 @@ export type DecisionPersona = 'ABU' | 'DR_DRE' | 'NEPTUNE';
  * - PHILOSOPHY: 基于路线哲学（核心体验、不可协商规则）
  * - HEURISTIC: 基于启发式规则（经验、默认值）
  */
-export type DecisionSource = "PHYSICAL" | "HUMAN" | "PHILOSOPHY" | "HEURISTIC";
+export type DecisionSource = "PHYSICAL" | "HUMAN" | "PHILOSOPHY" | "HEURISTIC" | "UTILITY" | "USER";
 
 /**
  * 决策阶段
@@ -44,7 +46,9 @@ export type DecisionStage =
   | 'PACE_ADJUST'        // Dr.Dre 节奏调整
   | 'SPATIAL_REPAIR'     // Neptune 空间修复
   | 'READINESS'          // 旅行准备度检查
-  | 'FINALIZE';          // 最终确认
+  | 'FINALIZE'           // 最终确认
+  | 'PLAN_SCORE'         // Phase 3: ExpectedUtility 评分
+  | 'PLAN_EDIT';         // Phase 3: 用户编辑方案
 
 /**
  * 决策日志条目

@@ -10,8 +10,9 @@
  * const weather = await service.getWeatherByLocation(64.1466, -21.9426);
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
 
 /**
@@ -134,10 +135,10 @@ export class IcelandWeatherRealtimeService {
   private readonly CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 小时
   private readonly REQUEST_TIMEOUT_MS = 10000; // 10 秒超时
   private readonly httpClient: AxiosInstance;
-  private readonly prisma: PrismaClient;
+  private readonly prisma: PrismaService | PrismaClient;
 
-  constructor(prisma?: PrismaClient) {
-    this.prisma = prisma || new PrismaClient();
+  constructor(@Optional() prisma?: PrismaService | PrismaClient) {
+    this.prisma = prisma ?? new PrismaClient();
     this.httpClient = axios.create({
       timeout: this.REQUEST_TIMEOUT_MS,
       validateStatus: () => true,
@@ -244,9 +245,10 @@ export class IcelandWeatherRealtimeService {
   async getNearestWeatherStation(lat: number, lng: number): Promise<WeatherForecast | null> {
     // 简化版：返回最近的预定义区域
     let minDistance = Infinity;
-    let nearestRegion = ICELAND_REGIONS.reykjavik;
+    type Region = (typeof ICELAND_REGIONS)[keyof typeof ICELAND_REGIONS];
+    let nearestRegion: Region = ICELAND_REGIONS.reykjavik;
 
-    for (const region of Object.values(ICELAND_REGIONS)) {
+    for (const region of Object.values(ICELAND_REGIONS) as Region[]) {
       const distance = this.calculateDistance(lat, lng, region.lat, region.lng);
       if (distance < minDistance) {
         minDistance = distance;
@@ -303,8 +305,8 @@ export class IcelandWeatherRealtimeService {
           visibility: forecast.visibility || null,
           conditions: forecast.conditions || null,
           weatherCode: forecast.weatherCode || null,
-          warnings: forecast.warnings,
-          hazards: forecast.hazards,
+          warnings: forecast.warnings as unknown as Prisma.InputJsonValue,
+          hazards: forecast.hazards as unknown as Prisma.InputJsonValue,
           dataSource: forecast.dataSource,
           apiResponse: forecast.apiResponse || null,
           confidence: forecast.confidence,

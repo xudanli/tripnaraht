@@ -106,7 +106,7 @@ export class TeamCollaborationController {
   @ApiOperation({ summary: '获取团队信息' })
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   async getTeam(@Param('teamId') teamId: string): Promise<TeamConfig | null> {
-    const team = this.teamService.getTeam(teamId);
+    const team = await this.teamService.getTeam(teamId);
     if (!team) {
       return null;
     }
@@ -153,7 +153,7 @@ export class TeamCollaborationController {
   @ApiOperation({ summary: '计算团队综合权重' })
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   async getTeamWeights(@Param('teamId') teamId: string): Promise<ObjectiveFunctionWeights | null> {
-    const team = this.teamService.getTeam(teamId);
+    const team = await this.teamService.getTeam(teamId);
     if (!team) {
       return null;
     }
@@ -164,7 +164,7 @@ export class TeamCollaborationController {
   @ApiOperation({ summary: '计算团队综合约束（最弱链）' })
   @ApiParam({ name: 'teamId', description: '团队 ID' })
   async getTeamConstraints(@Param('teamId') teamId: string): Promise<TeamMember['specialConstraints'] | null> {
-    const team = this.teamService.getTeam(teamId);
+    const team = await this.teamService.getTeam(teamId);
     if (!team) {
       return null;
     }

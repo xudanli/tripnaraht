@@ -1,6 +1,27 @@
 // src/common/utils/opening-hours.util.ts
 import { DateTime } from 'luxon';
 
+/** 无法解析或未提供营业时间时返回的占位文案，用于避免 [object Object] 且便于业务层判断 */
+export const OPENING_HOURS_UNKNOWN = '营业时间未知';
+
+function toHoursString(value: unknown): string {
+  if (value == null) return OPENING_HOURS_UNKNOWN;
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0];
+    return typeof first === 'string' ? first : toHoursString(first);
+  }
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    const open = o.open ?? o.start;
+    const close = o.close ?? o.end;
+    if (typeof open === 'string' && typeof close === 'string') return `${open}-${close}`;
+    if (typeof open === 'string') return open;
+    return OPENING_HOURS_UNKNOWN;
+  }
+  return OPENING_HOURS_UNKNOWN;
+}
+
 export class OpeningHoursUtil {
   /**
    * 核心方法：检查店铺当前是否营业
@@ -92,31 +113,14 @@ export class OpeningHoursUtil {
     const dayKey = now.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
     const hours = metadata.openingHours[dayKey];
-    if (hours) {
-      // 确保返回字符串类型
-      if (typeof hours === 'string') {
-        return hours;
-      } else if (Array.isArray(hours) && hours.length > 0) {
-        return typeof hours[0] === 'string' ? hours[0] : String(hours[0]);
-      } else {
-        return String(hours);
-      }
-    }
+    if (hours) return toHoursString(hours);
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = now.weekday >= 6; // 6 = Saturday, 7 = Sunday
     const fallbackHours = isWeekend 
       ? (metadata.openingHours.weekend || 'Closed')
       : (metadata.openingHours.weekday || 'Closed');
-    
-    // 确保返回字符串类型
-    if (typeof fallbackHours === 'string') {
-      return fallbackHours;
-    } else if (Array.isArray(fallbackHours) && fallbackHours.length > 0) {
-      return typeof fallbackHours[0] === 'string' ? fallbackHours[0] : String(fallbackHours[0]);
-    } else {
-      return String(fallbackHours);
-    }
+    return toHoursString(fallbackHours);
   }
 
   /**
@@ -193,33 +197,14 @@ export class OpeningHoursUtil {
     const dayKey = checkDateTime.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
     const hours = metadata.openingHours[dayKey];
-    if (hours) {
-      // 确保返回字符串类型
-      if (typeof hours === 'string') {
-        return hours;
-      } else if (Array.isArray(hours) && hours.length > 0) {
-        // 如果是数组，取第一个元素
-        return typeof hours[0] === 'string' ? hours[0] : String(hours[0]);
-      } else {
-        // 其他类型，转换为字符串
-        return String(hours);
-      }
-    }
+    if (hours) return toHoursString(hours);
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = checkDateTime.weekday >= 6; // 6 = Saturday, 7 = Sunday
     const fallbackHours = isWeekend 
       ? (metadata.openingHours.weekend || 'Closed')
       : (metadata.openingHours.weekday || 'Closed');
-    
-    // 确保返回字符串类型
-    if (typeof fallbackHours === 'string') {
-      return fallbackHours;
-    } else if (Array.isArray(fallbackHours) && fallbackHours.length > 0) {
-      return typeof fallbackHours[0] === 'string' ? fallbackHours[0] : String(fallbackHours[0]);
-    } else {
-      return String(fallbackHours);
-    }
+    return toHoursString(fallbackHours);
   }
 }
 

@@ -10,6 +10,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import { ObjectiveFunctionService } from '../objective-function.service';
 import { ObjectiveFunctionWeights, DEFAULT_OBJECTIVE_WEIGHTS } from '../objective-function.interface';
 import { WorldModelContext, RoutePlanDraft } from '../../shared/world-model.types';
@@ -35,90 +36,217 @@ const DEFAULT_TEAM_CONSTRAINTS = {
 @Injectable()
 export class TeamCollaborationService implements ITeamCollaborationService {
   private readonly logger = new Logger(TeamCollaborationService.name);
-  
-  // 团队存储（生产环境应使用数据库）
+
+  /** 内存缓存，减少重复读库 */
   private teams: Map<string, TeamConfig> = new Map();
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly objectiveFunction: ObjectiveFunctionService,
   ) {}
 
   /**
-   * 创建团队
+   * 创建团队（持久化到数据库）
    */
   async createTeam(
     config: Omit<TeamConfig, 'teamId' | 'createdAt' | 'updatedAt'>
   ): Promise<TeamConfig> {
     const teamId = `team_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const now = new Date().toISOString();
-    
+    const now = new Date();
+    const teamConstraints = config.teamConstraints ?? DEFAULT_TEAM_CONSTRAINTS;
+
     const team: TeamConfig = {
       ...config,
       teamId,
-      createdAt: now,
-      updatedAt: now,
+      teamConstraints: teamConstraints as TeamConfig['teamConstraints'],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
     };
-    
-    // 验证并规范化成员权重
+
     this.normalizeDecisionWeights(team);
-    
+
+    const name = team.name ?? '未命名团队';
+    const type = (team.type ?? 'CUSTOM') as TeamConfig['type'];
+    const decisionWeightMode = (team.decisionWeightMode ?? 'EQUAL') as DecisionWeightMode;
+
+    await this.prisma.collaborationTeam.create({
+      data: {
+        id: teamId,
+        name,
+        type,
+        decisionWeightMode,
+        teamConstraints: team.teamConstraints as object,
+        members: {
+          create: team.members.map((m) => ({
+            userId: m.userId,
+            displayName: m.displayName,
+            role: m.role,
+            decisionWeight: m.decisionWeight,
+            fitnessLevel: m.fitnessLevel,
+            experienceLevel: m.experienceLevel,
+            personalWeights: m.personalWeights as object,
+            specialConstraints: (m.specialConstraints ?? undefined) as object | undefined,
+          })),
+        },
+      },
+      include: { members: true },
+    });
+
     this.teams.set(teamId, team);
-    this.logger.log(`[TeamCollaboration] 创建团队: ${team.name} (${teamId})`);
-    
+    this.logger.log(`[TeamCollaboration] 创建团队并已存储: ${team.name} (${teamId})`);
     return team;
   }
 
   /**
-   * 添加成员
+   * 添加成员（持久化）
    */
   async addMember(
     teamId: string,
     member: Omit<TeamMember, 'joinedAt'>
   ): Promise<TeamConfig> {
-    const team = this.teams.get(teamId);
+    const team = await this.getTeam(teamId);
     if (!team) {
       throw new Error(`团队不存在: ${teamId}`);
     }
-    
+
+    const userId = member.userId ?? '';
+    if (!userId || String(userId).trim() === '') {
+      throw new Error('添加成员缺少 userId');
+    }
+    const displayName = member.displayName ?? member.userId ?? '成员';
+    const role = member.role ?? 'MEMBER';
+    const decisionWeight = member.decisionWeight ?? 1;
+    const fitnessLevel = member.fitnessLevel ?? 'INTERMEDIATE';
+    const experienceLevel = member.experienceLevel ?? 'SOME_EXPERIENCE';
+    const personalWeights = (member.personalWeights ?? DEFAULT_OBJECTIVE_WEIGHTS) as object;
+
+    await this.prisma.collaborationTeamMember.create({
+      data: {
+        teamId,
+        userId: String(userId).trim(),
+        displayName: String(displayName),
+        role: String(role),
+        decisionWeight: Number(decisionWeight),
+        fitnessLevel: String(fitnessLevel),
+        experienceLevel: String(experienceLevel),
+        personalWeights,
+        specialConstraints: (member.specialConstraints ?? undefined) as object | undefined,
+      },
+    });
+
     const newMember: TeamMember = {
-      ...member,
+      userId: String(userId).trim(),
+      displayName: String(displayName),
+      role: role as TeamMember['role'],
+      decisionWeight: Number(decisionWeight),
+      fitnessLevel: fitnessLevel as TeamMember['fitnessLevel'],
+      experienceLevel: experienceLevel as TeamMember['experienceLevel'],
+      personalWeights: (member.personalWeights ?? DEFAULT_OBJECTIVE_WEIGHTS) as ObjectiveFunctionWeights,
+      specialConstraints: member.specialConstraints,
       joinedAt: new Date().toISOString(),
     };
-    
     team.members.push(newMember);
     team.updatedAt = new Date().toISOString();
-    
-    // 重新规范化权重
     this.normalizeDecisionWeights(team);
-    
-    this.logger.log(`[TeamCollaboration] 添加成员: ${member.displayName} -> ${team.name}`);
-    
+
+    await this.prisma.collaborationTeam.update({
+      where: { id: teamId },
+      data: { updatedAt: new Date() },
+    });
+    this.teams.set(teamId, team);
+
+    this.logger.log(`[TeamCollaboration] 添加成员: ${displayName} -> ${team.name}`);
     return team;
   }
 
   /**
-   * 移除成员
+   * 移除成员（持久化）
    */
   async removeMember(teamId: string, userId: string): Promise<TeamConfig> {
-    const team = this.teams.get(teamId);
+    const team = await this.getTeam(teamId);
     if (!team) {
       throw new Error(`团队不存在: ${teamId}`);
     }
-    
-    team.members = team.members.filter(m => m.userId !== userId);
+
+    await this.prisma.collaborationTeamMember.deleteMany({
+      where: { teamId, userId },
+    });
+    await this.prisma.collaborationTeam.update({
+      where: { id: teamId },
+      data: { updatedAt: new Date() },
+    });
+
+    team.members = team.members.filter((m) => m.userId !== userId);
     team.updatedAt = new Date().toISOString();
-    
-    // 重新规范化权重
     this.normalizeDecisionWeights(team);
-    
+    this.teams.set(teamId, team);
     return team;
   }
 
   /**
-   * 获取团队
+   * 获取团队（先缓存后数据库）
    */
-  getTeam(teamId: string): TeamConfig | undefined {
-    return this.teams.get(teamId);
+  async getTeam(teamId: string): Promise<TeamConfig | undefined> {
+    const cached = this.teams.get(teamId);
+    if (cached) return cached;
+
+    const row = await this.prisma.collaborationTeam.findUnique({
+      where: { id: teamId },
+      include: { members: true },
+    });
+    if (!row) return undefined;
+
+    const team = this.dbToTeamConfig(row);
+    this.teams.set(teamId, team);
+    return team;
+  }
+
+  /** 将数据库记录转为 TeamConfig */
+  private dbToTeamConfig(row: {
+    id: string;
+    name: string;
+    type: string;
+    decisionWeightMode: string;
+    teamConstraints: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+    members: Array<{
+      userId: string;
+      displayName: string;
+      role: string;
+      decisionWeight: number;
+      fitnessLevel: string;
+      experienceLevel: string;
+      personalWeights: unknown;
+      specialConstraints: unknown;
+      joinedAt: Date;
+    }>;
+  }): TeamConfig {
+    const teamConstraints =
+      typeof row.teamConstraints === 'object' && row.teamConstraints !== null
+        ? (row.teamConstraints as TeamConfig['teamConstraints'])
+        : DEFAULT_TEAM_CONSTRAINTS as TeamConfig['teamConstraints'];
+
+    return {
+      teamId: row.id,
+      name: row.name,
+      type: row.type as TeamConfig['type'],
+      decisionWeightMode: row.decisionWeightMode as DecisionWeightMode,
+      teamConstraints,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      members: row.members.map((m) => ({
+        userId: m.userId,
+        displayName: m.displayName,
+        role: m.role as TeamMember['role'],
+        decisionWeight: m.decisionWeight,
+        fitnessLevel: m.fitnessLevel as TeamMember['fitnessLevel'],
+        experienceLevel: m.experienceLevel as TeamMember['experienceLevel'],
+        personalWeights: (m.personalWeights ?? DEFAULT_OBJECTIVE_WEIGHTS) as ObjectiveFunctionWeights,
+        specialConstraints: (m.specialConstraints as TeamMember['specialConstraints']) ?? undefined,
+        joinedAt: m.joinedAt.toISOString(),
+      })),
+    };
   }
 
   /**
@@ -220,12 +348,12 @@ export class TeamCollaborationService implements ITeamCollaborationService {
     plan: RoutePlanDraft,
     world: WorldModelContext,
   ): Promise<TeamNegotiationResult> {
-    const team = this.teams.get(teamId);
+    const team = await this.getTeam(teamId);
     if (!team) {
       throw new Error(`团队不存在: ${teamId}`);
     }
     
-    this.logger.log(`[TeamCollaboration] 开始团队协商: ${team.name}`);
+    this.logger.log(`[TeamCollaboration] 开始团队协商: ${team.name ?? teamId}`);
     
     // 1. 各成员独立评估
     const memberEvaluations = this.evaluateForAllMembers(team, plan, world);
@@ -504,14 +632,13 @@ export class TeamCollaborationService implements ITeamCollaborationService {
   private checkMemberConstraints(member: TeamMember, plan: RoutePlanDraft): string[] {
     const violations: string[] = [];
     const constraints = member.specialConstraints;
-    
+    const segments = Array.isArray(plan?.segments) ? plan.segments : [];
     if (!constraints) return violations;
-    
-    // 检查日爬升
     if (constraints.maxDailyAscentM) {
-      for (const segment of plan.segments) {
-        if (segment.ascentM > constraints.maxDailyAscentM) {
-          violations.push(`日爬升 ${segment.ascentM}m 超过 ${member.displayName} 的限制 ${constraints.maxDailyAscentM}m`);
+      for (const segment of segments) {
+        const ascent = segment?.ascentM ?? 0;
+        if (ascent > constraints.maxDailyAscentM) {
+          violations.push(`日爬升 ${ascent}m 超过 ${member.displayName} 的限制 ${constraints.maxDailyAscentM}m`);
         }
       }
     }
@@ -526,13 +653,13 @@ export class TeamCollaborationService implements ITeamCollaborationService {
    */
   private assessFatigueRisk(member: TeamMember, plan: RoutePlanDraft): number {
     const capabilityScore = this.getCapabilityScore(member);
-    // 能力越低，疲劳风险越高
     const baseRisk = 1 - capabilityScore;
-    
-    // 根据计划强度调整
-    const avgAscent = plan.segments.reduce((sum, s) => sum + s.ascentM, 0) / Math.max(plan.segments.length, 1);
-    const intensityFactor = Math.min(avgAscent / 800, 1); // 800m 作为基准
-    
+    const segments = Array.isArray(plan?.segments) ? plan.segments : [];
+    const avgAscent =
+      segments.length === 0
+        ? 0
+        : segments.reduce((sum, s) => sum + (s?.ascentM ?? 0), 0) / segments.length;
+    const intensityFactor = Math.min(avgAscent / 800, 1);
     return Math.min(baseRisk + intensityFactor * 0.3, 1);
   }
 

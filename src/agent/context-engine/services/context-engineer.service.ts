@@ -32,6 +32,15 @@ import { ContextPrometheusMetricsService } from './context-prometheus-metrics.se
 import { ContextLearningService } from './context-learning.service';
 import { UserProfileService } from './user-profile.service';
 import { CompressionLearningService } from './compression-learning.service';
+import { DynamicContextSelectorService } from './dynamic-context-selector.service';
+import { TripTaskMemoryService } from './trip-task-memory.service';
+import { ExecutionHistoryCompressorService } from './execution-history-compressor.service';
+import { MemoryService } from '../../../agent/memory/services/memory.service';
+import { DEFAULT_TOKEN_BUDGET } from '../constants/token-budget.constants';
+import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../../trips/decision/optimization/objective-function.interface';
+import {
+  DEFAULT_DAILY_UTILITY_WEIGHTS,
+} from '../../../trips/decision/optimization/daily-utility';
 
 @Injectable()
 export class ContextEngineerService {
@@ -92,6 +101,10 @@ export class ContextEngineerService {
     @Optional() private readonly learningService?: ContextLearningService,
     @Optional() private readonly userProfileService?: UserProfileService,
     @Optional() private readonly compressionLearningService?: CompressionLearningService,
+    @Optional() private readonly dynamicContextSelector?: DynamicContextSelectorService,
+    @Optional() private readonly tripTaskMemory?: TripTaskMemoryService,
+    @Optional() private readonly executionHistoryCompressor?: ExecutionHistoryCompressorService,
+    @Optional() private readonly memoryService?: MemoryService,
   ) {
     // ContextEngineerService 可以通过 SkillsRegistryService 获取其他 skills
     // 如果 RedisService 可用，使用持久化缓存；否则使用内存缓存
@@ -122,10 +135,13 @@ export class ContextEngineerService {
       `Building context package: tripId=${options.tripId}, phase=${options.phase}, agent=${options.agent}`,
     );
 
+    // 0. Context Orchestrator: 动态上下文选择 + 60% Token 预算
+    let resolvedOptions = this.resolveOptionsWithDynamicContext(options);
+
     // 重置 skills 调用追踪
     this.skillsCalledInBuild = [];
     let cacheHit = false;
-    const cacheKey = this.buildCacheKey(options);
+    const cacheKey = this.buildCacheKey(resolvedOptions);
 
     // Phase 1 优化: In-Flight Request Deduplication
     // 检查是否有正在进行的相同构建任务
@@ -146,14 +162,14 @@ export class ContextEngineerService {
             // 记录指标
             if (this.metricsService) {
               await this.metricsService.recordMetrics(memoryCached.package, {
-                tripId: options.tripId,
-                phase: options.phase,
-                agent: options.agent,
-                buildTimeMs: Date.now() - buildStartTime,
-                cacheHit: true,
-                cacheLevel: 'L1',
-                skillsCalled: [],
-                userQuery: options.userQuery,
+            tripId: resolvedOptions.tripId,
+            phase: resolvedOptions.phase,
+            agent: resolvedOptions.agent,
+            buildTimeMs: Date.now() - buildStartTime,
+            cacheHit: true,
+            cacheLevel: 'L1',
+            skillsCalled: [],
+            userQuery: resolvedOptions.userQuery,
               });
             }
 
@@ -189,22 +205,22 @@ export class ContextEngineerService {
             // 记录指标
             if (this.metricsService) {
               await this.metricsService.recordMetrics(cached, {
-                tripId: options.tripId,
-                phase: options.phase,
-                agent: options.agent,
+                tripId: resolvedOptions.tripId,
+                phase: resolvedOptions.phase,
+                agent: resolvedOptions.agent,
                 buildTimeMs: Date.now() - buildStartTime,
                 cacheHit: true,
                 cacheLevel: 'L2',
                 skillsCalled: [],
-                userQuery: options.userQuery,
+                userQuery: resolvedOptions.userQuery,
               });
             }
 
             // Phase 1.4 优化: 记录 Prometheus 指标
             if (this.prometheusMetrics) {
               this.prometheusMetrics.recordBuild(
-                options.phase,
-                options.agent,
+                resolvedOptions.phase,
+                resolvedOptions.agent,
                 Date.now() - buildStartTime,
                 true,
                 'L2',
@@ -224,7 +240,7 @@ export class ContextEngineerService {
     }
 
     // Phase 2.2 优化: 应用学习结果（如果可用）
-    const enhancedOptions = await this.applyLearningResults(options);
+    const enhancedOptions = await this.applyLearningResults(resolvedOptions);
 
     // 2. 创建新的构建任务（In-Flight Deduplication）
     const buildPromise = this.doBuild(enhancedOptions, cacheKey);
@@ -253,11 +269,11 @@ export class ContextEngineerService {
     cacheKey: string,
   ): Promise<ContextPackage> {
     const buildStartTime = Date.now();
-    const tokenBudget = options.tokenBudget || 3600; // 默认 60% of 6k
+    const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     const blocks: ContextBlock[] = [];
 
     try {
-      // 1. 获取世界模型摘要
+      // 1. 获取世界模型摘要（含 ExpectedUtility 块，decision 阶段）
       if (options.tripId) {
         const worldBlocks = await this.buildWorldModelBlocks(
           options.tripId,
@@ -309,11 +325,18 @@ export class ContextEngineerService {
         blocks.push(...decisionBlocks);
       }
 
-      // 5. 获取约束和用户画像
+      // 4.5 Context Orchestrator: 读取 TripTaskMemory，注入 Execution Context 摘要
+      if (options.tripId && this.tripTaskMemory) {
+        const taskBlocks = await this.buildTripTaskMemoryBlocks(options.tripId);
+        blocks.push(...taskBlocks);
+      }
+
+      // 5. 获取约束和用户画像（含 MemoryService UserTravelProfile）
       if (options.tripId) {
         const constraintBlocks = await this.buildConstraintBlocks(
           options.tripId,
           options.phase,
+          options.userId,
         );
         blocks.push(...constraintBlocks);
       }
@@ -327,11 +350,31 @@ export class ContextEngineerService {
         blocks.push(...apiDocBlocks);
       }
 
+      // 6.5 Context Orchestrator: 统一调度 tools.select，结果写入 Execution Context
+      const includeToolSelection = options.includeToolSelection !== false;
+      let toolAllowlist: Array<{ name: string; reason: string; priority: number }> = [];
+      if (includeToolSelection && this.skillsRegistry) {
+        const { toolBlocks, toolList } = await this.buildToolSelectionBlocks(options);
+        blocks.push(...toolBlocks);
+        toolAllowlist = toolList;
+      }
+
+      // 6.6 Context Orchestrator: 执行历史结构化压缩
+      let blocksToSort = blocks;
+      if (this.executionHistoryCompressor) {
+        blocksToSort = this.executionHistoryCompressor.compress(blocks);
+      }
+
       // 7. 计算 Token 并排序
-      const totalTokens = this.estimateTokens(blocks);
+      const totalTokens = this.estimateTokens(blocksToSort);
       
-      // 8. 按优先级排序并裁剪到预算内
-      const sortedBlocks = this.sortAndTrimBlocks(blocks, tokenBudget, options.includePrivate || false);
+      // 8. 按优先级排序并裁剪到预算内（应用 excludeTopics 过滤）
+      const sortedBlocks = this.sortAndTrimBlocks(
+        blocksToSort,
+        tokenBudget,
+        options.includePrivate || false,
+        options.excludeTopics,
+      );
 
       // 9. Phase 3.3 优化: 如果需要，进行智能压缩（使用学习到的压缩策略）
       let finalBlocks = sortedBlocks;
@@ -366,6 +409,7 @@ export class ContextEngineerService {
           finalBlocksCount: finalBlocks.length,
           buildTimeMs: Date.now() - buildStartTime,
           skillsCalled: [...this.skillsCalledInBuild],
+          toolAllowlist: toolAllowlist,
         },
       };
 
@@ -419,12 +463,39 @@ export class ContextEngineerService {
       }
 
       return contextPackage;
-
-      return contextPackage;
     } catch (error) {
       this.logger.error(`Failed to build context package: ${error}`, error instanceof Error ? error.stack : undefined);
       throw error;
     }
+  }
+
+  /**
+   * Context Orchestrator: 解析选项（动态上下文选择 + 60% Token 预算）
+   */
+  private resolveOptionsWithDynamicContext(options: ContextPackageOptions): ContextPackageOptions {
+    let result = { ...options };
+
+    // 1. 动态上下文选择（当未显式提供 requiredTopics 或 excludeTopics 时）
+    if (this.dynamicContextSelector && options.userQuery) {
+      const dynamic = this.dynamicContextSelector.select(
+        options.userQuery,
+        options.phase,
+        options.agent,
+      );
+      if (!result.requiredTopics?.length) {
+        result = { ...result, requiredTopics: dynamic.requiredTopics };
+      }
+      if (!result.excludeTopics?.length) {
+        result = { ...result, excludeTopics: dynamic.excludeBlockTypes };
+      }
+    }
+
+    // 2. 60% Token 预算（当未显式指定时）
+    if (result.tokenBudget == null) {
+      result = { ...result, tokenBudget: DEFAULT_TOKEN_BUDGET };
+    }
+
+    return result;
   }
 
   /**
@@ -692,6 +763,29 @@ export class ContextEngineerService {
               timestamp: new Date().toISOString(),
             },
           });
+
+          // Context Orchestrator: decision 阶段注入 ExpectedUtility 决策公式摘要
+          // Phase 2 v1: DailyUtility 新公式 + 三项惩罚
+          if (phase?.toLowerCase() === 'decision') {
+            const dw = DEFAULT_DAILY_UTILITY_WEIGHTS;
+            const ow = DEFAULT_OBJECTIVE_WEIGHTS;
+            blocks.push({
+              key: 'EXPECTED_UTILITY',
+              type: 'WORLD_MODEL',
+              text:
+                `ExpectedUtility(plan) = Σ_day Utility(day) - RiskPenalty - FatiguePenalty - UncertaintyPenalty. ` +
+                `Utility(day) = w_exp×ExperienceScore + w_cost×CostEfficiency + w_time×TimeEfficiency + w_comfort×ComfortScore + w_safety×SafetyScore. ` +
+                `DailyUtility权重: w_exp=${dw.w_exp}, w_cost=${dw.w_cost}, w_time=${dw.w_time}, w_comfort=${dw.w_comfort}, w_safety=${dw.w_safety}. ` +
+                `(Legacy 8维: safety=${ow.safety}, experience=${ow.experienceDensity})`,
+              priority: 85,
+              visibility: 'public',
+              provenance: {
+                source: 'computed',
+                identifier: 'DailyUtilityCalculatorService',
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
         }
       }
     } catch (error) {
@@ -775,6 +869,117 @@ export class ContextEngineerService {
       // 不抛出错误，返回空数组，继续执行
     }
 
+    return blocks;
+  }
+
+  /**
+   * Context Orchestrator: 统一调度 tools.select，构建工具选择块
+   * 结果作为 SYSTEM_CAPABILITY 块注入，并写入 metadata.toolAllowlist
+   */
+  private async buildToolSelectionBlocks(
+    options: ContextPackageOptions,
+  ): Promise<{
+    toolBlocks: ContextBlock[];
+    toolList: Array<{ name: string; reason: string; priority: number }>;
+  }> {
+    const toolBlocks: ContextBlock[] = [];
+    const toolList: Array<{ name: string; reason: string; priority: number }> = [];
+
+    if (!this.skillsRegistry) {
+      return { toolBlocks, toolList };
+    }
+
+    const toolsSelectSkill = this.skillsRegistry.getSkill('tools.select');
+    if (!toolsSelectSkill) {
+      this.logger.debug('tools.select skill 未注册，跳过工具选择');
+      return { toolBlocks, toolList };
+    }
+
+    try {
+      this.skillsCalledInBuild.push('tools.select');
+      const result = await toolsSelectSkill.execute({
+        userQuery: options.userQuery,
+        planningPhase: options.phase,
+        currentState: {
+          tripId: options.tripId,
+          phase: options.phase,
+          agent: options.agent,
+        },
+      });
+
+      if (result.tools?.length > 0) {
+        for (const t of result.tools) {
+          toolList.push({ name: t.name, reason: t.reason, priority: t.priority });
+        }
+
+        // 精简文本：只列出工具名与推荐原因，控制 Token
+        const toolSummary = result.tools
+          .map(
+            (t) =>
+              `- ${t.name}: ${t.description?.substring(0, 60) || t.reason} (${t.reason})`,
+          )
+          .join('\n');
+
+        toolBlocks.push({
+          key: 'TOOL_SELECTION',
+          type: 'SYSTEM_CAPABILITY',
+          text: `推荐工具 (${result.totalTools}个):\n${toolSummary}`,
+          priority: 75,
+          visibility: 'public',
+          provenance: {
+            source: 'skill',
+            identifier: 'tools.select',
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(`tools.select 调用失败: ${error?.message}`);
+    }
+
+    return { toolBlocks, toolList };
+  }
+
+  /**
+   * Context Orchestrator: 构建 TripTaskMemory 块（Execution Context 摘要）
+   */
+  private async buildTripTaskMemoryBlocks(tripId: string): Promise<ContextBlock[]> {
+    const blocks: ContextBlock[] = [];
+    if (!this.tripTaskMemory) {
+      this.logger.warn(
+        `[Phase0 降级] tripId=${tripId} 但 TripTaskMemoryService 未注入，任务记忆不可用。影响：无法注入当前阶段/决策摘要到 Context`,
+      );
+      return blocks;
+    }
+
+    try {
+      const memory = await this.tripTaskMemory.get(tripId);
+      if (!memory) return blocks;
+
+      const text = [
+        `当前阶段: ${memory.currentPhase}`,
+        memory.selectedRouteDirectionId && `已选路线: ${memory.selectedRouteDirectionId}`,
+        memory.decisionLogSummary && `决策摘要: ${memory.decisionLogSummary.substring(0, 300)}`,
+        memory.artifactsRefs?.length && `artifacts: ${memory.artifactsRefs.length} 个`,
+      ]
+        .filter(Boolean)
+        .join('; ');
+
+      blocks.push({
+        key: 'TRIP_TASK_MEMORY',
+        type: 'DECISION_LOG',
+        text,
+        priority: 70,
+        visibility: 'public',
+        provenance: {
+          source: 'memory',
+          identifier: 'TripTaskMemory',
+          timestamp: memory.lastUpdated,
+        },
+      });
+    } catch (error: any) {
+      this.logger.warn(`读取 TripTaskMemory 失败: ${error?.message}`);
+    }
     return blocks;
   }
 
@@ -900,10 +1105,12 @@ export class ContextEngineerService {
 
   /**
    * 构建约束块
+   * @param userId 用户 ID（可选，用于从 MemoryService 读取 UserTravelProfile）
    */
   private async buildConstraintBlocks(
     tripId: string,
     phase: string,
+    userId?: string,
   ): Promise<ContextBlock[]> {
     const blocks: ContextBlock[] = [];
 
@@ -967,24 +1174,45 @@ export class ContextEngineerService {
           });
         }
 
-        // 如果有用户画像信息
-        if (trip.metadata) {
-          const metadata = trip.metadata as any;
-          if (metadata.userProfile) {
-            blocks.push({
-              key: 'USER_PROFILE',
-              type: 'USER_PROFILE',
-              text: `用户画像: ${JSON.stringify(metadata.userProfile).substring(0, 200)}`,
-              priority: 60,
-              visibility: 'public',
-              provenance: {
-                source: 'db',
-                identifier: `trip:${tripId}:userProfile`,
-                timestamp: new Date().toISOString(),
-              },
-              data: metadata.userProfile,
-            });
+        // 用户画像：合并 Trip metadata + MemoryService UserTravelProfile
+        let userProfileData: Record<string, unknown> | undefined = (trip.metadata as any)?.userProfile;
+        if (userId && !this.memoryService) {
+          this.logger.warn(
+            `[Phase0 降级] userId=${userId} 已提供但 MemoryService 未注入，UserTravelProfile 个性化不可用。影响：buildConstraintBlocks 无法从 Memory 读取用户偏好`,
+          );
+        }
+        if (userId && this.memoryService) {
+          try {
+            const memoryProfile = await this.memoryService.getUserTravelProfile(userId);
+            if (memoryProfile) {
+              userProfileData = {
+                ...memoryProfile,
+                ...userProfileData,
+                companions: memoryProfile.companions ?? userProfileData?.companions,
+                deviceInfo: memoryProfile.deviceInfo ?? userProfileData?.deviceInfo,
+                timeWindow: memoryProfile.timeWindow ?? userProfileData?.timeWindow,
+                emotionalState: memoryProfile.emotionalState ?? userProfileData?.emotionalState,
+              } as Record<string, unknown>;
+            }
+          } catch (e: any) {
+            this.logger.debug(`读取 MemoryService UserTravelProfile 失败: ${e?.message}`);
           }
+        }
+        if (userProfileData && Object.keys(userProfileData).length > 0) {
+          const profileText = JSON.stringify(userProfileData);
+          blocks.push({
+            key: 'USER_PROFILE',
+            type: 'USER_PROFILE',
+            text: `用户画像: ${profileText.substring(0, 300)}`,
+            priority: 60,
+            visibility: 'public',
+            provenance: {
+              source: userId && this.memoryService ? 'memory' : 'db',
+              identifier: userId ? `memory:user:${userId}` : `trip:${tripId}:userProfile`,
+              timestamp: new Date().toISOString(),
+            },
+            data: userProfileData,
+          });
         }
       }
     } catch (error) {
@@ -1367,11 +1595,18 @@ Context 管理:
     blocks: ContextBlock[],
     tokenBudget: number,
     includePrivate: boolean,
+    excludeBlockTypes?: string[],
   ): ContextBlock[] {
     // 过滤可见性
     let filteredBlocks = includePrivate
       ? blocks
       : blocks.filter((b) => b.visibility === 'public');
+
+    // Context Orchestrator: 排除指定类型的块
+    if (excludeBlockTypes?.length) {
+      const excludeSet = new Set(excludeBlockTypes);
+      filteredBlocks = filteredBlocks.filter((b) => !excludeSet.has(b.type));
+    }
 
     // 按优先级排序
     filteredBlocks.sort((a, b) => b.priority - a.priority);
@@ -1638,6 +1873,7 @@ Context 管理:
    * 写入回写（Write Back）
    * 
    * 每个节点最后调用：保存 scratchpad、decisionLogDelta、artifactsRefs
+   * 同时更新 TripTaskMemory（当提供 tripId 或可从 tripRunId 解析时）
    */
   async writeBack(
     tripRunId: string,
@@ -1651,8 +1887,28 @@ Context 管理:
     },
     decisionLogDelta?: any[],
     artifactsRefs?: Record<string, string>,
+    options?: { tripId?: string; phase?: import('../interfaces/trip-task-memory.interface').TripTaskPhase },
   ): Promise<void> {
     try {
+      // Context Orchestrator: 更新 TripTaskMemory
+      if (this.tripTaskMemory) {
+        let tripId = options?.tripId;
+        if (!tripId && this.prisma) {
+          const tripRun = await this.prisma.tripRun.findUnique({
+            where: { id: tripRunId },
+            select: { tripId: true },
+          });
+          tripId = tripRun?.tripId ?? undefined;
+        }
+        if (tripId) {
+          await this.tripTaskMemory.updateFromWriteBack(tripId, {
+            scratchpad,
+            artifactsRefs,
+            ...(options?.phase && { phase: options.phase }),
+          });
+        }
+      }
+
       if (this.prisma) {
         // 更新或创建 TripAttempt
         await this.prisma.tripAttempt.upsert({

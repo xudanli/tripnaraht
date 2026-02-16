@@ -658,6 +658,40 @@ model TripShare {
   @@index([tripId])
 }
 
+/// 决策/优化模块：团队协同（多用户协商计划）
+model CollaborationTeam {
+  id                  String                   @id
+  name                String
+  type                String                   @db.VarChar(20)
+  decisionWeightMode  String                   @map("decision_weight_mode") @db.VarChar(20)
+  teamConstraints     Json                    @map("team_constraints")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  members             CollaborationTeamMember[]
+
+  @@index([type])
+}
+
+/// 决策/优化模块：团队成员
+model CollaborationTeamMember {
+  id                  String             @id @default(uuid()) @db.Uuid
+  teamId              String             @map("team_id")
+  userId              String             @map("user_id") @db.VarChar(255)
+  displayName         String             @map("display_name") @db.VarChar(255)
+  role                String             @db.VarChar(20)
+  decisionWeight      Float              @map("decision_weight")
+  fitnessLevel        String             @map("fitness_level") @db.VarChar(20)
+  experienceLevel     String             @map("experience_level") @db.VarChar(20)
+  personalWeights     Json               @map("personal_weights")
+  specialConstraints  Json?              @map("special_constraints")
+  joinedAt            DateTime           @default(now()) @map("joined_at")
+  team                CollaborationTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
 model TripTemplate {
   id          String   @id
   name        String
@@ -1201,6 +1235,7 @@ model UserTravelProfile {
   preferredRouteTypes String[] @map("preferred_route_types")
   confidence          Float    @default(0.5)
   source              String   @default("inferred") @db.VarChar(20)
+  extendedProfile     Json?    @map("extended_profile")  // companions, deviceInfo, timeWindow, emotionalState
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([userId])
@@ -1255,6 +1290,100 @@ model TripOutcomeFeedback {
   @@index([userId])
   @@index([tripId])
   @@map("trip_outcome_feedback")
+}
+
+// ============================================================================
+// Phase 2 Data Flywheel - 数据飞轮四层结构
+// 参考: docs/PHASE2_DATA_FLYWHEEL_DESIGN.md
+// ============================================================================
+
+/// Layer 1: 决策记录 - 记录系统当时如何思考，为学习提供输入
+model FlywheelDecisionLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  tripId          String   @map("trip_id") @db.Uuid
+  decisionLogId   String?  @map("decision_log_id") @db.Uuid
+  contextSnapshot Json     @map("context_snapshot")
+  utilityWeights  Json     @map("utility_weights")
+  candidatePlans  Json?    @map("candidate_plans")
+  selectedPlan    Json?    @map("selected_plan")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([createdAt(sort: Desc)])
+  @@map("flywheel_decision_logs")
+}
+
+/// Layer 2: 用户行为 - 用户如何修改，行为=偏好信号
+model FlywheelBehaviorLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  tripId         String   @map("trip_id") @db.Uuid
+  planId         String?  @map("plan_id")
+  eventType      String   @map("event_type") @db.VarChar(50)
+  beforeState    Json?    @map("before_state")
+  afterState     Json?    @map("after_state")
+  deltaDistance  Float?   @map("delta_distance")
+  deltaElevation Float?   @map("delta_elevation")
+  deltaTime      Int?     @map("delta_time")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([eventType])
+  @@index([createdAt(sort: Desc)])
+  @@map("flywheel_behavior_logs")
+}
+
+/// Layer 3: 结果捕捉 - 旅行结束后的真实数据
+model FlywheelOutcome {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tripId             String   @map("trip_id") @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  subjectiveFeedback Json?    @map("subjective_feedback")
+  objectiveExecution Json?    @map("objective_execution")
+  failureSignals     Json?    @map("failure_signals")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@unique([tripId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("flywheel_outcomes")
+}
+
+/// Layer 4: 参数版本 - 学习结果版本化，支持回滚
+model FlywheelParameterSet {
+  id                  String   @id @default(uuid()) @db.Uuid
+  version             String   @db.VarChar(50)
+  scope               String   @db.VarChar(20)
+  scopeId             String?  @map("scope_id")
+  trainingDataRange   Json     @map("training_data_range")
+  metrics             Json?
+  weights             Json
+  isActive            Boolean  @default(false) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@unique([version, scope, scopeId])
+  @@index([scope, scopeId])
+  @@index([isActive])
+  @@map("flywheel_parameter_sets")
+}
+
+/// 用户与参数版本绑定（当前生效）
+model FlywheelUserParameterBinding {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  parameterSetId   String   @map("parameter_set_id") @db.Uuid
+  parameterVersion String   @map("parameter_version") @db.VarChar(50)
+  effectiveFrom    DateTime @map("effective_from")
+  effectiveTo      DateTime? @map("effective_to")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([userId])
+  @@index([parameterSetId])
+  @@map("flywheel_user_parameter_bindings")
 }
 
 model TripRun {

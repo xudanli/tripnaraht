@@ -2,7 +2,7 @@
 import { Injectable, BadRequestException, NotFoundException, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItineraryItemDto, ItemType } from './dto/create-itinerary-item.dto';
-import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
+import { OpeningHoursUtil, OPENING_HOURS_UNKNOWN } from '../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
@@ -117,18 +117,22 @@ export class ItineraryItemsService {
           );
         }
 
-        // 检查开始时间是否在营业时间内
-        const isOpenAtStart = OpeningHoursUtil.isOpenAt(hoursStr, start, timezone);
+        // 营业时间未知时不做严格校验，允许创建（前端可展示提示）
+        if (hoursStr === OPENING_HOURS_UNKNOWN) {
+          // 跳过 isOpenAt 校验，不抛错
+        } else {
+          // 检查开始时间是否在营业时间内
+          const isOpenAtStart = OpeningHoursUtil.isOpenAt(hoursStr, start, timezone);
 
-        if (!isOpenAtStart) {
-          // 格式化时间显示
-          const startTimeStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('HH:mm');
-          const dateStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('yyyy-MM-dd cccc', { locale: 'zh-CN' });
-          
-          throw new BadRequestException(
-            `时间冲突警告：${place.nameEN || place.nameCN} 在 ${dateStr} ${startTimeStr} 可能未营业 (营业时间: ${hoursStr})`
-          );
-  }
+          if (!isOpenAtStart) {
+            // 格式化时间显示
+            const startTimeStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('HH:mm');
+            const dateStr = DateTime.fromJSDate(start).setZone(timezone).toFormat('yyyy-MM-dd cccc', { locale: 'zh-CN' });
+            throw new BadRequestException(
+              `时间冲突警告：${place.nameEN || place.nameCN} 在 ${dateStr} ${startTimeStr} 可能未营业 (营业时间: ${hoursStr})`
+            );
+          }
+        }
 
         // 可选：检查结束时间是否也在营业时间内（更严格的校验）
         // 这里只检查开始时间，因为有些活动可能跨营业时间（如：10:00-12:00，但店铺 11:30 关门）
@@ -749,7 +753,7 @@ export class ItineraryItemsService {
         const timezone = meta?.timezone || 'Atlantic/Reykjavik';
         const hoursStr = OpeningHoursUtil.getHoursForDate(meta, start, timezone);
 
-        if (hoursStr !== 'Closed' && hoursStr) {
+        if (hoursStr !== 'Closed' && hoursStr && hoursStr !== OPENING_HOURS_UNKNOWN) {
           const isOpen = OpeningHoursUtil.isOpenAt(hoursStr, start, timezone);
           if (!isOpen) {
             throw new BadRequestException(

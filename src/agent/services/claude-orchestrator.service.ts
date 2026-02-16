@@ -1,6 +1,7 @@
 // src/agent/services/claude-orchestrator.service.ts
 
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
@@ -68,6 +69,13 @@ import { WeatherAgentService } from './domain-agents/weather-agent.service';
 import { CostAgentService } from './domain-agents/cost-agent.service';
 import { ExperienceAgentService } from './domain-agents/experience-agent.service';
 import { DecisionOutput, DecisionNode } from '../interfaces/decision-node.interface';
+import { TokenStatsService } from './token-stats.service';
+// Phase 2.1: Decision Kernel
+import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
+import { TdfpmCalculatorService } from '../../trips/decision/services/tdfpm-calculator.service';
+import type { TdfpmDayContext } from '../../trips/decision/services/tdfpm-calculator.service';
+import { orchestratorStateToDecisionStatePatch } from '../../decision/kernel/orchestrator-state-mapper';
+import { DecisionState } from '../../decision/kernel/decision-state.types';
 // 护城河扩展：预测性世界模型
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
@@ -109,17 +117,54 @@ export class ClaudeOrchestratorService {
     // 护城河扩展：预测性世界模型
     @Optional() private readonly weatherPredictionService?: WeatherPredictionService,
     @Optional() private readonly failureRiskPredictionService?: FailureRiskPredictionService,
+    // Phase 2.1: Decision Kernel（DSO 中心化）
+    @Optional() private readonly decisionKernel?: DecisionKernelService,
+    @Optional() private readonly configService?: ConfigService,
+    // P0: Token 按阶段打点（AI 科学家评审要求）
+    @Optional() private readonly tokenStatsService?: TokenStatsService,
+    // P1: TDFPM → fatigueTrend（按日计算疲劳，写入 DSO tripState.fatigue）
+    @Optional() private readonly tdfpmCalculator?: TdfpmCalculatorService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
     this.logger.log(`[ClaudeOrchestratorService] Sub-Agents: Planner=${!!this.plannerAgent}, Gatekeeper=${!!this.gatekeeperAgent}, Compliance=${!!this.complianceAgent}, LocalInsight=${!!this.localInsightAgent}, CoreDecision=${!!this.coreDecisionAgent}, Narrator=${!!this.narratorAgent}`);
     this.logger.log(`[ClaudeOrchestratorService] Domain Agents: Geo=${!!this.geoAgent}, Weather=${!!this.weatherAgent}, Cost=${!!this.costAgent}, Experience=${!!this.experienceAgent}`);
+    this.logger.log(`[ClaudeOrchestratorService] Decision Kernel (DSO): ${!!this.decisionKernel}, enabled=${this.isKernelEnabled()}`);
     if (this.skillsRegistry) {
       const skillsCount = this.skillsRegistry.getAllSkills().length;
       this.logger.log(`[ClaudeOrchestratorService] 可用 Skills 数量: ${skillsCount}`);
     } else {
       this.logger.warn(`[ClaudeOrchestratorService] ⚠️ SkillsRegistry 未注入！`);
     }
+  }
+
+  /**
+   * Phase 2.4: Decision Kernel 是否启用（用于灰度/回滚）
+   * DECISION_KERNEL_ENABLED=false 时可回滚到无 DSO 路径
+   */
+  private isKernelEnabled(): boolean {
+    const v = this.configService?.get<string>('DECISION_KERNEL_ENABLED') ?? process.env.DECISION_KERNEL_ENABLED ?? 'true';
+    return v !== 'false' && v !== '0';
+  }
+
+  /**
+   * P1: A/B 实验流量切分
+   * 当 DECISION_KERNEL_AB_PERCENT 设置时，按 userId/request_id hash 分流指定比例到 Kernel 路径
+   * 例：DECISION_KERNEL_AB_PERCENT=10 → 10% 实验组（Kernel），90% 对照组（无 Kernel）
+   */
+  private isKernelEnabledForRequest(request: { request_id: string; user_id?: string }): boolean {
+    if (!this.isKernelEnabled()) return false;
+    const percent = parseInt(
+      this.configService?.get<string>('DECISION_KERNEL_AB_PERCENT') ?? process.env.DECISION_KERNEL_AB_PERCENT ?? '0',
+      10,
+    );
+    if (percent <= 0) return true;
+    if (percent >= 100) return true;
+    const seed = `${request.user_id ?? ''}|${request.request_id}`;
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    const bucket = h % 100;
+    return bucket < percent;
   }
 
   /**
@@ -163,33 +208,71 @@ export class ClaudeOrchestratorService {
 
   /**
    * 使用 LLM 调用，支持降级机制
+   * @param tokenContext 可选，用于 P0 Token 按阶段打点
    */
   private async callLlmWithFallback(
     primaryProvider: LlmProvider,
     prompt: string,
     schema: any,
     operationName: string,
+    tokenContext?: { request_id: string; state_machine_step: OrchestrationStep; sub_agent: SubAgentType },
   ): Promise<string> {
-    // 首先尝试主提供商
+    const startTime = Date.now();
     try {
-      return await this.llmService.callLlmWithSchema(primaryProvider, prompt, schema);
+      const response = await this.llmService.callLlmWithSchema(primaryProvider, prompt, schema);
+      await this.recordTokenIfEnabled(prompt, response, primaryProvider, startTime, true, tokenContext);
+      return response;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${primaryProvider} 失败: ${error?.message}`);
-      
-      // 如果主提供商失败，尝试降级提供商
       const fallbackProviders = this.getFallbackProviders(primaryProvider);
       for (const fallbackProvider of fallbackProviders) {
         try {
           this.logger.debug(`[Claude Orchestrator] ${operationName} 尝试降级到 ${fallbackProvider}...`);
-          return await this.llmService.callLlmWithSchema(fallbackProvider, prompt, schema);
+          const response = await this.llmService.callLlmWithSchema(fallbackProvider, prompt, schema);
+          await this.recordTokenIfEnabled(prompt, response, fallbackProvider, startTime, true, tokenContext);
+          return response;
         } catch (fallbackError: any) {
           this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${fallbackProvider} 也失败: ${fallbackError?.message}`);
           continue;
         }
       }
-      
-      // 所有提供商都失败，抛出最后一个错误
+      await this.recordTokenIfEnabled(prompt, '', primaryProvider, startTime, false, tokenContext);
       throw error;
+    }
+  }
+
+  /** P0: Token 按阶段打点（估算 tokens，当 TokenStatsService 和 tokenContext 存在时） */
+  private async recordTokenIfEnabled(
+    prompt: string,
+    response: string,
+    provider: LlmProvider,
+    startTime: number,
+    success: boolean,
+    ctx?: { request_id: string; state_machine_step: OrchestrationStep; sub_agent: SubAgentType },
+  ): Promise<void> {
+    if (!this.tokenStatsService || !ctx) return;
+    try {
+      const promptTokens = Math.ceil(prompt.length / 4);
+      const completionTokens = Math.ceil(response.length / 4);
+      const spanId = `claude-${ctx.state_machine_step}-${Date.now()}`;
+      await this.tokenStatsService.recordTokenUsage({
+        request_id: ctx.request_id,
+        trace_id: ctx.request_id,
+        span_id: spanId,
+        sub_agent: ctx.sub_agent,
+        state_machine_step: ctx.state_machine_step,
+        task_type: ctx.state_machine_step,
+        provider,
+        model: provider,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+        duration_ms: Date.now() - startTime,
+        success,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      this.logger.debug(`[TokenStats] 记录失败: ${e?.message}`);
     }
   }
 
@@ -290,7 +373,7 @@ export class ClaudeOrchestratorService {
 
       // 2. 使用 LLM 选择路由策略
       this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
-      const routingDecision = await this.decideRouting(intentAnalysis, llmProvider);
+      const routingDecision = await this.decideRouting(intentAnalysis, llmProvider, request.request_id);
       this.logger.log(`[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`);
 
       // 3. 根据路由决策选择执行路径
@@ -332,7 +415,7 @@ export class ClaudeOrchestratorService {
 
       // 4. System 2 路径：使用 LLM 选择 Skills
       this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
-      const skillsPlan = await this.selectSkills(intentAnalysis, routingDecision, context, llmProvider);
+      const skillsPlan = await this.selectSkills(intentAnalysis, routingDecision, context, llmProvider, request.request_id);
       this.logger.log(`[Claude Orchestrator] ✅ Skills 选择完成: ${skillsPlan.selectedSkills.length} 个 Skills`);
       if (skillsPlan.selectedSkills.length > 0) {
         this.logger.debug(`[Claude Orchestrator] 选择的 Skills: ${skillsPlan.selectedSkills.map(s => s.skillName).join(', ')}`);
@@ -428,7 +511,7 @@ export class ClaudeOrchestratorService {
 
       // 5. 使用 LLM 编排执行计划
       this.logger.debug(`[Claude Orchestrator] 步骤 5/6: 编排执行计划...`);
-      const executionPlan = await this.planExecution(skillsPlan, routingDecision, llmProvider);
+      const executionPlan = await this.planExecution(skillsPlan, routingDecision, llmProvider, request.request_id);
       this.logger.log(`[Claude Orchestrator] ✅ 执行计划完成: ${executionPlan.steps.length} 个步骤`);
 
       // 5.5. 再次验证计划输入参数（处理 plan 编排时可能添加的参数依赖）
@@ -537,6 +620,9 @@ export class ClaudeOrchestratorService {
   ): Promise<IntentAnalysis> {
     const prompt = this.buildIntentAnalysisPrompt(request, context);
     
+    const tokenContext = request?.request_id
+      ? { request_id: request.request_id, state_machine_step: 'INTAKE' as OrchestrationStep, sub_agent: 'Planner' as SubAgentType }
+      : undefined;
     try {
       const response = await this.callLlmWithFallback(
         provider,
@@ -567,6 +653,7 @@ export class ClaudeOrchestratorService {
           required: ['intentType', 'complexity', 'requiredCapabilities', 'confidence', 'reasoning'],
         },
         '意图分析',
+        tokenContext,
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -624,9 +711,12 @@ export class ClaudeOrchestratorService {
   private async decideRouting(
     intentAnalysis: IntentAnalysis,
     provider: LlmProvider,
+    requestId?: string,
   ): Promise<RoutingDecision> {
     const prompt = this.buildRoutingPrompt(intentAnalysis);
-    
+    const tokenContext = requestId
+      ? { request_id: requestId, state_machine_step: 'INTAKE' as OrchestrationStep, sub_agent: 'Orchestrator' as SubAgentType }
+      : undefined;
     try {
       const response = await this.callLlmWithFallback(
         provider,
@@ -658,6 +748,7 @@ export class ClaudeOrchestratorService {
           required: ['route', 'confidence', 'reasoning', 'budget'],
         },
         '路由决策',
+        tokenContext,
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -686,6 +777,7 @@ export class ClaudeOrchestratorService {
     routingDecision: RoutingDecision,
     context: AgentContext,
     provider: LlmProvider,
+    requestId?: string,
   ): Promise<SkillsPlan> {
     // 获取所有可用的 Skills
     const availableSkills = this.getAvailableSkills();
@@ -704,7 +796,9 @@ export class ClaudeOrchestratorService {
       routingDecision,
       availableSkills,
     );
-    
+    const tokenContext = requestId
+      ? { request_id: requestId, state_machine_step: 'RESEARCH' as OrchestrationStep, sub_agent: 'Planner' as SubAgentType }
+      : undefined;
     try {
       const response = await this.callLlmWithFallback(
         provider,
@@ -738,6 +832,7 @@ export class ClaudeOrchestratorService {
           required: ['selectedSkills', 'executionOrder', 'dependencies'],
         },
         'Skills 选择',
+        tokenContext,
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -759,6 +854,7 @@ export class ClaudeOrchestratorService {
     skillsPlan: SkillsPlan,
     routingDecision: RoutingDecision,
     provider: LlmProvider,
+    requestId?: string,
   ): Promise<ExecutionPlan> {
     if (skillsPlan.selectedSkills.length === 0) {
       return {
@@ -772,7 +868,9 @@ export class ClaudeOrchestratorService {
     }
 
     const prompt = this.buildExecutionPlanningPrompt(skillsPlan, routingDecision);
-    
+    const tokenContext = requestId
+      ? { request_id: requestId, state_machine_step: 'RESEARCH' as OrchestrationStep, sub_agent: 'Planner' as SubAgentType }
+      : undefined;
     try {
       const response = await this.callLlmWithFallback(
         provider,
@@ -836,6 +934,7 @@ export class ClaudeOrchestratorService {
           required: ['steps', 'parallelGroups', 'fallbackStrategy'],
         },
         '执行计划编排',
+        tokenContext,
       );
 
       const parsed = this.extractJSONFromResponse(response);
@@ -2096,9 +2195,9 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * 状态机编排主入口（基于 claude.md 架构）
-   * 
-   * 状态机流程：INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → REPAIR → NARRATE → DONE
-   * 
+   *
+   * Phase 2.3 流程：INTAKE → STATE_UPDATE → RESEARCH → GATE_EVAL → CONTEXT_BUILD → PLAN_GEN → OPTIMIZE → VERIFY → REPAIR → NARRATE → DONE
+   *
    * 强制顺序：Gate 在 Plan 之前执行
    */
   async orchestrateWithStateMachine(
@@ -2128,17 +2227,35 @@ ${JSON.stringify(routingDecision, null, 2)}
       metadata: {
         started_at: new Date().toISOString(),
         last_updated_at: new Date().toISOString(),
+        // Context Orchestrator：打通 userId/tripId 供 buildContextForNode / UserTravelProfile 使用
+        userId: request.user_id ?? undefined,
+        tripId: request.trip_id ?? undefined,
       },
     };
+
+    // Phase 2.1: 初始化 DecisionState (DSO)，与 OrchestratorState 并行维护
+    // Phase 2.4: DECISION_KERNEL_ENABLED=false 可回滚到无 Kernel 路径
+    // P1: DECISION_KERNEL_AB_PERCENT 设置时按 hash 分流（如 10 表示 10% 实验组）
+    let decisionState: DecisionState | undefined;
+    if (this.decisionKernel && this.isKernelEnabledForRequest(request)) {
+      decisionState = this.decisionKernel.createInitialState(request.request_id);
+      this.logger.debug(`[Claude Orchestrator] DSO 已初始化: requestId=${request.request_id}`);
+    }
 
     try {
       // 步骤 1: INTAKE - 解析请求 & 缺口识别
       await this.executeIntakeStep(request, context, state, llmProvider);
 
-      // 步骤 2: RESEARCH - 调用 skills 获取硬数据
+      // 步骤 2: STATE_UPDATE - Phase 2.3 显式 DSO 同步
+      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+
+      // 步骤 3: RESEARCH - 调用 skills 获取硬数据
       await this.executeResearchStep(request, context, state, llmProvider);
 
-      // 步骤 3: GATE_EVAL - 执行 Should-Exist Gate 决策（强制在 Plan 之前）
+      // STATE_UPDATE: RESEARCH 后同步 research_data → environmentState
+      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+
+      // 步骤 4: GATE_EVAL - 执行 Should-Exist Gate 决策（强制在 Plan 之前）
       // 注意：如果有 HARD 缺口，应该在 INTAKE 阶段生成澄清问题，不继续执行后续步骤
       const hasHardGaps = state.gaps && state.gaps.some(g => g.severity === 'HARD');
       if (hasHardGaps && state.clarification_questions && state.clarification_questions.length > 0) {
@@ -2149,26 +2266,38 @@ ${JSON.stringify(routingDecision, null, 2)}
 
       await this.executeGateEvalStep(request, context, state, llmProvider);
 
+      // STATE_UPDATE: GATE_EVAL 后同步 constraints 到 DSO
+      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+
       // 如果 Gate 结果为 BLOCK，直接返回
       if (state.gate_result?.gate_result === 'BLOCK') {
         return this.buildBlockedResult(state, startTime);
       }
 
-      // 步骤 4: PLAN_GEN - 生成结构化行程草案
+      // 步骤 5: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
+      decisionState = await this.executeContextBuildStep(request, context, state, decisionState);
+
+      // 步骤 6: PLAN_GEN - 生成结构化行程草案
       await this.executePlanGenStep(request, context, state, llmProvider);
 
-      // 步骤 5: VERIFY - 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
+      // STATE_UPDATE: PLAN_GEN 后同步 itinerary 到 DSO
+      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+
+      // 步骤 7: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
+      decisionState = await this.executeOptimizeStep(state, decisionState);
+
+      // 步骤 8: VERIFY - 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
       await this.executeVerifyStep(request, context, state, llmProvider);
 
-      // 步骤 6: REPAIR - 替换POI/改路线/加buffer/换交通/降级（如果需要）
+      // 步骤 9: REPAIR - 替换POI/改路线/加buffer/换交通/降级（如果需要）
       if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
         await this.executeRepairStep(request, context, state, llmProvider);
       }
 
-      // 步骤 7: NARRATE - 产出用户可读解释（不得改硬字段）
+      // 步骤 10: NARRATE - 产出用户可读解释（不得改硬字段）
       await this.executeNarrateStep(request, context, state, llmProvider);
 
-      // 步骤 8: HALLUCINATION_DETECTION - 防幻觉检测（新增）
+      // 步骤 11: HALLUCINATION_DETECTION - 防幻觉检测
       await this.executeHallucinationDetectionStep(request, context, state);
 
       // 步骤 9: DONE
@@ -2438,6 +2567,37 @@ ${JSON.stringify(routingDecision, null, 2)}
       this.logger.error(`[Claude Orchestrator] INTAKE 步骤失败: ${error?.message}`);
       throw error;
     }
+  }
+
+  /**
+   * STATE_UPDATE 步骤：Phase 2.3 显式同步 OrchestratorState → DSO
+   */
+  private async executeStateUpdateStep(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+
+    state.current_step = 'STATE_UPDATE';
+    const stepStartTime = Date.now();
+    this.logger.debug(`[Claude Orchestrator] 执行 STATE_UPDATE 步骤...`);
+
+    const patch = orchestratorStateToDecisionStatePatch(state);
+    const updated = this.decisionKernel.updateState(decisionState, patch);
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'STATE_UPDATE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: 'OrchestratorState 投影为 DSO patch',
+      outputs_summary: `已更新: userIntent=${!!patch.userIntent}, constraints=${!!patch.constraints}, environmentState=${!!patch.environmentState}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: { duration_ms: Date.now() - stepStartTime },
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+
+    return updated;
   }
 
   /**
@@ -3023,6 +3183,139 @@ ${JSON.stringify(routingDecision, null, 2)}
     } catch {
       return 'all';
     }
+  }
+
+  /**
+   * CONTEXT_BUILD 步骤：Phase 2.3 在 PLAN 前构建 Context Package
+   */
+  private async executeContextBuildStep(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+
+    state.current_step = 'CONTEXT_BUILD';
+    const stepStartTime = Date.now();
+    this.logger.debug(`[Claude Orchestrator] 执行 CONTEXT_BUILD 步骤...`);
+
+    try {
+      const pkg = await this.decisionKernel.getContextPackage(decisionState, {
+        tripId: state.metadata?.tripId as string | undefined,
+        userId: state.metadata?.userId as string | undefined,
+        userQuery: request.message,
+        phase: 'PLANNING',
+        agent: 'PLANNER',
+      });
+      if (pkg) {
+        decisionState = this.decisionKernel.updateState(decisionState, { contextPackage: pkg });
+      }
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'CONTEXT_BUILD' as OrchestrationStep,
+        actor: 'Orchestrator' as SubAgentType,
+        inputs_summary: 'DSO + userQuery',
+        outputs_summary: pkg ? `Context 已构建: blocks=${(pkg as any).blocks?.length ?? 0}` : '跳过（无 ContextEngineer）',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime },
+      });
+    } catch (error: any) {
+      this.logger.warn(`[Claude Orchestrator] CONTEXT_BUILD 失败: ${error?.message}`);
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'CONTEXT_BUILD' as OrchestrationStep,
+        actor: 'Orchestrator' as SubAgentType,
+        inputs_summary: 'DSO',
+        outputs_summary: `失败: ${error?.message}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime, error: true },
+      });
+    }
+    state.metadata.last_updated_at = new Date().toISOString();
+    return decisionState;
+  }
+
+  /**
+   * P1: Itinerary → TdfpmDayContext 简化转换（至少 drivingHours）
+   */
+  private itineraryToTdfpmDayContexts(itinerary: Itinerary): TdfpmDayContext[] {
+    const contexts: TdfpmDayContext[] = [];
+    for (const day of itinerary.days || []) {
+      let drivingHours = 0;
+      let departureHour = 8;
+      for (const item of day.items || []) {
+        const mins = item.metadata?.duration_minutes;
+        if (mins != null && (item.type === 'DRIVE' || item.type === 'TRANSIT')) {
+          drivingHours += mins / 60;
+        } else if (mins != null && item.type === 'WALK') {
+          drivingHours += (mins / 60) * 0.3;
+        }
+        if (item.start_window) {
+          const m = item.start_window.match(/(\d{1,2}):(\d{2})|T(\d{2})/);
+          if (m) departureHour = parseInt(m[1] ?? m[3] ?? '8', 10);
+        }
+      }
+      if (drivingHours === 0 && day.items?.length) {
+        drivingHours = 2;
+      }
+      contexts.push({
+        drivingHours: Math.min(drivingHours, 12),
+        roadType: 'highway',
+        departureHour,
+      });
+    }
+    return contexts;
+  }
+
+  /**
+   * OPTIMIZE 步骤：Phase 2.3 抽取 Optimization Hints
+   * P1: 若 planDraft（Itinerary）存在且 TdfpmCalculator 可用，计算 fatigue 写入 tripState
+   */
+  private async executeOptimizeStep(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+
+    state.current_step = 'OPTIMIZE';
+    const stepStartTime = Date.now();
+    this.logger.debug(`[Claude Orchestrator] 执行 OPTIMIZE 步骤...`);
+
+    const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
+    if (planDraft?.days?.length && this.tdfpmCalculator) {
+      try {
+        const contexts = this.itineraryToTdfpmDayContexts(planDraft);
+        const scores = contexts.map((ctx) => this.tdfpmCalculator!.computeFatigueScore(ctx).fatigueScore);
+        const maxScore = Math.max(...scores, 0);
+        const fatigue = Math.min(1, maxScore / 100);
+        decisionState = this.decisionKernel.updateState(decisionState, {
+          tripState: { ...(decisionState.tripState || {}), fatigue },
+        });
+        this.logger.debug(`[Claude Orchestrator] TDFPM fatigue: maxScore=${maxScore}, fatigue=${fatigue.toFixed(2)}`);
+      } catch (e: any) {
+        this.logger.warn(`[Claude Orchestrator] TDFPM 计算失败: ${e?.message}`);
+      }
+    }
+
+    const hints = this.decisionKernel.getOptimizationHints(decisionState);
+    if (hints) {
+      decisionState = this.decisionKernel.updateState(decisionState, { optimizationHints: hints });
+    }
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'OPTIMIZE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: 'DSO (environmentState, tripState)',
+      outputs_summary: hints ? `Hints: ${JSON.stringify(hints)}` : '无 Hints',
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: { duration_ms: Date.now() - stepStartTime },
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+    return decisionState;
   }
 
   /**

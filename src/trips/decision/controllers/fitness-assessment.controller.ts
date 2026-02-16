@@ -13,10 +13,12 @@ import {
   Post,
   Body,
   Query,
+  Param,
   HttpCode,
   HttpStatus,
   Logger,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -42,7 +44,7 @@ import { HumanCapabilityModel } from '../models/human-capability.model';
 @ApiTags('Fitness Assessment')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/fitness')
+@Controller('v1/fitness')
 export class FitnessAssessmentController {
   private readonly logger = new Logger(FitnessAssessmentController.name);
 
@@ -127,32 +129,42 @@ export class FitnessAssessmentController {
    */
   @Get('profile')
   @ApiOperation({ 
-    summary: '获取用户体能画像',
-    description: '获取当前用户的体能评估结果，包括评分、等级、置信度等（userId从JWT获取）',
+    summary: '获取当前用户体能画像',
+    description: '获取当前用户的体能评估结果（userId从JWT获取）',
   })
-  @ApiResponse({ 
-    status: 200, 
-    description: '体能画像',
-    type: FitnessProfileResponseDto,
-  })
+  @ApiResponse({ status: 200, description: '体能画像', type: FitnessProfileResponseDto })
   @ApiResponse({ status: 401, description: '未认证' })
   @ApiResponse({ status: 404, description: '用户尚未完成体能评估' })
-  async getFitnessProfile(
+  async getCurrentUserFitnessProfile(
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FitnessProfileResponseDto | { hasProfile: false; message: string }> {
-    const userId = user.userId;
+    return this.getFitnessProfileByUserId(user.userId, user);
+  }
+
+  @Get('profile/:userId')
+  @ApiOperation({ 
+    summary: '按 userId 获取体能画像',
+    description: '获取指定用户的体能评估结果。仅允许查询当前登录用户本人。',
+  })
+  @ApiResponse({ status: 200, description: '体能画像', type: FitnessProfileResponseDto })
+  @ApiResponse({ status: 401, description: '未认证' })
+  @ApiResponse({ status: 403, description: '只能查询本人' })
+  @ApiResponse({ status: 404, description: '用户尚未完成体能评估' })
+  async getFitnessProfileByUserId(
+    @Param('userId') userId: string,
+    @CurrentUser() user: CurrentUserPayload
+  ): Promise<FitnessProfileResponseDto | { hasProfile: false; message: string }> {
+    if (user.userId !== userId) {
+      throw new ForbiddenException('只能查询本人的体能画像');
+    }
     this.logger.debug(`[获取画像] userId=${userId}`);
-    
-    // 从数据库加载用户已保存的体能模型
     const model = await this.fitnessService.loadUserModel(userId);
-    
     if (!model) {
       return {
         hasProfile: false,
         message: '您尚未完成体能评估，请先完成问卷。',
       };
     }
-
     const profile = await this.fitnessService.getFitnessProfile(userId, model);
     return profile as FitnessProfileResponseDto;
   }

@@ -12,6 +12,8 @@
    - [清除用户偏好](#22-清除用户偏好)
 3. [决策风格偏好接口](#三决策风格偏好接口)
    - [推断用户偏好](#31-推断用户偏好)
+4. [UserTravelProfile 数据结构](#四usertravelprofile-数据结构l1-记忆层)
+   - [驾驶疲劳偏好 (drivingFatiguePreferences)](#401-驾驶疲劳偏好-drivingfatiguepreferences)
 
 ---
 
@@ -362,9 +364,69 @@ curl -X GET "https://api.example.com/api/v1/decision-replay/style/user-123/prefe
 
 ---
 
-## 四、偏好字段说明
+## 四、UserTravelProfile 数据结构（L1 记忆层）
 
-### 4.1 景点类型 (preferredAttractionTypes)
+> 用户旅行人格（UserTravelProfile）由 MemoryService 管理，存于 `user_travel_profile` 表。扩展字段存于 `extendedProfile` JSON 列。供决策、世界模型构建等内部服务使用。
+
+### 4.0 完整结构
+
+```typescript
+interface UserTravelProfile {
+  userId: string;
+
+  // 核心偏好
+  pacePreference?: 'SLOW' | 'MODERATE' | 'FAST';
+  altitudeTolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+  riskTolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+  travelPhilosophy?: 'SCENIC' | 'ADVENTURE' | 'RELAXED';
+  preferredRouteTypes?: ('HIKING' | 'ROAD_TRIP' | 'SEA' | 'URBAN' | 'CULTURAL' | 'NATURE')[];
+
+  // 扩展字段（存于 extendedProfile）
+  companions?: { count: number; mobility?: string; ageRange?: string };
+  deviceInfo?: { platform: string; offlineCapable?: boolean };
+  timeWindow?: { start: string; end: string; flexible?: boolean };
+  emotionalState?: 'exploring' | 'decided' | 'anxious' | 'neutral';
+
+  /** 驾驶疲劳偏好（2026-02 新增，用于驾驶时间安全评估） */
+  drivingFatiguePreferences?: DrivingFatiguePreferences;
+
+  confidence: number;
+  source: 'explicit' | 'inferred' | 'mixed';
+  updatedAt: Date;
+}
+
+interface DrivingFatiguePreferences {
+  /** 行程中典型睡眠质量 */
+  sleepQuality?: 'adequate' | 'short' | 'poor' | 'very_poor';
+  /** 休息习惯 */
+  breakHabit?: 'regular' | 'sometimes' | 'rarely' | 'none';
+  /** 心理压力水平 */
+  stressLevel?: 'low' | 'medium' | 'high';
+}
+```
+
+### 4.0.1 驾驶疲劳偏好 (drivingFatiguePreferences)
+
+用于驾驶时间安全评估（2-15-8 法则、疲劳公式）。存于 `extendedProfile.drivingFatiguePreferences`，供 API / 运营配置写入，暂不对普通用户开放表单。
+
+| 字段 | 类型 | 可选值 | 系数 | 说明 |
+|------|------|--------|------|------|
+| sleepQuality | string | adequate, short, poor, very_poor | 1.0, 0.85, 0.7, 0.5 | 行程中典型睡眠：adequate=7-9h |
+| breakHabit | string | regular, sometimes, rarely, none | 1.0, 0.9, 0.7, 0.7 | regular=每2h休15min |
+| stressLevel | string | low, medium, high | 1.0, 0.9, 0.8 | low=熟悉路线，high=陌生/赶时间 |
+
+**系数用途**：参与 `EffectiveSafeHours = 8 × SleepFactor × RoadFactor × BreakFactor × StressFactor × AgeFactor`，影响「今日行程偏紧」「超过安全上限」等驾驶安全提示阈值。
+
+**数据流**：
+- MemoryService 读写 `extendedProfile.drivingFatiguePreferences`
+- Trip 创建时可写入 `pacingConfig.drivingFatiguePreferences` 或 `metadata.userProfile.drivingFatiguePreferences`
+- WorldBuildContextSkill 从 Trip 提取并传入 `createHumanCapabilityModelFromProfile`
+
+---
+
+## 五、偏好字段说明
+
+### 5.1 景点类型 (preferredAttractionTypes)
 
 可选值：
 - `ATTRACTION`: 景点
@@ -375,7 +437,7 @@ curl -X GET "https://api.example.com/api/v1/decision-replay/style/user-123/prefe
 - `SHOPPING`: 购物
 - `NIGHTLIFE`: 夜生活
 
-### 4.2 饮食禁忌 (dietaryRestrictions)
+### 5.2 饮食禁忌 (dietaryRestrictions)
 
 可选值：
 - `VEGETARIAN`: 素食
@@ -388,14 +450,14 @@ curl -X GET "https://api.example.com/api/v1/decision-replay/style/user-123/prefe
 - `GLUTEN_FREE`: 无麸质
 - `LACTOSE_FREE`: 无乳糖
 
-### 4.3 旅行节奏 (pace)
+### 5.3 旅行节奏 (pace)
 
 可选值：
 - `LEISURE`: 悠闲
 - `MODERATE`: 中等
 - `FAST`: 快速
 
-### 4.4 预算级别 (budget)
+### 5.4 预算级别 (budget)
 
 可选值：
 - `LOW`: 低预算
@@ -403,14 +465,14 @@ curl -X GET "https://api.example.com/api/v1/decision-replay/style/user-123/prefe
 - `HIGH`: 高预算
 - `LUXURY`: 奢华
 
-### 4.5 住宿类型 (accommodation)
+### 5.5 住宿类型 (accommodation)
 
 可选值：
 - `BUDGET`: 经济型
 - `COMFORTABLE`: 舒适型
 - `LUXURY`: 奢华型
 
-### 4.6 旅行者标签 (tags)
+### 5.6 旅行者标签 (tags)
 
 常见标签：
 - `solo`: 独自旅行
@@ -426,9 +488,9 @@ curl -X GET "https://api.example.com/api/v1/decision-replay/style/user-123/prefe
 
 ---
 
-## 五、使用示例
+## 六、使用示例
 
-### 5.1 完整流程示例
+### 6.1 完整流程示例
 
 ```javascript
 // 1. 获取当前用户偏好
@@ -467,7 +529,7 @@ const summary = await summaryResponse.json();
 console.log('偏好摘要:', summary.summaryCN);
 ```
 
-### 5.2 部分更新示例
+### 6.2 部分更新示例
 
 ```javascript
 // 只更新旅行节奏
@@ -489,7 +551,7 @@ await fetch('/api/users/profile', {
 
 ---
 
-## 六、常见问题
+## 七、常见问题
 
 ### Q1: 用户偏好画像和学习到的偏好有什么区别？
 
@@ -515,7 +577,8 @@ await fetch('/api/users/profile', {
 
 ---
 
-## 七、更新日志
+## 八、更新日志
 
 - **2024-01-XX**: 初始版本，包含用户偏好画像和规划助手偏好接口
 - **2024-XX-XX**: 添加决策风格偏好接口
+- **2026-02**: 新增 UserTravelProfile.drivingFatiguePreferences（驾驶疲劳偏好），用于驾驶时间安全评估

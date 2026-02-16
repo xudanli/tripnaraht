@@ -131,6 +131,7 @@ export const IS_GOLDEN_CIRCLE: RouteDirection = {
   },
 
   metadata: {
+    route_basic_info: { road_type: '柏油路' },
     routeType: 'ROAD_TRIP',
     totalDistanceKm: 300,
     estimatedDuration: 1,

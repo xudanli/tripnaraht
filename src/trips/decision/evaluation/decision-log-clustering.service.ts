@@ -13,7 +13,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DecisionLogStorageService } from '../services/decision-log-storage.service';
-import { DecisionLogEntry, DecisionSource, DecisionStage } from '../shared/decision-result.types';
+import { DecisionLogEntry, DecisionPersona, DecisionSource, DecisionStage } from '../shared/decision-result.types';
 
 /**
  * 拒绝原因聚类结果
@@ -89,7 +89,7 @@ export interface DecisionQualityReport {
   }[];
   /** 按 persona 统计 */
   byPersona: {
-    persona: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+    persona: DecisionPersona;
     count: number;
     rejectionCount: number;
     replacementCount: number;
@@ -395,7 +395,7 @@ export class DecisionLogClusteringService {
     }));
 
     // 6. 按 persona 统计
-    const byPersonaMap = new Map<'ABU' | 'DR_DRE' | 'NEPTUNE', {
+    const byPersonaMap = new Map<DecisionPersona, {
       count: number;
       rejectionCount: number;
       replacementCount: number;

@@ -66,6 +66,8 @@ export interface HardConstraints {
     max_transfers?: number;          // 最大换乘次数
     no_early_morning?: boolean;      // 禁止早起（如早于7点）
     no_late_night?: boolean;          // 禁止夜车（如晚于22点）
+    /** 每日最大驾驶时长（自驾场景），超过即违规 */
+    max_daily_drive?: { value: number; unit: 'hour' };
   };
 
   /**

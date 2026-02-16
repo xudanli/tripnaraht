@@ -139,17 +139,24 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     plan: RoutePlanDraft,
     world: WorldModelContext
   ): ObjectiveEvaluationResult {
+    if (plan == null) {
+      throw new Error('[ObjectiveFunction] evaluate 缺少 plan');
+    }
+    if (world == null) {
+      throw new Error('[ObjectiveFunction] evaluate 缺少 world');
+    }
     this.logger.debug(`[ObjectiveFunction] 评估计划: ${plan.tripId}`);
 
-    // 1. 计算各维度分数
-    const safetyScore = this.computeSafetyScore(plan, world);
-    const experienceScore = this.computeExperienceScore(plan, world);
-    const philosophyScore = this.computePhilosophyScore(plan, world);
-    const timeSlackScore = this.computeTimeSlackScore(plan, world);
-    const fatigueRiskPenalty = this.computeFatigueRiskPenalty(plan, world);
-    const weatherRiskPenalty = this.computeWeatherRiskPenalty(plan, world);
-    const budgetOverrunPenalty = this.computeBudgetOverrunPenalty(plan, world);
-    const pacingVariancePenalty = this.computePacingVariancePenalty(plan, world);
+    // 1. 计算各维度分数（NaN 视为 0，避免总效用为 NaN）
+    const safe = (n: number) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
+    const safetyScore = safe(this.computeSafetyScore(plan, world));
+    const experienceScore = safe(this.computeExperienceScore(plan, world));
+    const philosophyScore = safe(this.computePhilosophyScore(plan, world));
+    const timeSlackScore = safe(this.computeTimeSlackScore(plan, world));
+    const fatigueRiskPenalty = safe(this.computeFatigueRiskPenalty(plan, world));
+    const weatherRiskPenalty = safe(this.computeWeatherRiskPenalty(plan, world));
+    const budgetOverrunPenalty = safe(this.computeBudgetOverrunPenalty(plan, world));
+    const pacingVariancePenalty = safe(this.computePacingVariancePenalty(plan, world));
 
     // 2. 加权计算
     const weightedScores = {
@@ -176,7 +183,8 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
       weightedScores.budget + 
       weightedScores.pacing;
 
-    const totalUtility = Math.max(0, Math.min(1, positiveUtility - negativeUtility));
+    let totalUtility = Math.max(0, Math.min(1, positiveUtility - negativeUtility));
+    if (Number.isNaN(totalUtility)) totalUtility = 0;
 
     // 4. 检查约束
     const constraintResults = this.checkConstraints(plan, world);
@@ -523,15 +531,11 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
    * 计算天气风险惩罚
    */
   private computeWeatherRiskPenalty(plan: RoutePlanDraft, world: WorldModelContext): number {
-    const physical = world.physical;
-    
-    // 基于气候可达性
-    if (physical.climateSeasonality) {
-      const accessibilityScore = physical.climateSeasonality.accessibilityScore;
-      return Math.max(0, 1 - accessibilityScore);
-    }
-
-    return 0.2; // 默认中等风险
+    const physical = world?.physical;
+    if (!physical?.climateSeasonality) return 0.2;
+    const accessibilityScore = Number(physical.climateSeasonality.accessibilityScore);
+    if (Number.isNaN(accessibilityScore)) return 0.2;
+    return Math.max(0, Math.min(1, 1 - accessibilityScore));
   }
 
   /**

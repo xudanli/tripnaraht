@@ -60,6 +60,16 @@ client.post('/v2/user/optimization/evaluate');
 }
 ```
 
+### 相关接口文档
+
+| 文档 | 说明 |
+|------|------|
+| [FITNESS_ASSESSMENT_API.md](./FITNESS_ASSESSMENT_API.md) | 体能评估 API（Phase 1）：问卷、画像、反馈、校准 `/api/v1/fitness` |
+| [FITNESS_ANALYTICS_API.md](./FITNESS_ANALYTICS_API.md) | 体能数据分析 API（Phase 2）：趋势、异常、报告、A/B 测试、可穿戴 `/api/v1/fitness/analytics` |
+| [FLYWHEEL_ADMIN_API.md](./FLYWHEEL_ADMIN_API.md) | 数据飞轮管理 API（Phase 2）：离线学习、用户数据量 `/api/v2/admin/flywheel` |
+| [NEGOTIATION_UX_IMPROVEMENT_PROPOSAL.md](./NEGOTIATION_UX_IMPROVEMENT_PROPOSAL.md) | 协商结论界面展示优化提案（产品/架构评审） |
+| [USER_PREFERENCES_API_DOCUMENTATION.md](../USER_PREFERENCES_API_DOCUMENTATION.md) | 用户偏好接口：UserTravelProfile、驾驶疲劳偏好等 |
+
 ---
 
 ## 用户端 API
@@ -80,15 +90,15 @@ POST /api/v2/user/optimization/evaluate
 {
   "plan": RoutePlanDraft,      // 必填 - 待评估的计划
   "world": WorldModelContext,  // 必填 - 世界模型上下文
-  "weights"?: {                // 可选：自定义权重
-    "safety": number,          // 安全权重 (默认 0.25)
-    "experience": number,      // 体验权重 (默认 0.20)
-    "philosophy": number,      // 哲学权重 (默认 0.15)
-    "timeSlack": number,       // 时间余量 (默认 0.10)
-    "fatigueRisk": number,     // 疲劳风险 (默认 0.10)
-    "weatherRisk": number,     // 天气风险 (默认 0.10)
-    "budgetRisk": number,      // 预算风险 (默认 0.05)
-    "crowdAvoidance": number   // 避人流 (默认 0.05)
+  "weights"?: {                // 可选：自定义 8 维权重（与 ObjectiveFunctionWeights 一致）
+    "safety": number,                  // 安全 (默认 0.25)
+    "experienceDensity": number,       // 体验密度 (默认 0.20)
+    "philosophyAlignment": number,    // 路线哲学匹配度 (默认 0.15)
+    "timeSlack": number,               // 时间余量 (默认 0.10)
+    "fatigueRisk": number,             // 疲劳风险 (默认 0.15)
+    "weatherRisk": number,             // 天气风险 (默认 0.05)
+    "budgetOverrun": number,           // 预算超支风险 (默认 0.05)
+    "pacingVariance": number          // 节奏方差 (默认 0.05)
   }
 }
 ```
@@ -138,17 +148,17 @@ POST /api/v2/user/optimization/evaluate
 {
   "totalUtility": number,      // 总效用值 (0-1)
   "breakdown": {
-    "safetyScore": number,     // 安全得分
-    "experienceScore": number, // 体验得分
-    "philosophyScore": number, // 哲学契合度
-    "timeSlackScore": number,  // 时间余量得分
-    "fatigueRiskScore": number,
-    "weatherRiskScore": number,
-    "budgetScore": number,
-    "crowdScore": number
+    "safetyScore": number,           // 安全得分
+    "experienceScore": number,       // 体验密度得分
+    "philosophyScore": number,       // 哲学契合度
+    "timeSlackScore": number,        // 时间余量得分
+    "fatigueRiskPenalty": number,    // 疲劳风险惩罚
+    "weatherRiskPenalty": number,    // 天气风险惩罚
+    "budgetOverrunPenalty": number,  // 预算超支惩罚
+    "pacingVariancePenalty": number  // 节奏方差惩罚
   },
   "weightsUsed": ObjectiveFunctionWeights,
-  "timestamp": string
+  "evaluatedAt": string        // ISO 时间
 }
 ```
 
@@ -162,10 +172,12 @@ POST /api/v2/user/optimization/compare
 
 **请求体**
 
+支持驼峰或蛇形字段名：`planA`/`plan_a`、`planB`/`plan_b`、`world`。
+
 ```typescript
 {
-  "planA": RoutePlanDraft,
-  "planB": RoutePlanDraft,
+  "planA": RoutePlanDraft,   // 或 plan_a
+  "planB": RoutePlanDraft,   // 或 plan_b
   "world": WorldModelContext
 }
 ```
@@ -195,13 +207,24 @@ POST /api/v2/user/optimization/compare
 POST /api/v2/user/optimization/optimize
 ```
 
-**请求体**
+**请求体（二选一）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| plan | RoutePlanDraft | 条件 | 与 `world` 同时传入时使用 |
+| world | WorldModelContext | 条件 | 与 `plan` 同时传入时使用 |
+| tripId / trip_id | string | 条件 | **仅在不传 plan+world 时使用**，后端根据行程 ID 加载 plan 与 world 再优化 |
+
+- 方式一：传 `plan` + `world`。
+- 方式二：只传 `tripId` 或 `trip_id`，后端加载该行程并构建 plan 与 world 再执行优化。
+- 若既未传 plan+world 也未传 tripId/trip_id，返回 **400**。
 
 ```typescript
-{
-  "plan": RoutePlanDraft,
-  "world": WorldModelContext
-}
+// 方式一
+{ "plan": RoutePlanDraft, "world": WorldModelContext }
+
+// 方式二
+{ "tripId": "行程UUID" }   // 或 "trip_id"
 ```
 
 **响应**
@@ -230,14 +253,25 @@ POST /api/v2/user/optimization/optimize
 POST /api/v2/user/optimization/risk-assessment
 ```
 
-**请求体**
+**请求体（二选一）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| plan | RoutePlanDraft | 条件 | 与 `world` 同时传入时使用 |
+| world | WorldModelContext | 条件 | 与 `plan` 同时传入时使用 |
+| tripId / trip_id / id | string | 条件 | **仅在不传 plan+world 时使用**，后端加载该行程的 plan 与 world |
+| sampleSize | number | 否 | 蒙特卡洛采样数，默认 1000 |
+
+- 方式一：传 `plan` + `world`（可选 `sampleSize`）。
+- 方式二：只传 `tripId`、`trip_id` 或 `id`，后端加载 plan 与 world 再评估风险。
+- 若既未传 plan+world 也未传 tripId/trip_id/id，返回 **400**。
 
 ```typescript
-{
-  "plan": RoutePlanDraft,       // 必填 - 待评估的计划
-  "world": WorldModelContext,  // 必填 - 世界模型上下文
-  "sampleSize"?: number        // 可选 - 默认 1000
-}
+// 方式一
+{ "plan": RoutePlanDraft, "world": WorldModelContext, "sampleSize"?: number }
+
+// 方式二
+{ "tripId": "行程UUID", "sampleSize"?: number }   // 或 "trip_id" / "id"
 ```
 
 **请求示例**
@@ -307,13 +341,24 @@ POST /api/v2/user/optimization/risk-assessment
 POST /api/v2/user/optimization/negotiation
 ```
 
-**请求体**
+**请求体（二选一）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| plan | RoutePlanDraft | 条件 | 与 `world` 同时传入时使用 |
+| world | WorldModelContext | 条件 | 与 `plan` 同时传入时使用 |
+| tripId / trip_id / id | string | 条件 | **仅在不传 plan+world 时使用**，后端加载该行程的 plan 与 world 再协商 |
+
+- 方式一：传 `plan` + `world`。
+- 方式二：只传 `tripId`、`trip_id` 或 `id`，后端加载 plan 与 world 再返回协商结论。
+- 若既未传 plan+world 也未传 tripId/trip_id/id，返回 **400**。
 
 ```typescript
-{
-  "plan": RoutePlanDraft,
-  "world": WorldModelContext
-}
+// 方式一
+{ "plan": RoutePlanDraft, "world": WorldModelContext }
+
+// 方式二
+{ "tripId": "行程UUID" }   // 或 "trip_id" / "id"
 ```
 
 **响应**
@@ -321,26 +366,61 @@ POST /api/v2/user/optimization/negotiation
 ```typescript
 {
   "decision": "APPROVE" | "APPROVE_WITH_CONDITIONS" | "REJECT" | "NEEDS_HUMAN",
-  "consensusLevel": number,            // 共识度 (0-1)
-  "keyTradeoffs": string[],            // 关键权衡点
-  "conditions"?: string[],             // 附加条件
-  "humanDecisionPoints"?: string[],    // 需人类决策的点
+  "consensusLevel": number,            // 共识度 (0-1)，前端 ×100 显示为百分比
+  "keyTradeoffs": string[],            // 分歧所在，用户可读维度名（如 "安全与节奏存在分歧"）
+  "conditions"?: string[],             // 附加条件（decision=APPROVE_WITH_CONDITIONS 时）
+  "humanDecisionPoints"?: string[],    // 需人类决策的点（decision=NEEDS_HUMAN 时）
   "evaluationSummary": {
-    "abuUtility": number,              // Abu 评估效用
-    "dreUtility": number,              // Dre 评估效用
-    "neptuneUtility": number,          // Neptune 评估效用
-    "criticalConcerns": string[]       // 关键关注点
+    "abuUtility": number,              // 安全守护者 Abu 评分 (0-1)，前端 ×100 显示
+    "dreUtility": number,              // 节奏守护者 Dre 评分 (0-1)，前端 ×100 显示
+    "neptuneUtility": number,          // 修复守护者 Neptune 评分 (0-1)，前端 ×100 显示
+    "criticalConcerns": string[]       // 具体问题（分歧产生的原因）
   },
   "votingResult": {
-    "approve": number,
-    "reject": number,
-    "abstain": number
-  }
+    "approve": number,                 // 赞成票数，非负整数
+    "reject": number,                  // 反对票数，非负整数
+    "abstain": number                  // 弃权票数，非负整数
+  },
+  "fatiguePrediction"?: Array<{        // TDFPM 疲劳预测（按天），Phase 2 新增
+    "dayIndex": number,
+    "fatigueScore": number,            // 0-100，60+ 建议关注
+    "riskLevel": "LOW" | "MODERATE" | "HIGH" | "DANGEROUS",
+    "recommendation": "OK" | "REST_SOON" | "REST_NOW" | "SPLIT_DAY" | "STOP_DRIVING",
+    "confidence"?: number              // 0-1，缺数据时较低
+  }>
 }
 ```
 
----
+**字段与界面展示对应关系**
 
+| 界面展示 | 接口字段 | 类型 | 前端处理 |
+|----------|----------|------|----------|
+| 附条件批准 / 批准 / 拒绝 / 需人类决策 | `decision` | `"APPROVE" \| "APPROVE_WITH_CONDITIONS" \| "REJECT" \| "NEEDS_HUMAN"` | 直接映射为「批准」「附条件批准」「拒绝」「需人工决策」 |
+| 共识度 85% | `consensusLevel` | number (0–1) | `consensusLevel * 100` 显示为整数百分比 |
+| 2 赞成 · 0 反对 · 1 弃权 | `votingResult.approve` / `reject` / `abstain` | number (非负整数) | 拼接为「X 赞成 · Y 反对 · Z 弃权」 |
+| 安全守护者 64 · 节奏 44 · 修复 67 | `evaluationSummary.abuUtility` / `dreUtility` / `neptuneUtility` | number (0–1) | 各值 ×100 取整，对应 Abu/Dre/Neptune 的展示分数 |
+| 可执行的调整 | `evaluationSummary.criticalConcerns` | string[] | 区块标题「可执行的调整」；与 conditions 去重 |
+| 不同维度的评估意见 | `keyTradeoffs` | string[] | 区块标题「不同维度的评估意见」；弱化、可折叠；副标题：「安全、节奏、体验等角度看法不一，供参考」 |
+| 行程优化建议 (N) | 无独立字段 | - | `criticalConcerns.length + keyTradeoffs.length`（去重后） |
+| 出发前建议完成 | `conditions` | string[]（可选） | 区块标题「出发前建议完成」；`decision === "APPROVE_WITH_CONDITIONS"` 时展示；补充说明：「为保障行程安全与体验，建议在出发前完成以下调整。」；与 criticalConcerns 去重 |
+| 需人类决策的点 | `humanDecisionPoints` | string[]（可选） | 仅在 `decision === "NEEDS_HUMAN"` 时展示 |
+| 驾驶疲劳预测 | `fatiguePrediction` | Array（可选） | 按天的 TDFPM 疲劳分数与建议；用于行程页疲劳卡片或休息提醒 |
+
+**专家团队参考：字段语义与数据来源**
+
+| 字段 | 语义 | 数据来源 | 示例值 |
+|------|------|----------|--------|
+| `evaluationSummary.criticalConcerns` | **具体问题（分歧产生的原因）**：各守护者识别出的可执行风险与改进建议，用户可直接据此调整计划 | 合并自 `primaryConcerns`（维度级 + 按天细化）+ `suggestedAdjustments`，去重 | `["天气存在不确定性，建议调整停留顺序或预留备选方案", "建议处理软约束以降低风险"]` |
+| `keyTradeoffs` | **分歧所在**：哪些评估维度（安全/节奏/修复）之间判断不一致，对应 Abu(安全)/Dre(节奏)/Neptune(修复) 的立场差异 | 辩论轮次中提取的支持 vs 反对方，映射为用户可读维度名 | `["安全与节奏存在分歧"]`、`["安全与修复存在分歧"]` |
+| `conditions` | **附加条件**：若为附条件批准，需满足的调整建议 | 各守护者投「有条件通过」时提交的 `suggestedAdjustments` | `["建议拆分高负荷天或插入休息日"]` |
+| `humanDecisionPoints` | **需人类决策的点**：需人工介入的争议点 | 决策为 `NEEDS_HUMAN` 时，从持异议守护者的 `primaryConcerns` 提取 | `["ABU: 存在显著天气风险; DRE: 节奏不均衡"]` |
+| `fatiguePrediction` | **驾驶疲劳预测**：TDFPM 按天疲劳分数与风险等级 | 基于驾驶时长、路况、天气、睡眠/休息估算；60+ 为疲劳，80+ 为危险 | 见 [TDFPM_INTEGRATION_ASSESSMENT.md](./TDFPM_INTEGRATION_ASSESSMENT.md) |
+
+> **区分说明**：`criticalConcerns` 侧重「具体问题与可执行建议」，`keyTradeoffs` 侧重「哪些维度/角色有不同判断」。二者互补，共同支撑「主要分歧」的完整展示。
+
+> **UX 优化**：用户反馈「看不懂」时，可参考 [NEGOTIATION_UX_IMPROVEMENT_PROPOSAL.md](./NEGOTIATION_UX_IMPROVEMENT_PROPOSAL.md)，供产品经理与架构师评审方案。
+
+---
 #### 1.6 提交反馈
 
 记录用户对行程的满意度反馈。
@@ -407,6 +487,27 @@ GET /api/v2/user/optimization/preferences/:userId
   "lastUpdated": string       // ISO 时间
 }
 ```
+
+---
+
+#### 1.8 接口需求清单（前端展示所需）
+
+以下为前端展示所需字段的汇总与约束，后端已保证返回有效数值（避免 NaN）及非负整数投票数。
+
+| 接口 | 路径 | 需提供的字段 | 用途 |
+|------|------|--------------|------|
+| **协商结论** | `POST /api/v2/user/optimization/negotiation` | `evaluationSummary.criticalConcerns` | **必填**，用于展示「具体问题（分歧产生的原因）」 |
+| 同上 | 同上 | `keyTradeoffs` | 展示「分歧所在（哪些评估维度有不同判断）」 |
+| 同上 | 同上 | `votingResult.approve/reject/abstain` | 赞成/反对/弃权（非负整数） |
+| 同上 | 同上 | `evaluationSummary.abuUtility/dreUtility/neptuneUtility` | 安全/节奏/修复 维度评分 |
+| 同上 | 同上 | `consensusLevel`, `decision` | 共识度、决策结论 |
+| **风险评估** | `POST /api/v2/user/optimization/risk-assessment` | `downsideRisk`, `expectedUtility`, `feasibilityProbability`, `confidenceInterval` | 有效数值（NaN 已防护） |
+| **评估计划** | `POST /api/v2/user/optimization/evaluate` | `weightsUsed` | 各维度权重，用于展示「权重 X%」；缺省时前端用默认值 |
+| **优化计划** | `POST /api/v2/user/optimization/optimize` | `summary.finalUtility`, `logs`, `plan` | `finalUtility` 已防 NaN；`logs` 为空时前端可展示「当前计划已较优」；`plan` 即优化后计划 |
+
+**协商结论**：完整字段与界面映射见上文「1.5 获取协商结论」的「字段与界面展示对应关系」表。若 `criticalConcerns` 为空，用户只能看到抽象描述；可按天/时段细化需在 `GuardianDebateService` 中扩展。
+
+**优化接口响应映射**：`optimizedPlan` = 响应体中的 `plan`；`changes` = 响应体中的 `logs`；`finalUtility` = 响应体中的 `summary.finalUtility`。
 
 ---
 
@@ -493,14 +594,49 @@ DELETE /api/v2/user/team/:teamId/members/:userId
 
 ```
 POST /api/v2/user/team/:teamId/negotiate
+Content-Type: application/json
+Authorization: Bearer <token>
 ```
 
-**请求体**
+**请求体（二选一）**
+
+- **方式一：传 plan + world**（与计划优化评估接口一致）
+- **方式二：只传 tripId**：后端根据 `tripId` 加载行程，自动构建 `plan` 与 `world` 再协商（适合前端已有行程 ID、未预先拉取世界模型的场景）
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| plan | RoutePlanDraft | 条件 | 待协商的计划；与 `world` 同时传入时使用，需包含 `tripId`、`routeDirectionId`、`segments` |
+| world | WorldModelContext | 条件 | 世界模型上下文；与 `plan` 同时传入时使用 |
+| tripId | string | 条件 | 行程 ID；**仅在不传 plan/world 时使用**，后端将加载该行程并构建 plan 与 world 再协商 |
+
+- 若既未传 `plan`+`world` 也未传 `tripId`：返回 **400**，提示缺少 plan 或仅传 tripId。
+- 若只传 `tripId` 但行程不存在：返回 **400**，`无法根据 tripId 加载行程：行程 <id> 不存在`。
+- 传了 `plan` + `world` 时优先使用，不会按 `tripId` 加载。
+
+**请求体示例（方式一：plan + world）**
 
 ```typescript
 {
-  "plan": RoutePlanDraft,
-  "world": WorldModelContext
+  "plan": {
+    "tripId": "uuid-of-trip",
+    "routeDirectionId": "uuid-of-route-direction",
+    "segments": [
+      { "segmentId": "s1", "dayIndex": 1, "distanceKm": 50, "ascentM": 400, "slopePct": 5 }
+    ]
+  },
+  "world": {
+    "physical": { /* PhysicalRealityModel */ },
+    "human": { /* HumanCapabilityModel */ },
+    "routeDirection": { /* RouteDirectionWithPhilosophy */ }
+  }
+}
+```
+
+**请求体示例（方式二：仅 tripId）**
+
+```json
+{
+  "tripId": "f3626ff1-7a9b-46d9-8b8b-7f53a14583b1"
 }
 ```
 
@@ -1221,6 +1357,51 @@ GET /api/v2/admin/axioms/essence
 
 ---
 
+### 5. 数据飞轮管理 (`/api/v2/admin/flywheel`) 🔓
+
+> Phase 2 数据飞轮：离线学习、用户数据量统计。详见 [FLYWHEEL_ADMIN_API.md](./FLYWHEEL_ADMIN_API.md)
+
+#### 5.1 触发离线学习 🔓
+
+```
+POST /api/v2/admin/flywheel/run-learning?userId={userId}
+```
+
+对指定用户运行 Phase 2 离线学习管道，建议 50–100 次旅行后启动。
+
+**响应**
+
+```typescript
+{
+  success: boolean;
+  samplesUsed: number;
+  weightChanges?: Record<string, number>;
+  newVersion?: string;
+  message: string;
+}
+```
+
+---
+
+#### 5.2 查看用户数据量 🔓
+
+```
+GET /api/v2/admin/flywheel/stats?userId={userId}
+```
+
+**响应**
+
+```typescript
+{
+  decisionLogs: number;   // Layer 1 决策记录数
+  behaviorLogs: number;   // Layer 2 用户行为数
+  outcomes: number;       // Layer 3 结果捕捉数
+  message: string;
+}
+```
+
+---
+
 ## 类型定义
 
 ### ObjectiveFunctionWeights
@@ -1272,6 +1453,8 @@ interface WorldModelContext {
   routeDirection: RouteDirectionWithPhilosophy;
 }
 ```
+
+**HumanCapabilityModel 扩展**：`human.metadata.drivingFatigueFactors` 可用于驾驶疲劳公式，含 `sleepFactor`、`breakFactor`、`stressFactor`（0.5–1.0）。来源：UserTravelProfile.drivingFatiguePreferences → createHumanCapabilityModelFromProfile。详见 [USER_PREFERENCES_API_DOCUMENTATION.md](../USER_PREFERENCES_API_DOCUMENTATION.md#401-驾驶疲劳偏好-drivingfatiguepreferences)。
 
 ---
 

@@ -120,6 +120,7 @@ export const NO_LOFOTEN_E10: RouteDirection = {
   },
 
   metadata: {
+    route_basic_info: { road_type: '柏油路、高速' },
     routeType: 'ROAD_TRIP',
     totalDistanceKm: 170,
     estimatedDuration: 2,

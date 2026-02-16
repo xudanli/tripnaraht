@@ -10,6 +10,7 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { TripPlanRequest, Itinerary, ItineraryDay, ItineraryItem, GateResult } from '../../agent/interfaces/trip-plan.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { PlanningWorkbenchAgentService } from '../../agent/services/planning-workbench-agent.service';
+import { IncrementalItineraryGeneratorService } from '../../agent/context-engine/services/incremental-itinerary-generator.service';
 import { DateTime } from 'luxon';
 
 export interface ItineraryGenerateInput extends SkillInput {
@@ -25,6 +26,7 @@ export interface ItineraryGenerateOutput extends SkillOutput {
     total_days: number;
     total_cost_estimate?: number;
     robustness_score?: number;
+    mode?: string;
   };
 }
 
@@ -52,29 +54,46 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
 
   constructor(
     @Optional() private readonly planningWorkbench?: PlanningWorkbenchAgentService,
+    @Optional() private readonly incrementalGenerator?: IncrementalItineraryGeneratorService,
   ) {
-    this.logger.log(`[ItineraryGenerateSkill] 已初始化`);
+    this.logger.log(
+      `[ItineraryGenerateSkill] 已初始化, incrementalGenerator=${!!incrementalGenerator}`,
+    );
   }
 
   async execute(input: ItineraryGenerateInput): Promise<ItineraryGenerateOutput> {
-    this.logger.debug(`执行 itinerary.generate: request_id=${input.request.request_id}`);
+    const requestId = (input.request as any).request_id ?? 'unknown';
+    this.logger.debug(`执行 itinerary.generate: request_id=${requestId}`);
 
     try {
       const { request, research_data, gate_result } = input;
 
-      // 1. 计算天数
-      let days: number;
-      if (request.days) {
-        days = request.days;
-      } else if (request.date_range) {
-        const start = DateTime.fromISO(request.date_range.start_date);
-        const end = DateTime.fromISO(request.date_range.end_date);
-        days = end.diff(start, 'days').days + 1;
-      } else if (request.start_date) {
-        days = request.days || 5; // 默认 5 天
-      } else {
-        days = 5; // 默认 5 天
+      // 分段规划 POC: 当 days >= 3 时使用 Day1→Day2→Day3 迭代生成
+      const useIncremental =
+        this.incrementalGenerator &&
+        process.env.INCREMENTAL_ITINERARY_POC !== 'false';
+      if (useIncremental) {
+        const days = this.computeDays(request);
+        if (days >= 3) {
+          const result = await this.incrementalGenerator.generateIncremental({
+            request: { ...request, request_id: requestId } as TripPlanRequest,
+            research_data,
+            gate_result,
+            minDaysToTrigger: 3,
+          });
+          return {
+            request_id: requestId,
+            days: result.itinerary.days,
+            metadata: {
+              total_days: result.itinerary.days.length,
+              mode: result.mode,
+            },
+          };
+        }
       }
+
+      // 1. 计算天数
+      const days = this.computeDays(request);
 
       // 2. 获取起始日期
       let startDate: DateTime;
@@ -184,6 +203,20 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       this.logger.error(`itinerary.generate 失败: ${error?.message}`, error?.stack);
       throw error;
     }
+  }
+
+  /**
+   * 计算行程天数
+   */
+  private computeDays(request: TripPlanRequest): number {
+    if (request.days) return request.days;
+    if (request.date_range) {
+      const start = DateTime.fromISO(request.date_range.start_date);
+      const end = DateTime.fromISO(request.date_range.end_date);
+      return end.diff(start, 'days').days + 1;
+    }
+    if ((request as any).start_date) return (request as any).days || 5;
+    return 5;
   }
 
   /**

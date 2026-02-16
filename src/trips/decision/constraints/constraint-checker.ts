@@ -89,6 +89,9 @@ export class ConstraintChecker {
 
       // 5. 天气可行性校验
       violations.push(...this.checkWeatherFeasibility(state, day));
+
+      // 8. max_daily_drive 校验（自驾场景）
+      violations.push(...this.checkMaxDailyDrive(state, day));
     }
 
     // 6. 全局预算校验
@@ -684,6 +687,50 @@ export class ConstraintChecker {
           ],
         });
       }
+    }
+
+    return violations;
+  }
+
+  /**
+   * 8. max_daily_drive 校验（自驾场景，Constraint DSL 扩展）
+   */
+  private checkMaxDailyDrive(
+    state: TripWorldState,
+    day: PlanDay
+  ): CheckerViolation[] {
+    const violations: CheckerViolation[] = [];
+    const constraintDSL = (state.policies as any)?.constraintDSL;
+    const maxDailyDrive = constraintDSL?.hard_constraints?.travel_mode?.max_daily_drive;
+    if (!maxDailyDrive?.value) return violations;
+
+    let driveMinutes = 0;
+    for (const slot of day.timeSlots) {
+      const leg = slot.travelLegFromPrev;
+      if (leg && (leg.mode === 'drive' || !leg.mode)) {
+        driveMinutes += leg.durationMin;
+      }
+    }
+
+    const maxMinutes =
+      maxDailyDrive.unit === 'hour' ? maxDailyDrive.value * 60 : maxDailyDrive.value;
+
+    if (driveMinutes > maxMinutes) {
+      violations.push({
+        code: 'MAX_DAILY_DRIVE_EXCEEDED',
+        severity: 'error',
+        date: day.date,
+        message: `当日驾驶时长 ${(driveMinutes / 60).toFixed(1)} 小时超过限制 ${maxDailyDrive.value} ${maxDailyDrive.unit}`,
+        details: {
+          driveMinutes,
+          maxMinutes,
+          unit: maxDailyDrive.unit,
+        },
+        suggestions: [
+          '减少当日行程距离',
+          '增加休息日或拆分行程',
+        ],
+      });
     }
 
     return violations;

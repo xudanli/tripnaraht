@@ -104,6 +104,9 @@ export interface ExpectedUtilityResult {
   
   /** 可行性概率 P(all hard constraints satisfied) */
   feasibilityProbability: number;
+
+  /** 下行风险 P(U < threshold)，与 riskMetrics.downRiskProbability 一致，便于前端直接使用 */
+  downsideRisk?: number;
   
   /** 采样详情 */
   samplingDetails: {

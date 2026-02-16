@@ -15,6 +15,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RoutePlanDraft, WorldModelContext } from '../../shared/world-model.types';
 import { ObjectiveFunctionService } from '../objective-function.service';
+import { TdfpmCalculatorService, TdfpmDayContext, TdfpmResult } from '../../services/tdfpm-calculator.service';
 import { ObjectiveEvaluationResult, ObjectiveFunctionWeights } from '../objective-function.interface';
 import {
   GuardianPersonaType,
@@ -26,6 +27,9 @@ import {
   NegotiationResult,
   NegotiationConfig,
   DEFAULT_NEGOTIATION_CONFIG,
+  DRIVING_ESTIMATION_CONFIG,
+  DRIVING_SAFETY_CONFIG,
+  ROAD_FATIGUE_FACTOR_MAP,
   ABU_VALUES,
   DRE_VALUES,
   NEPTUNE_VALUES,
@@ -35,8 +39,12 @@ import {
 export class GuardianDebateService {
   private readonly logger = new Logger(GuardianDebateService.name);
 
+  /** 本次协商的 TDFPM 按天结果（negotiate 中填充） */
+  private tdfpmPerDay = new Map<number, TdfpmResult>();
+
   constructor(
     private readonly objectiveFunction: ObjectiveFunctionService,
+    private readonly tdfpm: TdfpmCalculatorService,
   ) {}
 
   /**
@@ -62,7 +70,10 @@ export class GuardianDebateService {
 
     // 1. 基础评估
     const baseEvaluation = this.objectiveFunction.evaluate(plan, world);
-    
+
+    // 1.5. 预计算 TDFPM 按天疲劳（用于 identifyDayLevelConcerns 与 fatiguePrediction）
+    this.tdfpmPerDay = this.computeTdfpmForPlan(plan, world, baseEvaluation);
+
     // 2. 各人格独立评估
     const evaluations = this.evaluateWithAllPersonas(plan, world, baseEvaluation);
     
@@ -134,8 +145,11 @@ export class GuardianDebateService {
     const adjustedWeights = this.applyWeightBias(values.weightBias);
     const personalUtility = this.calculateWeightedUtility(baseEvaluation, adjustedWeights);
     
-    // 2. 识别核心关注点
-    const concerns = this.identifyPersonaConcerns(values, baseEvaluation);
+    // 2. 识别核心关注点（维度级 + 按天/时段细化）
+    const concerns = [
+      ...this.identifyPersonaConcerns(values, baseEvaluation),
+      ...this.identifyDayLevelConcerns(plan, world, baseEvaluation),
+    ];
     
     // 3. 识别正面方面
     const positives = this.identifyPositiveAspects(values, baseEvaluation);
@@ -208,7 +222,8 @@ export class GuardianDebateService {
   }
 
   /**
-   * 识别人格关注点
+   * 识别人格关注点（维度级：安全/疲劳/天气/节奏等）
+   * 按天/时段细化见 identifyDayLevelConcerns。
    */
   private identifyPersonaConcerns(
     values: PersonaValues,
@@ -255,6 +270,187 @@ export class GuardianDebateService {
     }
     
     return concerns;
+  }
+
+  /**
+   * 计算个人有效安全驾驶时长（h）
+   * DrivingCapacity = Base × SleepFactor × RoadFactor × BreakFactor × StressFactor × AgeFactor
+   * 缺少的因子使用 1.0
+   */
+  private getEffectiveSafeHours(world: WorldModelContext): number {
+    const base = DRIVING_SAFETY_CONFIG.baseSafeHours;
+    const human = world?.human as {
+      age?: number;
+      ageGroup?: string;
+      metadata?: { drivingFatigueFactors?: { sleepFactor?: number; breakFactor?: number; stressFactor?: number } };
+    } | undefined;
+
+    const sleepFactor = human?.metadata?.drivingFatigueFactors?.sleepFactor ?? 1.0;
+    const breakFactor = human?.metadata?.drivingFatigueFactors?.breakFactor ?? 1.0;
+    const stressFactor = human?.metadata?.drivingFatigueFactors?.stressFactor ?? 1.0;
+
+    const age = human?.age ?? (human?.ageGroup === '60+' ? 65 : human?.ageGroup === '50-59' ? 55 : human?.ageGroup === '40-49' ? 45 : 35);
+    const ageFactor = age <= 40 ? 1.0 : age <= 55 ? 0.9 : 0.75;
+
+    const meta = (world?.routeDirection as { metadata?: Record<string, unknown> })?.metadata;
+    const roadType =
+      (meta?.route_basic_info as { road_type?: string })?.road_type ??
+      (meta as { roadType?: string })?.roadType ??
+      '';
+    const lower = String(roadType).toLowerCase();
+    let roadFactor = 1.0;
+    for (const [keyword, factor] of Object.entries(ROAD_FATIGUE_FACTOR_MAP)) {
+      if (lower.includes(keyword)) {
+        roadFactor = factor;
+        break;
+      }
+    }
+
+    return base * sleepFactor * roadFactor * breakFactor * stressFactor * ageFactor;
+  }
+
+  /**
+   * 根据路线元数据推断平均车速，无法推断时使用配置默认值
+   */
+  private getDrivingSpeedKmH(world: WorldModelContext): number {
+    const meta = (world?.routeDirection as { metadata?: Record<string, unknown> })?.metadata;
+    if (!meta) return DRIVING_ESTIMATION_CONFIG.defaultSpeedKmH;
+
+    const roadType =
+      (meta.route_basic_info as { road_type?: string })?.road_type ??
+      (meta as { roadType?: string }).roadType ??
+      '';
+    const lower = String(roadType).toLowerCase();
+
+    for (const [keyword, speed] of Object.entries(DRIVING_ESTIMATION_CONFIG.roadTypeSpeedMap)) {
+      if (lower.includes(keyword)) return speed;
+    }
+    return DRIVING_ESTIMATION_CONFIG.defaultSpeedKmH;
+  }
+
+  /**
+   * 按天计算 TDFPM 疲劳分数（用于 fatiguePrediction 与 identifyDayLevelConcerns）
+   */
+  private computeTdfpmForPlan(
+    plan: RoutePlanDraft,
+    world: WorldModelContext,
+    baseEvaluation: ObjectiveEvaluationResult
+  ): Map<number, TdfpmResult> {
+    const map = new Map<number, TdfpmResult>();
+    const segments = Array.isArray(plan?.segments) ? plan.segments : [];
+    if (segments.length === 0) return map;
+
+    const speedKmH = this.getDrivingSpeedKmH(world);
+    const meta = (world?.routeDirection as { metadata?: Record<string, unknown> })?.metadata;
+    const roadType =
+      (meta?.route_basic_info as { road_type?: string })?.road_type ??
+      (meta as { roadType?: string })?.roadType ??
+      '';
+    const human = world?.human as { metadata?: { drivingFatigueFactors?: { sleepFactor?: number; stressFactor?: number } } } | undefined;
+    const stressFactor = human?.metadata?.drivingFatigueFactors?.stressFactor ?? 1.0;
+    const cognitiveLoad = stressFactor > 1.2 ? 10 : stressFactor > 1 ? 8 : 5;
+    const weatherPenalty = (baseEvaluation?.breakdown?.weatherRiskPenalty ?? 0) * 15;
+
+    const byDay = new Map<number, { distanceKm: number; ascentM: number }>();
+    for (const s of segments) {
+      const day = Number(s?.dayIndex) || 1;
+      const cur = byDay.get(day) ?? { distanceKm: 0, ascentM: 0 };
+      cur.distanceKm += Number(s?.distanceKm) || 0;
+      cur.ascentM += Number(s?.ascentM) || 0;
+      byDay.set(day, cur);
+    }
+
+    const dayOrder = Array.from(byDay.keys()).sort((a, b) => a - b);
+    for (const dayIndex of dayOrder) {
+      const { distanceKm, ascentM } = byDay.get(dayIndex)!;
+      const drivingHours = Math.min(distanceKm / speedKmH, 24);
+
+      const ctx: TdfpmDayContext = {
+        drivingHours,
+        roadType: roadType || undefined,
+        departureHour: 8,
+        weatherPenalty,
+        altitudeM: ascentM >= 600 ? 1000 : ascentM >= 300 ? 500 : undefined,
+        cognitiveLoad,
+        breakMinutes: 0,
+        hasNap: false,
+        sleepHours: 8,
+      };
+      const result = this.tdfpm.computeFatigueScore(ctx);
+      map.set(dayIndex, result);
+    }
+    return map;
+  }
+
+  /**
+   * 按天/时段细化关注点（用户可读，如「Day2 驾驶时间较长…」）。
+   * 若 plan 由 tripId 加载且 segments 无 distanceKm/ascentM，则仅可能产出天气相关一条。
+   */
+  private identifyDayLevelConcerns(
+    plan: RoutePlanDraft,
+    world: WorldModelContext,
+    baseEvaluation: ObjectiveEvaluationResult
+  ): string[] {
+    const out: string[] = [];
+    const segments = Array.isArray(plan?.segments) ? plan.segments : [];
+    if (segments.length === 0) return out;
+
+    const speedKmH = this.getDrivingSpeedKmH(world);
+
+    const byDay = new Map<number, { distanceKm: number; ascentM: number }>();
+    for (const s of segments) {
+      const day = Number(s?.dayIndex) || 1;
+      const cur = byDay.get(day) ?? { distanceKm: 0, ascentM: 0 };
+      cur.distanceKm += Number(s?.distanceKm) || 0;
+      cur.ascentM += Number(s?.ascentM) || 0;
+      byDay.set(day, cur);
+    }
+
+    const effectiveSafeHours = this.getEffectiveSafeHours(world);
+    const tripnaraWarningHours = effectiveSafeHours * DRIVING_SAFETY_CONFIG.warningRatio;
+    const dangerZoneHours = effectiveSafeHours * DRIVING_SAFETY_CONFIG.dangerRatio;
+    const physicalLimitHours = DRIVING_SAFETY_CONFIG.physicalLimitHours;
+
+    const dayOrder = Array.from(byDay.keys()).sort((a, b) => a - b);
+    for (const dayIndex of dayOrder) {
+      const { distanceKm, ascentM } = byDay.get(dayIndex)!;
+      const dayLabel = dayIndex >= 1 ? `Day${dayIndex}` : `第${dayIndex}天`;
+      const rawDrivingH = distanceKm / speedKmH;
+      const drivingH = Math.min(rawDrivingH, physicalLimitHours);
+
+      if (rawDrivingH > physicalLimitHours) {
+        out.push(`${dayLabel} 路程约${Math.round(distanceKm)}km，单日内无法完成，建议拆分日程`);
+      } else if (drivingH >= dangerZoneHours) {
+        out.push(
+          `${dayLabel} 驾驶进入危险区（约 ${drivingH.toFixed(1)}h，≥${dangerZoneHours.toFixed(1)}h 事故率明显上升），强烈建议拆分`
+        );
+      } else if (drivingH >= effectiveSafeHours) {
+        out.push(
+          `${dayLabel} 超过安全驾驶上限（约 ${drivingH.toFixed(1)}h，推荐 ≤${effectiveSafeHours.toFixed(1)}h），疲劳风险显著`
+        );
+      } else if (drivingH >= tripnaraWarningHours) {
+        out.push(
+          `${dayLabel} 今日行程偏紧（约 ${drivingH.toFixed(1)}h），建议拆分或预留休息`
+        );
+      }
+      if (ascentM >= 600) {
+        const a = ascentM >= 1000 ? `${Math.round(ascentM / 100) / 10}km` : `约 ${Math.round(ascentM)}m`;
+        out.push(`${dayLabel} 爬升较多（${a}），注意体能分配`);
+      }
+
+      // TDFPM 疲劳提示（fatigueScore >= 60 或 recommendation 建议停止）
+      const tdfpm = this.tdfpmPerDay.get(dayIndex);
+      if (tdfpm && (tdfpm.fatigueScore >= 60 || ['REST_NOW', 'SPLIT_DAY', 'STOP_DRIVING'].includes(tdfpm.recommendation))) {
+        const recText = { REST_NOW: '建议休息', SPLIT_DAY: '建议拆分日程', STOP_DRIVING: '建议停止驾驶' }[tdfpm.recommendation] ?? tdfpm.recommendation;
+        out.push(`${dayLabel} TDFPM 疲劳指数 ${tdfpm.fatigueScore}（${tdfpm.riskLevel}），${recText}`);
+      }
+    }
+
+    if ((baseEvaluation.breakdown?.weatherRiskPenalty ?? 0) > 0.15) {
+      out.push('天气存在不确定性，建议调整停留顺序或预留备选方案');
+    }
+
+    return out.slice(0, 5);
   }
 
   /**
@@ -552,8 +748,15 @@ export class GuardianDebateService {
     return Math.min(1, baseConsensus + (0.3 - variance) * 0.2);
   }
 
+  /** 人格 → 用户可读维度名（用于 keyTradeoffs 展示） */
+  private static readonly PERSONA_TO_DIMENSION: Record<string, string> = {
+    ABU: '安全',
+    DRE: '节奏',
+    NEPTUNE: '修复',
+  };
+
   /**
-   * 识别分歧
+   * 识别分歧（输出用户可读维度名，供界面展示「分歧所在」）
    */
   private identifyDisagreements(arguments_: DebateArgument[]): string[] {
     const disagreements: string[] = [];
@@ -562,9 +765,17 @@ export class GuardianDebateService {
     const opposeArgs = arguments_.filter(a => a.type === 'OPPOSE');
     
     if (supportArgs.length > 0 && opposeArgs.length > 0) {
-      disagreements.push(
-        `${supportArgs.map(a => a.fromPersona).join('/')} 支持 vs ${opposeArgs.map(a => a.fromPersona).join('/')} 反对`
-      );
+      const supportDims = [...new Set(
+        supportArgs.map(a => GuardianDebateService.PERSONA_TO_DIMENSION[a.fromPersona] || a.fromPersona)
+      )].filter(Boolean);
+      const opposeDims = [...new Set(
+        opposeArgs.map(a => GuardianDebateService.PERSONA_TO_DIMENSION[a.fromPersona] || a.fromPersona)
+      )].filter(Boolean);
+      if (supportDims.length > 0 && opposeDims.length > 0) {
+        const left = supportDims.join('、');
+        const right = opposeDims.join('、');
+        disagreements.push(`${left}与${right}存在分歧`);
+      }
     }
     
     return disagreements;
@@ -727,7 +938,19 @@ export class GuardianDebateService {
     const summary = `经过 ${debateRounds.length} 轮辩论，三位守护者最终${decisionText}。` +
                     `共识度 ${(consensus * 100).toFixed(0)}%。` +
                     (allConditions.length > 0 ? `附带 ${allConditions.length} 个条件。` : '');
-    
+
+    const fatiguePrediction = this.tdfpmPerDay.size > 0
+      ? Array.from(this.tdfpmPerDay.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([dayIndex, r]) => ({
+            dayIndex,
+            fatigueScore: r.fatigueScore,
+            riskLevel: r.riskLevel,
+            recommendation: r.recommendation,
+            confidence: r.confidence,
+          }))
+      : undefined;
+
     return {
       decision,
       evaluations,
@@ -737,6 +960,7 @@ export class GuardianDebateService {
       keyTradeoffs: tradeoffs,
       conditions: allConditions.length > 0 ? allConditions : undefined,
       humanDecisionPoints: humanPoints,
+      fatiguePrediction,
       summary,
     };
   }
