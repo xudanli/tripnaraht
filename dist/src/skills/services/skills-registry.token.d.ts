@@ -1,1 +1,0 @@
-export declare const SKILLS_REGISTRY_TOKEN = "SKILLS_REGISTRY_TOKEN";

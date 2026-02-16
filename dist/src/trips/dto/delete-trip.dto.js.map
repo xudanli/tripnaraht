@@ -1,1 +1,0 @@
-{"version":3,"file":"delete-trip.dto.js","sourceRoot":"","sources":["../../../../src/trips/dto/delete-trip.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AACA,qDAAuD;AACvD,6CAA8C;AAK9C,MAAa,aAAa;CAQzB;AARD,sCAQC;AADC;IANC,IAAA,qBAAW,EAAC;QACX,WAAW,EAAE,2CAA2C;QACxD,OAAO,EAAE,IAAI;KACd,CAAC;IACD,IAAA,0BAAQ,GAAE;IACV,IAAA,4BAAU,EAAC,EAAE,OAAO,EAAE,UAAU,EAAE,CAAC;;kDACf"}
