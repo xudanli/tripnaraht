@@ -8,7 +8,8 @@ import { SkillsRegistryService } from '../../skills/services/skills-registry.ser
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { ActionRegistryService } from './action-registry.service';
 import { Skill } from '../../skills/interfaces/skill.interface';
-import { Deadline, withTimeout, runBounded, SimpleLruCache } from './orchestration-utils';
+import { withTimeout, SimpleLruCache } from './orchestration-utils';
+import { createDeadline } from './orchestration-stability.util';
 import {
   IntentAnalysis,
   RoutingDecision,
@@ -52,6 +53,7 @@ import { ClaudeLocalInsightAgentService } from './sub-agents/local-insight-agent
 import { ClaudeCoreDecisionAgentService } from './sub-agents/core-decision-agent.service';
 import { ClaudeNarratorAgentService } from './sub-agents/narrator-agent.service';
 import { getSkillFailureStrategy, isCriticalSkill } from '../utils/skill-importance.util';
+import { isInGrayBucket } from '../utils/gray-release.util';
 import { ErrorType, inferErrorType, getErrorHandlingStrategy } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
 import { SKILL_VALIDATION_RULES } from './skill-validation-rules.config';
@@ -74,12 +76,17 @@ import { TokenStatsService } from './token-stats.service';
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
 import { TdfpmCalculatorService } from '../../trips/decision/services/tdfpm-calculator.service';
 import type { TdfpmDayContext } from '../../trips/decision/services/tdfpm-calculator.service';
-import { orchestratorStateToDecisionStatePatch } from '../../decision/kernel/orchestrator-state-mapper';
-import { DecisionState } from '../../decision/kernel/decision-state.types';
+import {
+  orchestratorStateToDecisionStatePatch,
+  decisionStateToOrchestratorState,
+  buildPatchFromDSOPrimary,
+} from '../../decision/kernel/orchestrator-state-mapper';
+import { StateCommitConflictError } from '../../decision/kernel/decision-state.types';
+import { DecisionState, DecisionStatePatch, StateHistoryDelta } from '../../decision/kernel/decision-state.types';
 // 护城河扩展：预测性世界模型
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
-
+import { aggregateWeatherRisk } from '../utils/weather-risk-aggregator.util';
 /**
  * Claude Orchestrator Service
  * 
@@ -165,6 +172,37 @@ export class ClaudeOrchestratorService {
     for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
     const bucket = h % 100;
     return bucket < percent;
+  }
+
+  /**
+   * Phase 2: Kernel 原生执行 RESEARCH（KERNEL_NATIVE_EXECUTION=true 时走 ResearchExecutor）
+   * Scheme B: 默认 true，Kernel Phase Executors 为主路径；设为 false 可回退到 callback
+   * Scheme E: 灰度 - KERNEL_NATIVE_EXECUTION_GRAY_PERCENT=50 时仅 50% 请求走 Kernel 路径
+   */
+  private isKernelNativeExecution(state?: { request_id: string; user_id?: string }): boolean {
+    const v = this.configService?.get<string>('KERNEL_NATIVE_EXECUTION') ?? process.env.KERNEL_NATIVE_EXECUTION ?? 'true';
+    const baseEnabled = v === 'true' || v === '1';
+    if (!baseEnabled) return false;
+
+    const grayPercent = parseInt(
+      this.configService?.get<string>('KERNEL_NATIVE_EXECUTION_GRAY_PERCENT') ??
+        process.env.KERNEL_NATIVE_EXECUTION_GRAY_PERCENT ??
+        '100',
+      10,
+    );
+    if (grayPercent >= 100 || !state) return true;
+    if (grayPercent <= 0) return false;
+
+    return isInGrayBucket(`${state.user_id ?? ''}|${state.request_id}`, grayPercent);
+  }
+
+  /**
+   * DSO 为主状态源（专利 P2）
+   * true=STATE_UPDATE/FEEDBACK 使用 buildPatchFromDSOPrimary，优先 DSO 避免 O→D 覆盖
+   */
+  private isDsoAsPrimary(): boolean {
+    const v = this.configService?.get<string>('DSO_AS_PRIMARY') ?? process.env.DSO_AS_PRIMARY ?? 'true';
+    return v === 'true' || v === '1';
   }
 
   /**
@@ -305,34 +343,16 @@ export class ClaudeOrchestratorService {
                                 messageLower.includes('trip') ||
                                 messageLower.includes('plan');
       
-      // Fast Path: 新建行程规划直接规则路由（0 LLM调用）
+      // 新建行程规划：按专利要求走状态机流程（INTAKE→STATE_UPDATE→RESEARCH→GATE_EVAL→...）
+      // 不再使用 Fast Path，确保 DSO、STATE_UPDATE、三人格等专利要素完整执行
       if (isCreatingNewTrip && isPlanningIntent) {
         const countryCode = this.extractCountryCodeFromMessage(request.message);
         if (countryCode) {
-          this.logger.log(`[Claude Orchestrator] 🚀 Fast Path: 新建行程规划，countryCode=${countryCode}，跳过LLM调用`);
-          // 使用传入的 deadline 或创建新的
-          const fastPathDeadline = deadline 
-            ? new Deadline(deadline.clamp(12_000, 5000)) 
-            : new Deadline(12_000); // 12秒硬性止损
-          const decisionLog: DecisionLogEntry[] = [];
-          const stepsExecuted: OrchestrationResult['stepsExecuted'] = [];
-          
-          try {
-            const fastResult = await this.fastPathOrchestrate(
-              request,
-              context,
-              fastPathDeadline,
-              decisionLog,
-              stepsExecuted,
-            );
-            fastResult.totalDuration = Date.now() - startTime;
-            fastResult.decisionLog = decisionLog;
-            return fastResult;
-          } catch (error: any) {
-            this.logger.error(`[Claude Orchestrator] Fast Path 失败: ${error?.message}`);
-            // 降级到原有流程
-            this.logger.warn(`[Claude Orchestrator] 降级到原有LLM流程`);
-          }
+          this.logger.log(`[Claude Orchestrator] 新建行程规划，countryCode=${countryCode}，走专利状态机流程`);
+          const smDeadline = deadline ?? createDeadline(60_000);
+          const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline);
+          smResult.totalDuration = Date.now() - startTime;
+          return smResult;
         } else {
           // 缺少countryCode，提前返回错误
           this.logger.warn(`[Claude Orchestrator] 创建新行程需要目的地信息，但无法从消息中提取 countryCode`);
@@ -1935,8 +1955,37 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 注意：如果没有 world 和 tripId，不自动构建，让 skill 抛出错误，系统会统一返回澄清问题
       // 这样用户可以明确知道缺少什么信息
     }
-    
+
+    // P0: Skills 内 LLM 打点 - 注入 tokenContext（skillName → state_machine_step 映射）
+    const requestId = context.requestId || request.request_id;
+    if (requestId && step.skillName) {
+      const stateStep = this.mapSkillNameToStep(step.skillName);
+      input.tokenContext = {
+        request_id: requestId,
+        state_machine_step: stateStep,
+        sub_agent: this.mapSkillNameToSubAgent(step.skillName),
+      };
+    }
+
     return input;
+  }
+
+  /** skillName → OrchestrationStep（用于 Token 按阶段打点） */
+  private mapSkillNameToStep(skillName?: string): import('../../agent/interfaces/trip-plan.interface').OrchestrationStep {
+    if (!skillName) return 'INTAKE';
+    if (skillName.includes('gate') || skillName.includes('runThreeGuardians') || skillName.includes('precheck')) return 'GATE_EVAL';
+    if (skillName.includes('itinerary.generate') || skillName.includes('plan.') || skillName.includes('architect') || skillName.includes('transit') || skillName.includes('budget') || skillName.includes('pace') || skillName.includes('constraints')) return 'PLAN_GEN';
+    if (skillName.includes('verify')) return 'VERIFY';
+    if (skillName.includes('repair') || skillName.includes('alternatives')) return 'REPAIR';
+    if (skillName.includes('narrate') || skillName.includes('explain')) return 'NARRATE';
+    return 'RESEARCH'; // 默认
+  }
+
+  private mapSkillNameToSubAgent(skillName?: string): import('../../agent/interfaces/trip-plan.interface').SubAgentType {
+    if (!skillName) return 'Planner';
+    if (skillName.includes('gate')) return 'Gatekeeper';
+    if (skillName.includes('narrate') || skillName.includes('explain')) return 'Narrator';
+    return 'Planner';
   }
   
   /**
@@ -2249,11 +2298,8 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 步骤 2: STATE_UPDATE - Phase 2.3 显式 DSO 同步
       decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
 
-      // 步骤 3: RESEARCH - 调用 skills 获取硬数据
-      await this.executeResearchStep(request, context, state, llmProvider);
-
-      // STATE_UPDATE: RESEARCH 后同步 research_data → environmentState
-      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+      // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
+      decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
 
       // 步骤 4: GATE_EVAL - 执行 Should-Exist Gate 决策（强制在 Plan 之前）
       // 注意：如果有 HARD 缺口，应该在 INTAKE 阶段生成澄清问题，不继续执行后续步骤
@@ -2264,48 +2310,47 @@ ${JSON.stringify(routingDecision, null, 2)}
         return this.buildClarificationResult(state, startTime);
       }
 
-      await this.executeGateEvalStep(request, context, state, llmProvider);
-
-      // STATE_UPDATE: GATE_EVAL 后同步 constraints 到 DSO
-      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+      // 步骤 4: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
+      decisionState = await this.executeGateEvalPhase(decisionState, state, request, context, llmProvider);
 
       // 如果 Gate 结果为 BLOCK，直接返回
       if (state.gate_result?.gate_result === 'BLOCK') {
-        return this.buildBlockedResult(state, startTime);
+        return this.buildBlockedResult(state, startTime, decisionState);
       }
 
       // 步骤 5: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
       decisionState = await this.executeContextBuildStep(request, context, state, decisionState);
 
-      // 步骤 6: PLAN_GEN - 生成结构化行程草案
-      await this.executePlanGenStep(request, context, state, llmProvider);
-
-      // STATE_UPDATE: PLAN_GEN 后同步 itinerary 到 DSO
-      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+      // 步骤 6: PLAN_GEN - KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
+      decisionState = await this.executePlanGenPhase(decisionState, state, request, context, llmProvider);
 
       // 步骤 7: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
       decisionState = await this.executeOptimizeStep(state, decisionState);
 
-      // 步骤 8: VERIFY - 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
-      await this.executeVerifyStep(request, context, state, llmProvider);
+      // 步骤 8: VERIFY - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
+      decisionState = await this.executeVerifyPhase(decisionState, state, request, context, llmProvider);
+      decisionState = this.syncConfidenceAfterVerify(state, decisionState) ?? decisionState;
 
-      // 步骤 9: REPAIR - 替换POI/改路线/加buffer/换交通/降级（如果需要）
+      // 步骤 9: REPAIR - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair（条件执行）
       if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
-        await this.executeRepairStep(request, context, state, llmProvider);
+        decisionState = await this.executeRepairPhase(decisionState, state, request, context, llmProvider) ?? decisionState;
       }
 
       // 步骤 10: NARRATE - 产出用户可读解释（不得改硬字段）
       await this.executeNarrateStep(request, context, state, llmProvider);
 
+      // 步骤 10.5: FEEDBACK - 专利反馈学习模块，记录决策日志（异步，不阻塞）
+      decisionState = await this.executeFeedbackStep(state, decisionState) ?? decisionState;
+
       // 步骤 11: HALLUCINATION_DETECTION - 防幻觉检测
       await this.executeHallucinationDetectionStep(request, context, state);
 
-      // 步骤 9: DONE
+      // 步骤 12: DONE
       state.current_step = 'DONE';
       state.metadata.last_updated_at = new Date().toISOString();
       state.metadata.total_duration_ms = Date.now() - startTime;
 
-      return this.buildSuccessResult(state, startTime);
+      return this.buildSuccessResult(state, startTime, decisionState);
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] 状态机编排失败: ${error?.message}`, error?.stack);
       
@@ -2349,7 +2394,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         });
       }
 
-      return this.buildErrorResult(state, error, startTime);
+      return this.buildErrorResult(state, error, startTime, decisionState);
     }
   }
 
@@ -2570,7 +2615,358 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
-   * STATE_UPDATE 步骤：Phase 2.3 显式同步 OrchestratorState → DSO
+   * VERIFY 后同步 confidence 到 DSO
+   * 基于验证问题数、errors 计算 [0,1]
+   */
+  private syncConfidenceAfterVerify(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): DecisionState | undefined {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+    const verifyErrors = state.errors.filter((e) => e.step === 'VERIFY');
+    const hasVerificationIssues = state.decision_log.some(
+      (e) => e.step === 'VERIFY' && e.outputs_summary?.includes('个问题'),
+    );
+    let confidence = 0.9;
+    if (verifyErrors.length > 0) confidence -= 0.2 * verifyErrors.length;
+    if (hasVerificationIssues) confidence -= 0.1;
+    return this.decisionKernel.setConfidence(decisionState, Math.max(0.1, confidence));
+  }
+
+  /**
+   * 从 patch 构建 history 差分（Token 优化：只记录变化）
+   */
+  private buildHistoryDeltasFromPatch(patch: DecisionStatePatch): StateHistoryDelta[] {
+    const now = new Date().toISOString();
+    const deltas: StateHistoryDelta[] = [];
+    if (patch.userIntent) {
+      deltas.push({ type: 'userIntent', summary: 'intent synced', at: now });
+    }
+    if (patch.environmentState) {
+      deltas.push({ type: 'weather', summary: 'env synced', at: now });
+    }
+    if (patch.tripState?.delayMinutes !== undefined) {
+      deltas.push({ type: 'delay', summary: `delay=${patch.tripState.delayMinutes}m`, at: now });
+    }
+    if (patch.constraints) {
+      deltas.push({
+        type: 'constraints',
+        summary: patch.constraints.feasible ? 'allowed' : `violations=${patch.constraints.violations?.length ?? 0}`,
+        at: now,
+      });
+    }
+    if (patch.tripState?.planDraft) {
+      deltas.push({ type: 'plan', summary: 'plan draft updated', at: now });
+    }
+    return deltas;
+  }
+
+  /**
+   * RESEARCH 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
+   */
+  private async executeResearchPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    if (
+      this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
+      this.decisionKernel &&
+      decisionState &&
+      state.trip_plan_request
+    ) {
+      const stepStartTime = Date.now();
+      const ctx = {
+        requestId: state.request_id,
+        routeDirectionId: request.route_direction_id,
+        userId: request.user_id,
+        tripPlanRequest: state.trip_plan_request,
+      };
+      const { newState, researchData } = await this.decisionKernel.executeResearch(decisionState, ctx);
+      const derived = decisionStateToOrchestratorState(newState, state);
+      Object.assign(state, derived);
+      state.research_data = researchData;
+      state.current_step = 'RESEARCH';
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'RESEARCH',
+        actor: 'Orchestrator',
+        inputs_summary: 'Kernel 原生 RESEARCH',
+        outputs_summary: `收集了 ${Object.keys(researchData).length} 类数据`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime, data_types: Object.keys(researchData) },
+      });
+      state.metadata.last_updated_at = new Date().toISOString();
+      await this.generateDecisionStepForStep(state, 'RESEARCH', 'LocalInsight');
+      return newState;
+    }
+    return this.executePhaseViaKernel(decisionState, state, 'RESEARCH', () =>
+      this.executeResearchStep(request, context, state, llmProvider),
+    );
+  }
+
+  /**
+   * GATE_EVAL 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval，否则走 callback
+   */
+  private async executeGateEvalPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    if (
+      this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
+      this.decisionKernel &&
+      decisionState &&
+      state.trip_plan_request
+    ) {
+      const stepStartTime = Date.now();
+      const ctx = {
+        requestId: state.request_id,
+        routeDirectionId: request.route_direction_id,
+        userId: request.user_id,
+        tripPlanRequest: state.trip_plan_request,
+        researchData: state.research_data,
+      };
+      const { newState, gateResult } = await this.decisionKernel.executeGateEval(decisionState, ctx);
+      const derived = decisionStateToOrchestratorState(newState, state);
+      Object.assign(state, derived);
+      state.gate_result = {
+        gate_result: gateResult.gate_result,
+        violations: gateResult.violations as GateResult['violations'],
+        required_adjustments: gateResult.required_adjustments as GateResult['required_adjustments'],
+        confidence: gateResult.confidence,
+        evidence_refs: [],
+      };
+      state.current_step = 'GATE_EVAL';
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'GATE_EVAL',
+        actor: 'Gatekeeper',
+        inputs_summary: 'Kernel 原生 GATE_EVAL',
+        outputs_summary: `Gate 结果: ${gateResult.gate_result}, 违规数: ${gateResult.violations.length}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime },
+      });
+      state.metadata.last_updated_at = new Date().toISOString();
+      await this.generateDecisionStepForStep(state, 'GATE_EVAL', 'Gatekeeper');
+      return newState;
+    }
+    return this.executePhaseViaKernel(decisionState, state, 'GATE_EVAL', () =>
+      this.executeGateEvalStep(request, context, state, llmProvider),
+    );
+  }
+
+  /**
+   * PLAN_GEN 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
+   */
+  private async executePlanGenPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.trip_plan_request) {
+      const stepStartTime = Date.now();
+      const ctx = {
+        requestId: state.request_id,
+        tripPlanRequest: state.trip_plan_request,
+        researchData: state.research_data,
+        gateResult: state.gate_result as any,
+      };
+      const { newState, itinerary } = await this.decisionKernel.executePlanGen(decisionState, ctx);
+      const derived = decisionStateToOrchestratorState(newState, state);
+      Object.assign(state, derived);
+      state.itinerary = itinerary as Itinerary;
+      state.current_step = 'PLAN_GEN';
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'PLAN_GEN',
+        actor: 'Planner',
+        inputs_summary: 'Kernel 原生 PLAN_GEN',
+        outputs_summary: `生成了 ${itinerary.days.length} 天的行程`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime },
+      });
+      state.metadata.last_updated_at = new Date().toISOString();
+      await this.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
+      if (this.trajectoryCollection && state.itinerary && state.gate_result) {
+        try {
+          let complianceResult = state.compliance_result;
+          if (!complianceResult && this.complianceAgent) {
+            try {
+              complianceResult = await this.complianceAgent.checkCompliance(state.itinerary, state.gate_result, state);
+            } catch {
+              complianceResult = { risk_warnings: [], disclaimers: [], required_confirmations: [] };
+            }
+          } else if (!complianceResult) {
+            complianceResult = { risk_warnings: [], disclaimers: [], required_confirmations: [] };
+          }
+          await this.trajectoryCollection.collectTrajectory({
+            requestId: state.request_id,
+            tripId: (request as any).trip_id,
+            plan: state.itinerary,
+            decisionTrace: state.decision_log,
+            researchData: state.research_data || {},
+            gateResult: state.gate_result,
+            complianceResult: complianceResult as any,
+            modelVersion: 'v1.0',
+            countryCode: undefined,
+          });
+        } catch (e: any) {
+          this.logger.warn(`[Claude Orchestrator] 轨迹收集失败: ${e?.message}`);
+        }
+      }
+      return newState;
+    }
+    return this.executePhaseViaKernel(decisionState, state, 'PLAN_GEN', () =>
+      this.executePlanGenStep(request, context, state, llmProvider),
+    );
+  }
+
+  /**
+   * VERIFY 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
+   */
+  private async executeVerifyPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.itinerary) {
+      const stepStartTime = Date.now();
+      const ctx = {
+        requestId: state.request_id,
+        itinerary: state.itinerary as any,
+        researchData: state.research_data,
+      };
+      const { newState, issues } = await this.decisionKernel.executeVerify(decisionState, ctx);
+      const derived = decisionStateToOrchestratorState(newState, state);
+      Object.assign(state, derived);
+      if (issues.length > 0) {
+        state.errors.push({
+          step: 'VERIFY',
+          error_code: 'VERIFICATION_ISSUES',
+          message: `发现 ${issues.length} 个验证问题`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      state.current_step = 'VERIFY';
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'VERIFY',
+        actor: 'Orchestrator',
+        inputs_summary: 'Kernel 原生 VERIFY',
+        outputs_summary: issues.length > 0 ? `发现 ${issues.length} 个问题` : '验证通过',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime, issues, guardian: 'DR_DRE' as GuardianType },
+      });
+      state.metadata.last_updated_at = new Date().toISOString();
+      await this.generateDecisionStepForStep(state, 'VERIFY', 'CoreDecision');
+      return newState;
+    }
+    return this.executePhaseViaKernel(decisionState, state, 'VERIFY', () =>
+      this.executeVerifyStep(request, context, state, llmProvider),
+    );
+  }
+
+  /**
+   * REPAIR 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair
+   */
+  private async executeRepairPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.itinerary && state.gate_result) {
+      const stepStartTime = Date.now();
+      const ctx = {
+        requestId: state.request_id,
+        tripPlanRequest: state.trip_plan_request,
+        researchData: state.research_data,
+        gateResult: state.gate_result as any,
+        itinerary: state.itinerary as any,
+        alternatives: state.alternatives,
+      };
+      const { newState, itinerary, repairApplied } = await this.decisionKernel.executeRepair(decisionState, ctx);
+      const derived = decisionStateToOrchestratorState(newState, state);
+      Object.assign(state, derived);
+      if (itinerary) state.itinerary = itinerary as Itinerary;
+      state.current_step = 'REPAIR';
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'REPAIR',
+        actor: 'LocalInsight',
+        inputs_summary: 'Kernel 原生 REPAIR',
+        outputs_summary: repairApplied ? '已应用修复方案' : '无需修复或修复失败',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: Date.now() - stepStartTime, repair_applied: repairApplied, guardian: 'NEPTUNE' as GuardianType },
+      });
+      state.metadata.last_updated_at = new Date().toISOString();
+      await this.generateDecisionStepForStep(state, 'REPAIR', 'LocalInsight');
+      return newState;
+    }
+    return this.executePhaseViaKernel(decisionState, state, 'REPAIR', () =>
+      this.executeRepairStep(request, context, state, llmProvider),
+    );
+  }
+
+  /**
+   * Phase B: Conductor 只调 Kernel - 执行阶段并原子同步
+   */
+  private async executePhaseViaKernel(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    phaseName: string,
+    executeFn: () => Promise<void>,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) {
+      await executeFn();
+      return this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+    }
+    const stepStartTime = Date.now();
+    const updated = await this.decisionKernel.executePhase(decisionState, state, phaseName, executeFn);
+    const derived = decisionStateToOrchestratorState(updated, state);
+    Object.assign(state, derived);
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'STATE_UPDATE' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: `Phase B: ${phaseName} 执行后原子同步`,
+      outputs_summary: `version=${updated.systemState?.version}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: { duration_ms: Date.now() - stepStartTime },
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+    return updated;
+  }
+
+  /**
+   * 从 ContextPackage 提取 WorldModelContext（P3: world.buildContext 与 DSO 打通）
+   * 查找 type=WORLD_MODEL 且 data 含 physical/human/routeDirection 的 block
+   */
+  private extractWorldModelFromContextPackage(decisionState: DecisionState | undefined): { physical?: unknown; human?: unknown; routeDirection?: unknown } | undefined {
+    const pkg = decisionState?.contextPackage;
+    if (!pkg?.blocks?.length) return undefined;
+    const block = pkg.blocks.find((b: any) => b.type === 'WORLD_MODEL' && b.data?.physical);
+    return block?.data;
+  }
+
+  /**
+   * STATE_UPDATE 步骤：Phase 2.3 显式同步，专利权利要求 7 原子提交
    */
   private async executeStateUpdateStep(
     state: OrchestratorState,
@@ -2580,17 +2976,62 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     state.current_step = 'STATE_UPDATE';
     const stepStartTime = Date.now();
-    this.logger.debug(`[Claude Orchestrator] 执行 STATE_UPDATE 步骤...`);
+    this.logger.debug(`[Claude Orchestrator] 执行 STATE_UPDATE 步骤（原子提交）...`);
 
-    const patch = orchestratorStateToDecisionStatePatch(state);
-    const updated = this.decisionKernel.updateState(decisionState, patch);
+    const patch = this.isDsoAsPrimary()
+      ? buildPatchFromDSOPrimary(decisionState, state)
+      : orchestratorStateToDecisionStatePatch(state);
+    patch.systemState = {
+      ...patch.systemState,
+      requestId: state.request_id,
+      currentPhase: 'STATE_UPDATE',
+      lastUpdatedAt: new Date().toISOString(),
+    };
+    // Scheme C: 世界模型三段式，从 patch + decisionState 构建 worldStateSummary（P3: research_data 补全，world.buildContext 优先）
+    const { buildWorldStateSummaryFromDso } = await import('../../decision/kernel/world-state-summary.types');
+    const mergedForSummary = {
+      environmentState: patch.environmentState ?? decisionState.environmentState,
+      userIntent: patch.userIntent ?? decisionState.userIntent,
+    };
+    const worldFromContext = this.extractWorldModelFromContextPackage(decisionState);
+    const worldStateSummary = buildWorldStateSummaryFromDso(
+      mergedForSummary,
+      state.research_data,
+      worldFromContext ?? (state as any).world_model_context,
+    );
+    if (Object.keys(worldStateSummary).length > 0) {
+      patch.worldStateSummary = worldStateSummary;
+    }
+
+    let updated: DecisionState;
+    try {
+      const result = this.decisionKernel.commitStateUpdate(decisionState, patch, 'STATE_UPDATE');
+      updated = result.newState;
+    } catch (err) {
+      if (err instanceof StateCommitConflictError) {
+        this.logger.warn(
+          `[Claude Orchestrator] STATE_UPDATE 版本冲突 expected=${err.expectedVersion} actual=${err.actualVersion}，回退到 merge`,
+        );
+        updated = this.decisionKernel.updateState(decisionState, patch);
+        const deltas = this.buildHistoryDeltasFromPatch(patch);
+        for (const d of deltas) {
+          updated = this.decisionKernel.appendHistoryDelta(updated, d);
+        }
+      } else {
+        throw err;
+      }
+    }
+
+    // DSO 为主时：派生 OrchestratorState 兼容字段
+    const derived = decisionStateToOrchestratorState(updated, state);
+    Object.assign(state, derived);
 
     state.decision_log.push({
       request_id: state.request_id,
       step: 'STATE_UPDATE' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: 'OrchestratorState 投影为 DSO patch',
-      outputs_summary: `已更新: userIntent=${!!patch.userIntent}, constraints=${!!patch.constraints}, environmentState=${!!patch.environmentState}`,
+      inputs_summary: 'OrchestratorState 投影为 DSO patch，原子提交',
+      outputs_summary: `已更新: userIntent=${!!patch.userIntent}, constraints=${!!patch.constraints}, environmentState=${!!patch.environmentState}, version=${updated.systemState?.version}`,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: { duration_ms: Date.now() - stepStartTime },
@@ -2602,6 +3043,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * RESEARCH 步骤：调用 skills 获取硬数据
+   * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    */
   private async executeResearchStep(
     request: RouteAndRunRequestDto,
@@ -2805,7 +3247,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * GATE_EVAL 步骤：执行 Should-Exist Gate 决策
-   * 
+   * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    * 强制：Gate 在 Plan 之前执行
    */
   private async executeGateEvalStep(
@@ -3300,10 +3742,30 @@ ${JSON.stringify(routingDecision, null, 2)}
       }
     }
 
-    const hints = this.decisionKernel.getOptimizationHints(decisionState);
+    // Scheme A: 优先尝试 Monte Carlo 路径（不确定性时）
+    let hints = await this.decisionKernel.getOptimizationHintsAsync(decisionState);
+    if (!hints) {
+      hints = this.decisionKernel.getOptimizationHints(decisionState);
+    }
     if (hints) {
       decisionState = this.decisionKernel.updateState(decisionState, { optimizationHints: hints });
     }
+
+    // P1: 当 constraints 为空且 planDraft 存在时，调用 trips ConstraintEngine 补充
+    if (!decisionState.constraints && planDraft?.days?.length) {
+      try {
+        const report = await this.decisionKernel.getConstraintReportAsync(decisionState);
+        if (report) {
+          decisionState = this.decisionKernel.updateState(decisionState, { constraints: report });
+          this.logger.debug(
+            `[Claude Orchestrator] trips ConstraintEngine 补充 constraints: feasible=${report.feasible}`,
+          );
+        }
+      } catch (e: any) {
+        this.logger.warn(`[Claude Orchestrator] getConstraintReportAsync 失败: ${e?.message}`);
+      }
+    }
+
     state.decision_log.push({
       request_id: state.request_id,
       step: 'OPTIMIZE' as OrchestrationStep,
@@ -3320,6 +3782,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * PLAN_GEN 步骤：生成结构化行程草案
+   * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    */
   private async executePlanGenStep(
     request: RouteAndRunRequestDto,
@@ -3457,6 +3920,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * VERIFY 步骤：验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
+   * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    */
   private async executeVerifyStep(
     request: RouteAndRunRequestDto,
@@ -3535,6 +3999,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * REPAIR 步骤：替换POI/改路线/加buffer/换交通/降级
+   * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    */
   private async executeRepairStep(
     request: RouteAndRunRequestDto,
@@ -3681,6 +4146,39 @@ ${JSON.stringify(routingDecision, null, 2)}
         timestamp: new Date().toISOString(),
       });
     }
+  }
+
+  /**
+   * FEEDBACK 步骤：专利反馈学习模块，记录决策日志（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN）
+   */
+  private async executeFeedbackStep(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+
+    state.current_step = 'FEEDBACK';
+    const patch = this.isDsoAsPrimary()
+      ? buildPatchFromDSOPrimary(decisionState, state)
+      : orchestratorStateToDecisionStatePatch(state);
+    const synced = this.decisionKernel.updateState(decisionState, patch);
+
+    this.decisionKernel.recordDecisionLog(synced, 'NARRATE_DONE').catch((e: unknown) => {
+      this.logger.warn(`[Claude Orchestrator] FEEDBACK recordDecisionLog 失败: ${(e as Error)?.message}`);
+    });
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'FEEDBACK' as OrchestrationStep,
+      actor: 'Orchestrator' as SubAgentType,
+      inputs_summary: 'DSO 决策日志写入 RLHF',
+      outputs_summary: `已记录: confidence=${synced.confidence ?? 'N/A'}, version=${synced.systemState?.version ?? 'N/A'}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+
+    return synced;
   }
 
   /**
@@ -3993,8 +4491,13 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * 构建成功结果
+   * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
    */
-  private buildSuccessResult(state: OrchestratorState, startTime: number): OrchestrationResult {
+  private buildSuccessResult(
+    state: OrchestratorState,
+    startTime: number,
+    decisionState?: DecisionState,
+  ): OrchestrationResult {
     // 如果有澄清问题，说明需要用户提供更多信息
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
     
@@ -4013,6 +4516,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         itinerary: state.itinerary,
         gate_result: state.gate_result,
         decision_log: state.decision_log,
+        // Phase 2.5: DSO 供 RLHF/模型评估/异常检测
+        ...(decisionState && { decisionState }),
         // 如果有澄清问题，填充到结果中
         ...(hasClarificationQuestions && state.clarification_questions ? {
           needsUserConfirmation: true,
@@ -4035,7 +4540,11 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * 构建被阻止的结果
    */
-  private buildBlockedResult(state: OrchestratorState, startTime: number): OrchestrationResult {
+  private buildBlockedResult(
+    state: OrchestratorState,
+    startTime: number,
+    decisionState?: DecisionState,
+  ): OrchestrationResult {
     const violations = state.gate_result?.violations || [];
     const answerText = `行程规划被阻止。原因：${violations.map(v => v.detail).join('；')}`;
 
@@ -4048,6 +4557,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         state,
         gate_result: state.gate_result,
         decision_log: state.decision_log,
+        ...(decisionState && { decisionState }),
         // 如果有澄清问题，填充到结果中
         ...(hasClarificationQuestions && state.clarification_questions ? {
           needsUserConfirmation: true,
@@ -4099,6 +4609,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     state: OrchestratorState,
     error: any,
     startTime: number,
+    decisionState?: DecisionState,
   ): OrchestrationResult {
     // 🆕 检查是否是超时错误
     const isTimeout = error?.message?.startsWith('TIMEOUT:') || 
@@ -4117,6 +4628,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         state,
         errors: state.errors,
         errorType: isTimeout ? 'TIMEOUT_ERROR' as any : undefined,
+        ...(decisionState && { decisionState }),
       },
       answerText,
       stepsExecuted: state.decision_log.map(log => ({
@@ -4127,904 +4639,6 @@ ${JSON.stringify(routingDecision, null, 2)}
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log, // 🆕 确保决策日志被包含
     };
-  }
-
-  // ==================== Fast Path Orchestration (强降超时) ====================
-
-  /**
-   * Fast Path 编排：规则路由，0 LLM调用
-   * 适用于新建行程规划场景
-   */
-  private async fastPathOrchestrate(
-    request: RouteAndRunRequestDto,
-    context: AgentContext,
-    deadline: Deadline,
-    decisionLog: DecisionLogEntry[],
-    stepsExecuted: OrchestrationResult['stepsExecuted'],
-  ): Promise<OrchestrationResult> {
-    const countryCode = this.extractCountryCodeFromMessage(request.message)!;
-    
-    // 提取实体（避免LLM）
-    const extracted = this.extractCommonEntities(request.message);
-    decisionLog.push({
-      request_id: request.request_id || context.requestId,
-      step: 'INTAKE' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: `Fast Path: 提取实体`,
-      outputs_summary: `countryCode=${countryCode}, duration=${extracted.durationDays}, budget=${extracted.budget}`,
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
-    });
-
-    // 构建默认Skills计划（规则路由）
-    const skillsPlan = this.buildDefaultSkillsPlanForNewTrip(countryCode, extracted);
-    decisionLog.push({
-      request_id: request.request_id || context.requestId,
-      step: 'INTAKE' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: `Fast Path: 构建Skills计划`,
-      outputs_summary: `选择了 ${skillsPlan.selectedSkills.length} 个Skills`,
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
-    });
-
-    // 早期验证（跳过模板变量）
-    const earlyOk = await this.validateSkillsInputsFastPath(skillsPlan, context, request);
-    if (!earlyOk.valid) {
-      return this.buildFailResult(
-        Date.now(),
-        stepsExecuted,
-        decisionLog,
-        'MISSING_REQUIRED_PARAM',
-        earlyOk.message || '缺少必需参数',
-        earlyOk.missingParams || [],
-        earlyOk.solutions || [],
-      );
-    }
-
-    // 本地构建执行计划（拓扑排序+并行分组）
-    const plan = this.buildExecutionPlanLocally(skillsPlan);
-    decisionLog.push({
-      request_id: request.request_id || context.requestId,
-      step: 'INTAKE' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: `Fast Path: 本地构建执行计划`,
-      outputs_summary: `计划包含 ${plan.steps.length} 个步骤，${plan.parallelGroups.length} 个并行组`,
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
-    });
-
-    // 执行计划（并行+Deadline+缓存）
-    const execResult = await this.executePlanWithTimeout(
-      plan,
-      context,
-      request,
-      deadline,
-      stepsExecuted,
-      decisionLog,
-    );
-
-    // 组装结果
-    const itinerary = execResult.latestItinerary;
-    const world = execResult.latestWorld;
-    const gateResult = execResult.latestGate;
-
-    return {
-      success: execResult.success,
-      result: execResult.success
-        ? { itinerary, world, gateResult }
-        : execResult.failPayload,
-      answerText: execResult.answerText,
-      stepsExecuted,
-      totalDuration: 0,
-      decisionLog,
-    };
-  }
-
-  /**
-   * 提取常见实体（规则提取，避免LLM）
-   */
-  private extractCommonEntities(message: string): {
-    durationDays?: number;
-    budget?: number;
-    seasonMonth?: number;
-    partyProfile?: any;
-    userIntentTags: string[];
-  } {
-    const m = message || '';
-    const userIntentTags: string[] = [];
-    const lower = m.toLowerCase();
-
-    // duration: "5天" "五天" "5 days"
-    const durMatch = m.match(/(\d+)\s*(天|日|days?)/i);
-    const durationDays = durMatch ? Number(durMatch[1]) : undefined;
-
-    // budget: "预算2万" "2w" "20000"
-    let budget: number | undefined;
-    const b1 = m.match(/预算\s*([0-9]+)\s*(万|w)?/i);
-    if (b1) {
-      const n = Number(b1[1]);
-      const unit = (b1[2] || '').toLowerCase();
-      budget = unit === '万' || unit === 'w' ? n * 10_000 : n;
-    }
-
-    // season month: "1月" "January"
-    let seasonMonth: number | undefined;
-    const monthMatch = m.match(/(\d{1,2})\s*月/);
-    if (monthMatch) {
-      const mm = Number(monthMatch[1]);
-      if (mm >= 1 && mm <= 12) seasonMonth = mm;
-    } else {
-      const monthMap: Record<string, number> = {
-        jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
-        apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
-        aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
-        nov: 11, november: 11, dec: 12, december: 12,
-      };
-      for (const [k, v] of Object.entries(monthMap)) {
-        if (lower.includes(k)) {
-          seasonMonth = v;
-          break;
-        }
-      }
-    }
-
-    // party profile: "带娃" => family
-    if (m.includes('带娃') || m.includes('亲子') || lower.includes('kids') || lower.includes('child')) {
-      userIntentTags.push('family');
-    }
-    if (m.includes('轻松') || m.includes('悠闲') || lower.includes('relax')) {
-      userIntentTags.push('relaxed');
-    }
-    if (m.includes('特种兵') || m.includes('暴走') || lower.includes('intense')) {
-      userIntentTags.push('intense');
-    }
-    if (!userIntentTags.length) userIntentTags.push('general');
-
-    const partyProfile = userIntentTags.includes('family')
-      ? { pace: 'relaxed', fitness: 'medium', riskTolerance: 'low', mobilityProfile: 'stroller_possible' }
-      : undefined;
-
-    return { durationDays, budget, seasonMonth, partyProfile, userIntentTags };
-  }
-
-  /**
-   * 构建默认Skills计划（新建行程规划，规则路由）
-   */
-  private buildDefaultSkillsPlanForNewTrip(
-    countryCode: string,
-    extracted: { durationDays?: number; budget?: number; seasonMonth?: number; partyProfile?: any; userIntentTags: string[] },
-  ): SkillsPlan {
-    const selectedSkills: SkillsPlan['selectedSkills'] = [
-      {
-        skillName: 'world.buildContext',
-        reason: '创建新行程需构建 world 上下文',
-        priority: 1,
-        input: {
-          countryCode,
-          duration: extracted.durationDays,
-          season: extracted.seasonMonth,
-          partyProfile: extracted.partyProfile,
-        },
-      },
-      {
-        skillName: 'routeDirection.pickForIntent',
-        reason: '根据意图标签选路线方向',
-        priority: 2,
-        input: {
-          countryCode,
-          userIntentTags: extracted.userIntentTags,
-          season: extracted.seasonMonth,
-        },
-        dependencies: ['world.buildContext'],
-      },
-      {
-        skillName: 'itinerary.generate',
-        reason: '生成结构化行程草案',
-        priority: 3,
-        input: {
-          world: '${world.buildContext.result.world}',
-          routeDirection: '${routeDirection.pickForIntent.result.routeDirection}',
-          constraints: {
-            budget: extracted.budget,
-            durationDays: extracted.durationDays,
-          },
-          preferences: {
-            userIntentTags: extracted.userIntentTags,
-          },
-        },
-        dependencies: ['world.buildContext', 'routeDirection.pickForIntent'],
-      },
-      // 注意：plan.gate.runThreeGuardians 需要完整的 PlanState，在 Fast Path 中暂时跳过
-      // 由 itinerary.verify 负责检查可行性
-      // {
-      //   skillName: 'plan.gate.runThreeGuardians',
-      //   reason: 'Gate 检查（需要完整 PlanState，Fast Path 中暂时跳过）',
-      //   priority: 4,
-      //   input: { ... },
-      //   dependencies: ['itinerary.generate'],
-      // },
-      {
-        skillName: 'itinerary.verify',
-        reason: '验证开放时间/换乘 buffer/可达性/疲劳阈值（Fast Path 中替代 Gate 检查）',
-        priority: 4,
-        input: {
-          itinerary: '${itinerary.generate.result.itinerary}',
-        },
-        dependencies: ['itinerary.generate'],
-      },
-      {
-        skillName: 'repair.apply',
-        reason: '如 verify 发现问题则修复',
-        priority: 5,
-        input: {
-          itinerary: '${itinerary.generate.result.itinerary}',
-          adjustments: '${itinerary.verify.result.fixes}',
-        },
-        dependencies: ['itinerary.verify', 'itinerary.generate'],
-      },
-    ];
-
-    const executionOrder = selectedSkills
-      .slice()
-      .sort((a, b) => a.priority - b.priority)
-      .map((s) => s.skillName);
-
-    const dependencies: Record<string, string[]> = {};
-    for (const s of selectedSkills) {
-      dependencies[s.skillName] = s.dependencies || [];
-    }
-
-    return { selectedSkills, executionOrder, dependencies };
-  }
-
-  /**
-   * 快速验证Skills输入（跳过模板变量）
-   */
-  private async validateSkillsInputsFastPath(
-    skillsPlan: SkillsPlan,
-    context: AgentContext,
-    request: RouteAndRunRequestDto,
-  ): Promise<{
-    valid: boolean;
-    message?: string;
-    missingParams?: string[];
-    solutions?: string[];
-  }> {
-    if (!this.skillInputValidator) {
-      return { valid: true };
-    }
-
-    for (const s of skillsPlan.selectedSkills) {
-      // 跳过模板变量（${...}），只检查硬必填
-      const input = s.input || {};
-      const hasTemplateVars = JSON.stringify(input).includes('${');
-      
-      if (hasTemplateVars) {
-        // 有模板变量，跳过验证（会在执行时解析）
-        continue;
-      }
-
-      const skill = this.skillsRegistry?.getSkill(s.skillName);
-      const metadata = skill?.metadata;
-      const res = this.skillInputValidator.validate(s.skillName, input, metadata, {
-        context,
-        request,
-        stepResults: {},
-      });
-
-      if (!res.valid) {
-        return {
-          valid: false,
-          message: res.clarificationMessage || `技能输入验证失败: ${s.skillName} 缺少 ${res.missingParams?.join(', ')}`,
-          missingParams: res.missingParams || [],
-          solutions: res.solutions || [
-            '在消息中补充缺失信息（目的地/天数/预算/人群画像等）',
-            '或在代码中为缺失参数提供默认值/从上下文推断',
-          ],
-        };
-      }
-    }
-    return { valid: true };
-  }
-
-  /**
-   * 本地构建执行计划（拓扑排序+并行分组，避免LLM planExecution调用）
-   */
-  private buildExecutionPlanLocally(skillsPlan: SkillsPlan): ExecutionPlan {
-    // 创建节点
-    const nodes = skillsPlan.selectedSkills.map((s) => ({
-      skillName: s.skillName,
-      deps: (s.dependencies || []).slice(),
-      input: s.input || {},
-      fallback: this.defaultFallbackForSkill(s.skillName),
-    }));
-
-    // 拓扑排序
-    const inDeg = new Map<string, number>();
-    const out = new Map<string, string[]>();
-    for (const n of nodes) {
-      inDeg.set(n.skillName, 0);
-      out.set(n.skillName, []);
-    }
-    for (const n of nodes) {
-      for (const d of n.deps) {
-        inDeg.set(n.skillName, (inDeg.get(n.skillName) ?? 0) + 1);
-        out.get(d)?.push(n.skillName);
-      }
-    }
-
-    const queue: string[] = [];
-    for (const [k, v] of inDeg.entries()) if (v === 0) queue.push(k);
-
-    const order: string[] = [];
-    while (queue.length) {
-      const cur = queue.shift()!;
-      order.push(cur);
-      for (const nxt of out.get(cur) ?? []) {
-        inDeg.set(nxt, (inDeg.get(nxt) ?? 0) - 1);
-        if ((inDeg.get(nxt) ?? 0) === 0) queue.push(nxt);
-      }
-    }
-
-    // 如果存在循环，降级到优先级顺序
-    if (order.length !== nodes.length) {
-      const byPriority = skillsPlan.selectedSkills
-        .slice()
-        .sort((a, b) => a.priority - b.priority)
-        .map((s) => s.skillName);
-      return this.buildExecutionPlanFromOrder(byPriority, skillsPlan);
-    }
-
-    return this.buildExecutionPlanFromOrder(order, skillsPlan);
-  }
-
-  /**
-   * 从顺序构建执行计划
-   */
-  private buildExecutionPlanFromOrder(order: string[], skillsPlan: SkillsPlan): ExecutionPlan {
-    const skillByName = new Map(skillsPlan.selectedSkills.map((s) => [s.skillName, s]));
-    const steps: ExecutionStep[] = [];
-    const done = new Set<string>();
-    let stepNo = 1;
-
-    while (done.size < order.length) {
-      const ready: string[] = [];
-      for (const name of order) {
-        if (done.has(name)) continue;
-        const deps = (skillByName.get(name)?.dependencies ?? []).filter(Boolean);
-        if (deps.every((d) => done.has(d))) ready.push(name);
-      }
-      if (!ready.length) break;
-
-      // 关键顺序：Gate必须在Generate之前，Verify在Generate之后，Repair在Verify之后
-      ready.sort((a, b) => a.localeCompare(b));
-
-      // 串行：world.buildContext 和 gate 不能并行
-      const serial = ready.filter((n) =>
-        ['world.buildContext', 'plan.gate.runThreeGuardians'].includes(n),
-      );
-      const parallel = ready.filter((n) => !serial.includes(n));
-
-      if (serial.length) {
-        const n = serial[0];
-        const s = skillByName.get(n)!;
-        steps.push({
-          id: `step${stepNo++}`,
-          type: 'skill',
-          skillName: n,
-          dependencies: (s.dependencies ?? []).map((dep) => this.findStepIdBySkillName(steps, dep)).filter(Boolean) as string[],
-          parallel: false,
-          input: s.input,
-          fallback: this.defaultFallbackForSkill(n),
-        });
-        done.add(n);
-        continue;
-      }
-
-      // 并行步骤
-      for (const n of parallel) {
-        const s = skillByName.get(n)!;
-        steps.push({
-          id: `step${stepNo++}`,
-          type: 'skill',
-          skillName: n,
-          dependencies: (s.dependencies ?? []).map((dep) => this.findStepIdBySkillName(steps, dep)).filter(Boolean) as string[],
-          parallel: true,
-          input: s.input,
-          fallback: this.defaultFallbackForSkill(n),
-        });
-        done.add(n);
-      }
-    }
-
-    // 计算并行组
-    const groupsMap = new Map<string, string[]>();
-    for (const s of steps) {
-      if (!s.parallel) continue;
-      const key = JSON.stringify(s.dependencies.slice().sort());
-      groupsMap.set(key, [...(groupsMap.get(key) ?? []), s.id]);
-    }
-    const parallelGroups = Array.from(groupsMap.values()).filter((g) => g.length >= 2);
-
-    return {
-      steps,
-      parallelGroups,
-      fallbackStrategy: { onError: 'continue', retryCount: 1 },
-    };
-  }
-
-  private findStepIdBySkillName(steps: ExecutionStep[], skillName: string): string | undefined {
-    for (let i = steps.length - 1; i >= 0; i--) {
-      if (steps[i].skillName === skillName) return steps[i].id;
-    }
-    return undefined;
-  }
-
-  private defaultFallbackForSkill(skillName: string): ExecutionStep['fallback'] {
-    if (skillName === 'world.buildContext') return { onError: 'stop' };
-    if (skillName === 'plan.gate.runThreeGuardians') return { onError: 'stop' };
-    if (skillName === 'itinerary.generate') return { onError: 'retry', retryCount: 1 };
-    if (skillName === 'itinerary.verify') return { onError: 'continue' };
-    if (skillName === 'repair.apply') return { onError: 'continue' };
-    return { onError: 'continue' };
-  }
-
-  /**
-   * 执行计划（并行+Deadline+缓存）
-   */
-  private async executePlanWithTimeout(
-    plan: ExecutionPlan,
-    context: AgentContext,
-    request: RouteAndRunRequestDto,
-    deadline: Deadline,
-    stepsExecuted: OrchestrationResult['stepsExecuted'],
-    decisionLog: DecisionLogEntry[],
-  ): Promise<{
-    success: boolean;
-    latestWorld?: any;
-    latestItinerary?: any;
-    latestGate?: any;
-    answerText: string;
-    failPayload: OrchestrationResult['result'];
-  }> {
-    const resultsByStepId: Record<string, any> = {};
-    const resultsBySkill: Record<string, any> = {};
-    const stepById = new Map(plan.steps.map((s) => [s.id, s]));
-    const depsMet = (step: ExecutionStep): boolean =>
-      step.dependencies.every((d) => resultsByStepId[d] !== undefined);
-    const pending = new Set(plan.steps.map((s) => s.id));
-    const maxConcurrency = 4;
-
-    while (pending.size) {
-      if (deadline.isExpired()) throw new Error('TIMEOUT: ORCHESTRATION_DEADLINE_EXCEEDED');
-
-      const readyIds = Array.from(pending).filter((id) => depsMet(stepById.get(id)!));
-      if (!readyIds.length) break;
-
-      const serialIds = readyIds.filter((id) => !stepById.get(id)!.parallel);
-      const parallelIds = readyIds.filter((id) => stepById.get(id)!.parallel);
-
-      // 串行执行
-      if (serialIds.length) {
-        const id = serialIds[0];
-        const step = stepById.get(id)!;
-        const out = await this.executeOneStepWithTimeout(
-          step,
-          context,
-          request,
-          deadline,
-          resultsByStepId,
-          resultsBySkill,
-          stepsExecuted,
-          decisionLog,
-        );
-        resultsByStepId[id] = out;
-        if (step.skillName) resultsBySkill[step.skillName] = out;
-        pending.delete(id);
-
-        // 检查Gate结果（Fast Path 中暂时跳过 Gate，由 verify 检查可行性）
-        // const gate = resultsBySkill['plan.gate.runThreeGuardians']?.result?.gateResult;
-        // if (gate === 'REJECT') {
-        //   return {
-        //     success: false,
-        //     answerText: 'Gate 结果为 REJECT：当前需求不可行或风险过高。',
-        //     failPayload: {
-        //       needsUserConfirmation: true,
-        //       clarificationMessage: '当前行程需求被 Gate 拒绝（REJECT）。请调整目的地/节奏/预算/人群画像后重试。',
-        //       errorType: ErrorType.VALIDATION_ERROR,
-        //       missingParams: [],
-        //       solutions: [
-        //         '降低节奏或延长天数',
-        //         '提升预算或减少跨城移动',
-        //         '提供更明确的出行人群与限制条件',
-        //       ],
-        //     },
-        //   };
-        // }
-        continue;
-      }
-
-      // 并行执行
-      const batch = parallelIds.slice(0, maxConcurrency);
-      const tasks = batch.map((id) => async () => {
-        const step = stepById.get(id)!;
-        const out = await this.executeOneStepWithTimeout(
-          step,
-          context,
-          request,
-          deadline,
-          resultsByStepId,
-          resultsBySkill,
-          stepsExecuted,
-          decisionLog,
-        );
-        return { id, step, out };
-      });
-
-      const outs = await runBounded(tasks, Math.min(maxConcurrency, batch.length));
-      for (const o of outs) {
-        resultsByStepId[o.id] = o.out;
-        if (o.step.skillName) resultsBySkill[o.step.skillName] = o.out;
-        pending.delete(o.id);
-      }
-    }
-
-    const latestWorld = resultsBySkill['world.buildContext']?.result?.world;
-    // Fast Path 中暂时跳过 Gate
-    // const latestGate = resultsBySkill['plan.gate.runThreeGuardians']?.result;
-    const latestGate = undefined;
-    const verify = resultsBySkill['itinerary.verify']?.result;
-    const repaired = resultsBySkill['repair.apply']?.result?.repairedItinerary;
-    const generated = resultsBySkill['itinerary.generate']?.result?.itinerary;
-
-    const itinerary = repaired ?? generated;
-    
-    // 分析失败原因，生成友好的错误消息和结构化的澄清问题
-    if (!itinerary) {
-      const failedSteps = stepsExecuted.filter(s => !s.success);
-      const failedSkillNames = failedSteps.map(s => s.skillName).filter(Boolean);
-      
-      let clarificationMessage = '抱歉，无法生成行程规划。';
-      let solutions: string[] = [];
-      let clarificationQuestions: ClarificationQuestion[] = [];
-      
-      // 根据失败的步骤提供具体建议和结构化问题
-      if (failedSkillNames.includes('world.buildContext')) {
-        clarificationMessage = '无法构建目的地信息，请确认目的地名称是否正确。';
-        solutions = [
-          '请提供更明确的目的地名称（如：冰岛、Iceland、IS）',
-          '检查目的地是否在我们的支持列表中',
-          '尝试使用国家或主要城市名称',
-        ];
-        // 生成结构化澄清问题
-        clarificationQuestions = [
-          {
-            id: 'question-destination',
-            question: '请选择您的目的地',
-            type: 'text',
-            required: true,
-            placeholder: '例如：冰岛、日本、瑞士',
-            hint: '这将帮助我们为您推荐合适的景点和活动',
-          },
-        ];
-      } else if (failedSkillNames.includes('routeDirection.pickForIntent')) {
-        clarificationMessage = '无法选择适合的路线方向，请提供更多旅行偏好信息。';
-        solutions = [
-          '请描述您的旅行风格（如：轻松、紧凑、文化、自然）',
-          '提供更多关于兴趣爱好的信息',
-          '指定旅行季节或月份',
-        ];
-        // 生成结构化澄清问题
-        clarificationQuestions = [
-          {
-            id: 'question-travel-style',
-            question: '您的旅行风格',
-            type: 'single_choice',
-            required: true,
-            options: ['轻松', '平衡', '紧凑'],
-            hint: '轻松：每天安排较少活动；平衡：适中安排；紧凑：尽可能多安排活动',
-            default: '平衡',
-          },
-          {
-            id: 'question-interests',
-            question: '您的主要兴趣（可多选）',
-            type: 'multi_choice',
-            required: false,
-            options: ['极光', '冰川', '温泉', '文化', '美食', '户外运动', '购物', '摄影'],
-            hint: '帮助我们为您推荐合适的景点和活动',
-          },
-          {
-            id: 'question-season',
-            question: '旅行月份',
-            type: 'single_choice',
-            required: false,
-            options: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-            hint: '选择旅行月份有助于推荐合适的活动和景点',
-          },
-        ];
-      } else if (failedSkillNames.includes('itinerary.generate')) {
-        clarificationMessage = '无法生成行程，可能是信息不足或目的地数据不完整。';
-        solutions = [
-          '请提供更详细的行程需求（天数、预算、旅行者信息）',
-          '尝试调整预算或天数范围',
-          '检查目的地是否在我们的数据库中',
-          '稍后重试，系统可能正在更新数据',
-        ];
-        // 生成结构化澄清问题
-        clarificationQuestions = [
-          {
-            id: 'question-duration',
-            question: '旅行天数',
-            type: 'number',
-            required: true,
-            placeholder: '例如：5',
-            hint: '请输入您计划的旅行天数',
-            validation: {
-              min: 1,
-              max: 30,
-            },
-          },
-          {
-            id: 'question-budget',
-            question: '总预算（人民币）',
-            type: 'number',
-            required: true,
-            placeholder: '例如：20000',
-            hint: '包含机票、住宿、餐饮、活动等所有费用',
-            validation: {
-              min: 1000,
-              max: 1000000,
-            },
-          },
-        ];
-      } else if (failedSkillNames.includes('itinerary.verify')) {
-        clarificationMessage = '生成的行程存在可行性问题，系统正在尝试修复。';
-        solutions = [
-          '请稍等，系统正在自动修复行程',
-          '如果问题持续，请调整行程天数或节奏',
-          '尝试提供更宽松的时间安排',
-        ];
-        // verify 失败通常不需要用户澄清，系统会自动修复
-      } else if (failedSteps.length > 0) {
-        clarificationMessage = '行程生成过程中遇到问题，请检查输入信息或稍后重试。';
-        solutions = [
-          '检查输入信息是否完整（目的地、天数、预算）',
-          '确认目的地名称正确',
-          '稍后重试',
-          '如果问题持续，请联系客服',
-        ];
-      } else {
-        clarificationMessage = '无法生成行程，请提供更详细的行程需求。';
-        solutions = [
-          '请包含以下信息：目的地、旅行天数、预算范围',
-          '描述旅行偏好（如：带娃、轻松、紧凑）',
-          '指定旅行时间（月份或日期）',
-        ];
-        // 生成通用澄清问题
-        clarificationQuestions = [
-          {
-            id: 'question-destination',
-            question: '请选择您的目的地',
-            type: 'text',
-            required: true,
-            placeholder: '例如：冰岛、日本、瑞士',
-            hint: '这将帮助我们为您推荐合适的景点和活动',
-          },
-          {
-            id: 'question-duration',
-            question: '旅行天数',
-            type: 'number',
-            required: true,
-            placeholder: '例如：5',
-            hint: '请输入您计划的旅行天数',
-            validation: {
-              min: 1,
-              max: 30,
-            },
-          },
-          {
-            id: 'question-budget',
-            question: '总预算（人民币）',
-            type: 'number',
-            required: true,
-            placeholder: '例如：20000',
-            hint: '包含机票、住宿、餐饮、活动等所有费用',
-            validation: {
-              min: 1000,
-              max: 1000000,
-            },
-          },
-        ];
-      }
-      
-      return {
-        success: false,
-        latestWorld,
-        latestGate,
-        latestItinerary: undefined,
-        answerText: clarificationMessage,
-        failPayload: {
-          needsUserConfirmation: true,
-          clarificationMessage,
-          clarificationQuestions: clarificationQuestions.length > 0 ? clarificationQuestions : undefined,
-          errorType: ErrorType.UNKNOWN_ERROR,
-          missingParams: [],
-          solutions,
-        },
-      };
-    }
-
-    const answerText = verify?.valid === false
-      ? '已生成行程，但发现部分可行性问题并尝试修复。'
-      : '行程已生成并通过验证。';
-
-    return {
-      success: true,
-      latestWorld,
-      latestGate,
-      latestItinerary: itinerary,
-      answerText,
-      failPayload: {},
-    };
-  }
-
-  /**
-   * 执行单个步骤（带超时+缓存）
-   */
-  private async executeOneStepWithTimeout(
-    step: ExecutionStep,
-    context: AgentContext,
-    request: RouteAndRunRequestDto,
-    deadline: Deadline,
-    resultsByStepId: Record<string, any>,
-    resultsBySkill: Record<string, any>,
-    stepsExecuted: OrchestrationResult['stepsExecuted'],
-    decisionLog: DecisionLogEntry[],
-  ): Promise<any> {
-    const started = Date.now();
-    const skillName = step.skillName!;
-    const skill = this.skillsRegistry?.getSkill(skillName);
-    
-    if (!skill) {
-      const err = `Missing skill: ${skillName}`;
-      stepsExecuted.push({ stepId: step.id, skillName, success: false, error: err, duration: Date.now() - started });
-      throw new Error(err);
-    }
-
-    // 准备输入（解析模板变量）
-    const preparedInput = this.prepareSkillInputWithTemplate(
-      step.input ?? {},
-      resultsByStepId,
-      resultsBySkill,
-      context,
-      request,
-    );
-
-    // 缓存 world.buildContext
-    if (skillName === 'world.buildContext') {
-      const cacheKey = this.worldCacheKey(preparedInput);
-      const cached = this.worldCache.get(cacheKey);
-      if (cached) {
-        const duration = Date.now() - started;
-        stepsExecuted.push({ stepId: step.id, skillName, success: true, result: cached, duration });
-        decisionLog.push({
-          request_id: request.request_id || context.requestId,
-          step: 'RESEARCH' as OrchestrationStep,
-          actor: 'Orchestrator' as SubAgentType,
-          inputs_summary: `缓存命中: ${skillName}`,
-          outputs_summary: `cacheKey: ${cacheKey}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-        });
-        return cached;
-      }
-    }
-
-    // 每步超时预算
-    const timeoutMs = this.skillTimeoutMs(skillName, deadline);
-    const fallback = step.fallback ?? { onError: 'continue', retryCount: 0 };
-    const retryCount = fallback.onError === 'retry' ? Math.max(0, fallback.retryCount ?? 0) : 0;
-
-    let lastErr: any;
-    for (let attempt = 0; attempt <= retryCount; attempt++) {
-      try {
-        const out = await withTimeout(skill.execute(preparedInput), timeoutMs, `SKILL:${skillName}`);
-        const duration = Date.now() - started;
-        stepsExecuted.push({ stepId: step.id, skillName, success: true, result: out, duration });
-
-        if (skillName === 'world.buildContext') {
-          const cacheKey = this.worldCacheKey(preparedInput);
-          this.worldCache.set(cacheKey, out);
-        }
-
-        return out;
-      } catch (e: any) {
-        lastErr = e;
-        if (attempt < retryCount) continue;
-
-        const duration = Date.now() - started;
-        stepsExecuted.push({ stepId: step.id, skillName, success: false, error: e?.message || String(e), duration });
-
-        if (fallback.onError === 'stop') throw e;
-        return { error: e?.message || String(e) };
-      }
-    }
-
-    throw lastErr;
-  }
-
-  /**
-   * 准备Skill输入（解析模板变量 ${skillName.result.path}）
-   */
-  private prepareSkillInputWithTemplate(
-    input: any,
-    _resultsByStepId: Record<string, any>,
-    resultsBySkill: Record<string, any>,
-    _ctx: AgentContext,
-    _req: RouteAndRunRequestDto,
-  ): any {
-    if (input === null || input === undefined) return input;
-    if (typeof input === 'string') return this.resolveTemplateString(input, resultsBySkill);
-    if (Array.isArray(input)) return input.map((x) => this.prepareSkillInputWithTemplate(x, _resultsByStepId, resultsBySkill, _ctx, _req));
-    if (typeof input === 'object') {
-      const out: any = {};
-      for (const [k, v] of Object.entries(input)) {
-        out[k] = this.prepareSkillInputWithTemplate(v, _resultsByStepId, resultsBySkill, _ctx, _req);
-      }
-      return out;
-    }
-    return input;
-  }
-
-  /**
-   * 解析模板字符串 ${skillName.result.path}
-   */
-  private resolveTemplateString(s: string, resultsBySkill: Record<string, any>): any {
-    const m = s.match(/^\$\{([a-zA-Z0-9_.-]+)\}$/);
-    if (!m) return s;
-
-    const path = m[1]; // e.g. world.buildContext.result.world
-    const parts = path.split('.');
-    const skillName = `${parts[0]}.${parts[1]}`; // assumes "x.y" prefix
-    const rest = parts.slice(2);
-
-    const root = resultsBySkill[skillName];
-    if (!root) return undefined;
-
-    let cur: any = root;
-    for (const p of rest) {
-      if (cur == null) return undefined;
-      cur = cur[p];
-    }
-    return cur;
-  }
-
-  /**
-   * 生成world缓存key
-   */
-  private worldCacheKey(input: any): string {
-    const stable = {
-      countryCode: input?.countryCode,
-      season: input?.season,
-      duration: input?.duration,
-      partyProfile: input?.partyProfile,
-    };
-    return `world:${JSON.stringify(stable)}`;
-  }
-
-  /**
-   * Skill超时预算（根据技能类型分配）
-   */
-  private skillTimeoutMs(skillName: string, deadline: Deadline): number {
-    const remaining = deadline.remainingMs();
-    if (skillName === 'world.buildContext') return deadline.clampTimeoutMs(Math.min(1800, remaining * 0.25));
-    if (skillName === 'routeDirection.pickForIntent') return deadline.clampTimeoutMs(900);
-    if (skillName === 'plan.gate.runThreeGuardians') return deadline.clampTimeoutMs(1400);
-    if (skillName === 'itinerary.generate') return deadline.clampTimeoutMs(Math.min(3000, remaining * 0.45));
-    if (skillName === 'itinerary.verify') return deadline.clampTimeoutMs(1800);
-    if (skillName === 'repair.apply') return deadline.clampTimeoutMs(1400);
-    return deadline.clampTimeoutMs(1200);
   }
 
   /**
@@ -5154,48 +4768,20 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
 
     await Promise.all(promises);
+
+    // 缺口修复：聚合 weather_risk (0-1) 写入 research_data，供 DSO environmentState.weatherRisk
+    const weatherRisk = this.computeWeatherRisk(researchData);
+    if (weatherRisk !== undefined) {
+      researchData.weather_risk = weatherRisk;
+      this.logger.debug(`[Orchestrator] 聚合 weather_risk=${weatherRisk.toFixed(2)}`);
+    }
   }
 
   /**
-   * 构建失败结果
+   * 从 research_data 聚合 weather_risk（缺口解决方案）
+   * 数据源：failure_risk_prediction、weather_predictions、weather_forecast
    */
-  private buildFailResult(
-    started: number,
-    stepsExecuted: OrchestrationResult['stepsExecuted'],
-    decisionLog: DecisionLogEntry[],
-    errorType: string,
-    message: string,
-    missingParams: string[],
-    solutions: string[],
-  ): OrchestrationResult {
-    // 确保错误消息对用户友好，不是技术错误
-    let userFriendlyMessage = message;
-    
-    // 如果消息包含技术术语，转换为用户友好的描述
-    if (message.includes('itinerary') || message.includes('PlanState') || message.includes('skill')) {
-      userFriendlyMessage = '无法完成行程规划，请检查输入信息或稍后重试。';
-    }
-    
-    // 如果没有提供解决方案，添加默认建议
-    const finalSolutions = solutions.length > 0 ? solutions : [
-      '检查输入信息是否完整（目的地、天数、预算）',
-      '确认目的地名称正确',
-      '稍后重试',
-    ];
-    
-    return {
-      success: false,
-      result: {
-        needsUserConfirmation: true,
-        clarificationMessage: userFriendlyMessage,
-        errorType: errorType as any,
-        missingParams,
-        solutions: finalSolutions,
-      },
-      answerText: userFriendlyMessage,
-      stepsExecuted,
-      totalDuration: Date.now() - started,
-      decisionLog,
-    };
+  private computeWeatherRisk(researchData: Record<string, any>): number | undefined {
+    return aggregateWeatherRisk(researchData);
   }
 }

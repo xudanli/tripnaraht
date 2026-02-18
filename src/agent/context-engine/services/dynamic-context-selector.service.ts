@@ -50,6 +50,18 @@ export interface DynamicContextSelectResult {
   excludeBlockTypes: ExcludeBlockType[];
 }
 
+/** 主题语义描述（用于向量相似度/词重叠扩展，专利权4） */
+const TOPIC_SEMANTIC_WORDS: Record<CountryPackTopic, string[]> = {
+  VISA: ['签证', '证件', '入境', '申根', '免签', '过境', 'visa', 'passport'],
+  DRONE: ['无人机', 'drone', '航拍'],
+  ROAD_RULES: ['道路', '路况', '自驾', '驾驶', '封路', '限速', 'road', 'drive'],
+  MONEY: ['货币', '换汇', '支付', '预算', '费用', '花钱', 'money', 'budget', 'cost'],
+  SAFETY: ['安全', '风险', '危险', 'safety', 'risk', 'danger'],
+  WEATHER_WINDOWS: ['天气', '气候', '雨季', '冬季', '封山', 'weather', 'climate'],
+  LOCAL_TRANSPORT: ['交通', '公交', '租车', '渡轮', '大巴', 'transport', 'ferry'],
+  BOOKING_NORMS: ['预订', '酒店', '住宿', '民宿', 'booking', 'hotel', 'airbnb'],
+};
+
 /** 关键词 -> 国家包主题 映射规则 */
 const QUERY_TO_TOPICS: Array<{
   keywords: (string | RegExp)[];
@@ -138,8 +150,12 @@ export class DynamicContextSelectorService {
     const queryLower = userQuery?.trim().toLowerCase() || '';
     const phaseLower = phase?.toLowerCase() || '';
 
-    // 1. 从 query 推断 requiredTopics
-    const inferredTopics = this.inferTopicsFromQuery(queryLower);
+    // 1. 从 query 推断 requiredTopics（规则匹配）
+    let inferredTopics = this.inferTopicsFromQuery(queryLower);
+
+    // 1b. 专利权4 扩展：词重叠语义相似度（可扩展为 Embedding 向量相似度）
+    const semanticTopics = this.inferTopicsFromSemanticOverlap(queryLower);
+    inferredTopics = Array.from(new Set([...inferredTopics, ...semanticTopics]));
 
     // 2. 合并 phase 默认主题（取并集，优先 query 推断）
     const phaseDefaults = PHASE_DEFAULT_TOPICS[phaseLower] || PHASE_DEFAULT_TOPICS.planning;
@@ -186,6 +202,24 @@ export class DynamicContextSelectorService {
       return Array.from(new Set([...inferred]));
     }
     return Array.from(new Set(phaseDefaults));
+  }
+
+  /**
+   * 专利权4：词重叠语义相似度（可扩展为 Embedding 向量相似度）
+   * 当 userQuery 与主题语义词有重叠时，补充该主题
+   */
+  private inferTopicsFromSemanticOverlap(query: string): CountryPackTopic[] {
+    const words = query.split(/\s+/).filter((w) => w.length >= 2);
+    const matched = new Set<CountryPackTopic>();
+    for (const [topic, semanticWords] of Object.entries(TOPIC_SEMANTIC_WORDS)) {
+      const overlap = words.filter((w) =>
+        semanticWords.some((sw) => w.includes(sw) || sw.includes(w)),
+      ).length;
+      if (overlap > 0) {
+        matched.add(topic as CountryPackTopic);
+      }
+    }
+    return Array.from(matched);
   }
 
   private inferExcludeFromQuery(query: string): ExcludeBlockType[] {

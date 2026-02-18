@@ -2,11 +2,13 @@
  * OrchestratorState <-> DecisionState 映射
  *
  * Phase 2.1: 在 ClaudeOrchestrator 中维持 DSO 与 OrchestratorState 的双向投影
+ * P2: DSO 为主状态源完全反转 - buildPatchFromDSOPrimary 优先使用 DSO
  *
- * 参考: docs/DECISION_KERNEL_UPGRADE_ROADMAP.md
+ * 参考: docs/DECISION_KERNEL_UPGRADE_ROADMAP.md, DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN.md
  */
 
 import {
+  DecisionState,
   DecisionStatePatch,
   UserIntent,
   ConstraintReport,
@@ -16,7 +18,11 @@ import {
   OrchestratorState,
   TripPlanRequest,
   GateResult,
+  GateResultStatus,
+  GateViolation,
+  RequiredAdjustment,
 } from '../../agent/interfaces/trip-plan.interface';
+import { inferDecisionMeta, DecisionMetaInput } from './decision-meta-inference';
 
 /**
  * 从 OrchestratorState 投影为 DecisionStatePatch（增量更新用）
@@ -56,6 +62,60 @@ export function orchestratorStateToDecisionStatePatch(
     startedAt: os.metadata?.started_at,
     lastUpdatedAt: os.metadata?.last_updated_at,
   };
+
+  const metaInput: DecisionMetaInput = {
+    currentStep: os.current_step,
+    planVersion: os.plan_version,
+    failureRiskPredictions: os.research_data?.failure_risk_prediction?.predictions,
+    complianceRiskWarnings: os.compliance_result?.risk_warnings,
+    riskTolerance: os.trip_plan_request?.party_profile?.risk_tolerance,
+  };
+  patch.decisionMeta = inferDecisionMeta(metaInput);
+
+  return patch;
+}
+
+/**
+ * DSO 为主状态源：构建 patch 时优先使用 DSO，O 仅补齐 DSO 缺失的字段
+ * 用于 STATE_UPDATE、FEEDBACK 等步骤，避免 O→D 覆盖 DSO 已有数据
+ * 专利 P2: 移除「先改 O 再同步 DSO」模式
+ */
+export function buildPatchFromDSOPrimary(
+  dso: DecisionState,
+  os: OrchestratorState,
+): DecisionStatePatch {
+  const fromO = orchestratorStateToDecisionStatePatch(os);
+  const patch: DecisionStatePatch = {
+    requestId: dso.systemState?.requestId ?? dso.requestId ?? os.request_id,
+  };
+
+  // 优先 DSO，仅当 DSO 无数据时用 O；gaps 来自 INTAKE，O 有则用 O
+  patch.userIntent =
+    dso.userIntent && Object.keys(dso.userIntent).length > 0 ? dso.userIntent : fromO.userIntent;
+  if (patch.userIntent && (os.gaps?.length || patch.userIntent.gaps?.length)) {
+    patch.userIntent = { ...patch.userIntent, gaps: os.gaps ?? patch.userIntent.gaps };
+  }
+
+  patch.constraints = dso.constraints && Object.keys(dso.constraints).length > 0 ? dso.constraints : fromO.constraints;
+
+  patch.tripState =
+    dso.tripState?.planDraft || dso.tripState?.planVersion !== undefined
+      ? { planVersion: dso.tripState.planVersion, planDraft: dso.tripState.planDraft }
+      : fromO.tripState;
+
+  patch.environmentState =
+    dso.environmentState && Object.keys(dso.environmentState).length > 0
+      ? dso.environmentState
+      : fromO.environmentState;
+
+  patch.systemState = {
+    requestId: patch.requestId ?? os.request_id ?? '',
+    currentPhase: os.current_step,
+    startedAt: dso.systemState?.startedAt ?? os.metadata?.started_at,
+    lastUpdatedAt: new Date().toISOString(),
+  };
+
+  patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;
 
   return patch;
 }
@@ -129,6 +189,13 @@ function extractEnvironmentFromResearchData(
     const hasModerate = preds.some((p: any) => p.riskLevel === 'MODERATE' || p.riskLevel === 'MEDIUM');
     env.failureRiskLevel = hasHigh ? 'HIGH' : hasModerate ? 'MEDIUM' : 'LOW';
   }
+  // 避流：从 research_data 提取拥挤程度 (0-1)
+  if (researchData.crowd_level !== undefined || researchData.crowdLevel !== undefined) {
+    const c = researchData.crowd_level ?? researchData.crowdLevel;
+    env.crowdLevel = typeof c === 'number' ? Math.min(1, Math.max(0, c)) : undefined;
+  } else if (researchData.crowd_score !== undefined || researchData.crowdScore !== undefined) {
+    env.crowdLevel = Math.min(1, Math.max(0, researchData.crowd_score ?? researchData.crowdScore ?? 0));
+  }
   return env;
 }
 
@@ -140,6 +207,118 @@ function inferDateRangeFromStartAndDays(start: string, days: number): { startDat
     startDate: startDate.toISOString().slice(0, 10),
     endDate: endDate.toISOString().slice(0, 10),
   };
+}
+
+/**
+ * 从 DSO 投影为 OrchestratorState 的增量（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN）
+ * 当 DSO 为主状态源时，用于派生 OrchestratorState 供 Skills/Agents 兼容层使用
+ */
+export function decisionStateToOrchestratorState(
+  dso: DecisionState,
+  base?: Partial<OrchestratorState>,
+): Partial<OrchestratorState> {
+  const requestId = dso.systemState?.requestId ?? dso.requestId ?? '';
+  const out: Partial<OrchestratorState> = {
+    request_id: requestId,
+    current_step: (dso.systemState?.currentPhase as OrchestratorState['current_step']) ?? 'INTAKE',
+    plan_version: dso.tripState?.planVersion,
+    metadata: {
+      ...base?.metadata,
+      started_at: base?.metadata?.started_at ?? dso.systemState?.startedAt ?? new Date().toISOString(),
+      last_updated_at: dso.systemState?.lastUpdatedAt ?? new Date().toISOString(),
+    },
+  };
+
+  if (dso.userIntent && Object.keys(dso.userIntent).length > 0) {
+    out.trip_plan_request = userIntentToTripPlanRequest(dso.userIntent, requestId);
+    out.gaps = dso.userIntent.gaps as OrchestratorState['gaps'];
+  }
+
+  if (dso.constraints) {
+    out.gate_result = constraintReportToGateResult(dso.constraints);
+  }
+
+  if (dso.tripState?.planDraft) {
+    out.itinerary = dso.tripState.planDraft as OrchestratorState['itinerary'];
+  }
+
+  // 仅当 base 无 research_data 时派生；否则保留 Skills 写入的完整数据
+  if (dso.environmentState && Object.keys(dso.environmentState).length > 0 && !base?.research_data) {
+    out.research_data = environmentStateToResearchData(dso.environmentState);
+  }
+
+  // Scheme B: 保留 base 的运行时累积字段（alternatives、compliance_result、narration 等）
+  // 当 DSO 为主状态源时，派生 O 需保留这些 Skills/步骤产出
+  if (base?.alternatives) out.alternatives = base.alternatives;
+  if (base?.compliance_result) out.compliance_result = base.compliance_result;
+  if (base?.narration) out.narration = base.narration;
+  if (base?.clarification_questions?.length) out.clarification_questions = base.clarification_questions;
+  if (base?.decision_log?.length) out.decision_log = base.decision_log;
+  if (base?.evidence_registry) out.evidence_registry = base.evidence_registry;
+  if (base?.errors?.length) out.errors = base.errors;
+
+  return out;
+}
+
+function userIntentToTripPlanRequest(intent: UserIntent, requestId: string): TripPlanRequest {
+  const req: TripPlanRequest = {
+    request_id: requestId,
+    origin: (intent.origin as TripPlanRequest['origin']) ?? '',
+    destination: (intent.destination as TripPlanRequest['destination']) ?? '',
+  };
+  if (intent.dateRange) {
+    req.date_range = {
+      start_date: intent.dateRange.startDate,
+      end_date: intent.dateRange.endDate,
+    };
+  }
+  if (intent.days) req.days = intent.days;
+  if (intent.mode) req.mode = intent.mode;
+  if (intent.party) {
+    req.party = {
+      count: intent.party.count,
+      fitness_level: intent.party.fitnessLevel as 'low' | 'medium' | 'high' | undefined,
+    };
+    req.party_profile = { risk_tolerance: intent.party.riskTolerance as 'LOW' | 'MEDIUM' | 'HIGH' | undefined };
+  }
+  if (intent.constraints) req.constraints = intent.constraints as TripPlanRequest['constraints'];
+  if (intent.preferences) req.preferences = intent.preferences as TripPlanRequest['preferences'];
+  return req;
+}
+
+function constraintReportToGateResult(cr: ConstraintReport): GateResult {
+  const gate_result: GateResultStatus = cr.feasible ? 'ALLOW' : cr.violations?.some((v) => v.severity === 'HARD') ? 'BLOCK' : 'ADJUST_REQUIRED';
+  const violations: GateViolation[] = (cr.violations ?? []).map((v) => ({
+    type: v.type as GateViolation['type'],
+    severity: v.severity,
+    detail: v.detail,
+  }));
+  const required_adjustments: RequiredAdjustment[] = (cr.feasibleActions ?? []).map((a) => ({
+    action: a as RequiredAdjustment['action'],
+    why: a,
+  }));
+  return {
+    gate_result,
+    violations,
+    required_adjustments,
+    confidence: 0.8,
+  };
+}
+
+function environmentStateToResearchData(env: EnvironmentState): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (env.countryCode) data.countryCode = env.countryCode;
+  if (env.routeDirectionId) data.route_direction_id = env.routeDirectionId;
+  if (env.month !== undefined) data.month = env.month;
+  if (env.roadConditions) data.road_conditions = env.roadConditions;
+  if (env.weatherRisk !== undefined) data.weather_risk = env.weatherRisk;
+  if (env.failureRiskLevel) {
+    data.failure_risk_prediction = {
+      predictions: [{ riskLevel: env.failureRiskLevel }],
+    };
+  }
+  if (env.crowdLevel !== undefined) data.crowd_level = env.crowdLevel;
+  return data;
 }
 
 /**

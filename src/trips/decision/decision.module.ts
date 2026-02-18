@@ -79,6 +79,7 @@ import { StrategyOrchestratorService } from './services/strategy-orchestrator.se
 import { SpatialReplacementService } from './services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from './services/spatial-issue-detector.service';
 import { FatigueCalculatorService } from './services/fatigue-calculator.service';
+import { DrivingSafetyConcernService } from './services/driving-safety-concern.service';
 import { TdfpmCalculatorService } from './services/tdfpm-calculator.service';
 import {
   DailyUtilityCalculatorService,
@@ -214,6 +215,8 @@ try {
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
+    DrivingSafetyConcernService, // 驾驶安全关注点（驾驶进入危险区 → 三人格提醒）
+    TdfpmCalculatorService, // P1: TDFPM → fatigueTrend（ClaudeOrchestrator 接入）
     AbuStrategy, // 必需：DecisionAbuCheckSkill 需要它
     DrDreStrategy, // 必需：DecisionDrdrePaceSkill 需要它
     NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
@@ -298,6 +301,8 @@ try {
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
+    DrivingSafetyConcernService, // 驾驶安全关注点（驾驶进入危险区 → 三人格提醒）
+    TdfpmCalculatorService, // P1: TDFPM → fatigueTrend（ClaudeOrchestrator 接入）
     AbuStrategy, // 必需：DecisionAbuCheckSkill 需要它
     DrDreStrategy, // 必需：DecisionDrdrePaceSkill 需要它
     NeptuneStrategy, // 必需：DecisionNeptuneRepairSkill 需要它
@@ -331,7 +336,6 @@ try {
     WearableIntegrationService,
     // Phase 1/2/3: 优化模块服务（通过 re-export）
     // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
-    TdfpmCalculatorService, // P1: TDFPM → fatigueTrend（ClaudeOrchestrator 接入）
   ],
 })
 export class DecisionModule {}

@@ -68,11 +68,16 @@ export interface DecisionLogEntry {
 
 /**
  * 决策结果
+ * P2 E(U) 显式化：Dr.Dre 可输出 expectedUtility 以增强专利覆盖
  */
 export interface DecisionResult {
   allowed: boolean;
   action: DecisionAction;
   updatedPlan?: RoutePlanDraft;
   logs: DecisionLogEntry[];
+  /** 期望效用 [0,1]（Dr.Dre 输出，专利 E(U) 显式化） */
+  expectedUtility?: number;
+  /** 效用权重摘要（可选） */
+  expectedUtilityWeights?: Record<string, number>;
 }
 

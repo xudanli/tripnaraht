@@ -114,6 +114,7 @@ ${userPrompt}`;
           },
           required: ['modes'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanTransitSuggestModesOutput;

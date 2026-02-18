@@ -142,6 +142,7 @@ ${userPrompt}`;
           },
           required: ['adjustedTimeline', 'diff', 'impact'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanPaceAdjustScheduleOutput;

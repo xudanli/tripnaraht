@@ -130,6 +130,7 @@ ${userPrompt}`;
           },
           required: ['alternatives'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanGateProposeSafeAlternativesOutput;

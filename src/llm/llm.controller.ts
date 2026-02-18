@@ -213,6 +213,7 @@ export class LlmController {
         const totalCalls = filteredRecords.length;
         const successfulCalls = filteredRecords.filter((r) => r.success).length;
 
+        const byStep = this.tokenStatsService.getStatsByStep(timeRange);
         stats = {
           totalTokens,
           totalPromptTokens,
@@ -222,6 +223,7 @@ export class LlmController {
           failedCalls: totalCalls - successfulCalls,
           successRate: totalCalls > 0 ? successfulCalls / totalCalls : 0,
           avgTokensPerCall: totalCalls > 0 ? totalTokens / totalCalls : 0,
+          byStep, // P0: 按阶段 Token（INTAKE/RESEARCH/GATE_EVAL/PLAN_GEN/VERIFY）
           timeRange: timeRange
             ? {
                 start: timeRange.start.toISOString(),

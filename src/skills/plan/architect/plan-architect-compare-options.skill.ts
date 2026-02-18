@@ -100,6 +100,7 @@ ${userPrompt}`;
           },
           required: ['options'],
         },
+        input.tokenContext,
       );
 
       const comparison = JSON.parse(comparisonStr) as OptionComparison;

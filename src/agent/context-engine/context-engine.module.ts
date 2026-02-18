@@ -8,6 +8,11 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ContextEngineerService } from './services/context-engineer.service';
+import { ContextBuilderService } from './services/context-builder.service';
+import { ContextRankerService } from './services/context-ranker.service';
+import { ContextCompressorService } from './services/context-compressor.service';
+import { ContextBudgetManagerService } from './services/context-budget-manager.service';
+import { ContextCacheService } from './services/context-cache.service';
 import { DynamicContextSelectorService } from './services/dynamic-context-selector.service';
 import { TripTaskMemoryService } from './services/trip-task-memory.service';
 import { ExecutionHistoryCompressorService } from './services/execution-history-compressor.service';
@@ -36,6 +41,11 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
   controllers: [ContextController],
   providers: [
     ContextEngineerService,
+    ContextBuilderService, // Phase 1: Context Engine 工业化
+    ContextRankerService, // Phase 2: Context Engine 工业化
+    ContextCompressorService, // Phase 3: Context Engine 工业化
+    ContextBudgetManagerService, // Phase 4: Context Engine 工业化
+    ContextCacheService, // Phase 5: Context Engine 工业化
     DynamicContextSelectorService,
     TripTaskMemoryService,
     ExecutionHistoryCompressorService,
@@ -50,6 +60,11 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
   ],
   exports: [
     ContextEngineerService,
+    ContextBuilderService,
+    ContextRankerService,
+    ContextCompressorService,
+    ContextBudgetManagerService,
+    ContextCacheService,
     IncrementalItineraryGeneratorService,
     ContextMetricsService,
     ContextLearningService,

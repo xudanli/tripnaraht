@@ -12,6 +12,16 @@ import { NaturalLanguageToParamsDto, TripCreationParams, HumanizeResultDto, Deci
 import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
 import { CircuitBreaker } from '../utils/circuit-breaker';
+import { extractTokenUsage } from '../utils/token-extractor.util';
+import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
+import { TokenStatsService } from '../../agent/services/token-stats.service';
+
+/** P0: Skills 内 LLM 打点上下文 */
+export interface LlmTokenContext {
+  request_id: string;
+  state_machine_step: OrchestrationStep;
+  sub_agent: SubAgentType;
+}
 
 /**
  * 通用 LLM 服务
@@ -35,7 +45,10 @@ export class LlmService {
   // 熔断器（用于在连续失败后禁用 API 调用）
   private readonly circuitBreaker: CircuitBreaker;
 
-  constructor(@Optional() private configService?: ConfigService) {
+  constructor(
+    @Optional() private configService?: ConfigService,
+    @Optional() private tokenStatsService?: TokenStatsService,
+  ) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
     
@@ -315,24 +328,29 @@ export class LlmService {
    * @param provider LLM 提供商
    * @param prompt 提示词
    * @param schema JSON Schema（可选，用于结构化输出）
+   * @param tokenContext P0: 可选，用于 Skills 内按阶段打点（GATE_EVAL/PLAN_GEN/VERIFY）
    * @returns LLM 响应文本
    */
   async callLlmWithSchema(
     provider: LlmProvider,
     prompt: string,
-    schema?: any
+    schema?: any,
+    tokenContext?: LlmTokenContext,
   ): Promise<string> {
-    return this.callLlm(provider, prompt, schema);
+    return this.callLlm(provider, prompt, schema, tokenContext);
   }
 
   /**
    * 调用 LLM API（内部方法）
+   * P0: 支持 tokenContext 时记录 Token 到 TokenStatsService
    */
   private async callLlm(
     provider: LlmProvider,
     prompt: string,
-    schema?: any
+    schema?: any,
+    tokenContext?: LlmTokenContext,
   ): Promise<string> {
+    const startTime = Date.now();
     // 如果启用 Mock 模式，返回模拟响应
     if (this.useMock) {
       this.logger.warn('Using mock LLM response');
@@ -347,19 +365,59 @@ export class LlmService {
     }
 
     try {
+      let result: { content: string; rawResponse?: any };
       switch (provider) {
         case LlmProvider.OPENAI:
-          return await this.callOpenAI(prompt, schema);
+          result = await this.callOpenAIWithUsage(prompt, schema);
+          break;
         case LlmProvider.GEMINI:
-          return await this.callGemini(prompt, schema);
+          result = await this.callGeminiWithUsage(prompt, schema);
+          break;
         case LlmProvider.DEEPSEEK:
-          return await this.callDeepSeek(prompt, schema);
+          result = await this.callDeepSeekWithUsage(prompt, schema);
+          break;
         case LlmProvider.ANTHROPIC:
-          return await this.callAnthropic(prompt, schema);
+          result = await this.callAnthropicWithUsage(prompt, schema);
+          break;
         default:
           throw new Error(`Unsupported LLM provider: ${provider}`);
       }
+      const durationMs = Date.now() - startTime;
+      if (tokenContext && this.tokenStatsService) {
+        let usage = extractTokenUsage(provider, result.rawResponse || {}, prompt);
+        if (result.rawResponse === undefined) {
+          usage = {
+            prompt_tokens: Math.ceil(prompt.length / 4),
+            completion_tokens: Math.ceil((result.content || '').length / 4),
+            total_tokens: 0,
+          };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
+        this.recordTokenUsage({
+          ...tokenContext,
+          provider,
+          prompt,
+          response: result.content,
+          usage,
+          durationMs,
+          success: true,
+        });
+      }
+      return result.content;
     } catch (error: any) {
+      const durationMs = Date.now() - startTime;
+      if (tokenContext && this.tokenStatsService) {
+        this.recordTokenUsage({
+          ...tokenContext,
+          provider,
+          prompt,
+          response: '',
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          durationMs,
+          success: false,
+          error: error?.message,
+        });
+      }
       // 如果网络请求失败，自动回退到 Mock 模式
       const isNetworkError = 
         error.message?.includes('no response received') || 
@@ -521,10 +579,59 @@ export class LlmService {
     return JSON.stringify({});
   }
 
+  /** P0: 记录 Token 使用到 TokenStatsService（Skills 内 LLM 打点） */
+  private recordTokenUsage(params: {
+    request_id: string;
+    state_machine_step: OrchestrationStep;
+    sub_agent: SubAgentType;
+    provider: LlmProvider;
+    prompt: string;
+    response: string;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    durationMs: number;
+    success: boolean;
+    error?: string;
+  }): void {
+    if (!this.tokenStatsService) return;
+    const spanId = `llm-${params.state_machine_step}-${Date.now()}`;
+    this.tokenStatsService.recordTokenUsage({
+      request_id: params.request_id,
+      trace_id: spanId,
+      span_id: spanId,
+      sub_agent: params.sub_agent,
+      state_machine_step: params.state_machine_step,
+      task_type: params.state_machine_step,
+      provider: params.provider,
+      model: this.getModelName(params.provider),
+      prompt_tokens: params.usage.prompt_tokens,
+      completion_tokens: params.usage.completion_tokens,
+      total_tokens: params.usage.total_tokens,
+      duration_ms: params.durationMs,
+      success: params.success,
+      error: params.error,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  private getModelName(provider: LlmProvider): string {
+    switch (provider) {
+      case LlmProvider.OPENAI:
+        return this.configService?.get<string>('OPENAI_MODEL') || process.env.OPENAI_MODEL || 'gpt-4o';
+      case LlmProvider.ANTHROPIC:
+        return this.configService?.get<string>('ANTHROPIC_MODEL') || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet';
+      case LlmProvider.DEEPSEEK:
+        return this.configService?.get<string>('DEEPSEEK_MODEL') || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      case LlmProvider.GEMINI:
+        return this.configService?.get<string>('GEMINI_MODEL') || process.env.GEMINI_MODEL || 'gemini-pro';
+      default:
+        return 'unknown';
+    }
+  }
+
   /**
-   * 调用 OpenAI API
+   * 调用 OpenAI API（返回 content + rawResponse 用于 Token 打点）
    */
-  private async callOpenAI(prompt: string, schema?: any): Promise<string> {
+  private async callOpenAIWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
     const apiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY not configured (checked ConfigService and process.env)');
@@ -586,13 +693,11 @@ export class LlmService {
 
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
-      const result = data.choices?.[0]?.message?.content || '';
-      
-      // 记录成功
+      const content = data.choices?.[0]?.message?.content || '';
       this.circuitBreaker.recordSuccess();
-      
-      return result;
+      return { content, rawResponse: data };
     } catch (error: any) {
       // 记录失败
       this.circuitBreaker.recordFailure();
@@ -634,9 +739,9 @@ export class LlmService {
   }
 
   /**
-   * 调用 Gemini API
+   * 调用 Gemini API（返回 content + rawResponse 用于 Token 打点）
    */
-  private async callGemini(prompt: string, schema?: any): Promise<string> {
+  private async callGeminiWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
     const apiKey = this.configService?.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY not configured (checked ConfigService and process.env)');
@@ -674,7 +779,8 @@ export class LlmService {
       const data = response.data as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       };
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return { content, rawResponse: data };
     } catch (error: any) {
       if (error.response) {
         throw new Error(`Gemini API error: ${error.response.status} ${JSON.stringify(error.response.data)}`);
@@ -684,9 +790,9 @@ export class LlmService {
   }
 
   /**
-   * 调用 DeepSeek API
+   * 调用 DeepSeek API（返回 content + rawResponse 用于 Token 打点）
    */
-  private async callDeepSeek(prompt: string, schema?: any): Promise<string> {
+  private async callDeepSeekWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
     const apiKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       throw new Error('DEEPSEEK_API_KEY not configured (checked ConfigService and process.env)');
@@ -724,7 +830,8 @@ export class LlmService {
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
       };
-      return data.choices?.[0]?.message?.content || '';
+      const content = data.choices?.[0]?.message?.content || '';
+      return { content, rawResponse: data };
     } catch (error: any) {
       // 检查是否是超时或中止错误
       const isTimeoutOrAbort = 
@@ -746,9 +853,9 @@ export class LlmService {
   }
 
   /**
-   * 调用 Anthropic API
+   * 调用 Anthropic API（返回 content + rawResponse 用于 Token 打点）
    */
-  private async callAnthropic(prompt: string, schema?: any): Promise<string> {
+  private async callAnthropicWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
     // 优先从 .env 文件直接读取（确保 .env 文件的优先级高于 process.env）
     // 使用 dotenv.parse() 而不是 dotenv.config()，避免修改 process.env
     const envPath = path.resolve(process.cwd(), '.env');
@@ -853,7 +960,8 @@ ${JSON.stringify(schema, null, 2)}
       const data = response.data as {
         content?: Array<{ text?: string }>;
       };
-      return data.content?.[0]?.text || '';
+      const content = data.content?.[0]?.text || '';
+      return { content, rawResponse: data };
     } catch (error: any) {
       // 记录详细错误信息
       if (error.response) {

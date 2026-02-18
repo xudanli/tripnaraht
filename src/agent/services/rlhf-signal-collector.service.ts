@@ -61,6 +61,23 @@ export interface FeedbackSignal {
   context: {
     decision_output_summary?: string;
     user_query?: string;
+    /** Scheme D: 四层反馈飞轮 - 结构化决策日志 */
+    contextSnapshot?: Record<string, unknown>;
+    utilityWeights?: Record<string, number>;
+    candidatePlansCount?: number;
+    selectedPlanSummary?: string;
+    /** Scheme D: Behavior Log - 修改前后状态差分 */
+    beforeState?: Record<string, unknown>;
+    afterState?: Record<string, unknown>;
+    /** Scheme D: Outcome Capture - 执行结果与主观反馈 */
+    outcomeCapture?: {
+      satisfaction?: number;
+      fatigueLevel?: number;
+      actualCost?: number;
+      planAbandoned?: boolean;
+      daySkipped?: string[];
+      [key: string]: unknown;
+    };
   };
 }
 

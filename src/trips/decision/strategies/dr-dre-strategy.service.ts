@@ -38,6 +38,7 @@ import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, Decis
 import { DayProfile, PaceConstraints, RollingFatigueIssue } from '../interfaces/day-profile.interface';
 import { SplitOperation, BufferDayOperation, DrDreOperation } from '../interfaces/dr-dre-operation.interface';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
+import { DrivingSafetyConcernService } from '../services/driving-safety-concern.service';
 import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
 import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
@@ -48,6 +49,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
 
   constructor(
     private readonly fatigueCalculator: FatigueCalculatorService,
+    @Optional() private readonly drivingSafetyConcern?: DrivingSafetyConcernService,
     @Optional() private readonly airbnbIntegration?: AirbnbIntegrationService,
     @Optional() private readonly bookingComIntegration?: BookingComIntegrationService,
   ) {}
@@ -201,6 +203,27 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
 
     const logs: DecisionLogEntry[] = [];
 
+    // 0️⃣.7 驾驶安全关注点（驾驶进入危险区、疲劳风险等 → 三人格提醒）
+    if (this.drivingSafetyConcern && plan.segments?.length > 0) {
+      try {
+        const concerns = this.drivingSafetyConcern.detectConcerns(plan, world);
+        for (const c of concerns) {
+          logs.push({
+            persona: 'DR_DRE',
+            action: 'ADJUST',
+            explanation: c.message,
+            reasonCodes: ['DRIVING_SAFETY', c.severity],
+            evidenceRefs: [],
+            timestamp: new Date().toISOString(),
+            decisionSource: 'HUMAN',
+            decisionStage: 'PACE_ADJUST',
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(`驾驶安全关注点检测失败: ${err?.message}`);
+      }
+    }
+
     // 1️⃣ 标记问题
     const overloadedDays = dayProfiles.filter(d => d.fatigueIndex > 1.1);
     const severeDays = dayProfiles.filter(d => d.fatigueIndex > 1.4);
@@ -238,6 +261,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     }
 
     if (!ops.length) {
+      const eu = this.computeExpectedUtilityFromProfiles(dayProfiles);
       return {
         allowed: true,
         action: 'ALLOW',
@@ -254,6 +278,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
             decisionStage: 'PACE_ADJUST',
           },
         ],
+        ...(eu && { expectedUtility: eu.value, expectedUtilityWeights: eu.weights }),
       };
     }
 
@@ -275,12 +300,56 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
 
     this.logger.debug(`Dr.Dre 评估完成: ADJUST, 操作数: ${ops.length}`);
 
+    // 重新计算 dayProfiles（应用 ops 后）以得到最终 expectedUtility
+    const finalProfiles = this.buildDayProfiles(updatedPlan, pace);
+    const euAfter = this.computeExpectedUtilityFromProfiles(finalProfiles);
+    const euBefore = this.computeExpectedUtilityFromProfiles(dayProfiles);
+    // 优化后评分不得低于优化前（避免「优化计划评分更低」的反直觉结果）
+    const eu = this.mergeExpectedUtility(euBefore, euAfter);
+
     return {
       allowed: true,
       action: 'ADJUST',
       updatedPlan,
       logs,
+      ...(eu && { expectedUtility: eu.value, expectedUtilityWeights: eu.weights }),
     };
+  }
+
+  /**
+   * P2 E(U) 显式化：从 DayProfile 计算期望效用（专利公式简化版）
+   * E(U) ≈ 1 - FatigueRisk，fatigueIndex 越高效用越低
+   */
+  private computeExpectedUtilityFromProfiles(
+    dayProfiles: DayProfile[],
+  ): { value: number; weights: Record<string, number> } | undefined {
+    if (!dayProfiles.length) return undefined;
+    const maxFatigue = Math.max(...dayProfiles.map((d) => d.fatigueIndex));
+    // fatigueIndex 1.0 = 可接受, 1.5 = 偏高, 2.0 = 严重
+    const fatiguePenalty = Math.min(1, Math.max(0, (maxFatigue - 0.5) / 1.0));
+    const value = Math.max(0, Math.min(1, 1 - fatiguePenalty));
+    return {
+      value,
+      weights: { fatigueRisk: 1 },
+    };
+  }
+
+  /**
+   * 合并前后 expectedUtility：取较高者，确保优化后评分不会更低
+   */
+  private mergeExpectedUtility(
+    before?: { value: number; weights: Record<string, number> },
+    after?: { value: number; weights: Record<string, number> },
+  ): { value: number; weights: Record<string, number> } | undefined {
+    if (!before && !after) return undefined;
+    if (!before) return after;
+    if (!after) return before;
+    if (after.value < before.value) {
+      this.logger.warn(
+        `[E(U)] 优化后评分(${after.value.toFixed(2)})低于优化前(${before.value.toFixed(2)})，取较高者`,
+      );
+    }
+    return before.value >= after.value ? before : after;
   }
 
   /**

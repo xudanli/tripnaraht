@@ -132,6 +132,7 @@ ${userPrompt}`;
             },
             required: ['categories', 'confidence', 'assumptions'],
           },
+          input.tokenContext,
         );
 
         const budgetBreakdown = this.extractJSON(budgetBreakdownStr) as BudgetBreakdown;

@@ -39,6 +39,9 @@ export interface DecisionRunThreeGuardiansOutput extends SkillOutput {
     adjustedPlan?: RoutePlanDraft;
     changes: any[];
     decisionLog: any[];
+    /** P2 E(U) 显式化：期望效用 [0,1] */
+    expectedUtility?: number;
+    expectedUtilityWeights?: Record<string, number>;
   };
   /** Neptune 修复结果 */
   neptuneResult: {
@@ -140,6 +143,8 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
       const drdreResult = {
         adjusted: drdreLogs.some((log: DecisionLogEntry) => log.action === 'ADJUST'),
         adjustedPlan: result.plan || undefined,
+        expectedUtility: result.expectedUtility,
+        expectedUtilityWeights: result.expectedUtilityWeights,
         changes: drdreLogs
           .filter((log: DecisionLogEntry) => log.action === 'ADJUST')
           .map((log: DecisionLogEntry) => ({

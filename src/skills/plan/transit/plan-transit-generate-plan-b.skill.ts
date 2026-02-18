@@ -105,6 +105,7 @@ ${userPrompt}`;
           },
           required: ['planBOptions'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanTransitGeneratePlanBOutput;

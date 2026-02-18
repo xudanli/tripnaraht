@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Logger,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -22,11 +23,13 @@ import {
   LearningSignal,
 } from '../services/rlhf-signal-collector.service';
 import { DecisionOutput } from '../interfaces/decision-node.interface';
+import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
 
 /**
  * RLHF Signal API Controller
- * 
+ *
  * 提供 RLHF 信号收集、质量评估、学习信号生成的 API 端点
+ * 用户反馈 API 统一经 Kernel.recordUserFeedback（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN）
  */
 @ApiTags('RLHF Signals')
 @ApiBearerAuth()
@@ -35,7 +38,10 @@ import { DecisionOutput } from '../interfaces/decision-node.interface';
 export class RLHFSignalController {
   private readonly logger = new Logger(RLHFSignalController.name);
 
-  constructor(private readonly rlhfService: RLHFSignalCollectorService) {}
+  constructor(
+    private readonly rlhfService: RLHFSignalCollectorService,
+    @Optional() private readonly decisionKernel?: DecisionKernelService,
+  ) {}
 
   // ============================================================================
   // 行为信号 API
@@ -251,8 +257,18 @@ export class RLHFSignalController {
       },
     },
   })
-  recordAcceptance(@Body() body: { trip_run_id: string; decision_point_id: string; chosen_option_id: string }) {
-    this.rlhfService.recordAcceptance(body.trip_run_id, body.decision_point_id, body.chosen_option_id);
+  recordAcceptance(@Body() body: { trip_run_id: string; decision_point_id: string; chosen_option_id: string; user_id?: string }) {
+    if (this.decisionKernel) {
+      this.decisionKernel.recordUserFeedback({
+        tripRunId: body.trip_run_id,
+        userId: body.user_id ?? '',
+        decisionPointId: body.decision_point_id,
+        feedbackType: 'ACCEPT',
+        value: { choice: body.chosen_option_id },
+      }).catch((e) => this.logger.warn(`[RLHF] Kernel.recordUserFeedback: ${(e as Error)?.message}`));
+    } else {
+      this.rlhfService.recordAcceptance(body.trip_run_id, body.decision_point_id, body.chosen_option_id);
+    }
     return { success: true, recorded: 'acceptance' };
   }
 
@@ -269,8 +285,18 @@ export class RLHFSignalController {
       },
     },
   })
-  recordRejection(@Body() body: { trip_run_id: string; decision_point_id: string; reason?: string }) {
-    this.rlhfService.recordRejection(body.trip_run_id, body.decision_point_id, body.reason);
+  recordRejection(@Body() body: { trip_run_id: string; decision_point_id: string; reason?: string; user_id?: string }) {
+    if (this.decisionKernel) {
+      this.decisionKernel.recordUserFeedback({
+        tripRunId: body.trip_run_id,
+        userId: body.user_id ?? '',
+        decisionPointId: body.decision_point_id,
+        feedbackType: 'REJECT',
+        value: { comment: body.reason },
+      }).catch((e) => this.logger.warn(`[RLHF] Kernel.recordUserFeedback: ${(e as Error)?.message}`));
+    } else {
+      this.rlhfService.recordRejection(body.trip_run_id, body.decision_point_id, body.reason);
+    }
     return { success: true, recorded: 'rejection' };
   }
 
@@ -289,9 +315,19 @@ export class RLHFSignalController {
     },
   })
   recordRating(
-    @Body() body: { trip_run_id: string; decision_point_id: string; rating: number; comment?: string },
+    @Body() body: { trip_run_id: string; decision_point_id: string; rating: number; comment?: string; user_id?: string },
   ) {
-    this.rlhfService.recordRating(body.trip_run_id, body.decision_point_id, body.rating, body.comment);
+    if (this.decisionKernel) {
+      this.decisionKernel.recordUserFeedback({
+        tripRunId: body.trip_run_id,
+        userId: body.user_id ?? '',
+        decisionPointId: body.decision_point_id,
+        feedbackType: 'RATING',
+        value: { rating: body.rating, comment: body.comment },
+      }).catch((e) => this.logger.warn(`[RLHF] Kernel.recordUserFeedback: ${(e as Error)?.message}`));
+    } else {
+      this.rlhfService.recordRating(body.trip_run_id, body.decision_point_id, body.rating, body.comment);
+    }
     return { success: true, recorded: 'rating' };
   }
 

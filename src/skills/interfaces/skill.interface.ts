@@ -1,13 +1,24 @@
 // src/skills/interfaces/skill.interface.ts
 /**
  * Skill 接口定义
- * 
+ *
  * Skills = 能力颗粒，最小可复用的能力单元
  * 每个 Skill 只做一件"决策上有意义的事"
  */
 
+import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
+
+/** P0: Orchestrator 注入的 Token 打点上下文，供 Skills 内 LLM 调用时传入 LlmService */
+export interface SkillTokenContext {
+  request_id: string;
+  state_machine_step: OrchestrationStep;
+  sub_agent: SubAgentType;
+}
+
 export interface SkillInput {
   [key: string]: any;
+  /** P0: Orchestrator 注入，用于 Skills 内 LLM 打点（按阶段聚合 Token）。调用 LlmService.callLlmWithSchema 时传入第 4 参数 */
+  tokenContext?: SkillTokenContext;
 }
 
 export interface SkillOutput {

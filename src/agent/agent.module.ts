@@ -159,6 +159,8 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     TripNaraSystemPromptService,
     ReactSystemPromptService,
     AgentInfraModule, // 导出 Infra 模块（LLMExecutor、CoreGateway）
+    ClaudeGatekeeperAgentService, // Phase 3: GateEvalExecutor 需要
+    ClaudeLocalInsightAgentService, // Phase 4: RepairExecutor 需要
   ],
 })
 export class AgentModule {

@@ -173,6 +173,7 @@ ${userPrompt}`;
         LlmProvider.ANTHROPIC,
         adjustedPrompt,
         schema,
+        input.tokenContext,
       );
 
       // 增加超时时间到 60 秒（对于复杂行程方案）

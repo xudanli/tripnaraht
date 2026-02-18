@@ -107,6 +107,7 @@ ${userPrompt}`;
           },
           required: ['recommendedResolution', 'options', 'userConfirmationRequired'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanConstraintsArbitrateTradeoffsOutput;

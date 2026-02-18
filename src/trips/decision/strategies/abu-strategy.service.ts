@@ -306,11 +306,34 @@ export class AbuStrategy implements DecisionPersonaStrategy {
     );
 
     if (cancelledFerries.length > 0) {
-      // 检查计划是否依赖这些渡轮（简化处理：如果有渡轮状态，假设可能依赖）
-      this.logger.warn(
-        `计划 ${plan.tripId} 可能依赖已取消的渡轮: ${cancelledFerries.map(f => f.ferryId).join(', ')}`
+      // 检查计划是否依赖渡轮（P1：专利 FERRY_CANCELLED 硬约束）
+      const planUsesFerry = plan.segments?.some(
+        s => s.metadata?.mode === 'FERRY' || s.metadata?.ferryId
       );
-      // 注意：这里不直接拒绝，因为可能不依赖，但记录警告
+      if (planUsesFerry) {
+        this.logger.warn(
+          `计划 ${plan.tripId} 依赖已取消的渡轮: ${cancelledFerries.map(f => f.ferryId).join(', ')}`
+        );
+        return {
+          allowed: false,
+          action: 'REJECT',
+          logs: [
+            {
+              persona: 'ABU',
+              action: 'REJECT',
+              explanation: `路线依赖渡轮，但检测到渡轮已取消或季节性停运（${cancelledFerries.map(f => f.ferryId).join(', ')}），路线不可执行`,
+              reasonCodes: ['FERRY_CANCELLED'],
+              evidenceRefs: cancelledFerries.map(f => f.ferryId),
+              timestamp: new Date().toISOString(),
+              decisionSource: 'PHYSICAL',
+              decisionStage: 'ABU_GATE',
+            },
+          ],
+        };
+      }
+      this.logger.warn(
+        `计划 ${plan.tripId} 区域存在已取消的渡轮: ${cancelledFerries.map(f => f.ferryId).join(', ')}（计划未使用渡轮，仅记录）`
+      );
     }
 
     // 5️⃣.5 检查关键节点住宿可用性（Airbnb 集成）

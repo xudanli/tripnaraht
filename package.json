@@ -137,6 +137,8 @@
     "test:constraint-consistency-baseline": "npx tsx scripts/constraint-consistency-baseline.ts",
     "test:constraint-consistency-baseline:quick": "npx tsx scripts/constraint-consistency-baseline.ts --quick",
     "test:rollback-drill": "npx tsx scripts/verify-rollback-drill.ts",
+    "test:dso": "npx tsx scripts/test-dso.ts",
+    "baseline:export-token": "npx tsx scripts/export-token-baseline.ts",
     "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts",
     "test:world-model-api-interfaces": "npx tsx scripts/test-world-model-api-interfaces-simple.ts",
     "postinstall": "node scripts/patch-zod-bg-locale.js"

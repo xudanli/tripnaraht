@@ -113,6 +113,7 @@ ${userPrompt}`;
           },
           required: ['options'],
         },
+        input.tokenContext,
       );
 
       const result = JSON.parse(resultStr) as PlanBudgetProposeTradeoffsOutput;

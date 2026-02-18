@@ -261,6 +261,30 @@ export class TokenStatsService {
   }
 
   /**
+   * P0: 按 state_machine_step 聚合 Token 统计（供基线采集）
+   * 返回 INTAKE/RESEARCH/GATE_EVAL/PLAN_GEN/VERIFY 等阶段的 token 汇总
+   */
+  getStatsByStep(timeRange?: { start: Date; end: Date }): Record<string, { total_tokens: number; calls: number }> {
+    const records = Array.from(this.tokenRecords.values());
+    const filtered =
+      timeRange && records.length > 0
+        ? records.filter((r) => {
+            const t = new Date(r.timestamp).getTime();
+            return t >= timeRange.start.getTime() && t <= timeRange.end.getTime();
+          })
+        : records;
+
+    const byStep: Record<string, { total_tokens: number; calls: number }> = {};
+    for (const r of filtered) {
+      const step = r.state_machine_step || r.task_type || 'UNKNOWN';
+      if (!byStep[step]) byStep[step] = { total_tokens: 0, calls: 0 };
+      byStep[step].total_tokens += r.total_tokens;
+      byStep[step].calls += 1;
+    }
+    return byStep;
+  }
+
+  /**
    * 清空统计数据（用于测试）
    */
   clearStats(): void {

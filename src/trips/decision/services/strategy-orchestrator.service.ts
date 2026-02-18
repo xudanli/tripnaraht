@@ -24,6 +24,7 @@ import { SkillsRegistryService } from '../../../skills/services/skills-registry.
 
 /**
  * 策略编排结果
+ * P2 E(U) 显式化：Dr.Dre 输出的 expectedUtility 透传
  */
 export interface StrategyOrchestrationResult {
   /** 最终计划（如果被拒绝则为 null） */
@@ -34,6 +35,10 @@ export interface StrategyOrchestrationResult {
   allowed: boolean;
   /** 最终动作 */
   finalAction: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+  /** 期望效用 [0,1]（Dr.Dre 输出，专利 E(U) 显式化） */
+  expectedUtility?: number;
+  /** 效用权重摘要（可选） */
+  expectedUtilityWeights?: Record<string, number>;
 }
 
 @Injectable()
@@ -193,6 +198,8 @@ export class StrategyOrchestratorService {
       logs: allLogs,
       allowed: true,
       finalAction,
+      expectedUtility: dreResult.expectedUtility,
+      expectedUtilityWeights: dreResult.expectedUtilityWeights,
     };
   }
 

@@ -37,6 +37,11 @@ import { TripTaskMemoryService } from './trip-task-memory.service';
 import { ExecutionHistoryCompressorService } from './execution-history-compressor.service';
 import { MemoryService } from '../../../agent/memory/services/memory.service';
 import { DEFAULT_TOKEN_BUDGET } from '../constants/token-budget.constants';
+import { ContextBudgetManagerService } from './context-budget-manager.service';
+import { ContextCacheService } from './context-cache.service';
+import { estimateTokens } from '../utils/token-estimator';
+import { ContextRankerService } from './context-ranker.service';
+import { ContextCompressorService } from './context-compressor.service';
 import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../../trips/decision/optimization/objective-function.interface';
 import {
   DEFAULT_DAILY_UTILITY_WEIGHTS,
@@ -105,6 +110,10 @@ export class ContextEngineerService {
     @Optional() private readonly tripTaskMemory?: TripTaskMemoryService,
     @Optional() private readonly executionHistoryCompressor?: ExecutionHistoryCompressorService,
     @Optional() private readonly memoryService?: MemoryService,
+    @Optional() private readonly contextRanker?: ContextRankerService,
+    @Optional() private readonly contextCompressor?: ContextCompressorService,
+    @Optional() private readonly contextBudgetManager?: ContextBudgetManagerService,
+    @Optional() private readonly contextCache?: ContextCacheService,
   ) {
     // ContextEngineerService 可以通过 SkillsRegistryService 获取其他 skills
     // 如果 RedisService 可用，使用持久化缓存；否则使用内存缓存
@@ -151,17 +160,43 @@ export class ContextEngineerService {
       return inFlightBuild;
     }
 
-    // 1. 三层缓存检查（L1内存 → L2Redis → L3数据库）
-    if (useCache) {
-      // 1.1 L1: 内存缓存（最快，5分钟TTL）
+    // 1. Phase 5: ContextCache L1/L2 检查
+    if (useCache && this.contextCache) {
+      const cached = await this.contextCache.get(cacheKey);
+      if (cached.hit) {
+        this.logger.debug(`✅ ${cached.level}缓存命中: ${cacheKey}`);
+        cacheHit = true;
+        if (this.metricsService) {
+          await this.metricsService.recordMetrics(cached.package, {
+            tripId: resolvedOptions.tripId,
+            phase: resolvedOptions.phase,
+            agent: resolvedOptions.agent,
+            buildTimeMs: Date.now() - buildStartTime,
+            cacheHit: true,
+            cacheLevel: cached.level,
+            skillsCalled: [],
+            userQuery: resolvedOptions.userQuery,
+          });
+        }
+        if (this.prometheusMetrics) {
+          this.prometheusMetrics.recordBuild(
+            resolvedOptions.phase,
+            resolvedOptions.agent,
+            Date.now() - buildStartTime,
+            true,
+            cached.level,
+          );
+        }
+        return cached.package;
+      }
+    } else if (useCache) {
+      // 降级：无 ContextCache 时使用原有 L1/L2 逻辑
       const memoryCached = this.memoryCache.get(cacheKey);
       if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
-        this.logger.debug(`✅ L1缓存命中: ${cacheKey}`);
+        this.logger.debug(`✅ L1缓存命中(降级): ${cacheKey}`);
         cacheHit = true;
-        
-            // 记录指标
-            if (this.metricsService) {
-              await this.metricsService.recordMetrics(memoryCached.package, {
+        if (this.metricsService) {
+          await this.metricsService.recordMetrics(memoryCached.package, {
             tripId: resolvedOptions.tripId,
             phase: resolvedOptions.phase,
             agent: resolvedOptions.agent,
@@ -170,39 +205,27 @@ export class ContextEngineerService {
             cacheLevel: 'L1',
             skillsCalled: [],
             userQuery: resolvedOptions.userQuery,
-              });
-            }
-
-            // Phase 1.4 优化: 记录 Prometheus 指标
-            if (this.prometheusMetrics) {
-              this.prometheusMetrics.recordBuild(
-                options.phase,
-                options.agent,
-                Date.now() - buildStartTime,
-                true,
-                'L1',
-              );
-            }
-        
+          });
+        }
+        if (this.prometheusMetrics) {
+          this.prometheusMetrics.recordBuild(
+            options.phase,
+            options.agent,
+            Date.now() - buildStartTime,
+            true,
+            'L1',
+          );
+        }
         return memoryCached.package;
       }
-      
-      // 1.2 L2: Redis 缓存（快速，15分钟TTL）
       if (this.redisService) {
         try {
           const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
           const cached = await this.redisService.get<ContextPackage>(redisKey);
           if (cached) {
-            this.logger.debug(`✅ L2缓存命中: ${cacheKey}`);
+            this.logger.debug(`✅ L2缓存命中(降级): ${cacheKey}`);
             cacheHit = true;
-            
-            // 回填 L1 缓存
-            this.memoryCache.set(cacheKey, {
-              package: cached,
-              timestamp: Date.now(),
-            });
-            
-            // 记录指标
+            this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
             if (this.metricsService) {
               await this.metricsService.recordMetrics(cached, {
                 tripId: resolvedOptions.tripId,
@@ -215,8 +238,6 @@ export class ContextEngineerService {
                 userQuery: resolvedOptions.userQuery,
               });
             }
-
-            // Phase 1.4 优化: 记录 Prometheus 指标
             if (this.prometheusMetrics) {
               this.prometheusMetrics.recordBuild(
                 resolvedOptions.phase,
@@ -226,17 +247,12 @@ export class ContextEngineerService {
                 'L2',
               );
             }
-            
             return cached;
           }
         } catch (error: any) {
           this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
         }
       }
-      
-      // 1.3 L3: 数据库缓存（持久化，可选）
-      // TODO: 如果需要跨实例共享，可以从数据库查询
-      // 当前暂不实现，因为 Context Package 通常不需要跨实例共享
     }
 
     // Phase 2.2 优化: 应用学习结果（如果可用）
@@ -249,9 +265,13 @@ export class ContextEngineerService {
     try {
       const result = await buildPromise;
       
-      // 3. 写入三层缓存
+      // 3. Phase 5: 写入 ContextCache 或降级 writeToCache
       if (useCache) {
-        await this.writeToCache(cacheKey, result);
+        if (this.contextCache) {
+          await this.contextCache.set(cacheKey, result);
+        } else {
+          await this.writeToCache(cacheKey, result);
+        }
       }
       
       return result;
@@ -270,116 +290,48 @@ export class ContextEngineerService {
   ): Promise<ContextPackage> {
     const buildStartTime = Date.now();
     const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-    const blocks: ContextBlock[] = [];
 
     try {
-      // 1. 获取世界模型摘要（含 ExpectedUtility 块，decision 阶段）
-      if (options.tripId) {
-        const worldBlocks = await this.buildWorldModelBlocks(
-          options.tripId,
-          options.phase,
-        );
-        blocks.push(...worldBlocks);
-      }
-
-      // 2-3. 并行获取国家包块和计划片段（异步优化）
-      const [countryBlocksResult, planBlocksResult] = await Promise.allSettled([
-        // 2. 获取国家包块（按主题选择）
-        options.requiredTopics && options.requiredTopics.length > 0
-          ? this.buildCountryPackBlocks(
-              options.tripId,
-              options.requiredTopics,
-              options.phase,
-            )
-          : Promise.resolve([]),
-        // 3. 获取计划相关片段（Plan RAG）
-        options.tripId && this.shouldIncludePlanBlocks(options.phase, options.agent)
-          ? this.buildPlanBlocks(
-              options.tripId,
-              options.phase,
-              options.agent,
-            )
-          : Promise.resolve([]),
-      ]);
-
-      // 处理国家包块结果
-      if (countryBlocksResult.status === 'fulfilled') {
-        blocks.push(...countryBlocksResult.value);
-      } else {
-        this.logger.warn(`获取国家包块失败: ${countryBlocksResult.reason}`);
-      }
-
-      // 处理计划块结果
-      if (planBlocksResult.status === 'fulfilled') {
-        blocks.push(...planBlocksResult.value);
-      } else {
-        this.logger.warn(`获取计划块失败: ${planBlocksResult.reason}`);
-      }
-
-      // 4. 获取决策日志摘要
-      if (options.tripId) {
-        const decisionBlocks = await this.buildDecisionLogBlocks(
-          options.tripId,
-          options.phase,
-        );
-        blocks.push(...decisionBlocks);
-      }
-
-      // 4.5 Context Orchestrator: 读取 TripTaskMemory，注入 Execution Context 摘要
-      if (options.tripId && this.tripTaskMemory) {
-        const taskBlocks = await this.buildTripTaskMemoryBlocks(options.tripId);
-        blocks.push(...taskBlocks);
-      }
-
-      // 5. 获取约束和用户画像（含 MemoryService UserTravelProfile）
-      if (options.tripId) {
-        const constraintBlocks = await this.buildConstraintBlocks(
-          options.tripId,
-          options.phase,
-          options.userId,
-        );
-        blocks.push(...constraintBlocks);
-      }
-
-      // 6. 获取 API 文档块（如果请求）
-      if (options.includeApiDocs) {
-        const apiDocBlocks = await this.buildApiDocumentationBlocks(
-          options.apiDocCategories || ['ALL'],
-          options.userQuery,
-        );
-        blocks.push(...apiDocBlocks);
-      }
-
-      // 6.5 Context Orchestrator: 统一调度 tools.select，结果写入 Execution Context
-      const includeToolSelection = options.includeToolSelection !== false;
-      let toolAllowlist: Array<{ name: string; reason: string; priority: number }> = [];
-      if (includeToolSelection && this.skillsRegistry) {
-        const { toolBlocks, toolList } = await this.buildToolSelectionBlocks(options);
-        blocks.push(...toolBlocks);
-        toolAllowlist = toolList;
-      }
-
-      // 6.6 Context Orchestrator: 执行历史结构化压缩
-      let blocksToSort = blocks;
-      if (this.executionHistoryCompressor) {
-        blocksToSort = this.executionHistoryCompressor.compress(blocks);
-      }
+      // Phase 1: Context Engine 工业化 - 委托 buildRawBlocks 组装 blocks
+      const { blocks: blocksToSort, skillsCalled, toolAllowlist } = await this.buildRawBlocks(options);
+      this.skillsCalledInBuild = skillsCalled;
 
       // 7. 计算 Token 并排序
-      const totalTokens = this.estimateTokens(blocksToSort);
+      const totalTokens = estimateTokens(blocksToSort);
       
-      // 8. 按优先级排序并裁剪到预算内（应用 excludeTopics 过滤）
-      const sortedBlocks = this.sortAndTrimBlocks(
-        blocksToSort,
-        tokenBudget,
-        options.includePrivate || false,
-        options.excludeTopics,
-      );
+      // 8. Phase 2: ContextRanker 排序并裁剪到预算内
+      const sortedBlocks = this.contextRanker
+        ? this.contextRanker.rank({
+            blocks: blocksToSort,
+            tokenBudget,
+            includePrivate: options.includePrivate || false,
+            excludeTopics: options.excludeTopics,
+          }).blocks
+        : this.sortAndTrimBlocks(
+            blocksToSort,
+            tokenBudget,
+            options.includePrivate || false,
+            options.excludeTopics,
+          );
 
-      // 9. Phase 3.3 优化: 如果需要，进行智能压缩（使用学习到的压缩策略）
+      // 9. Phase 3: ContextCompressor 智能压缩（超预算时）
       let finalBlocks = sortedBlocks;
       let compressed = false;
-      if (this.estimateTokens(sortedBlocks) > tokenBudget) {
+      if (estimateTokens(sortedBlocks) > tokenBudget && this.contextCompressor) {
+        const result = await this.contextCompressor.compress({
+          blocks: sortedBlocks,
+          tokenBudget,
+          strategy: 'balanced',
+          userId: options.userId,
+          phase: options.phase,
+          agent: options.agent,
+        });
+        finalBlocks = result.blocks;
+        compressed = result.compressed;
+        if (result.skillsCalled?.length) {
+          this.skillsCalledInBuild.push(...result.skillsCalled);
+        }
+      } else if (estimateTokens(sortedBlocks) > tokenBudget) {
         finalBlocks = await this.compressBlocks(
           sortedBlocks,
           tokenBudget,
@@ -400,16 +352,16 @@ export class ContextEngineerService {
         agent: options.agent,
         userQuery: options.userQuery,
         blocks: finalBlocks,
-        totalTokens: this.estimateTokens(finalBlocks),
+        totalTokens: estimateTokens(finalBlocks),
         tokenBudget,
         compressed,
         createdAt: new Date().toISOString(),
         metadata: {
-          originalBlocksCount: blocks.length,
+          originalBlocksCount: blocksToSort.length,
           finalBlocksCount: finalBlocks.length,
           buildTimeMs: Date.now() - buildStartTime,
           skillsCalled: [...this.skillsCalledInBuild],
-          toolAllowlist: toolAllowlist,
+          toolAllowlist: toolAllowlist ?? [],
         },
       };
 
@@ -470,6 +422,91 @@ export class ContextEngineerService {
   }
 
   /**
+   * Phase 1: Context Engine 工业化 - 组装原始 blocks（未排序、未裁剪）
+   * 供 ContextBuilder 抽象层使用，输出供 Ranker/Compressor 消费
+   */
+  async buildRawBlocks(options: ContextPackageOptions): Promise<{
+    blocks: ContextBlock[];
+    skillsCalled: string[];
+    toolAllowlist: Array<{ name: string; reason: string; priority: number }>;
+  }> {
+    this.skillsCalledInBuild = [];
+    const blocks: ContextBlock[] = [];
+
+    // 1. 获取世界模型摘要（含 ExpectedUtility 块，decision 阶段）
+    if (options.tripId) {
+      const worldBlocks = await this.buildWorldModelBlocks(options.tripId, options.phase);
+      blocks.push(...worldBlocks);
+    }
+
+    // 2-3. 并行获取国家包块和计划片段（异步优化）
+    const [countryBlocksResult, planBlocksResult] = await Promise.allSettled([
+      options.requiredTopics && options.requiredTopics.length > 0
+        ? this.buildCountryPackBlocks(options.tripId, options.requiredTopics, options.phase)
+        : Promise.resolve([]),
+      options.tripId && this.shouldIncludePlanBlocks(options.phase, options.agent)
+        ? this.buildPlanBlocks(options.tripId, options.phase, options.agent)
+        : Promise.resolve([]),
+    ]);
+
+    if (countryBlocksResult.status === 'fulfilled') blocks.push(...countryBlocksResult.value);
+    else this.logger.warn(`获取国家包块失败: ${countryBlocksResult.reason}`);
+    if (planBlocksResult.status === 'fulfilled') blocks.push(...planBlocksResult.value);
+    else this.logger.warn(`获取计划块失败: ${planBlocksResult.reason}`);
+
+    // 4. 获取决策日志摘要
+    if (options.tripId) {
+      const decisionBlocks = await this.buildDecisionLogBlocks(options.tripId, options.phase);
+      blocks.push(...decisionBlocks);
+    }
+
+    // 4.5 Context Orchestrator: TripTaskMemory
+    if (options.tripId && this.tripTaskMemory) {
+      const taskBlocks = await this.buildTripTaskMemoryBlocks(options.tripId);
+      blocks.push(...taskBlocks);
+    }
+
+    // 5. 获取约束和用户画像
+    if (options.tripId) {
+      const constraintBlocks = await this.buildConstraintBlocks(
+        options.tripId,
+        options.phase,
+        options.userId,
+      );
+      blocks.push(...constraintBlocks);
+    }
+
+    // 6. 获取 API 文档块
+    if (options.includeApiDocs) {
+      const apiDocBlocks = await this.buildApiDocumentationBlocks(
+        options.apiDocCategories || ['ALL'],
+        options.userQuery,
+      );
+      blocks.push(...apiDocBlocks);
+    }
+
+    // 6.5 Context Orchestrator: tools.select
+    let toolAllowlist: Array<{ name: string; reason: string; priority: number }> = [];
+    if (options.includeToolSelection !== false && this.skillsRegistry) {
+      const { toolBlocks, toolList } = await this.buildToolSelectionBlocks(options);
+      blocks.push(...toolBlocks);
+      toolAllowlist = toolList;
+    }
+
+    // 6.6 执行历史结构化压缩
+    let blocksToSort = blocks;
+    if (this.executionHistoryCompressor) {
+      blocksToSort = this.executionHistoryCompressor.compress(blocks);
+    }
+
+    return {
+      blocks: blocksToSort,
+      skillsCalled: [...this.skillsCalledInBuild],
+      toolAllowlist,
+    };
+  }
+
+  /**
    * Context Orchestrator: 解析选项（动态上下文选择 + 60% Token 预算）
    */
   private resolveOptionsWithDynamicContext(options: ContextPackageOptions): ContextPackageOptions {
@@ -490,9 +527,16 @@ export class ContextEngineerService {
       }
     }
 
-    // 2. 60% Token 预算（当未显式指定时）
+    // 2. Phase 4: ContextBudgetManager 分配 Token 预算（当未显式指定时）
     if (result.tokenBudget == null) {
-      result = { ...result, tokenBudget: DEFAULT_TOKEN_BUDGET };
+      const budget = this.contextBudgetManager?.getBudget({
+        phase: result.phase,
+        agent: result.agent,
+      });
+      result = {
+        ...result,
+        tokenBudget: budget?.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
+      };
     }
 
     return result;
@@ -692,33 +736,34 @@ export class ContextEngineerService {
   }
 
   /**
-   * 清除缓存（内存 + Redis）
+   * 清除缓存（Phase 5: 委托 ContextCache 或降级）
    */
   async clearCache(): Promise<void> {
-    const memorySize = this.memoryCache.size;
-    this.memoryCache.clear();
-    this.logger.debug(`清除了 ${memorySize} 个内存缓存条目`);
-
-    // 清除 Redis 缓存（使用通配符删除）
-    if (this.redisService) {
-      try {
-        // 注意：RedisService 可能不支持通配符删除，这里简化实现
-        // 实际应该使用 SCAN + DEL 或 Lua 脚本
-        this.logger.debug('Redis 缓存通过 TTL 自动过期，无需手动清除');
-      } catch (error: any) {
-        this.logger.warn(`清除 Redis 缓存失败: ${error.message}`);
-      }
+    if (this.contextCache) {
+      await this.contextCache.clear();
+    } else {
+      const memorySize = this.memoryCache.size;
+      this.memoryCache.clear();
+      this.logger.debug(`清除了 ${memorySize} 个内存缓存条目`);
     }
   }
 
   /**
-   * 获取缓存统计
+   * 获取缓存统计（Phase 5: 委托 ContextCache 或降级）
    */
-  async getCacheStats(): Promise<{ 
-    memorySize: number; 
+  async getCacheStats(): Promise<{
+    memorySize: number;
     memoryKeys: string[];
     redisEnabled: boolean;
   }> {
+    if (this.contextCache) {
+      const stats = this.contextCache.getStats();
+      return {
+        memorySize: stats.memorySize,
+        memoryKeys: stats.memoryKeys ?? [],
+        redisEnabled: !!this.redisService,
+      };
+    }
     return {
       memorySize: this.memoryCache.size,
       memoryKeys: Array.from(this.memoryCache.keys()),
@@ -1568,28 +1613,7 @@ Context 管理:
   }
 
   /**
-   * 估算 Token 数
-   */
-  private estimateTokens(blocks: ContextBlock[]): number {
-    // 简单估算：英文 1 token ≈ 4 字符，中文 1 token ≈ 1.5 字符
-    let totalChars = 0;
-    for (const block of blocks) {
-      totalChars += block.text.length;
-      if (block.data) {
-        totalChars += JSON.stringify(block.data).length;
-      }
-    }
-
-    // 混合估算（假设 70% 中文，30% 英文）
-    const chineseChars = totalChars * 0.7;
-    const englishChars = totalChars * 0.3;
-    const tokens = Math.ceil(chineseChars / 1.5 + englishChars / 4);
-
-    return tokens;
-  }
-
-  /**
-   * 排序并裁剪块
+   * 排序并裁剪块（ContextRanker 不可用时的降级）
    */
   private sortAndTrimBlocks(
     blocks: ContextBlock[],
@@ -1616,7 +1640,7 @@ Context 管理:
     let currentTokens = 0;
 
     for (const block of filteredBlocks) {
-      const blockTokens = block.estimatedTokens || this.estimateTokens([block]);
+      const blockTokens = block.estimatedTokens ?? estimateTokens([block]);
       if (currentTokens + blockTokens <= tokenBudget) {
         trimmedBlocks.push(block);
         currentTokens += blockTokens;
@@ -1667,7 +1691,7 @@ Context 管理:
       }
 
       // 2. 检查 Token 是否已满足预算
-      let currentTokens = this.estimateTokens(remainingBlocks);
+      let currentTokens = estimateTokens(remainingBlocks);
       if (currentTokens <= tokenBudget) {
         return remainingBlocks;
       }
@@ -1689,7 +1713,7 @@ Context 管理:
           });
 
           if (result.compressedBlocks) {
-            const compressedTokens = this.estimateTokens(result.compressedBlocks);
+            const compressedTokens = estimateTokens(result.compressedBlocks);
             if (compressedTokens <= tokenBudget) {
               this.logger.debug(
                 `压缩完成: 原始=${currentTokens}, 压缩后=${compressedTokens}, ` +

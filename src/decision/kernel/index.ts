@@ -9,9 +9,13 @@
  */
 
 export * from './decision-state.types';
+export * from './interfaces/phase-executor.interface';
+export * from './decision-meta-inference';
 export * from './decision-kernel.service';
 export * from './state-manager.service';
 export * from './constraint-engine-adapter.service';
 export * from './optimization-engine-adapter.service';
 export * from './context-engine-adapter.service';
+export * from './feedback-engine-adapter.service';
 export * from './orchestrator-state-mapper';
+export * from './world-state-summary.types';
