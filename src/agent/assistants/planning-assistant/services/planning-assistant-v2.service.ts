@@ -52,6 +52,7 @@ import { ChatResponseDto } from '../dto/v2/chat-response.dto';
 import { PlanCandidate, PlanningConversationState } from '../interfaces/planning-assistant.interface';
 import { ComparisonDifferenceDto } from '../dto/v2/compare-plans-response.dto';
 import { PlanCandidateDto, PersonaEvaluationDto } from '../dto/v2/shared/plan-candidate.dto';
+import { AccommodationItemDto } from '../dto/v2/shared/accommodation-item.dto';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -361,9 +362,10 @@ export class PlanningAssistantV2Service {
         // 获取会话状态（用于路由决策和上下文感知）
         let sessionState;
         let selectedDestination: string | undefined;
+        let state: PlanningConversationState | null = null;
         if (dto.sessionId) {
           try {
-            const state = await this.planningAssistantService.getSessionState(dto.sessionId);
+            state = await this.planningAssistantService.getSessionState(dto.sessionId);
             if (state) {
               sessionState = {
                 phase: state.phase,
@@ -377,6 +379,65 @@ export class PlanningAssistantV2Service {
                 `selectedDestination=${selectedDestination || 'none'}, ` +
                 `preferences=${JSON.stringify(state.preferences || {}).substring(0, 100)}...`
               );
+
+              // 日期澄清阶段：用户补充了入住/退房日期或确认建议日期，执行待定的酒店搜索
+              if (state.phase === 'CLARIFYING_HOTEL_DATES' && state.pendingHotelSearch && this.mcpToolDispatcher) {
+                const refDate = state.pendingHotelSearch.extractedParams?.checkIn;
+                let dates = this.extractDatesFromMessage(dto.message, refDate);
+                // 若用户未提供新日期，但回复了确认且待定搜索中有建议日期，使用建议日期
+                if (!dates.checkIn || !dates.checkOut) {
+                  const suggested = state.pendingHotelSearch.extractedParams?.checkIn && state.pendingHotelSearch.extractedParams?.checkOut;
+                  if (suggested && this.isDateConfirmation(dto.message)) {
+                    dates = {
+                      checkIn: state.pendingHotelSearch.extractedParams.checkIn,
+                      checkOut: state.pendingHotelSearch.extractedParams.checkOut,
+                    };
+                    this.logger.debug(`[日期澄清] 用户确认使用建议日期: checkIn=${dates.checkIn}, checkOut=${dates.checkOut}`);
+                  }
+                }
+                if (dates.checkIn && dates.checkOut) {
+                  this.logger.debug(`[日期澄清] 从用户消息解析到日期: checkIn=${dates.checkIn}, checkOut=${dates.checkOut}`);
+                  const mergedParams = {
+                    ...state.pendingHotelSearch.extractedParams,
+                    checkIn: dates.checkIn,
+                    checkOut: dates.checkOut,
+                    ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+                    ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                  };
+                  try {
+                    const toolResult = await this.mcpToolDispatcher.executeTool('hotel', 'hotel.search', mergedParams);
+                    await this.updateSessionState(dto.sessionId, {
+                      phase: 'RECOMMENDING',
+                      pendingHotelSearch: undefined,
+                    });
+                    const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                    return this.formatToolResult(
+                      { serviceName: 'hotel', toolName: 'hotel.search', displayName: '搜索酒店', description: '', parameters: [], examples: [], category: 'accommodation', authRequired: false },
+                      toolResult,
+                      dto,
+                      { target: state.pendingHotelSearch.target, confidence: 0.9, reason: '', reasonCN: '', extractedParams: mergedParams },
+                      isChinese
+                    );
+                  } catch (toolError: any) {
+                    this.logger.warn(`[日期澄清] 酒店搜索执行失败: ${toolError.message}，清除待定状态`);
+                    await this.updateSessionState(dto.sessionId, {
+                      phase: 'RECOMMENDING',
+                      pendingHotelSearch: undefined,
+                    });
+                    const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                    const errMsg = isChinese
+                      ? '抱歉，酒店搜索暂时不可用，请稍后再试。'
+                      : 'Sorry, hotel search is temporarily unavailable. Please try again later.';
+                    return {
+                      message: errMsg,
+                      messageCN: errMsg,
+                      reply: errMsg,
+                      phase: 'RECOMMENDING',
+                      sessionId: dto.sessionId,
+                    };
+                  }
+                }
+              }
             }
           } catch (error: any) {
             this.logger.debug(`[会话状态] 获取失败（可能不存在）: ${error.message}`);
@@ -421,15 +482,68 @@ export class PlanningAssistantV2Service {
             await this.ensureSessionExists(dto.sessionId, dto.userId);
             const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
             
-            // 执行工具调用（带性能监控）
-            const toolCallStartTime = Date.now();
-            
             // 合并参数：将 context 中的 tripId 和 countryCode 添加到工具参数中
-            const toolParams = {
+            let toolParams: Record<string, any> = {
               ...routingResult.extractedParams,
               ...(dto.context?.tripId && { tripId: dto.context.tripId }),
               ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
             };
+
+            // 酒店/住宿搜索：澄清日期；若有行程日期则附带建议。若 phase 已是 RECOMMENDING 且已有日期，则不再重复澄清（避免用户补充人数等后再次弹出）
+            const isHotelTool = routingResult.selectedTool.toolName === 'hotel.search' ||
+              (routingResult.target === 'hotel' || routingResult.target === 'accommodation' || routingResult.target === 'airbnb');
+            if (isHotelTool) {
+              const dates = await this.getHotelDatesFromContext(toolParams, dto);
+              const hasDates = !!(dates.checkIn && dates.checkOut);
+              const alreadyRecommended = sessionState?.phase === 'RECOMMENDING';
+              if (hasDates && alreadyRecommended) {
+                toolParams = { ...toolParams, checkIn: dates.checkIn, checkOut: dates.checkOut };
+                const guestsFromMsg = this.extractGuestsFromMessage(dto.message);
+                if (guestsFromMsg != null) toolParams = { ...toolParams, adults: guestsFromMsg, guests: guestsFromMsg };
+                this.logger.debug(`[酒店搜索] phase=RECOMMENDING 且已有日期，跳过日期澄清，直接搜索`);
+              } else if (hasDates) {
+                toolParams = { ...toolParams, checkIn: dates.checkIn, checkOut: dates.checkOut };
+              }
+              if (!hasDates || !alreadyRecommended) {
+              const hasSuggestedDates = hasDates;
+              const clarificationMsg = hasSuggestedDates
+                ? (isChinese
+                  ? `您的行程是 ${this.formatDateForDisplay(dates.checkIn!, true)} 至 ${this.formatDateForDisplay(dates.checkOut!, true)}，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。`
+                  : `Your trip is ${this.formatDateForDisplay(dates.checkIn!, false)} to ${this.formatDateForDisplay(dates.checkOut!, false)}. Shall I search hotels for these dates? Reply "yes" or "ok" to confirm, or specify different dates.`)
+                : (isChinese
+                  ? '好的，请问您计划哪天入住、哪天退房？有了日期可以帮您查价格和可订性。'
+                  : 'When do you plan to check in and check out? I can check availability and prices with dates.');
+              await this.updateSessionState(dto.sessionId, {
+                phase: 'CLARIFYING_HOTEL_DATES',
+                pendingHotelSearch: {
+                  target: (routingResult.target as 'hotel' | 'accommodation' | 'airbnb') || 'hotel',
+                  extractedParams: { ...toolParams },
+                },
+              });
+              return {
+                message: clarificationMsg,
+                messageCN: clarificationMsg,
+                reply: clarificationMsg,
+                replyCN: clarificationMsg,
+                phase: 'CLARIFYING_HOTEL_DATES',
+                sessionId: dto.sessionId,
+                clarificationNeeded: {
+                  type: 'HOTEL_DATES',
+                  message: clarificationMsg,
+                  messageCN: clarificationMsg,
+                  ...(hasSuggestedDates && { suggestedDates: { checkIn: dates.checkIn!, checkOut: dates.checkOut! } }),
+                },
+                routing: {
+                  target: (routingResult.target || 'hotel') as any,
+                  reason: routingResult.reason || 'Clarifying hotel dates',
+                  params: toolParams as Record<string, any>,
+                },
+              };
+              }
+            }
+
+            // 执行工具调用（带性能监控）
+            const toolCallStartTime = Date.now();
             
             const toolResult = await this.mcpToolDispatcher.executeTool(
               routingResult.selectedTool.serviceName,
@@ -603,251 +717,53 @@ export class PlanningAssistantV2Service {
               case 'hotel': {
                 // 酒店搜索：优先使用 Airbnb，如果 Airbnb 不可用或结果为空，再降级到 HotelDirectService
                 try {
-                  // 检查是否在规划工作台场景（通过 context.tripId 或 context.countryCode 判断）
-                  const isPlanningWorkbench = !!(dto.context?.tripId || dto.context?.countryCode);
-                  
-                  if (isPlanningWorkbench) {
-                    // 规划工作台场景：验证必需参数
-                    if (!dto.context.tripId) {
-                      throw new BadRequestException('规划工作台场景下，tripId 是必需参数');
-                    }
-                    if (!dto.context.countryCode) {
-                      throw new BadRequestException('规划工作台场景下，countryCode 是必需参数');
-                    }
-                    this.logger.debug(`规划工作台场景: tripId=${dto.context.tripId}, countryCode=${dto.context.countryCode}`);
+                  // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
+                  const hotelParams: Record<string, any> = {
+                    ...routingResult.extractedParams,
+                    ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+                    ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                  };
+                  const dates = await this.getHotelDatesFromContext(hotelParams, dto);
+                  const hasSuggestedDates = !!(dates.checkIn && dates.checkOut);
+                  if (hasSuggestedDates) {
+                    hotelParams.checkIn = dates.checkIn;
+                    hotelParams.checkOut = dates.checkOut;
                   }
-
-                  // 提取目的地和位置（优先使用会话中的目的地）
-                  let location: { lat: number; lng: number } | undefined = routingResult.extractedParams?.location;
-                  let destination = routingResult.extractedParams?.destination;
-                  
-                  // 如果路由结果中没有目的地，优先使用会话中的目的地
-                  if (!destination && selectedDestination) {
-                    destination = selectedDestination;
-                    this.logger.debug(`使用会话中的目的地进行酒店搜索: ${destination}`);
-                  }
-                  
-                  // 如果还是没有，尝试从消息中提取
-                  if (!destination) {
-                    destination = dto.message;
-                  }
-                  
-                  // 规划工作台场景：如果有 countryCode，优先使用它来增强搜索
-                  if (isPlanningWorkbench && dto.context.countryCode && !destination) {
-                    // 可以从 countryCode 获取国家名称
-                    destination = dto.context.countryCode;
-                  }
-                  
-                  this.logger.debug(`酒店搜索参数: destination=${destination}, hasLocation=${!!location}, tripId=${dto.context?.tripId}, countryCode=${dto.context?.countryCode}`);
-
-                  // 如果没有位置信息，尝试地理编码
-                  if (!location && destination && this.googleMapsDirectService) {
-                    try {
-                      const geocodeResult = await this.googleMapsDirectService.geocode({
-                        address: destination,
-                        language: isChinese ? 'zh' : 'en',
-                      });
-                      if (geocodeResult?.data?.results && geocodeResult.data.results.length > 0) {
-                        const firstResult = geocodeResult.data.results[0];
-                        location = {
-                          lat: firstResult.geometry.location.lat,
-                          lng: firstResult.geometry.location.lng,
-                        };
-                        this.logger.debug(`地理编码成功: ${destination} -> (${location.lat}, ${location.lng})`);
-                      }
-                    } catch (geocodeError: any) {
-                      this.logger.warn(`地理编码失败: ${geocodeError.message}`);
-                    }
-                  }
-
-                  // 如果仍然没有位置，使用冰岛的默认坐标（示例）
-                  if (!location) {
-                    // 尝试从消息中提取国家/城市名称，使用常见坐标
-                    const commonLocations: Record<string, { lat: number; lng: number }> = {
-                      '冰岛': { lat: 64.1466, lng: -21.9426 }, // Reykjavik
-                      'iceland': { lat: 64.1466, lng: -21.9426 },
-                      '日本': { lat: 35.6762, lng: 139.6503 }, // Tokyo
-                      'japan': { lat: 35.6762, lng: 139.6503 },
-                      '东京': { lat: 35.6762, lng: 139.6503 },
-                      'tokyo': { lat: 35.6762, lng: 139.6503 },
-                    };
-                    const lowerMessage = dto.message.toLowerCase();
-                    for (const [key, coords] of Object.entries(commonLocations)) {
-                      if (lowerMessage.includes(key.toLowerCase())) {
-                        location = coords;
-                        break;
-                      }
-                    }
-                  }
-
-                  if (!location) {
-                    throw new Error('无法确定搜索位置，请提供更具体的目的地信息');
-                  }
-
-                  // 优先级1: 优先尝试 Airbnb
-                  let airbnbResults: any[] = [];
-                  let useAirbnb = false;
-                  
-                  if (this.airbnbService) {
-                    try {
-                      this.logger.debug('优先尝试 Airbnb 搜索...');
-                      
-                      // 构建 Airbnb 搜索参数
-                      const airbnbParams: any = {
-                        location: `${location.lat},${location.lng}`,
-                        adults: routingResult.extractedParams?.adults || routingResult.extractedParams?.guests || 1,
-                        checkin: routingResult.extractedParams?.checkin,
-                        checkout: routingResult.extractedParams?.checkout,
-                      };
-                      
-                      // 规划工作台场景：如果有 tripId，可以用于获取更多上下文信息
-                      if (isPlanningWorkbench && dto.context.tripId) {
-                        // 可以从 tripId 获取行程信息，用于优化搜索
-                        this.logger.debug(`使用 tripId 增强 Airbnb 搜索: ${dto.context.tripId}`);
-                      }
-                      
-                      const airbnbSearchResult = await this.airbnbService.searchListings(airbnbParams);
-                      
-                      if (airbnbSearchResult && airbnbSearchResult.results && airbnbSearchResult.results.length > 0) {
-                        airbnbResults = airbnbSearchResult.results;
-                        useAirbnb = true;
-                        this.logger.debug(`Airbnb 搜索成功，找到 ${airbnbResults.length} 个房源`);
-                      } else {
-                        this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirectService');
-                      }
-                    } catch (airbnbError: any) {
-                      this.logger.warn(`Airbnb 搜索失败，降级到 HotelDirectService: ${airbnbError.message}`);
-                    }
-                  } else {
-                    this.logger.debug('AirbnbService 不可用，降级到 HotelDirectService');
-                  }
-
-                  // 优先级2: 如果 Airbnb 不可用或结果为空，使用 HotelDirectService
-                  let hotels: any[] = [];
-                  if (!useAirbnb && this.hotelDirectService && this.hotelDirectService.isServiceAvailable()) {
-                    try {
-                      this.logger.debug('使用 HotelDirectService 搜索酒店...');
-                      
-                      // 构建酒店搜索参数
-                      const hotelSearchParams: any = {
-                        query: destination || 'hotel',
-                        location: location,
-                        radius: 10000, // 10km
-                        language: isChinese ? 'zh' : 'en',
-                        minRating: 3.5, // 最低评分
-                      };
-                      
-                      // 规划工作台场景：如果有 countryCode，可以用于过滤
-                      if (isPlanningWorkbench && dto.context.countryCode) {
-                        // 可以添加国家代码相关的过滤或增强
-                        this.logger.debug(`使用 countryCode 增强酒店搜索: ${dto.context.countryCode}`);
-                      }
-                      
-                      const hotelSearchResult = await this.hotelDirectService.searchHotels(hotelSearchParams);
-                      
-                      hotels = (hotelSearchResult.results || []).slice(0, 10);
-                      this.logger.debug(`HotelDirectService 搜索成功，找到 ${hotels.length} 个酒店`);
-                    } catch (hotelError: any) {
-                      this.logger.warn(`HotelDirectService 搜索失败: ${hotelError.message}`);
-                    }
-                  } else if (!useAirbnb && (!this.hotelDirectService || !this.hotelDirectService.isServiceAvailable())) {
-                    this.logger.warn('HotelDirectService 不可用，且 Airbnb 也无结果');
-                  }
-
-                  // 确定返回结果
-                  const totalResults = airbnbResults.length + hotels.length;
-                  
-                  if (totalResults === 0) {
-                    throw new Error('未找到任何住宿选择');
-                  }
-
-                  const messageEN = useAirbnb 
-                    ? `I found ${airbnbResults.length} Airbnb listing${airbnbResults.length !== 1 ? 's' : ''} for you.`
-                    : `I found ${hotels.length} hotel${hotels.length !== 1 ? 's' : ''} for you.`;
-                  const messageCN = useAirbnb
-                    ? `我为您找到了${airbnbResults.length}个Airbnb房源。`
-                    : `我为您找到了${hotels.length}家酒店。`;
-
-                  // 更新会话状态：记录消息和结果
-                  await this.updateSessionAfterBusinessCall(dto.sessionId, {
-                    message: dto.message,
-                    response: messageCN,
-                    phase: 'RECOMMENDING',
+                  const clarificationMsg = hasSuggestedDates
+                    ? (isChinese
+                      ? `您的行程是 ${this.formatDateForDisplay(dates.checkIn!, true)} 至 ${this.formatDateForDisplay(dates.checkOut!, true)}，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。`
+                      : `Your trip is ${this.formatDateForDisplay(dates.checkIn!, false)} to ${this.formatDateForDisplay(dates.checkOut!, false)}. Shall I search hotels for these dates? Reply "yes" or "ok" to confirm, or specify different dates.`)
+                    : (isChinese
+                      ? '好的，请问您计划哪天入住、哪天退房？有了日期可以帮您查价格和可订性。'
+                      : 'When do you plan to check in and check out? I can check availability and prices with dates.');
+                  await this.updateSessionState(dto.sessionId, {
+                    phase: 'CLARIFYING_HOTEL_DATES',
+                    pendingHotelSearch: {
+                      target: 'hotel',
+                      extractedParams: hotelParams,
+                    },
                   });
-
-                  // 如果使用 Airbnb，返回 Airbnb 结果
-                  if (useAirbnb) {
-                    // 转换 Airbnb 结果格式（如果需要）
-                    const airbnbDtos = airbnbResults.map((listing: any) => ({
-                      id: listing.id,
-                      name: listing.name,
-                      location: listing.location,
-                      price: listing.price,
-                      rating: listing.rating,
-                      reviewsCount: listing.reviewsCount,
-                      images: listing.images,
-                      amenities: listing.amenities,
-                      type: 'airbnb',
-                    }));
-
-                    return {
-                      message: messageEN,
-                      messageCN: messageCN,
-                      reply: isChinese ? messageCN : messageEN,
-                      replyCN: messageCN,
-                      phase: 'RECOMMENDING',
-                      sessionId: dto.sessionId,
-                      airbnbListings: airbnbDtos, // 包含 Airbnb 数据
-                      routing: {
-                        target: routingResult.target,
-                        reason: routingResult.reason || 'Routed to hotel search (using Airbnb)',
-                        params: {
-                          ...routingResult.extractedParams,
-                          useAirbnb: true,
-                        },
-                      },
-                    };
-                  }
-
-                  // 如果使用 HotelDirectService，返回酒店结果
-                  const hotelDtos = hotels.map((hotel: any) => ({
-                    placeId: hotel.placeId,
-                    name: hotel.name,
-                    address: hotel.address,
-                    location: hotel.location,
-                    rating: hotel.rating,
-                    userRatingsTotal: hotel.userRatingsTotal,
-                    priceLevel: hotel.priceLevel,
-                    types: hotel.types,
-                    openingHours: hotel.openingHours,
-                    photos: hotel.photos,
-                    phoneNumber: hotel.phoneNumber,
-                    website: hotel.website,
-                    reviews: hotel.reviews,
-                    amenities: hotel.amenities,
-                    roomTypes: hotel.roomTypes,
-                  }));
-
                   return {
-                    message: messageEN,
-                    messageCN: messageCN,
-                    reply: isChinese ? messageCN : messageEN,
-                    replyCN: messageCN,
-                    phase: 'RECOMMENDING',
+                    message: clarificationMsg,
+                    messageCN: clarificationMsg,
+                    reply: clarificationMsg,
+                    replyCN: clarificationMsg,
+                    phase: 'CLARIFYING_HOTEL_DATES',
                     sessionId: dto.sessionId,
-                    hotels: hotelDtos, // 包含酒店数据
+                    clarificationNeeded: {
+                      type: 'HOTEL_DATES',
+                      message: clarificationMsg,
+                      messageCN: clarificationMsg,
+                      ...(hasSuggestedDates && { suggestedDates: { checkIn: dates.checkIn!, checkOut: dates.checkOut! } }),
+                    },
                     routing: {
                       target: routingResult.target,
-                      reason: routingResult.reason || 'Routed to hotel search (using HotelDirectService)',
-                      params: {
-                        ...routingResult.extractedParams,
-                        useAirbnb: false,
-                      },
+                      reason: routingResult.reason || 'Clarifying hotel dates',
+                      params: hotelParams,
                     },
                   };
                 } catch (hotelError: any) {
                   this.logger.error(`酒店搜索失败: ${hotelError.message}`, hotelError.stack);
-                  // 回退到对话接口
                   break;
                 }
               }
@@ -860,58 +776,49 @@ export class PlanningAssistantV2Service {
                 }
 
                 try {
-                  let location = routingResult.extractedParams?.location;
-                  const destination = routingResult.extractedParams?.destination || dto.message;
-
-                  // 地理编码
-                  if (!location && destination && this.googleMapsDirectService) {
-                    try {
-                      const geocodeResult = await this.googleMapsDirectService.geocode({
-                        address: destination,
-                        language: isChinese ? 'zh' : 'en',
-                      });
-                      if (geocodeResult?.data?.results && geocodeResult.data.results.length > 0) {
-                        const firstResult = geocodeResult.data.results[0];
-                        location = {
-                          lat: firstResult.geometry.location.lat,
-                          lng: firstResult.geometry.location.lng,
-                        };
-                      }
-                    } catch (geocodeError: any) {
-                      this.logger.warn(`地理编码失败: ${geocodeError.message}`);
-                    }
+                  // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
+                  const airbnbParams: Record<string, any> = {
+                    ...routingResult.extractedParams,
+                    ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+                    ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                  };
+                  const airbnbDates = await this.getHotelDatesFromContext(airbnbParams, dto);
+                  const hasSuggestedDates = !!(airbnbDates.checkIn && airbnbDates.checkOut);
+                  if (hasSuggestedDates) {
+                    airbnbParams.checkIn = airbnbDates.checkIn;
+                    airbnbParams.checkOut = airbnbDates.checkOut;
                   }
-
-                  if (!location) {
-                    throw new Error('无法确定搜索位置，请提供更具体的目的地信息');
-                  }
-
-                  // 调用 Airbnb MCP 服务
-                  const airbnbResult = await this.airbnbService.searchListings({
-                    location: `${location.lat},${location.lng}`,
-                    // 可以从用户消息中提取日期、人数等参数
+                  const clarificationMsg = hasSuggestedDates
+                    ? (isChinese
+                      ? `您的行程是 ${this.formatDateForDisplay(airbnbDates.checkIn!, true)} 至 ${this.formatDateForDisplay(airbnbDates.checkOut!, true)}，是否用这几天查民宿？回复「好的」或「可以」确认，或直接说其他日期。`
+                      : `Your trip is ${this.formatDateForDisplay(airbnbDates.checkIn!, false)} to ${this.formatDateForDisplay(airbnbDates.checkOut!, false)}. Shall I search Airbnb for these dates? Reply "yes" or "ok" to confirm, or specify different dates.`)
+                    : (isChinese
+                      ? '好的，请问您计划哪天入住、哪天退房？有了日期可以帮您查价格和可订性。'
+                      : 'When do you plan to check in and check out? I can check availability and prices with dates.');
+                  await this.updateSessionState(dto.sessionId, {
+                    phase: 'CLARIFYING_HOTEL_DATES',
+                    pendingHotelSearch: {
+                      target: 'airbnb',
+                      extractedParams: airbnbParams,
+                    },
                   });
-
-                  const listings = airbnbResult?.results || [];
-                  const messageCN = `我为您找到了${listings.length}个Airbnb房源。`;
-
-                  await this.updateSessionAfterBusinessCall(dto.sessionId, {
-                    message: dto.message,
-                    response: messageCN,
-                    phase: 'RECOMMENDING',
-                  });
-
                   return {
-                    message: `I found ${listings.length} Airbnb listing${listings.length !== 1 ? 's' : ''} for you.`,
-                    messageCN,
-                    reply: isChinese ? messageCN : `I found ${listings.length} Airbnb listings.`,
-                    replyCN: messageCN,
-                    phase: 'RECOMMENDING',
+                    message: clarificationMsg,
+                    messageCN: clarificationMsg,
+                    reply: clarificationMsg,
+                    replyCN: clarificationMsg,
+                    phase: 'CLARIFYING_HOTEL_DATES',
                     sessionId: dto.sessionId,
-                    airbnbListings: listings,
+                    clarificationNeeded: {
+                      type: 'HOTEL_DATES',
+                      message: clarificationMsg,
+                      messageCN: clarificationMsg,
+                      ...(hasSuggestedDates && { suggestedDates: { checkIn: airbnbDates.checkIn!, checkOut: airbnbDates.checkOut! } }),
+                    },
                     routing: {
                       target: routingResult.target,
-                      reason: routingResult.reason || 'Routed to Airbnb search',
+                      reason: routingResult.reason || 'Clarifying hotel dates',
+                      params: airbnbParams,
                     },
                   };
                 } catch (airbnbError: any) {
@@ -923,164 +830,49 @@ export class PlanningAssistantV2Service {
               case 'accommodation': {
                 // 🆕 住宿搜索（酒店 + Airbnb）
                 try {
-                  const isPlanningWorkbench = !!(dto.context?.tripId || dto.context?.countryCode);
-                  if (isPlanningWorkbench) {
-                    if (!dto.context.tripId) {
-                      throw new BadRequestException('规划工作台场景下，tripId 是必需参数');
-                    }
-                    if (!dto.context.countryCode) {
-                      throw new BadRequestException('规划工作台场景下，countryCode 是必需参数');
-                    }
+                  // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
+                  const accParams: Record<string, any> = {
+                    ...routingResult.extractedParams,
+                    ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+                    ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                  };
+                  const accDates = await this.getHotelDatesFromContext(accParams, dto);
+                  const hasSuggestedDates = !!(accDates.checkIn && accDates.checkOut);
+                  if (hasSuggestedDates) {
+                    accParams.checkIn = accDates.checkIn;
+                    accParams.checkOut = accDates.checkOut;
                   }
-
-                  let location = routingResult.extractedParams?.location;
-                  let destination = routingResult.extractedParams?.destination;
-                  
-                  // 规划工作台场景：如果有 countryCode，优先使用它来增强搜索
-                  if (isPlanningWorkbench && dto.context.countryCode && !destination) {
-                    // 可以从 countryCode 获取国家名称
-                    destination = dto.context.countryCode;
-                  }
-                  
-                  if (!destination) {
-                    destination = dto.message.replace(/推荐|住宿|accommodation|找|搜索/gi, '').trim() || dto.message;
-                  }
-                  
-                  this.logger.debug(`住宿搜索参数: destination=${destination}, hasLocation=${!!location}, tripId=${dto.context?.tripId}, countryCode=${dto.context?.countryCode}`);
-
-                  // 策略1: 如果直接提供了 location 参数
-                  if (location && location.lat && location.lng) {
-                    this.logger.debug(`使用提供的 location: (${location.lat}, ${location.lng})`);
-                  }
-                  // 策略2: 如果没有 location，但有 countryCode，使用国家代码进行地理编码
-                  else if (!location && dto.context?.countryCode) {
-                    this.logger.debug(`使用 countryCode 进行地理编码: ${dto.context.countryCode}`);
-                    const countryCodeMap: Record<string, string> = {
-                      'IS': 'Iceland', 'JP': 'Japan', 'TH': 'Thailand', 'IT': 'Italy',
-                      'NZ': 'New Zealand', 'ES': 'Spain', 'CH': 'Switzerland', 'MV': 'Maldives',
-                      'CN': 'China', 'US': 'United States', 'GB': 'United Kingdom', 'FR': 'France',
-                      'DE': 'Germany', 'AU': 'Australia', 'CA': 'Canada', 'KR': 'South Korea',
-                      'SG': 'Singapore', 'MY': 'Malaysia', 'VN': 'Vietnam', 'GL': 'Greenland',
-                      'SJ': 'Svalbard', 'AR': 'Argentina', 'NO': 'Norway', 'NP': 'Nepal',
-                    };
-                    const countryName = countryCodeMap[dto.context.countryCode.toUpperCase()] || dto.context.countryCode;
-                    
-                    // 预定义的国家中心坐标（降级方案）
-                    const countryCenters: Record<string, { lat: number; lng: number }> = {
-                      'IS': { lat: 64.9631, lng: -19.0208 }, 'JP': { lat: 35.6762, lng: 139.6503 },
-                      'TH': { lat: 13.7563, lng: 100.5018 }, 'IT': { lat: 41.9028, lng: 12.4964 },
-                      'NZ': { lat: -36.8485, lng: 174.7633 }, 'ES': { lat: 40.4168, lng: -3.7038 },
-                      'CH': { lat: 47.3769, lng: 8.5417 }, 'MV': { lat: 4.1755, lng: 73.5093 },
-                      'CN': { lat: 39.9042, lng: 116.4074 }, 'US': { lat: 40.7128, lng: -74.0060 },
-                      'GB': { lat: 51.5074, lng: -0.1278 }, 'FR': { lat: 48.8566, lng: 2.3522 },
-                      'DE': { lat: 52.5200, lng: 13.4050 }, 'AU': { lat: -33.8688, lng: 151.2093 },
-                      'CA': { lat: 43.6532, lng: -79.3832 }, 'KR': { lat: 37.5665, lng: 126.9780 },
-                      'SG': { lat: 1.3521, lng: 103.8198 }, 'MY': { lat: 3.1390, lng: 101.6869 },
-                      'VN': { lat: 21.0285, lng: 105.8542 }, 'GL': { lat: 64.1814, lng: -51.6941 },
-                      'SJ': { lat: 78.2232, lng: 15.6267 }, 'AR': { lat: -34.6037, lng: -58.3816 },
-                      'NO': { lat: 59.9139, lng: 10.7522 }, 'NP': { lat: 27.7172, lng: 85.3240 },
-                    };
-                    
-                    // 先尝试地理编码
-                    if (this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
-                      try {
-                        const geocodeResult = await this.googleMapsDirectService.geocode({
-                          address: countryName,
-                          language: isChinese ? 'zh' : 'en',
-                        });
-                        if (geocodeResult?.data?.results && geocodeResult.data.results.length > 0) {
-                          const firstResult = geocodeResult.data.results[0];
-                          location = {
-                            lat: firstResult.geometry.location.lat,
-                            lng: firstResult.geometry.location.lng,
-                          };
-                          this.logger.debug(`通过 countryCode (Google Maps) 获取坐标成功: ${countryName} -> (${location.lat}, ${location.lng})`);
-                        }
-                      } catch (geocodeError: any) {
-                        this.logger.warn(`Google Maps 地理编码失败: ${geocodeError.message}，使用预定义坐标`);
-                      }
-                    }
-                    
-                    // 降级方案：使用预定义坐标
-                    if (!location) {
-                      const predefinedCoords = countryCenters[dto.context.countryCode.toUpperCase()];
-                      if (predefinedCoords) {
-                        location = predefinedCoords;
-                        this.logger.debug(`使用预定义国家中心坐标: ${dto.context.countryCode} -> (${location.lat}, ${location.lng})`);
-                      }
-                    }
-                  }
-                  // 策略3: 如果没有 location，但有 destination，使用目的地进行地理编码
-                  else if (!location && destination && this.googleMapsDirectService) {
-                    try {
-                      const geocodeResult = await this.googleMapsDirectService.geocode({
-                        address: destination,
-                        language: isChinese ? 'zh' : 'en',
-                      });
-                      if (geocodeResult?.data?.results && geocodeResult.data.results.length > 0) {
-                        const firstResult = geocodeResult.data.results[0];
-                        location = {
-                          lat: firstResult.geometry.location.lat,
-                          lng: firstResult.geometry.location.lng,
-                        };
-                        this.logger.debug(`地理编码成功: ${destination} -> (${location.lat}, ${location.lng})`);
-                      }
-                    } catch (geocodeError: any) {
-                      this.logger.warn(`地理编码失败: ${geocodeError.message}`);
-                    }
-                  }
-
-                  if (!location) {
-                    throw new Error('无法确定搜索位置，请提供位置信息（location、countryCode、destination）');
-                  }
-
-                  // 并行搜索酒店和 Airbnb
-                  const [hotelResults, airbnbResults] = await Promise.all([
-                    this.hotelDirectService?.searchHotels({
-                      query: destination || 'hotel',
-                      location,
-                      radius: 10000,
-                      language: isChinese ? 'zh' : 'en',
-                      minRating: 3.5,
-                    }).catch(() => ({ results: [] })),
-                    this.airbnbService?.searchListings({
-                      location: `${location.lat},${location.lng}`,
-                    }).catch(() => ({ results: [] })),
-                  ]);
-
-                  const hotels = (hotelResults?.results || []).slice(0, 5);
-                  const airbnbs = (airbnbResults?.results || []).slice(0, 5);
-                  const total = hotels.length + airbnbs.length;
-
-                  const messageCN = `我为您找到了${hotels.length}家酒店和${airbnbs.length}个Airbnb房源，共${total}个住宿选择。`;
-
-                  await this.updateSessionAfterBusinessCall(dto.sessionId, {
-                    message: dto.message,
-                    response: messageCN,
-                    phase: 'RECOMMENDING',
+                  const clarificationMsg = hasSuggestedDates
+                    ? (isChinese
+                      ? `您的行程是 ${this.formatDateForDisplay(accDates.checkIn!, true)} 至 ${this.formatDateForDisplay(accDates.checkOut!, true)}，是否用这几天查住宿？回复「好的」或「可以」确认，或直接说其他日期。`
+                      : `Your trip is ${this.formatDateForDisplay(accDates.checkIn!, false)} to ${this.formatDateForDisplay(accDates.checkOut!, false)}. Shall I search accommodations for these dates? Reply "yes" or "ok" to confirm, or specify different dates.`)
+                    : (isChinese
+                      ? '好的，请问您计划哪天入住、哪天退房？有了日期可以帮您查价格和可订性。'
+                      : 'When do you plan to check in and check out? I can check availability and prices with dates.');
+                  await this.updateSessionState(dto.sessionId, {
+                    phase: 'CLARIFYING_HOTEL_DATES',
+                    pendingHotelSearch: {
+                      target: 'accommodation',
+                      extractedParams: accParams,
+                    },
                   });
-
                   return {
-                    message: `I found ${hotels.length} hotel${hotels.length !== 1 ? 's' : ''} and ${airbnbs.length} Airbnb listing${airbnbs.length !== 1 ? 's' : ''}, ${total} total accommodations.`,
-                    messageCN,
-                    reply: isChinese ? messageCN : `I found ${total} accommodations.`,
-                    replyCN: messageCN,
-                    phase: 'RECOMMENDING',
+                    message: clarificationMsg,
+                    messageCN: clarificationMsg,
+                    reply: clarificationMsg,
+                    replyCN: clarificationMsg,
+                    phase: 'CLARIFYING_HOTEL_DATES',
                     sessionId: dto.sessionId,
-                    hotels: hotels.map((h: any) => ({
-                      placeId: h.placeId,
-                      name: h.name,
-                      address: h.address,
-                      location: h.location,
-                      rating: h.rating,
-                      userRatingsTotal: h.userRatingsTotal,
-                      priceLevel: h.priceLevel,
-                      types: h.types,
-                    })),
-                    airbnbListings: airbnbs,
+                    clarificationNeeded: {
+                      type: 'HOTEL_DATES',
+                      message: clarificationMsg,
+                      messageCN: clarificationMsg,
+                      ...(hasSuggestedDates && { suggestedDates: { checkIn: accDates.checkIn!, checkOut: accDates.checkOut! } }),
+                    },
                     routing: {
                       target: routingResult.target,
-                      reason: routingResult.reason || 'Routed to accommodation search',
+                      reason: routingResult.reason || 'Clarifying hotel dates',
+                      params: accParams,
                     },
                   };
                 } catch (accommodationError: any) {
@@ -3094,14 +2886,14 @@ export class PlanningAssistantV2Service {
         return;
       }
 
-      state = stateAfterAssistantMessage;
+      const finalState = stateAfterAssistantMessage as PlanningConversationState;
 
       // 更新阶段和推荐/方案
-      state.phase = updates.phase as any;
-      state.updatedAt = new Date().toISOString();
+      finalState.phase = updates.phase as any;
+      finalState.updatedAt = new Date().toISOString();
       
       if (updates.recommendations) {
-        state.recommendations = updates.recommendations.map((rec: any) => ({
+        finalState.recommendations = updates.recommendations.map((rec: any) => ({
           id: rec.id || rec.countryCode,
           countryCode: rec.countryCode,
           name: rec.name,
@@ -3122,11 +2914,11 @@ export class PlanningAssistantV2Service {
 
       if (updates.planCandidates) {
         // 使用转换方法确保类型正确
-        state.planCandidates = this.convertPlanCandidatesDtoToPlanCandidates(updates.planCandidates);
+        finalState.planCandidates = this.convertPlanCandidatesDtoToPlanCandidates(updates.planCandidates);
       }
 
       // 保存会话状态
-      await (this.planningAssistantService as any).saveSession(state);
+      await (this.planningAssistantService as any).saveSession(finalState);
 
       // 清除缓存，强制下次从源获取最新状态
       if (this.cacheService) {
@@ -4372,6 +4164,117 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 从参数和行程上下文获取酒店入住/退房日期
+   * 优先级：extractedParams > trip.startDate/endDate
+   */
+  private async getHotelDatesFromContext(
+    params: Record<string, any>,
+    dto: ChatRequestDto
+  ): Promise<{ checkIn?: string; checkOut?: string }> {
+    const checkIn = params.checkIn || params.checkin;
+    const checkOut = params.checkOut || params.checkout;
+    if (checkIn && checkOut) {
+      return {
+        checkIn: typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0],
+        checkOut: typeof checkOut === 'string' ? checkOut.split('T')[0] : String(checkOut).split('T')[0],
+      };
+    }
+    if (dto.context?.tripId && this.prisma) {
+      try {
+        const trip = await this.prisma.trip.findUnique({
+          where: { id: dto.context.tripId },
+          select: { startDate: true, endDate: true },
+        });
+        if (trip?.startDate && trip?.endDate) {
+          const start = new Date(trip.startDate).toISOString().split('T')[0];
+          const end = new Date(trip.endDate).toISOString().split('T')[0];
+          this.logger.debug(`从行程获取日期: checkIn=${start}, checkOut=${end}`);
+          return { checkIn: start, checkOut: end };
+        }
+      } catch (e: any) {
+        this.logger.debug(`获取行程日期失败: ${e?.message}`);
+      }
+    }
+    return {};
+  }
+
+  /**
+   * 判断用户消息是否为确认（好的/是/可以/确认/yes/ok 等）
+   * 用于日期澄清阶段：当有建议日期时，用户回复确认即可使用建议日期
+   */
+  private isDateConfirmation(message: string): boolean {
+    const s = message.trim().toLowerCase();
+    const confirmPatterns = [
+      /^(好的|可以|是的|确认|用这个|就用这个|用行程的|就用行程|行|好|成)$/,
+      /^(ok|yes|sure|confirm|use these|use trip|sounds good|go ahead)$/,
+    ];
+    return confirmPatterns.some((p) => p.test(s));
+  }
+
+  /**
+   * 格式化日期用于展示（如澄清话术）
+   * 2026-02-22 -> 2026年2月22日（中文）或 Feb 22, 2026（英文）
+   */
+  private formatDateForDisplay(isoDate: string, isChinese: boolean): string {
+    try {
+      const d = new Date(isoDate);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const day = d.getDate();
+      if (isChinese) return `${y}年${m}月${day}日`;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[m - 1]} ${day}, ${y}`;
+    } catch {
+      return isoDate;
+    }
+  }
+
+  /**
+   * 从用户消息中解析人数（如「2人」「3人」）
+   */
+  private extractGuestsFromMessage(message: string): number | null {
+    const m = message.trim().match(/(\d+)\s*人/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      return n >= 1 && n <= 20 ? n : null;
+    }
+    return null;
+  }
+
+  /**
+   * 从用户消息中解析入住/退房日期
+   * 支持：YYYY-MM-DD、3月15日、3/15、3月15号 等格式
+   * @param referenceDate 参考日期（如 YYYY-MM-DD），用于无年份时的年份推断，优先与行程一致
+   */
+  private extractDatesFromMessage(message: string, referenceDate?: string): { checkIn?: string; checkOut?: string } {
+    const s = message.trim();
+    const refYear = referenceDate ? new Date(referenceDate.split('T')[0]).getFullYear() : null;
+    const fallbackYear = refYear ?? new Date().getFullYear();
+    // ISO: 2026-03-15 或 2026-03-15 到 2026-03-20
+    const isoRange = s.match(/(\d{4}-\d{2}-\d{2})\s*(?:到|至|-|~)\s*(\d{4}-\d{2}-\d{2})/);
+    if (isoRange) return { checkIn: isoRange[1], checkOut: isoRange[2] };
+    const isoSingle = s.match(/(\d{4}-\d{2}-\d{2})/g);
+    if (isoSingle && isoSingle.length >= 2) return { checkIn: isoSingle[0], checkOut: isoSingle[1] };
+    // 中文: 3月15日 到 3月20日（无年份时使用 referenceDate 或当前年，保证与行程一致）
+    const cnRange = s.match(/(\d{1,2})月(\d{1,2})[日号]?\s*(?:到|至|-|~)\s*(\d{1,2})月(\d{1,2})[日号]?/);
+    if (cnRange) {
+      const y = fallbackYear;
+      const c1 = `${y}-${cnRange[1].padStart(2, '0')}-${cnRange[2].padStart(2, '0')}`;
+      const c2 = `${y}-${cnRange[3].padStart(2, '0')}-${cnRange[4].padStart(2, '0')}`;
+      return { checkIn: c1, checkOut: c2 };
+    }
+    // 斜杠: 3/15 - 3/20
+    const slashRange = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:到|至|-|~)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+    if (slashRange) {
+      const y = slashRange[3] || slashRange[6] || String(fallbackYear);
+      const c1 = `${y}-${slashRange[1].padStart(2, '0')}-${slashRange[2].padStart(2, '0')}`;
+      const c2 = `${y}-${slashRange[4].padStart(2, '0')}-${slashRange[5].padStart(2, '0')}`;
+      return { checkIn: c1, checkOut: c2 };
+    }
+    return {};
+  }
+
+  /**
    * 将PlanCandidateDto[]转换为PlanCandidate[]
    */
   private convertPlanCandidatesDtoToPlanCandidates(plans: PlanCandidateDto[]): PlanCandidate[] {
@@ -4436,6 +4339,87 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 将酒店结果映射为标准 AccommodationItemDto
+   */
+  private mapHotelToAccommodation(item: any): AccommodationItemDto {
+    const placeId = item.placeId || item.id || String(item.id);
+    return {
+      id: placeId,
+      source: 'hotel',
+      name: item.name || '',
+      address: item.address,
+      location: item.location ? { lat: item.location.lat, lng: item.location.lng } : undefined,
+      rating: item.rating,
+      ratingCount: item.userRatingsTotal,
+      priceLevel: item.priceLevel,
+      url: placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : undefined,
+      photoUrl: typeof item.photos?.[0] === 'string' ? item.photos[0] : undefined,
+    };
+  }
+
+  /**
+   * 将 Airbnb 原始结果映射为标准 AccommodationItemDto
+   */
+  private mapAirbnbToAccommodation(listing: any): AccommodationItemDto {
+    const id = listing.id || listing.listingId || String(listing.id);
+    const name =
+      listing.demandStayListing?.description?.name?.localizedStringWithTranslationPreference ||
+      listing.name ||
+      '';
+    const coord = listing.demandStayListing?.location?.coordinate;
+    const lat = coord?.latitude ?? listing.location?.lat;
+    const lng = coord?.longitude ?? listing.location?.lng;
+    const price =
+      listing.structuredDisplayPrice?.primaryLine?.accessibilityLabel ||
+      listing.structuredDisplayPrice?.primaryLine?.text;
+    // 支持多种 Airbnb 图片字段：geobio MCP (contextualPictures)、SearchAPI (images)、photos 等
+    const photoUrl =
+      listing.contextualPictures?.[0]?.picture ||
+      listing.contextualPictures?.[0]?.url ||
+      (Array.isArray(listing.images) && listing.images[0] ? listing.images[0] : undefined) ||
+      listing.photos?.[0]?.url ||
+      (typeof listing.photos?.[0] === 'string' ? listing.photos[0] : undefined) ||
+      listing.demandStayListing?.photos?.[0]?.url ||
+      listing.demandStayListing?.photos?.[0]?.picture;
+    const photos: string[] | undefined = Array.isArray(listing.images)
+      ? listing.images.filter((u: any) => typeof u === 'string')
+      : listing.photos?.map((p: any) => (typeof p === 'string' ? p : p?.url || p?.picture)).filter(Boolean);
+    // 地址：优先用详情接口返回的真实地址，不用 room specs（如 "1 bedroom, 1 queen bed"）
+    const rawAddr =
+      listing._enrichedAddress ||
+      listing.demandStayListing?.location?.address ||
+      listing.address;
+    const isRoomSpecs = (s: string) => /^\d+\s*(bedroom|bed|bath|room)s?/i.test(s) || /^\d+\s*[bB]ed/.test(s);
+    const address = rawAddr && !isRoomSpecs(String(rawAddr)) ? rawAddr : undefined;
+    const roomSpecs = listing.structuredContent?.primaryLine;
+
+    return {
+      id,
+      source: 'airbnb',
+      name,
+      address,
+      roomSpecs,
+      location: lat != null && lng != null ? { lat: Number(lat), lng: Number(lng) } : undefined,
+      rating: listing.avgRating != null ? Number(listing.avgRating) : undefined,
+      ratingCount: listing.reviewsCount,
+      price,
+      url: listing.url,
+      photoUrl: photoUrl || (photos?.length ? photos[0] : undefined),
+      photos: photos?.length ? photos : undefined,
+    };
+  }
+
+  /**
+   * 将酒店/Airbnb 混合结果统一映射为 accommodations
+   */
+  private mapToAccommodations(results: any[], source: 'hotel' | 'airbnb'): AccommodationItemDto[] {
+    if (!results || !Array.isArray(results)) return [];
+    return results.map((item) =>
+      source === 'hotel' ? this.mapHotelToAccommodation(item) : this.mapAirbnbToAccommodation(item)
+    );
+  }
+
+  /**
    * 格式化工具调用结果
    */
   private formatToolResult(
@@ -4461,7 +4445,36 @@ export class PlanningAssistantV2Service {
     }
 
     // 根据工具类型格式化结果
-    if (toolName === 'airbnb.listingDetails') {
+    if (toolName === 'hotel.search') {
+      const results = parsedResult?.results || [];
+      const source = (parsedResult?.source as 'hotel' | 'airbnb') || 'hotel';
+      const accommodations = this.mapToAccommodations(results, source);
+      const count = accommodations.length;
+      const messageCN = count > 0
+        ? `我为您找到了${count}个住宿选择。`
+        : '未找到符合条件的住宿。';
+      this.updateSessionAfterBusinessCall(dto.sessionId, {
+        message: dto.message,
+        response: messageCN,
+        phase: 'RECOMMENDING',
+      }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
+      return {
+        message: count > 0 ? `Found ${count} accommodation(s).` : 'No accommodations found.',
+        messageCN,
+        reply: isChinese ? messageCN : `Found ${count} accommodation(s).`,
+        replyCN: messageCN,
+        phase: 'RECOMMENDING',
+        sessionId: dto.sessionId,
+        accommodations,
+        hotels: source === 'hotel' ? results : undefined,
+        airbnbListings: source === 'airbnb' ? results : undefined,
+        routing: {
+          target: routingResult.target,
+          reason: routingResult.toolSelection?.reason || 'Routed to hotel search',
+          params: { ...routingResult.extractedParams, toolName },
+        },
+      };
+    } else if (toolName === 'airbnb.listingDetails') {
       // Airbnb 房源详情
       const listing = parsedResult?.listing || parsedResult?.data || parsedResult;
       const listingName = listing?.demandStayListing?.description?.name?.localizedStringWithTranslationPreference 
@@ -4478,6 +4491,7 @@ export class PlanningAssistantV2Service {
         phase: 'RECOMMENDING',
       }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
 
+      const accommodations = listing ? [this.mapAirbnbToAccommodation(listing)] : [];
       return {
         message: listing ? `Found listing details: ${listingName}` : 'Listing details not found',
         messageCN,
@@ -4485,6 +4499,7 @@ export class PlanningAssistantV2Service {
         replyCN: messageCN,
         phase: 'RECOMMENDING',
         sessionId: dto.sessionId,
+        accommodations,
         airbnbListings: listing ? [listing] : [],
         routing: {
           target: routingResult.target,

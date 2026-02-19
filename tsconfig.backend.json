@@ -37,6 +37,8 @@
     "**/*.spec.ts",
     "**/*.test.ts",
     "src/mcp/**/*",
-    "scripts/test-chain-of-work-admin.ts"
+    "scripts/test-chain-of-work-admin.ts",
+    "scripts/test-airbnb-accommodation-search.ts",
+    "scripts/verify-rollback-drill.ts"
   ]
 }

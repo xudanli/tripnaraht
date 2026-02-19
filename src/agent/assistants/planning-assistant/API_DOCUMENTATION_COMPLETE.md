@@ -1,14 +1,14 @@
 # Planning Assistant V2 API 完整接口文档
 
-**版本**: 2.1.1  
-**最后更新**: 2026-02-09  
+**版本**: 2.1.2  
+**最后更新**: 2026-02-19  
 **基础路径**: `/api/agent/planning-assistant/v2`  
 **状态**: ✅ **生产就绪**
 
-**最新更新 (v2.1.1)**:
-- ✅ 添加 `tripId` 和 `countryCode` 到 `RequestContextDto`
-- ✅ 规划工作台场景下，`tripId` 和 `countryCode` 为必需参数
-- ✅ 酒店搜索优先使用 Airbnb，降级到 HotelDirectService
+**最新更新 (v2.1.2)**:
+- ✅ 酒店/住宿搜索日期澄清：用户说「推荐酒店」时，若无入住退房日期，系统会追问
+- ✅ 新增 `phase: CLARIFYING_HOTEL_DATES` 和 `clarificationNeeded` 响应字段
+- ✅ 酒店/住宿搜索**始终**进行日期澄清；若有行程日期则附带 `suggestedDates`，用户可回复「好的」确认或直接说其他日期
 
 ---
 
@@ -25,9 +25,20 @@
 
 ---
 
-## 🆕 最新更新 (v2.1.1)
+## 🆕 最新更新 (v2.1.2)
 
-### 2026-02-09 更新
+### 2026-02-19 更新
+
+#### ✨ 新增功能
+
+1. **酒店/住宿搜索日期澄清**
+   - 当用户说「推荐酒店」「推荐住宿」等且**未提供入住/退房日期**时，系统会返回澄清响应
+   - 响应 `phase` 为 `CLARIFYING_HOTEL_DATES`，包含 `clarificationNeeded` 字段
+   - 若有 `tripId` 且行程有日期，`clarificationNeeded` 会包含 `suggestedDates`，用户可回复「好的」「可以」确认
+   - 用户补充日期后（如「3月15日到20日」）或确认建议日期后，下一轮对话会执行酒店搜索
+   - 支持日期格式：`YYYY-MM-DD`、`3月15日 到 3月20日`、`3/15 - 3/20`
+
+### 2026-02-09 更新 (v2.1.1)
 
 #### ✨ 新增功能
 
@@ -72,6 +83,7 @@
    - **优先级：Airbnb > HotelDirectService**：优先使用 Airbnb 搜索，如果 Airbnb 不可用或结果为空，再降级到 Google Places API 的酒店搜索
    - 支持地理编码：自动将目的地名称转换为坐标进行搜索
    - **规划工作台场景支持**：支持传递 `tripId` 和 `countryCode` 进行上下文感知搜索
+   - **行程附近搜索**：当指定了入住日期且存在 `tripId` 时，优先使用入住日当天行程项坐标的质心进行搜索，推荐更贴近行程动线的酒店
 
 6. **🆕 MCP 服务自然语言调用（完整支持）**
    - **所有 14 个 MCP 服务**都支持通过自然语言调用
@@ -518,7 +530,14 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `messageCN` | string | ✅ | 中文回复（始终提供） |
 | `reply` | string | ❌ | **主要回复消息**（根据用户输入语言自动选择：中文输入返回中文，英文输入返回英文） |
 | `replyCN` | string | ❌ | 中文回复（始终提供，与 `reply` 配合使用） |
-| `phase` | string | ✅ | 当前对话阶段（INITIAL/RECOMMENDING/COMPARING_PLANS等） |
+| `phase` | string | ✅ | 当前对话阶段（INITIAL/RECOMMENDING/COMPARING_PLANS/CLARIFYING_HOTEL_DATES 等） |
+| `clarificationNeeded` | object | ❌ | **需要用户澄清的信息**（如 `phase === 'CLARIFYING_HOTEL_DATES'` 时包含） |
+| `clarificationNeeded.type` | string | - | 澄清类型，如 `HOTEL_DATES` |
+| `clarificationNeeded.message` | string | - | 澄清话术（英文） |
+| `clarificationNeeded.messageCN` | string | - | 澄清话术（中文） |
+| `clarificationNeeded.suggestedDates` | object | ❌ | **建议日期**（从行程自动带出时包含） |
+| `clarificationNeeded.suggestedDates.checkIn` | string | - | 建议入住日期（YYYY-MM-DD） |
+| `clarificationNeeded.suggestedDates.checkOut` | string | - | 建议退房日期（YYYY-MM-DD） |
 | `sessionId` | string | ❌ | 会话ID |
 | `routing` | object | ❌ | 智能路由信息（当路由到业务接口时包含） |
 | `routing.target` | string | - | 目标接口：`recommendations` / `generate` / `compare` / `hotel` / `airbnb` / `accommodation` / `restaurant` / `flight` / `rail` / `weather` / `search` / `translate` / `currency` / `image` / `chat` |
@@ -526,8 +545,9 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `routing.params` | object | - | 从用户消息中提取的参数 |
 | `recommendations` | array | ❌ | **目的地推荐列表**（当 `routing.target === "recommendations"` 时包含） |
 | `plans` | array | ❌ | **方案候选列表**（当 `routing.target === "generate"` 时包含） |
-| `hotels` | array | ❌ | **酒店列表**（当 `routing.target === "hotel"` 时包含） |
-| `airbnbListings` | array | ❌ | **Airbnb 房源列表**（当 `routing.target === "airbnb"` 时包含） |
+| `accommodations` | array | ❌ | **统一住宿列表**（酒店+Airbnb 标准化结构，推荐使用） |
+| `hotels` | array | ❌ | **酒店列表**（兼容旧版，建议使用 `accommodations`） |
+| `airbnbListings` | array | ❌ | **Airbnb 房源列表**（兼容旧版，建议使用 `accommodations`） |
 | `restaurants` | array | ❌ | **餐厅列表**（当 `routing.target === "restaurant"` 时包含） |
 | `weather` | object | ❌ | **天气信息**（当 `routing.target === "weather"` 时包含） |
 | `searchResults` | array | ❌ | **搜索结果**（当 `routing.target === "search"` 时包含） |
@@ -571,7 +591,29 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `pace` | string | 节奏：`relaxed` / `moderate` / `intensive` |
 | `suitability` | object | 适合度评分 |
 
-**酒店数据字段** (`hotels` 数组中的对象):
+**统一住宿数据字段** (`accommodations` 数组中的对象，推荐使用):
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 唯一标识（酒店 placeId / Airbnb listingId） |
+| `source` | string | 数据来源：`hotel` \| `airbnb` |
+| `name` | string | 名称 |
+| `nameCN` | string | 中文名称（可选） |
+| `nameEN` | string | 英文名称（可选） |
+| `address` | string | 地址（仅真实地址，Airbnb 前 5 条会从详情接口补充） |
+| `roomSpecs` | string | 房型描述（如 "1 bedroom, 1 queen bed"），仅 Airbnb |
+| `location` | object | 坐标 `{lat: number, lng: number}` |
+| `rating` | number | 评分（0-5） |
+| `ratingCount` | number | 评价数量 |
+| `price` | string | 价格展示文本（如 "¥800/晚"） |
+| `priceLevel` | number | 价格等级（1-4） |
+| `url` | string | 详情/预订链接 |
+| `photoUrl` | string | 主图 URL（Airbnb 前 5 条会从详情接口补充） |
+| `photos` | string[] | 图片 URL 列表（Airbnb 前 5 条会从详情接口补充） |
+| `checkIn` | string | 入住日期（YYYY-MM-DD） |
+| `checkOut` | string | 退房日期（YYYY-MM-DD） |
+
+**酒店数据字段** (`hotels` 数组中的对象，兼容旧版):
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -592,9 +634,10 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `roomTypes` | string[] | 房型列表 |
 
 **注意**: 
+- **酒店搜索日期澄清**：当用户说「推荐酒店」「推荐住宿」等时，系统**始终**返回 `phase: CLARIFYING_HOTEL_DATES` 和 `clarificationNeeded`。若有行程日期，会附带 `suggestedDates`，用户可回复「好的」确认或直接说其他日期。确认或补充日期后，下一轮对话会执行搜索。
 - **酒店搜索优先级**：当路由到 `hotel` 目标时，系统会**优先使用 Airbnb 搜索**。如果 Airbnb 不可用或结果为空，再降级到 Google Places API 的酒店搜索。
 - 如果用户消息中包含目的地名称（如"冰岛酒店"），系统会自动进行地理编码
-- 规划工作台场景下，`tripId` 和 `countryCode` 会自动传递给工具调用，用于上下文感知
+- 规划工作台场景下，`tripId` 和 `countryCode` 会自动传递给工具调用；若有行程日期，会自动用于酒店搜索
 - 搜索结果按评分和相关性排序，最多返回 10 个结果
 
 **前端使用建议**: 
@@ -628,14 +671,15 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 
 4. **显示酒店数据**：
    ```javascript
-   if (response.routing?.target === 'hotel' && response.hotels) {
-     // 显示酒店列表
-     response.hotels.forEach(hotel => {
-       console.log(`${hotel.name} - 评分: ${hotel.rating}/5`);
-       console.log(`地址: ${hotel.address}`);
-       console.log(`价格等级: ${hotel.priceLevel || 'N/A'}`);
+   if ((response.routing?.target === 'hotel' || response.routing?.target === 'accommodation') && response.accommodations) {
+     // 显示统一住宿列表（推荐）
+     response.accommodations.forEach(acc => {
+       console.log(`[${acc.source}] ${acc.name} - 评分: ${acc.rating || 'N/A'}/5`);
+       console.log(`地址: ${acc.address || 'N/A'}`);
+       console.log(`价格: ${acc.price || 'N/A'}`);
      });
    }
+   // 兼容旧版：response.hotels 或 response.airbnbListings
    ```
 
 5. **检查路由类型**（支持所有 MCP 服务）：
@@ -699,7 +743,44 @@ curl -X POST "https://api.tripnara.com/api/agent/planning-assistant/v2/chat" \
   }'
 ```
 
-**示例 2: 酒店搜索（排除 Airbnb）**:
+**示例 2a: 酒店搜索 - 日期澄清（用户未提供日期）**:
+```bash
+curl -X POST "https://api.tripnara.com/api/agent/planning-assistant/v2/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "session-id",
+    "message": "推荐酒店",
+    "userId": "user_123456",
+    "language": "zh"
+  }'
+```
+
+**响应示例（日期澄清，含建议日期）**:
+```json
+{
+  "message": "Your trip is Feb 22, 2026 to Feb 23, 2026. Shall I search hotels for these dates? Reply \"yes\" or \"ok\" to confirm, or specify different dates.",
+  "messageCN": "您的行程是 2026年2月22日 至 2026年2月23日，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。",
+  "reply": "您的行程是 2026年2月22日 至 2026年2月23日，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。",
+  "replyCN": "您的行程是 2026年2月22日 至 2026年2月23日，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。",
+  "phase": "CLARIFYING_HOTEL_DATES",
+  "sessionId": "session-id",
+  "clarificationNeeded": {
+    "type": "HOTEL_DATES",
+    "message": "Your trip is Feb 22, 2026 to Feb 23, 2026. Shall I search hotels for these dates? Reply \"yes\" or \"ok\" to confirm, or specify different dates.",
+    "messageCN": "您的行程是 2026年2月22日 至 2026年2月23日，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。",
+    "suggestedDates": { "checkIn": "2026-02-22", "checkOut": "2026-02-23" }
+  },
+  "routing": {
+    "target": "hotel",
+    "reason": "Clarifying hotel dates",
+    "params": { "destination": "酒店", "location": "Iceland" }
+  }
+}
+```
+
+用户补充日期后（如发送「3月15日到20日」），下一轮对话会执行酒店搜索并返回结果。
+
+**示例 2b: 酒店搜索（排除 Airbnb）**:
 ```bash
 curl -X POST "https://api.tripnara.com/api/agent/planning-assistant/v2/chat" \
   -H "Content-Type: application/json" \

@@ -11,6 +11,7 @@
 
 import { Injectable, Logger, Optional, OnModuleInit } from '@nestjs/common';
 import { McpToolDefinition } from './mcp-tool-registry.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import { AirbnbService } from '../../../../mcp/airbnb.service';
 import { WeatherDirectService } from '../../../../mcp/weather-direct.service';
 import { ExaService } from '../../../../mcp/exa.service';
@@ -203,6 +204,7 @@ export class McpToolDispatcherService implements OnModuleInit {
   private readonly GEOCODE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
   constructor(
+    @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly airbnbService?: AirbnbService,
     @Optional() private readonly weatherDirectService?: WeatherDirectService,
     @Optional() private readonly exaService?: ExaService,
@@ -394,51 +396,174 @@ export class McpToolDispatcherService implements OnModuleInit {
   }
 
   /**
+   * 从入住日当天最后一个行程项获取地点名称（用于「行程项附近」酒店搜索）
+   * 按 order DESC、startTime DESC 取当天最后一项，用地点名称搜索更符合 Airbnb 等服务的匹配逻辑
+   */
+  private async getLastItineraryItemPlaceForDate(
+    tripId: string,
+    checkInDate: string
+  ): Promise<{ placeName: string; nameCN?: string; nameEN?: string } | null> {
+    if (!this.prisma) return null;
+    try {
+      const row = await this.prisma.$queryRaw<
+        Array<{ nameCN: string; nameEN: string | null }>
+      >`
+        SELECT p."nameCN", p."nameEN"
+        FROM "ItineraryItem" ii
+        JOIN "TripDay" td ON ii."tripDayId" = td.id
+        JOIN "Place" p ON ii."placeId" = p.id
+        WHERE td."tripId" = ${tripId}
+          AND td.date::date = ${checkInDate}::date
+        ORDER BY ii."order" DESC NULLS LAST, ii."startTime" DESC NULLS LAST
+        LIMIT 1
+      `;
+      if (!row || row.length === 0) return null;
+      const { nameCN, nameEN } = row[0];
+      const placeName = (nameEN || nameCN || '').trim();
+      if (!placeName) return null;
+      this.logger.debug(
+        `从当天最后行程项获取地点: tripId=${tripId}, checkIn=${checkInDate}, placeName=${placeName}`
+      );
+      return { placeName, nameCN, nameEN: nameEN || undefined };
+    } catch (e: any) {
+      this.logger.debug(`获取行程项地点失败: ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * 执行 Hotel 工具
    * 
    * 优先级：优先使用 Airbnb，如果 Airbnb 不可用或结果为空，再降级到 HotelDirectService
+   * 位置策略：若有 tripId + 日期，优先使用行程项坐标；否则按城市/国家
    */
   private async executeHotelTool(toolName: string, params: any): Promise<any> {
     switch (toolName) {
       case 'hotel.search':
         // 处理位置参数（可能是字符串或坐标对象）
         let location: { lat: number; lng: number } | undefined;
-        
-        // 策略1: 如果直接提供了 location 参数
-        if (params.location) {
-          if (typeof params.location === 'string') {
-            // 如果是字符串，尝试地理编码
-            const normalizedLocation = await this.normalizeLocationName(params.location, {
-              selectedDestination: params.destination,
-              language: params.language,
-            });
-            
-            // 使用高级地理编码服务获取坐标
+
+        // 策略0: 若有 tripId + checkIn，从当天最后行程项获取地点名称（用名称搜索更符合 Airbnb 匹配逻辑）
+        let locationFromItineraryPlace: { placeName: string; countryName: string } | null = null;
+        const checkIn = params.checkIn || params.checkin;
+        if (params.tripId && checkIn && this.prisma) {
+          const dateStr = typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0];
+          const lastItemPlace = await this.getLastItineraryItemPlaceForDate(params.tripId, dateStr);
+          if (lastItemPlace && params.countryCode) {
+            const countryName = this.getCountryNameFromCode(params.countryCode);
+            locationFromItineraryPlace = {
+              placeName: lastItemPlace.placeName,
+              countryName,
+            };
+            this.logger.debug(`使用当天最后行程项地点搜索: ${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`);
+            // 为 HotelDirectService 降级准备坐标：地理编码行程项地点
+            const placeAddress = `${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`;
             if (this.advancedGeocodingService) {
-              const geocodeResult = await this.advancedGeocodingService.geocode(normalizedLocation, {
+              try {
+                const geocodeResult = await this.advancedGeocodingService.geocode(placeAddress, {
+                  selectedDestination: params.destination,
+                  language: params.language,
+                });
+                if (geocodeResult.coordinates) {
+                  location = geocodeResult.coordinates;
+                  this.logger.debug(`行程项地点地理编码: ${placeAddress} -> (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})`);
+                }
+              } catch (_) {}
+            }
+            if (!location && this.googleMapsDirectService?.isServiceAvailable()) {
+              try {
+                const geocodeResult = await this.googleMapsDirectService.geocode({
+                  address: placeAddress,
+                  language: params.language || 'en',
+                });
+                if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+                  const coords = geocodeResult.data.results[0].geometry?.location;
+                  if (coords) {
+                    location = { lat: coords.lat, lng: coords.lng };
+                    this.logger.debug(`行程项地点地理编码: ${placeAddress} -> (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})`);
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        // 策略1: 如果直接提供了 location 参数（且尚未从行程项获取）
+        if (!location && params.location) {
+          if (typeof params.location === 'string') {
+            const locationStr = params.location.trim();
+            // 当 location 为 2 字母国家代码（如 IS）时，地理编码 "IS" 会失败，优先使用预定义坐标
+            const isCountryCode = locationStr.length === 2 && /^[A-Za-z]{2}$/.test(locationStr);
+            if (isCountryCode) {
+              const code = locationStr.toUpperCase();
+              const predefinedCoords = this.getCountryCenterCoordinates(code);
+              if (predefinedCoords) {
+                location = predefinedCoords;
+                this.logger.debug(`location 为国家代码 ${code}，使用预定义坐标: (${location.lat}, ${location.lng})`);
+              }
+            }
+
+            if (!location) {
+              // 如果是字符串，尝试地理编码
+              const normalizedLocation = await this.normalizeLocationName(params.location, {
                 selectedDestination: params.destination,
                 language: params.language,
               });
-              if (geocodeResult.coordinates) {
-                location = geocodeResult.coordinates;
-              }
-            } else if (this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
-              // 降级到 Google Maps 地理编码
-              const geocodeResult = await this.googleMapsDirectService.geocode({
-                address: normalizedLocation,
-                language: params.language || 'en',
-              });
-              if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
-                const result = geocodeResult.data.results[0];
-                const coords = result.geometry?.location;
-                if (coords) {
-                  location = { lat: coords.lat, lng: coords.lng };
+
+              // 使用高级地理编码服务获取坐标
+              if (this.advancedGeocodingService) {
+                const geocodeResult = await this.advancedGeocodingService.geocode(normalizedLocation, {
+                  selectedDestination: params.destination,
+                  language: params.language,
+                });
+                if (geocodeResult.coordinates) {
+                  location = geocodeResult.coordinates;
+                }
+              } else if (this.googleMapsDirectService && this.googleMapsDirectService.isServiceAvailable()) {
+                // 降级到 Google Maps 地理编码
+                const geocodeResult = await this.googleMapsDirectService.geocode({
+                  address: normalizedLocation,
+                  language: params.language || 'en',
+                });
+                if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+                  const result = geocodeResult.data.results[0];
+                  const coords = result.geometry?.location;
+                  if (coords) {
+                    location = { lat: coords.lat, lng: coords.lng };
+                  }
                 }
               }
-            }
-            
-            if (!location) {
-              throw new Error(`无法解析位置: ${params.location}`);
+
+              // 地理编码失败时，若为 2 字母格式，尝试用国家名称再编码（预定义坐标已在上面处理）
+              if (!location && isCountryCode) {
+                const countryName = this.getCountryNameFromCode(locationStr.toUpperCase());
+                if (countryName !== locationStr) {
+                  if (this.advancedGeocodingService) {
+                    const geocodeResult = await this.advancedGeocodingService.geocode(countryName, {
+                      selectedDestination: params.destination,
+                      language: params.language,
+                    });
+                    if (geocodeResult.coordinates) location = geocodeResult.coordinates;
+                  } else if (this.googleMapsDirectService?.isServiceAvailable()) {
+                    const geocodeResult = await this.googleMapsDirectService.geocode({
+                      address: countryName,
+                      language: params.language || 'en',
+                    });
+                    if (geocodeResult.success && geocodeResult.data?.results?.length > 0) {
+                      const coords = geocodeResult.data.results[0].geometry?.location;
+                      if (coords) location = { lat: coords.lat, lng: coords.lng };
+                    }
+                  }
+                }
+              }
+
+              if (!location) {
+                // 若有 countryCode，不抛出，交由策略2用预定义坐标处理（避免地理编码超时时无法唤起 Airbnb）
+                if (!params.countryCode) {
+                  throw new Error(`无法解析位置: ${params.location}`);
+                }
+                this.logger.debug(`location 地理编码失败，将使用 countryCode=${params.countryCode} 的预定义坐标`);
+              }
             }
           } else if (params.location.lat && params.location.lng) {
             // 如果已经是坐标对象
@@ -555,15 +680,31 @@ export class McpToolDispatcherService implements OnModuleInit {
         if (this.airbnbService) {
           try {
             this.logger.debug('酒店搜索：优先尝试 Airbnb...');
-            
-            // 构建 Airbnb 搜索参数
+
+            // 有 countryCode 时只用国家映射（如 Reykjavik, Iceland），避免行程项名称歧义导致返回错误国家
+            const countryCodeForAirbnb =
+              (params.location && typeof params.location === 'string' && params.location.trim().length === 2 && /^[A-Za-z]{2}$/.test(params.location.trim())
+                ? params.location.trim().toUpperCase()
+                : params.countryCode?.toUpperCase()) ?? null;
+            const airbnbCity = countryCodeForAirbnb ? this.getAirbnbLocationFromCountryCode(countryCodeForAirbnb) : null;
+            const airbnbLocationStr = airbnbCity
+              ? (() => {
+                  this.logger.debug(`Airbnb 搜索使用国家映射(保证正确国家): ${countryCodeForAirbnb} -> "${airbnbCity}"`);
+                  return airbnbCity;
+                })()
+              : locationFromItineraryPlace
+                ? `${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`
+                : `${location.lat},${location.lng}`;
+
+            // 构建 Airbnb 搜索参数（ignoreRobotsText 用于绕过 Airbnb robots.txt 限制）
             const airbnbParams: any = {
-              location: `${location.lat},${location.lng}`,
+              location: airbnbLocationStr,
               adults: params.guests || params.adults || 1,
               checkin: params.checkIn,
               checkout: params.checkOut,
+              ignoreRobotsText: true,
             };
-            
+
             // 如果有 tripId 或 countryCode，记录日志（可用于后续增强）
             if (params.tripId) {
               this.logger.debug(`Airbnb 搜索使用 tripId: ${params.tripId}`);
@@ -573,19 +714,43 @@ export class McpToolDispatcherService implements OnModuleInit {
             }
             
             const airbnbResult = await this.airbnbService.searchListings(airbnbParams);
-            
-            if (airbnbResult && airbnbResult.results && airbnbResult.results.length > 0) {
-              this.logger.debug(`Airbnb 搜索成功，找到 ${airbnbResult.results.length} 个房源`);
-              // 返回 Airbnb 结果，但标记为酒店搜索的结果
+            // 解析 MCP 返回格式：content[0].text 为 JSON，含 searchResults 或 error
+            let searchResults: any[] = [];
+            if (airbnbResult?.content?.[0]?.type === 'text') {
+              try {
+                const data = JSON.parse(airbnbResult.content[0].text);
+                if (data.error) {
+                  this.logger.warn(`Airbnb 返回错误: ${data.error}`);
+                } else {
+                  searchResults = data.searchResults || [];
+                }
+              } catch (_) {}
+            }
+            // 有 countryCode 时按坐标过滤，剔除错误国家的房源（如美国）
+            if (searchResults.length > 0 && countryCodeForAirbnb) {
+              const filtered = this.filterListingsByCountry(searchResults, countryCodeForAirbnb);
+              if (filtered.length < searchResults.length) {
+                this.logger.debug(`Airbnb 按国家过滤: ${searchResults.length} -> ${filtered.length} (countryCode=${countryCodeForAirbnb})`);
+              }
+              searchResults = filtered;
+            }
+            if (searchResults.length > 0) {
+              this.logger.debug(`Airbnb 搜索成功，找到 ${searchResults.length} 个房源`);
+              // 对前 5 条批量获取详情（图片、地址），补充到卡片
+              const enriched = await this.enrichAirbnbResultsWithDetails(searchResults, {
+                checkIn: params.checkIn,
+                checkOut: params.checkOut,
+                adults: params.guests || params.adults || 1,
+                limit: 5,
+              });
               return {
                 success: true,
-                results: airbnbResult.results,
-                totalResults: airbnbResult.results.length,
-                source: 'airbnb', // 标记来源
+                results: enriched,
+                totalResults: enriched.length,
+                source: 'airbnb',
               };
-            } else {
-              this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirectService');
             }
+            this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirectService');
           } catch (airbnbError: any) {
             this.logger.warn(`Airbnb 搜索失败，降级到 HotelDirectService: ${airbnbError.message}`);
           }
@@ -637,6 +802,9 @@ export class McpToolDispatcherService implements OnModuleInit {
       case 'hotel.getDetails':
         if (!params.placeId) {
           throw new Error('缺少必需参数: placeId');
+        }
+        if (!this.hotelDirectService) {
+          throw new Error('HotelDirectService 不可用');
         }
         return await this.hotelDirectService.getHotelDetails(
           params.placeId,
@@ -926,6 +1094,147 @@ export class McpToolDispatcherService implements OnModuleInit {
         this.geocodeCache.delete(key);
       }
     }
+  }
+
+  /**
+   * 国家代码 → Airbnb 搜索用城市名（城市, 国家）
+   * 当 location 为国家代码时，Airbnb 对坐标搜索常返回空结果，改用城市名可提高命中率
+   */
+  private readonly countryCodeToAirbnbCityMap: Record<string, string> = {
+    IS: 'Reykjavik, Iceland',
+    JP: 'Tokyo, Japan',
+    TH: 'Bangkok, Thailand',
+    IT: 'Rome, Italy',
+    NZ: 'Auckland, New Zealand',
+    ES: 'Madrid, Spain',
+    CH: 'Zurich, Switzerland',
+    MV: 'Malé, Maldives',
+    CN: 'Beijing, China',
+    US: 'New York, United States',
+    GB: 'London, United Kingdom',
+    FR: 'Paris, France',
+    DE: 'Berlin, Germany',
+    AU: 'Sydney, Australia',
+    CA: 'Toronto, Canada',
+    KR: 'Seoul, South Korea',
+    SG: 'Singapore',
+    MY: 'Kuala Lumpur, Malaysia',
+    VN: 'Hanoi, Vietnam',
+    GL: 'Nuuk, Greenland',
+    SJ: 'Longyearbyen, Svalbard',
+    AR: 'Buenos Aires, Argentina',
+    NO: 'Oslo, Norway',
+    NP: 'Kathmandu, Nepal',
+    ID: 'Bali, Indonesia',
+    PH: 'Manila, Philippines',
+    IN: 'Mumbai, India',
+    PT: 'Lisbon, Portugal',
+    GR: 'Athens, Greece',
+    TR: 'Istanbul, Turkey',
+    NL: 'Amsterdam, Netherlands',
+    BE: 'Brussels, Belgium',
+    AT: 'Vienna, Austria',
+    SE: 'Stockholm, Sweden',
+    FI: 'Helsinki, Finland',
+    DK: 'Copenhagen, Denmark',
+    IE: 'Dublin, Ireland',
+    PL: 'Warsaw, Poland',
+    CZ: 'Prague, Czech Republic',
+    HU: 'Budapest, Hungary',
+    RU: 'Moscow, Russia',
+    BR: 'Rio de Janeiro, Brazil',
+    MX: 'Mexico City, Mexico',
+    ZA: 'Cape Town, South Africa',
+    AE: 'Dubai, United Arab Emirates',
+  };
+
+  /**
+   * 从国家代码获取 Airbnb 搜索用城市名（城市, 国家）
+   * 当 location 为国家代码时使用，提高 Airbnb 搜索命中率
+   */
+  private getAirbnbLocationFromCountryCode(countryCode: string): string | null {
+    return this.countryCodeToAirbnbCityMap[countryCode.toUpperCase()] ?? null;
+  }
+
+  /** 国家边界框 [latMin, latMax, lngMin, lngMax]，用于过滤 Airbnb 结果 */
+  private readonly countryBoundingBox: Record<string, [number, number, number, number]> = {
+    IS: [63.2, 66.6, -24.6, -13.4],   // 冰岛
+    US: [24.5, 49.4, -125, -66.9],    // 美国本土
+    JP: [24.2, 45.5, 123, 154],      // 日本
+    GB: [49.9, 60.9, -8.6, 1.8],     // 英国
+  };
+
+  private filterListingsByCountry(listings: any[], countryCode: string): any[] {
+    const box = this.countryBoundingBox[countryCode.toUpperCase()];
+    if (!box) return listings;
+    const [latMin, latMax, lngMin, lngMax] = box;
+    return listings.filter((l) => {
+      const lat = l.demandStayListing?.location?.coordinate?.latitude ?? l.location?.lat;
+      const lng = l.demandStayListing?.location?.coordinate?.longitude ?? l.location?.lng;
+      if (lat == null || lng == null) return true; // 无坐标则保留
+      return lat >= latMin && lat <= latMax && lng >= lngMin && lng <= lngMax;
+    });
+  }
+
+  /**
+   * 批量获取 Airbnb 房源详情（图片、地址），补充到搜索结果
+   */
+  private async enrichAirbnbResultsWithDetails(
+    listings: any[],
+    opts: { checkIn?: string; checkOut?: string; adults?: number; limit?: number }
+  ): Promise<any[]> {
+    const svc = this.airbnbService;
+    if (!svc || listings.length === 0) return listings;
+    const limit = opts.limit ?? 5;
+    const toEnrich = listings.slice(0, limit);
+    const results = await Promise.allSettled(
+      toEnrich.map((l) => {
+        const id = l.id || l.listingId;
+        if (!id) return Promise.resolve(null);
+        return svc.getListingDetails({
+          listingId: String(id),
+          checkin: opts.checkIn,
+          checkout: opts.checkOut,
+          adults: opts.adults ?? 1,
+          ignoreRobotsText: true,
+        });
+      })
+    );
+    const enriched = [...listings];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status !== 'fulfilled' || !r.value?.content?.[0]?.text) continue;
+      try {
+        const raw = JSON.parse(r.value.content[0].text);
+        const data = raw?.data ?? raw; // 兼容 { data: {...} } 包装
+        const listing = enriched[i];
+        if (!listing) continue;
+        // 提取图片
+        const photos: string[] = [];
+        const rawPhotos = data.photos ?? data.listing?.photos ?? data.demandStayListing?.photos ?? data.images ?? [];
+        for (const p of Array.isArray(rawPhotos) ? rawPhotos : []) {
+          const url = typeof p === 'string' ? p : p?.url ?? p?.picture ?? p?.large ?? p?.medium;
+          if (url && typeof url === 'string') photos.push(url);
+        }
+        if (photos.length > 0) {
+          listing.contextualPictures = photos.map((url) => ({ picture: url, url }));
+          listing.photos = photos.map((url) => ({ url }));
+          listing.images = photos;
+        }
+        // 提取地址（仅当为真实地址，非 room specs）
+        const addr =
+          data.demandStayListing?.location?.address ??
+          data.listing?.location?.address ??
+          data.listing?.address ??
+          data.address ??
+          data.location?.address ??
+          data.formatted_address;
+        if (addr && typeof addr === 'string' && !/^\d+\s*(bedroom|bed|bath)/i.test(addr)) {
+          listing._enrichedAddress = addr;
+        }
+      } catch (_) {}
+    }
+    return enriched;
   }
 
   /**

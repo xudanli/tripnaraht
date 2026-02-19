@@ -215,16 +215,18 @@ function PlanningWorkbench({ tripId, countryCode, selectedDestination }) {
 const response = await sendMessage({...});
 
 // 检查路由目标
-if (response.routing?.target === 'hotel') {
-  // 酒店搜索结果
-  const hotels = response.hotels || [];
-  const airbnbListings = response.airbnbListings || [];
-  
-  // 优先显示 Airbnb（如果存在）
-  if (airbnbListings.length > 0) {
-    displayAirbnbListings(airbnbListings);
-  } else if (hotels.length > 0) {
-    displayHotels(hotels);
+if (response.routing?.target === 'hotel' || response.routing?.target === 'accommodation') {
+  // 住宿搜索结果：优先使用统一结构 accommodations
+  const accommodations = response.accommodations || [];
+  if (accommodations.length > 0) {
+    // 卡片展示：name, address|roomSpecs, photoUrl|photos[0], price, rating, url
+    displayAccommodations(accommodations); // 统一渲染，根据 acc.source 区分酒店/Airbnb
+  } else {
+    // 兼容旧版
+    const hotels = response.hotels || [];
+    const airbnbListings = response.airbnbListings || [];
+    if (airbnbListings.length > 0) displayAirbnbListings(airbnbListings);
+    else if (hotels.length > 0) displayHotels(hotels);
   }
 } else if (response.routing?.target === 'recommendations') {
   // 目的地推荐（不应该在点击"推荐酒店"时出现）
@@ -336,7 +338,12 @@ POST /api/agent/planning-assistant/v2/chat
   messageCN: string;           // 回复消息（中文）
   reply?: string;              // 主要回复消息（根据语言参数自动选择）
   replyCN?: string;            // 主要回复消息（中文）
-  phase: string;               // 当前阶段: 'INITIAL' | 'COLLECTING_PREFERENCES' | 'RECOMMENDING' | 'COMPARING_PLANS' | 'CONFIRMING' | 'COMPLETED' | 'ADJUSTING'
+  phase: string;               // 当前阶段: 'INITIAL' | 'COLLECTING_PREFERENCES' | 'RECOMMENDING' | 'COMPARING_PLANS' | 'CONFIRMING' | 'COMPLETED' | 'ADJUSTING' | 'CLARIFYING_HOTEL_DATES'
+  clarificationNeeded?: {      // 需要用户澄清时包含（如 phase === 'CLARIFYING_HOTEL_DATES'）
+    type: string;              // 澄清类型，如 'HOTEL_DATES'
+    message: string;
+    messageCN: string;
+  };
   sessionId?: string;          // 会话ID
   routing?: {                   // 智能路由信息（如果路由到业务接口）
     target: 'hotel' | 'recommendations' | 'generate' | 'compare' | 'airbnb' | 'accommodation' | 'restaurant' | 'flight' | 'rail' | 'carRental' | 'weather' | 'search' | 'translate' | 'currency' | 'image' | 'chat';

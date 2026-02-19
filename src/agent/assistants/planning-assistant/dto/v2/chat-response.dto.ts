@@ -5,6 +5,7 @@ import { SuggestedActionDto } from './shared/suggested-action.dto';
 import { DestinationRecommendationDto } from './shared/destination-recommendation.dto';
 import { PlanCandidateDto } from './shared/plan-candidate.dto';
 import { HotelDto } from './shared/hotel.dto';
+import { AccommodationItemDto } from './shared/accommodation-item.dto';
 
 /**
  * 路由目标类型（支持所有 MCP 服务）
@@ -68,9 +69,18 @@ export class ChatResponseDto {
 
   @ApiProperty({ 
     description: '当前阶段',
-    enum: ['INITIAL', 'COLLECTING_PREFERENCES', 'RECOMMENDING', 'COMPARING_PLANS', 'CONFIRMING', 'COMPLETED', 'ADJUSTING']
+    enum: ['INITIAL', 'COLLECTING_PREFERENCES', 'RECOMMENDING', 'COMPARING_PLANS', 'CONFIRMING', 'COMPLETED', 'ADJUSTING', 'CLARIFYING_HOTEL_DATES']
   })
   phase!: string;
+
+  @ApiPropertyOptional({ description: '需要用户澄清的信息（如入住退房日期）' })
+  clarificationNeeded?: {
+    type: string;
+    message: string;
+    messageCN: string;
+    /** 建议日期（从行程自动带出时包含，用户可确认或修改） */
+    suggestedDates?: { checkIn: string; checkOut: string };
+  };
 
   @ApiPropertyOptional({ description: '智能路由信息（如果路由到业务接口）' })
   routing?: RoutingInfoDto;
@@ -94,13 +104,19 @@ export class ChatResponseDto {
   plans?: PlanCandidateDto[];
 
   @ApiPropertyOptional({ 
-    description: '酒店列表（当路由到酒店搜索接口时包含）', 
+    description: '统一住宿列表（酒店+Airbnb 标准化结构，推荐使用）', 
+    type: [AccommodationItemDto] 
+  })
+  accommodations?: AccommodationItemDto[];
+
+  @ApiPropertyOptional({ 
+    description: '酒店列表（兼容旧版，建议使用 accommodations）', 
     type: [HotelDto] 
   })
   hotels?: HotelDto[];
 
   @ApiPropertyOptional({ 
-    description: 'Airbnb 房源列表（当路由到 Airbnb 搜索接口时包含）'
+    description: 'Airbnb 房源列表（兼容旧版，建议使用 accommodations）'
   })
   airbnbListings?: any[];
 
