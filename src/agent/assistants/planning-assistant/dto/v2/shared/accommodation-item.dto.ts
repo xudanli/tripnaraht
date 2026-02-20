@@ -68,4 +68,10 @@ export class AccommodationItemDto {
 
   @ApiPropertyOptional({ description: '退房日期（YYYY-MM-DD）' })
   checkOut?: string;
+
+  @ApiPropertyOptional({ description: '距当天最近行程点的距离（公里）' })
+  distanceKm?: number;
+
+  @ApiPropertyOptional({ description: '最近的行程点名称' })
+  nearestPlaceName?: string;
 }

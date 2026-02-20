@@ -1,5 +1,5 @@
 // src/itinerary-items/dto/create-itinerary-item.dto.ts
-import { IsString, IsInt, IsOptional, IsEnum, IsDateString, IsNotEmpty, IsBoolean, IsArray, IsNumber, Min } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsEnum, IsDateString, IsNotEmpty, IsBoolean, IsArray, IsNumber, Min, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ValidationCode } from '../interfaces/validation.interface';
 import { CostCategory } from './item-cost.dto';
@@ -83,6 +83,33 @@ export class CreateItineraryItemDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  /** 自定义地点名称（无 placeId 时用于展示，如住宿推荐卡片「加入行程」） */
+  @ApiPropertyOptional({ description: '自定义地点名称（无 placeId 时用于展示）', example: 'Cozy Apartment Reykjavik' })
+  @IsString()
+  @IsOptional()
+  placeName?: string;
+
+  /** 自定义地址（可选） */
+  @ApiPropertyOptional({ description: '自定义地址', example: 'Reykjavik, Iceland' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  /** 外部链接（预订页等） */
+  @ApiPropertyOptional({ description: '外部链接（预订页等）', example: 'https://www.airbnb.com/rooms/123456' })
+  @IsString()
+  @IsOptional()
+  externalUrl?: string;
+
+  /** 元数据（如 source: hotel|airbnb|rail, rating, isOvernightRail 等，供前端展示） */
+  @ApiPropertyOptional({
+    description: '元数据。铁路行程可传 { source: "rail", isOvernightRail: true, lineName?: "ICE 1603" }',
+    example: { source: 'rail', isOvernightRail: true, lineName: 'ICE 1603' }
+  })
+  @IsObject()
+  @IsOptional()
+  metadata?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     description: '显示顺序（数字越小越靠前，用于控制行程项的显示顺序。如果不提供，将自动计算）',

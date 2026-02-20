@@ -376,6 +376,48 @@ export class McpToolRegistryService implements OnModuleInit {
       }
     ]);
 
+    // Rail 工具（铁路查询）
+    this.registerTools('rail', [
+      {
+        serviceName: 'rail',
+        toolName: 'rail.searchRoutes',
+        displayName: '搜索铁路路线',
+        description: '根据出发地、目的地和日期搜索铁路路线',
+        category: 'transport',
+        parameters: [
+          { name: 'origin', type: 'string', required: true, description: '出发地（城市或车站名，如 "巴黎"、"Paris"）' },
+          { name: 'destination', type: 'string', required: true, description: '目的地（城市或车站名，如 "伦敦"、"London"）' },
+          { name: 'date', type: 'string', required: false, description: '出发日期（YYYY-MM-DD）' },
+        ],
+        returnType: 'RailRoute[]',
+        examples: [
+          '查询从巴黎到伦敦的火车',
+          '巴黎到伦敦的铁路',
+          '查火车票',
+          '高铁时刻表'
+        ],
+        authRequired: true, // Rail MCP 需要 OAuth
+      },
+      {
+        serviceName: 'rail',
+        toolName: 'rail.getSchedule',
+        displayName: '获取铁路时刻表',
+        description: '获取指定路线的铁路时刻表',
+        category: 'transport',
+        parameters: [
+          { name: 'origin', type: 'string', required: true, description: '出发地' },
+          { name: 'destination', type: 'string', required: true, description: '目的地' },
+          { name: 'date', type: 'string', required: true, description: '日期（YYYY-MM-DD）' },
+        ],
+        returnType: 'RailSchedule[]',
+        examples: [
+          '巴黎到伦敦的火车时刻表',
+          '查询某天的班次'
+        ],
+        authRequired: true,
+      }
+    ]);
+
     // Hotel 工具
     this.registerTools('hotel', [
       {

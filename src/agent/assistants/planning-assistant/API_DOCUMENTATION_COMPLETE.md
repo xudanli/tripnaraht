@@ -612,6 +612,8 @@ curl -X GET "https://api.tripnara.com/api/agent/planning-assistant/v2/sessions/s
 | `photos` | string[] | 图片 URL 列表（Airbnb 前 5 条会从详情接口补充） |
 | `checkIn` | string | 入住日期（YYYY-MM-DD） |
 | `checkOut` | string | 退房日期（YYYY-MM-DD） |
+| `distanceKm` | number | 距当天最近行程点的距离（公里） |
+| `nearestPlaceName` | string | 最近的行程点名称 |
 
 **酒店数据字段** (`hotels` 数组中的对象，兼容旧版):
 

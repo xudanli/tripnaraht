@@ -32,7 +32,10 @@ export type ConversationPhase =
   | 'COMPARING'         // 对比阶段：对比方案
   | 'ADJUSTING'         // 调整阶段：调整方案
   | 'CONFIRMING'        // 确认阶段：最终确认
-  | 'COMPLETED';        // 完成阶段：方案已定
+  | 'COMPLETED'         // 完成阶段：方案已定
+  | 'CLARIFYING_HOTEL_DATES'   // 澄清阶段：追问酒店入住/退房日期
+  | 'CLARIFYING_RAIL_DATES'    // 澄清阶段：追问铁路出行日期/时间
+  | 'CLARIFYING_FLIGHT_ORIGIN'; // 澄清阶段：追问航班出发地
 
 /**
  * 用户偏好（渐进式收集）
@@ -151,6 +154,26 @@ export interface PlanCandidate {
 }
 
 /**
+ * 待执行的酒店搜索（日期澄清后使用）
+ */
+export interface PendingHotelSearch {
+  target: 'hotel' | 'accommodation' | 'airbnb';
+  extractedParams: Record<string, any>;
+}
+
+/** 待执行的铁路搜索（日期澄清后使用） */
+export interface PendingRailSearch {
+  target: 'rail';
+  extractedParams: { origin: string; destination: string; [k: string]: any };
+}
+
+/** 待执行的航班搜索（出发地澄清后使用） */
+export interface PendingFlightSearch {
+  target: 'flight';
+  extractedParams: { origin?: string; destination: string; departureDate: string; [k: string]: any };
+}
+
+/**
  * 对话状态
  */
 export interface PlanningConversationState {
@@ -163,6 +186,12 @@ export interface PlanningConversationState {
   planCandidates?: PlanCandidate[];
   selectedPlanId?: string;
   confirmedTripId?: string;
+  /** 待执行的酒店搜索（日期澄清阶段存储，用户补充日期后执行） */
+  pendingHotelSearch?: PendingHotelSearch;
+  /** 待执行的铁路搜索（日期澄清阶段存储，用户补充出行日期后执行） */
+  pendingRailSearch?: PendingRailSearch;
+  /** 待执行的航班搜索（出发地澄清阶段存储，用户补充出发地后执行） */
+  pendingFlightSearch?: PendingFlightSearch;
   messageHistory: ConversationMessage[];
   createdAt: string;
   updatedAt: string;

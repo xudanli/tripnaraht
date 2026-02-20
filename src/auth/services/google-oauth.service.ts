@@ -2,12 +2,14 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { GoogleIdTokenPayload, GoogleTokenResponse } from '../interfaces/google-token-payload.interface';
 
 @Injectable()
 export class GoogleOAuthService {
   private readonly logger = new Logger(GoogleOAuthService.name);
   private readonly oauth2Client: OAuth2Client;
+  private readonly oauth2Options: { agent?: HttpsProxyAgent<string> };
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly redirectUri: string;
@@ -21,11 +23,28 @@ export class GoogleOAuthService {
       this.logger.warn('GOOGLE_CLIENT_ID is not set. Google OAuth will not work.');
     }
 
-    this.oauth2Client = new OAuth2Client(
-      this.clientId,
-      this.clientSecret,
-      this.redirectUri,
-    );
+    const disableProxy = this.configService?.get<string>('GOOGLE_OAUTH_DISABLE_PROXY') === 'true';
+    const proxyUrl = disableProxy
+      ? null
+      : (this.configService?.get<string>('HTTPS_PROXY') ||
+         this.configService?.get<string>('https_proxy') ||
+         process.env.HTTPS_PROXY ||
+         process.env.https_proxy ||
+         process.env.ALL_PROXY ||
+         process.env.all_proxy);
+
+    this.oauth2Options = {};
+    if (proxyUrl) {
+      this.oauth2Options.agent = new HttpsProxyAgent<string>(proxyUrl);
+      this.logger.log(`Google OAuth 使用代理: ${proxyUrl.replace(/\/\/.*@/, '//***@')}`);
+    }
+
+    this.oauth2Client = new OAuth2Client({
+      clientId: this.clientId,
+      clientSecret: this.clientSecret,
+      redirectUri: this.redirectUri,
+      ...this.oauth2Options,
+    });
   }
 
   /**
@@ -48,9 +67,15 @@ export class GoogleOAuthService {
     
     // Create a temporary OAuth2Client with the redirectUri for this request
     // This is necessary because redirectUri must match exactly what was used in the authorization request
-    const oauth2Client = redirectUri && redirectUri !== this.redirectUri
-      ? new OAuth2Client(this.clientId, this.clientSecret, redirectUri)
-      : this.oauth2Client;
+    const oauth2Client =
+      redirectUri && redirectUri !== this.redirectUri
+        ? new OAuth2Client({
+            clientId: this.clientId,
+            clientSecret: this.clientSecret,
+            redirectUri,
+            ...this.oauth2Options,
+          })
+        : this.oauth2Client;
 
     this.logger.debug(`Exchanging code for tokens with redirect_uri: ${finalRedirectUri}`);
 

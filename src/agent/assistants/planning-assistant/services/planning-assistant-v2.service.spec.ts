@@ -1,10 +1,12 @@
 // src/agent/assistants/planning-assistant/services/planning-assistant-v2.service.spec.ts
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PlanningAssistantV2Service } from './planning-assistant-v2.service';
 import { PlanningAssistantService } from './planning-assistant.service';
+import { RailDirectService } from '../../../../mcp/rail-direct.service';
+import { TransitousDirectService } from '../../../../mcp/transitous-direct.service';
 import { CoreGatewayService } from '../../../infra/core-gateway.service';
 import { RecommendationEngineService } from '../../shared/services/recommendation-engine.service';
 import { PreferenceLearningService } from '../../shared/services/preference-learning.service';
@@ -52,6 +54,7 @@ describe('PlanningAssistantV2Service', () => {
 
     const mockSmartRouter = {
       route: jest.fn(),
+      routeWithTools: jest.fn(),
       extractParams: jest.fn(),
     };
 
@@ -860,6 +863,311 @@ describe('PlanningAssistantV2Service', () => {
     });
   });
 
+  describe('铁路场景 (rail)', () => {
+    let railDirectService: jest.Mocked<Pick<RailDirectService, 'searchRoutes' | 'isServiceAvailable'>>;
+    let transitousDirectService: jest.Mocked<Pick<TransitousDirectService, 'searchRoutes' | 'isServiceAvailable'>>;
+    const mockConfigService = { get: jest.fn((key: string, defaultValue?: any) => defaultValue) };
+    const mockPreferenceLearning = { learnFromAction: jest.fn().mockResolvedValue(undefined) };
+    const mockPersonaLanguage = {};
+    const mockLlmService = {};
+
+    beforeEach(async () => {
+      railDirectService = {
+        searchRoutes: jest.fn(),
+        isServiceAvailable: jest.fn().mockReturnValue(true),
+      };
+      transitousDirectService = {
+        searchRoutes: jest.fn(),
+        isServiceAvailable: jest.fn().mockReturnValue(true),
+      };
+
+      const railModule = await Test.createTestingModule({
+        providers: [
+          PlanningAssistantV2Service,
+          { provide: PlanningAssistantService, useValue: planningAssistantService },
+          { provide: ConfigService, useValue: mockConfigService },
+          { provide: CoreGatewayService, useValue: coreGateway },
+          { provide: RecommendationEngineService, useValue: recommendationEngine },
+          { provide: PreferenceLearningService, useValue: mockPreferenceLearning },
+          { provide: PersonaLanguageService, useValue: mockPersonaLanguage },
+          { provide: LlmService, useValue: mockLlmService },
+          { provide: SmartRouterService, useValue: smartRouter },
+          { provide: TaskService, useValue: taskService },
+          { provide: CacheService, useValue: cacheService },
+          { provide: PrismaService, useValue: prisma },
+          { provide: RailDirectService, useValue: railDirectService },
+          { provide: TransitousDirectService, useValue: transitousDirectService },
+        ],
+      }).compile();
+
+      service = railModule.get<PlanningAssistantV2Service>(PlanningAssistantV2Service);
+    });
+
+    it('应返回铁路路线（RailDirectService 成功）', async () => {
+      const mockRoutes = [
+        { origin: 'Berlin Hbf', destination: 'München Hbf', legs: [], bookingUrl: 'https://www.bahn.de/...' },
+      ];
+      railDirectService.searchRoutes.mockResolvedValue({ routes: mockRoutes, journeys: [] });
+
+      smartRouter.routeWithTools.mockResolvedValue({
+        target: 'rail',
+        confidence: 0.9,
+        extractedParams: { origin: '柏林', destination: '慕尼黑', date: '2026-03-20' },
+      });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'RECOMMENDING',
+        preferences: {},
+        messageHistory: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await service.chat({
+        sessionId: 's1',
+        message: '查询柏林到慕尼黑的火车',
+        options: { autoRoute: true },
+      });
+
+      expect(result.routing?.target).toBe('rail');
+      expect(result.railRoutes).toBeDefined();
+      expect(result.railRoutes!.length).toBeGreaterThan(0);
+      expect(result.railRoutes![0]).toHaveProperty('actions');
+      expect(result.railRoutes![0]).toHaveProperty('bookingUrl');
+      expect(railDirectService.searchRoutes).toHaveBeenCalledWith(
+        expect.objectContaining({ origin: '柏林', destination: '慕尼黑' })
+      );
+    });
+
+    it('应进入日期澄清阶段（无 date 时）', async () => {
+      smartRouter.routeWithTools.mockResolvedValue({
+        target: 'rail',
+        confidence: 0.9,
+        extractedParams: { origin: '柏林', destination: '慕尼黑' },
+      });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'RECOMMENDING',
+        preferences: {},
+        messageHistory: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await service.chat({
+        sessionId: 's1',
+        message: '柏林到慕尼黑的火车',
+        options: { autoRoute: true },
+      });
+
+      expect(result.phase).toBe('CLARIFYING_RAIL_DATES');
+      expect(result.suggestedActions).toBeDefined();
+      expect(result.suggestedActions!.some((a: any) => a.action === 'rail_date-tomorrow')).toBe(true);
+      expect(result.suggestedActions!.some((a: any) => a.action === 'rail_date-day-after')).toBe(true);
+      expect(railDirectService.searchRoutes).not.toHaveBeenCalled();
+    });
+
+    it('应在 RailDirect 失败时 fallback 到 Transitous', async () => {
+      railDirectService.searchRoutes.mockRejectedValue(new Error('Station not found'));
+      const fallbackRoutes = [
+        { origin: 'Paris', destination: 'Barcelona', legs: [], bookingUrl: 'https://www.bahn.de/...' },
+      ];
+      transitousDirectService.searchRoutes.mockResolvedValue({ routes: fallbackRoutes, journeys: [] });
+
+      smartRouter.routeWithTools.mockResolvedValue({
+        target: 'rail',
+        confidence: 0.9,
+        extractedParams: { origin: '巴黎', destination: '巴塞罗那', date: '2026-03-20' },
+      });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'RECOMMENDING',
+        preferences: {},
+        messageHistory: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await service.chat({
+        sessionId: 's1',
+        message: '巴黎到巴塞罗那的火车 3月20日',
+        options: { autoRoute: true },
+      });
+
+      expect(result.railRoutes).toBeDefined();
+      expect(result.railRoutes!.length).toBeGreaterThan(0);
+      expect(railDirectService.searchRoutes).toHaveBeenCalled();
+      expect(transitousDirectService.searchRoutes).toHaveBeenCalled();
+    });
+
+    it('应在无铁路服务时返回友好错误', async () => {
+      (railDirectService.isServiceAvailable as jest.Mock).mockReturnValue(false);
+      (transitousDirectService.isServiceAvailable as jest.Mock).mockReturnValue(false);
+
+      const mockPref = { learnFromAction: jest.fn().mockResolvedValue(undefined) };
+      const moduleNoRail = await Test.createTestingModule({
+        providers: [
+          PlanningAssistantV2Service,
+          { provide: PlanningAssistantService, useValue: planningAssistantService },
+          { provide: ConfigService, useValue: mockConfigService },
+          { provide: CoreGatewayService, useValue: coreGateway },
+          { provide: RecommendationEngineService, useValue: recommendationEngine },
+          { provide: PreferenceLearningService, useValue: mockPref },
+          { provide: PersonaLanguageService, useValue: mockPersonaLanguage },
+          { provide: LlmService, useValue: mockLlmService },
+          { provide: SmartRouterService, useValue: smartRouter },
+          { provide: TaskService, useValue: taskService },
+          { provide: CacheService, useValue: cacheService },
+          { provide: PrismaService, useValue: prisma },
+          { provide: RailDirectService, useValue: railDirectService },
+          { provide: TransitousDirectService, useValue: transitousDirectService },
+        ],
+      }).compile();
+      const svcNoRail = moduleNoRail.get<PlanningAssistantV2Service>(PlanningAssistantV2Service);
+
+      smartRouter.routeWithTools.mockResolvedValue({
+        target: 'rail',
+        confidence: 0.9,
+        extractedParams: { origin: '柏林', destination: '慕尼黑', date: '2026-03-20' },
+      });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'RECOMMENDING',
+        preferences: {},
+        messageHistory: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await svcNoRail.chat({
+        sessionId: 's1',
+        message: '柏林到慕尼黑火车',
+        options: { autoRoute: true },
+      });
+
+      expect(result.routing?.target).toBe('rail');
+      expect(result.messageCN).toContain('暂不可用');
+      expect(railDirectService.searchRoutes).not.toHaveBeenCalled();
+    });
+
+    it('应在日期澄清阶段用户选择「明天」后执行搜索', async () => {
+      railDirectService.searchRoutes.mockResolvedValue({
+        routes: [{ origin: 'Berlin', destination: 'Munich', legs: [], bookingUrl: 'https://bahn.de' }],
+        journeys: [],
+      });
+
+      smartRouter.routeWithTools.mockResolvedValue({ target: 'chat', confidence: 0.5 });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'CLARIFYING_RAIL_DATES',
+        preferences: {},
+        messageHistory: [],
+        pendingRailSearch: {
+          extractedParams: { origin: '柏林', destination: '慕尼黑' },
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await service.chat({
+        sessionId: 's1',
+        message: '明天',
+        options: { autoRoute: true },
+      });
+
+      expect(result.railRoutes).toBeDefined();
+      expect(result.railRoutes!.length).toBeGreaterThan(0);
+      expect(railDirectService.searchRoutes).toHaveBeenCalledWith(
+        expect.objectContaining({ origin: '柏林', destination: '慕尼黑' })
+      );
+    });
+
+    it('应返回巴黎↔伦敦 Eurostar 引导卡片', async () => {
+      railDirectService.searchRoutes.mockResolvedValue({
+        routes: [{
+          origin: 'Paris Gare du Nord',
+          destination: 'London St Pancras',
+          legs: [],
+          bookingUrl: 'https://www.eurostar.com/',
+          note: '巴黎–伦敦 Eurostar 列车。请通过 Eurostar 官网查询实时车次、票价并预订。',
+        }],
+        journeys: [],
+      });
+
+      smartRouter.routeWithTools.mockResolvedValue({
+        target: 'rail',
+        confidence: 0.9,
+        extractedParams: { origin: '巴黎', destination: '伦敦', date: '2026-03-20' },
+      });
+      planningAssistantService.getSessionState.mockResolvedValue({
+        sessionId: 's1',
+        userId: 'u1',
+        phase: 'RECOMMENDING',
+        preferences: {},
+        messageHistory: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+
+      const result = await service.chat({
+        sessionId: 's1',
+        message: '巴黎到伦敦的火车',
+        options: { autoRoute: true },
+      });
+
+      expect(result.railRoutes).toBeDefined();
+      expect(result.railRoutes!.length).toBeGreaterThan(0);
+      expect(result.railRoutes![0].bookingUrl).toBe('https://www.eurostar.com/');
+      expect(result.railRoutes![0].note).toContain('Eurostar');
+    });
+
+    it('应在 RailDirect 和 Transitous 均失败时返回错误', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+      try {
+        railDirectService.searchRoutes.mockRejectedValue(new Error('API error'));
+        transitousDirectService.searchRoutes.mockRejectedValue(new Error('Transitous error'));
+
+        smartRouter.routeWithTools.mockResolvedValue({
+          target: 'rail',
+          confidence: 0.9,
+          extractedParams: { origin: '北京', destination: '上海', date: '2026-03-20' },
+        });
+        planningAssistantService.getSessionState.mockResolvedValue({
+          sessionId: 's1',
+          userId: 'u1',
+          phase: 'RECOMMENDING',
+          preferences: {},
+          messageHistory: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        });
+
+        const result = await service.chat({
+          sessionId: 's1',
+          message: '北京到上海的高铁',
+          options: { autoRoute: true },
+        });
+
+        expect(result.railRoutes).toBeUndefined();
+        expect(result.messageCN).toContain('铁路查询失败');
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+  });
+
   describe('chat', () => {
     it('应该支持智能路由', async () => {
       const dto = {
@@ -870,7 +1178,7 @@ describe('PlanningAssistantV2Service', () => {
         },
       };
 
-      smartRouter.route.mockResolvedValue({
+      smartRouter.routeWithTools.mockResolvedValue({
         target: 'recommendations',
         confidence: 0.9,
         extractedParams: {
@@ -893,7 +1201,7 @@ describe('PlanningAssistantV2Service', () => {
 
       await service.chat(dto);
 
-      expect(smartRouter.route).toHaveBeenCalled();
+      expect(smartRouter.routeWithTools).toHaveBeenCalled();
     });
 
     it('应该在路由失败时回退到对话接口', async () => {
@@ -905,7 +1213,7 @@ describe('PlanningAssistantV2Service', () => {
         },
       };
 
-      smartRouter.route.mockRejectedValue(new Error('路由失败'));
+      smartRouter.routeWithTools.mockRejectedValue(new Error('路由失败'));
 
       planningAssistantService.chat.mockResolvedValue({
         message: 'Hello',

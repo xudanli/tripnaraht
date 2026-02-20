@@ -52,6 +52,7 @@
     "test:amadeus:search": "npx tsx scripts/test-amadeus-search.ts",
     "test:amadeus:retry": "npx tsx scripts/test-amadeus-with-retry.ts",
     "test:amadeus:diagnose": "npx tsx scripts/diagnose-amadeus-credentials.ts",
+    "test:amadeus:direct": "npx tsx scripts/test-amadeus-direct.ts",
     "test:exa:service": "npx tsx scripts/test-exa-service.ts",
     "test:exa:direct": "npx tsx scripts/test-exa-direct.ts",
     "test:exa:integration": "npx tsx scripts/test-exa-integration.ts",

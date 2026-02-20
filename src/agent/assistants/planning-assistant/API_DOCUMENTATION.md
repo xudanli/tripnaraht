@@ -386,7 +386,12 @@ Content-Type: application/json
 {
   message: string;                    // 回复消息（英文）
   messageCN: string;                  // 回复消息（中文）
-  phase: string;                      // 当前对话阶段
+  phase: string;                      // 当前对话阶段（含 CLARIFYING_HOTEL_DATES：酒店日期澄清）
+  clarificationNeeded?: {             // 可选，需要用户澄清时（如入住退房日期）
+    type: string;                     // 澄清类型，如 'HOTEL_DATES'
+    message: string;
+    messageCN: string;
+  };
   guidingQuestions?: Array<{          // 可选，引导问题
     question: string;
     questionCN: string;

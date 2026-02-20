@@ -53,6 +53,9 @@ import { PlanCandidate, PlanningConversationState } from '../interfaces/planning
 import { ComparisonDifferenceDto } from '../dto/v2/compare-plans-response.dto';
 import { PlanCandidateDto, PersonaEvaluationDto } from '../dto/v2/shared/plan-candidate.dto';
 import { AccommodationItemDto } from '../dto/v2/shared/accommodation-item.dto';
+import { RailDirectService } from '../../../../mcp/rail-direct.service';
+import { TransitousDirectService } from '../../../../mcp/transitous-direct.service';
+import { AmadeusDirectService } from '../../../../mcp/amadeus-direct.service';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -84,12 +87,15 @@ export class PlanningAssistantV2Service {
     @Optional() private readonly restaurantDirectService?: any, // RestaurantDirectService
     @Optional() private readonly weatherDirectService?: any, // WeatherDirectService
     @Optional() private readonly exaService?: any, // ExaService
-    @Optional() private readonly amadeusService?: any, // AmadeusService
+    @Optional() private readonly amadeusService?: any, // AmadeusService (MCP)
+    @Optional() private readonly amadeusDirectService?: AmadeusDirectService,
     @Optional() private readonly translationDirectService?: any, // TranslationDirectService
     @Optional() private readonly currencyDirectService?: any, // CurrencyDirectService
     @Optional() private readonly imageDirectService?: any, // ImageDirectService
     @Optional() private readonly visionService?: any, // VisionService
-    @Optional() private readonly railService?: any, // RailService
+    @Optional() private readonly railService?: any, // RailService (MCP, 需 OAuth)
+    @Optional() @Inject(RailDirectService) private readonly railDirectService?: RailDirectService,
+    @Optional() private readonly transitousDirectService?: TransitousDirectService,
     @Optional() private readonly bookingComService?: any, // BookingComService (租车)
   ) {
     // 从配置服务获取值，如果没有配置服务则使用默认值
@@ -100,7 +106,7 @@ export class PlanningAssistantV2Service {
     this.logger.debug(`配置: sessionCacheTTL=${this.sessionCacheTTL}s, sessionExpirationHours=${this.sessionExpirationHours}h`);
     
     // 检查 MCP 服务注入状态
-    this.logger.debug(`MCP 服务注入状态: HotelDirect=${!!this.hotelDirectService}, GoogleMaps=${!!this.googleMapsDirectService}, Airbnb=${!!this.airbnbService}, Restaurant=${!!this.restaurantDirectService}, Weather=${!!this.weatherDirectService}`);
+    this.logger.debug(`MCP 服务注入状态: HotelDirect=${!!this.hotelDirectService}, GoogleMaps=${!!this.googleMapsDirectService}, Airbnb=${!!this.airbnbService}, Restaurant=${!!this.restaurantDirectService}, Weather=${!!this.weatherDirectService}, RailDirect=${!!this.railDirectService}, Transitous=${!!this.transitousDirectService}, RailMCP=${!!this.railService}`);
     this.logger.debug(`工具融合服务注入状态: ToolDispatcher=${!!this.mcpToolDispatcher}, SmartRouter=${!!this.smartRouter}`);
   }
 
@@ -380,6 +386,169 @@ export class PlanningAssistantV2Service {
                 `preferences=${JSON.stringify(state.preferences || {}).substring(0, 100)}...`
               );
 
+              // 日期澄清阶段：用户补充了出行日期，执行待定的铁路搜索
+              if (state.phase === 'CLARIFYING_RAIL_DATES' && state.pendingRailSearch && (this.railDirectService || this.transitousDirectService || this.railService)) {
+                const railDate = this.extractRailDepartureDate(dto.message);
+                if (railDate) {
+                  const railToUse = this.railDirectService?.isServiceAvailable?.()
+                    ? this.railDirectService
+                    : this.transitousDirectService?.isServiceAvailable?.()
+                      ? this.transitousDirectService
+                      : this.railService?.isServiceAvailable?.()
+                        ? this.railService
+                        : null;
+                  if (railToUse) {
+                    const { origin, destination } = state.pendingRailSearch.extractedParams;
+                    try {
+                      let railResult: any;
+                      try {
+                        railResult = await railToUse.searchRoutes({
+                          origin,
+                          destination,
+                          date: railDate,
+                          language: dto.language === 'zh' || this.isChineseMessage(dto.message) ? 'zh' : 'en',
+                        });
+                      } catch (primaryErr: any) {
+                        if (this.transitousDirectService?.isServiceAvailable?.() && railToUse !== this.transitousDirectService) {
+                          railResult = await this.transitousDirectService.searchRoutes({
+                            origin,
+                            destination,
+                            date: railDate,
+                            language: dto.language === 'zh' || this.isChineseMessage(dto.message) ? 'zh' : 'en',
+                          });
+                        } else {
+                          throw primaryErr;
+                        }
+                      }
+                      const routes = railResult?.routes || railResult?.journeys || [];
+                      const enrichedRoutes = this.enrichRailRoutesWithActions(routes);
+                      const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                      const messageCN = `我为您找到了${routes.length}条从${origin}到${destination}的铁路路线。`;
+                      await this.updateSessionState(dto.sessionId, {
+                        phase: 'RECOMMENDING',
+                        pendingRailSearch: undefined,
+                      });
+                      await this.updateSessionAfterBusinessCall(dto.sessionId, {
+                        message: dto.message,
+                        response: messageCN,
+                        phase: 'RECOMMENDING',
+                      });
+                      return {
+                        message: `I found ${routes.length} rail route${routes.length !== 1 ? 's' : ''} from ${origin} to ${destination}.`,
+                        messageCN,
+                        reply: isChinese ? messageCN : `I found ${routes.length} rail routes.`,
+                        replyCN: messageCN,
+                        phase: 'RECOMMENDING',
+                        sessionId: dto.sessionId,
+                        railRoutes: enrichedRoutes,
+                        routing: { target: 'rail', reason: 'Rail search', params: { origin, destination, date: railDate } },
+                      };
+                    } catch (err: any) {
+                      this.logger.warn(`[日期澄清] 铁路搜索失败: ${err.message}`);
+                      await this.updateSessionState(dto.sessionId, {
+                        phase: 'RECOMMENDING',
+                        pendingRailSearch: undefined,
+                      });
+                    }
+                  }
+                }
+              }
+
+              // 航班出发地澄清阶段：用户补充了出发地，执行待定的航班搜索
+              if (state.phase === 'CLARIFYING_FLIGHT_ORIGIN' && state.pendingFlightSearch) {
+                const flightService = this.amadeusDirectService?.isAvailable
+                  ? this.amadeusDirectService
+                  : this.amadeusService;
+                const searchFn = flightService?.searchFlights ?? flightService?.searchFlightOffers;
+                if (!flightService || !searchFn) {
+                  this.logger.warn(`[出发地澄清] 航班服务不可用: amadeusDirect=${!!this.amadeusDirectService}, amadeusMCP=${!!this.amadeusService}`);
+                  const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                  const errMsg = isChinese
+                    ? '抱歉，航班搜索服务暂时不可用，请检查 Amadeus 配置后重试。'
+                    : 'Sorry, flight search service is unavailable. Please check Amadeus configuration.';
+                  await this.updateSessionState(dto.sessionId, {
+                    phase: 'RECOMMENDING',
+                    pendingFlightSearch: undefined,
+                  });
+                  return {
+                    message: errMsg,
+                    messageCN: errMsg,
+                    reply: errMsg,
+                    replyCN: errMsg,
+                    phase: 'RECOMMENDING',
+                    sessionId: dto.sessionId,
+                    routing: { target: 'flight', reason: 'Flight service unavailable', params: {} },
+                  };
+                }
+                const origin = this.extractOriginFromMessage(dto.message);
+                  if (origin) {
+                    const { destination, departureDate } = state.pendingFlightSearch.extractedParams;
+                    try {
+                      const searchParams = {
+                        originLocationCode: origin,
+                        destinationLocationCode: destination,
+                        departureDate,
+                        adults: 1,
+                        max: 10,
+                      };
+                      const flightResult = await searchFn.call(flightService, searchParams);
+                      const flights =
+                        flightResult?.data ||
+                        (flightResult?.content?.[0]?.type === 'text'
+                          ? (() => {
+                              try {
+                                const parsed = JSON.parse(flightResult.content[0].text);
+                                return parsed?.data || [];
+                              } catch {
+                                return [];
+                              }
+                            })()
+                          : []);
+                      const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                      const messageCN = `我为您找到了${flights.length}个航班选择。`;
+                      const enrichedFlights = this.enrichFlightsWithActions(flights, origin, destination, departureDate);
+                      await this.updateSessionState(dto.sessionId, {
+                        phase: 'RECOMMENDING',
+                        pendingFlightSearch: undefined,
+                      });
+                      await this.updateSessionAfterBusinessCall(dto.sessionId, {
+                        message: dto.message,
+                        response: messageCN,
+                        phase: 'RECOMMENDING',
+                      });
+                      return {
+                        message: `I found ${flights.length} flight${flights.length !== 1 ? 's' : ''} for you.`,
+                        messageCN,
+                        reply: isChinese ? messageCN : `I found ${flights.length} flights.`,
+                        replyCN: messageCN,
+                        phase: 'RECOMMENDING',
+                        sessionId: dto.sessionId,
+                        flights: enrichedFlights,
+                        routing: { target: 'flight', reason: 'Flight search', params: { origin, destination, departureDate } },
+                      };
+                    } catch (flightErr: any) {
+                      this.logger.warn(`[出发地澄清] 航班搜索失败: ${flightErr.message}`);
+                      await this.updateSessionState(dto.sessionId, {
+                        phase: 'RECOMMENDING',
+                        pendingFlightSearch: undefined,
+                      });
+                      const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+                      const errMsg = isChinese
+                        ? '抱歉，航班搜索暂时不可用，请稍后再试。'
+                        : 'Sorry, flight search is temporarily unavailable. Please try again later.';
+                      return {
+                        message: errMsg,
+                        messageCN: errMsg,
+                        reply: errMsg,
+                        replyCN: errMsg,
+                        phase: 'RECOMMENDING',
+                        sessionId: dto.sessionId,
+                        routing: { target: 'flight', reason: 'Flight search failed', params: {} },
+                      };
+                    }
+                  }
+                }
+
               // 日期澄清阶段：用户补充了入住/退房日期或确认建议日期，执行待定的酒店搜索
               if (state.phase === 'CLARIFYING_HOTEL_DATES' && state.pendingHotelSearch && this.mcpToolDispatcher) {
                 const refDate = state.pendingHotelSearch.extractedParams?.checkIn;
@@ -411,7 +580,7 @@ export class PlanningAssistantV2Service {
                       pendingHotelSearch: undefined,
                     });
                     const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
-                    return this.formatToolResult(
+                    return await this.formatToolResult(
                       { serviceName: 'hotel', toolName: 'hotel.search', displayName: '搜索酒店', description: '', parameters: [], examples: [], category: 'accommodation', authRequired: false },
                       toolResult,
                       dto,
@@ -474,8 +643,8 @@ export class PlanningAssistantV2Service {
           `selectedTool=${routingResult.selectedTool?.toolName || 'none'}`
         );
         
-        // 如果选择了具体工具，使用工具分发器执行
-        if (routingResult.selectedTool && routingResult.toolSelection && this.mcpToolDispatcher) {
+        // 如果选择了具体工具，使用工具分发器执行（rail 除外，rail 走专用 switch 分支）
+        if (routingResult.selectedTool && routingResult.toolSelection && this.mcpToolDispatcher && routingResult.target !== 'rail') {
           this.logger.debug(`工具选择: ${routingResult.selectedTool.toolName}, confidence=${routingResult.toolSelection.confidence}`);
           
           try {
@@ -561,7 +730,7 @@ export class PlanningAssistantV2Service {
             this.logger.debug(`工具调用完成: ${routingResult.selectedTool.toolName}, 耗时=${toolCallDuration}ms`);
             
             // 格式化工具结果
-            return this.formatToolResult(
+            return await this.formatToolResult(
               routingResult.selectedTool,
               toolResult,
               dto,
@@ -1049,30 +1218,105 @@ export class PlanningAssistantV2Service {
               }
 
               case 'flight': {
-                // 🆕 航班搜索（Amadeus MCP）
-                if (!this.amadeusService) {
-                  this.logger.warn('AmadeusService not available, falling back to chat');
+                // 航班搜索：优先 AmadeusDirectService（直接 API），fallback 到 Amadeus MCP
+                const flightService = this.amadeusDirectService?.isAvailable
+                  ? this.amadeusDirectService
+                  : this.amadeusService;
+                if (!flightService) {
+                  this.logger.warn('No flight service available (AmadeusDirect or Amadeus MCP), falling back to chat');
                   break;
                 }
 
                 try {
-                  const origin = routingResult.extractedParams?.origin || '';
-                  const destination = routingResult.extractedParams?.destination || '';
-                  const departureDate = routingResult.extractedParams?.departureDate || '';
-                  
-                  if (!origin || !destination) {
-                    throw new Error('请提供出发地和目的地');
+                  let origin = routingResult.extractedParams?.origin || '';
+                  let destination = routingResult.extractedParams?.destination || '';
+                  // 从行程上下文推断目的地（如 countryCode=IS → KEF）
+                  if (!destination && dto.context?.countryCode) {
+                    destination = this.getMainAirportFromCountryCode(dto.context.countryCode);
+                    this.logger.debug(`[航班] 从行程上下文推断目的地: countryCode=${dto.context.countryCode} -> ${destination}`);
+                  }
+                  // 从行程获取出发日期
+                  let departureDate = routingResult.extractedParams?.departureDate || '';
+                  if (!departureDate && dto.context?.tripId && this.prisma) {
+                    try {
+                      const trip = await this.prisma.trip.findUnique({
+                        where: { id: dto.context.tripId },
+                        select: { startDate: true },
+                      });
+                      if (trip?.startDate) {
+                        departureDate = new Date(trip.startDate).toISOString().split('T')[0];
+                        this.logger.debug(`[航班] 从行程获取出发日期: ${departureDate}`);
+                      }
+                    } catch (_) {}
+                  }
+                  if (!departureDate) {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 7);
+                    departureDate = d.toISOString().split('T')[0];
                   }
 
-                  // 调用 Amadeus 航班搜索
-                  const flightResult = await this.amadeusService.searchFlights({
+                  if (!origin || !destination) {
+                    // 有目的地但缺出发地：进入澄清阶段，询问出发地
+                    if (destination && !origin) {
+                      const destName = this.getCountryNameFromCodeForFlight(dto.context?.countryCode || '') || destination;
+                      const clarificationMsg = isChinese
+                        ? `请问您从哪里出发？目的地已根据您的行程设为${destName}(${destination})。`
+                        : `Where are you departing from? Destination is set to ${destName} (${destination}) based on your trip.`;
+                      await this.updateSessionState(dto.sessionId, {
+                        phase: 'CLARIFYING_FLIGHT_ORIGIN',
+                        pendingFlightSearch: {
+                          target: 'flight',
+                          extractedParams: { destination, departureDate },
+                        },
+                      });
+                      return {
+                        message: clarificationMsg,
+                        messageCN: clarificationMsg,
+                        reply: clarificationMsg,
+                        replyCN: clarificationMsg,
+                        phase: 'CLARIFYING_FLIGHT_ORIGIN',
+                        sessionId: dto.sessionId,
+                        clarificationNeeded: {
+                          type: 'FLIGHT_ORIGIN',
+                          message: clarificationMsg,
+                          messageCN: clarificationMsg,
+                          destination,
+                          destinationName: destName,
+                        },
+                        routing: {
+                          target: routingResult.target,
+                          reason: routingResult.reason || 'Clarifying flight origin',
+                        },
+                      };
+                    }
+                    // 两者都缺
+                    throw new Error('请提供出发地和目的地（例如：从北京到上海的航班）');
+                  }
+
+                  const searchParams = {
                     originLocationCode: origin,
                     destinationLocationCode: destination,
                     departureDate,
                     adults: 1,
-                  });
+                    max: 10,
+                  };
+                  const flightResult = await (flightService.searchFlights ?? flightService.searchFlightOffers)?.(
+                    searchParams
+                  );
 
-                  const flights = flightResult?.data || [];
+                  const flights =
+                    flightResult?.data ||
+                    (flightResult?.content?.[0]?.type === 'text'
+                      ? (() => {
+                          try {
+                            const parsed = JSON.parse(flightResult.content[0].text);
+                            return parsed?.data || [];
+                          } catch {
+                            return [];
+                          }
+                        })()
+                      : []);
+                  const enrichedFlights = this.enrichFlightsWithActions(flights, origin, destination, departureDate);
                   const messageCN = `我为您找到了${flights.length}个航班选择。`;
 
                   await this.updateSessionAfterBusinessCall(dto.sessionId, {
@@ -1088,7 +1332,7 @@ export class PlanningAssistantV2Service {
                     replyCN: messageCN,
                     phase: 'RECOMMENDING',
                     sessionId: dto.sessionId,
-                    flights,
+                    flights: enrichedFlights,
                     routing: {
                       target: routingResult.target,
                       reason: routingResult.reason || 'Routed to flight search',
@@ -1237,30 +1481,104 @@ export class PlanningAssistantV2Service {
               }
 
               case 'rail': {
-                // 🆕 铁路查询（Rail MCP）
-                if (!this.railService || !this.railService.isServiceAvailable()) {
-                  this.logger.warn('RailService not available, falling back to chat');
-                  break;
+                // 从用户消息中提取出发地、目的地和日期
+                const origin = routingResult.extractedParams?.origin || '';
+                const destination = routingResult.extractedParams?.destination || '';
+                const date = routingResult.extractedParams?.date || '';
+
+                if (!origin || !destination) {
+                  return {
+                    message: 'Please provide origin and destination (e.g., "trains from Paris to London")',
+                    messageCN: '请提供出发地和目的地，例如：「查询从巴黎到伦敦的火车」',
+                    reply: isChinese ? '请提供出发地和目的地，例如：查询从巴黎到伦敦的火车' : 'Please provide origin and destination.',
+                    replyCN: '请提供出发地和目的地，例如：查询从巴黎到伦敦的火车',
+                    phase: 'RECOMMENDING',
+                    sessionId: dto.sessionId,
+                    routing: {
+                      target: routingResult.target,
+                      reason: '需要出发地和目的地',
+                    },
+                  };
+                }
+
+                // 未提供出行日期时，追问用户
+                if (!date) {
+                  const promptCN = `请提供出行日期或时间，例如：「明天」「3月15日」「明天下午」这样我可以为您查询更准确的班次。`;
+                  const promptEN = 'Please provide your travel date or time (e.g., "tomorrow", "March 15", "tomorrow afternoon") so I can find more accurate schedules.';
+                  await this.updateSessionState(dto.sessionId, {
+                    phase: 'CLARIFYING_RAIL_DATES',
+                    pendingRailSearch: {
+                      target: 'rail',
+                      extractedParams: { origin, destination, naturalLanguage: dto.message },
+                    },
+                  });
+                  return {
+                    message: promptEN,
+                    messageCN: promptCN,
+                    reply: isChinese ? promptCN : promptEN,
+                    replyCN: promptCN,
+                    phase: 'CLARIFYING_RAIL_DATES',
+                    sessionId: dto.sessionId,
+                    routing: { target: 'rail', reason: 'Awaiting travel date', params: { origin, destination } },
+                    suggestedActions: [
+                      { action: 'rail_date-tomorrow', label: 'Tomorrow', labelCN: '明天' },
+                      { action: 'rail_date-day-after', label: 'Day after tomorrow', labelCN: '后天' },
+                    ],
+                  };
+                }
+
+                // 优先使用 RailDirectService（无需 OAuth），失败时回退到 Rail MCP
+                const railToUse = this.railDirectService?.isServiceAvailable?.()
+                  ? this.railDirectService
+                  : this.railService?.isServiceAvailable?.()
+                    ? this.railService
+                    : null;
+
+                if (!railToUse) {
+                  this.logger.warn('No rail service available');
+                  return {
+                    message: 'Rail service is not available. Rail Direct API (no auth) or Rail MCP (OAuth) required.',
+                    messageCN: '铁路查询功能暂不可用。请确认 Rail Direct 模块已加载，或完成 Rail MCP 的 OAuth 认证。',
+                    reply: isChinese ? '铁路查询功能暂不可用。' : 'Rail service not available.',
+                    replyCN: '铁路查询功能暂不可用。',
+                    phase: 'RECOMMENDING',
+                    sessionId: dto.sessionId,
+                    routing: {
+                      target: routingResult.target,
+                      reason: 'Rail 服务未配置',
+                    },
+                  };
                 }
 
                 try {
-                  // 从用户消息中提取出发地、目的地和日期
-                  const origin = routingResult.extractedParams?.origin || '';
-                  const destination = routingResult.extractedParams?.destination || '';
-                  const date = routingResult.extractedParams?.date || '';
-                  
-                  if (!origin || !destination) {
-                    throw new Error('请提供出发地和目的地（例如："查询从巴黎到伦敦的火车"）');
+                  let railResult: any;
+                  try {
+                    railResult = await railToUse.searchRoutes({
+                      origin,
+                      destination,
+                      date,
+                      language: isChinese ? 'zh' : 'en',
+                    });
+                  } catch (primaryError: any) {
+                    // RailDirectService 失败时，fallback 到 Transitous（欧洲 55+ 国 GTFS）
+                    if (
+                      this.transitousDirectService?.isServiceAvailable?.() &&
+                      railToUse !== this.transitousDirectService
+                    ) {
+                      this.logger.debug(`RailDirect 失败，尝试 Transitous fallback: ${primaryError.message}`);
+                      railResult = await this.transitousDirectService.searchRoutes({
+                        origin,
+                        destination,
+                        date,
+                        language: isChinese ? 'zh' : 'en',
+                      });
+                    } else {
+                      throw primaryError;
+                    }
                   }
 
-                  // 调用 Rail MCP 服务搜索路线
-                  const railResult = await this.railService.searchRoutes({
-                    origin,
-                    destination,
-                    date,
-                  });
-
-                  const routes = railResult?.routes || railResult?.results || [];
+                  const routes = railResult?.routes || railResult?.results || railResult?.journeys || [];
+                  const enrichedRoutes = this.enrichRailRoutesWithActions(routes);
                   const messageCN = `我为您找到了${routes.length}条从${origin}到${destination}的铁路路线。`;
 
                   await this.updateSessionAfterBusinessCall(dto.sessionId, {
@@ -1276,7 +1594,7 @@ export class PlanningAssistantV2Service {
                     replyCN: messageCN,
                     phase: 'RECOMMENDING',
                     sessionId: dto.sessionId,
-                    railRoutes: routes,
+                    railRoutes: enrichedRoutes,
                     routing: {
                       target: routingResult.target,
                       reason: routingResult.reason || 'Routed to rail search',
@@ -1284,24 +1602,21 @@ export class PlanningAssistantV2Service {
                   };
                 } catch (railError: any) {
                   this.logger.error(`铁路查询失败: ${railError.message}`, railError.stack);
-                  
-                  // 如果是认证错误，提供友好提示
-                  if (railError.message?.includes('OAuth') || railError.message?.includes('401') || railError.message?.includes('Unauthorized')) {
-                    return {
-                      message: 'Rail service requires OAuth authentication. Please configure it first.',
-                      messageCN: 'Rail 服务需要 OAuth 认证。请先完成认证配置。',
-                      reply: isChinese ? 'Rail 服务需要 OAuth 认证。请先完成认证配置。' : 'Rail service requires OAuth authentication.',
-                      replyCN: 'Rail 服务需要 OAuth 认证。请先完成认证配置。',
-                      phase: 'RECOMMENDING',
-                      sessionId: dto.sessionId,
-                      routing: {
-                        target: routingResult.target,
-                        reason: 'Rail service authentication required',
-                      },
-                    };
-                  }
-                  
-                  break;
+                  const errMsg = isChinese
+                    ? `铁路查询失败：${railError.message}。请检查出发地、目的地是否正确，或稍后重试。`
+                    : `Rail search failed: ${railError.message}. Please check origin/destination or try again later.`;
+                  return {
+                    message: errMsg,
+                    messageCN: errMsg,
+                    reply: errMsg,
+                    replyCN: errMsg,
+                    phase: 'RECOMMENDING',
+                    sessionId: dto.sessionId,
+                    routing: {
+                      target: routingResult.target,
+                      reason: railError.message || 'Rail search failed',
+                    },
+                  };
                 }
               }
 
@@ -4241,6 +4556,196 @@ export class PlanningAssistantV2Service {
     return null;
   }
 
+  /** 国家代码 → 主要机场 IATA 映射（用于从行程推断航班目的地） */
+  private static readonly COUNTRY_TO_MAIN_AIRPORT: Record<string, string> = {
+    IS: 'KEF', // 冰岛
+    JP: 'NRT', // 日本
+    CN: 'PEK', // 中国
+    TH: 'BKK', // 泰国
+    AU: 'SYD', // 澳大利亚
+    GB: 'LHR', // 英国
+    FR: 'CDG', // 法国
+    US: 'JFK', // 美国
+    SG: 'SIN', // 新加坡
+    KR: 'ICN', // 韩国
+    HK: 'HKG', // 香港
+    NO: 'OSL', // 挪威
+    IT: 'FCO', // 意大利
+    ES: 'MAD', // 西班牙
+    DE: 'FRA', // 德国
+  };
+
+  private getMainAirportFromCountryCode(countryCode: string): string {
+    return (
+      PlanningAssistantV2Service.COUNTRY_TO_MAIN_AIRPORT[countryCode?.toUpperCase() || ''] ||
+      countryCode?.toUpperCase() ||
+      ''
+    );
+  }
+
+  private getCountryNameFromCodeForFlight(countryCode: string): string {
+    const names: Record<string, string> = {
+      IS: '冰岛雷克雅未克',
+      JP: '日本',
+      CN: '中国',
+      TH: '泰国曼谷',
+      AU: '澳大利亚悉尼',
+      GB: '英国伦敦',
+      FR: '法国巴黎',
+      US: '美国',
+      SG: '新加坡',
+      KR: '韩国首尔',
+    };
+    return names[countryCode?.toUpperCase() || ''] || '';
+  }
+
+  /**
+   * 从用户消息中解析出发地（航班澄清阶段）
+   * 支持：北京、上海、PEK、从北京出发、从上海
+   */
+  private extractOriginFromMessage(message: string): string | null {
+    const s = message.trim();
+    if (!s || s.length < 2) return null;
+    // 去除常见前缀
+    const cleaned = s
+      .replace(/^(从|出发地|自|由)\s*/i, '')
+      .replace(/\s*(出发|出发地)$/i, '')
+      .trim();
+    if (cleaned.length < 2) return null;
+    // 3 位大写字母视为 IATA 代码
+    if (/^[A-Z]{3}$/i.test(cleaned)) return cleaned.toUpperCase();
+    return cleaned;
+  }
+
+  /**
+   * 生成航班预订/比价链接（Google Flights）
+   */
+  private getFlightBookingUrl(origin: string, destination: string, departureDate: string): string {
+    const o = this.resolveFlightLocationToIata(origin);
+    const d = this.resolveFlightLocationToIata(destination);
+    const date = departureDate.split('T')[0];
+    return `https://www.google.com/travel/flights?q=Flights%20from%20${encodeURIComponent(o)}%20to%20${encodeURIComponent(d)}%20on%20${date}`;
+  }
+
+  /** 城市名 → IATA 代码（用于航班预订链接） */
+  private static readonly FLIGHT_LOCATION_IATA: Record<string, string> = {
+    北京: 'PEK', 上海: 'PVG', 广州: 'CAN', 深圳: 'SZX', 成都: 'CTU', 杭州: 'HGH', 西安: 'XIY',
+    悉尼: 'SYD', 曼谷: 'BKK', 东京: 'NRT', 大阪: 'KIX', 首尔: 'ICN', 新加坡: 'SIN', 香港: 'HKG',
+    伦敦: 'LHR', 巴黎: 'CDG', 纽约: 'JFK', 洛杉矶: 'LAX', 旧金山: 'SFO', 雷克雅未克: 'KEF',
+  };
+
+  private resolveFlightLocationToIata(input: string): string {
+    const s = input?.trim() || '';
+    if (s.length === 3 && /^[A-Z]{3}$/i.test(s)) return s.toUpperCase();
+    return PlanningAssistantV2Service.FLIGHT_LOCATION_IATA[s] || s.toUpperCase();
+  }
+
+  /**
+   * 航班去重（按 id 保留首次出现；无 id 时用行程+价格生成指纹）
+   */
+  private deduplicateFlights(flights: any[]): any[] {
+    const seen = new Set<string>();
+    return flights.filter((f) => {
+      let key = f?.id;
+      if (!key) {
+        const seg0 = f?.itineraries?.[0]?.segments?.[0];
+        const dep = seg0?.departure;
+        key = [dep?.iataCode, seg0?.carrierCode, seg0?.number, dep?.at, f?.price?.total]
+          .filter(Boolean)
+          .join('|') || `fallback_${seen.size}`;
+      }
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /**
+   * 为航班结果添加预订链接和卡片操作
+   */
+  private enrichFlightsWithActions(
+    flights: any[],
+    origin: string,
+    destination: string,
+    departureDate: string
+  ): any[] {
+    const deduped = this.deduplicateFlights(flights);
+    const bookingUrl = this.getFlightBookingUrl(origin, destination, departureDate);
+    return deduped.map((f, i) => ({
+      ...f,
+      bookingUrl,
+      actions: [
+        { action: 'view_flight_detail', label: 'View Details', labelCN: '查看详情', params: { flightIndex: i } },
+        { action: 'add_flight_to_itinerary', label: 'Add to Trip', labelCN: '加入行程', params: { flightIndex: i } },
+        { action: 'book_flight', label: 'Book', labelCN: '预订', params: { flightIndex: i, bookingUrl } },
+      ],
+    }));
+  }
+
+  /**
+   * 为铁路路线添加卡片操作（查看详情、加入行程、预订）
+   */
+  private enrichRailRoutesWithActions(routes: any[]): any[] {
+    return routes.map((r, i) => {
+      const actions: any[] = [
+        { action: 'view_rail_detail', label: 'View Details', labelCN: '查看详情', params: { routeIndex: i } },
+        { action: 'add_rail_to_itinerary', label: 'Add to Trip', labelCN: '加入行程', params: { routeIndex: i } },
+      ];
+      if (r.bookingUrl) {
+        actions.push({
+          action: 'book_rail',
+          label: 'Book',
+          labelCN: '预订',
+          params: { routeIndex: i, bookingUrl: r.bookingUrl },
+        });
+      }
+      return { ...r, actions };
+    });
+  }
+
+  /**
+   * 从用户消息中解析铁路出行日期（单日）
+   * 支持：明天、后天、3月15日、3/15、2026-03-15、March 15、tomorrow、rail_date-tomorrow
+   */
+  private extractRailDepartureDate(message: string): string | null {
+    const s = message.trim();
+    const now = new Date();
+    if (s === 'rail_date-tomorrow' || s === '明天') {
+      const d = new Date(now); d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    }
+    if (s === 'rail_date-day-after' || s === '后天') {
+      const d = new Date(now); d.setDate(d.getDate() + 2);
+      return d.toISOString().split('T')[0];
+    }
+    const y = now.getFullYear();
+    const iso = s.match(/(\d{4}-\d{2}-\d{2})(?:\s*[T\s](\d{1,2}):?(\d{2})?)?/);
+    if (iso) return iso[2] ? `${iso[1]}T${iso[2].padStart(2, '0')}:${(iso[3] || '00').padStart(2, '0')}:00` : iso[1];
+    const cn = s.match(/(\d{1,2})月(\d{1,2})[日号]?/);
+    if (cn) return `${y}-${cn[1].padStart(2, '0')}-${cn[2].padStart(2, '0')}`;
+    const slash = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+    if (slash) return `${slash[3] || y}-${slash[1].padStart(2, '0')}-${slash[2].padStart(2, '0')}`;
+    const tomorrowZh = /\b(明天|后天|大后天)\b/.exec(s);
+    if (tomorrowZh) {
+      const days: Record<string, number> = { 明天: 1, 后天: 2, 大后天: 3 };
+      const d = new Date(now); d.setDate(d.getDate() + (days[tomorrowZh[1]] || 1));
+      return d.toISOString().split('T')[0];
+    }
+    const tomorrowEn = /\b(tomorrow|day after tomorrow)\b/i.exec(s);
+    if (tomorrowEn) {
+      const days = tomorrowEn[1].toLowerCase() === 'tomorrow' ? 1 : 2;
+      const d = new Date(now); d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    }
+    const monthEn = s.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+    if (monthEn) {
+      const months: Record<string, number> = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+      const m = months[monthEn[1].toLowerCase()];
+      if (m) return `${y}-${String(m).padStart(2, '0')}-${monthEn[2].padStart(2, '0')}`;
+    }
+    return null;
+  }
+
   /**
    * 从用户消息中解析入住/退房日期
    * 支持：YYYY-MM-DD、3月15日、3/15、3月15号 等格式
@@ -4420,15 +4925,96 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 获取入住日当天行程项及其坐标（用于计算酒店距离）
+   */
+  private async getItineraryPlacesWithCoords(
+    tripId: string,
+    dateStr: string
+  ): Promise<Array<{ lat: number; lng: number; placeName: string }>> {
+    if (!this.prisma) return [];
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ nameEN: string | null; nameCN: string; lat: number; lng: number }>
+      >`
+        SELECT p."nameEN", p."nameCN",
+          ST_Y(p.location::geometry) as lat,
+          ST_X(p.location::geometry) as lng
+        FROM "ItineraryItem" ii
+        JOIN "TripDay" td ON ii."tripDayId" = td.id
+        JOIN "Place" p ON ii."placeId" = p.id
+        WHERE td."tripId" = ${tripId}
+          AND td.date::date = ${dateStr}::date
+          AND p.location IS NOT NULL
+        ORDER BY ii."order" ASC NULLS LAST, ii."startTime" ASC NULLS LAST
+      `;
+      return rows
+        .filter((r) => r.lat != null && r.lng != null && !Number.isNaN(Number(r.lat)) && !Number.isNaN(Number(r.lng)))
+        .map((r) => ({
+          lat: Number(r.lat),
+          lng: Number(r.lng),
+          placeName: (r.nameEN || r.nameCN || '').trim() || '行程点',
+        }));
+    } catch (e: any) {
+      this.logger.debug(`获取行程项坐标失败: ${e?.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Haversine 公式计算两点距离（公里）
+   */
+  private haversineDistanceKm(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371; // 地球半径 km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /**
+   * 为住宿项补充距最近行程点的距离
+   */
+  private enrichAccommodationsWithDistance(
+    accommodations: AccommodationItemDto[],
+    itineraryPlaces: Array<{ lat: number; lng: number; placeName: string }>
+  ): AccommodationItemDto[] {
+    return accommodations.map((acc) => {
+      const loc = acc.location;
+      if (!loc || loc.lat == null || loc.lng == null) return acc;
+      let minDist = Infinity;
+      let nearestName = '';
+      for (const p of itineraryPlaces) {
+        const d = this.haversineDistanceKm(loc.lat, loc.lng, p.lat, p.lng);
+        if (d < minDist) {
+          minDist = d;
+          nearestName = p.placeName;
+        }
+      }
+      if (minDist < Infinity) {
+        return { ...acc, distanceKm: Math.round(minDist * 10) / 10, nearestPlaceName: nearestName || undefined };
+      }
+      return acc;
+    });
+  }
+
+  /**
    * 格式化工具调用结果
    */
-  private formatToolResult(
+  private async formatToolResult(
     tool: any, // McpToolDefinition
     toolResult: any,
     dto: ChatRequestDto,
     routingResult: any,
     isChinese: boolean
-  ): ChatResponseDto {
+  ): Promise<ChatResponseDto> {
     const toolName = tool.toolName;
 
     // 解析 MCP 工具返回结果（可能是 MCP 格式：{ content: [{ type: 'text', text: '...' }] }）
@@ -4448,7 +5034,16 @@ export class PlanningAssistantV2Service {
     if (toolName === 'hotel.search') {
       const results = parsedResult?.results || [];
       const source = (parsedResult?.source as 'hotel' | 'airbnb') || 'hotel';
-      const accommodations = this.mapToAccommodations(results, source);
+      let accommodations = this.mapToAccommodations(results, source);
+      const tripId = routingResult?.extractedParams?.tripId ?? dto.context?.tripId;
+      const checkIn = routingResult?.extractedParams?.checkIn ?? routingResult?.extractedParams?.checkin;
+      if (tripId && checkIn && this.prisma && accommodations.length > 0) {
+        const dateStr = typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0];
+        const itineraryPlaces = await this.getItineraryPlacesWithCoords(tripId, dateStr);
+        if (itineraryPlaces.length > 0) {
+          accommodations = this.enrichAccommodationsWithDistance(accommodations, itineraryPlaces);
+        }
+      }
       const count = accommodations.length;
       const messageCN = count > 0
         ? `我为您找到了${count}个住宿选择。`

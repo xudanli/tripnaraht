@@ -184,14 +184,24 @@ export class ItineraryItemsController {
     description: '可选：筛选指定 TripDay 的行程项',
     type: String 
   })
+  @ApiQuery({ 
+    name: 'costCategory', 
+    required: false, 
+    description: '可选：按费用分类筛选（如 ACCOMMODATION）。用于「加入行程」前检查当日是否已有住宿',
+    enum: ['ACCOMMODATION', 'TRANSPORTATION', 'FOOD', 'ACTIVITIES', 'SHOPPING', 'OTHER'],
+    type: String 
+  })
   @ApiResponse({ 
     status: 200, 
     description: '成功返回行程项列表（统一响应格式）',
     type: ApiSuccessResponseDto,
   })
-  async findAll(@Query('tripDayId') tripDayId?: string) {
+  async findAll(
+    @Query('tripDayId') tripDayId?: string,
+    @Query('costCategory') costCategory?: string,
+  ) {
     const items = tripDayId
-      ? await this.itineraryItemsService.findByTripDay(tripDayId)
+      ? await this.itineraryItemsService.findByTripDay(tripDayId, costCategory ? { costCategory } : undefined)
       : await this.itineraryItemsService.findAll();
     return successResponse(items);
   }

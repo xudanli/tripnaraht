@@ -67,14 +67,16 @@ export class ItineraryItemsService {
     // ============================================
     // 行程项的开始时间应该在 TripDay 的日期范围内
     // TripDay.date 存储的是 UTC 00:00:00，代表该天
-    // 允许跨夜活动（如住宿），所以只检查开始时间
+    // 允许跨夜活动（如住宿、跨夜火车），所以只检查开始时间
     const tripDayDate = DateTime.fromJSDate(tripDay.date, { zone: 'utc' });
     const startDateTime = DateTime.fromJSDate(start, { zone: 'utc' });
     
-    // 计算行程日期的范围：当天 00:00 到次日 03:00（允许深夜活动）
-    // 注：03:00 而非 06:00，因为凌晨 3 点后的活动更应归属于新的一天
+    // 计算行程日期的范围：当天 00:00 到次日某时（允许深夜/跨夜活动）
+    // - 普通活动：次日 03:00 截止（凌晨 3 点后的活动更应归属于新的一天）
+    // - TRANSIT（交通/火车）：次日 06:00 截止，支持跨夜火车（如 22:00 出发、次日 06:00 到达）
     const dayStart = tripDayDate.startOf('day');
-    const dayEnd = tripDayDate.plus({ days: 1, hours: 3 }); // 次日凌晨3点
+    const isTransit = dto.type === ItemType.TRANSIT;
+    const dayEnd = tripDayDate.plus({ days: 1, hours: isTransit ? 6 : 3 });
     
     if (startDateTime < dayStart || startDateTime >= dayEnd) {
       const expectedDate = tripDayDate.toFormat('yyyy-MM-dd');
@@ -208,7 +210,22 @@ export class ItineraryItemsService {
     }
 
     // ============================================
-    // 步骤 4: 写入数据库
+    // 步骤 4: 构建 note、bookingUrl（支持无 placeId 时的自定义展示）
+    // ============================================
+    let noteValue = dto.note;
+    let bookingUrlValue: string | undefined;
+    if (!dto.placeId && dto.placeName) {
+      const lines: string[] = [dto.placeName];
+      if (dto.address) lines.push(`地址: ${dto.address}`);
+      if (dto.note) lines.push(dto.note);
+      noteValue = lines.join('\n');
+    }
+    if (dto.externalUrl) {
+      bookingUrlValue = dto.externalUrl;
+    }
+
+    // ============================================
+    // 步骤 5: 写入数据库
     // ============================================
     const newItem = await this.prisma.itineraryItem.create({
       data: {
@@ -219,7 +236,8 @@ export class ItineraryItemsService {
         type: finalType as any, // Prisma 枚举类型
         startTime: start,
         endTime: end,
-        note: dto.note,
+        note: noteValue,
+        ...(bookingUrlValue != null && { bookingUrl: bookingUrlValue }),
         order: orderValue, // 🆕 设置显示顺序
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
@@ -415,7 +433,7 @@ export class ItineraryItemsService {
    * - 如果是从路线模板创建的行程，按 startTime 排序
    * - 否则，优先按 order 字段排序，如果没有 order 则按 startTime 排序
    */
-  async findByTripDay(tripDayId: string) {
+  async findByTripDay(tripDayId: string, options?: { costCategory?: string }) {
     // 获取当前 TripDay 信息
     const currentTripDay = await this.prisma.tripDay.findUnique({
       where: { id: tripDayId },
@@ -426,10 +444,15 @@ export class ItineraryItemsService {
       return [];
     }
 
-    // 查询当天的行程项
+    // 查询当天的行程项（支持按 costCategory 筛选，用于「加入行程」前检查当日是否已有住宿）
+    const whereClause: { tripDayId: string; costCategory?: string } = { tripDayId };
+    if (options?.costCategory) {
+      whereClause.costCategory = options.costCategory;
+    }
+
     // 🆕 统一按 startTime 排序（移除 order 排序）
     const todayItems = await this.prisma.itineraryItem.findMany({
-      where: { tripDayId },
+      where: whereClause,
       include: {
         Place: true,
         Trail: {
@@ -453,8 +476,10 @@ export class ItineraryItemsService {
       },
     });
 
-    // 🆕 查询前一天的跨天住宿项
-    const checkoutItems = await this.findCheckoutItemsForDay(currentTripDay);
+    // 🆕 查询前一天的跨天住宿项（按 costCategory 筛选时跳过，仅用于「当日是否已有住宿」检查）
+    const checkoutItems = options?.costCategory
+      ? []
+      : await this.findCheckoutItemsForDay(currentTripDay);
 
     // 合并结果，退房项排在最前面
     const allItems = [...checkoutItems, ...todayItems];

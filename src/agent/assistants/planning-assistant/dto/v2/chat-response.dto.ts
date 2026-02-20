@@ -69,17 +69,21 @@ export class ChatResponseDto {
 
   @ApiProperty({ 
     description: '当前阶段',
-    enum: ['INITIAL', 'COLLECTING_PREFERENCES', 'RECOMMENDING', 'COMPARING_PLANS', 'CONFIRMING', 'COMPLETED', 'ADJUSTING', 'CLARIFYING_HOTEL_DATES']
+    enum: ['INITIAL', 'COLLECTING_PREFERENCES', 'RECOMMENDING', 'COMPARING_PLANS', 'CONFIRMING', 'COMPLETED', 'ADJUSTING', 'CLARIFYING_HOTEL_DATES', 'CLARIFYING_RAIL_DATES', 'CLARIFYING_FLIGHT_ORIGIN']
   })
   phase!: string;
 
-  @ApiPropertyOptional({ description: '需要用户澄清的信息（如入住退房日期）' })
+  @ApiPropertyOptional({ description: '需要用户澄清的信息（如入住退房日期、航班出发地）' })
   clarificationNeeded?: {
     type: string;
     message: string;
     messageCN: string;
     /** 建议日期（从行程自动带出时包含，用户可确认或修改） */
     suggestedDates?: { checkIn: string; checkOut: string };
+    /** 航班澄清：目的地 IATA 代码 */
+    destination?: string;
+    /** 航班澄清：目的地显示名称 */
+    destinationName?: string;
   };
 
   @ApiPropertyOptional({ description: '智能路由信息（如果路由到业务接口）' })

@@ -33,11 +33,14 @@ import { RestaurantDirectModule } from '../../../mcp/restaurant-direct.module';
 import { WeatherDirectModule } from '../../../mcp/weather-direct.module';
 import { ExaModule } from '../../../mcp/exa.module';
 import { AmadeusModule } from '../../../mcp/amadeus.module';
+import { AmadeusDirectModule } from '../../../mcp/amadeus-direct.module';
 import { TranslationDirectModule } from '../../../mcp/translation-direct.module';
 import { CurrencyDirectModule } from '../../../mcp/currency-direct.module';
 import { ImageDirectModule } from '../../../mcp/image-direct.module';
 import { VisionModule } from '../../../vision/vision.module';
 import { RailModule } from '../../../mcp/rail.module';
+import { RailDirectModule } from '../../../mcp/rail-direct.module';
+import { TransitousDirectModule } from '../../../mcp/transitous-direct.module';
 import { BookingComModule } from '../../../mcp/booking-com.module';
 import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 
@@ -67,12 +70,15 @@ const throttlerConfig = disableThrottler
     RestaurantDirectModule, // 餐厅搜索服务
     WeatherDirectModule, // 天气查询服务
     ExaModule, // Web搜索服务（Exa MCP）
-    AmadeusModule, // 航班搜索服务
+    AmadeusModule, // 航班搜索服务（MCP）
+    AmadeusDirectModule, // 航班搜索 Direct API（无需 MCP）
     TranslationDirectModule, // 翻译服务
     CurrencyDirectModule, // 货币转换服务
     ImageDirectModule, // 图片搜索服务
     VisionModule, // Vision Service + OCR（图片识别）
-    RailModule, // Rail MCP 服务（铁路查询）
+    RailModule, // Rail MCP 服务（铁路查询，需 OAuth）
+    RailDirectModule, // Rail Direct API（无需认证，v6.db.transport.rest）
+    TransitousDirectModule, // Transitous MOTIS API（欧洲 fallback，55+ 国 GTFS）
     BookingComModule, // Booking.com 租车服务
     GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
   ],

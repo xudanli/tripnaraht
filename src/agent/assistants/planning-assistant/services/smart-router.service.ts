@@ -559,13 +559,57 @@ ${contextInfo}
         lowerMessage.includes('机票') || lowerMessage.includes('飞机') ||
         lowerMessage.includes('查机票') || lowerMessage.includes('找航班') ||
         (lowerMessage.includes('搜索') && (lowerMessage.includes('航班') || lowerMessage.includes('机票')))) {
+      // 尝试提取出发地、目的地、日期（与铁路类似）
+      let origin = '';
+      let destination = '';
+      const fromToZh = message.match(/从\s*([^\s到]+)\s*到\s*([^\s的]+)/);
+      const toZh = message.match(/([^\s,，]+)\s*到\s*([^\s,，]+)/);
+      const fromToEn = message.match(/from\s+([^\s]+)\s+to\s+([^\s]+)/i);
+      if (fromToZh) {
+        origin = fromToZh[1].trim();
+        destination = fromToZh[2].trim();
+      } else if (toZh && (lowerMessage.includes('航班') || lowerMessage.includes('机票') || lowerMessage.includes('飞机'))) {
+        origin = toZh[1].trim();
+        destination = toZh[2].trim();
+      } else if (fromToEn) {
+        origin = fromToEn[1].trim();
+        destination = fromToEn[2].trim();
+      }
+      let departureDate = '';
+      const isoDate = message.match(/(\d{4}-\d{2}-\d{2})/);
+      const cnDate = message.match(/(\d{1,2})月(\d{1,2})[日号]?/);
+      const slashDate = message.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+      const tomorrowZh = /\b(明天|后天|大后天)\b/.exec(message);
+      const tomorrowEn = /\b(tomorrow|day after tomorrow)\b/i.exec(message);
+      const monthEn = message.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+      const now = new Date();
+      const y = now.getFullYear();
+      if (isoDate) departureDate = isoDate[1];
+      else if (cnDate) departureDate = `${y}-${cnDate[1].padStart(2, '0')}-${cnDate[2].padStart(2, '0')}`;
+      else if (slashDate) departureDate = `${slashDate[3] || y}-${slashDate[1].padStart(2, '0')}-${slashDate[2].padStart(2, '0')}`;
+      else if (tomorrowZh) {
+        const days: Record<string, number> = { 明天: 1, 后天: 2, 大后天: 3 };
+        const d = new Date(now); d.setDate(d.getDate() + (days[tomorrowZh[1]] || 1));
+        departureDate = d.toISOString().split('T')[0];
+      } else if (tomorrowEn) {
+        const days = tomorrowEn[1].toLowerCase() === 'tomorrow' ? 1 : 2;
+        const d = new Date(now); d.setDate(d.getDate() + days);
+        departureDate = d.toISOString().split('T')[0];
+      } else if (monthEn) {
+        const months: Record<string, number> = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+        const m = months[monthEn[1].toLowerCase()];
+        if (m) departureDate = `${y}-${String(m).padStart(2, '0')}-${monthEn[2].padStart(2, '0')}`;
+      }
       return {
         target: 'flight',
-        confidence: 0.9, // 提高置信度
+        confidence: 0.9,
         reason: 'User wants to search for flights',
         reasonCN: '用户想要搜索航班',
         extractedParams: {
           naturalLanguage: message,
+          ...(origin && { origin }),
+          ...(destination && { destination }),
+          ...(departureDate && { departureDate }),
         },
       };
     }
@@ -575,6 +619,53 @@ ${contextInfo}
         lowerMessage.includes('高铁') || lowerMessage.includes('动车') ||
         lowerMessage.includes('铁路') || lowerMessage.includes('train') ||
         (lowerMessage.includes('查询') && (lowerMessage.includes('火车') || lowerMessage.includes('铁路')))) {
+      // 尝试提取出发地、目的地：从X到Y、X到Y、from X to Y
+      let origin = '';
+      let destination = '';
+      const fromToZh = message.match(/从\s*([^\s到]+)\s*到\s*([^\s的]+)/);
+      const toZh = message.match(/([^\s,，]+)\s*到\s*([^\s,，]+)/);
+      const fromToEn = message.match(/from\s+([^\s]+)\s+to\s+([^\s]+)/i);
+      if (fromToZh) {
+        origin = fromToZh[1].trim();
+        destination = fromToZh[2].trim();
+      } else if (toZh && (lowerMessage.includes('火车') || lowerMessage.includes('铁路') || lowerMessage.includes('高铁'))) {
+        origin = toZh[1].trim();
+        destination = toZh[2].trim();
+      } else if (fromToEn) {
+        origin = fromToEn[1].trim();
+        destination = fromToEn[2].trim();
+      }
+      // 尝试提取出行日期/时间：3月15日、3月15号、3/15、明天、后天、明天下午、March 15、tomorrow
+      let date = '';
+      const isoDate = message.match(/(\d{4}-\d{2}-\d{2})(?:\s*[T\s](\d{1,2}):?(\d{2})?)?/);
+      const cnDate = message.match(/(\d{1,2})月(\d{1,2})[日号]?(?:\s*[上下]午|\s*(\d{1,2}):?(\d{2})?)?/);
+      const slashDate = message.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+      const tomorrowZh = /\b(明天|后天|大后天)\b/.exec(message);
+      const tomorrowEn = /\b(tomorrow|day after tomorrow)\b/i.exec(message);
+      const monthEn = message.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+      const now = new Date();
+      const y = now.getFullYear();
+      if (isoDate) {
+        date = isoDate[2] ? `${isoDate[1]}T${isoDate[2].padStart(2, '0')}:${(isoDate[3] || '00').padStart(2, '0')}:00` : isoDate[1];
+      } else if (cnDate) {
+        const d = `${y}-${cnDate[1].padStart(2, '0')}-${cnDate[2].padStart(2, '0')}`;
+        date = cnDate[3] ? `${d}T${cnDate[3].padStart(2, '0')}:${(cnDate[4] || '00').padStart(2, '0')}:00` : d;
+      } else if (slashDate) {
+        const yr = slashDate[3] || String(y);
+        date = `${yr}-${slashDate[1].padStart(2, '0')}-${slashDate[2].padStart(2, '0')}`;
+      } else if (tomorrowZh) {
+        const days = { 明天: 1, 后天: 2, 大后天: 3 };
+        const d = new Date(now); d.setDate(d.getDate() + (days[tomorrowZh[1] as keyof typeof days] || 1));
+        date = d.toISOString().split('T')[0];
+      } else if (tomorrowEn) {
+        const days = tomorrowEn[1].toLowerCase() === 'tomorrow' ? 1 : 2;
+        const d = new Date(now); d.setDate(d.getDate() + days);
+        date = d.toISOString().split('T')[0];
+      } else if (monthEn) {
+        const months: Record<string, number> = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+        const m = months[monthEn[1].toLowerCase()];
+        if (m) date = `${y}-${String(m).padStart(2, '0')}-${monthEn[2].padStart(2, '0')}`;
+      }
       return {
         target: 'rail',
         confidence: 0.9, // 提高置信度
@@ -582,6 +673,9 @@ ${contextInfo}
         reasonCN: '用户想要查询铁路',
         extractedParams: {
           naturalLanguage: message,
+          ...(origin && { origin }),
+          ...(destination && { destination }),
+          ...(date && { date }),
         },
       };
     }

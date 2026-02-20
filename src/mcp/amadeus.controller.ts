@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,6 +21,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { AmadeusService } from './amadeus.service';
+import { AmadeusDirectService } from './amadeus-direct.service';
 import { AmadeusSearchFlightOffersDto } from './dto/amadeus-search.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
@@ -31,7 +33,10 @@ import { Public } from '../auth/decorators/public.decorator';
 export class AmadeusController {
   private readonly logger = new Logger(AmadeusController.name);
 
-  constructor(private readonly amadeusService: AmadeusService) {}
+  constructor(
+    private readonly amadeusService: AmadeusService,
+    @Optional() private readonly amadeusDirectService?: AmadeusDirectService,
+  ) {}
 
   @Post('search/flights')
   @HttpCode(HttpStatus.OK)
@@ -58,8 +63,8 @@ export class AmadeusController {
   async searchFlights(@Body() dto: AmadeusSearchFlightOffersDto) {
     try {
       this.logger.log(`Searching flights: ${dto.originLocationCode} -> ${dto.destinationLocationCode}`);
-      
-      const result = await this.amadeusService.searchFlightOffers({
+
+      const searchParams = {
         originLocationCode: dto.originLocationCode,
         destinationLocationCode: dto.destinationLocationCode,
         departureDate: dto.departureDate,
@@ -74,9 +79,34 @@ export class AmadeusController {
         currencyCode: dto.currencyCode,
         maxPrice: dto.maxPrice,
         max: dto.max,
-      });
+      };
 
-      // 解析结果
+      let result: any;
+      if (this.amadeusDirectService?.isAvailable) {
+        result = await this.amadeusDirectService.searchFlightOffers(searchParams);
+      } else {
+        result = await this.amadeusService.searchFlightOffers({
+        originLocationCode: dto.originLocationCode,
+        destinationLocationCode: dto.destinationLocationCode,
+        departureDate: dto.departureDate,
+        adults: dto.adults,
+        returnDate: dto.returnDate,
+        children: dto.children,
+        infants: dto.infants,
+        travelClass: dto.travelClass,
+        includedAirlineCodes: dto.includedAirlineCodes,
+        excludedAirlineCodes: dto.excludedAirlineCodes,
+        nonStop: dto.nonStop,
+        currencyCode: dto.currencyCode,
+        maxPrice: dto.maxPrice,
+        max: dto.max,
+        });
+      }
+
+      // 解析结果（Direct 返回 { data }，MCP 返回 { content }）
+      if (result?.data) {
+        return successResponse(result);
+      }
       if (result && result.content && result.content[0]) {
         const content = result.content[0];
         if (content.type === 'text') {
