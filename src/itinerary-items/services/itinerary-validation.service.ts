@@ -15,7 +15,6 @@ import {
   ContextItem
 } from '../interfaces/validation.interface';
 import { CreateItineraryItemDto } from '../dto/create-itinerary-item.dto';
-import { TimeOverlapValidator } from '../validators/time-overlap.validator';
 import { TravelTimeValidator } from '../validators/travel-time.validator';
 import { BufferTimeValidator } from '../validators/buffer-time.validator';
 import { DateTime } from 'luxon';
@@ -32,13 +31,12 @@ export class ItineraryValidationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly timeOverlapValidator: TimeOverlapValidator,
     private readonly travelTimeValidator: TravelTimeValidator,
     private readonly bufferTimeValidator: BufferTimeValidator
   ) {
     // 按优先级排序校验器（ERROR > WARNING > INFO）
+    // 注：时间冲突校验已移除，允许创建时间重叠的行程项
     this.validators = [
-      this.timeOverlapValidator,
       this.travelTimeValidator,
       this.bufferTimeValidator,
     ];

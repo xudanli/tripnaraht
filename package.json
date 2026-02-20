@@ -149,7 +149,7 @@
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.7",
     "@langchain/openai": "^1.2.0",
-    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.9",
@@ -172,7 +172,7 @@
     "@willsoto/nestjs-prometheus": "^6.0.2",
     "ali-oss": "^6.23.0",
     "apify-client": "^2.20.0",
-    "axios": "^1.13.4",
+    "axios": "^1.7.9",
     "bcrypt": "^6.0.0",
     "cache-manager": "^7.2.7",
     "cache-manager-redis-store": "^3.0.1",
@@ -189,7 +189,7 @@
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
-    "nodemailer": "^6.9.8",
+    "nodemailer": "^8.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdf-parse": "^2.4.5",
@@ -228,5 +228,14 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "overrides": {
+    "fast-xml-parser": "^5.3.7",
+    "brace-expansion": "^2.0.2",
+    "@isaacs/brace-expansion": "^2.0.2",
+    "diff": "^5.2.0",
+    "qs": "^6.12.0",
+    "lodash": "^4.17.21",
+    "minimatch": "^10.2.1"
   }
 }

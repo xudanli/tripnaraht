@@ -4,7 +4,6 @@ import { ItineraryItemsController } from './itinerary-items.controller';
 import { ItineraryValidationService } from './services/itinerary-validation.service';
 import { TravelTimeCacheService } from './services/travel-time-cache.service';
 import { ItemCostService } from './services/item-cost.service';
-import { TimeOverlapValidator } from './validators/time-overlap.validator';
 import { TravelTimeValidator } from './validators/travel-time.validator';
 import { BufferTimeValidator } from './validators/buffer-time.validator';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -27,7 +26,6 @@ import { GoogleMapsDirectModule } from '../mcp/google-maps-direct.module';
     TravelTimeCacheService,
     ItemCostService,
     // 校验器
-    TimeOverlapValidator,
     TravelTimeValidator,
     BufferTimeValidator,
   ],

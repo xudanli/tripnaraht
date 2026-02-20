@@ -62,7 +62,7 @@ export class TravelTimeValidator extends BaseValidator {
     const newStart = DateTime.fromJSDate(newItem.startTime);
     const availableMinutes = newStart.diff(prevEnd, 'minutes').minutes;
 
-    // 如果可用时间为负（时间顺序错误），交给 TimeOverlapValidator 处理
+    // 如果可用时间为负（时间顺序错误），不再校验时间冲突，直接通过
     if (availableMinutes < 0) {
       return this.pass();
     }
