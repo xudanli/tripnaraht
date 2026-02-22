@@ -211,10 +211,18 @@ export class EvidenceItemDto {
   @ApiPropertyOptional({ description: '关联的行程天数（1-based）', example: 1 })
   day?: number;
 
+  /** 受影响的行程项 ID 列表，用于前端将证据与冲突/行程项对应展示 */
+  @ApiPropertyOptional({ description: '受影响的行程项 ID 列表', type: [String] })
+  affectedItemIds?: string[];
+
   @ApiPropertyOptional({ description: '严重程度', enum: EvidenceSeverity, example: EvidenceSeverity.LOW })
   severity?: EvidenceSeverity;
 
-  @ApiPropertyOptional({ description: '额外元数据', type: Object, additionalProperties: true })
+  @ApiPropertyOptional({
+    description: '额外元数据。营业时间证据(type=opening_hours)含：currentStatus(open/closed/unknown)、todayHours、computedAt、timezone',
+    type: Object,
+    additionalProperties: true,
+  })
   metadata?: Record<string, any>;
 
   @ApiPropertyOptional({ description: '证据状态', enum: () => EvidenceStatus, example: 'new' })
@@ -388,7 +396,7 @@ export class UpdateEvidenceRequestDto {
  * 更新证据响应 DTO
  */
 export class UpdateEvidenceResponseDto {
-  @ApiProperty({ description: '证据项ID', example: 'ev-place-123-opening-hours' })
+  @ApiProperty({ description: '证据项ID', example: 'ev-place-123-day-1-opening-hours' })
   evidenceId!: string;
 
   @ApiProperty({ description: '更新后的状态', enum: EvidenceStatus })
@@ -405,7 +413,7 @@ export class UpdateEvidenceResponseDto {
  * 批量更新证据项
  */
 export class BatchUpdateEvidenceItemDto {
-  @ApiProperty({ description: '证据项ID', example: 'ev-place-123-opening-hours' })
+  @ApiProperty({ description: '证据项ID', example: 'ev-place-123-day-1-opening-hours' })
   @IsString()
   evidenceId!: string;
 

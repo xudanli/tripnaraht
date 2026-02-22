@@ -15,6 +15,7 @@ if (!process.env.DISABLE_REDIS || process.env.DISABLE_REDIS === 'false') {
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { json, urlencoded } from 'express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -40,6 +41,7 @@ async function bootstrap() {
     // 添加超时保护，避免无限等待
     const createPromise = NestFactory.create(AppModule, {
       logger: logLevels,
+      bodyParser: false, // 禁用默认 body parser，以便使用更大的 limit
     });
     
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -73,7 +75,12 @@ async function bootstrap() {
     }
     process.exit(1);
   }
-  
+
+  // 自定义 body parser（支持更大 payload，避免 planning-assistant chat 等接口 "request entity too large"）
+  const bodyLimit = process.env.BODY_PARSER_LIMIT || '2mb';
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ extended: true, limit: bodyLimit }));
+
   // 设置全局 API 前缀
   app.setGlobalPrefix('api');
   

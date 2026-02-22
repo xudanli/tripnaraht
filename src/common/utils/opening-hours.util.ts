@@ -105,21 +105,37 @@ export class OpeningHoursUtil {
 
   /**
    * 从 metadata 中获取今天的营业时间字符串
+   * 支持：mon/tue/...、weekday/weekend、osmFormat（如 "24小时开放"）、visit_info.opening_hours、opening_hours
    */
   static getTodayHours(metadata: any, timezone: string = 'Asia/Tokyo'): string {
-    if (!metadata?.openingHours) return 'Closed';
+    const oh = metadata?.openingHours;
+    const osmFormat = oh?.osmFormat || metadata?.opening_hours;
+    const visitHours = metadata?.visit_info?.opening_hours;
+    const rawHours = osmFormat || visitHours;
+
+    // 1. OSM/中文格式：24小时、全天开放 等
+    if (typeof rawHours === 'string') {
+      const lower = rawHours.toLowerCase();
+      if (/24\s*小时|24\/7|全天|24\s*hours/i.test(lower) || lower === '24小时开放') {
+        return '24 Hours';
+      }
+      // visit_info 仅有 opening_hours 字符串（如 "08:00-22:00"）时，直接返回用于 isOpenNow 判断
+      if (visitHours && !oh) return visitHours;
+    }
+
+    if (!oh) return 'Closed';
 
     const now = DateTime.now().setZone(timezone);
     const dayKey = now.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
-    const hours = metadata.openingHours[dayKey];
+    const hours = oh[dayKey];
     if (hours) return toHoursString(hours);
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = now.weekday >= 6; // 6 = Saturday, 7 = Sunday
-    const fallbackHours = isWeekend 
-      ? (metadata.openingHours.weekend || 'Closed')
-      : (metadata.openingHours.weekday || 'Closed');
+    const fallbackHours = isWeekend
+      ? (oh.weekend || 'Closed')
+      : (oh.weekday || 'Closed');
     return toHoursString(fallbackHours);
   }
 

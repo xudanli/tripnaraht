@@ -66,6 +66,9 @@ export class TripCreationParams {
   @ApiProperty({ description: '总预算（元）', example: 20000 })
   totalBudget!: number;
 
+  @ApiPropertyOptional({ description: '交易货币（ISO 4217，如 CNY/USD/EUR）', example: 'CNY' })
+  currency?: string;
+
   @ApiPropertyOptional({ description: '是否有小孩', example: true })
   hasChildren?: boolean;
 

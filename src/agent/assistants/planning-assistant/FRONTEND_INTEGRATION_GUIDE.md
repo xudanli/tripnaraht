@@ -47,6 +47,7 @@ const response = await fetch('/api/agent/planning-assistant/v2/chat', {
     context: {
       tripId: tripId,           // 规划工作台场景下必需
       countryCode: countryCode, // 规划工作台场景下必需
+      userCountryCode: 'CN',    // 可选，用户国籍，住宿数据按对应语言展示（CN→中文、JP→日文等）
       currentLocation: {
         lat: currentLat,
         lng: currentLng,
@@ -91,6 +92,8 @@ interface ChatRequest {
   context?: {
     tripId?: string;
     countryCode?: string;
+    /** 用户国籍（用于住宿数据按对应语言展示，如 CN→中文、JP→日文） */
+    userCountryCode?: string;
     currentLocation?: {
       lat: number;
       lng: number;

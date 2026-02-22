@@ -34,6 +34,7 @@ import { BatchProcessingService } from './performance/batch.service';
 import { MonitoringService } from './monitoring/monitoring.service';
 import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
+import { DecisionEngineController } from './decision-engine.controller';
 import { TransportModule } from '../../transport/transport.module';
 // 在 MCP 模式下使用轻量级 PlacesLiteModule，避免启动卡死
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -166,6 +167,7 @@ try {
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
+    DecisionEngineController, // 决策引擎统一 API：/api/decision-engine/v1/*
     DecisionStatsController, // 恢复：决策统计控制器
     ApprovalController, // 恢复：审批控制器
     FitnessAssessmentController, // Phase 1：体能评估控制器
@@ -181,8 +183,7 @@ try {
     // EventTriggerService,
     // EvaluationService,
     // VersionService,
-    // ExplainabilityService,
-    // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
+    ExplainabilityService, // 决策引擎 API explain-plan 需要
     // LearningService,
     // AdvancedConstraintsService,
     ConstraintChecker, // 恢复：约束检查器（集成冲突检测）
@@ -263,8 +264,7 @@ try {
     // EventTriggerService,
     // EvaluationService,
     // VersionService,
-    // ExplainabilityService,
-    // 二分法：暂时禁用前半部分的前半的后半 providers，测试是否导致阻塞
+    ExplainabilityService, // 决策引擎 API explain-plan 需要
     // LearningService,
     // AdvancedConstraintsService,
     ConstraintChecker, // 恢复：约束检查器（集成冲突检测）

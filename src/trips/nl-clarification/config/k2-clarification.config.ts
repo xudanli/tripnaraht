@@ -35,7 +35,7 @@ export const K2_CONFIG_TEMPLATE: DestinationClarificationConfig = {
         // 基础问题由通用流程处理
       ],
       completionConditions: {
-        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget'],
+        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget', 'currency'],
       },
       priority: 1,
     },

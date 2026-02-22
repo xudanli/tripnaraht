@@ -7,13 +7,15 @@
  * - JourneyAssistant 只下发 ChangeIntent，不直接修改行程
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { JourneyAssistantService } from './services/journey-assistant.service';
 import { JourneyAssistantController } from './journey-assistant.controller';
 import { LlmModule } from '../../../llm/llm.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { AgentInfraModule } from '../../infra/infra.module';
+import { PlacesModule } from '../../../places/places.module';
+import { ProvidersModule } from '../../../providers/providers.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { AgentInfraModule } from '../../infra/infra.module';
     PrismaModule,
     ScheduleModule.forRoot(),
     AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway)
+    forwardRef(() => PlacesModule), // POI 搜索（避免循环依赖）
+    forwardRef(() => ProvidersModule), // Google Places API
   ],
   controllers: [JourneyAssistantController],
   providers: [JourneyAssistantService],

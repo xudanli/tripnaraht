@@ -37,7 +37,7 @@ export const SVALBARD_CONFIG_TEMPLATE: DestinationClarificationConfig = {
       triggerConditions: {},
       questions: [],
       completionConditions: {
-        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget'],
+        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget', 'currency'],
       },
       priority: 1,
     },

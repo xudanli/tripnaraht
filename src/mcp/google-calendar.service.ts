@@ -1,10 +1,13 @@
 /**
  * Google Calendar Service
- * 
+ *
  * NestJS 服务层，封装 Google Calendar MCP 客户端
  */
 
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { GoogleCalendarMcpClient } from './google-calendar-client';
 
 @Injectable()
@@ -219,5 +222,61 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
   }): Promise<any> {
     await this.ensureConnected();
     return await this.client.quickAdd(params);
+  }
+
+  /**
+   * 检查授权状态（基于 token 文件存在 + 实际连接验证）
+   */
+  async checkAuthStatus(): Promise<{
+    isAuthorized: boolean;
+    authorizationUrl?: string;
+  }> {
+    const configDir = path.join(os.homedir(), '.tripnara-mcp');
+    const tokenFile = path.join(configDir, 'googlecalendar-tokens.json');
+    if (!fs.existsSync(tokenFile)) {
+      return { isAuthorized: false };
+    }
+    try {
+      await this.listCalendars();
+      return { isAuthorized: true };
+    } catch {
+      return { isAuthorized: false };
+    }
+  }
+
+  /**
+   * 获取授权 URL
+   */
+  async getAuthorizationUrl(): Promise<{ authorizationUrl: string }> {
+    try {
+      const url = await GoogleCalendarMcpClient.getAuthorizationUrl();
+      return { authorizationUrl: url };
+    } catch (error: any) {
+      if (error.message?.includes('Already authorized')) {
+        throw new Error('Already authorized');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 撤销授权（删除 token 文件）
+   */
+  async revokeAuthorization(): Promise<void> {
+    const configDir = path.join(os.homedir(), '.tripnara-mcp');
+    const patterns = ['googlecalendar-tokens.json', 'googlecalendar-client-info.json', 'googlecalendar-code-verifier.txt'];
+    for (const name of patterns) {
+      const file = path.join(configDir, name);
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+        this.logger.log(`Removed ${name}`);
+      }
+    }
+    this.isConnected = false;
+    try {
+      await this.client.disconnect();
+    } catch {
+      // ignore
+    }
   }
 }

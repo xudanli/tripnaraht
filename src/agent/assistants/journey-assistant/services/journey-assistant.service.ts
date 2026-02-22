@@ -28,6 +28,8 @@ import { PersonaShellService } from '../../../services/persona-shell.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { LLMExecutorService } from '../../../infra/llm-executor.service';
 import { CoreGatewayService, ChangeIntent } from '../../../infra/core-gateway.service';
+import { PlacesService } from '../../../../places/places.service';
+import { GooglePoiProvider } from '../../../../providers/poi/google-poi.provider';
 import {
   JourneyState,
   JourneyAssistantRequest,
@@ -63,6 +65,9 @@ export class JourneyAssistantService {
     @Optional() private readonly llmService?: LlmService,
     @Optional() private readonly executionAgent?: ExecutionAgentService,
     @Optional() private readonly personaShell?: PersonaShellService,
+    // POI 搜索（真实数据）
+    @Optional() private readonly placesService?: PlacesService,
+    @Optional() private readonly googlePoiProvider?: GooglePoiProvider,
   ) {
     this.logger.log('🚀 行程助手智能体已初始化 (V2.1 架构)');
   }
@@ -78,6 +83,8 @@ export class JourneyAssistantService {
       switch (request.action) {
         case 'chat':
           return this.handleChat(request);
+        case 'nearby':
+          return this.handleNearbyDirect(request);
         case 'get_status':
           return this.handleGetStatus(request);
         case 'get_reminders':
@@ -295,44 +302,180 @@ export class JourneyAssistantService {
   // ==================== 意图处理方法 ====================
 
   /**
-   * 处理附近搜索
+   * 直接处理附近搜索（POST /nearby 专用， bypass 意图分析）
+   */
+  private async handleNearbyDirect(request: JourneyAssistantRequest): Promise<JourneyAssistantResponse> {
+    const state = await this.loadJourneyState(request.tripId, request.userId);
+    return this.handleNearbySearch(request, state);
+  }
+
+  /**
+   * 处理附近搜索（真实 POI：Google Places 或内部 Place 库）
    */
   private async handleNearbySearch(request: JourneyAssistantRequest, state: JourneyState): Promise<JourneyAssistantResponse> {
     const searchType = this.extractSearchType(request.message || '');
-    
-    // 模拟搜索结果
-    const results = [
-      { name: 'Restaurant A', nameCN: '餐厅A', distance: '200m', rating: 4.5 },
-      { name: 'Restaurant B', nameCN: '餐厅B', distance: '350m', rating: 4.3 },
-      { name: 'Restaurant C', nameCN: '餐厅C', distance: '500m', rating: 4.7 },
-    ];
+    const query = this.buildSearchQuery(request.message || '', searchType);
+    const { lat, lng } = request.context?.currentLocation || {};
+    const countryCode = state.tripId ? await this.getTripCountryCode(state.tripId) : undefined;
+
+    // 找医院/药店需要用户坐标才能搜索「最近」的，若无坐标则提示前端获取
+    const needsUserLocation = (searchType === 'hospitals' || searchType === 'pharmacies') && (lat == null || lng == null);
+    if (needsUserLocation) {
+      const typeLabel = this.translateSearchType(searchType);
+      return {
+        message: `To find the nearest ${searchType}, please share your location. Enable location permission and try again.`,
+        messageCN: `查找最近的${typeLabel}需要您的位置信息。请允许获取位置权限后重试。`,
+        needsLocation: true,
+        journeyState: state,
+      };
+    }
+
+    const pois = await this.searchNearbyPois(query, lat, lng, countryCode, 10);
+
+    const typeLabel = this.translateSearchType(searchType);
+    const items = pois.map((p) => ({
+      id: p.id,
+      name: p.name,
+      nameCN: p.nameCN ?? p.name,
+      nameEN: p.nameEN ?? p.name,
+      distance: p.distanceM != null ? `${Math.round(p.distanceM)}m` : undefined,
+      rating: p.rating,
+      address: p.address,
+      coordinates: p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined,
+    }));
+
+    const listText = items
+      .map((p, i) => `${i + 1}. **${p.nameCN || p.name}**${p.distance ? ` - ${p.distance}` : ''}${p.rating ? ` ⭐ ${p.rating}` : ''}`)
+      .join('\n');
+    const listTextCN = items
+      .map((p, i) => `${i + 1}. **${p.nameCN || p.name}**${p.distance ? ` - ${p.distance}` : ''}${p.rating ? ` ⭐ ${p.rating}` : ''}`)
+      .join('\n');
 
     return {
-      message: `I found ${results.length} ${searchType} near you:
-
-1. **Restaurant A** - 200m away ⭐ 4.5
-2. **Restaurant B** - 350m away ⭐ 4.3
-3. **Restaurant C** - 500m away ⭐ 4.7
-
-Would you like me to navigate you to any of these?`,
-      messageCN: `我在附近找到了 ${results.length} 家${this.translateSearchType(searchType)}：
-
-1. **餐厅A** - 200米 ⭐ 4.5
-2. **餐厅B** - 350米 ⭐ 4.3
-3. **餐厅C** - 500米 ⭐ 4.7
-
-需要我帮你导航到哪一家吗？`,
+      message: pois.length > 0
+        ? `I found ${pois.length} ${searchType} near you:\n\n${listText}\n\nWould you like me to navigate you to any of these?`
+        : `I couldn't find any ${searchType} nearby. Try adjusting your search or location.`,
+      messageCN: pois.length > 0
+        ? `我在附近找到了 ${pois.length} 家${typeLabel}：\n\n${listTextCN}\n\n需要我帮你导航到哪一家吗？`
+        : `附近没有找到${typeLabel}，可以换个关键词或位置试试。`,
       searchResults: {
         type: searchType,
-        items: results,
+        items,
       },
       journeyState: state,
-      suggestedActions: [
-        { action: 'navigate_1', label: 'Navigate to Restaurant A', labelCN: '导航到餐厅A' },
-        { action: 'navigate_2', label: 'Navigate to Restaurant B', labelCN: '导航到餐厅B' },
-        { action: 'navigate_3', label: 'Navigate to Restaurant C', labelCN: '导航到餐厅C' },
-      ],
+      suggestedActions: items.slice(0, 5).map((p, i) => ({
+        action: `navigate_${i + 1}`,
+        label: `Navigate to ${p.nameCN || p.name}`,
+        labelCN: `导航到${p.nameCN || p.name}`,
+      })),
     };
+  }
+
+  /**
+   * 搜索附近 POI（优先 Google Places，降级到内部 Place 库）
+   */
+  private async searchNearbyPois(
+    query: string,
+    lat?: number,
+    lng?: number,
+    countryCode?: string,
+    limit = 10,
+  ): Promise<Array<{ id: string; name: string; nameCN?: string; nameEN?: string; lat?: number; lng?: number; distanceM?: number; rating?: number; address?: string }>> {
+    const searchLat = lat ?? this.getDefaultLatForCountry(countryCode);
+    const searchLng = lng ?? this.getDefaultLngForCountry(countryCode);
+
+    if (this.googlePoiProvider && searchLat != null && searchLng != null) {
+      try {
+        const GOOGLE_TIMEOUT_MS = 3000;
+        const candidates = await Promise.race([
+          this.googlePoiProvider.textSearch({
+            query: query || 'restaurant cafe',
+            lat: searchLat,
+            lng: searchLng,
+            radiusM: 5000,
+            language: 'zh-CN',
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Google Places 超时')), GOOGLE_TIMEOUT_MS),
+          ),
+        ]);
+        return candidates.slice(0, limit).map((c) => ({
+          id: c.id,
+          name: c.nameCN || c.nameEN || c.name,
+          nameCN: c.nameCN,
+          nameEN: c.nameEN,
+          lat: c.lat,
+          lng: c.lng,
+          distanceM: c.distanceM,
+          rating: c.rating,
+          address: c.address,
+        }));
+      } catch (err: any) {
+        this.logger.warn(`[行程助手] Google Places 搜索失败: ${err?.message}，降级到内部库`);
+      }
+    }
+
+    if (this.placesService) {
+      try {
+        const radius = searchLat != null && searchLng != null ? 5000 : undefined;
+        const results = await this.placesService.search(
+          query || 'restaurant',
+          searchLat,
+          searchLng,
+          radius,
+          undefined,
+          limit,
+          countryCode,
+        );
+        return results.map((r: any) => ({
+          id: String(r.id),
+          name: r.nameEN || r.nameCN || r.name,
+          nameCN: r.nameCN,
+          nameEN: r.nameEN,
+          lat: undefined,
+          lng: undefined,
+          distanceM: r.distance,
+          rating: r.rating,
+          address: r.address,
+        }));
+      } catch (err: any) {
+        this.logger.warn(`[行程助手] PlacesService 搜索失败: ${err?.message}`);
+      }
+    }
+
+    return [];
+  }
+
+  private buildSearchQuery(message: string, searchType: string): string {
+    const q = message.replace(/附近|有什么|吗|呢|啊|呀|找|最近的/g, '').trim();
+    if (q) return q;
+    const map: Record<string, string> = {
+      hospitals: 'hospital 医院',
+      pharmacies: 'pharmacy 药店',
+      restaurants: 'restaurant 餐厅',
+      cafes: 'cafe 咖啡',
+      attractions: 'attraction 景点',
+    };
+    return map[searchType] || 'restaurant cafe';
+  }
+
+  private async getTripCountryCode(tripId: string): Promise<string | undefined> {
+    if (!this.prisma) return undefined;
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { destination: true },
+    });
+    return trip?.destination?.toUpperCase().trim();
+  }
+
+  private getDefaultLatForCountry(countryCode?: string): number | undefined {
+    const centers: Record<string, number> = { IS: 64.1466, JP: 35.6762, TH: 13.7563, CN: 39.9042, US: 40.7128 };
+    return countryCode ? centers[countryCode] : undefined;
+  }
+
+  private getDefaultLngForCountry(countryCode?: string): number | undefined {
+    const centers: Record<string, number> = { IS: -21.9426, JP: 139.6503, TH: 100.5018, CN: 116.4074, US: -74.006 };
+    return countryCode ? centers[countryCode] : undefined;
   }
 
   /**
@@ -421,9 +564,25 @@ What are you in the mood for?`,
   }
 
   /**
-   * 处理紧急求助
+   * 处理紧急求助（支持具体子意图：大使馆、医院、警察、紧急热线）
    */
   private async handleEmergencyChat(request: JourneyAssistantRequest, state: JourneyState): Promise<JourneyAssistantResponse> {
+    const msg = (request.message || '').toLowerCase();
+    const countryCode = await this.getTripCountryCode(state.tripId);
+
+    if (msg.includes('大使馆') || msg.includes('embassy')) {
+      return this.getEmbassyResponse(countryCode, state);
+    }
+    if (msg.includes('报警') || msg.includes('police')) {
+      return this.getPoliceResponse(countryCode, state);
+    }
+    if (msg.includes('紧急呼叫') || msg.includes('emergency call')) {
+      return this.getEmergencyHotlineResponse(countryCode, state);
+    }
+    if (msg.includes('医院') || msg.includes('hospital')) {
+      return this.getHospitalPromptResponse(state);
+    }
+
     return {
       message: `🚨 I'm here to help! What's the emergency?
 
@@ -449,6 +608,116 @@ Stay calm, I'll guide you through this.`,
         { action: 'call_police', label: 'Call police', labelCN: '报警' },
         { action: 'contact_embassy', label: 'Contact embassy', labelCN: '联系大使馆' },
         { action: 'emergency_call', label: 'Emergency call', labelCN: '紧急呼叫' },
+      ],
+    };
+  }
+
+  private getEmbassyResponse(countryCode: string | undefined, state: JourneyState): JourneyAssistantResponse {
+    const embassies: Record<string, { cn: string; en: string }> = {
+      IS: {
+        cn: `**中国驻冰岛大使馆**
+📍 地址：Vídimelur 29, 108 Reykjavík
+📞 领事保护：+354 893 2688
+📞 值班电话：+354 893 2688
+🕐 办公时间：周一至周五 09:00-12:00
+⚠️ 紧急情况请拨打 112（冰岛紧急热线）`,
+        en: `**Chinese Embassy in Iceland**
+📍 Address: Vídimelur 29, 108 Reykjavík
+📞 Consular Protection: +354 893 2688
+🕐 Office Hours: Mon-Fri 09:00-12:00
+⚠️ For emergencies, call 112 (Iceland emergency)`,
+      },
+      TH: {
+        cn: `**中国驻泰国大使馆**
+📍 地址：57 Ratchadaphisek Road, Bangkok
+📞 领事保护：+66 2 245 7010
+🕐 24小时领保热线：+66 81 882 3283
+⚠️ 泰国紧急热线：191（警察）、1669（急救）`,
+        en: `**Chinese Embassy in Thailand**
+📍 Address: 57 Ratchadaphisek Road, Bangkok
+📞 Consular: +66 2 245 7010
+🕐 24h Hotline: +66 81 882 3283
+⚠️ Thailand: 191 (Police), 1669 (Ambulance)`,
+      },
+      JP: {
+        cn: `**中国驻日本大使馆**
+📍 地址：〒106-0046 東京都港区元麻布3-4-33
+📞 领事保护：+81 3 3403 3388
+🕐 24小时领保热线：+81 3 3403 3388
+⚠️ 日本紧急热线：110（警察）、119（急救）`,
+        en: `**Chinese Embassy in Japan**
+📍 Address: 3-4-33 Moto-Azabu, Minato-ku, Tokyo
+📞 Consular: +81 3 3403 3388
+⚠️ Japan: 110 (Police), 119 (Ambulance)`,
+      },
+      US: {
+        cn: `**中国驻美国大使馆（华盛顿）**
+📍 地址：3505 International Place, NW, Washington, DC 20008
+📞 领事保护：+1 202 495 2266
+🕐 24小时领保热线：+1 202 495 2266
+⚠️ 美国紧急热线：911`,
+        en: `**Chinese Embassy in USA (Washington)**
+📍 Address: 3505 International Place, NW, Washington, DC 20008
+📞 Consular: +1 202 495 2266
+⚠️ USA Emergency: 911`,
+      },
+    };
+    const info = countryCode ? embassies[countryCode] : embassies.IS;
+    const { cn, en } = info || embassies.IS;
+    return {
+      message: en,
+      messageCN: cn,
+      journeyState: state,
+      suggestedActions: [
+        { action: 'find_hospital', label: 'Find hospital', labelCN: '找医院' },
+        { action: 'call_police', label: 'Call police', labelCN: '报警' },
+        { action: 'emergency_call', label: 'Emergency call', labelCN: '紧急呼叫' },
+      ],
+    };
+  }
+
+  private getPoliceResponse(countryCode: string | undefined, state: JourneyState): JourneyAssistantResponse {
+    const police: Record<string, { cn: string; en: string }> = {
+      IS: { cn: '**冰岛报警电话：112**\n\n冰岛统一紧急热线，警察、急救、消防均可拨打。', en: '**Iceland Emergency: 112**\n\nUnified emergency number for police, ambulance, and fire.' },
+      TH: { cn: '**泰国报警：191**\n\n旅游警察：1155（24小时，可中文）', en: '**Thailand Police: 191**\n\nTourist Police: 1155 (24h, Chinese available)' },
+      JP: { cn: '**日本报警：110**\n\n急救/消防：119', en: '**Japan Police: 110**\n\nAmbulance/Fire: 119' },
+      US: { cn: '**美国紧急热线：911**\n\n警察、急救、消防统一拨打。', en: '**USA Emergency: 911**\n\nUnified for police, ambulance, fire.' },
+    };
+    const { cn, en } = police[countryCode || 'IS'] || police.IS;
+    return {
+      message: en,
+      messageCN: cn,
+      journeyState: state,
+      suggestedActions: [
+        { action: 'find_hospital', label: 'Find hospital', labelCN: '找医院' },
+        { action: 'contact_embassy', label: 'Contact embassy', labelCN: '联系大使馆' },
+        { action: 'emergency_call', label: 'Emergency call', labelCN: '紧急呼叫' },
+      ],
+    };
+  }
+
+  private getEmergencyHotlineResponse(countryCode: string | undefined, state: JourneyState): JourneyAssistantResponse {
+    const hotlines: Record<string, { cn: string; en: string }> = {
+      IS: { cn: '**冰岛紧急热线：112**\n\n警察、急救、消防、海上救援统一拨打。', en: '**Iceland: 112**\n\nPolice, ambulance, fire, maritime rescue.' },
+      TH: { cn: '**泰国紧急热线**\n警察：191 | 急救：1669 | 旅游警察：1155', en: '**Thailand**\nPolice: 191 | Ambulance: 1669 | Tourist: 1155' },
+      JP: { cn: '**日本紧急热线**\n警察：110 | 急救/消防：119', en: '**Japan**\nPolice: 110 | Ambulance/Fire: 119' },
+      US: { cn: '**美国紧急热线：911**', en: '**USA: 911**' },
+    };
+    const { cn, en } = hotlines[countryCode || 'IS'] || hotlines.IS;
+    return {
+      message: en,
+      messageCN: cn,
+      journeyState: state,
+    };
+  }
+
+  private getHospitalPromptResponse(state: JourneyState): JourneyAssistantResponse {
+    return {
+      message: 'I\'ll help you find the nearest hospital. Please share your current location for accurate results, or I can search nearby.',
+      messageCN: '我来帮你找最近的医院。请分享当前位置以获得准确结果，或我可以搜索附近。',
+      journeyState: state,
+      suggestedActions: [
+        { action: 'nearby_hospital', label: 'Search nearby hospitals', labelCN: '搜索附近医院' },
       ],
     };
   }
@@ -686,20 +955,64 @@ What do you need?`,
   // ==================== 辅助方法 ====================
 
   /**
-   * 加载行程状态
+   * 加载行程状态（优先从数据库加载行程日期以计算 phase 和 isCompleted）
    */
   private async loadJourneyState(tripId: string, userId: string): Promise<JourneyState> {
     let state = this.journeyStates.get(tripId);
-    
+
+    // 从数据库加载行程以计算 phase 和 isCompleted
+    let phase: TripPhase = 'ON_TRIP';
+    let isCompleted = false;
+    let currentDay = 1;
+    let totalDays = 10;
+    let currentDate = new Date().toISOString().split('T')[0];
+
+    if (this.prisma) {
+      try {
+        const trip = await this.prisma.trip.findUnique({
+          where: { id: tripId },
+          select: { startDate: true, endDate: true, status: true, TripDay: { orderBy: { date: 'asc' }, select: { date: true } } },
+        });
+        if (trip) {
+          const now = new Date();
+          const start = trip.startDate ? new Date(trip.startDate) : null;
+          const end = trip.endDate ? new Date(trip.endDate) : null;
+          totalDays = trip.TripDay?.length || 1;
+
+          if (trip.status === 'COMPLETED' || (end && now > end)) {
+            phase = 'POST_TRIP';
+            isCompleted = true;
+            currentDay = totalDays;
+            const endDate = end || new Date();
+            currentDate = endDate.toISOString().split('T')[0];
+          } else if (trip.status === 'PLANNING' || (start && now < start)) {
+            phase = 'PRE_TRIP';
+            isCompleted = false;
+            currentDay = 1;
+            currentDate = start ? start.toISOString().split('T')[0] : currentDate;
+          } else if (start && end) {
+            phase = now < start ? 'PRE_TRIP' : now > end ? 'POST_TRIP' : 'ON_TRIP';
+            isCompleted = phase === 'POST_TRIP';
+            const dayIndex = trip.TripDay?.findIndex((d) => {
+              const dDate = new Date(d.date).toISOString().split('T')[0];
+              return dDate === now.toISOString().split('T')[0];
+            });
+            if (dayIndex >= 0) currentDay = dayIndex + 1;
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`[行程助手] 加载行程失败: ${err?.message}`);
+      }
+    }
+
     if (!state) {
-      // 创建新状态
       state = {
         tripId,
         userId,
-        phase: 'ON_TRIP',
-        currentDay: 1,
-        totalDays: 10,
-        currentDate: new Date().toISOString().split('T')[0],
+        phase,
+        currentDay,
+        totalDays,
+        currentDate,
         todaySchedule: this.generateSampleSchedule(),
         upcomingReminders: [],
         activeEvents: [],
@@ -711,10 +1024,17 @@ What do you need?`,
           totalBudget: 5000,
         },
         lastUpdated: new Date().toISOString(),
+        isCompleted,
       };
       this.journeyStates.set(tripId, state);
+    } else {
+      state.phase = phase;
+      state.isCompleted = isCompleted;
+      state.currentDay = currentDay;
+      state.totalDays = totalDays;
+      state.currentDate = currentDate;
     }
-    
+
     return state;
   }
 
@@ -771,8 +1091,9 @@ What do you need?`,
   private async analyzeIntent(message: string, state: JourneyState): Promise<JourneyIntent> {
     const lowerMessage = message.toLowerCase();
     
-    if (lowerMessage.includes('附近') || lowerMessage.includes('nearby') || 
-        lowerMessage.includes('where') || lowerMessage.includes('哪里')) {
+    if (lowerMessage.includes('附近') || lowerMessage.includes('nearby') ||
+        lowerMessage.includes('where') || lowerMessage.includes('哪里') ||
+        (lowerMessage.includes('找') && (lowerMessage.includes('咖啡') || lowerMessage.includes('餐') || lowerMessage.includes('药店') || lowerMessage.includes('医院')))) {
       return 'NEARBY_SEARCH';
     }
     
@@ -793,7 +1114,10 @@ What do you need?`,
     
     if (lowerMessage.includes('紧急') || lowerMessage.includes('emergency') ||
         lowerMessage.includes('帮助') || lowerMessage.includes('help') ||
-        lowerMessage.includes('sos')) {
+        lowerMessage.includes('sos') ||
+        lowerMessage.includes('大使馆') || lowerMessage.includes('embassy') ||
+        lowerMessage.includes('报警') || lowerMessage.includes('police') ||
+        lowerMessage.includes('紧急呼叫') || lowerMessage.includes('emergency call')) {
       return 'EMERGENCY';
     }
     
@@ -938,6 +1262,12 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
    * 提取搜索类型
    */
   private extractSearchType(message: string): string {
+    if (message.includes('医院') || message.includes('hospital') || message.includes('诊所')) {
+      return 'hospitals';
+    }
+    if (message.includes('药店') || message.includes('pharmacy') || message.includes('药房')) {
+      return 'pharmacies';
+    }
     if (message.includes('餐') || message.includes('吃') || message.includes('food') || message.includes('restaurant')) {
       return 'restaurants';
     }
@@ -955,6 +1285,8 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
    */
   private translateSearchType(type: string): string {
     const translations: Record<string, string> = {
+      hospitals: '医院',
+      pharmacies: '药店',
       restaurants: '餐厅',
       cafes: '咖啡店',
       attractions: '景点',
@@ -988,6 +1320,71 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
       };
       this.notificationQueue.push(notification);
       this.logger.debug(`[行程助手] 推送通知: ${reminder.title}`);
+    }
+  }
+
+  /**
+   * 获取快捷操作（根据行程目的地、时段等个性化）
+   */
+  async getQuickActions(tripId: string): Promise<{ items: Array<{ id: string; label: string; prompt: string; icon?: string }> }> {
+    const base: Array<{ id: string; label: string; prompt: string; icon?: string }> = [
+      { id: 'food', label: '附近美食', prompt: '附近有什么好吃的', icon: 'utensils' },
+      { id: 'coffee', label: '找咖啡', prompt: '附近有咖啡厅吗', icon: 'coffee' },
+      { id: 'shopping', label: '购物', prompt: '附近有购物的地方吗', icon: 'shopping' },
+      { id: 'pharmacy', label: '找药店', prompt: '附近有药店吗', icon: 'hospital' },
+    ];
+
+    if (!this.prisma) {
+      return { items: base };
+    }
+
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { destination: true, startDate: true, endDate: true },
+      });
+      if (!trip) {
+        return { items: base };
+      }
+
+      const countryCode = trip.destination?.toUpperCase().trim() || '';
+      const extras: Array<{ id: string; label: string; prompt: string; icon?: string }> = [];
+
+      // 目的地个性化
+      const destActions: Record<string, Array<{ id: string; label: string; prompt: string; icon?: string }>> = {
+        IS: [
+          { id: 'aurora', label: '极光观测', prompt: '今晚哪里适合看极光' },
+          { id: 'hot-spring', label: '温泉', prompt: '附近有温泉吗' },
+        ],
+        TH: [
+          { id: 'massage', label: '按摩', prompt: '附近有按摩店吗' },
+          { id: 'night-market', label: '夜市', prompt: '附近有夜市吗', icon: 'utensils' },
+        ],
+        JP: [
+          { id: 'convenience', label: '便利店', prompt: '附近有便利店吗', icon: 'shopping' },
+        ],
+        CN: [
+          { id: 'tea', label: '茶馆', prompt: '附近有茶馆吗', icon: 'coffee' },
+        ],
+      };
+
+      const dest = destActions[countryCode];
+      if (dest) {
+        extras.push(...dest);
+      }
+
+      const items = [...base];
+      for (const e of extras) {
+        if (items.length >= 8) break;
+        if (!items.some((i) => i.id === e.id)) {
+          items.push(e);
+        }
+      }
+
+      return { items };
+    } catch (err: any) {
+      this.logger.warn(`[行程助手] 获取快捷操作失败: ${err?.message}`);
+      return { items: base };
     }
   }
 

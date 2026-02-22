@@ -148,6 +148,8 @@ export interface JourneyState {
     totalBudget: number;
   };
   lastUpdated: string;
+  /** 行程是否已完成（phase 为 POST_TRIP 或 status 为 COMPLETED 时为 true） */
+  isCompleted?: boolean;
 }
 
 /**
@@ -178,7 +180,7 @@ export interface ScheduleItem {
 export interface JourneyAssistantRequest {
   tripId: string;
   userId: string;
-  action: 'chat' | 'get_status' | 'get_reminders' | 'handle_event' | 'adjust_schedule';
+  action: 'chat' | 'nearby' | 'get_status' | 'get_reminders' | 'handle_event' | 'adjust_schedule';
   message?: string;
   language?: 'en' | 'zh';
   context?: {
@@ -236,6 +238,9 @@ export interface JourneyAssistantResponse {
     label: string;
     labelCN: string;
   }[];
+
+  // 是否需要用户位置（找医院/药店时若未提供坐标则返回 true，前端应请求定位后重试）
+  needsLocation?: boolean;
 }
 
 /**

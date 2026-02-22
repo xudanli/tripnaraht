@@ -192,6 +192,8 @@ export interface PlanningConversationState {
   pendingRailSearch?: PendingRailSearch;
   /** 待执行的航班搜索（出发地澄清阶段存储，用户补充出发地后执行） */
   pendingFlightSearch?: PendingFlightSearch;
+  /** 最近一次搜索的攻略结果（用于「提取攻略中的景点加入行程」） */
+  searchResults?: Array<{ title?: string; url?: string; text?: string; publishedDate?: string }>;
   messageHistory: ConversationMessage[];
   createdAt: string;
   updatedAt: string;

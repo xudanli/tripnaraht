@@ -2,6 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CountriesService } from '../../../countries/countries.service';
 import {
   DestinationClarificationConfig,
   ClarificationRound,
@@ -12,12 +13,15 @@ import { ConversationMessage } from '../../services/nl-conversation-context.serv
 @Injectable()
 export class DestinationClarificationConfigService {
   private readonly logger = new Logger(DestinationClarificationConfigService.name);
-  
+
   // 内存缓存（避免频繁查询数据库）
   private configCache = new Map<string, { config: DestinationClarificationConfig; timestamp: number }>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5分钟
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly countriesService: CountriesService,
+  ) {}
 
   /**
    * 清除指定目的地的缓存（用于配置更新后）
@@ -407,63 +411,94 @@ export class DestinationClarificationConfigService {
 
   /**
    * 🆕 获取目的地的所有 Critical 字段列表
+   * 包含配置中的 Critical 问题 + 交易货币（currency，目的地支持时）
    */
   async getCriticalFields(destinationCode: string): Promise<Array<{
     fieldName: string;
     questionId: string;
     question: string;
   }>> {
-    const config = await this.getConfig(destinationCode);
-    if (!config) {
-      return []; // 无特化配置，返回空列表
-    }
-    
     const criticalFields: Array<{
       fieldName: string;
       questionId: string;
       question: string;
     }> = [];
-    
-    // 遍历所有轮次，收集 Critical 字段
-    for (const round of config.clarificationRounds) {
-      for (const question of round.questions) {
-        if (question.metadata?.isCritical && question.metadata?.fieldName) {
-          criticalFields.push({
-            fieldName: question.metadata.fieldName,
-            questionId: question.id,
-            question: question.question,
-          });
+
+    const config = await this.getConfig(destinationCode);
+    if (config) {
+      for (const round of config.clarificationRounds) {
+        for (const question of round.questions) {
+          if (question.metadata?.isCritical && question.metadata?.fieldName) {
+            criticalFields.push({
+              fieldName: question.metadata.fieldName,
+              questionId: question.id,
+              question: question.question,
+            });
+          }
         }
       }
     }
-    
+
+    // 🆕 交易货币：目的地有国家档案时，添加 currency 为 Critical 字段
+    try {
+      const supported = await this.countriesService.getSupportedCurrencies(destinationCode);
+      if (supported.length > 0 && !criticalFields.some((f) => f.fieldName === 'currency')) {
+        criticalFields.push({
+          fieldName: 'currency',
+          questionId: 'gl_currency',
+          question: '你希望用什么货币来规划预算？',
+        });
+      }
+    } catch {
+      // 国家档案不存在时跳过
+    }
+
     return criticalFields;
   }
 
   /**
    * 🆕 根据字段名获取对应的问题定义
+   * 对 currency 字段返回动态生成的选项（目的地支持的货币）
    */
   async getQuestionsForFields(
     destinationCode: string,
-    fieldNames: string[]
+    fieldNames: string[],
   ): Promise<ClarificationQuestionDef[]> {
-    const config = await this.getConfig(destinationCode);
-    if (!config) {
-      return [];
-    }
-    
     const questions: ClarificationQuestionDef[] = [];
     const fieldNameSet = new Set(fieldNames);
-    
-    // 遍历所有轮次，查找匹配的问题
-    for (const round of config.clarificationRounds) {
-      for (const question of round.questions) {
-        if (question.metadata?.fieldName && fieldNameSet.has(question.metadata.fieldName)) {
-          questions.push(question);
+
+    // 🆕 交易货币：动态生成选项
+    if (fieldNameSet.has('currency')) {
+      try {
+        const supported = await this.countriesService.getSupportedCurrencies(destinationCode);
+        questions.push({
+          id: 'gl_currency',
+          question: '你希望用什么货币来规划预算？',
+          type: 'single_choice',
+          options: supported.map((c) => ({
+            value: c.code,
+            label: c.isLocal ? `${c.name}（当地）` : c.name,
+          })),
+          required: true,
+          metadata: { fieldName: 'currency', isCritical: true, category: 'budget', priority: 'high' },
+          default: 'CNY',
+        });
+      } catch (err: any) {
+        this.logger.warn(`获取目的地货币失败: ${err?.message}`);
+      }
+    }
+
+    const config = await this.getConfig(destinationCode);
+    if (config) {
+      for (const round of config.clarificationRounds) {
+        for (const question of round.questions) {
+          if (question.metadata?.fieldName && fieldNameSet.has(question.metadata.fieldName)) {
+            questions.push(question);
+          }
         }
       }
     }
-    
+
     return questions;
   }
 }

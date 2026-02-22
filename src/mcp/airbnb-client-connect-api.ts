@@ -57,7 +57,7 @@ export class AirbnbMcpClientConnectAPI {
       } else {
         // 首次连接：直接使用 createConnection，它会自动创建 connection 和 namespace
         const connectionOptions: any = {
-          mcpUrl: 'https://server.smithery.ai/geobio/mcp-server-airbnb',
+          mcpUrl: 'https://server.smithery.ai/iclickfreedownloads/mcp-server-airbnb',
         };
         
         // 只有在明确指定了 namespace 时才添加

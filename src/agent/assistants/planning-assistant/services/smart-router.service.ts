@@ -27,7 +27,8 @@ export type RoutingTarget =
   // 核心业务接口
   | 'recommendations' 
   | 'generate' 
-  | 'compare' 
+  | 'compare'
+  | 'optimize'      // 优化已有行程（需 tripId） 
   // 住宿相关
   | 'hotel'           // 酒店搜索
   | 'airbnb'          // Airbnb/民宿搜索
@@ -72,6 +73,18 @@ export interface RoutingResult {
   
   /** 路由原因（中文） */
   reasonCN?: string;
+}
+
+/**
+ * 路由时使用的会话状态
+ */
+export interface RouterSessionState {
+  phase?: string;
+  preferences?: Record<string, any>;
+  planCandidates?: Array<{ id: string }>;
+  selectedDestination?: string;
+  tripId?: string;   // 规划工作台：用户已有行程，应禁止推荐目的地
+  countryCode?: string;
 }
 
 /**
@@ -123,12 +136,7 @@ export class SmartRouterService {
    */
   async routeWithTools(
     message: string,
-    sessionState?: {
-      phase?: string;
-      preferences?: Record<string, any>;
-      planCandidates?: Array<{ id: string }>;
-      selectedDestination?: string;
-    }
+    sessionState?: RouterSessionState
   ): Promise<RoutingResult & { selectedTool?: McpToolDefinition; toolSelection?: ToolSelection }> {
     // 1. 先进行基础路由
     const routingResult = await this.route(message, sessionState);
@@ -147,6 +155,7 @@ export class SmartRouterService {
         routingResult.target !== 'recommendations' &&
         routingResult.target !== 'generate' &&
         routingResult.target !== 'compare' &&
+        routingResult.target !== 'optimize' &&
         this.toolRegistry && 
         this.toolSelector) {
       
@@ -216,14 +225,9 @@ export class SmartRouterService {
    */
   async route(
     message: string,
-    sessionState?: {
-      phase?: string;
-      preferences?: Record<string, any>;
-      planCandidates?: Array<{ id: string }>;
-      selectedDestination?: string; // 已选定的目的地
-    }
+    sessionState?: RouterSessionState
   ): Promise<RoutingResult> {
-    this.logger.debug(`智能路由分析: message="${message.substring(0, 50)}...", selectedDestination=${sessionState?.selectedDestination || 'none'}`);
+    this.logger.debug(`智能路由分析: message="${message.substring(0, 50)}...", selectedDestination=${sessionState?.selectedDestination || 'none'}, tripId=${sessionState?.tripId || 'none'}`);
 
     try {
       // 方法0: 先进行快速关键词检查（确保具体服务请求优先匹配）
@@ -240,7 +244,7 @@ export class SmartRouterService {
       const specificServiceTargets: RoutingTarget[] = [
         'hotel', 'airbnb', 'accommodation', 'restaurant', 
         'flight', 'rail', 'carRental', 'weather', 'search', 
-        'translate', 'currency', 'image'
+        'translate', 'currency', 'image', 'optimize'
       ];
       
       // 对于酒店搜索，降低置信度阈值，确保即使置信度稍低也能正确路由
@@ -254,7 +258,7 @@ export class SmartRouterService {
           `destination=${keywordResult.extractedParams?.destination || 'none'}, ` +
           `message="${message.substring(0, 30)}..."`
         );
-        return keywordResult;
+        return this.maybeOverrideRecommendationsForPlanningWorkbench(keywordResult, sessionState);
       }
 
       // 方法1: 使用LLM进行智能路由（如果可用）
@@ -270,7 +274,7 @@ export class SmartRouterService {
             if (specificServiceTargets.includes(llmResult.target) && 
                 llmResult.target === keywordResult.target) {
               this.logger.debug(`关键词路由与LLM路由一致，使用关键词结果: ${keywordResult.target}`);
-              return keywordResult;
+              return this.maybeOverrideRecommendationsForPlanningWorkbench(keywordResult, sessionState);
             }
             // 如果 LLM 路由到 recommendations 或其他非具体服务，但关键词路由匹配到具体服务，优先使用关键词路由
             if (!specificServiceTargets.includes(llmResult.target) || 
@@ -279,7 +283,7 @@ export class SmartRouterService {
                 `关键词路由优先级更高（${keywordResult.target}, confidence=${keywordResult.confidence}），` +
                 `覆盖LLM路由（${llmResult.target}, confidence=${llmResult.confidence}）`
               );
-              return keywordResult;
+              return this.maybeOverrideRecommendationsForPlanningWorkbench(keywordResult, sessionState);
             }
           }
           // 优先级规则2: 如果 LLM 路由到具体服务，且关键词也匹配到具体服务，优先使用关键词结果（更可靠）
@@ -287,15 +291,15 @@ export class SmartRouterService {
               specificServiceTargets.includes(keywordResult.target) &&
               keywordResult.confidence >= 0.8) {
             this.logger.debug(`关键词路由优先级更高，使用关键词结果: ${keywordResult.target}`);
-            return keywordResult;
+            return this.maybeOverrideRecommendationsForPlanningWorkbench(keywordResult, sessionState);
           }
-          return llmResult;
+          return this.maybeOverrideRecommendationsForPlanningWorkbench(llmResult, sessionState);
         }
         this.logger.debug(`LLM路由置信度较低(${llmResult?.confidence})，使用关键词路由`);
       }
 
       // 方法2: 关键词路由（回退方案）
-      return keywordResult;
+      return this.maybeOverrideRecommendationsForPlanningWorkbench(keywordResult, sessionState);
     } catch (error: any) {
       this.logger.warn(`智能路由失败: ${error.message}，使用默认路由`);
       return {
@@ -308,22 +312,40 @@ export class SmartRouterService {
   }
 
   /**
+   * 规划工作台场景：用户已有行程（tripId 存在）时，禁止推荐目的地。
+   * 用户询问当前目的地的问题（如「人多吗」「天气怎么样」）应走对话回答，而非推荐。
+   */
+  private maybeOverrideRecommendationsForPlanningWorkbench(
+    result: RoutingResult,
+    sessionState?: RouterSessionState
+  ): RoutingResult {
+    if (sessionState?.tripId && result.target === 'recommendations') {
+      this.logger.debug(
+        `[规划工作台] tripId=${sessionState.tripId} 存在，禁止推荐目的地，改为 chat`
+      );
+      return {
+        ...result,
+        target: 'chat',
+        reason: 'User has existing trip (planning workbench), answer question instead of recommending destinations',
+        reasonCN: '规划工作台场景，用户已有行程，应回答询问而非推荐目的地',
+      };
+    }
+    return result;
+  }
+
+  /**
    * 使用LLM进行智能路由
    */
   private async routeWithLLM(
     message: string,
-    sessionState?: {
-      phase?: string;
-      preferences?: Record<string, any>;
-      planCandidates?: Array<{ id: string }>;
-      selectedDestination?: string; // 已选定的目的地
-    }
+    sessionState?: RouterSessionState
   ): Promise<RoutingResult> {
     const contextInfo = sessionState
       ? `当前阶段: ${sessionState.phase || 'UNKNOWN'}
 已有偏好: ${JSON.stringify(sessionState.preferences || {})}
 已有方案数: ${sessionState.planCandidates?.length || 0}
-已选定的目的地: ${sessionState.selectedDestination || '无'}`
+已选定的目的地: ${sessionState.selectedDestination || '无'}
+规划工作台（用户已有行程）: ${sessionState.tripId ? '是，tripId=' + sessionState.tripId : '否'}`
       : '新会话';
 
     const prompt = `分析用户消息，判断应该路由到哪个接口。
@@ -351,14 +373,15 @@ ${contextInfo}
 - translate: 用户想要翻译（例如："翻译一下"、"这是什么意思"、"翻译成中文"）- 如果消息包含"翻译"、"translate"，优先路由到这里
 - currency: 用户想要货币转换（例如："汇率"、"货币转换"、"换算"、"美元换人民币"）- 如果消息包含"汇率"、"货币"、"换算"，优先路由到这里
 - image: 用户想要搜索图片（例如："找图片"、"图片搜索"、"看看图片"）- 如果消息包含"图片"、"image"，优先路由到这里
-- recommendations: 用户想要推荐目的地（例如："推荐一些目的地"、"我想去日本"、"有什么好玩的地方"）- **重要：如果会话中已选定目的地（selectedDestination不为空），绝对不应该路由到这里！应该路由到具体服务（如hotel、restaurant、carRental等）或chat。只有在用户明确要求推荐新目的地时才路由到这里。**
-- generate: 用户想要生成方案（例如："帮我规划行程"、"生成一个5天的方案"、"做个计划"）
+- recommendations: 用户想要推荐目的地（例如："推荐一些目的地"、"我想去日本"、"有什么好玩的地方"）- **重要：如果会话中已选定目的地（selectedDestination不为空）或规划工作台（tripId存在，用户已有行程），绝对不应该路由到这里！用户询问当前目的地的问题（如"冰岛春节人多吗"、"天气怎么样"）应路由到 chat 或 search。只有在用户明确说"推荐新目的地"、"换一个地方"、"还有什么其他选择"时才路由到 recommendations。**
+- optimize: **仅当 tripId 存在时**，用户想要优化已有行程（例如："帮我优化这个行程"、"优化行程"、"improve this trip"）- 与 generate 不同，optimize 是优化已有行程，不是生成新方案
+- generate: 用户想要生成新方案（例如："帮我规划行程"、"生成一个5天的方案"、"做个计划"）- **注意：若用户说"优化行程"且 tripId 存在，应路由到 optimize 而非 generate**
 - compare: 用户想要对比方案（例如："对比这两个方案"、"哪个更好"、"比较一下"）
 - chat: 其他对话、问答、闲聊（例如："你好"、"这是什么"、"谢谢"）
 
 返回JSON格式:
 {
-  "target": "recommendations" | "generate" | "compare" | "hotel" | "airbnb" | "accommodation" | "restaurant" | "flight" | "rail" | "carRental" | "weather" | "search" | "translate" | "currency" | "image" | "chat",
+  "target": "recommendations" | "generate" | "compare" | "optimize" | "hotel" | "airbnb" | "accommodation" | "restaurant" | "flight" | "rail" | "carRental" | "weather" | "search" | "translate" | "currency" | "image" | "chat",
   "confidence": 0.0-1.0,
   "reason": "路由原因（英文）",
   "reasonCN": "路由原因（中文）",
@@ -399,7 +422,7 @@ ${contextInfo}
 
       // 验证和规范化结果
       const validTargets: RoutingTarget[] = [
-        'recommendations', 'generate', 'compare', 
+        'recommendations', 'generate', 'compare', 'optimize',
         'hotel', 'airbnb', 'accommodation',
         'restaurant', 'flight', 'rail',
         'weather', 'search', 'translate', 'currency', 'image',
@@ -437,17 +460,27 @@ ${contextInfo}
    */
   private routeByKeywords(
     message: string,
-    sessionState?: {
-      phase?: string;
-      preferences?: Record<string, any>;
-      planCandidates?: Array<{ id: string }>;
-      selectedDestination?: string; // 已选定的目的地
-    }
+    sessionState?: RouterSessionState
   ): RoutingResult {
     const lowerMessage = message.toLowerCase();
     
     // 如果会话中有已选定的目的地，优先使用它
     const contextDestination = sessionState?.selectedDestination;
+
+    // 优化已有行程：tripId 存在且消息包含「优化」关键词 → 路由到 optimize（不走 generate）
+    const optimizeKeywords = ['优化', 'optimize', '优化行程', '优化这个行程', 'improve', '改进'];
+    if (sessionState?.tripId && optimizeKeywords.some(kw => lowerMessage.includes(kw))) {
+      return {
+        target: 'optimize',
+        confidence: 0.95,
+        reason: 'User wants to optimize existing trip',
+        reasonCN: '用户想要优化已有行程',
+        extractedParams: {
+          naturalLanguage: message,
+          tripId: sessionState.tripId,
+        },
+      };
+    }
     
     // Airbnb/民宿搜索关键词（优先级高于酒店）
     if (lowerMessage.includes('airbnb') || 
@@ -684,12 +717,12 @@ ${contextInfo}
     if (lowerMessage.includes('租车') || lowerMessage.includes('car rental') ||
         lowerMessage.includes('car hire') || lowerMessage.includes('租车推荐') ||
         lowerMessage.includes('推荐') && (lowerMessage.includes('租车') || lowerMessage.includes('租车公司'))) {
-      // 优先使用会话中的目的地
-      let destination = contextDestination;
+      // 优先使用会话中的目的地，其次使用 context.countryCode（如 IS、JP）
+      let destination = contextDestination || (sessionState?.countryCode as string | undefined);
       
       if (!destination) {
-        // 尝试从消息中提取目的地
-        destination = message.replace(/租车|car.*rental|car.*hire|推荐/gi, '').trim();
+        // 尝试从消息中提取目的地（移除"搜索"、"租车"、"的"、"推荐"等关键词）
+        destination = message.replace(/搜索|租车|car\s*rental|car\s*hire|推荐|的|找|查/gi, '').trim();
         if (!destination || destination.length === 0) {
           destination = message;
         }
@@ -698,11 +731,12 @@ ${contextInfo}
       return {
         target: 'carRental',
         confidence: 0.95, // 高置信度
-        reason: contextDestination ? `User wants to search for car rentals in ${contextDestination}` : 'User wants to search for car rentals',
-        reasonCN: contextDestination ? `用户想要搜索${contextDestination}的租车` : '用户想要搜索租车',
+        reason: destination ? `User wants to search for car rentals in ${destination}` : 'User wants to search for car rentals',
+        reasonCN: destination ? `用户想要搜索${destination}的租车` : '用户想要搜索租车',
         extractedParams: {
           naturalLanguage: message,
           destination: destination,
+          countryCode: sessionState?.countryCode,
         },
       };
     }
@@ -831,14 +865,15 @@ ${contextInfo}
       lowerMessage.includes('汇率') || lowerMessage.includes('货币') ||
       lowerMessage.includes('图片') || lowerMessage.includes('image');
     
-    // 如果用户已选定目的地，且没有匹配到具体服务，路由到chat而不是recommendations
-    if (contextDestination && !hasSpecificServiceKeyword && recommendKeywords.some(keyword => lowerMessage.includes(keyword))) {
-      this.logger.debug(`用户已选定目的地 ${contextDestination}，但消息包含推荐关键词，路由到chat而不是recommendations`);
+    // 如果用户已选定目的地或规划工作台（tripId存在），且没有匹配到具体服务，路由到chat而不是recommendations
+    const hasExistingTrip = !!(contextDestination || sessionState?.tripId);
+    if (hasExistingTrip && !hasSpecificServiceKeyword && recommendKeywords.some(keyword => lowerMessage.includes(keyword))) {
+      this.logger.debug(`用户已有行程（selectedDestination=${contextDestination || 'none'}, tripId=${sessionState?.tripId || 'none'}），路由到chat而不是recommendations`);
       return {
         target: 'chat',
         confidence: 0.7,
-        reason: `User has selected destination ${contextDestination}, route to chat for context-aware response`,
-        reasonCN: `用户已选定目的地${contextDestination}，路由到对话以提供上下文感知的回复`,
+        reason: `User has existing trip, route to chat for context-aware response`,
+        reasonCN: `用户已有行程，路由到对话以提供上下文感知的回复`,
         extractedParams: {
           naturalLanguage: message,
           destination: contextDestination,

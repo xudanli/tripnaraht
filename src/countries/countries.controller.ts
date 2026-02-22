@@ -132,6 +132,23 @@ export class CountriesController {
     }
   }
 
+  @Public()
+  @Get(':countryCode/supported-currencies')
+  @ApiOperation({
+    summary: '获取目的地支持的交易货币列表',
+    description: '用于澄清阶段让用户选择预算货币。返回本地货币 + 常用旅客货币（CNY/USD/EUR）',
+  })
+  @ApiParam({ name: 'countryCode', description: '国家代码（ISO 3166-1 alpha-2）', example: 'IS' })
+  @ApiResponse({ status: 200, description: '成功返回支持的货币列表', type: ApiSuccessResponseDto })
+  async getSupportedCurrencies(@Param('countryCode') countryCode: string) {
+    try {
+      const currencies = await this.countriesService.getSupportedCurrencies(countryCode);
+      return successResponse({ currencies });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get(':countryCode/currency-strategy')
   @ApiOperation({
     summary: '获取国家的货币策略',

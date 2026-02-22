@@ -171,6 +171,7 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
     isAuthorized: boolean;
     authorizationUrl?: string;
     connectionId?: string;
+    userInfo?: { displayName: string; connectionId: string; email?: string };
   }> {
     try {
       // 尝试加载保存的 connectionId
@@ -191,9 +192,11 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
       try {
         await testClient.connect();
         // 连接成功，已授权
+        const userInfo = await this.getConnectionUserInfo(savedConnectionId);
         return {
           isAuthorized: true,
           connectionId: savedConnectionId,
+          userInfo,
         };
       } catch (error: any) {
         // 连接失败，可能需要重新授权
@@ -258,9 +261,78 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
         throw error;
       }
     } catch (error: any) {
-      this.logger.error('Get authorization URL failed:', error);
+      if (error.message?.includes('Already authorized')) {
+        this.logger.debug('Already authorized, no auth URL needed');
+      } else {
+        this.logger.error('Get authorization URL failed:', error);
+      }
       throw error;
     }
+  }
+
+  /**
+   * 撤销授权（删除本地保存的 connectionId）
+   */
+  async revokeAuthorization(): Promise<void> {
+    if (fs.existsSync(this.connectionIdFile)) {
+      fs.unlinkSync(this.connectionIdFile);
+      this.logger.log('Airbnb authorization revoked');
+    }
+    // 断开当前客户端连接
+    if (this.client) {
+      try {
+        await this.client.disconnect();
+      } catch (e) {
+        this.logger.warn('Failed to disconnect client during revoke:', e);
+      }
+      this.client = null;
+    }
+  }
+
+  /**
+   * 获取连接用户信息（用于已连接时展示）
+   * geobio/mcp-server-airbnb 不暴露用户资料接口，返回 connectionId 作为标识
+   */
+  async getConnectionUserInfo(connectionId: string): Promise<{
+    displayName: string;
+    connectionId: string;
+    email?: string;
+  }> {
+    // 尝试从 Smithery API 获取连接详情（可能有 metadata）
+    try {
+      const { Smithery } = await import('@smithery/api');
+      const apiKey = process.env.SMITHERY_API_KEY;
+      if (apiKey) {
+        const smithery = new Smithery({ apiKey });
+        const { namespaces } = await smithery.namespaces.list();
+        for (const ns of namespaces) {
+          try {
+            const conn = await smithery.experimental.connect.connections.get(connectionId, {
+              namespace: ns.name,
+            });
+            const meta = conn.metadata as Record<string, unknown> | null;
+            const displayName =
+              (meta?.displayName as string) ??
+              (meta?.name as string) ??
+              (conn.name || 'Airbnb 账号');
+            const email = meta?.email as string | undefined;
+            return {
+              displayName: displayName !== connectionId ? displayName : 'Airbnb 账号',
+              connectionId,
+              ...(email && { email }),
+            };
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.debug('Could not fetch Smithery connection details:', (e as Error).message);
+    }
+    return {
+      displayName: 'Airbnb 账号',
+      connectionId,
+    };
   }
 
   /**
@@ -269,6 +341,7 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
   async verifyAuthorization(connectionId: string): Promise<{
     isAuthorized: boolean;
     message?: string;
+    userInfo?: { displayName: string; connectionId: string; email?: string };
   }> {
     try {
       const testClient = new AirbnbMcpClientConnectAPI(undefined, connectionId);
@@ -280,10 +353,11 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
         fs.mkdirSync(this.configDir, { recursive: true });
       }
       fs.writeFileSync(this.connectionIdFile, connectionId);
-      
+      const userInfo = await this.getConnectionUserInfo(connectionId);
       return {
         isAuthorized: true,
         message: '授权成功',
+        userInfo,
       };
     } catch (error: any) {
       if (error.message?.includes('OAuth authorization required')) {

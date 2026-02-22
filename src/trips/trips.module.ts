@@ -39,9 +39,11 @@ import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 import { PlacesModule } from '../places/places.module';
 import { DestinationClarificationModule } from './nl-clarification/destination-clarification.module';
 import { BookingComModule } from '../mcp/booking-com.module';
+import { DecisionKernelModule } from '../decision/decision-kernel.module';
+import { TransportModule } from '../transport/transport.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule], // 必需：TripsService 需要 DecisionLogStorageService, TripsController 需要 JwtService, NLConversationContextService 需要 RedisService, ContextEngineerService 用于构建 Context Package, DecisionDraftModule 用于生成决策草案, PlacesModule 用于酒店推荐（使用 forwardRef 避免循环依赖：TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule，以及 TripsModule -> PlacesModule -> RagModule -> SkillsModule -> TripsModule），DestinationClarificationModule 用于目的地特化澄清，BookingComModule 用于租车成本估算和需求检查
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule], // 必需：TripsService 需要 DecisionLogStorageService, TripsController 需要 JwtService, NLConversationContextService 需要 RedisService, ContextEngineerService 用于构建 Context Package, DecisionDraftModule 用于生成决策草案, PlacesModule 用于酒店推荐（使用 forwardRef 避免循环依赖：TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule，以及 TripsModule -> PlacesModule -> RagModule -> SkillsModule -> TripsModule），DestinationClarificationModule 用于目的地特化澄清，BookingComModule 用于租车成本估算和需求检查
   controllers: [TripsController],
   providers: [
     TripsService, 

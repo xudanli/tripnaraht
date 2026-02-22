@@ -90,13 +90,22 @@ export class CreateTripDto {
   endDate!: string;
 
   @ApiProperty({
-    description: '总预算（单位：人民币 CNY）',
+    description: '总预算金额',
     example: 20000,
     minimum: 0,
     type: Number
   })
   @IsNumber({}, { message: 'totalBudget 必须是数字' })
   totalBudget!: number;
+
+  @ApiPropertyOptional({
+    description: '交易货币（ISO 4217，如 CNY/USD/EUR/ISK）。未提供时默认 CNY',
+    example: 'CNY',
+    enum: ['CNY', 'USD', 'EUR', 'JPY', 'ISK', 'NOK', 'SEK', 'DKK', 'GBP'],
+  })
+  @IsOptional()
+  @IsString({ message: 'currency 必须是字符串' })
+  currency?: string;
 
   @ApiProperty({
     description: '旅行者列表',

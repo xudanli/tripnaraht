@@ -41,6 +41,12 @@ export class RequestContextDto {
   @IsOptional()
   @IsString()
   countryCode?: string;
+
+  /** 用户国籍/偏好国家代码，用于住宿等数据按对应语言展示（如 CN→中文、JP→日文） */
+  @ApiPropertyOptional({ description: '用户国籍（用于住宿数据语言，如 CN→zh、JP→ja）', example: 'CN' })
+  @IsOptional()
+  @IsString()
+  userCountryCode?: string;
 }
 
 /**

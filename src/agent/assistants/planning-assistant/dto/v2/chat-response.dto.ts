@@ -14,6 +14,7 @@ export type RoutingTarget =
   | 'recommendations' 
   | 'generate' 
   | 'compare' 
+  | 'optimize'
   | 'hotel' 
   | 'airbnb' 
   | 'accommodation'
@@ -35,7 +36,7 @@ export class RoutingInfoDto {
   @ApiProperty({ 
     description: '目标接口',
     enum: [
-      'recommendations', 'generate', 'compare',
+      'recommendations', 'generate', 'compare', 'optimize',
       'hotel', 'airbnb', 'accommodation',
       'restaurant', 'flight', 'rail', 'carRental',
       'weather', 'search', 'translate', 'currency', 'image',
@@ -168,4 +169,37 @@ export class ChatResponseDto {
     description: '图片列表（当路由到图片搜索接口时包含）'
   })
   images?: any[];
+
+  /** 编排进度（用于展示可折叠「编排进度」卡片，方案 A：来自 route_and_run） */
+  @ApiPropertyOptional({
+    description: '编排进度（用于展示可折叠进度卡片）',
+    example: {
+      phase: 'PLAN_GEN',
+      progress_percent: 75,
+      message: '正在生成行程...',
+      requires_user_action: false,
+      current_step_detail: '生成详细的行程安排，包括时间、地点、交通方式',
+    },
+  })
+  ui_state?: {
+    phase?: string;
+    ui_status?: string;
+    progress_percent?: number;
+    message?: string;
+    requires_user_action?: boolean;
+    estimated_time_remaining_ms?: number;
+    current_step_detail?: string;
+  };
+
+  /** 编排结果（gate_result、state、decision_log 等，用于 RLHF/分析/调试） */
+  @ApiPropertyOptional({
+    description: '编排结果（gate_result、decision_log 等）',
+  })
+  orchestrationResult?: {
+    state?: Record<string, unknown>;
+    gate_result?: Record<string, unknown>;
+    decision_log?: unknown[];
+    itinerary?: { days?: unknown[] };
+    decisionState?: Record<string, unknown>;
+  };
 }

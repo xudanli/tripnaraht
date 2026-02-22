@@ -1449,7 +1449,7 @@ export class RouteDirectionsService {
           status: 'PLANNING', // 显式设置状态，确保行程可以显示在列表中
           budgetConfig: {
             totalBudget: dto.totalBudget || 0,
-            currency: 'CNY',
+            currency: dto.currency || 'CNY',
           } as any,
           pacingConfig: {
             pacePreference: dto.pacePreference || template.defaultPacePreference || 'BALANCED',
@@ -1651,6 +1651,26 @@ export class RouteDirectionsService {
               startTime = templateStartTime;
               endTime = templateEndTime;
             }
+            // 🆕 即使使用模板时间，也需确保不早于「前一景点结束 + 路程 + 缓冲」，否则会出现活动间歇为 0 的异常
+            const currentPlaceCoords = candidateCoordsMap.get(slotData.placeId);
+            if (previousItemEndTime && previousPlaceCoords && currentPlaceCoords) {
+              const travelTimeMinutes = this.calculateTravelTimeBetweenPlaces(
+                previousPlaceCoords,
+                currentPlaceCoords
+              );
+              const bufferMinutes = 15;
+              const earliestStart = new Date(
+                previousItemEndTime.getTime() + (travelTimeMinutes + bufferMinutes) * 60 * 1000
+              );
+              if (startTime < earliestStart) {
+                const durationMs = endTime.getTime() - startTime.getTime();
+                startTime = new Date(earliestStart.getTime());
+                endTime = new Date(startTime.getTime() + durationMs);
+                this.logger.debug(
+                  `行程时间调整: 考虑路程 ${travelTimeMinutes}min，将开始时间从模板时间延后至 ${startTime.toISOString()}`
+                );
+              }
+            }
           } else {
             // 模板中没有提供时间，使用计算逻辑（考虑交通时间）
             const slotDefaultTime = this.calculateSlotTime(dayDate, slot);
@@ -1707,6 +1727,11 @@ export class RouteDirectionsService {
               }
             }
           }
+
+          // 🆕 日照约束：户外景点（瀑布、冰川等）不得安排在日落后，高纬度冬季尤为重要
+          const clamped = this.clampToDaylight(startTime, endTime, dayDate, countryCode, candidate.category);
+          startTime = clamped.startTime;
+          endTime = clamped.endTime;
 
           // 构建note，包含reason和isRequired信息
           let note = slotData.reason || null;
@@ -2564,6 +2589,74 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
 请为每一天的每个时段（morning, lunch, afternoon, dinner, evening）选择一个合适的 placeId。
 必须从候选地点列表中选择，不能使用列表外的 placeId。
 `;
+  }
+
+  /**
+   * 获取指定日期、目的地的近似日出日落时间（小时，0-24）
+   * 用于高纬度冬季目的地，避免将户外景点安排在日落后
+   */
+  private getDaylightBoundaries(dayDate: Date, countryCode: string): { sunriseHour: number; sunsetHour: number } {
+    const month = dayDate.getMonth() + 1; // 1-12
+    const code = (countryCode || '').toUpperCase();
+    // 高纬度目的地（冰岛、格陵兰、挪威北部等）冬季日照极短
+    const highLatWinter: Record<string, Record<number, { sunrise: number; sunset: number }>> = {
+      IS: { 1: { sunrise: 10.5, sunset: 16 }, 2: { sunrise: 9, sunset: 17.5 }, 3: { sunrise: 7, sunset: 18.5 }, 11: { sunrise: 8.5, sunset: 16.5 }, 12: { sunrise: 10, sunset: 16 } },
+      GL: { 1: { sunrise: 11, sunset: 15 }, 2: { sunrise: 9.5, sunset: 16.5 }, 3: { sunrise: 7.5, sunset: 18 }, 11: { sunrise: 8, sunset: 16 }, 12: { sunrise: 10.5, sunset: 15 } },
+      SJ: { 1: { sunrise: 10, sunset: 14 }, 2: { sunrise: 8, sunset: 16 }, 3: { sunrise: 6, sunset: 18 }, 11: { sunrise: 7, sunset: 15 }, 12: { sunrise: 10, sunset: 14 } },
+      NO: { 1: { sunrise: 9.5, sunset: 15.5 }, 2: { sunrise: 8, sunset: 17 }, 3: { sunrise: 6.5, sunset: 18.5 }, 11: { sunrise: 7.5, sunset: 16 }, 12: { sunrise: 9, sunset: 15 } },
+    };
+    const bounds = highLatWinter[code]?.[month];
+    if (bounds) {
+      return { sunriseHour: bounds.sunrise, sunsetHour: bounds.sunset };
+    }
+    // 默认中纬度：冬季约 7:00-17:00
+    if (month >= 11 || month <= 2) {
+      return { sunriseHour: 7, sunsetHour: 17 };
+    }
+    return { sunriseHour: 6, sunsetHour: 20 }; // 其他季节日照充足
+  }
+
+  /**
+   * 判断 POI 类别是否需要日光（户外自然景观：瀑布、冰川、观景点等）
+   */
+  private needsDaylight(category: string): boolean {
+    return (category || '').toUpperCase() === 'ATTRACTION';
+  }
+
+  /**
+   * 将户外景点的时间窗限制在日照范围内
+   */
+  private clampToDaylight(
+    startTime: Date,
+    endTime: Date,
+    dayDate: Date,
+    countryCode: string,
+    category: string
+  ): { startTime: Date; endTime: Date } {
+    if (!this.needsDaylight(category)) return { startTime, endTime };
+    const { sunriseHour, sunsetHour } = this.getDaylightBoundaries(dayDate, countryCode);
+    const sunsetMinutes = Math.floor(sunsetHour) * 60 + Math.round((sunsetHour % 1) * 60);
+    const sunriseMinutes = Math.floor(sunriseHour) * 60 + Math.round((sunriseHour % 1) * 60);
+    const dayStart = new Date(dayDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const sunsetTime = new Date(dayStart.getTime() + sunsetMinutes * 60 * 1000);
+    const sunriseTime = new Date(dayStart.getTime() + sunriseMinutes * 60 * 1000);
+    if (startTime >= sunsetTime) {
+      const durationMs = endTime.getTime() - startTime.getTime();
+      const newEnd = new Date(sunsetTime.getTime());
+      const newStart = new Date(newEnd.getTime() - durationMs);
+      if (newStart < sunriseTime) {
+        newStart.setTime(sunriseTime.getTime());
+      }
+      this.logger.debug(`日照约束: ${category} 原 ${startTime.toISOString()} 调整至 ${newStart.toISOString()}-${newEnd.toISOString()} (日落约${sunsetHour.toFixed(1)}时)`);
+      return { startTime: newStart, endTime: newEnd };
+    }
+    if (endTime > sunsetTime) {
+      const newEnd = new Date(sunsetTime.getTime());
+      this.logger.debug(`日照约束: ${category} 结束时间 ${endTime.toISOString()} 调整至日落前 ${newEnd.toISOString()}`);
+      return { startTime, endTime: newEnd };
+    }
+    return { startTime, endTime };
   }
 
   /**

@@ -74,10 +74,18 @@ export class CreateTripFromRouteTemplateDto {
   @IsDateString()
   endDate!: string;
 
-  @ApiPropertyOptional({ description: '总预算（元）', example: 50000 })
+  @ApiPropertyOptional({ description: '总预算', example: 50000 })
   @IsOptional()
   @IsNumber()
   totalBudget?: number;
+
+  @ApiPropertyOptional({
+    description: '交易货币（ISO 4217，如 CNY/USD/EUR/ISK）。未提供时默认 CNY',
+    example: 'CNY',
+  })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   @ApiPropertyOptional({
     enum: ['RELAXED', 'BALANCED', 'CHALLENGE'],

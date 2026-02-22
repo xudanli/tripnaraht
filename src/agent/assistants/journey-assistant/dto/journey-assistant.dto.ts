@@ -341,6 +341,9 @@ export class JourneyStateDto {
 
   @ApiProperty({ description: '最后更新时间' })
   lastUpdated!: string;
+
+  @ApiPropertyOptional({ description: '行程是否已完成' })
+  isCompleted?: boolean;
 }
 
 /**
@@ -386,6 +389,33 @@ export class SearchResultsDto {
 }
 
 /**
+ * 快捷操作项
+ */
+export class QuickActionItemDto {
+  @ApiProperty({ description: '唯一标识' })
+  id!: string;
+
+  @ApiProperty({ description: '按钮显示文案' })
+  label!: string;
+
+  @ApiProperty({ description: '点击后发送给助手的提示词' })
+  prompt!: string;
+
+  @ApiPropertyOptional({ description: '图标名', enum: ['utensils', 'coffee', 'shopping', 'hospital'] })
+  @IsOptional()
+  @IsString()
+  icon?: string;
+}
+
+/**
+ * 快捷操作列表响应
+ */
+export class QuickActionsResponseDto {
+  @ApiProperty({ description: '快捷操作列表', type: [QuickActionItemDto] })
+  items!: QuickActionItemDto[];
+}
+
+/**
  * 行程助手响应
  */
 export class JourneyAssistantResponseDto {
@@ -415,4 +445,7 @@ export class JourneyAssistantResponseDto {
 
   @ApiPropertyOptional({ description: '建议操作', type: [JourneySuggestedActionDto] })
   suggestedActions?: JourneySuggestedActionDto[];
+
+  @ApiPropertyOptional({ description: '是否需要用户位置（找医院/药店时若未提供坐标则返回，前端应请求定位后重试）' })
+  needsLocation?: boolean;
 }

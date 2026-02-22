@@ -18,6 +18,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PlanningWorkbenchAgentService } from '../services/planning-workbench-agent.service';
 import { ExecutionAgentService } from '../services/execution-agent.service';
 import { TripDetailAgentService } from '../services/trip-detail-agent.service';
@@ -140,6 +141,7 @@ export class CoreGatewayService {
   private actionStats: Record<string, { count: number; totalDurationMs: number; failures: number }> = {};
 
   constructor(
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly planningWorkbench?: PlanningWorkbenchAgentService,
     @Optional() private readonly executionAgent?: ExecutionAgentService,
     @Optional() private readonly tripDetailAgent?: TripDetailAgentService,
@@ -438,7 +440,16 @@ export class CoreGatewayService {
     budget: ActionBudget,
     traceId: string,
   ): Promise<T> {
-    if (!this.executionAgent) {
+    // 优先使用构造函数注入；若因循环依赖未注入，则运行时通过 ModuleRef 解析
+    let executionAgent = this.executionAgent;
+    if (!executionAgent) {
+      try {
+        executionAgent = this.moduleRef.get(ExecutionAgentService, { strict: false });
+      } catch {
+        executionAgent = undefined;
+      }
+    }
+    if (!executionAgent) {
       this.logger.warn(`[${traceId}] ExecutionAgent 不可用，返回默认响应`);
       return this.getDefaultExecutionResponse(action) as T;
     }
@@ -446,7 +457,7 @@ export class CoreGatewayService {
     const payload = action.payload as Record<string, any>;
 
     // 调用 ExecutionAgent
-    const response = await this.executionAgent.execute({
+    const response = await executionAgent.execute({
       tripId: action.context.sessionId,
       action: this.mapActionToExecAction(action.type),
       changeParams: action.type === 'applyChangeIntent' ? {

@@ -38,7 +38,7 @@ export const ALPS_CONFIG_TEMPLATE: DestinationClarificationConfig = {
         // 基础问题由通用流程处理，这里可以为空或添加特化问题
       ],
       completionConditions: {
-        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget'],
+        requiredFields: ['destination', 'startDate', 'endDate', 'totalBudget', 'currency'],
       },
       priority: 1,
     },

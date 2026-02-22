@@ -721,12 +721,12 @@ export class DecisionController {
         return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintConflictResolver 不可用');
       }
 
-      if (!body.constraints) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, 'constraints 是必需的参数');
-      }
+      // 🆕 修复：constraints 缺失时使用空对象，返回无冲突结果，避免前端在行程创建/澄清阶段报错
+      // 场景：自然语言创建行程的澄清阶段尚无 plan/constraints，前端可能预请求冲突检测
+      const constraints = body.constraints ?? {};
 
       const conflictResult = await this.conflictResolver.detectAndExplainConflicts(
-        body.constraints as any,
+        constraints as any,
         body.plan || null,
         body.state || ({} as TripWorldState)
       );

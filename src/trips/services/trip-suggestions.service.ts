@@ -441,6 +441,12 @@ export class TripSuggestionsService {
           fatigueDelta -= 2; // 可能略微改善疲劳
           costDelta += 100; // 可能涉及添加住宿，费用增加
           break;
+        case 'TRANSPORT_INSUFFICIENT':
+          // 交通时间不足：增加缓冲、可能改善疲劳
+          bufferDelta += 60; // 需增加交通/缓冲时间
+          fatigueDelta -= 2; // 减少赶路压力
+          costDelta += 50; // 可能涉及交通方式调整
+          break;
         default:
           // 默认：使用保守的估算值
           fatigueDelta -= 5;
@@ -576,6 +582,69 @@ export class TripSuggestionsService {
         } catch (error: any) {
           this.logger.warn(`解决时间冲突失败: ${error.message}`, error.stack);
           // 继续执行，至少更新建议状态
+        }
+      }
+    }
+
+    // 交通时间不足或缓冲不足：将下一活动延后 shortfallMinutes
+    if (
+      (conflictType === 'TRANSPORT_INSUFFICIENT' || conflictType === 'BUFFER_INSUFFICIENT') &&
+      suggestion.metadata?.conflict &&
+      this.itineraryItemsService
+    ) {
+      const conflict = suggestion.metadata.conflict as ConflictDto;
+      const shiftMinutes = conflict.shortfallMinutes ?? 15;
+      const affectedItemIds = conflict.affectedItemIds || [];
+
+      if (affectedItemIds.length >= 2 && shiftMinutes > 0) {
+        try {
+          const items = await Promise.all(
+            affectedItemIds.map((id) =>
+              this.prisma.itineraryItem.findUnique({
+                where: { id },
+                include: { TripDay: true },
+              }),
+            ),
+          );
+          const validItems = items.filter((item): item is NonNullable<typeof item> => item !== null);
+
+          if (validItems.length >= 2) {
+            validItems.sort((a, b) => {
+              if (!a.startTime || !b.startTime) return 0;
+              return a.startTime.getTime() - b.startTime.getTime();
+            });
+            const firstItem = validItems[0];
+            const secondItem = validItems[1];
+
+            if (firstItem.endTime && secondItem.startTime) {
+              const firstEnd = DateTime.fromJSDate(firstItem.endTime);
+              const secondStart = DateTime.fromJSDate(secondItem.startTime);
+              const newStartTime = firstEnd.plus({ minutes: shiftMinutes });
+              const originalDuration = secondItem.endTime
+                ? DateTime.fromJSDate(secondItem.endTime).diff(secondStart, 'minutes').minutes
+                : 120;
+              const newEndTime = newStartTime.plus({ minutes: originalDuration });
+
+              await this.itineraryItemsService.update(secondItem.id, {
+                startTime: newStartTime.toISO(),
+                endTime: newEndTime.toISO(),
+                cascadeMode: 'auto',
+              });
+
+              appliedChanges.push({
+                type: 'time_adjustment',
+                description:
+                  conflictType === 'TRANSPORT_INSUFFICIENT'
+                    ? `已延后活动 ${shiftMinutes} 分钟，解决交通时间不足`
+                    : `已增加缓冲时间 ${shiftMinutes} 分钟`,
+              });
+              this.logger.debug(
+                `已解决${conflictType}: 调整了行程项 ${secondItem.id}，延后 ${shiftMinutes} 分钟`,
+              );
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`解决${conflictType}失败: ${error.message}`, error.stack);
         }
       }
     }
@@ -857,7 +926,7 @@ export class TripSuggestionsService {
     let persona: SuggestionPersona = SuggestionPersona.DR_DRE;
     if (conflict.type === 'CLOSURE_RISK' || conflict.type === 'ACCESSIBILITY_MISMATCH') {
       persona = SuggestionPersona.ABU;
-    } else if (conflict.type === 'FATIGUE_EXCEEDED' || conflict.type === 'BUFFER_INSUFFICIENT') {
+    } else if (conflict.type === 'FATIGUE_EXCEEDED' || conflict.type === 'BUFFER_INSUFFICIENT' || conflict.type === 'TRANSPORT_INSUFFICIENT') {
       persona = SuggestionPersona.DR_DRE;
     }
 
@@ -903,13 +972,8 @@ export class TripSuggestionsService {
           conflictType: conflict.type,
           affectedItemIds: conflict.affectedItemIds,
           conflict: {
-            // 传递完整的冲突信息，包括overlapMinutes
-            id: conflict.id,
-            type: conflict.type,
-            severity: conflict.severity,
-            overlapMinutes: conflict.overlapMinutes, // 时间冲突的重叠时间（分钟）
-            affectedDays: conflict.affectedDays,
-            affectedItemIds: conflict.affectedItemIds,
+            ...conflict,
+            // 时间冲突：overlapMinutes；交通冲突：travelTimeMinutes, shortfallMinutes 等
           },
         },
       };

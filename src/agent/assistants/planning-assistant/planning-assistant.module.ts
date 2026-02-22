@@ -7,7 +7,7 @@
  * - PlanningAssistant 只负责对话体验，通过 CoreGateway 触发核心动作
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PlanningAssistantService } from './services/planning-assistant.service';
@@ -43,6 +43,9 @@ import { RailDirectModule } from '../../../mcp/rail-direct.module';
 import { TransitousDirectModule } from '../../../mcp/transitous-direct.module';
 import { BookingComModule } from '../../../mcp/booking-com.module';
 import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
+import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
+import { AgentModule } from '../../agent.module';
+import { TripsModule } from '../../../trips/trips.module';
 
 // 根据环境变量调整限流配置
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -62,6 +65,7 @@ const throttlerConfig = disableThrottler
     LlmModule,
     PrismaModule, // 提供PrismaService
     SharedAssistantsModule,
+    forwardRef(() => AgentModule), // 方案 A: 注入 AgentService 用于 route_and_run 编排
     AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway, TaskService)
     CacheModule, // 通用缓存模块
     HotelDirectModule, // 酒店搜索服务
@@ -81,6 +85,8 @@ const throttlerConfig = disableThrottler
     TransitousDirectModule, // Transitous MOTIS API（欧洲 fallback，55+ 国 GTFS）
     BookingComModule, // Booking.com 租车服务
     GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
+    ItineraryItemsModule, // 行程项服务（用于「提取攻略中的景点加入行程」）
+    forwardRef(() => TripsModule), // 方案2：ExecutionAgent 不可用时，TripSuggestionsService 作为优化降级
   ],
   controllers: [
     PlanningAssistantController, // V1 接口（保留，向后兼容）

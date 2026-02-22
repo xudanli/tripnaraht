@@ -10,6 +10,7 @@ import {
   HandleEventRequestDto,
   AdjustScheduleRequestDto,
   JourneyAssistantResponseDto,
+  QuickActionsResponseDto,
 } from './dto/journey-assistant.dto';
 
 @ApiTags('行程助手智能体')
@@ -47,6 +48,26 @@ export class JourneyAssistantController {
         timezone: dto.context.timezone,
       } : undefined,
     });
+  }
+
+  /**
+   * 获取快捷操作
+   */
+  @Public()
+  @Get('trips/:tripId/quick-actions')
+  @ApiOperation({
+    summary: '获取快捷操作',
+    description: '根据行程目的地、用户偏好等返回个性化快捷操作按钮',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: QuickActionsResponseDto,
+  })
+  async getQuickActions(
+    @Param('tripId') tripId: string,
+  ): Promise<QuickActionsResponseDto> {
+    return await this.journeyAssistantService.getQuickActions(tripId);
   }
 
   /**
@@ -219,7 +240,7 @@ export class JourneyAssistantController {
   ): Promise<JourneyAssistantResponseDto> {
     const searchMessage = dto.message || '附近有什么好吃的';
     return await this.journeyAssistantService.handle({
-      action: 'chat',
+      action: 'nearby',
       tripId: dto.tripId,
       userId: dto.userId,
       message: searchMessage,

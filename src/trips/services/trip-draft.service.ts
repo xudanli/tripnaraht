@@ -26,6 +26,7 @@ import {
 } from '../dto/trip-draft.dto';
 import { ItemType } from '../../itinerary-items/dto/create-itinerary-item.dto';
 import { PlaceCategory } from '@prisma/client';
+import type { ContextBlock } from '../../agent/context-engine/types/context-package.types';
 
 /**
  * 候选地点信息（用于 LLM 编排）
@@ -75,6 +76,7 @@ export class TripDraftService {
    * 生成行程草案
    * @param dto 行程草案创建参数
    * @param onProgress 进度回调函数（可选）
+   * @param contextBlocks 上下文块（可选，来自 ContextEngineerService，用于增强 LLM 编排）
    */
   async generateDraft(
     dto: CreateTripDraftDto,
@@ -83,7 +85,8 @@ export class TripDraftService {
       stage: string;
       message: string;
       itemsCount?: number;
-    }) => Promise<void>
+    }) => Promise<void>,
+    contextBlocks?: ContextBlock[]
   ): Promise<TripDraftResponseDto> {
     const startTime = Date.now();
 
@@ -113,9 +116,9 @@ export class TripDraftService {
     // Step 2: 构建日期列表
     const days = this.buildDayList(dto);
 
-    // Step 3: LLM 编排选择
-    this.logger.log(`使用 LLM 从 ${candidates.length} 个候选中编排 ${dto.days} 天行程`);
-    const llmResult = await this.llmOrchestrate(dto, candidates, days, onProgress);
+    // Step 3: LLM 编排选择（可选注入 Context 上下文，专利方案 C 增强）
+    this.logger.log(`使用 LLM 从 ${candidates.length} 个候选中编排 ${dto.days} 天行程${contextBlocks?.length ? `（含 ${contextBlocks.length} 个上下文块）` : ''}`);
+    const llmResult = await this.llmOrchestrate(dto, candidates, days, onProgress, contextBlocks);
 
     // Step 4: 规则校验和修复
     const validationWarnings: string[] = [];
@@ -286,6 +289,52 @@ export class TripDraftService {
   }
 
   /**
+   * 获取替换项的路线锚点（前后行程项的中点），用于「距离太远」时筛选更近的替代
+   */
+  private async getRouteAnchorForItem(
+    tripDayId: string,
+    itemId: string
+  ): Promise<{ lat: number; lng: number } | null> {
+    const items = await this.prisma.$queryRaw<Array<{ id: string; placeId: number | null }>>`
+      SELECT ii.id, ii."placeId"
+      FROM "ItineraryItem" ii
+      WHERE ii."tripDayId" = ${tripDayId}
+      ORDER BY ii."startTime" ASC NULLS LAST
+    `;
+    const idx = items.findIndex(i => i.id === itemId);
+    if (idx < 0) return null;
+
+    const prevPlaceId = idx > 0 ? items[idx - 1].placeId : null;
+    const nextPlaceId = idx < items.length - 1 ? items[idx + 1].placeId : null;
+    const placeIds = [prevPlaceId, nextPlaceId].filter((id): id is number => id != null);
+    if (placeIds.length === 0) return null;
+
+    const coords = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+      SELECT ST_Y(location::geometry)::float as lat, ST_X(location::geometry)::float as lng
+      FROM "Place"
+      WHERE id IN (${Prisma.join(placeIds)}) AND location IS NOT NULL
+    `;
+    if (coords.length === 0) return null;
+    const lat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+    const lng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+    return { lat, lng };
+  }
+
+  /** Haversine 距离（米） */
+  private haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /**
    * 根据风格获取类别过滤
    * 
    * 注意：默认情况下包含 ATTRACTION 和 RESTAURANT，但不包含 HOTEL
@@ -341,10 +390,11 @@ export class TripDraftService {
       stage: string;
       message: string;
       itemsCount?: number;
-    }) => Promise<void>
+    }) => Promise<void>,
+    contextBlocks?: ContextBlock[]
   ): Promise<any> {
-    // 构建 LLM Prompt
-    const prompt = this.buildOrchestrationPrompt(dto, candidates, days);
+    // 构建 LLM Prompt（可选注入 Context 上下文）
+    const prompt = this.buildOrchestrationPrompt(dto, candidates, days, contextBlocks);
 
     // 定义输出 Schema（避免使用 $ref，直接在 properties 中定义）
     const slotItemSchema = {
@@ -455,11 +505,13 @@ export class TripDraftService {
 
   /**
    * 构建编排 Prompt
+   * @param contextBlocks 可选，来自 ContextEngineerService 的上下文块（签证、道路规则、安全、天气等）
    */
   private buildOrchestrationPrompt(
     dto: CreateTripDraftDto,
     candidates: CandidatePlace[],
-    days: Array<{ day: number; date: string }>
+    days: Array<{ day: number; date: string }>,
+    contextBlocks?: ContextBlock[]
   ): string {
     const candidatesJson = JSON.stringify(
       candidates.slice(0, 150), // 限制候选数量，避免 token 过多
@@ -467,7 +519,20 @@ export class TripDraftService {
       2
     );
 
-    return `你是一个专业的旅行规划助手。请根据用户需求和候选地点，为 ${dto.days} 天的行程安排每天的时段活动。
+    const contextSection =
+      contextBlocks && contextBlocks.length > 0
+        ? `## 目的地相关上下文（供参考）
+${contextBlocks
+  .filter((b) => b.visibility === 'public')
+  .sort((a, b) => b.priority - a.priority)
+  .map((b) => `### ${b.key}\n${b.text}`)
+  .join('\n\n')}
+
+---
+`
+        : '';
+
+    return `${contextSection}你是一个专业的旅行规划助手。请根据用户需求和候选地点，为 ${dto.days} 天的行程安排每天的时段活动。
 
 用户需求：
 - 目的地：${dto.destination}
@@ -1022,9 +1087,15 @@ ${candidatesJson}
       // 找更轻松的地点
       constraints.maxDuration = 60; // 最多1小时
     } else if (dto.reason === 'too_far') {
-      constraints.maxDistance = dto.constraints?.maxDistance || 5000; // 默认5km
+      constraints.maxDistance = dto.constraints?.maxDistance ?? 50000; // 默认 50km（米）
     } else if (dto.reason === 'change_style' && dto.preferredStyle) {
       // 根据新风格检索
+    }
+
+    // 距离太远时：获取 route anchor（前后行程项的中点），用于过滤和排序
+    let routeAnchor: { lat: number; lng: number } | null = null;
+    if (dto.reason === 'too_far') {
+      routeAnchor = await this.getRouteAnchorForItem(currentItem.tripDayId, itemId);
     }
 
     // 检索候选：优先同城市，如果不够再扩展到同国家
@@ -1072,25 +1143,53 @@ ${candidatesJson}
       this.logger.log(`合并后候选数量: ${candidates.length} (同城市: ${sameCityCount}, 其他城市: ${otherCityCandidates.length})`);
     }
 
-    // 过滤候选（排除当前地点）
-    const filteredCandidates = candidates.filter(c => c.id !== currentItem.placeId);
+    // 获取当日行程中已有的 placeId，排除重复
+    const existingPlaceIds = await this.prisma.itineraryItem.findMany({
+      where: { tripDayId: currentItem.tripDayId },
+      select: { placeId: true },
+    }).then(items => new Set(items.map(i => i.placeId).filter((id): id is number => id != null)));
 
-    if (filteredCandidates.length === 0) {
-      throw new NotFoundException('找不到合适的替代地点');
+    // 过滤候选：同类型 + 排除当前地点 + 排除当日已有
+    const originalCategory = currentItem.Place.category;
+    let filteredCandidates = candidates.filter(
+      c =>
+        c.category === originalCategory &&
+        c.id !== currentItem.placeId &&
+        !existingPlaceIds.has(c.id)
+    );
+
+    // 距离太远时：仅保留在 route anchor 附近（maxDistance 米内）的候选，并按距离排序
+    if (dto.reason === 'too_far' && routeAnchor && constraints.maxDistance) {
+      const maxDistM = constraints.maxDistance;
+      filteredCandidates = filteredCandidates
+        .map(c => ({
+          ...c,
+          _distToRoute: this.haversineMeters(routeAnchor!.lat, routeAnchor!.lng, c.lat, c.lng),
+        }))
+        .filter(c => c._distToRoute <= maxDistM)
+        .sort((a, b) => a._distToRoute - b._distToRoute);
+      this.logger.log(`距离太远：过滤后候选 ${filteredCandidates.length} 个（距路线 ${maxDistM / 1000}km 内）`);
     }
 
-    // 排序：优先同城市，然后按评分排序
-    const sortedCandidates = filteredCandidates.sort((a, b) => {
-      const aIsSameCity = sameCityIds.has(a.id);
-      const bIsSameCity = sameCityIds.has(b.id);
-      
-      // 同城市的优先
-      if (aIsSameCity && !bIsSameCity) return -1;
-      if (!aIsSameCity && bIsSameCity) return 1;
-      
-      // 同城市或都不同城市时，按评分排序
-      return (b.rating || 0) - (a.rating || 0);
-    });
+    if (filteredCandidates.length === 0) {
+      throw new NotFoundException(
+        dto.reason === 'too_far'
+          ? '附近没有找到同类型的更近替代地点，可尝试放宽距离限制'
+          : `找不到同类型（${originalCategory}）的替代地点`
+      );
+    }
+
+    // 排序：距离太远时已按距离排；否则优先同城市，然后按评分排序
+    const sortedCandidates =
+      dto.reason === 'too_far' && routeAnchor
+        ? filteredCandidates
+        : filteredCandidates.sort((a, b) => {
+            const aIsSameCity = sameCityIds.has(a.id);
+            const bIsSameCity = sameCityIds.has(b.id);
+            if (aIsSameCity && !bIsSameCity) return -1;
+            if (!aIsSameCity && bIsSameCity) return 1;
+            return (b.rating || 0) - (a.rating || 0);
+          });
 
     // 使用 LLM 选择最佳替换
     // 简化处理：选择排序后的第一个（优先同城市且评分最高）

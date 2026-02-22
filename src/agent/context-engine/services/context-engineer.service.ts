@@ -440,9 +440,22 @@ export class ContextEngineerService {
     }
 
     // 2-3. 并行获取国家包块和计划片段（异步优化）
-    const [countryBlocksResult, planBlocksResult] = await Promise.allSettled([
+    // 国家包块：当有 requiredTopics 或 destinationCountryCode（from-natural-language 流程）时构建
+    const shouldBuildCountryBlocks =
+      (options.requiredTopics && options.requiredTopics.length > 0) ||
+      (options.destinationCountryCode && options.destinationCountryCode.length >= 2);
+    const countryTopics =
       options.requiredTopics && options.requiredTopics.length > 0
-        ? this.buildCountryPackBlocks(options.tripId, options.requiredTopics, options.phase)
+        ? options.requiredTopics
+        : ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS']; // from-natural-language 默认主题
+    const [countryBlocksResult, planBlocksResult] = await Promise.allSettled([
+      shouldBuildCountryBlocks
+        ? this.buildCountryPackBlocks(
+            options.tripId,
+            countryTopics,
+            options.phase,
+            options.destinationCountryCode,
+          )
         : Promise.resolve([]),
       options.tripId && this.shouldIncludePlanBlocks(options.phase, options.agent)
         ? this.buildPlanBlocks(options.tripId, options.phase, options.agent)
@@ -547,6 +560,7 @@ export class ContextEngineerService {
    * 
    * 包含因素：
    * - tripId
+   * - destinationCountryCode（from-natural-language 流程）
    * - phase
    * - agent
    * - requiredTopics（排序后）
@@ -559,6 +573,7 @@ export class ContextEngineerService {
     const topics = options.requiredTopics?.sort().join(',') || '';
     const excludeTopics = options.excludeTopics?.sort().join(',') || '';
     const includePrivate = options.includePrivate ? 'true' : 'false';
+    const destCode = options.destinationCountryCode || 'none';
     
     // 计算 userQuery hash（前100字符）
     let queryHash = '';
@@ -568,7 +583,7 @@ export class ContextEngineerService {
       queryHash = this.simpleHash(queryText);
     }
     
-    return `tripId:${options.tripId || 'none'}:phase:${options.phase}:agent:${options.agent}:topics:${topics}:excludeTopics:${excludeTopics}:budget:${options.tokenBudget || 3600}:includePrivate:${includePrivate}:queryHash:${queryHash}`;
+    return `tripId:${options.tripId || 'none'}:dest:${destCode}:phase:${options.phase}:agent:${options.agent}:topics:${topics}:excludeTopics:${excludeTopics}:budget:${options.tokenBudget || 3600}:includePrivate:${includePrivate}:queryHash:${queryHash}`;
   }
 
   /**
@@ -842,18 +857,23 @@ export class ContextEngineerService {
 
   /**
    * 构建国家包块
+   * @param tripId 行程 ID（可选，用于从数据库获取目的地）
+   * @param topics 需要的主题块
+   * @param phase 规划阶段
+   * @param overrideCountryCode 覆盖国家代码（当 tripId 不可用时，如 from-natural-language 流程）
    */
   private async buildCountryPackBlocks(
     tripId: string | undefined,
     topics: string[],
     phase: string,
+    overrideCountryCode?: string,
   ): Promise<ContextBlock[]> {
     const blocks: ContextBlock[] = [];
 
     try {
-      // 1. 从 tripId 获取国家代码
-      let countryCode: string | undefined;
-      if (tripId && this.prisma) {
+      // 1. 获取国家代码：优先使用 overrideCountryCode，否则从 tripId 查询
+      let countryCode: string | undefined = overrideCountryCode;
+      if (!countryCode && tripId && this.prisma) {
         try {
           const trip = await this.prisma.trip.findUnique({
             where: { id: tripId },

@@ -51,8 +51,25 @@ export interface SearchCarRentalsResponse {
   };
 }
 
+/** Search Car Location 返回的坐标项 */
+export interface CarLocationItem {
+  latitude?: number;
+  longitude?: number;
+  coordinates?: { latitude?: number; longitude?: number };
+  [key: string]: any;
+}
+
+export interface SearchCarLocationParams {
+  query: string; // 城市名、机场名或地点，如 "New York", "JFK", "Reykjavik"
+}
+
+export interface SearchCarLocationResponse {
+  data: CarLocationItem[];
+}
+
 /**
  * Booking.com MCP 客户端（通过 RapidAPI）
+ * 支持传入 apiKey 或从 process.env 读取（兼容旧用法）
  */
 export class BookingComMcpClient {
   private axiosInstance: AxiosInstance;
@@ -60,11 +77,11 @@ export class BookingComMcpClient {
   private readonly apiHost: string;
   private readonly baseURL: string = 'https://booking-com15.p.rapidapi.com/api/v1/cars';
 
-  constructor() {
-    this.apiKey = process.env.RAPIDAPI_BOOKING_COM_API_KEY || '';
-    this.apiHost = process.env.RAPIDAPI_BOOKING_COM_HOST || 'booking-com15.p.rapidapi.com';
+  constructor(options?: { apiKey?: string; apiHost?: string }) {
+    this.apiKey = (options?.apiKey ?? process.env.RAPIDAPI_BOOKING_COM_API_KEY ?? '').trim();
+    this.apiHost = (options?.apiHost ?? process.env.RAPIDAPI_BOOKING_COM_HOST ?? 'booking-com15.p.rapidapi.com').trim();
 
-    if (!this.apiKey || this.apiKey.trim() === '') {
+    if (!this.apiKey) {
       throw new Error(
         'RAPIDAPI_BOOKING_COM_API_KEY environment variable is required. ' +
         'Please set it in .env file and restart the server.'
@@ -80,6 +97,34 @@ export class BookingComMcpClient {
       },
       timeout: 10000, // 10秒超时
     });
+  }
+
+  /**
+   * 搜索租车取还车地点（第一步：获取 Booking.com 认可的坐标）
+   * 坐标需从此接口获取，直接使用地理编码坐标可能导致 searchCarRentals 返回 status:false
+   */
+  async searchCarLocation(params: SearchCarLocationParams): Promise<SearchCarLocationResponse> {
+    try {
+      const response = await this.axiosInstance.get('/searchDestination', {
+        params: { query: params.query },
+      });
+
+      if (response.data?.status === false) {
+        const msg = response.data?.message || 'Upstream service error';
+        throw new Error(`Booking.com searchCarLocation error: ${msg}`);
+      }
+
+      const rawData = response.data?.data ?? response.data;
+      const data = Array.isArray(rawData) ? rawData : [];
+      return { data };
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(
+          `Booking.com searchCarLocation API error: ${error.response.status} - ${error.response.data?.message || error.message}`
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -103,9 +148,17 @@ export class BookingComMcpClient {
         },
       });
 
-      // 转换响应格式
+      // RapidAPI 上游异常时返回 { status: false, message: "..." }，需抛出以便调用方区分「无结果」与「服务异常」
+      if (response.data?.status === false) {
+        const msg = response.data?.message || 'Upstream service error';
+        throw new Error(`Booking.com upstream error: ${msg}`);
+      }
+
+      // 转换响应格式：RapidAPI 成功时返回 { data: [...] }
+      const rawData = response.data?.data ?? response.data;
+      const data = Array.isArray(rawData) ? rawData : [];
       return {
-        data: response.data?.data || response.data || [],
+        data,
         meta: response.data?.meta,
       };
     } catch (error: any) {

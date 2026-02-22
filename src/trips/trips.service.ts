@@ -296,7 +296,7 @@ export class TripsService {
 
     const budgetConfig = {
       totalBudget: dto.totalBudget, // 使用 totalBudget 保持一致性
-      currency: 'CNY', // 人民币
+      currency: dto.currency || 'CNY',
       estimated_flight_visa: estimatedFlightVisa,
       remaining_for_ground: remainingBudget,
       daily_budget: Math.round(dailyBudget),
@@ -1545,6 +1545,7 @@ export class TripsService {
           decisionSource: log.decisionSource,
           action: log.action,
           reasonCodes: log.reasonCodes,
+          ...(log.evidenceRefs?.length ? { evidenceRefs: log.evidenceRefs } : {}),
         },
       });
     }
@@ -1653,66 +1654,7 @@ export class TripsService {
       }
     }
 
-    // 从行程项中提取 Place 的营业时间等证据
-    let dayIndex = 0;
-    for (const tripDay of trip.TripDay) {
-      dayIndex++;
-      
-      // 如果指定了 day 过滤，跳过不匹配的天数
-      if (query.day && dayIndex !== query.day) {
-        continue;
-      }
-
-      for (const item of tripDay.ItineraryItem) {
-        if (item.Place) {
-          const place = item.Place;
-          const metadata = place.metadata as any;
-
-          // 提取营业时间证据
-          if (metadata?.openingHours) {
-            const openingHours = metadata.openingHours;
-            const hoursStr = typeof openingHours === 'string' 
-              ? openingHours 
-              : JSON.stringify(openingHours);
-
-            evidenceItems.push({
-              id: `ev-place-${place.id}-opening-hours`,
-              type: EvidenceType.OPENING_HOURS,
-              title: '营业时间',
-              description: `${place.nameCN || place.nameEN} 营业时间：${hoursStr}`,
-              source: 'Google Places API',
-              timestamp: place.updatedAt?.toISOString() || new Date().toISOString(),
-              poiId: place.id.toString(),
-              day: dayIndex,
-              severity: EvidenceSeverity.LOW,
-              metadata: {
-                placeId: place.id,
-                openingHours: metadata.openingHours,
-              },
-            });
-          }
-
-          // 提取评分证据
-          if (place.rating) {
-            evidenceItems.push({
-              id: `ev-place-${place.id}-rating`,
-              type: EvidenceType.OTHER,
-              title: '地点评分',
-              description: `${place.nameCN || place.nameEN} 评分：${place.rating}`,
-              source: 'Google Places API',
-              timestamp: place.updatedAt?.toISOString() || new Date().toISOString(),
-              poiId: place.id.toString(),
-              day: dayIndex,
-              severity: EvidenceSeverity.LOW,
-              metadata: {
-                placeId: place.id,
-                rating: place.rating,
-              },
-            });
-          }
-        }
-      }
-    }
+    // 营业时间不作为证据：行程项已展示营业时间，证据列表不再重复
 
     // 应用类型过滤
     let filteredItems = evidenceItems;
@@ -1720,8 +1662,14 @@ export class TripsService {
       filteredItems = filteredItems.filter(item => item.type === query.type);
     }
 
-    // 排序（按时间倒序）
-    filteredItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // 排序：风险优先（closed > unknown > open），同级别按时间倒序
+    filteredItems.sort((a, b) => {
+      const riskOrder = (status: string) => (status === 'closed' ? 0 : status === 'unknown' ? 1 : 2);
+      const aRisk = (a.metadata?.currentStatus as string) || '';
+      const bRisk = (b.metadata?.currentStatus as string) || '';
+      if (aRisk !== bRisk) return riskOrder(aRisk) - riskOrder(bRisk);
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
 
     // 🆕 从Trip.metadata中读取证据状态并添加到证据项中
     const metadata = trip.metadata as any || {};
@@ -1915,11 +1863,17 @@ export class TripsService {
 
   /**
    * 获取证据状态（从Trip.metadata中读取）
+   * 兼容旧格式 ev-place-{id}-opening-hours（现为 ev-place-{id}-day-{day}-opening-hours）
    */
   private getEvidenceStatus(trip: any, evidenceId: string): EvidenceStatus | undefined {
     const metadata = trip.metadata as any || {};
     const evidenceStatus = metadata.evidenceStatus || {};
-    return evidenceStatus[evidenceId]?.status;
+    let status = evidenceStatus[evidenceId]?.status;
+    if (!status && evidenceId.includes('-day-') && evidenceId.endsWith('-opening-hours')) {
+      const legacyId = evidenceId.replace(/-day-\d+-opening-hours$/, '-opening-hours');
+      status = evidenceStatus[legacyId]?.status;
+    }
+    return status;
   }
 
   /**
@@ -2325,6 +2279,30 @@ export class TripsService {
       limit,
       offset,
     };
+  }
+
+  /**
+   * 根据目的地国家代码推断时区（用于营业时间计算）
+   */
+  private inferTimezoneFromDestination(destination: string | null | undefined): string | null {
+    if (!destination) return null;
+    const code = (destination || '').toUpperCase();
+    const map: Record<string, string> = {
+      IS: 'Atlantic/Reykjavik',
+      NO: 'Europe/Oslo',
+      JP: 'Asia/Tokyo',
+      CN: 'Asia/Shanghai',
+      US: 'America/New_York',
+      GL: 'America/Godthab',
+      SJ: 'Arctic/Longyearbyen',
+      AR: 'America/Argentina/Buenos_Aires',
+      TH: 'Asia/Bangkok',
+      CH: 'Europe/Zurich',
+      AT: 'Europe/Vienna',
+      IT: 'Europe/Rome',
+      FR: 'Europe/Paris',
+    };
+    return map[code] || null;
   }
 
   /**

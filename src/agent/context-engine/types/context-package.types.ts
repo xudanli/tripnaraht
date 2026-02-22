@@ -198,6 +198,12 @@ export interface ContextPackageOptions {
   targetDayIndex?: number;
   /** 分段规划：前几日压缩摘要（DaySummary[]），供 buildPlanBlocks 按需注入 */
   previousDaysSummary?: Array<{ day: number; date: string; itemCount: number; keyLocations: string[] }>;
+
+  /**
+   * 目的地国家代码（ISO 3166-1 alpha-2，如 'IS', 'JP'）
+   * 当 tripId 不可用时（如 from-natural-language 创建行程前）可传入，用于构建国家包块
+   */
+  destinationCountryCode?: string;
 }
 
 /**

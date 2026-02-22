@@ -12,6 +12,8 @@ export enum ConflictType {
   CLOSURE_RISK = 'CLOSURE_RISK',
   ACCESSIBILITY_MISMATCH = 'ACCESSIBILITY_MISMATCH',
   TRANSPORT_TOO_LONG = 'TRANSPORT_TOO_LONG',
+  /** 交通时间不足：可用时间 < 交通时间 + 缓冲 */
+  TRANSPORT_INSUFFICIENT = 'TRANSPORT_INSUFFICIENT',
 }
 
 /**
@@ -62,8 +64,25 @@ export class ConflictDto {
   @ApiProperty({ description: '受影响的行程项 ID 数组' })
   affectedItemIds!: string[];
 
+  /** 关联的证据 ID 列表，用于前端将冲突与证据列表对应展示（如 CLOSURE_RISK 对应营业时间证据） */
+  @ApiPropertyOptional({ description: '关联的证据 ID 列表', type: [String] })
+  evidenceIds?: string[];
+
   @ApiPropertyOptional({ description: '时间重叠分钟数（仅TIME_CONFLICT类型）' })
   overlapMinutes?: number;
+
+  /** 交通相关冲突（TRANSPORT_INSUFFICIENT/TRANSPORT_TOO_LONG） */
+  @ApiPropertyOptional({ description: '预计交通时间（分钟）' })
+  travelTimeMinutes?: number;
+
+  @ApiPropertyOptional({ description: '可用时间（分钟）' })
+  availableMinutes?: number;
+
+  @ApiPropertyOptional({ description: '缺口（分钟）' })
+  shortfallMinutes?: number;
+
+  @ApiPropertyOptional({ description: '直线距离（公里）' })
+  distanceKm?: number;
 
   @ApiPropertyOptional({ description: '建议列表', type: [ConflictSuggestionDto] })
   suggestions?: ConflictSuggestionDto[];

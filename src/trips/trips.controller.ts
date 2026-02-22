@@ -81,6 +81,7 @@ import { DestinationClarificationConfigService } from './nl-clarification/servic
 import { GatePrecheckService } from './nl-clarification/services/gate-precheck.service';
 import { AiDecisionLogicService } from './nl-clarification/services/ai-decision-logic.service';
 import { NLConversationContextService, ConversationMessage } from './services/nl-conversation-context.service';
+import { FeedbackEngineAdapterService } from '../decision/kernel/feedback-engine-adapter.service';
 
 @ApiTags('trips')
 @Public() // 临时开放测试，生产环境应移除
@@ -102,6 +103,82 @@ export class TripsController {
       .trim()
       // 转换为小写（仅对英文，中文不受影响）
       .toLowerCase();
+  }
+
+  /**
+   * 判断当前问题是否与历史问题重复（语义相似）
+   * 修复重复澄清：LLM 可能用不同表述问同一问题（如「出发日期？」vs「请提供出发日期」）
+   * 1. 精确匹配：标准化后完全相同
+   * 2. 包含匹配：一方包含另一方（处理简写）
+   * 3. 关键词重叠：共享同一组字段关键词（出发/日期、预算、人数等）
+   */
+  private isQuestionDuplicateOfHistory(questionText: string, historicalQuestions: string[]): boolean {
+    const normalized = this.normalizeQuestionTextForComparison(questionText);
+    if (!normalized || normalized.length < 2) return false;
+
+    const fieldKeywords: Record<string, string[]> = {
+      startDate: ['出发', '日期', '时间', 'start', 'date'],
+      totalBudget: ['预算', '花费', 'budget', '费用'],
+      currency: ['货币', '币种', 'currency', '元', '美元', '欧元'],
+      partyCount: ['人数', '几位', '同行', '人'],
+      destination: ['目的地', '去哪', '哪里'],
+      preferences: ['偏好', '风格', '兴趣', '节奏'],
+      safety: ['安全', '健康', '户外', '经验'],
+    };
+
+    const extractFieldHints = (t: string): string[] => {
+      const hints: string[] = [];
+      for (const kws of Object.values(fieldKeywords)) {
+        if (kws.some((kw) => t.includes(kw))) hints.push(...kws);
+      }
+      return hints;
+    };
+
+    const currentHints = extractFieldHints(normalized);
+
+    for (const historicalQ of historicalQuestions) {
+      const normHist = this.normalizeQuestionTextForComparison(historicalQ);
+      if (!normHist) continue;
+
+      // 1. 精确匹配
+      if (normalized === normHist) return true;
+
+      // 2. 包含匹配（短串包含在长串中，或反之）
+      if (normalized.includes(normHist) || normHist.includes(normalized)) return true;
+
+      // 3. 关键词重叠：若当前问题与历史问题共享同一组字段关键词，视为重复
+      const histHints = extractFieldHints(normHist);
+      if (currentHints.length > 0 && histHints.length > 0) {
+        const overlap = currentHints.filter((h) => histHints.includes(h));
+        if (overlap.length >= 2) return true; // 至少 2 个关键词重叠
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 判断问题是否在询问用户已提供的字段
+   * 若 params 已有 startDate，且问题包含「出发」「日期」等关键词，则视为重复
+   */
+  private isQuestionAboutAlreadyAnsweredField(questionText: string, params: Record<string, any>): boolean {
+    const normalized = this.normalizeQuestionTextForComparison(questionText);
+    if (!normalized) return false;
+
+    const fieldChecks: Array<{ field: string; keywords: string[] }> = [
+      { field: 'startDate', keywords: ['出发', '日期', '时间', '何时'] },
+      { field: 'totalBudget', keywords: ['预算', '花费', '费用'] },
+      { field: 'currency', keywords: ['货币', '币种', 'currency'] },
+      { field: 'destination', keywords: ['目的地', '去哪', '哪里'] },
+      { field: 'days', keywords: ['几天', '天数', '多少天'] },
+    ];
+
+    for (const { field, keywords } of fieldChecks) {
+      const hasValue = params[field] != null && String(params[field]).trim() !== '';
+      if (hasValue && keywords.some((kw) => normalized.includes(kw))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   constructor(
@@ -131,7 +208,8 @@ export class TripsController {
     @Optional() private readonly decisionDraftStorage?: DecisionDraftStorageService,
     @Optional() private readonly destinationClarificationConfigService?: DestinationClarificationConfigService,
     @Optional() private readonly gatePrecheckService?: GatePrecheckService,
-    @Optional() private readonly aiDecisionLogicService?: AiDecisionLogicService
+    @Optional() private readonly aiDecisionLogicService?: AiDecisionLogicService,
+    @Optional() private readonly feedbackEngineAdapter?: FeedbackEngineAdapterService
   ) {}
 
   @Post()
@@ -312,21 +390,25 @@ export class TripsController {
         detectedCountryCode = this.extractCountryCodeFromText(dto.text);
       }
       
-      // 5.3 如果检测到目的地，构建 Context Package
-      if (detectedCountryCode && this.contextEngineerService && this.skillsRegistry) {
+      // 5.3 如果检测到目的地，通过 ContextEngineerService 构建完整 Context Package
+      if (detectedCountryCode && this.contextEngineerService) {
         try {
-          this.logger.debug(`检测到目的地国家代码: ${detectedCountryCode}，开始构建 Context Package`);
-          const countryPackSkill = this.skillsRegistry.getSkill('countryPack.getBlocks');
-          if (countryPackSkill) {
-            const countryPackResult = await countryPackSkill.execute({
-              packId: detectedCountryCode,
-              topics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'], // 需要的主题块
+          this.logger.debug(`检测到目的地国家代码: ${detectedCountryCode}，通过 ContextEngineerService 构建 Context Package`);
+          const contextPackage = await this.contextEngineerService.build(
+            {
               phase: 'planning',
-            });
-            if (countryPackResult.blocks && countryPackResult.blocks.length > 0) {
-              contextBlocks = countryPackResult.blocks;
-              this.logger.debug(`成功构建 Context Package，包含 ${contextBlocks.length} 个块`);
-            }
+              agent: 'nl-parser',
+              userQuery: promptText,
+              destinationCountryCode: detectedCountryCode,
+              requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'],
+              userId,
+              includeToolSelection: false, // from-natural-language 聚焦解析，不注入工具选择
+            },
+            true, // useCache
+          );
+          if (contextPackage.blocks && contextPackage.blocks.length > 0) {
+            contextBlocks = contextPackage.blocks.filter((b) => b.visibility === 'public');
+            this.logger.debug(`成功构建 Context Package，包含 ${contextBlocks.length} 个块 (总 Token: ${contextPackage.totalTokens})`);
           }
         } catch (error: any) {
           // Context Package 构建失败不影响主流程，只记录警告
@@ -399,28 +481,30 @@ export class TripsController {
           );
           
           // 🆕 过滤历史澄清问题（避免重复询问）
-          if (structuredResponse.clarificationQuestions && historicalQuestions.length > 0) {
+          if (structuredResponse.clarificationQuestions) {
+            const params = parseResult.params || {};
             const originalCount = structuredResponse.clarificationQuestions.length;
             structuredResponse.clarificationQuestions = structuredResponse.clarificationQuestions.filter((q: any) => {
               const questionText = (q.question || q.text || '').trim();
               if (!questionText) return false;
-              
-              // 检查是否与历史问题相似（标准化后比较）
-              const isDuplicate = historicalQuestions.some((historicalQ: string) => {
-                const normalizedCurrent = this.normalizeQuestionTextForComparison(questionText);
-                const normalizedHistorical = this.normalizeQuestionTextForComparison(historicalQ);
-                return normalizedCurrent === normalizedHistorical;
-              });
-              
-              if (isDuplicate) {
+
+              // 1. 与历史问题重复（语义相似）
+              if (historicalQuestions.length > 0 && this.isQuestionDuplicateOfHistory(questionText, historicalQuestions)) {
                 this.logger.debug(`Filtering duplicate question from history: "${questionText.substring(0, 50)}..."`);
+                return false;
               }
-              
-              return !isDuplicate;
+
+              // 2. 用户已答字段：若问题涉及某字段且 params 已有值，过滤（避免重复问已答问题）
+              if (this.isQuestionAboutAlreadyAnsweredField(questionText, params)) {
+                this.logger.debug(`Filtering question about already-answered field: "${questionText.substring(0, 50)}..."`);
+                return false;
+              }
+
+              return true;
             });
-            
+
             if (structuredResponse.clarificationQuestions.length < originalCount) {
-              this.logger.debug(`Filtered ${originalCount - structuredResponse.clarificationQuestions.length} duplicate questions based on history`);
+              this.logger.debug(`Filtered ${originalCount - structuredResponse.clarificationQuestions.length} duplicate questions based on history/answered fields`);
             }
           }
           this.logger.debug(`Successfully transformed structured response: ${structuredResponse.plannerResponseBlocks?.length || 0} blocks, ${structuredResponse.clarificationQuestions?.length || 0} questions`);
@@ -534,9 +618,18 @@ export class TripsController {
               ...q,
               group: 'optional', // 标记为可选问题
             }));
-            // 将补充问题添加到澄清问题列表的末尾
-            clarificationQuestions = [...clarificationQuestions, ...optionalQuestions];
-            this.logger.debug(`在澄清过程中添加了 ${optionalQuestions.length} 个补充问题（标记为optional分组）`);
+            // 🆕 修复重复澄清：补充问题也需过滤历史已问过的、以及已答字段，避免每轮重复添加「是否需要补充偏好？」等
+            const filteredOptional = optionalQuestions.filter((q: any) => {
+              const questionText = (q.question || q.text || '').trim();
+              if (!questionText) return false;
+              if (historicalQuestions.length > 0 && this.isQuestionDuplicateOfHistory(questionText, historicalQuestions)) return false;
+              if (this.isQuestionAboutAlreadyAnsweredField(questionText, parseResult.params || {})) return false;
+              return true;
+            });
+            if (filteredOptional.length > 0) {
+              clarificationQuestions = [...clarificationQuestions, ...filteredOptional];
+              this.logger.debug(`在澄清过程中添加了 ${filteredOptional.length} 个补充问题（已过滤 ${optionalQuestions.length - filteredOptional.length} 个历史重复）`);
+            }
           }
         }
         
@@ -647,7 +740,7 @@ export class TripsController {
             travelers: travelersInfo, // 🆕 HCI P1优化：显示详细旅行者信息
             budget: {
               amount: parseResult.params.totalBudget || 0,
-              currency: 'CNY',
+              currency: parseResult.params.currency || 'CNY',
             },
           },
         },
@@ -668,10 +761,18 @@ export class TripsController {
 
       // 🆕 生成补充信息问题（可选）
       // 🆕 P0优化：标记补充问题为 'optional' 分组
-      const supplementaryQuestions = this.generateSupplementaryQuestions(parseResult.params, detectedCountryCode).map((q: any) => ({
+      // 🆕 修复重复澄清：确认卡片阶段的补充问题也需过滤历史重复和已答字段
+      const rawSupplementary = this.generateSupplementaryQuestions(parseResult.params, detectedCountryCode).map((q: any) => ({
         ...q,
         group: 'optional', // 标记为可选问题
       }));
+      const supplementaryQuestions = rawSupplementary.filter((q: any) => {
+        const questionText = (q.question || q.text || '').trim();
+        if (!questionText) return false;
+        if (historicalQuestions.length > 0 && this.isQuestionDuplicateOfHistory(questionText, historicalQuestions)) return false;
+        if (this.isQuestionAboutAlreadyAnsweredField(questionText, parseResult.params || {})) return false;
+        return true;
+      });
 
       // 添加助手回复到会话
       const assistantReply = `我已经收集到创建行程所需的基本信息。请确认以下信息是否正确，或者告诉我是否需要补充其他信息。`;
@@ -1433,16 +1534,21 @@ export class TripsController {
                 content: `已完成 ${completedCritical}/${totalCritical} 个关键问题（${progressPercent}%）`,
               },
             ],
-            clarificationQuestions: questions.map(q => ({
-              id: q.id,
-              question: q.question,
-              type: q.type,
-              options: q.options,
-              required: q.required,
-              hint: q.hint,
-              placeholder: q.placeholder,
-              metadata: q.metadata,
-            })),
+            clarificationQuestions: questions.map(q => {
+              const opts = q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)
+                ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+                : q.options;
+              return {
+                id: q.id,
+                question: q.question,
+                type: q.type,
+                options: opts,
+                required: q.required,
+                hint: q.hint,
+                placeholder: q.placeholder,
+                metadata: q.metadata,
+              };
+            }),
           });
         }
       }
@@ -1472,34 +1578,38 @@ export class TripsController {
       endDate = endDate.split('T')[0];
     }
 
+    const currency = params.currency || 'CNY';
     const createTripDto: CreateTripDto = {
       destination: params.destination,
       startDate,
       endDate,
       totalBudget: params.totalBudget,
       travelers: travelers as any,
+      currency,
     };
-    
+
     // 创建行程
     const trip = await this.tripsService.create(createTripDto, userId);
-    
+
     // 设置预算约束
     try {
       await this.tripBudgetService.setBudgetConstraint(trip.id, {
         total: params.totalBudget,
-        currency: 'CNY',
+        currency,
         dailyBudget: undefined, // 让系统自动计算
       });
     } catch (error: any) {
       this.logger.warn(`设置预算约束失败: ${error.message}`);
     }
-    
+
+    const currencyLabels: Record<string, string> = { CNY: '元', USD: '美元', EUR: '欧元', JPY: '日元', ISK: '冰岛克朗', NOK: '挪威克朗' };
+    const currencyLabel = currencyLabels[currency] || currency;
     // 添加成功消息到会话
     await this.nlConversationContextService.addMessage(
       sessionId,
       userId,
       'assistant',
-      `行程已创建成功！目的地：${params.destination}，日期：${startDate} 至 ${endDate}，预算：${params.totalBudget}元`,
+      `行程已创建成功！目的地：${params.destination}，日期：${startDate} 至 ${endDate}，预算：${params.totalBudget} ${currencyLabel}`,
       {
         tripId: trip.id,
         success: true,
@@ -1884,7 +1994,13 @@ export class TripsController {
       };
       
       // 添加选项（保持完整结构，包括 value 和 label）
-      if (q.options && Array.isArray(q.options)) {
+      // 🆕 修复：type 为 boolean 时若未配置 options，补充默认「是/否」选项，否则前端无法显示可点击按钮
+      if (q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)) {
+        question.options = [
+          { value: 'true', label: '是' },
+          { value: 'false', label: '否' },
+        ];
+      } else if (q.options && Array.isArray(q.options)) {
         question.options = q.options.map((opt: any) => {
           if (typeof opt === 'string') {
             return { value: opt, label: opt };
@@ -4693,6 +4809,21 @@ export class TripsController {
         });
 
         this.logger.log(`成功为行程 ${tripId} 生成并保存决策草案: ${decisionDraft.draft_id}`);
+
+        // 5. 记录决策日志到反馈学习模块（四层飞轮 Layer 1，专利要求）
+        if (this.feedbackEngineAdapter) {
+          this.feedbackEngineAdapter.recordCreateTripDecisionLog({
+            tripRunId: requestId,
+            tripId,
+            userInput,
+            parsedParams: parsedParams || {},
+            tripParams,
+            decisionDraftId: decisionDraft.draft_id,
+            decisionStepsCount: decisionDraft.decision_steps?.length ?? 0,
+          }).catch((err: any) => {
+            this.logger.warn(`记录创建行程决策日志失败: ${err?.message}`);
+          });
+        }
       } else {
         this.logger.warn(`行程 ${tripId} 不存在，无法关联决策草案`);
       }
@@ -4716,12 +4847,37 @@ export class TripsController {
         stage: 'retrieving_candidates',
         message: '正在检索候选地点...',
       });
+
+      // 方案 C 可选增强：候选编排前构建 Context Package，注入 LLM 以增强编排质量
+      let contextBlocks: ContextBlock[] = [];
+      if (this.contextEngineerService) {
+        try {
+          const contextPackage = await this.contextEngineerService.build(
+            {
+              tripId,
+              phase: 'planning',
+              agent: 'draft-orchestrator',
+              userQuery: `编排${draftDto.destination}${draftDto.days}天行程，风格${draftDto.style || 'balanced'}`,
+              requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'],
+              includeToolSelection: false,
+            },
+            true,
+          );
+          if (contextPackage.blocks?.length) {
+            contextBlocks = contextPackage.blocks.filter((b) => b.visibility === 'public');
+            this.logger.debug(`为行程 ${tripId} 构建 Context Package: ${contextBlocks.length} 个块`);
+          }
+        } catch (err: any) {
+          this.logger.warn(`构建 Context Package 失败（继续无上下文编排）: ${err?.message}`);
+        }
+      }
       
-      // 生成草案（包含 LLM 编排）
-      const draft = await this.tripDraftService.generateDraft(draftDto, (progress) => {
-        // LLM 编排完成回调
-        return this.updateGenerationProgress(tripId, progress);
-      });
+      // 生成草案（包含 LLM 编排，可选注入上下文）
+      const draft = await this.tripDraftService.generateDraft(
+        draftDto,
+        (progress) => this.updateGenerationProgress(tripId, progress),
+        contextBlocks.length > 0 ? contextBlocks : undefined
+      );
       
       // 更新进度：LLM 编排完成，开始保存
       await this.updateGenerationProgress(tripId, {

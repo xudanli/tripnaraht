@@ -216,6 +216,69 @@ export class FeedbackEngineAdapterService {
   }
 
   /**
+   * 记录创建行程决策日志（四层飞轮 Layer 1）
+   * 用于 from-natural-language 等未走 Decision Kernel 的创建行程流程
+   * 专利：反馈学习模块记录决策日志
+   */
+  async recordCreateTripDecisionLog(params: {
+    tripRunId: string;
+    tripId: string;
+    userInput: string;
+    parsedParams: Record<string, unknown>;
+    tripParams: {
+      destination: string;
+      startDate: string;
+      endDate: string;
+      days: number;
+      totalBudget: number;
+      hasChildren?: boolean;
+      hasElderly?: boolean;
+      preferences?: Record<string, unknown>;
+    };
+    decisionDraftId: string;
+    decisionStepsCount: number;
+  }): Promise<void> {
+    if (!this.rlhfCollector) {
+      this.logger.debug('[FeedbackAdapter] 跳过 recordCreateTripDecisionLog: RLHF 未注入');
+      return;
+    }
+
+    try {
+      const { tripRunId, userInput, parsedParams, tripParams, decisionDraftId, decisionStepsCount } = params;
+      const contextSnapshot: Record<string, unknown> = {
+        userIntent: {
+          destination: tripParams.destination,
+          dateRange: { startDate: tripParams.startDate, endDate: tripParams.endDate },
+          days: tripParams.days,
+          party: {
+            count: 1 + (tripParams.hasChildren ? 1 : 0) + (tripParams.hasElderly ? 1 : 0),
+            has_children: tripParams.hasChildren,
+            has_elderly: tripParams.hasElderly,
+          },
+          constraints: { budget: tripParams.totalBudget },
+          preferences: tripParams.preferences,
+        },
+        parsedParams: parsedParams && Object.keys(parsedParams).length > 0 ? parsedParams : undefined,
+      };
+
+      this.rlhfCollector.recordFeedbackSignal({
+        trip_run_id: tripRunId,
+        decision_point_id: `create_trip_${decisionDraftId}_${Date.now()}`,
+        feedback_type: 'COMMENT',
+        value: { comment: `Create trip: ${userInput.substring(0, 100)}... | steps=${decisionStepsCount}` },
+        context: {
+          decision_output_summary: `create_trip | draftId=${decisionDraftId} | steps=${decisionStepsCount} | destination=${tripParams.destination} | days=${tripParams.days}`,
+          user_query: userInput,
+          contextSnapshot: { ...contextSnapshot, createdFromNaturalLanguage: true },
+        },
+      });
+      this.logger.debug(`[FeedbackAdapter] recordCreateTripDecisionLog: tripId=${params.tripId}, draftId=${decisionDraftId}`);
+    } catch (e: unknown) {
+      this.logger.warn(`[FeedbackAdapter] recordCreateTripDecisionLog 失败: ${(e as Error)?.message}`);
+    }
+  }
+
+  /**
    * 获取学习信号（供 RL/模型调优）
    */
   async getLearningSignals(tripRunId: string): Promise<LearningSignal[]> {

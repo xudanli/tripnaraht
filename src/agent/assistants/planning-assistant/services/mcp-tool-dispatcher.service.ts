@@ -26,8 +26,9 @@ export class McpToolDispatcherService implements OnModuleInit {
 
   // 常见中文位置名称到英文的映射（支持别名）
   private readonly locationNameMap: Map<string, string> = new Map([
-    // 国家/地区
+    // 国家/地区（含 ISO 国家代码，如 IS=冰岛）
     ['冰岛', 'Iceland'],
+    ['IS', 'Iceland'],
     ['日本', 'Japan'],
     ['韩国', 'South Korea'],
     ['泰国', 'Thailand'],
@@ -365,10 +366,24 @@ export class McpToolDispatcherService implements OnModuleInit {
       throw new Error('WeatherDirectService 不可用');
     }
 
+    // 当 location/destination 为国家代码（如 IS、JP）时，先转为国家名称，否则 Open-Meteo 地理编码可能失败
+    const resolveLocationForWeather = (raw: string): string => {
+      if (!raw || typeof raw !== 'string') return raw;
+      const trimmed = raw.trim().toUpperCase();
+      if (params.countryCode && trimmed === params.countryCode.toUpperCase()) {
+        const countryName = this.getCountryNameFromCode(params.countryCode);
+        if (countryName !== params.countryCode) {
+          this.logger.debug(`天气查询: 国家代码 "${raw}" -> "${countryName}"`);
+          return countryName;
+        }
+      }
+      return raw;
+    };
+
     switch (toolName) {
       case 'weather.getCurrentWeather':
         // WeatherDirectService.getCurrentWeather 接受城市名称字符串
-        const city = params.location || params.destination;
+        const city = resolveLocationForWeather(params.location || params.destination);
         const normalizedCity = await this.normalizeLocationName(city, {
           selectedDestination: params.destination,
           language: params.language,
@@ -377,7 +392,7 @@ export class McpToolDispatcherService implements OnModuleInit {
 
       case 'weather.getWeatherByDatetimeRange':
         // WeatherDirectService.getWeatherByDatetimeRange 接受三个独立参数
-        const location = params.location || params.destination;
+        const location = resolveLocationForWeather(params.location || params.destination);
         const normalizedLocation = await this.normalizeLocationName(location, {
           selectedDestination: params.destination,
           language: params.language,

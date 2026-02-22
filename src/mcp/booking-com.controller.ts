@@ -39,6 +39,35 @@ export class BookingComController {
     private readonly monitoringService: BookingComMonitoringService,
   ) {}
 
+  @Get('locations')
+  @ApiOperation({
+    summary: '搜索租车地点',
+    description: '第一步：根据城市/机场名获取 Booking.com 认可的坐标，用于后续 search 接口',
+  })
+  @ApiQuery({ name: 'query', required: true, type: String, description: '城市名或机场名，如 New York, JFK, Reykjavik' })
+  @ApiResponse({ status: 200, description: '成功返回地点列表' })
+  async searchCarLocation(@Query('query') query: string) {
+    try {
+      if (!this.bookingComService.isAvailable()) {
+        return errorResponse(
+          ErrorCode.INTERNAL_ERROR,
+          'Booking.com service is not available. Please check RAPIDAPI_BOOKING_COM_API_KEY configuration.',
+        );
+      }
+      if (!query?.trim()) {
+        return errorResponse(ErrorCode.BAD_REQUEST, 'query 参数不能为空');
+      }
+      const result = await this.bookingComService.searchCarLocation({ query: query.trim() });
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error('Search car location failed:', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error.message || '搜索租车地点失败',
+      );
+    }
+  }
+
   @Post('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

@@ -20,8 +20,14 @@ export class FileOAuthProvider implements OAuthClientProvider {
   private clientInfoFile: string;
   private codeVerifierFile: string;
   private configDir: string;
+  private onRedirectCallback?: (url: string) => void;
 
-  constructor(private serverUrl: string, private clientName: string = 'TripNara Google Calendar Client') {
+  constructor(
+    private serverUrl: string,
+    private clientName: string = 'TripNara Google Calendar Client',
+    onRedirectToAuthorization?: (url: string) => void,
+  ) {
+    this.onRedirectCallback = onRedirectToAuthorization;
     // 创建配置目录
     const homeDir = os.homedir();
     this.configDir = path.join(homeDir, '.tripnara-mcp');
@@ -93,14 +99,16 @@ export class FileOAuthProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(url: URL): Promise<void> {
+    const urlStr = url.toString();
+    this.onRedirectCallback?.(urlStr);
     console.log('\n🔐 ============================================');
     console.log('Google Calendar 认证');
     console.log('============================================');
     console.log('\n请访问以下 URL 完成 Google Calendar 认证:');
-    console.log(`\n${url.toString()}\n`);
+    console.log(`\n${urlStr}\n`);
     console.log('认证完成后，请在回调 URL 中获取授权码。');
     console.log('============================================\n');
-    
+
     // 尝试自动打开浏览器
     try {
       // 动态导入 open 模块（可选依赖）
@@ -144,9 +152,11 @@ export class GoogleCalendarMcpClient {
   private authProvider: FileOAuthProvider;
   private isConnected: boolean = false;
 
-  constructor(serverUrl: string = 'https://server.smithery.ai/googlecalendar') {
-    // 创建 OAuth Provider
-    this.authProvider = new FileOAuthProvider(serverUrl, 'TripNara Google Calendar Client');
+  constructor(
+    serverUrl: string = 'https://server.smithery.ai/googlecalendar',
+    authProvider?: FileOAuthProvider,
+  ) {
+    this.authProvider = authProvider ?? new FileOAuthProvider(serverUrl, 'TripNara Google Calendar Client');
 
     // 创建 HTTP 传输层
     this.transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
@@ -158,6 +168,27 @@ export class GoogleCalendarMcpClient {
       name: 'tripnara-google-calendar-client',
       version: '1.0.0',
     });
+  }
+
+  /**
+   * 获取授权 URL（用于 API 返回）
+   */
+  static async getAuthorizationUrl(): Promise<string> {
+    let capturedUrl: string | undefined;
+    const provider = new FileOAuthProvider(
+      'https://server.smithery.ai/googlecalendar',
+      'TripNara Google Calendar Client',
+      (url) => { capturedUrl = url; },
+    );
+    const tempClient = new GoogleCalendarMcpClient('https://server.smithery.ai/googlecalendar', provider);
+    try {
+      await tempClient.connect();
+      throw new Error('Already authorized');
+    } catch (error: any) {
+      if (capturedUrl) return capturedUrl;
+      if (error.message?.includes('Already authorized')) throw error;
+      throw error;
+    }
   }
 
   /**

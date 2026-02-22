@@ -5,7 +5,14 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { BookingComMcpClient, SearchCarRentalsParams, SearchCarRentalsResponse } from './booking-com-client';
+import { ConfigService } from '@nestjs/config';
+import {
+  BookingComMcpClient,
+  SearchCarRentalsParams,
+  SearchCarRentalsResponse,
+  SearchCarLocationParams,
+  SearchCarLocationResponse,
+} from './booking-com-client';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
@@ -13,16 +20,42 @@ export class BookingComService {
   private readonly logger = new Logger(BookingComService.name);
   private client: BookingComMcpClient | null = null;
 
-  constructor(@Optional() private readonly redisService?: RedisService) {
+  constructor(
+    @Optional() private readonly redisService?: RedisService,
+    @Optional() private readonly configService?: ConfigService,
+  ) {
     try {
-      this.client = new BookingComMcpClient();
-      this.logger.log('✅ Booking.com Service initialized successfully');
+      // 优先从 ConfigService 读取（NestJS 正确加载的 .env），其次 process.env
+      const apiKey = this.configService?.get<string>('RAPIDAPI_BOOKING_COM_API_KEY')
+        ?? process.env.RAPIDAPI_BOOKING_COM_API_KEY
+        ?? '';
+      const apiHost = this.configService?.get<string>('RAPIDAPI_BOOKING_COM_HOST')
+        ?? process.env.RAPIDAPI_BOOKING_COM_HOST
+        ?? 'booking-com15.p.rapidapi.com';
+
+      if (apiKey && String(apiKey).trim()) {
+        this.client = new BookingComMcpClient({ apiKey: String(apiKey).trim(), apiHost: String(apiHost).trim() });
+        this.logger.log('✅ Booking.com Service initialized successfully');
+      } else {
+        this.logger.warn('⚠️  RAPIDAPI_BOOKING_COM_API_KEY is empty, Booking.com features disabled');
+        this.client = null;
+      }
     } catch (error: any) {
       this.logger.warn(`⚠️  Failed to initialize Booking.com client: ${error.message}`);
       this.logger.warn('💡 Booking.com features will be disabled until API Key is configured');
       this.logger.warn('📝 Please set RAPIDAPI_BOOKING_COM_API_KEY in .env file and restart the server');
       this.client = null;
     }
+  }
+
+  /**
+   * 搜索租车取还车地点（第一步：获取 Booking.com 认可的坐标）
+   */
+  async searchCarLocation(params: SearchCarLocationParams): Promise<SearchCarLocationResponse> {
+    if (!this.client) {
+      throw new Error('Booking.com client is not available. Please check RAPIDAPI_BOOKING_COM_API_KEY configuration.');
+    }
+    return await this.client.searchCarLocation(params);
   }
 
   /**

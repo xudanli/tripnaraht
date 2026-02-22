@@ -190,6 +190,72 @@ export class CountriesService {
   }
 
   /**
+   * 获取目的地支持的交易货币列表（用于澄清阶段让用户选择）
+   *
+   * 支持列表 = 目的地本地货币 + 常用旅客货币（CNY, USD, EUR）
+   * 若国家档案不存在，回退为 [CNY, USD, EUR]
+   *
+   * @param destinationCode 目的地国家代码（ISO 3166-1 alpha-2）
+   * @returns 支持的货币列表，含 code、name、isLocal
+   */
+  async getSupportedCurrencies(destinationCode: string): Promise<
+    Array<{ code: string; name: string; isLocal: boolean }>
+  > {
+    const TRAVELER_CURRENCIES: Array<{ code: string; name: string }> = [
+      { code: 'CNY', name: '人民币' },
+      { code: 'USD', name: '美元' },
+      { code: 'EUR', name: '欧元' },
+    ];
+
+    const CURRENCY_NAMES: Record<string, string> = {
+      CNY: '人民币',
+      USD: '美元',
+      EUR: '欧元',
+      JPY: '日元',
+      ISK: '冰岛克朗',
+      NOK: '挪威克朗',
+      SEK: '瑞典克朗',
+      DKK: '丹麦克朗',
+      GBP: '英镑',
+      CHF: '瑞士法郎',
+      AUD: '澳元',
+      CAD: '加元',
+    };
+
+    try {
+      const profile = await this.prisma.countryProfile.findUnique({
+        where: { isoCode: destinationCode.toUpperCase() },
+      });
+
+      const result: Array<{ code: string; name: string; isLocal: boolean }> = [];
+      const seen = new Set<string>();
+
+      if (profile?.currencyCode) {
+        const localCode = profile.currencyCode.toUpperCase();
+        if (!seen.has(localCode)) {
+          seen.add(localCode);
+          result.push({
+            code: localCode,
+            name: profile.currencyName || CURRENCY_NAMES[localCode] || localCode,
+            isLocal: true,
+          });
+        }
+      }
+
+      for (const { code, name } of TRAVELER_CURRENCIES) {
+        if (!seen.has(code)) {
+          seen.add(code);
+          result.push({ code, name, isLocal: false });
+        }
+      }
+
+      return result.length > 0 ? result : TRAVELER_CURRENCIES.map((c) => ({ ...c, isLocal: false }));
+    } catch {
+      return TRAVELER_CURRENCIES.map((c) => ({ ...c, isLocal: false }));
+    }
+  }
+
+  /**
    * 获取国家 Pack 配置
    * 
    * 返回指定国家的地形策略配置（风险阈值、体力等级映射、地形约束）

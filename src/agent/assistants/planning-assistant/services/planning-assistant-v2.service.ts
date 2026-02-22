@@ -23,7 +23,8 @@ import { RecommendationEngineService } from '../../shared/services/recommendatio
 import { PreferenceLearningService } from '../../shared/services/preference-learning.service';
 import { PersonaLanguageService } from '../../shared/services/persona-language.service';
 import { LlmService } from '../../../../llm/services/llm.service';
-import { SmartRouterService } from './smart-router.service';
+import { LlmProvider } from '../../../../llm/dto/llm-request.dto';
+import { SmartRouterService, RouterSessionState } from './smart-router.service';
 import { McpToolDispatcherService } from './mcp-tool-dispatcher.service';
 import { TaskService, TaskStatus } from '../../../infra/task.service';
 import { CacheService } from '../../../../common/cache/cache.service';
@@ -56,6 +57,12 @@ import { AccommodationItemDto } from '../dto/v2/shared/accommodation-item.dto';
 import { RailDirectService } from '../../../../mcp/rail-direct.service';
 import { TransitousDirectService } from '../../../../mcp/transitous-direct.service';
 import { AmadeusDirectService } from '../../../../mcp/amadeus-direct.service';
+import { BookingComService } from '../../../../mcp/booking-com.service';
+import { ItineraryItemsService } from '../../../../itinerary-items/itinerary-items.service';
+import { ItemType } from '../../../../itinerary-items/dto/create-itinerary-item.dto';
+import { DateTime } from 'luxon';
+import { AgentService } from '../../../services/agent.service';
+import { TripSuggestionsService } from '../../../../trips/services/trip-suggestions.service';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -96,7 +103,10 @@ export class PlanningAssistantV2Service {
     @Optional() private readonly railService?: any, // RailService (MCP, 需 OAuth)
     @Optional() @Inject(RailDirectService) private readonly railDirectService?: RailDirectService,
     @Optional() private readonly transitousDirectService?: TransitousDirectService,
-    @Optional() private readonly bookingComService?: any, // BookingComService (租车)
+    @Optional() @Inject(BookingComService) private readonly bookingComService?: BookingComService,
+    @Optional() private readonly itineraryItemsService?: ItineraryItemsService,
+    @Optional() private readonly agentService?: AgentService,
+    @Optional() private readonly tripSuggestionsService?: TripSuggestionsService,
   ) {
     // 从配置服务获取值，如果没有配置服务则使用默认值
     this.sessionCacheTTL = this.configService?.get<number>('PLANNING_ASSISTANT.SESSION_CACHE_TTL', 86400) ?? 86400; // 24小时（秒）
@@ -106,8 +116,9 @@ export class PlanningAssistantV2Service {
     this.logger.debug(`配置: sessionCacheTTL=${this.sessionCacheTTL}s, sessionExpirationHours=${this.sessionExpirationHours}h`);
     
     // 检查 MCP 服务注入状态
-    this.logger.debug(`MCP 服务注入状态: HotelDirect=${!!this.hotelDirectService}, GoogleMaps=${!!this.googleMapsDirectService}, Airbnb=${!!this.airbnbService}, Restaurant=${!!this.restaurantDirectService}, Weather=${!!this.weatherDirectService}, RailDirect=${!!this.railDirectService}, Transitous=${!!this.transitousDirectService}, RailMCP=${!!this.railService}`);
+    this.logger.debug(`MCP 服务注入状态: HotelDirect=${!!this.hotelDirectService}, GoogleMaps=${!!this.googleMapsDirectService}, Airbnb=${!!this.airbnbService}, Restaurant=${!!this.restaurantDirectService}, Weather=${!!this.weatherDirectService}, RailDirect=${!!this.railDirectService}, Transitous=${!!this.transitousDirectService}, RailMCP=${!!this.railService}, BookingCom=${!!this.bookingComService}`);
     this.logger.debug(`工具融合服务注入状态: ToolDispatcher=${!!this.mcpToolDispatcher}, SmartRouter=${!!this.smartRouter}`);
+    this.logger.debug(`方案 A 编排: AgentService=${!!this.agentService}（generate 时使用 route_and_run 返回 ui_state）`);
   }
 
   // ==================== 会话管理 ====================
@@ -362,6 +373,27 @@ export class PlanningAssistantV2Service {
       `context.countryCode=${dto.context?.countryCode || 'none'}`
     );
 
+    // 规划工作台场景校验：若 tripId 或 countryCode 任一存在，则两者都必需
+    const isPlanningWorkbench = !!(dto.context?.tripId || dto.context?.countryCode);
+    if (isPlanningWorkbench) {
+      if (!dto.context?.tripId) {
+        throw new BadRequestException({
+          success: false,
+          errorCode: '4001',
+          message: 'tripId is required in planning workbench context',
+          messageCN: '规划工作台场景下，tripId 是必需参数',
+        });
+      }
+      if (!dto.context?.countryCode) {
+        throw new BadRequestException({
+          success: false,
+          errorCode: '4002',
+          message: 'countryCode is required in planning workbench context',
+          messageCN: '规划工作台场景下，countryCode 是必需参数',
+        });
+      }
+    }
+
     // 如果启用了自动路由，尝试智能路由
     if (dto.options?.autoRoute !== false && this.smartRouter) {
       try {
@@ -378,6 +410,8 @@ export class PlanningAssistantV2Service {
                 preferences: state.preferences,
                 planCandidates: state.planCandidates?.map(p => ({ id: p.id })),
                 selectedDestination: state.selectedDestination, // 添加已选定的目的地
+                tripId: dto.context?.tripId, // 规划工作台：用户已有行程，应禁止推荐目的地
+                countryCode: dto.context?.countryCode,
               };
               selectedDestination = state.selectedDestination;
               this.logger.debug(
@@ -572,6 +606,7 @@ export class PlanningAssistantV2Service {
                     checkOut: dates.checkOut,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                    language: state.pendingHotelSearch.extractedParams?.language || this.getLanguageForAccommodation(dto),
                   };
                   try {
                     const toolResult = await this.mcpToolDispatcher.executeTool('hotel', 'hotel.search', mergedParams);
@@ -615,9 +650,14 @@ export class PlanningAssistantV2Service {
           this.logger.debug(`[会话状态] 无 sessionId，使用新会话模式`);
         }
 
+        // 规划工作台场景：无 session 时也传递 tripId，让路由知道用户已有行程（禁止推荐目的地）
+        if (dto.context?.tripId && !sessionState) {
+          sessionState = { tripId: dto.context.tripId, countryCode: dto.context.countryCode } as RouterSessionState;
+        }
+
         // 执行智能路由（带工具选择）
         const routingStartTime = Date.now();
-        const routingResult = await this.smartRouter.routeWithTools(dto.message, sessionState);
+        const routingResult = await this.smartRouter.routeWithTools(dto.message, sessionState as RouterSessionState | undefined);
         const routingDuration = Date.now() - routingStartTime;
         
         this.logger.debug(
@@ -651,12 +691,18 @@ export class PlanningAssistantV2Service {
             await this.ensureSessionExists(dto.sessionId, dto.userId);
             const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
             
-            // 合并参数：将 context 中的 tripId 和 countryCode 添加到工具参数中
+            // 合并参数：将 context 中的 tripId、countryCode、语言偏好 添加到工具参数中
             let toolParams: Record<string, any> = {
               ...routingResult.extractedParams,
               ...(dto.context?.tripId && { tripId: dto.context.tripId }),
               ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
             };
+            // 住宿类工具：按用户偏好国籍/语言传递，使返回数据以对应语言展示
+            const isAccommodationTool = routingResult.selectedTool.toolName === 'hotel.search' ||
+              routingResult.target === 'hotel' || routingResult.target === 'accommodation' || routingResult.target === 'airbnb';
+            if (isAccommodationTool) {
+              toolParams.language = this.getLanguageForAccommodation(dto);
+            }
 
             // 酒店/住宿搜索：澄清日期；若有行程日期则附带建议。若 phase 已是 RECOMMENDING 且已有日期，则不再重复澄清（避免用户补充人数等后再次弹出）
             const isHotelTool = routingResult.selectedTool.toolName === 'hotel.search' ||
@@ -811,19 +857,82 @@ export class PlanningAssistantV2Service {
                 return response;
               }
 
+              case 'optimize': {
+                // 优化已有行程：需 tripId，调用 optimizeTrip
+                const tripId = routingResult.extractedParams?.tripId || dto.context?.tripId;
+                if (!tripId) {
+                  const errMsg = isChinese ? '优化行程需要指定行程ID，请从行程详情页发起。' : 'Trip ID is required for optimization. Please start from the trip detail page.';
+                  return {
+                    message: errMsg,
+                    messageCN: errMsg,
+                    reply: errMsg,
+                    replyCN: errMsg,
+                    phase: 'ADJUSTING',
+                    sessionId: dto.sessionId,
+                    routing: { target: 'optimize', reason: 'Missing tripId', params: {} },
+                  };
+                }
+                const optType = this.parseOptimizationTypeFromMessage(dto.message);
+                const optDto: OptimizeTripRequestDto = {
+                  tripId,
+                  optimizationType: optType,
+                  language: dto.language === 'zh' ? 'zh' : 'en',
+                };
+                try {
+                  const optResult = await this.optimizeTrip(optDto, dto.userId);
+                  const msgCN = '行程已优化完成。';
+                  const msgEN = 'Trip optimization completed.';
+                  return {
+                    message: msgEN,
+                    messageCN: msgCN,
+                    reply: isChinese ? msgCN : msgEN,
+                    replyCN: msgCN,
+                    phase: 'ADJUSTING',
+                    sessionId: dto.sessionId,
+                    routing: { target: 'optimize', reason: 'Trip optimized', params: { tripId: optResult.tripId } },
+                  };
+                } catch (err: any) {
+                  this.logger.warn(`[optimize] 优化失败: ${err?.message}`);
+                  const errMsg = isChinese ? `优化失败：${err?.message || '未知错误'}` : `Optimization failed: ${err?.message || 'Unknown error'}`;
+                  return {
+                    message: errMsg,
+                    messageCN: errMsg,
+                    reply: errMsg,
+                    replyCN: errMsg,
+                    phase: 'ADJUSTING',
+                    sessionId: dto.sessionId,
+                    routing: { target: 'optimize', reason: 'Optimization failed', params: {} },
+                  };
+                }
+              }
+
               case 'generate': {
-                // 路由到方案生成接口
+                // 方案 A：优先使用 route_and_run 编排，返回 ui_state 和 orchestrationResult
                 const genParams: GeneratePlanRequestDto = {
                   sessionId: dto.sessionId,
                   userId: dto.userId,
                   naturalLanguageDescription: dto.message,
                   ...routingResult.extractedParams,
                 };
+                if (this.agentService) {
+                  try {
+                    const routeAndRunResponse = await this.generatePlanViaRouteAndRun(
+                      genParams,
+                      dto.message,
+                      dto.context?.tripId,
+                    );
+                    if (routeAndRunResponse) {
+                      return routeAndRunResponse;
+                    }
+                  } catch (err: any) {
+                    this.logger.warn(`[方案 A] route_and_run 失败，降级到 CoreGateway: ${err?.message}`);
+                  }
+                }
+                // 降级：使用 CoreGateway.generatePlan
                 businessResult = await this.generatePlan(genParams);
                 const messageEN = `I generated ${businessResult.plans.length} travel plan(s) for you.`;
                 const messageCN = `我为您生成了${businessResult.plans.length}个旅行方案。`;
                 
-                // 更新会话状态：记录消息和方案结果
                 await this.updateSessionAfterBusinessCall(dto.sessionId, {
                   message: dto.message,
                   response: messageCN,
@@ -838,7 +947,7 @@ export class PlanningAssistantV2Service {
                   replyCN: messageCN,
                   phase: 'COMPARING_PLANS',
                   sessionId: dto.sessionId,
-                  plans: businessResult.plans, // 包含方案数据
+                  plans: businessResult.plans,
                   routing: {
                     target: routingResult.target,
                     reason: routingResult.reason || 'Routed to plan generation',
@@ -891,6 +1000,7 @@ export class PlanningAssistantV2Service {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                    language: this.getLanguageForAccommodation(dto),
                   };
                   const dates = await this.getHotelDatesFromContext(hotelParams, dto);
                   const hasSuggestedDates = !!(dates.checkIn && dates.checkOut);
@@ -950,6 +1060,7 @@ export class PlanningAssistantV2Service {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                    language: this.getLanguageForAccommodation(dto),
                   };
                   const airbnbDates = await this.getHotelDatesFromContext(airbnbParams, dto);
                   const hasSuggestedDates = !!(airbnbDates.checkIn && airbnbDates.checkOut);
@@ -1004,6 +1115,7 @@ export class PlanningAssistantV2Service {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+                    language: this.getLanguageForAccommodation(dto),
                   };
                   const accDates = await this.getHotelDatesFromContext(accParams, dto);
                   const hasSuggestedDates = !!(accDates.checkIn && accDates.checkOut);
@@ -1640,16 +1752,57 @@ export class PlanningAssistantV2Service {
                 }
 
                 try {
-                  // 优先使用会话中的目的地
-                  let destination = selectedDestination || routingResult.extractedParams?.destination || '';
+                  // 优先使用会话中的目的地或 context.countryCode
+                  const countryCode = routingResult.extractedParams?.countryCode || dto.context?.countryCode;
+                  let destination = selectedDestination || routingResult.extractedParams?.destination || countryCode || '';
                   
                   if (!destination) {
                     throw new Error('请提供目的地（例如："冰岛租车推荐"）');
                   }
 
-                  // 地理编码获取位置
+                  // 第一步：优先通过 Booking.com Search Car Location 获取认可坐标（两段式流程）
                   let location: { lat: number; lng: number } | undefined;
-                  if (this.googleMapsDirectService) {
+                  const destTrimmed = String(destination).trim();
+                  const countryCodeToQuery: Record<string, string> = {
+                    IS: 'Reykjavik', US: 'New York', JP: 'Tokyo', TH: 'Bangkok',
+                    NO: 'Oslo', NZ: 'Auckland', GB: 'London', DE: 'Berlin', FR: 'Paris',
+                  };
+                  const searchQuery = destTrimmed.length === 2 && /^[A-Z]{2}$/i.test(destTrimmed)
+                    ? (countryCodeToQuery[destTrimmed.toUpperCase()] ?? destTrimmed)
+                    : destTrimmed;
+
+                  try {
+                    const locResult = await this.bookingComService.searchCarLocation({ query: searchQuery });
+                    const items = locResult?.data;
+                    if (Array.isArray(items) && items.length > 0) {
+                      const first = items[0];
+                      const lat = first.coordinates?.latitude ?? first.latitude;
+                      const lng = first.coordinates?.longitude ?? first.longitude;
+                      if (lat != null && lng != null) {
+                        location = { lat: Number(lat), lng: Number(lng) };
+                        this.logger.debug(`租车搜索: Search Car Location 返回坐标 (${location.lat}, ${location.lng})`);
+                      }
+                    }
+                  } catch (locErr: any) {
+                    this.logger.debug(`Search Car Location 未返回数据，回退到地理编码: ${locErr.message}`);
+                  }
+
+                  // 回退：国家代码使用预定义坐标
+                  if (!location) {
+                    const destUpper = destTrimmed.toUpperCase();
+                    if (destUpper.length === 2 && /^[A-Z]{2}$/.test(destUpper)) {
+                      const predefined: Record<string, { lat: number; lng: number }> = {
+                        IS: { lat: 64.9631, lng: -19.0208 }, JP: { lat: 35.6762, lng: 139.6503 },
+                        US: { lat: 40.7128, lng: -74.0060 }, TH: { lat: 13.7563, lng: 100.5018 },
+                        NO: { lat: 59.9139, lng: 10.7522 }, NZ: { lat: -36.8485, lng: 174.7633 },
+                      };
+                      if (predefined[destUpper]) {
+                        location = predefined[destUpper];
+                        this.logger.debug(`租车搜索: 国家代码 ${destUpper} 使用预定义坐标`);
+                      }
+                    }
+                  }
+                  if (!location && this.googleMapsDirectService) {
                     try {
                       const geocodeResult = await this.googleMapsDirectService.geocode({
                         address: destination,
@@ -1679,15 +1832,28 @@ export class PlanningAssistantV2Service {
                   dropoffDate.setDate(dropoffDate.getDate() + 1);
 
                   const carRentalResult = await this.bookingComService.searchCarRentals({
-                    pickupLocation: `${location.lat},${location.lng}`,
-                    dropoffLocation: `${location.lat},${location.lng}`,
-                    pickupDate: pickupDate.toISOString().split('T')[0],
-                    dropoffDate: dropoffDate.toISOString().split('T')[0],
-                    driverAge: 25, // 默认年龄
+                    pick_up_latitude: location.lat,
+                    pick_up_longitude: location.lng,
+                    drop_off_latitude: location.lat,
+                    drop_off_longitude: location.lng,
+                    pick_up_time: '10:00',
+                    drop_off_time: '10:00',
+                    driver_age: 25,
+                    pick_up_date: pickupDate.toISOString().split('T')[0],
+                    drop_off_date: dropoffDate.toISOString().split('T')[0],
+                    currency_code: 'USD',
+                    location: routingResult.extractedParams?.countryCode || dto.context?.countryCode || 'US',
                   });
 
-                  const rentals = carRentalResult?.data || [];
-                  const messageCN = `我为您找到了${rentals.length}个${destination}的租车选择。`;
+                  // RapidAPI 可能返回 { data: { status: false, ... } } 或 { data: [...] }，需统一为数组
+                  let rentals = carRentalResult?.data;
+                  if (!Array.isArray(rentals)) {
+                    rentals = [];
+                  }
+                  const count = rentals.length;
+                  const messageCN = count > 0
+                    ? `我为您找到了${count}个${destination}的租车选择。`
+                    : `暂未找到${destination}的租车选项，请稍后重试或调整搜索条件。`;
 
                   await this.updateSessionAfterBusinessCall(dto.sessionId, {
                     message: dto.message,
@@ -1696,9 +1862,9 @@ export class PlanningAssistantV2Service {
                   });
 
                   return {
-                    message: `I found ${rentals.length} car rental option${rentals.length !== 1 ? 's' : ''} in ${destination}.`,
+                    message: count > 0 ? `I found ${count} car rental option${count !== 1 ? 's' : ''} in ${destination}.` : `No car rentals found for ${destination}.`,
                     messageCN,
-                    reply: isChinese ? messageCN : `I found ${rentals.length} car rentals.`,
+                    reply: isChinese ? messageCN : (count > 0 ? `I found ${count} car rentals.` : 'No car rentals found.'),
                     replyCN: messageCN,
                     phase: 'RECOMMENDING',
                     sessionId: dto.sessionId,
@@ -1742,17 +1908,40 @@ export class PlanningAssistantV2Service {
     let finalRoutingResult: any = null;
     let finalSelectedDestination: string | undefined = undefined;
     try {
+      const sessionStateData = dto.sessionId ? await this.planningAssistantService.getSessionState(dto.sessionId).catch(() => null) : null;
+
+      // 检查「提取攻略中的景点加入行程」意图
+      const addAttractionsKeywords = /加入|提取|添加|加入行程|必玩|必去|景点/i;
+      if (
+        dto.context?.tripId &&
+        sessionStateData?.searchResults &&
+        sessionStateData.searchResults.length > 0 &&
+        addAttractionsKeywords.test(dto.message)
+      ) {
+        const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+        const result = await this.handleAddAttractionsFromSearch(
+          sessionStateData.searchResults,
+          dto.context.tripId,
+          dto.context.countryCode || 'IS',
+          dto,
+          isChinese
+        );
+        if (result) return result;
+      }
+
+      if (sessionStateData) {
+        finalSelectedDestination = sessionStateData.selectedDestination;
+      }
       if (dto.options?.autoRoute !== false && this.smartRouter) {
-        const sessionStateData = dto.sessionId ? await this.planningAssistantService.getSessionState(dto.sessionId).catch(() => null) : null;
-        if (sessionStateData) {
-          finalSelectedDestination = sessionStateData.selectedDestination;
-        }
-        finalRoutingResult = await this.smartRouter.route(dto.message, sessionStateData ? {
-          phase: sessionStateData.phase,
-          preferences: sessionStateData.preferences,
-          planCandidates: sessionStateData.planCandidates?.map(p => ({ id: p.id })),
-          selectedDestination: sessionStateData.selectedDestination,
-        } : undefined);
+        const fallbackSessionState: RouterSessionState | undefined = (sessionStateData || dto.context?.tripId) ? {
+          phase: sessionStateData?.phase,
+          preferences: sessionStateData?.preferences,
+          planCandidates: sessionStateData?.planCandidates?.map(p => ({ id: p.id })),
+          selectedDestination: sessionStateData?.selectedDestination,
+          tripId: dto.context?.tripId, // 规划工作台：用户已有行程，应禁止推荐目的地
+          countryCode: dto.context?.countryCode,
+        } : undefined;
+        finalRoutingResult = await this.smartRouter.route(dto.message, fallbackSessionState);
       }
     } catch (error: any) {
       this.logger.debug(`获取路由结果失败: ${error.message}`);
@@ -2155,6 +2344,147 @@ export class PlanningAssistantV2Service {
       messageCN: '核心网关不可用',
       details: { traceId },
     });
+  }
+
+  /**
+   * 方案 A：通过 route_and_run 编排生成方案，返回 ui_state 和 orchestrationResult
+   * 供前端展示可折叠「编排进度」卡片
+   * @param tripId 规划工作台场景下的行程 ID，传入时编排会关联已有行程
+   */
+  private async generatePlanViaRouteAndRun(
+    dto: GeneratePlanRequestDto,
+    userMessage: string,
+    tripId?: string,
+  ): Promise<ChatResponseDto | null> {
+    if (!this.agentService) return null;
+
+    const destination = dto.destination || (dto as any).naturalLanguageDescription;
+    if (!destination) return null;
+
+    const message = userMessage || this.buildPlanMessageFromParams(dto);
+    const requestId = `pa-gen-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+    const routeAndRunRequest = {
+      request_id: requestId,
+      user_id: dto.userId || 'anonymous',
+      trip_id: tripId as string | undefined,
+      message,
+      options: {
+        entry_point: 'planning_workbench' as const,
+        use_claude_orchestration: true,
+        use_state_machine_orchestration: true,
+        max_seconds: 60,
+        max_steps: 8,
+      },
+    };
+
+    this.logger.debug(`[方案 A] 调用 route_and_run: request_id=${requestId}, message=${message.substring(0, 50)}...`);
+
+    const response = await this.agentService.routeAndRun(routeAndRunRequest);
+
+    if (response.result?.status === 'REDIRECT_REQUIRED') {
+      this.logger.warn('[方案 A] route_and_run 返回 REDIRECT_REQUIRED，降级');
+      return null;
+    }
+
+    const payload = response.result?.payload;
+    const orchestrationResult = payload?.orchestrationResult;
+    const itinerary = orchestrationResult?.itinerary;
+    const state = orchestrationResult?.state;
+
+    const plans: PlanCandidateDto[] = [];
+    if (itinerary || state) {
+      plans.push(this.convertOrchestrationResultToPlanCandidate(state, itinerary, destination));
+    }
+
+    const answerText = response.result?.answer_text || '';
+    const isChinese = /[\u4e00-\u9fa5]/.test(answerText);
+
+    if (dto.sessionId && plans.length > 0) {
+      await this.updateSessionAfterBusinessCall(dto.sessionId, {
+        message: userMessage,
+        response: answerText,
+        phase: 'COMPARING_PLANS',
+        planCandidates: this.convertPlanCandidatesDtoToPlanCandidates(plans),
+      });
+    }
+
+    return {
+      message: answerText || `I generated ${plans.length} travel plan(s) for you.`,
+      messageCN: answerText || `我为您生成了${plans.length}个旅行方案。`,
+      reply: isChinese ? (answerText || `我为您生成了${plans.length}个旅行方案。`) : (answerText || `I generated ${plans.length} travel plan(s) for you.`),
+      replyCN: answerText || `我为您生成了${plans.length}个旅行方案。`,
+      phase: 'COMPARING_PLANS',
+      sessionId: dto.sessionId,
+      plans,
+      ui_state: response.ui_state ? {
+        phase: response.ui_state.phase,
+        ui_status: response.ui_state.ui_status,
+        progress_percent: response.ui_state.progress_percent,
+        message: response.ui_state.message,
+        requires_user_action: response.ui_state.requires_user_action,
+        estimated_time_remaining_ms: response.ui_state.estimated_time_remaining_ms,
+        current_step_detail: response.ui_state.current_step_detail,
+      } : undefined,
+      orchestrationResult: orchestrationResult ? {
+        state: state as unknown as Record<string, unknown>,
+        gate_result: orchestrationResult.gate_result as unknown as Record<string, unknown>,
+        decision_log: orchestrationResult.decision_log as unknown[],
+        itinerary: orchestrationResult.itinerary as { days?: unknown[] },
+        decisionState: (payload as any)?.orchestrationResult?.decisionState as Record<string, unknown> | undefined,
+      } : undefined,
+      routing: {
+        target: 'generate' as const,
+        reason: 'Routed via route_and_run (方案 A)',
+        params: (dto as any),
+      },
+    };
+  }
+
+  private buildPlanMessageFromParams(dto: GeneratePlanRequestDto): string {
+    const dest = dto.destination || '旅行';
+    const days = (dto as any).days ?? 5;
+    return `帮我规划${days}天${dest}的行程`;
+  }
+
+  private convertOrchestrationResultToPlanCandidate(
+    state: any,
+    itinerary: any,
+    destination: string,
+  ): PlanCandidateDto {
+    const days = itinerary?.days?.length || state?.trip_plan_request?.days || 5;
+    const dest = destination || state?.trip_plan_request?.destination || 'Unknown';
+    const planId = state?.plan_id || `plan-orch-${Date.now()}`;
+
+    const highlights: string[] = [];
+    if (itinerary?.days) {
+      for (const day of itinerary.days.slice(0, 3)) {
+        const items = day.items || [];
+        for (const item of items.slice(0, 2)) {
+          if (item.location_ref?.name) highlights.push(item.location_ref.name);
+          else if (item.type === 'POI' && item.title) highlights.push(item.title);
+        }
+      }
+    }
+    if (highlights.length === 0) highlights.push(`${dest}精华行程`);
+
+    return {
+      id: planId,
+      name: `${dest} ${days}-Day Itinerary`,
+      nameCN: `${dest} ${days}天行程`,
+      description: `AI-generated ${days}-day itinerary for ${dest}`,
+      descriptionCN: `AI 生成的${dest}${days}天行程`,
+      destination: typeof dest === 'string' ? dest : (dest as any)?.city || 'Unknown',
+      duration: days,
+      highlights,
+      estimatedBudget: {
+        total: 0,
+        breakdown: { flight: 0, accommodation: 0, activities: 0, food: 0, other: 0 },
+        currency: 'CNY',
+      },
+      pace: 'moderate',
+      suitability: { score: 0.8, reasons: ['编排生成'] },
+    };
   }
 
   /**
@@ -3037,10 +3367,48 @@ export class PlanningAssistantV2Service {
 
         if (!coreResult.success) {
           this.logger.warn(`CoreGateway优化行程失败: ${coreResult.error?.message || 'Unknown error'}`);
-          // 即使CoreGateway失败，也尝试直接更新数据库
+          throw new BadRequestException({
+            success: false,
+            errorCode: '4006',
+            message: coreResult.error?.message || 'Optimization service failed',
+            messageCN: `${coreResult.error?.message || '优化服务失败'}，请稍后重试。`,
+          });
+        }
+        // ExecutionAgent 不可用时 CoreGateway 返回 success:true 但 data.degraded=true
+        // 方案2：降级到 TripSuggestionsService.applyHighPrioritySuggestions（应用高优先级建议）
+        const data = coreResult.data as { success?: boolean; degraded?: boolean; message?: string } | undefined;
+        if (data?.degraded || data?.success === false) {
+          this.logger.warn(`CoreGateway 降级响应，尝试方案2: TripSuggestionsService.applyHighPrioritySuggestions`);
+          if (this.tripSuggestionsService) {
+            try {
+              const fallbackResult = await this.tripSuggestionsService.applyHighPrioritySuggestions(
+                dto.tripId,
+                { preview: false, limit: 10 }
+              );
+              this.logger.debug(`[方案2] 高优先级建议应用: appliedCount=${fallbackResult.appliedCount}`);
+              // 无论 appliedCount 多少，都视为优化完成（已尝试应用建议）
+              return { success: true, tripId: dto.tripId };
+            } catch (fallbackErr: any) {
+              this.logger.warn(`[方案2] 降级优化失败: ${fallbackErr?.message}`);
+            }
+          }
+          const msg = data?.message || '执行服务暂时不可用';
+          throw new BadRequestException({
+            success: false,
+            errorCode: '4007',
+            message: msg,
+            messageCN: '优化服务暂时不可用，请稍后重试。',
+          });
         }
       } catch (error: any) {
+        if (error instanceof BadRequestException) throw error;
         this.logger.warn(`CoreGateway优化行程异常: ${error.message}`);
+        throw new BadRequestException({
+          success: false,
+          errorCode: '4008',
+          message: error.message || 'Optimization failed',
+          messageCN: `优化失败：${error.message || '未知错误'}，请稍后重试。`,
+        });
       }
     }
 
@@ -3156,6 +3524,7 @@ export class PlanningAssistantV2Service {
       phase: string;
       recommendations?: any[];
       planCandidates?: any[];
+      searchResults?: Array<{ title?: string; url?: string; text?: string; publishedDate?: string }>;
     }
   ): Promise<void> {
     try {
@@ -3230,6 +3599,15 @@ export class PlanningAssistantV2Service {
       if (updates.planCandidates) {
         // 使用转换方法确保类型正确
         finalState.planCandidates = this.convertPlanCandidatesDtoToPlanCandidates(updates.planCandidates);
+      }
+
+      if (updates.searchResults && updates.searchResults.length > 0) {
+        finalState.searchResults = updates.searchResults.map((r: any) => ({
+          title: r.title,
+          url: r.url,
+          text: r.text,
+          publishedDate: r.publishedDate,
+        }));
       }
 
       // 保存会话状态
@@ -4400,6 +4778,17 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 从用户消息解析优化类型
+   */
+  private parseOptimizationTypeFromMessage(message: string): 'pace' | 'budget' | 'route' | 'activities' {
+    const lower = message.toLowerCase();
+    if (lower.includes('节奏') || lower.includes('pace') || lower.includes('慢一点') || lower.includes('轻松')) return 'pace';
+    if (lower.includes('预算') || lower.includes('budget') || lower.includes('省钱') || lower.includes('便宜')) return 'budget';
+    if (lower.includes('活动') || lower.includes('activities') || lower.includes('景点') || lower.includes('行程安排')) return 'activities';
+    return 'route'; // 默认：路线/行程优化
+  }
+
+  /**
    * 将优化类型映射到变更意图类型
    */
   private mapOptimizationTypeToChangeIntentType(
@@ -4597,6 +4986,26 @@ export class PlanningAssistantV2Service {
       KR: '韩国首尔',
     };
     return names[countryCode?.toUpperCase() || ''] || '';
+  }
+
+  /**
+   * 根据用户偏好确定住宿数据的展示语言
+   * 优先级：dto.language > userCountryCode 映射 > 消息语言推断
+   */
+  private getLanguageForAccommodation(dto: ChatRequestDto): string {
+    if (dto.language === 'zh' || dto.language === 'en') return dto.language;
+    const cc = dto.context?.userCountryCode?.toUpperCase();
+    if (cc) {
+      const langMap: Record<string, string> = {
+        CN: 'zh', TW: 'zh-TW', HK: 'zh-TW', MO: 'zh-TW',
+        JP: 'ja', KR: 'ko',
+        DE: 'de', FR: 'fr', ES: 'es', IT: 'it', PT: 'pt',
+        TH: 'th', VI: 'vi', ID: 'id', MY: 'ms',
+      };
+      const lang = langMap[cc];
+      if (lang) return lang;
+    }
+    return this.isChineseMessage(dto.message) ? 'zh' : 'en';
   }
 
   /**
@@ -4915,6 +5324,141 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 解析 Exa MCP 返回的 Markdown 格式（当 content.text 非 JSON 时）
+   * 格式示例:
+   *   Title: 冰岛十大必去景点
+   *   Published Date: 2026-02-19T15:09:39.989Z
+   *   URL: https://...
+   *   Text: 内容...
+   */
+  private parseExaMarkdownResults(rawText: string): Array<{ title?: string; url?: string; publishedDate?: string; text?: string }> {
+    if (!rawText || typeof rawText !== 'string') return [];
+    const blocks = rawText.split(/\n(?=Title:)/i).filter((b) => b.trim().length > 0 && /Title:/i.test(b));
+    const results: Array<{ title?: string; url?: string; publishedDate?: string; text?: string }> = [];
+    for (const block of blocks) {
+      const titleMatch = block.match(/Title:\s*(.+?)(?=\n|$)/s);
+      const urlMatch = block.match(/URL:\s*(.+?)(?=\n|$)/s);
+      const dateMatch = block.match(/Published Date:\s*(.+?)(?=\n|$)/s);
+      const textMatch = block.match(/Text:\s*([\s\S]+?)(?=\n(?:Title:)|$)/s);
+      if (titleMatch || urlMatch || textMatch) {
+        results.push({
+          title: titleMatch?.[1]?.trim(),
+          url: urlMatch?.[1]?.trim(),
+          publishedDate: dateMatch?.[1]?.trim(),
+          text: textMatch?.[1]?.trim(),
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * 从攻略搜索结果中提取景点并加入行程
+   */
+  private async handleAddAttractionsFromSearch(
+    searchResults: Array<{ title?: string; url?: string; text?: string }>,
+    tripId: string,
+    countryCode: string,
+    dto: ChatRequestDto,
+    isChinese: boolean
+  ): Promise<ChatResponseDto | null> {
+    if (!this.itineraryItemsService || !this.prisma || !this.llmService) return null;
+    const combinedText = searchResults
+      .map((r) => `${r.title || ''}\n${r.text || ''}`)
+      .join('\n\n')
+      .slice(0, 4000);
+    if (!combinedText.trim()) return null;
+
+    let attractionNames: string[] = [];
+    try {
+      const prompt = `你是一个旅游攻略解析助手。从攻略内容中提取景点/必去地点名称（中英文均可）。只输出景点名，每行一个，不要编号、不要解释、不要其他文字。最多提取10个。
+
+攻略内容：
+${combinedText}`;
+      const text = (await this.llmService.callLlmWithSchema(LlmProvider.DEEPSEEK, prompt)).trim();
+      attractionNames = text
+        .split(/[\n,，、;；]/)
+        .map((s) => s.replace(/^\d+[.．\s]*/, '').trim())
+        .filter((s) => s.length >= 2 && s.length <= 50);
+      attractionNames = [...new Set(attractionNames)].slice(0, 8);
+    } catch (err: any) {
+      this.logger.warn(`LLM 提取景点失败: ${err.message}`);
+      return null;
+    }
+
+    if (attractionNames.length === 0) {
+      return {
+        message: 'Could not extract attractions from the guides',
+        messageCN: '未能从攻略中提取到景点信息',
+        reply: isChinese ? '未能从攻略中提取到景点信息' : 'Could not extract attractions',
+        replyCN: '未能从攻略中提取到景点信息',
+        phase: 'RECOMMENDING',
+        sessionId: dto.sessionId,
+        routing: { target: 'chat', reason: 'Extraction failed', params: {} },
+      };
+    }
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: { TripDay: { orderBy: { date: 'asc' } } },
+    });
+    if (!trip || !trip.TripDay?.length) {
+      return {
+        message: 'Trip not found or has no days',
+        messageCN: '行程不存在或没有行程日',
+        reply: isChinese ? '行程不存在或没有行程日' : 'Trip not found',
+        replyCN: '行程不存在或没有行程日',
+        phase: 'RECOMMENDING',
+        sessionId: dto.sessionId,
+        routing: { target: 'chat', reason: 'Trip not found', params: {} },
+      };
+    }
+
+    const firstDay = trip.TripDay[0];
+    const baseDate = DateTime.fromJSDate(firstDay.date, { zone: 'utc' });
+    let added = 0;
+    let lastEnd = baseDate.set({ hour: 9, minute: 0, second: 0 });
+
+    for (const name of attractionNames) {
+      try {
+        const startTime = lastEnd.toISO()!;
+        const endTime = lastEnd.plus({ hours: 2 }).toISO()!;
+        lastEnd = lastEnd.plus({ hours: 2, minutes: 30 });
+
+        await this.itineraryItemsService.create({
+          tripDayId: firstDay.id,
+          placeName: name,
+          type: ItemType.ACTIVITY,
+          startTime,
+          endTime,
+          forceCreate: true,
+        });
+        added++;
+      } catch (e: any) {
+        this.logger.warn(`添加行程项失败: ${name}, ${e.message}`);
+      }
+    }
+
+    const messageCN = added > 0
+      ? `已从攻略中提取 ${attractionNames.length} 个景点，成功加入 ${added} 个到行程第1天。`
+      : '提取到景点但加入行程失败，请稍后重试。';
+    await this.updateSessionAfterBusinessCall(dto.sessionId, {
+      message: dto.message,
+      response: messageCN,
+      phase: 'RECOMMENDING',
+    }).catch((err) => this.logger.warn(`更新会话状态失败: ${err.message}`));
+    return {
+      message: added > 0 ? `Added ${added} attractions from guides to Day 1` : 'Failed to add attractions',
+      messageCN,
+      reply: messageCN,
+      replyCN: messageCN,
+      phase: 'RECOMMENDING',
+      sessionId: dto.sessionId,
+      routing: { target: 'chat', reason: 'Added attractions from search', params: {} },
+    };
+  }
+
+  /**
    * 将酒店/Airbnb 混合结果统一映射为 accommodations
    */
   private mapToAccommodations(results: any[], source: 'hotel' | 'airbnb'): AccommodationItemDto[] {
@@ -5105,6 +5649,40 @@ export class PlanningAssistantV2Service {
           },
         },
       };
+    } else if (toolName === 'weather.getCurrentWeather') {
+      // 当前天气（与 getWeatherByDatetimeRange 区分：当前天气 vs 预报）
+      const weatherData = parsedResult?.current ? parsedResult : (parsedResult?.data || parsedResult);
+      const location = weatherData?.city || routingResult.extractedParams?.destination || routingResult.extractedParams?.location || '该位置';
+      const temp = weatherData?.current?.temperature;
+      const desc = weatherData?.current?.weather_description;
+      const hasData = temp != null && desc;
+      const messageCN = hasData
+        ? `${location}的天气：${desc}，温度 ${temp}°C。`
+        : '未获取到天气数据，请稍后重试。';
+
+      this.updateSessionAfterBusinessCall(dto.sessionId, {
+        message: dto.message,
+        response: messageCN,
+        phase: 'RECOMMENDING',
+      }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
+
+      return {
+        message: hasData ? `Weather in ${location}: ${desc}, ${temp}°C.` : 'Weather data not available.',
+        messageCN,
+        reply: isChinese ? messageCN : (hasData ? `Weather: ${desc}, ${temp}°C.` : 'Weather data not available'),
+        replyCN: messageCN,
+        phase: 'RECOMMENDING',
+        sessionId: dto.sessionId,
+        weather: weatherData,
+        routing: {
+          target: routingResult.target,
+          reason: routingResult.toolSelection?.reason || 'Routed to current weather',
+          params: {
+            ...routingResult.extractedParams,
+            toolName: toolName,
+          },
+        },
+      };
     } else if (toolName === 'weather.getWeatherByDatetimeRange') {
       // 天气预报
       const forecast = parsedResult?.forecast || parsedResult?.data || parsedResult;
@@ -5138,21 +5716,31 @@ export class PlanningAssistantV2Service {
         },
       };
     } else if (toolName === 'exa.webSearch') {
-      // Web 搜索
-      const results = toolResult?.results || toolResult?.data || toolResult || [];
-      const messageCN = `我为您找到了${results.length}条搜索结果`;
+      // Web 搜索。Exa MCP 可能返回: JSON { results: [...] } 或 Markdown 格式（Title/URL/Text）
+      let rawResults =
+        parsedResult?.results ??
+        parsedResult?.data?.results ??
+        (Array.isArray(parsedResult?.data) ? parsedResult.data : parsedResult?.data) ??
+        parsedResult;
+      let results = Array.isArray(rawResults) ? rawResults : [];
+      if (results.length === 0 && parsedResult?.raw) {
+        results = this.parseExaMarkdownResults(parsedResult.raw);
+      }
+      const count = results.length;
+      const messageCN = `我为您找到了${count}条搜索结果`;
       
-      // 异步更新会话状态（不等待）
+      // 异步更新会话状态（含 searchResults，供后续「提取攻略中的景点加入行程」使用）
       this.updateSessionAfterBusinessCall(dto.sessionId, {
         message: dto.message,
         response: messageCN,
         phase: 'RECOMMENDING',
+        searchResults: results,
       }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
 
       return {
-        message: `Found ${results.length} search result${results.length !== 1 ? 's' : ''}`,
+        message: `Found ${count} search result${count !== 1 ? 's' : ''}`,
         messageCN,
-        reply: isChinese ? messageCN : `Found ${results.length} results`,
+        reply: isChinese ? messageCN : `Found ${count} results`,
         replyCN: messageCN,
         phase: 'RECOMMENDING',
         sessionId: dto.sessionId,
@@ -5209,21 +5797,31 @@ export class PlanningAssistantV2Service {
         },
       };
     } else if (toolName === 'exa.webSearchAdvanced' || toolName === 'exa.deepSearch') {
-      // Exa 高级搜索
-      const results = parsedResult?.results || parsedResult?.data || parsedResult || [];
-      const messageCN = `我为您找到了${results.length}条搜索结果`;
+      // Exa 高级搜索（与 exa.webSearch 相同的结果提取逻辑，含 Markdown 回退）
+      let rawResults =
+        parsedResult?.results ??
+        parsedResult?.data?.results ??
+        (Array.isArray(parsedResult?.data) ? parsedResult.data : parsedResult?.data) ??
+        parsedResult;
+      let results = Array.isArray(rawResults) ? rawResults : [];
+      if (results.length === 0 && parsedResult?.raw) {
+        results = this.parseExaMarkdownResults(parsedResult.raw);
+      }
+      const count = results.length;
+      const messageCN = `我为您找到了${count}条搜索结果`;
       
-      // 异步更新会话状态（不等待）
+      // 异步更新会话状态（含 searchResults，供后续「提取攻略中的景点加入行程」使用）
       this.updateSessionAfterBusinessCall(dto.sessionId, {
         message: dto.message,
         response: messageCN,
         phase: 'RECOMMENDING',
+        searchResults: results,
       }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
 
       return {
-        message: `Found ${results.length} search result${results.length !== 1 ? 's' : ''}`,
+        message: `Found ${count} search result${count !== 1 ? 's' : ''}`,
         messageCN,
-        reply: isChinese ? messageCN : `Found ${results.length} results`,
+        reply: isChinese ? messageCN : `Found ${count} results`,
         replyCN: messageCN,
         phase: 'RECOMMENDING',
         sessionId: dto.sessionId,
