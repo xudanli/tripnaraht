@@ -93,6 +93,21 @@ export interface RouteSolution {
   
   /** 聚类区域（Zone） */
   zones?: Zone[];
+
+  /** 优化前因不营业等原因排除的地点 */
+  excludedFromOptimization?: Array<{ placeId: number; reason: string }>;
+
+  /** 优化过程 trace（可观测性） */
+  optimizationTrace?: {
+    algorithm: 'simulatedAnnealing' | 'VRPTW';
+    iterations?: number;
+    initialScore?: number;
+    finalScore?: number;
+    durationMs?: number;
+    seed?: number;
+    multiStartTrials?: number;
+    orToolsWarmStart?: boolean;
+  };
 }
 
 /**
@@ -134,6 +149,16 @@ export interface OptimizationConfig {
   /** 是否带老人 */
   hasElderly?: boolean;
   
+  /** 默认交通方式（未指定时根据 hasChildren/hasElderly 推导） */
+  defaultTravelMode?: 'TRANSIT' | 'WALKING' | 'DRIVING';
+  
+  /** 交通偏好（透传给 Transport API） */
+  transportPreferences?: {
+    lessWalking?: boolean;
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+  };
+  
   /** 午餐时间窗 */
   lunchWindow?: {
     start: string; // "12:00"
@@ -156,6 +181,26 @@ export interface OptimizationConfig {
   
   /** 是否启用 VRPTW 算法（带时间窗约束） */
   useVRPTW?: boolean;
+
+  /** 快乐值权重（可配置，预留从用户反馈学习） */
+  happinessWeights?: {
+    interest?: number;
+    distancePenalty?: number;
+    tiredPenalty?: number;
+    boredPenalty?: number;
+    starvePenalty?: number;
+    clusteringBonus?: number;
+    bufferBonus?: number;
+  };
+
+  /** 随机种子（可复现优化结果） */
+  seed?: number;
+
+  /** 多起点试验次数（>1 时多次运行 SA 取最优，提升解质量） */
+  multiStartTrials?: number;
+
+  /** 使用 OR-Tools TSP 作为初始解（若 node_or_tools 可用） */
+  useORTools?: boolean;
 }
 
 /**

@@ -12,27 +12,43 @@ import { HappinessScorerService } from './happiness-scorer.service';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { RouteCacheService } from '../../transport/services/route-cache.service';
 import { VRPTWOptimizerService } from './vrptw-optimizer.service';
+import { OrToolsTspService } from './or-tools-tsp.service';
 
-/**
- * 路线优化服务
- * 
- * 使用模拟退火算法优化路线，最大化"快乐值"
- * 
- * 改进：集成真实的交通规划服务，使用 Google Routes API 获取准确的旅行时间
- */
+/** Mulberry32  seeded PRNG，用于可复现的随机数 */
+function createSeededRandom(seed: number): () => number {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 解析有效交通方式：考虑 defaultTravelMode、hasElderly、hasChildren */
+function resolveTravelMode(config: OptimizationConfig): 'TRANSIT' | 'WALKING' | 'DRIVING' {
+  if (config.defaultTravelMode && ['TRANSIT', 'WALKING', 'DRIVING'].includes(config.defaultTravelMode)) {
+    return config.defaultTravelMode;
+  }
+  if (config.hasElderly) return 'TRANSIT'; // 老人：公共交通 + transportPreferences.lessWalking
+  if (config.hasChildren) return 'DRIVING'; // 带小孩：自驾更方便
+  return 'TRANSIT';
+}
+
 @Injectable()
 export class RouteOptimizerService {
   private readonly logger = new Logger(RouteOptimizerService.name);
-  
-  // 时间矩阵缓存：存储所有点对之间的旅行时间（分钟）
+
   private timeMatrix: Map<string, number> = new Map();
+  private resolvedTravelMode: 'TRANSIT' | 'WALKING' | 'DRIVING' = 'TRANSIT';
 
   constructor(
     private clusteringService: SpatialClusteringService,
     private scorerService: HappinessScorerService,
     private smartRoutesService: SmartRoutesService,
     private routeCacheService: RouteCacheService,
-    private vrptwOptimizer: VRPTWOptimizerService
+    private vrptwOptimizer: VRPTWOptimizerService,
+    private orToolsTspService: OrToolsTspService
   ) {}
 
   /**
@@ -60,58 +76,124 @@ export class RouteOptimizerService {
     // 2. 批量预计算所有点对之间的旅行时间（优化 TSP 算法性能）
     await this.precomputeTimeMatrix(places, config);
 
-    // 3. 根据配置选择优化算法
+    const startMs = Date.now();
     let optimizedRoute: RouteSolution;
+    let optimizationTrace: RouteSolution['optimizationTrace'];
 
     if (config.useVRPTW) {
-      // 使用 VRPTW 算法（带时间窗约束）
       optimizedRoute = await this.optimizeWithVRPTW(places, config, zones);
+      optimizationTrace = {
+        algorithm: 'VRPTW',
+        durationMs: Date.now() - startMs,
+        finalScore: optimizedRoute.happinessScore,
+      };
     } else {
-      // 使用传统的模拟退火算法
-      let currentRoute = this.generateInitialRoute(places, config);
-      let currentScore = this.calculateTotalScore(currentRoute, config, zones);
-
-      this.logger.debug(`初始解分数：${currentScore}`);
-
-      // 4. 模拟退火优化
-      optimizedRoute = this.simulatedAnnealing(
-        currentRoute,
-        currentScore,
-        config,
-        zones
+      const trials = Math.min(
+        Math.max(1, config.multiStartTrials ?? 1),
+        5
       );
+      let bestRoute: RouteSolution | null = null;
+      let bestScore = -Infinity;
+      let totalIterations = 0;
+      let firstInitialScore = 0;
+
+      const otherCount = places.filter((p) => !p.isRestaurant).length;
+      const otherPlaces = places.filter((p) => !p.isRestaurant);
+      const restaurants = places.filter((p) => p.isRestaurant);
+
+      let orToolsInitialRoute: RouteSolution | null = null;
+      if (config.useORTools && this.orToolsTspService.isAvailable() && otherPlaces.length >= 2) {
+        const getTime = (fromId: string, toId: string) =>
+          this.getTimeFromMatrix(fromId, toId) ?? 30;
+        const tspOrder = await this.orToolsTspService.solveTsp(otherPlaces, getTime, {
+          timeLimitMs: 3000,
+          depotIndex: 0,
+        });
+        if (tspOrder && tspOrder.length === otherPlaces.length) {
+          orToolsInitialRoute = this.buildRouteFromOrder(otherPlaces, restaurants, config, tspOrder);
+          this.logger.debug('使用 OR-Tools TSP 初始解');
+        }
+      }
+
+      for (let t = 0; t < trials; t++) {
+        const trialConfig = {
+          ...config,
+          seed: config.seed != null ? config.seed + t : undefined,
+          _startPlaceIndex: trials > 1 && otherCount > 1 ? t % otherCount : 0,
+        } as OptimizationConfig & { _startPlaceIndex?: number };
+
+        let currentRoute: RouteSolution;
+        if (t === 0 && orToolsInitialRoute) {
+          currentRoute = orToolsInitialRoute;
+        } else {
+          currentRoute = this.generateInitialRoute(places, trialConfig);
+        }
+        const initialScore = this.calculateTotalScore(currentRoute, trialConfig, zones);
+        if (t === 0) firstInitialScore = initialScore;
+        if (trials > 1) {
+          this.logger.debug(`多起点试验 ${t + 1}/${trials}，初始分数：${initialScore}`);
+        } else {
+          this.logger.debug(`初始解分数：${initialScore}`);
+        }
+
+        const { route, iterations } = this.simulatedAnnealing(
+          currentRoute,
+          initialScore,
+          trialConfig,
+          zones
+        );
+        const routeScore = this.applyHappinessWeights(
+          this.scorerService.calculateHappinessScore(
+            route.nodes,
+            this.generateSchedule(route, trialConfig),
+            trialConfig,
+            zones
+          ),
+          trialConfig.happinessWeights
+        );
+
+        totalIterations += iterations;
+        if (routeScore > bestScore) {
+          bestScore = routeScore;
+          bestRoute = route;
+        }
+      }
+
+      optimizedRoute = bestRoute!;
+      optimizationTrace = {
+        algorithm: 'simulatedAnnealing',
+        iterations: totalIterations,
+        initialScore: firstInitialScore,
+        durationMs: Date.now() - startMs,
+        seed: config.seed,
+        multiStartTrials: trials > 1 ? trials : undefined,
+        orToolsWarmStart: orToolsInitialRoute != null,
+      };
     }
 
-    // 5. 生成时间安排（如果 VRPTW 已经生成，这里会验证和调整）
     const schedule = this.generateSchedule(optimizedRoute, config, config.useVRPTW);
-
-    // 6. 计算最终分数
     const scoreBreakdown = this.scorerService.calculateHappinessScore(
       optimizedRoute.nodes,
       schedule,
       config,
       zones
     );
+    const totalScore = this.applyHappinessWeights(scoreBreakdown, config.happinessWeights);
 
-    const totalScore =
-      scoreBreakdown.interestScore -
-      scoreBreakdown.distancePenalty -
-      scoreBreakdown.tiredPenalty -
-      scoreBreakdown.boredPenalty -
-      scoreBreakdown.starvePenalty +
-      scoreBreakdown.clusteringBonus +
-      scoreBreakdown.bufferBonus;
-
-    // 7. 清理缓存
     this.timeMatrix.clear();
 
-    return {
+    const result: RouteSolution = {
       nodes: optimizedRoute.nodes,
       schedule,
       happinessScore: totalScore,
       scoreBreakdown,
       zones,
     };
+    if (optimizationTrace) {
+      optimizationTrace.finalScore = totalScore;
+      result.optimizationTrace = optimizationTrace;
+    }
+    return result;
   }
 
   /**
@@ -126,7 +208,13 @@ export class RouteOptimizerService {
   ): Promise<void> {
     this.logger.debug(`开始预计算时间矩阵：${places.length} 个地点`);
 
-    const travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING' = 'TRANSIT'; // 默认使用公共交通模式
+    this.resolvedTravelMode = resolveTravelMode(config);
+    const preferences = config.transportPreferences ?? {};
+    if (config.hasElderly && preferences.lessWalking === undefined) {
+      (preferences as Record<string, boolean>).lessWalking = true;
+    }
+    this.logger.debug(`交通方式：${this.resolvedTravelMode}，偏好：${JSON.stringify(preferences)}`);
+
     const promises: Promise<void>[] = [];
 
     // 并行计算所有点对的时间（但限制并发数，避免 API 限流）
@@ -157,7 +245,8 @@ export class RouteOptimizerService {
           to.location,
           String(from.id),
           String(to.id),
-          travelMode
+          this.resolvedTravelMode,
+          preferences
         );
 
         promises.push(promise);
@@ -188,7 +277,8 @@ export class RouteOptimizerService {
     to: { lat: number; lng: number },
     fromId: string,
     toId: string,
-    travelMode: string
+    travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING',
+    preferences?: { lessWalking?: boolean; avoidHighways?: boolean; avoidTolls?: boolean }
   ): Promise<void> {
     try {
       // 1. 检查缓存
@@ -197,7 +287,7 @@ export class RouteOptimizerService {
         from.lng,
         to.lat,
         to.lng,
-        travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
+        travelMode
       );
 
       if (cached) {
@@ -211,7 +301,8 @@ export class RouteOptimizerService {
         from.lng,
         to.lat,
         to.lng,
-        travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
+        travelMode,
+        preferences
       );
 
       if (options.length > 0) {
@@ -224,12 +315,12 @@ export class RouteOptimizerService {
           from.lng,
           to.lat,
           to.lng,
-          travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING',
+          travelMode,
           options[0]
         );
       } else {
         // API 失败，使用降级估算
-        const fallbackTime = this.fallbackEstimateTransportTime(from, to, travelMode);
+        const fallbackTime = this.fallbackEstimateTransportTime(from, to);
         this.setTimeInMatrix(fromId, toId, fallbackTime);
       }
     } catch (error) {
@@ -238,7 +329,7 @@ export class RouteOptimizerService {
         error instanceof Error ? error.stack : undefined
       );
       // 使用降级估算
-      const fallbackTime = this.fallbackEstimateTransportTime(from, to, travelMode);
+      const fallbackTime = this.fallbackEstimateTransportTime(from, to);
       this.setTimeInMatrix(fromId, toId, fallbackTime);
     }
   }
@@ -263,37 +354,28 @@ export class RouteOptimizerService {
   }
 
   /**
-   * 生成初始路线（随机排列，但保证餐厅在饭点）
+   * 从 OR-Tools TSP 顺序构建路线（餐厅插入饭点）
    */
-  private generateInitialRoute(
-    places: PlaceNode[],
-    config: OptimizationConfig
+  private buildRouteFromOrder(
+    otherPlaces: PlaceNode[],
+    restaurants: PlaceNode[],
+    config: OptimizationConfig,
+    tspOrder: number[]
   ): RouteSolution {
-    // 分离餐厅和其他地点
-    const restaurants = places.filter((p) => p.isRestaurant);
-    const otherPlaces = places.filter((p) => !p.isRestaurant);
-
-    // 随机打乱其他地点
-    const shuffled = [...otherPlaces].sort(() => Math.random() - 0.5);
-
-    // 插入餐厅到合适位置
+    const ordered = tspOrder.map((i) => otherPlaces[i]);
     const nodes: PlaceNode[] = [];
     let restaurantIndex = 0;
 
-    for (let i = 0; i < shuffled.length; i++) {
-      nodes.push(shuffled[i]);
-
-      // 在午餐时间前插入午餐餐厅
+    for (let i = 0; i < ordered.length; i++) {
+      nodes.push(ordered[i]);
       if (
         config.lunchWindow &&
         restaurantIndex < restaurants.length &&
-        i === Math.floor(shuffled.length / 2)
+        i === Math.floor(ordered.length / 2)
       ) {
         nodes.push(restaurants[restaurantIndex++]);
       }
     }
-
-    // 如果还有餐厅，添加到末尾
     while (restaurantIndex < restaurants.length) {
       nodes.push(restaurants[restaurantIndex++]);
     }
@@ -315,6 +397,97 @@ export class RouteOptimizerService {
   }
 
   /**
+   * 生成初始路线
+   * 优先使用最近邻贪心（减少折返），餐厅插入饭点；无时间矩阵时降级为随机
+   */
+  private generateInitialRoute(
+    places: PlaceNode[],
+    config: OptimizationConfig
+  ): RouteSolution {
+    const restaurants = places.filter((p) => p.isRestaurant);
+    const otherPlaces = places.filter((p) => !p.isRestaurant);
+
+    const startIdx = (config as any)._startPlaceIndex ?? 0;
+    let ordered: PlaceNode[];
+    if (otherPlaces.length <= 1) {
+      ordered = [...otherPlaces];
+    } else {
+      ordered = this.nearestNeighborTour(otherPlaces, startIdx);
+    }
+
+    const nodes: PlaceNode[] = [];
+    let restaurantIndex = 0;
+
+    for (let i = 0; i < ordered.length; i++) {
+      nodes.push(ordered[i]);
+      if (
+        config.lunchWindow &&
+        restaurantIndex < restaurants.length &&
+        i === Math.floor(ordered.length / 2)
+      ) {
+        nodes.push(restaurants[restaurantIndex++]);
+      }
+    }
+
+    while (restaurantIndex < restaurants.length) {
+      nodes.push(restaurants[restaurantIndex++]);
+    }
+
+    return {
+      nodes,
+      schedule: [],
+      happinessScore: 0,
+      scoreBreakdown: {
+        interestScore: 0,
+        distancePenalty: 0,
+        tiredPenalty: 0,
+        boredPenalty: 0,
+        starvePenalty: 0,
+        clusteringBonus: 0,
+        bufferBonus: 0,
+      },
+    };
+  }
+
+  /**
+   * 最近邻贪心构建 TSP 路线（最小化总行程时间）
+   * @param startIndex 起始点索引（多起点时用不同起点）
+   */
+  private nearestNeighborTour(places: PlaceNode[], startIndex = 0): PlaceNode[] {
+    if (places.length === 0) return [];
+    if (places.length === 1) return [...places];
+
+    const remaining = new Set(places.map((p) => p.id));
+    const route: PlaceNode[] = [];
+    const start = places[startIndex % places.length];
+    let current = start;
+
+    route.push(current);
+    remaining.delete(current.id);
+
+    while (remaining.size > 0) {
+      let bestNext: PlaceNode | null = null;
+      let bestTime = Infinity;
+
+      for (const pid of remaining) {
+        const t = this.getTimeFromMatrix(String(current.id), String(pid));
+        const time = t ?? this.fallbackEstimateTransportTime(current.location, places.find((p) => p.id === pid)!.location);
+        if (time < bestTime) {
+          bestTime = time;
+          bestNext = places.find((p) => p.id === pid)!;
+        }
+      }
+
+      if (!bestNext) break;
+      route.push(bestNext);
+      remaining.delete(bestNext.id);
+      current = bestNext;
+    }
+
+    return route;
+  }
+
+  /**
    * 模拟退火算法
    */
   private simulatedAnnealing(
@@ -322,50 +495,44 @@ export class RouteOptimizerService {
     initialScore: number,
     config: OptimizationConfig,
     zones: Zone[]
-  ): RouteSolution {
+  ): { route: RouteSolution; iterations: number } {
+    const random = config.seed != null ? createSeededRandom(config.seed) : Math.random;
+
     let currentRoute = { ...initialRoute, nodes: [...initialRoute.nodes] };
     let currentScore = initialScore;
     let bestRoute = { ...currentRoute, nodes: [...currentRoute.nodes] };
     let bestScore = currentScore;
 
-    let temperature = 1000; // 初始温度
-    const coolingRate = 0.99; // 冷却率
-    const minTemperature = 1; // 最低温度
-
+    let temperature = 1000;
+    const coolingRate = 0.99;
+    const minTemperature = 1;
     let iterations = 0;
     const maxIterations = 10000;
 
     while (temperature > minTemperature && iterations < maxIterations) {
       iterations++;
-
-      // 生成新解：随机交换两个节点
-      const newRoute = this.swapTwoNodes(currentRoute);
+      const newRoute =
+        random() < 0.5
+          ? this.swapTwoNodes(currentRoute, random)
+          : this.twoOptMove(currentRoute, random);
       const newScore = this.calculateTotalScore(newRoute, config, zones);
 
-      // 决定是否接受新解
       if (newScore > currentScore) {
-        // 更好的解，直接接受
         currentRoute = newRoute;
         currentScore = newScore;
-
-        // 更新最优解
         if (newScore > bestScore) {
           bestRoute = { ...newRoute, nodes: [...newRoute.nodes] };
           bestScore = newScore;
         }
       } else {
-        // 更差的解，以一定概率接受（跳出局部最优）
         const acceptanceProbability = Math.exp(
           (newScore - currentScore) / temperature
         );
-
-        if (Math.random() < acceptanceProbability) {
+        if (random() < acceptanceProbability) {
           currentRoute = newRoute;
           currentScore = newScore;
         }
       }
-
-      // 降温
       temperature *= coolingRate;
     }
 
@@ -373,57 +540,78 @@ export class RouteOptimizerService {
       `模拟退火完成：迭代 ${iterations} 次，最优分数：${bestScore}`
     );
 
-    return bestRoute;
+    return { route: bestRoute, iterations };
   }
 
   /**
    * 交换两个节点（生成新解）
    */
-  private swapTwoNodes(route: RouteSolution): RouteSolution {
+  private swapTwoNodes(
+    route: RouteSolution,
+    random: () => number = Math.random
+  ): RouteSolution {
     const newNodes = [...route.nodes];
-
-    // 随机选择两个不同的索引
-    const i = Math.floor(Math.random() * newNodes.length);
-    let j = Math.floor(Math.random() * newNodes.length);
-    while (j === i) {
-      j = Math.floor(Math.random() * newNodes.length);
-    }
-
-    // 交换
+    const i = Math.floor(random() * newNodes.length);
+    let j = Math.floor(random() * newNodes.length);
+    while (j === i) j = Math.floor(random() * newNodes.length);
     [newNodes[i], newNodes[j]] = [newNodes[j], newNodes[i]];
-
-    return {
-      ...route,
-      nodes: newNodes,
-    };
+    return { ...route, nodes: newNodes };
   }
 
   /**
-   * 计算总分数
+   * 2-opt 邻域：反转 [i+1, j] 区段，消除交叉边
+   */
+  private twoOptMove(
+    route: RouteSolution,
+    random: () => number = Math.random
+  ): RouteSolution {
+    const n = route.nodes.length;
+    if (n < 4) return this.swapTwoNodes(route, random);
+
+    const i = Math.floor(random() * (n - 2));
+    const j = i + 2 + Math.floor(random() * (n - i - 2));
+
+    const newNodes = [
+      ...route.nodes.slice(0, i + 1),
+      ...route.nodes.slice(i + 1, j + 1).reverse(),
+      ...route.nodes.slice(j + 1),
+    ];
+
+    return { ...route, nodes: newNodes };
+  }
+
+  /**
+   * 计算总分数（支持可配置权重）
    */
   private calculateTotalScore(
     route: RouteSolution,
     config: OptimizationConfig,
     zones: Zone[]
   ): number {
-    // 生成临时时间安排用于评分
     const schedule = this.generateSchedule(route, config);
-
     const breakdown = this.scorerService.calculateHappinessScore(
       route.nodes,
       schedule,
       config,
       zones
     );
+    return this.applyHappinessWeights(breakdown, config.happinessWeights);
+  }
 
+  /** 应用快乐值权重（默认 1.0，可配置） */
+  private applyHappinessWeights(
+    breakdown: RouteSolution['scoreBreakdown'],
+    weights?: OptimizationConfig['happinessWeights']
+  ): number {
+    const w = (k: keyof NonNullable<typeof weights>) => weights?.[k] ?? 1;
     return (
-      breakdown.interestScore -
-      breakdown.distancePenalty -
-      breakdown.tiredPenalty -
-      breakdown.boredPenalty -
-      breakdown.starvePenalty +
-      breakdown.clusteringBonus +
-      breakdown.bufferBonus
+      w('interest')! * breakdown.interestScore -
+      w('distancePenalty')! * breakdown.distancePenalty -
+      w('tiredPenalty')! * breakdown.tiredPenalty -
+      w('boredPenalty')! * breakdown.boredPenalty -
+      w('starvePenalty')! * breakdown.starvePenalty +
+      w('clusteringBonus')! * breakdown.clusteringBonus +
+      w('bufferBonus')! * breakdown.bufferBonus
     );
   }
 
@@ -447,7 +635,7 @@ export class RouteOptimizerService {
           row.push(0);
         } else {
           const time = this.getTimeFromMatrix(String(places[i].id), String(places[j].id));
-          row.push(time ?? this.fallbackEstimateTransportTime(places[i].location, places[j].location, 'TRANSIT'));
+          row.push(time ?? this.fallbackEstimateTransportTime(places[i].location, places[j].location));
         }
       }
       timeMatrix.push(row);
@@ -493,15 +681,7 @@ export class RouteOptimizerService {
       config,
       zones
     );
-
-    const totalScore =
-      scoreBreakdown.interestScore -
-      scoreBreakdown.distancePenalty -
-      scoreBreakdown.tiredPenalty -
-      scoreBreakdown.boredPenalty -
-      scoreBreakdown.starvePenalty +
-      scoreBreakdown.clusteringBonus +
-      scoreBreakdown.bufferBonus;
+    const totalScore = this.applyHappinessWeights(scoreBreakdown, config.happinessWeights);
 
     // 如果有时间窗违反，降低分数
     if (!vrptwResult.feasible && vrptwResult.violations) {
@@ -614,19 +794,20 @@ export class RouteOptimizerService {
       }
     }
 
-    // 降级：使用简单估算
-    return this.fallbackEstimateTransportTime(from, to, 'TRANSIT');
+    // 降级：使用简单估算（与预计算时间矩阵一致）
+    return this.fallbackEstimateTransportTime(from, to);
   }
 
   /**
    * 降级估算：使用距离和固定速度估算
+   * 使用 resolvedTravelMode 与预计算时间矩阵保持一致
    */
   private fallbackEstimateTransportTime(
     from: { lat: number; lng: number },
-    to: { lat: number; lng: number },
-    travelMode: string
+    to: { lat: number; lng: number }
   ): number {
     const distance = this.calculateDistance(from, to);
+    const travelMode = this.resolvedTravelMode;
 
     switch (travelMode) {
       case 'WALKING':
