@@ -1,11 +1,12 @@
 // src/trips/decision/optimization/probabilistic/probabilistic-world-model.service.ts
 /**
  * 概率世界模型服务
- * 
+ *
  * 核心职责：
  * 1. 将确定性世界模型转换为概率模型
  * 2. 支持贝叶斯更新
  * 3. 提供条件概率查询
+ * 4. 状态转移预测 predictOutcome(State, Action)（专利升级点③）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -35,6 +36,8 @@ import {
   DEFAULT_UNCERTAINTY_CONFIG,
   IProbabilisticWorldModelService,
   ConditionalProbabilityQuery,
+  DecisionAction,
+  OutcomePrediction,
 } from './probabilistic-world-model.interface';
 import { WorldModelContext } from '../../shared/world-model.types';
 
@@ -513,20 +516,95 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
     hoursAhead: number
   ): ProbabilisticWorldModelContext {
     const updatedContext = JSON.parse(JSON.stringify(context)) as ProbabilisticWorldModelContext;
-    
+
     // 天气不确定性随时间增长
     const growthFactor = 1 + context.physical.weather.uncertaintyGrowthRate * (hoursAhead / 24);
-    
+
     updatedContext.physical.weather.windSpeed.params.variance *= growthFactor;
     updatedContext.physical.weather.precipitation.params.variance *= growthFactor;
     updatedContext.physical.weather.visibility.params.variance *= growthFactor;
     updatedContext.physical.weather.temperature.params.variance *= growthFactor;
-    
+
     // 置信度下降
     updatedContext.physical.weather.windSpeed.confidence /= growthFactor;
     updatedContext.physical.weather.precipitation.confidence /= growthFactor;
-    
+
     return updatedContext;
+  }
+
+  /**
+   * 状态转移预测（专利升级点③）
+   * NextState = WorldModel(State, Action)，概率形式 s_{t+1} ~ P_θ(s|s_t,a_t)
+   * 用于决策模拟、可行性预判、多步规划
+   *
+   * 参考：docs/Decision_OS_技术交底书.md 3.7.1
+   */
+  predictOutcome(
+    context: ProbabilisticWorldModelContext,
+    action: DecisionAction,
+    options?: { includeSamples?: number }
+  ): OutcomePrediction {
+    this.logger.debug(`[ProbabilisticWorldModel] predictOutcome: action=${action.type}`);
+
+    // 深拷贝作为预测的 nextState
+    const nextState = JSON.parse(JSON.stringify(context)) as ProbabilisticWorldModelContext;
+    nextState.lastUpdated = new Date().toISOString();
+
+    const constraintViolations: string[] = [];
+    let feasibilityProbability = 0.8; // 默认
+    let estimatedUtility = 0.7; // 默认
+
+    // 根据动作类型调整预测状态
+    switch (action.type) {
+      case 'ADD_ACTIVITY':
+      case 'REPLACE_ACTIVITY': {
+        // 增加活动可能增加疲劳、影响可行性
+        nextState.human.currentCumulativeFatigue = Math.min(
+          1,
+          nextState.human.currentCumulativeFatigue + 0.05,
+        );
+        feasibilityProbability = 0.75;
+        estimatedUtility = 0.65;
+        break;
+      }
+      case 'REMOVE_ACTIVITY':
+      case 'ADJUST_PACE': {
+        // 减少活动或调整节奏可能降低疲劳
+        nextState.human.currentCumulativeFatigue = Math.max(
+          0,
+          nextState.human.currentCumulativeFatigue - 0.03,
+        );
+        feasibilityProbability = 0.85;
+        estimatedUtility = 0.75;
+        break;
+      }
+      case 'WEATHER_DEGRADATION': {
+        // 天气恶化
+        nextState.physical.weather.uncertaintyGrowthRate *= 1.2;
+        constraintViolations.push('WEATHER_RISK');
+        feasibilityProbability = 0.6;
+        estimatedUtility = 0.5;
+        break;
+      }
+      default: {
+        // 通用：轻微不确定性增长
+        nextState.physical.weather.uncertaintyGrowthRate *= 1.05;
+      }
+    }
+
+    // Phase 2 研究级：当请求时返回 s_{t+1} ~ P_θ(s|s_t,a_t) 的采样
+    const nextStateSamples =
+      options?.includeSamples && options.includeSamples > 0
+        ? this.sampleWorldState(nextState, options.includeSamples)
+        : undefined;
+
+    return {
+      nextState,
+      feasibilityProbability,
+      constraintViolations,
+      estimatedUtility,
+      nextStateSamples,
+    };
   }
 
   // ========== 贝叶斯更新实现 ==========

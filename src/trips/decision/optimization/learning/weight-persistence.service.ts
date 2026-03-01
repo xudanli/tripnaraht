@@ -9,14 +9,21 @@
  * 
  * 存储策略：
  * - 开发环境：文件系统（JSON）
- * - 生产环境：数据库（Prisma）
+ * - 生产环境：数据库（TypeORM）
+ * 
+ * 专利实现：支持策略学习 π_θ(a|s) 的权重持久化
+ * 参考：docs/DECISION_OS_EXPERT_TEAM_SPEC.md 2.5
  */
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, MoreThanOrEqual } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { UserWeightProfile, FeedbackRecord, WeightLearningResult } from './weight-learner.service';
 import { ObjectiveFunctionWeights, DEFAULT_OBJECTIVE_WEIGHTS } from '../objective-function.interface';
+import { UserDecisionWeightsEntity } from './entities/user-decision-weights.entity';
+import { WeightLearningHistoryEntity } from './entities/weight-learning-history.entity';
 
 /**
  * 存储配置
@@ -67,18 +74,33 @@ export class WeightPersistenceService implements OnModuleInit {
   private isDirty: boolean = false;
   private autoSaveTimer: ReturnType<typeof setInterval> | null = null;
 
+  constructor(
+    @Optional()
+    @InjectRepository(UserDecisionWeightsEntity)
+    private readonly weightsRepo?: Repository<UserDecisionWeightsEntity>,
+    @Optional()
+    @InjectRepository(WeightLearningHistoryEntity)
+    private readonly historyRepo?: Repository<WeightLearningHistoryEntity>,
+  ) {
+    // 如果数据库 Repository 可用，自动切换到数据库模式
+    if (this.weightsRepo && this.historyRepo) {
+      this.config.mode = 'database';
+      this.logger.log('[WeightPersistence] 检测到数据库 Repository，使用数据库模式');
+    }
+  }
+
   async onModuleInit(): Promise<void> {
-    // 确保存储目录存在
+    // 确保存储目录存在（仅文件模式）
     if (this.config.mode === 'file' && this.config.filePath) {
       await this.ensureDirectoryExists(this.config.filePath);
     }
     
-    // 启动自动保存
-    if (this.config.autoSaveInterval && this.config.autoSaveInterval > 0) {
+    // 启动自动保存（仅文件模式）
+    if (this.config.mode === 'file' && this.config.autoSaveInterval && this.config.autoSaveInterval > 0) {
       this.startAutoSave();
     }
     
-    this.logger.log('[WeightPersistence] 初始化完成');
+    this.logger.log(`[WeightPersistence] 初始化完成，模式: ${this.config.mode}`);
   }
 
   /**
@@ -90,16 +112,18 @@ export class WeightPersistenceService implements OnModuleInit {
 
   /**
    * 保存用户权重配置
+   * 专利实现：支持 π_θ(a|s) 策略参数持久化
    */
   async saveUserProfile(userId: string, profile: UserWeightProfile): Promise<void> {
     const userData = this.getOrCreateUserData(userId);
     userData.profile = profile;
     this.isDirty = true;
     
-    if (this.config.mode === 'file') {
+    if (this.config.mode === 'database' && this.weightsRepo) {
+      await this.saveUserToDatabase(userId, profile);
+    } else if (this.config.mode === 'file') {
       await this.saveUserToFile(userId, userData);
     }
-    // TODO: 数据库模式
   }
 
   /**
@@ -112,7 +136,17 @@ export class WeightPersistenceService implements OnModuleInit {
       return cached.profile;
     }
     
-    // 从存储加载
+    // 从数据库加载
+    if (this.config.mode === 'database' && this.weightsRepo) {
+      const profile = await this.loadUserFromDatabase(userId);
+      if (profile) {
+        const userData = this.getOrCreateUserData(userId);
+        userData.profile = profile;
+        return profile;
+      }
+    }
+    
+    // 从文件加载
     if (this.config.mode === 'file') {
       const userData = await this.loadUserFromFile(userId);
       if (userData) {
@@ -122,6 +156,81 @@ export class WeightPersistenceService implements OnModuleInit {
     }
     
     return null;
+  }
+
+  /**
+   * 保存用户权重到数据库
+   */
+  private async saveUserToDatabase(userId: string, profile: UserWeightProfile): Promise<void> {
+    if (!this.weightsRepo) return;
+
+    try {
+      const existing = await this.weightsRepo.findOne({ where: { userId } });
+      
+      if (existing) {
+        // 记录历史（如果有 historyRepo）
+        if (this.historyRepo) {
+          await this.historyRepo.save({
+            userId,
+            weightsBefore: existing.weights,
+            weightsAfter: profile.currentWeights,
+            learningMethod: 'profile_update',
+          });
+        }
+        
+        // 更新权重
+        await this.weightsRepo.update(
+          { userId },
+          {
+            weights: profile.currentWeights,
+            version: existing.version + 1,
+            learningConfidence: profile.learningConfidence,
+            totalFeedback: profile.totalFeedback,
+          },
+        );
+      } else {
+        // 创建新记录
+        await this.weightsRepo.save({
+          userId,
+          weights: profile.currentWeights,
+          version: 1,
+          learningConfidence: profile.learningConfidence,
+          totalFeedback: profile.totalFeedback,
+        });
+      }
+      
+      this.logger.debug(`[WeightPersistence] 数据库保存用户权重: ${userId}`);
+    } catch (error) {
+      this.logger.error(`[WeightPersistence] 数据库保存失败: ${userId}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 从数据库加载用户权重
+   */
+  private async loadUserFromDatabase(userId: string): Promise<UserWeightProfile | null> {
+    if (!this.weightsRepo) return null;
+
+    try {
+      const record = await this.weightsRepo.findOne({ where: { userId } });
+      
+      if (record) {
+        return {
+          userId: record.userId,
+          currentWeights: record.weights,
+          weightHistory: [], // 历史从 historyRepo 单独加载
+          totalFeedback: record.totalFeedback,
+          learningConfidence: record.learningConfidence,
+          lastUpdated: record.updatedAt.toISOString(),
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error(`[WeightPersistence] 数据库加载失败: ${userId}`, error);
+      return null;
+    }
   }
 
   /**
@@ -158,8 +267,20 @@ export class WeightPersistenceService implements OnModuleInit {
 
   /**
    * 保存学习结果
+   * 专利实现：记录 Regret 追踪所需的学习历史
    */
-  async saveLearningResult(userId: string, result: WeightLearningResult): Promise<void> {
+  async saveLearningResult(
+    userId: string,
+    result: WeightLearningResult,
+    metadata?: {
+      tripId?: string;
+      method?: string;
+      utilityBefore?: number;
+      utilityAfter?: number;
+      weightsBefore?: ObjectiveFunctionWeights;
+      learningRate?: number;
+    },
+  ): Promise<void> {
     const userData = this.getOrCreateUserData(userId);
     userData.learningHistory.push({
       timestamp: new Date().toISOString(),
@@ -173,17 +294,119 @@ export class WeightPersistenceService implements OnModuleInit {
     
     this.isDirty = true;
     
-    if (this.config.mode === 'file') {
+    if (this.config.mode === 'database' && this.historyRepo) {
+      await this.saveLearningResultToDatabase(userId, result, metadata);
+    } else if (this.config.mode === 'file') {
       await this.saveUserToFile(userId, userData);
+    }
+  }
+
+  /**
+   * 保存学习结果到数据库
+   */
+  private async saveLearningResultToDatabase(
+    userId: string,
+    result: WeightLearningResult,
+    metadata?: {
+      tripId?: string;
+      method?: string;
+      utilityBefore?: number;
+      utilityAfter?: number;
+      weightsBefore?: ObjectiveFunctionWeights;
+      learningRate?: number;
+    },
+  ): Promise<void> {
+    if (!this.historyRepo) return;
+
+    try {
+      await this.historyRepo.save({
+        userId,
+        tripId: metadata?.tripId ?? null,
+        weightsBefore: metadata?.weightsBefore ?? null,
+        weightsAfter: result.updatedWeights,
+        learningMethod: metadata?.method ?? 'gradient_descent',
+        learningRate: metadata?.learningRate ?? 0.01,
+        confidence: result.confidence,
+        utilityBefore: metadata?.utilityBefore ?? null,
+        utilityAfter: metadata?.utilityAfter ?? null,
+      });
+      
+      this.logger.debug(`[WeightPersistence] 数据库保存学习结果: ${userId}`);
+    } catch (error) {
+      this.logger.error(`[WeightPersistence] 数据库保存学习结果失败: ${userId}`, error);
     }
   }
 
   /**
    * 获取学习历史
    */
-  async getLearningHistory(userId: string): Promise<Array<{ timestamp: string; result: WeightLearningResult }>> {
+  async getLearningHistory(
+    userId: string,
+    options?: { limit?: number; since?: Date },
+  ): Promise<Array<{ timestamp: string; result: WeightLearningResult }>> {
+    // 数据库模式
+    if (this.config.mode === 'database' && this.historyRepo) {
+      return this.getLearningHistoryFromDatabase(userId, options);
+    }
+    
+    // 文件模式
     const userData = await this.ensureUserDataLoaded(userId);
-    return userData?.learningHistory || [];
+    let history = userData?.learningHistory || [];
+    
+    if (options?.since) {
+      const sinceStr = options.since.toISOString();
+      history = history.filter(h => h.timestamp >= sinceStr);
+    }
+    
+    if (options?.limit) {
+      history = history.slice(-options.limit);
+    }
+    
+    return history;
+  }
+
+  /**
+   * 从数据库获取学习历史
+   */
+  private async getLearningHistoryFromDatabase(
+    userId: string,
+    options?: { limit?: number; since?: Date },
+  ): Promise<Array<{ timestamp: string; result: WeightLearningResult }>> {
+    if (!this.historyRepo) return [];
+
+    try {
+      const query: Record<string, unknown> = { userId };
+      
+      if (options?.since) {
+        query.createdAt = MoreThanOrEqual(options.since);
+      }
+      
+      const records = await this.historyRepo.find({
+        where: query as any,
+        order: { createdAt: 'DESC' },
+        take: options?.limit,
+      });
+      
+      return records.map(r => ({
+        timestamp: r.createdAt.toISOString(),
+        result: {
+          updatedWeights: r.weightsAfter as unknown as ObjectiveFunctionWeights,
+          weightChanges: {},
+          signalStrength: 0.5,
+          samplesUsed: 1,
+          expectedImprovement: 0,
+          confidence: r.confidence ?? 0.5,
+          analysis: {
+            gradients: {},
+            mainFactors: [],
+            recommendations: [],
+          },
+        } as WeightLearningResult,
+      }));
+    } catch (error) {
+      this.logger.error(`[WeightPersistence] 数据库获取学习历史失败: ${userId}`, error);
+      return [];
+    }
   }
 
   /**

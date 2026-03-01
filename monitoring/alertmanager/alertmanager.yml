@@ -1,0 +1,116 @@
+# Decision OS AlertManager 配置
+#
+# 用于路由和通知告警
+
+global:
+  # 全局配置
+  resolve_timeout: 5m
+  
+  # SMTP 配置 (根据实际环境修改)
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alertmanager@example.com'
+  # smtp_auth_username: 'alertmanager'
+  # smtp_auth_password: 'password'
+
+# 告警路由
+route:
+  # 默认接收者
+  receiver: 'decision-os-default'
+  
+  # 分组等待时间
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  
+  # 分组标签
+  group_by: ['alertname', 'severity', 'team']
+  
+  # 子路由
+  routes:
+    # Critical 告警 - 立即通知
+    - match:
+        severity: critical
+      receiver: 'decision-os-critical'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+    
+    # Warning 告警 - 正常流程
+    - match:
+        severity: warning
+      receiver: 'decision-os-warning'
+      group_wait: 1m
+      repeat_interval: 4h
+    
+    # 学习系统告警
+    - match:
+        alertname: LearningNotConverging
+      receiver: 'decision-os-ml-team'
+      group_wait: 5m
+    
+    # 性能告警
+    - match_re:
+        alertname: ^(HighDecisionLatency|LowDecisionThroughput).*
+      receiver: 'decision-os-performance'
+
+# 抑制规则
+inhibit_rules:
+  # 如果 Critical 告警存在，抑制相同 alertname 的 Warning
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+  
+  # 如果服务宕机，抑制其他所有告警
+  - source_match:
+      alertname: 'DecisionOSDown'
+    target_match_re:
+      alertname: '.+'
+    equal: ['instance']
+
+# 接收者配置
+receivers:
+  # 默认接收者
+  - name: 'decision-os-default'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/decision-os'
+        send_resolved: true
+
+  # Critical 告警接收者
+  - name: 'decision-os-critical'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/decision-os-critical'
+        send_resolved: true
+    # 配置 PagerDuty (根据实际环境)
+    # pagerduty_configs:
+    #   - service_key: 'your-pagerduty-key'
+    #     severity: 'critical'
+
+  # Warning 告警接收者
+  - name: 'decision-os-warning'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/decision-os-warning'
+        send_resolved: true
+    # 配置 Slack (根据实际环境)
+    # slack_configs:
+    #   - api_url: 'https://hooks.slack.com/services/xxx'
+    #     channel: '#decision-os-alerts'
+    #     title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+    #     text: '{{ .CommonAnnotations.description }}'
+
+  # ML 团队接收者
+  - name: 'decision-os-ml-team'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/decision-os-ml'
+        send_resolved: true
+
+  # 性能团队接收者
+  - name: 'decision-os-performance'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/decision-os-perf'
+        send_resolved: true
+
+# 模板
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

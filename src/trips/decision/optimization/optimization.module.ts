@@ -32,10 +32,40 @@ import { StrategyOrchestratorV2Service } from './strategy-orchestrator-v2.servic
 import { ProbabilisticWorldModelService } from './probabilistic/probabilistic-world-model.service';
 import { ExpectedUtilityService } from './probabilistic/expected-utility.service';
 
+// 专利升级：统一决策公式 + CGUS 搜索
+import { UnifiedDecisionFormulaService } from './unified-decision-formula.service';
+import { CGUSSearchService } from './cgus-search.service';
+import { MultiStepPlanningService } from './planning/multi-step-planning.service';
+import { DifferentiableDecisionService } from './differentiable/differentiable-decision.service';
+import { InformationGainService } from './exploration/information-gain.service';
+import { MetaPolicyService } from './meta/meta-policy.service';
+import { LagrangianConstraintService } from './theory/lagrangian-constraint.service';
+import { DecisionConfidenceService } from './theory/decision-confidence.service';
+import { LyapunovStabilityService } from './theory/lyapunov-stability.service';
+import { UnifiedLearningService } from './theory/unified-learning.service';
+import { ComplexityAnalysisService } from './theory/complexity-analysis.service';
+import { DSOStabilityMonitorService } from './theory/dso-stability.service';
+import { RegretTrackerService } from './theory/regret-tracker.service';
+import { UCBVisitTrackerService } from './theory/ucb-visit-tracker.service';
+
+// Phase 3：POMDP 信念更新
+import { BeliefUpdateService } from './probabilistic/belief-update.service';
+import { DefaultObservationModelService } from './probabilistic/default-observation-model.service';
+
 // Phase 3: 多智能体 + 学习
 import { GuardianDebateService } from './learning/guardian-debate.service';
 import { WeightLearnerService } from './learning/weight-learner.service';
 import { WeightPersistenceService } from './learning/weight-persistence.service';
+import { PolicyLearningService } from './learning/policy-learning.service';
+import { OnlineLearningLoopService } from './learning/online-learning-loop.service';
+import { PolicyNetworkService } from './learning/policy-network.service';
+import { DSOSnapshotAuditService } from './learning/dso-snapshot-audit.service';
+
+// 监控指标
+import { DecisionMetricsService } from './metrics/decision-metrics.service';
+
+// 门面服务
+import { DecisionOSFacadeService } from './decision-os-facade.service';
 
 // 中期：多用户协同
 import { TeamCollaborationService } from './collaboration/team-collaboration.service';
@@ -68,6 +98,8 @@ import { OptimizationAdminController } from './controllers/admin/optimization-ad
 import { RealtimeAdminController } from './controllers/admin/realtime-admin.controller';
 import { ABTestingAdminController } from './controllers/admin/ab-testing-admin.controller';
 import { AxiomAdminController } from './controllers/admin/axiom-admin.controller';
+import { DSOAuditAdminController } from './controllers/admin/dso-audit-admin.controller';
+import { MetricsAdminController } from './controllers/admin/metrics-admin.controller';
 
 // 依赖
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
@@ -94,6 +126,8 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     RealtimeAdminController,
     ABTestingAdminController,
     AxiomAdminController,
+    DSOAuditAdminController,
+    MetricsAdminController,
   ],
   providers: [
     // Phase 1
@@ -105,11 +139,45 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     // Phase 2
     ProbabilisticWorldModelService,
     ExpectedUtilityService,
-    
+
+    // 专利升级：统一决策公式 + CGUS 搜索
+    UnifiedDecisionFormulaService,
+    CGUSSearchService,
+
+    // 顶级强化方向：多步规划 + 可微决策 + 信息增益 + 元决策
+    MultiStepPlanningService,
+    DifferentiableDecisionService,
+    InformationGainService,
+    MetaPolicyService,
+
+    // 专利 3.13 理论实现：拉格朗日、置信度、Lyapunov、统一学习
+    LagrangianConstraintService,
+    DecisionConfidenceService,
+    LyapunovStabilityService,
+    UnifiedLearningService,
+    ComplexityAnalysisService,
+    DSOStabilityMonitorService,
+    RegretTrackerService,
+    UCBVisitTrackerService,
+
+    // Phase 3：POMDP 信念更新
+    DefaultObservationModelService,
+    BeliefUpdateService,
+
     // Phase 3
     GuardianDebateService,
     WeightLearnerService,
     WeightPersistenceService,
+    PolicyLearningService,
+    OnlineLearningLoopService,
+    PolicyNetworkService,
+    DSOSnapshotAuditService,
+    
+    // 监控指标
+    DecisionMetricsService,
+    
+    // 门面服务
+    DecisionOSFacadeService,
     
     // 中期：多用户协同
     TeamCollaborationService,
@@ -139,11 +207,40 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     // Phase 2
     ProbabilisticWorldModelService,
     ExpectedUtilityService,
-    
+
+    // 专利升级
+    UnifiedDecisionFormulaService,
+    CGUSSearchService,
+    MultiStepPlanningService,
+    DifferentiableDecisionService,
+    InformationGainService,
+    MetaPolicyService,
+    LagrangianConstraintService,
+    DecisionConfidenceService,
+    LyapunovStabilityService,
+    UnifiedLearningService,
+    ComplexityAnalysisService,
+    DSOStabilityMonitorService,
+    RegretTrackerService,
+    UCBVisitTrackerService,
+
+    // Phase 3
+    BeliefUpdateService,
+
     // Phase 3
     GuardianDebateService,
     WeightLearnerService,
     WeightPersistenceService,
+    PolicyLearningService,
+    OnlineLearningLoopService,
+    PolicyNetworkService,
+    DSOSnapshotAuditService,
+    
+    // 监控指标
+    DecisionMetricsService,
+    
+    // 门面服务
+    DecisionOSFacadeService,
     
     // 中期
     TeamCollaborationService,

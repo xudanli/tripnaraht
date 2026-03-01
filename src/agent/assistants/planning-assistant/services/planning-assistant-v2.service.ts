@@ -561,7 +561,8 @@ export class PlanningAssistantV2Service {
                         routing: { target: 'flight', reason: 'Flight search', params: { origin, destination, departureDate } },
                       };
                     } catch (flightErr: any) {
-                      this.logger.warn(`[出发地澄清] 航班搜索失败: ${flightErr.message}`);
+                      const { destination, departureDate } = state.pendingFlightSearch.extractedParams;
+                      this.logger.warn(`[出发地澄清] 航班搜索失败: ${flightErr.message}, origin=${origin}, destination=${destination}, date=${departureDate}`);
                       await this.updateSessionState(dto.sessionId, {
                         phase: 'RECOMMENDING',
                         pendingFlightSearch: undefined,
@@ -577,7 +578,7 @@ export class PlanningAssistantV2Service {
                         replyCN: errMsg,
                         phase: 'RECOMMENDING',
                         sessionId: dto.sessionId,
-                        routing: { target: 'flight', reason: 'Flight search failed', params: {} },
+                        routing: { target: 'flight', reason: 'Flight search failed', params: { origin, destination, departureDate } },
                       };
                     }
                   }
@@ -5010,14 +5011,15 @@ export class PlanningAssistantV2Service {
 
   /**
    * 从用户消息中解析出发地（航班澄清阶段）
-   * 支持：北京、上海、PEK、从北京出发、从上海
+   * 支持：北京、上海、PEK、从北京出发、从上海、中国杭州
    */
   private extractOriginFromMessage(message: string): string | null {
     const s = message.trim();
     if (!s || s.length < 2) return null;
-    // 去除常见前缀
+    // 去除常见前缀（包括国家名称）
     const cleaned = s
       .replace(/^(从|出发地|自|由)\s*/i, '')
+      .replace(/^(中国|日本|韩国|美国|英国|法国|德国|澳大利亚|新加坡|泰国|马来西亚|印度尼西亚|越南|菲律宾|印度)\s*/i, '')
       .replace(/\s*(出发|出发地)$/i, '')
       .trim();
     if (cleaned.length < 2) return null;

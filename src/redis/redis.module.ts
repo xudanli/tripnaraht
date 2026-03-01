@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisService } from './redis.service';
+import { DistributedLockService } from './distributed-lock.service';
 import { Logger } from '@nestjs/common';
 
 // 检查是否在 MCP 模式下（在模块加载时检查，避免导入 redisStore）
@@ -78,7 +79,7 @@ const cacheModuleConfig = disableRedis
 
 @Module({
   imports: [cacheModuleConfig],
-  providers: [RedisService],
-  exports: [CacheModule, RedisService],
+  providers: [RedisService, DistributedLockService],
+  exports: [CacheModule, RedisService, DistributedLockService],
 })
 export class RedisModule {}

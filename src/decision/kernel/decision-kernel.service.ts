@@ -98,6 +98,30 @@ export class DecisionKernelService {
   }
 
   /**
+   * 分布式原子提交状态更新（P0 优化：多节点部署）
+   * 使用分布式锁保护，确保跨节点状态一致性
+   * @throws StateCommitConflictError 版本冲突时
+   * @throws Error 锁获取失败时
+   */
+  async commitStateUpdateDistributed(
+    current: DecisionState,
+    patch: DecisionStatePatch,
+    stageOutput?: string,
+    options?: { useDistributedLock?: boolean; lockTtlMs?: number },
+  ): Promise<StateCommitResult> {
+    const transaction: StateUpdateTransaction = {
+      requestId: current.systemState?.requestId ?? current.requestId ?? '',
+      expectedVersion: current.systemState?.version ?? 0,
+      patch,
+      stageOutput,
+    };
+    return this.stateManager.commitWithLock(transaction, current, {
+      useDistributedLock: options?.useDistributedLock ?? true,
+      lockTtlMs: options?.lockTtlMs ?? 10000,
+    });
+  }
+
+  /**
    * 获取 Constraint 报告（委托 Constraint Engine Adapter）
    */
   getConstraintReport(state: DecisionState): DecisionState['constraints'] {

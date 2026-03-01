@@ -48,6 +48,7 @@ export class TripOptimizationService {
     const dryRun = options.dryRun || false;
     const replaceExisting = options.replaceExisting !== false;
     const preserveManualEdits = options.preserveManualEdits !== false;
+    const targetDayId = options.dayId;
 
     const result = dto.result;
     
@@ -188,10 +189,19 @@ export class TripOptimizationService {
 
     const changes: ChangePreviewDto[] = [];
     const modifiedDays: string[] = [];
+    const skipped: { placeId: number; reason: string }[] = [];
     let appliedItems = 0;
+
+    // 若指定了 dayId，仅处理该日的日期
+    const targetDayDate =
+      targetDayId &&
+      trip.TripDay.find((d) => d.id === targetDayId) &&
+      DateTime.fromJSDate(trip.TripDay.find((d) => d.id === targetDayId)!.date).toISODate();
 
     // 处理每个日期
     for (const [date, nodes] of dayGroups.entries()) {
+      if (targetDayId && date !== targetDayDate) continue;
+
       // 查找或创建 TripDay
       let tripDay = trip.TripDay.find(day => {
         const dayDate = DateTime.fromJSDate(day.date).toISODate();
@@ -266,6 +276,8 @@ export class TripOptimizationService {
           }
         }
       }
+
+      const skipped: { placeId: number; reason: string }[] = [];
 
       if (dryRun) {
         // 预览模式：只返回变更预览
@@ -409,10 +421,13 @@ export class TripOptimizationService {
               startTime,
               endTime,
               note,
+              travelFromPreviousDuration: node.travelFromPreviousDuration,
+              travelFromPreviousDistance: node.travelFromPreviousDistance,
           });
           appliedItems++;
           } catch (error: any) {
             this.logger.error(`创建行程项失败 (placeId: ${placeId})`, error.message);
+            skipped.push({ placeId, reason: error.message || '创建失败' });
             // 继续处理其他项，不中断整个流程
           }
         }
@@ -425,6 +440,7 @@ export class TripOptimizationService {
       success: true,
       appliedItems,
       modifiedDays,
+      skipped: skipped.length > 0 ? skipped : undefined,
       preview: dryRun ? changes : undefined,
     };
   }

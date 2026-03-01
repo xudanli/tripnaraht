@@ -112,9 +112,19 @@ export class AmadeusDirectService {
   };
 
   private resolveLocationCode(input: string): string {
-    const trimmed = input.trim().toUpperCase();
-    if (trimmed.length === 3) return trimmed;
-    return AmadeusDirectService.LOCATION_MAP[input.trim()] || trimmed;
+    const trimmed = input.trim();
+    // 3 位大写字母直接作为 IATA 代码
+    if (trimmed.length === 3 && /^[A-Z]{3}$/i.test(trimmed)) return trimmed.toUpperCase();
+    // 先尝试直接匹配
+    if (AmadeusDirectService.LOCATION_MAP[trimmed]) {
+      return AmadeusDirectService.LOCATION_MAP[trimmed];
+    }
+    // 去除国家前缀后再匹配（支持 "中国杭州" → "杭州" → HGH）
+    const withoutCountry = trimmed.replace(/^(中国|日本|韩国|美国|英国|法国|德国|澳大利亚|新加坡|泰国|马来西亚|印度尼西亚|越南|菲律宾|印度)\s*/i, '');
+    if (AmadeusDirectService.LOCATION_MAP[withoutCountry]) {
+      return AmadeusDirectService.LOCATION_MAP[withoutCountry];
+    }
+    return trimmed.toUpperCase();
   }
 
   private async getAccessToken(): Promise<string> {

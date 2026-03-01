@@ -31,6 +31,26 @@ describe('OpeningHoursUtil', () => {
     });
   });
 
+  describe('getHoursForDate', () => {
+    it('should return "24 Hours" for osmFormat "全天开放" (natural attractions)', () => {
+      const metadata = { openingHours: { osmFormat: '全天开放' } };
+      const sunday = new Date('2026-02-22T12:00:00Z');
+      expect(OpeningHoursUtil.getHoursForDate(metadata, sunday, 'Atlantic/Reykjavik')).toBe('24 Hours');
+    });
+
+    it('should return "24 Hours" for visit_info.opening_hours "24小时开放"', () => {
+      const metadata = { visit_info: { opening_hours: '24小时开放' } };
+      const sunday = new Date('2026-02-22T12:00:00Z');
+      expect(OpeningHoursUtil.getHoursForDate(metadata, sunday)).toBe('24 Hours');
+    });
+
+    it('should return OPENING_HOURS_UNKNOWN when openingHours is empty (no weekday/weekend)', () => {
+      const metadata = { openingHours: {} };
+      const sunday = new Date('2026-02-22T12:00:00Z');
+      expect(OpeningHoursUtil.getHoursForDate(metadata, sunday)).toBe(OPENING_HOURS_UNKNOWN);
+    });
+  });
+
   describe('isOpenNow', () => {
     it('should return true for "24 Hours"', () => {
       expect(OpeningHoursUtil.isOpenNow('24 Hours')).toBe(true);

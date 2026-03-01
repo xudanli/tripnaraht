@@ -122,6 +122,28 @@ export class CreateItineraryItemDto {
   @Min(0)
   order?: number;
 
+  /** 从上一地点到本地的交通时间（分钟）。优化结果应用时会传入，供 getDayTravelInfo 等使用 */
+  @ApiPropertyOptional({
+    description: '从上一地点到本地的交通时间（分钟）',
+    example: 45,
+    minimum: 0
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  travelFromPreviousDuration?: number;
+
+  /** 从上一地点到本地的距离（米） */
+  @ApiPropertyOptional({
+    description: '从上一地点到本地的距离（米）',
+    example: 35000,
+    minimum: 0
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  travelFromPreviousDistance?: number;
+
   // ========== 费用相关字段 ==========
 
   @ApiPropertyOptional({

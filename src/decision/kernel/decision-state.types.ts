@@ -25,6 +25,14 @@ export interface UserIntent {
   strategyMode?: string;
   /** 缺口列表 */
   gaps?: Array<{ type: string; severity: 'HARD' | 'SOFT'; detail: string }>;
+  /** 预算金额 */
+  budget?: number;
+  /** 灵活度 (0-1) */
+  flexibility?: number;
+  /** 体能水平 (0-1) */
+  fitnessLevel?: number;
+  /** 风险承受度 (0-1) */
+  riskTolerance?: number;
 }
 
 /** 行程状态 */
@@ -40,6 +48,10 @@ export interface TripState {
   planVersion?: number;
   /** 预算超支比例 (0-1)，用于 dimensionBreakdown.budget */
   budgetOverrun?: number;
+  /** 完成进度 (0-1)（用于 differentiable-decision） */
+  completionRate?: number;
+  /** 质量评分 (0-1)（用于 differentiable-decision） */
+  qualityScore?: number;
 }
 
 /** 环境状态（世界模型输出） */
@@ -53,6 +65,12 @@ export interface EnvironmentState {
   failureRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   /** 拥挤程度 (0-1)，用于避流维度 */
   crowdLevel?: number;
+  /** 季节评分 (0-1)（用于 differentiable-decision） */
+  seasonScore?: number;
+  /** 可达性评分 (0-1)（用于 differentiable-decision） */
+  accessibilityScore?: number;
+  /** 价格水平 (0-1)（用于 differentiable-decision） */
+  priceLevel?: number;
 }
 
 /** 系统状态 */
@@ -63,13 +81,35 @@ export interface SystemState {
   lastUpdatedAt?: string;
   /** 专利要求：版本号，用于冲突解决与回滚（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN） */
   version?: number;
+  /** 系统置信度 (0-1) */
+  confidence?: number;
+  /** 迭代计数（用于 differentiable-decision） */
+  iterationCount?: number;
+}
+
+/** 约束违规项（专利：g_i(s,a) 违反程度，g_i ≤ 0 表示满足） */
+export interface ConstraintViolationItem {
+  type: string;
+  severity: 'HARD' | 'SOFT';
+  detail: string;
+  /** 约束名称/标识（用于 explainability 模块） */
+  constraint?: string;
+  /**
+   * Phase 2 研究级：违反程度 (0-1)，对应 g_i(s,a) > 0 时的量化值
+   * 0 表示无违反，1 表示完全违反。用于约束优化形式 g_i(s,a) ≤ 0
+   */
+  degree?: number;
 }
 
 /** 约束报告（Constraint Engine 输出） */
 export interface ConstraintReport {
   feasible: boolean;
-  violations: Array<{ type: string; severity: 'HARD' | 'SOFT'; detail: string }>;
+  violations: ConstraintViolationItem[];
   feasibleActions?: string[];
+  /** 硬约束违反数量（用于 differentiable-decision） */
+  hardViolationCount?: number;
+  /** 软约束满足率 (0-1)（用于 differentiable-decision） */
+  softSatisfactionRate?: number;
 }
 
 /**
@@ -112,6 +152,8 @@ export interface OptimizationHints {
   confidenceInterval?: MonteCarloConfidenceInterval;
   /** 可行性概率 P(all hard constraints satisfied) */
   feasibilityProbability?: number;
+  /** Phase 2：不确定性概要，用于信念状态判断 */
+  uncertaintyProfile?: UncertaintyProfile;
 }
 
 /** 决策模式（Decision Meta - 系统稳定性关键） */
@@ -193,8 +235,41 @@ export interface DecisionState {
   /** Scheme C: 世界模型三段式摘要（物理环境、用户能力、路线规则） */
   worldStateSummary?: WorldStateSummary;
 
+  /**
+   * Phase 2 研究级：信念状态 b(s) = P(s|observations) 的工程近似
+   * 当世界状态存在不确定性时，通过 Monte Carlo 采样表示信念分布
+   * 参考：docs/Decision_OS_技术交底书.md 3.2
+   */
+  beliefSamples?: BeliefStateSample[];
+
+  /**
+   * Phase 2 研究级：不确定性概要，用于快速判断是否启用信念状态逻辑
+   * 当 weatherRisk、failureRiskLevel 等存在时，可推断 uncertaintyProfile
+   */
+  uncertaintyProfile?: UncertaintyProfile;
+
   /** 兼容：关联 request_id 便于与现有 OrchestratorState 映射 */
   requestId?: string;
+}
+
+/** 信念状态采样（b(s) 的离散近似） */
+export interface BeliefStateSample {
+  sampleId: string;
+  /** 采样的环境状态摘要 */
+  environmentSummary?: Record<string, number>;
+  /** 采样的效用或可行性得分 */
+  utility?: number;
+  feasibilityScore?: number;
+}
+
+/** 不确定性概要 */
+export interface UncertaintyProfile {
+  /** 是否存在显著不确定性（天气、路况、人体能力等） */
+  hasUncertainty: boolean;
+  /** 主要不确定性来源 */
+  sources?: Array<'weather' | 'road' | 'human' | 'budget'>;
+  /** 建议采样数量（用于 Monte Carlo） */
+  suggestedSampleSize?: number;
 }
 
 /** 从 OrchestratorState 投影为 DecisionState 的辅助类型 */

@@ -1,10 +1,12 @@
 // src/itinerary-optimization/itinerary-optimization.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { ItineraryOptimizationController } from './itinerary-optimization.controller';
 import { RouteOptimizationService } from './itinerary-optimization.service';
 import { SpatialClusteringService } from './services/spatial-clustering.service';
 import { HappinessScorerService } from './services/happiness-scorer.service';
 import { RouteOptimizerService } from './services/route-optimizer.service';
 import { VRPTWOptimizerService } from './services/vrptw-optimizer.service';
+import { OrToolsTspService } from './services/or-tools-tsp.service';
 import { EnhancedVRPTWOptimizerService } from './services/enhanced-vrptw-optimizer.service';
 import { RobustTimeMatrixService } from './services/robust-time-matrix.service';
 import { ExplanationService } from './services/explanation.service';
@@ -20,23 +22,24 @@ import { DynamicTransportTimeService } from './services/dynamic-transport-time.s
 import { EnhancedRestTimeService } from './services/enhanced-rest-time.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
+import { TripsModule } from '../trips/trips.module';
 
 /**
  * 行程优化模块
- * 
- * ⚠️ 控制器已删除（2026-02-03）
- * 优化服务现在仅作为内部服务使用，前端应通过 /planning-workbench 访问优化能力。
  */
 @Module({
+  controllers: [ItineraryOptimizationController],
   imports: [
     PrismaModule,
     TransportModule, // 导入 TransportModule 以使用 RouteCacheService 和 SmartRoutesService
+    forwardRef(() => TripsModule), // 使用 forwardRef 避免循环依赖（ItineraryOptimizationModule -> TripsModule -> AgentModule -> ItineraryOptimizationModule）
   ],
   providers: [
     RouteOptimizationService,
     SpatialClusteringService,
     HappinessScorerService,
     RouteOptimizerService,
+    OrToolsTspService,
     VRPTWOptimizerService,
     EnhancedVRPTWOptimizerService,
     RobustTimeMatrixService,

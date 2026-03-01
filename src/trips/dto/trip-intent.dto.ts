@@ -2,6 +2,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
+ * 出行方式
+ */
+export enum TravelMode {
+  /** 自驾 - 全程自驾或租车 */
+  DRIVING = 'DRIVING',
+  /** 公共交通 - 地铁、公交、火车等 */
+  PUBLIC_TRANSIT = 'PUBLIC_TRANSIT',
+  /** 混合 - 城市内公交 + 城际自驾/包车 */
+  MIXED = 'MIXED',
+}
+
+/**
  * 节奏配置
  */
 export class PacingConfigDto {
@@ -13,6 +25,13 @@ export class PacingConfigDto {
 
   @ApiPropertyOptional({ description: '节奏等级', enum: ['relaxed', 'standard', 'tight'] })
   level?: 'relaxed' | 'standard' | 'tight';
+
+  @ApiPropertyOptional({ 
+    description: '出行方式', 
+    enum: TravelMode,
+    default: TravelMode.PUBLIC_TRANSIT,
+  })
+  travelMode?: TravelMode;
 }
 
 /**

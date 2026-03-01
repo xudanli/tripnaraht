@@ -1,6 +1,7 @@
 // src/users/dto/user-profile.dto.ts
-import { IsString, IsOptional, IsObject, IsArray, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, IsBoolean, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TravelMode } from '../../trips/dto/trip-intent.dto';
 
 /**
  * 用户偏好配置
@@ -38,6 +39,7 @@ export class UserPreferencesDto {
       pace: 'LEISURE', // LEISURE, MODERATE, FAST
       budget: 'MEDIUM', // LOW, MEDIUM, HIGH
       accommodation: 'COMFORTABLE', // BUDGET, COMFORTABLE, LUXURY
+      travelMode: 'PUBLIC_TRANSIT', // DRIVING, PUBLIC_TRANSIT, MIXED
     },
   })
   @IsObject()
@@ -46,6 +48,8 @@ export class UserPreferencesDto {
     pace?: string;
     budget?: string;
     accommodation?: string;
+    /** 出行方式：DRIVING(自驾), PUBLIC_TRANSIT(公共交通), MIXED(混合) */
+    travelMode?: TravelMode;
   };
 
   @ApiPropertyOptional({

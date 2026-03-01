@@ -38,8 +38,8 @@ import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/atte
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
-import { DayMetricsResponseDto, TripMetricsResponseDto } from './dto/trip-metrics.dto';
-import { ConflictsResponseDto, ConflictSeverity } from './dto/trip-conflicts.dto';
+import { DayMetricsResponseDto, TripMetricsResponseDto, AssessTripRequestDto, AssessTripResponseDto } from './dto/trip-metrics.dto';
+import { ConflictsResponseDto, ConflictSeverity, ResolveConflictsRequestDto, ResolveConflictsResponseDto } from './dto/trip-conflicts.dto';
 import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from './dto/trip-intent.dto';
 import { ApplyOptimizationRequestDto, ApplyOptimizationResponseDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
@@ -4222,6 +4222,54 @@ export class TripsController {
     }
   }
 
+  @Post(':id/assess')
+  @ApiOperation({
+    summary: '评估行程每日安排是否合理',
+    description: `对行程的每一天进行多维度评估，判断安排是否合理。
+
+评估维度包括：
+- **时间安排** (TIMING): 开始/结束时间是否合理，活动时间跨度
+- **活动密度** (DENSITY): 活动数量和总时长是否适中
+- **用餐安排** (MEALS): 是否安排了午餐和晚餐
+- **体力负荷** (PHYSICAL): 疲劳指数、爬升高度、步行距离
+- **交通效率** (TRANSPORT): 交通时间占比、长途移动次数
+- **地理分布** (GEOGRAPHY): 路线是否顺畅、是否存在折返
+- **缓冲时间** (BUFFER): 活动间缓冲是否充足
+
+评估等级：
+- EXCELLENT (90-100): 非常合理
+- GOOD (75-89): 良好
+- FAIR (60-74): 基本合理
+- POOR (40-59): 存在问题
+- BAD (0-39): 不合理`,
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: AssessTripRequestDto, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回评估结果（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async assessTrip(
+    @Param('id') id: string,
+    @Body() dto: AssessTripRequestDto = {}
+  ) {
+    try {
+      const assessment = await this.tripMetricsService.assessTrip(id, dto);
+      return successResponse(assessment);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get(':id/conflicts')
   @ApiOperation({
     summary: '获取行程冲突列表',
@@ -4248,6 +4296,48 @@ export class TripsController {
     try {
       const conflicts = await this.tripConflictsService.getConflicts(id, date, severity);
       return successResponse(conflicts);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/conflicts/resolve')
+  @ApiOperation({
+    summary: '一键解决冲突列表',
+    description: `自动检测并解决行程中的冲突。支持解决的冲突类型包括：
+    - TIME_CONFLICT: 时间重叠（将后一个活动延后）
+    - TRANSPORT_INSUFFICIENT: 交通时间不足（延后活动）
+    - BUFFER_INSUFFICIENT: 缓冲时间不足（延后活动）
+    - DUPLICATE_ITEM: 重复行程项（移除后出现的重复项）
+    - CLOSURE_RISK: 闭园风险（将活动提前）
+    
+    不支持自动解决的冲突类型（需人工处理）：
+    - FATIGUE_EXCEEDED: 体力超标
+    - LUNCH_MISSING / DINNER_MISSING: 缺少用餐（需手动选择餐厅）
+    - ACCESSIBILITY_MISMATCH: 无障碍设施不匹配`,
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({ type: ResolveConflictsRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: '冲突解决结果（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async resolveConflicts(
+    @Param('id') id: string,
+    @Body() dto: ResolveConflictsRequestDto
+  ) {
+    try {
+      const result = await this.tripConflictsService.resolveConflicts(id, dto);
+      return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);

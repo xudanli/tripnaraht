@@ -18,6 +18,10 @@ export class ApplyOptimizationOptionsDto {
   @ApiPropertyOptional({ description: '是否只是预览，不实际应用', default: false })
   @IsOptional()
   dryRun?: boolean;
+
+  @ApiPropertyOptional({ description: '仅应用到指定行程日 ID（TripDay.id），用于单日优化场景' })
+  @IsOptional()
+  dayId?: string;
 }
 
 /**
@@ -78,5 +82,12 @@ export class ApplyOptimizationResponseDto {
 
   @ApiPropertyOptional({ description: '预览数据（如果 dryRun=true）', type: [ChangePreviewDto] })
   preview?: ChangePreviewDto[];
+
+  @ApiPropertyOptional({
+    description: '因不营业等原因未能创建的行程项',
+    type: 'array',
+    items: { type: 'object', properties: { placeId: { type: 'number' }, reason: { type: 'string' } } },
+  })
+  skipped?: Array<{ placeId: number; reason: string }>;
 }
 

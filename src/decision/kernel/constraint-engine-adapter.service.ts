@@ -62,6 +62,8 @@ export class ConstraintEngineAdapterService {
         type: v.code,
         severity: (v.severity === 'error' ? 'HARD' : 'SOFT') as 'HARD' | 'SOFT',
         detail: v.message,
+        // Phase 2 研究级：g_i(s,a) 违反程度，用于约束优化形式
+        degree: v.severity === 'error' ? 1 : v.severity === 'warning' ? 0.5 : 0.2,
       }));
 
       const report: ConstraintReport = {

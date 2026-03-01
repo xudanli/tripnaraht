@@ -326,6 +326,37 @@ export interface IProbabilisticWorldModelService {
     context: ProbabilisticWorldModelContext,
     hoursAhead: number
   ): ProbabilisticWorldModelContext;
+
+  /**
+   * 状态转移预测（专利升级点③）
+   * NextState = WorldModel(State, Action)，概率形式 s_{t+1} ~ P_θ(s|s_t,a_t)
+   * 用于决策模拟、可行性预判、多步规划
+   * @param options.includeSamples 当 > 0 时，返回 nextStateSamples 作为分布采样
+   */
+  predictOutcome(
+    context: ProbabilisticWorldModelContext,
+    action: DecisionAction,
+    options?: { includeSamples?: number }
+  ): OutcomePrediction;
+}
+
+/** 决策动作（用于状态转移预测） */
+export interface DecisionAction {
+  type: string;
+  payload?: Record<string, unknown>;
+}
+
+/** 结果预测 */
+export interface OutcomePrediction {
+  nextState: ProbabilisticWorldModelContext;
+  feasibilityProbability: number;
+  constraintViolations: string[];
+  estimatedUtility: number;
+  /**
+   * Phase 2 研究级：s_{t+1} ~ P_θ(s|s_t,a_t) 的采样表示
+   * 当需要分布而非点估计时，提供多组 nextState 采样
+   */
+  nextStateSamples?: WorldStateSample[];
 }
 
 /**

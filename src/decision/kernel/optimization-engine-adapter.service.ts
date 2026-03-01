@@ -10,7 +10,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { DecisionState, OptimizationHints } from './decision-state.types';
+import { DecisionState, OptimizationHints, UncertaintyProfile } from './decision-state.types';
 import { dsoToMinimalWorldModelContext } from './dso-to-world-model-converter';
 import { itineraryToRoutePlanDraft } from './dso-to-trips-converter';
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
@@ -18,6 +18,8 @@ import { ExpectedUtilityService, DEFAULT_MONTE_CARLO_CONFIG } from '../../trips/
 import { ProbabilisticWorldModelService } from '../../trips/decision/optimization/probabilistic/probabilistic-world-model.service';
 import { DEFAULT_UNCERTAINTY_CONFIG } from '../../trips/decision/optimization/probabilistic/probabilistic-world-model.interface';
 import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../trips/decision/optimization/objective-function.interface';
+import { UnifiedDecisionFormulaService } from '../../trips/decision/optimization/unified-decision-formula.service';
+import { MetaPolicyService } from '../../trips/decision/optimization/meta/meta-policy.service';
 
 @Injectable()
 export class OptimizationEngineAdapterService {
@@ -26,6 +28,8 @@ export class OptimizationEngineAdapterService {
   constructor(
     @Optional() private readonly expectedUtility?: ExpectedUtilityService,
     @Optional() private readonly probabilisticWorldModel?: ProbabilisticWorldModelService,
+    @Optional() private readonly unifiedFormula?: UnifiedDecisionFormulaService,
+    @Optional() private readonly metaPolicy?: MetaPolicyService,
   ) {}
 
   /**
@@ -99,6 +103,10 @@ export class OptimizationEngineAdapterService {
       const worldContext = dsoToMinimalWorldModelContext(state);
       if (!worldContext) return baseHints;
 
+      // 专利 3.12.3：元决策 MetaPolicy 选择采样预算 N
+      const sampleSize =
+        this.metaPolicy?.selectPolicy(state).sampleSize ?? DEFAULT_MONTE_CARLO_CONFIG.sampleSize ?? 200;
+
       const probabilisticContext = this.probabilisticWorldModel.fromDeterministicModel(
         worldContext,
         DEFAULT_UNCERTAINTY_CONFIG,
@@ -112,8 +120,17 @@ export class OptimizationEngineAdapterService {
         plan,
         probabilisticContext,
         DEFAULT_OBJECTIVE_WEIGHTS,
-        { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize: 200 },
+        { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize },
       );
+
+      const uncertaintyProfile: UncertaintyProfile = {
+        hasUncertainty: true,
+        sources: [
+          ...(env.weatherRisk !== undefined ? (['weather'] as const) : []),
+          ...(state.tripState?.fatigue !== undefined ? (['human'] as const) : []),
+        ],
+        suggestedSampleSize: sampleSize,
+      };
 
       const hints: OptimizationHints = {
         ...baseHints,
@@ -125,6 +142,7 @@ export class OptimizationEngineAdapterService {
         },
         confidenceInterval: result.confidenceInterval,
         feasibilityProbability: result.feasibilityProbability,
+        uncertaintyProfile,
       };
 
       this.logger.debug(
@@ -177,13 +195,25 @@ export class OptimizationEngineAdapterService {
 
   /**
    * 轻量级 E(U) 计算（专利公式简化版）
-   * E(U) = w1·Safety + w2·Experience - w3·FatigueRisk - w4·WeatherRisk
+   * 专利升级点①：优先使用统一决策公式 U(a) = Σ wi·Fi − Σ λj·ConstraintViolationj − RiskPenalty + PreferenceScore
+   * 降级：E(U) = w1·Safety + w2·Experience - w3·FatigueRisk - w4·WeatherRisk
    * 当无数据时返回 undefined
    */
   private computeExpectedUtility(hints: Partial<OptimizationHints>): { value: number; weights: Record<string, number> } | undefined {
+    if (hints.safetyTrend === undefined && hints.fatigueTrend === undefined) return undefined;
+
+    if (this.unifiedFormula && hints.dimensionBreakdown) {
+      const value = this.unifiedFormula.computeFromDimensionBreakdown(
+        hints.dimensionBreakdown,
+        hints.safetyTrend,
+        hints.fatigueTrend,
+        0,
+      );
+      return { value, weights: { safety: 0.6, fatigueRisk: 0.4 } };
+    }
+
     const safetyScore = hints.safetyTrend === 'HIGH' ? 0.3 : hints.safetyTrend === 'MEDIUM' ? 0.6 : hints.safetyTrend === 'LOW' ? 1.0 : 0.7;
     const fatiguePenalty = hints.fatigueTrend === 'HIGH' ? 0.4 : hints.fatigueTrend === 'MEDIUM' ? 0.2 : hints.fatigueTrend === 'LOW' ? 0 : 0.1;
-    if (hints.safetyTrend === undefined && hints.fatigueTrend === undefined) return undefined;
     const value = Math.max(0, Math.min(1, 0.6 * safetyScore + 0.4 * (1 - fatiguePenalty)));
     return {
       value,

@@ -1287,15 +1287,19 @@ ${userPrompt}`;
           const searchDuration = Date.now() - searchStartTime;
           this.logger.debug(`第 ${day} 天：语义搜索景点完成，耗时 ${searchDuration}ms，找到 ${attractionResults?.length || 0} 个结果`);
           if (attractionResults && attractionResults.length > 0) {
-            // 按评分排序，选择前 5 个
+            const travelMonth = context.constraints?.time?.startDate
+              ? new Date(context.constraints.time.startDate).getMonth() + 1
+              : null;
+            // 按评分排序，选择前 5 个（过滤掉旅行月份不可达的季节性景点）
             const selectedAttractions = attractionResults
               .sort((a, b) => {
                 if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
                 return b.vectorScore - a.vectorScore;
               })
-              .slice(0, 5);
+              .slice(0, 10);
             
             for (const result of selectedAttractions) {
+              if (attractions.length >= 5) break;
               const fullPlace = await this.prisma?.place.findUnique({
                 where: { id: result.id },
                 select: {
@@ -1312,6 +1316,23 @@ ${userPrompt}`;
               });
               
               if (fullPlace && this.prisma) {
+                if (travelMonth) {
+                  const meta = (fullPlace.metadata as any) || {};
+                  if (!this.isPlaceAvailableInMonth(meta, travelMonth)) {
+                    this.logger.debug(`过滤季节性景点: ${fullPlace.nameCN || fullPlace.nameEN} 仅部分月份开放，旅行月份 ${travelMonth} 月不可达`);
+                    continue;
+                  }
+                  const isIceland = countryCode === 'IS';
+                  const isFRoadSeason = travelMonth >= 6 && travelMonth <= 9;
+                  if (isIceland && !isFRoadSeason) {
+                    const nameText = `${fullPlace.nameCN || ''} ${fullPlace.nameEN || ''}`.toLowerCase();
+                    const fRoadKeywords = ['thorsmork', 'thorsmörk', '索斯莫克', 'landmannalaugar', '兰德曼纳劳卡', 'askja', '阿斯恰', 'kerlingarfjöll', '凯德灵加山'];
+                    if (fRoadKeywords.some(kw => nameText.includes(kw.toLowerCase()))) {
+                      this.logger.debug(`过滤冰岛F路/高地景点: ${fullPlace.nameCN || fullPlace.nameEN} 非夏季（${travelMonth}月）不可达`);
+                      continue;
+                    }
+                  }
+                }
                 // 获取坐标（优先从 PostGIS location 字段查询）
                 let coords: { lat: number; lng: number } | undefined = undefined;
                 try {
@@ -1719,5 +1740,39 @@ ${userPrompt}`;
       warnings,
       violations,
     };
+  }
+
+  /**
+   * 检查 Place 在指定月份是否开放（用于过滤仅夏季开放等季节性景点）
+   * 支持：visit_info.opening_hours（如 "仅夏季开放 (6月-9月)"）、metadata.seasonality、openMonths
+   */
+  private isPlaceAvailableInMonth(metadata: any, travelMonth: number): boolean {
+    if (!metadata) return true;
+    const meta = metadata as Record<string, unknown>;
+    const visitInfo = meta.visit_info as Record<string, unknown> | undefined;
+    const openingHours = meta.openingHours as Record<string, unknown> | undefined;
+    const ohStr = (visitInfo?.opening_hours ?? meta.opening_hours ?? openingHours?.osmFormat) as string | undefined;
+    if (typeof ohStr !== 'string') {
+      const seasonality = meta.seasonality as { openMonths?: number[]; bestMonths?: number[] } | undefined;
+      if (seasonality?.openMonths?.length) {
+        return seasonality.openMonths.includes(travelMonth);
+      }
+      if (seasonality?.bestMonths?.length) {
+        return seasonality.bestMonths.includes(travelMonth);
+      }
+      return true;
+    }
+    const lower = ohStr.toLowerCase();
+    // 匹配 "6月-9月"、"6-9月"、"（6月-9月）"、"仅夏季开放 (6月-9月)" 等
+    const match = lower.match(/(\d+)\s*月?\s*[-–到至]\s*(\d+)\s*月|\((\d+)\s*月[-–](\d+)\s*月\)/);
+    if (match) {
+      const from = parseInt(match[1] || match[3], 10);
+      const to = parseInt(match[2] || match[4], 10);
+      if (from >= 1 && from <= 12 && to >= 1 && to <= 12) {
+        const inRange = from <= to ? (travelMonth >= from && travelMonth <= to) : (travelMonth >= from || travelMonth <= to);
+        return inRange;
+      }
+    }
+    return true;
   }
 }

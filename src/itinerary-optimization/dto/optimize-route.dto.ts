@@ -220,3 +220,20 @@ export class OptimizeRouteDto {
   dayId!: string;
 }
 
+/**
+ * 优化接口响应中的冲突摘要（供 Swagger 文档）
+ */
+export class OptimizeConflictSummaryDto {
+  @ApiProperty({ description: '优化前冲突数' })
+  before!: number;
+
+  @ApiProperty({ description: '优化后冲突数' })
+  after!: number;
+
+  @ApiProperty({ description: '已解决的冲突数' })
+  resolved!: number;
+
+  @ApiProperty({ description: '是否出现新冲突（优化后冲突数增加）' })
+  hasNew!: boolean;
+}
+

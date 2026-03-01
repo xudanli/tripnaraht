@@ -330,6 +330,7 @@ function gateResultToConstraintReport(gate: GateResult): ConstraintReport {
     type: v.type,
     severity: v.severity,
     detail: v.detail,
+    degree: v.severity === 'HARD' ? 1 : 0.5,
   }));
   return {
     feasible,

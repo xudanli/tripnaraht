@@ -37,6 +37,11 @@ import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executo
     FeedbackEngineAdapterService,
     DecisionKernelService,
   ],
-  exports: [DecisionKernelService, StateManagerService, FeedbackEngineAdapterService],
+  exports: [
+    DecisionKernelService,
+    StateManagerService,
+    FeedbackEngineAdapterService,
+    OptimizationEngineAdapterService, // PolicyLearningService 等需要
+  ],
 })
 export class DecisionKernelModule {}

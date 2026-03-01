@@ -6,6 +6,7 @@ import { OpeningHoursUtil, OPENING_HOURS_UNKNOWN } from '../common/utils/opening
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
+import { TravelTimeEstimatorService } from '../transport/services/travel-time-estimator.service';
 import { PlacesService } from '../places/places.service';
 import { GoogleMapsDirectService } from '../mcp/google-maps-direct.service';
 import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
@@ -16,6 +17,7 @@ export class ItineraryItemsService {
   constructor(
     private prisma: PrismaService,
     @Optional() private readonly smartRoutesService?: SmartRoutesService,
+    @Optional() private readonly travelTimeEstimator?: TravelTimeEstimatorService,
     @Optional() @Inject(forwardRef(() => PlacesService)) private readonly placesService?: PlacesService,
     @Optional() private readonly googleMapsService?: GoogleMapsDirectService,
   ) {}
@@ -239,6 +241,8 @@ export class ItineraryItemsService {
         note: noteValue,
         ...(bookingUrlValue != null && { bookingUrl: bookingUrlValue }),
         order: orderValue, // 🆕 设置显示顺序
+        ...(dto.travelFromPreviousDuration != null && { travelFromPreviousDuration: dto.travelFromPreviousDuration }),
+        ...(dto.travelFromPreviousDistance != null && { travelFromPreviousDistance: dto.travelFromPreviousDistance }),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
         Place: {
@@ -270,10 +274,13 @@ export class ItineraryItemsService {
 
     // ============================================
     // 步骤 5: 自动计算交通信息（异步执行，不阻塞返回）
+    // 若已传入 travelFromPreviousDuration（如优化应用），则跳过，避免覆盖优化结果
     // ============================================
-    this.calculateTravelInfoForItem(newItem.id, tripDay.Trip.id).catch(err => {
-      console.warn('自动计算交通信息失败:', err.message);
-    });
+    if (dto.travelFromPreviousDuration == null && dto.travelFromPreviousDistance == null) {
+      this.calculateTravelInfoForItem(newItem.id, tripDay.Trip.id).catch(err => {
+        console.warn('自动计算交通信息失败:', err.message);
+      });
+    }
 
     // 为 Place 添加坐标字段
     return this.enrichItemWithCoordinates(newItem);
@@ -1960,7 +1967,7 @@ export class ItineraryItemsService {
       let distance: number | null = toItem.travelFromPreviousDistance;
       let travelMode: string | null = toItem.travelMode;
 
-      // 如果数据库没有存储，尝试计算
+      // 如果数据库没有存储，尝试计算（与 getConflicts 使用同一套 TravelTimeEstimatorService）
       if ((!duration || !distance) && fromCoords && toCoords) {
         const calculatedDistance = this.calculateHaversineDistance(
           fromCoords.lat, fromCoords.lng,
@@ -1968,17 +1975,17 @@ export class ItineraryItemsService {
         );
         distance = Math.round(calculatedDistance * 1000); // 转为米
 
-        // 根据距离估算时间
-        if (calculatedDistance < 2) {
-          travelMode = 'WALKING';
-          duration = Math.round(calculatedDistance / 5 * 60); // 步行 5km/h
-        } else if (calculatedDistance < 50) {
-          travelMode = 'DRIVING';
-          duration = Math.round(calculatedDistance / 60 * 60); // 驾车 60km/h
-        } else {
-          travelMode = 'TRANSIT';
-          duration = Math.round(calculatedDistance / 80 * 60); // 公交 80km/h
-        }
+        // 根据距离估算时间（与 getConflicts 使用同一套公式）
+        const mode =
+          calculatedDistance < 2 ? 'WALKING' : calculatedDistance < 50 ? 'DRIVING' : 'TRANSIT';
+        travelMode = mode;
+        duration = this.travelTimeEstimator
+          ? this.travelTimeEstimator.estimateDurationMinutes(calculatedDistance, mode)
+          : (mode === 'WALKING'
+              ? Math.round((calculatedDistance / 5) * 60)
+              : mode === 'DRIVING'
+                ? Math.round((calculatedDistance / 60) * 60)
+                : Math.round((calculatedDistance / 80) * 60));
 
         // 如果有 SmartRoutesService，使用更精确的计算
         if (this.smartRoutesService) {

@@ -201,6 +201,12 @@ export interface OptimizationConfig {
 
   /** 使用 OR-Tools TSP 作为初始解（若 node_or_tools 可用） */
   useORTools?: boolean;
+
+  /**
+   * 最小交通时间覆盖（来自冲突列表，key 为 "fromPlaceId-toPlaceId"，value 为分钟）
+   * 用于 TRANSPORT_INSUFFICIENT 等冲突：确保该点对间至少预留指定分钟数
+   */
+  minTravelTimeOverrides?: Record<string, number>;
 }
 
 /**

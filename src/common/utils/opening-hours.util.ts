@@ -200,27 +200,49 @@ export class OpeningHoursUtil {
 
   /**
    * 从 metadata 中获取指定日期的营业时间字符串
-   * 
+   *
+   * 支持：mon/tue/...、weekday/weekend、osmFormat（如 "24小时开放"）、visit_info.opening_hours
+   * 与 getTodayHours 保持一致，无具体营业时间且标注「全天开放」的视为 24 小时开放
+   *
    * @param metadata 地点元数据
    * @param checkDate 要检查的日期
    * @param timezone 时区
    * @returns 营业时间字符串
    */
   static getHoursForDate(metadata: any, checkDate: Date, timezone: string = 'Asia/Tokyo'): string {
-    if (!metadata?.openingHours) return 'Closed';
+    const oh = metadata?.openingHours;
+    const osmFormat = oh?.osmFormat || metadata?.opening_hours;
+    const visitHours = metadata?.visit_info?.opening_hours;
+    const rawHours = osmFormat || visitHours;
+
+    // 1. OSM/中文格式：24小时、全天开放 等 → 视为全天开放
+    if (typeof rawHours === 'string') {
+      const lower = rawHours.toLowerCase();
+      if (/24\s*小时|24\/7|全天|24\s*hours/i.test(lower) || lower === '24小时开放') {
+        return '24 Hours';
+      }
+      if (visitHours && !oh) return visitHours;
+    }
+
+    if (!oh) return 'Closed';
 
     const checkDateTime = DateTime.fromJSDate(checkDate).setZone(timezone);
     const dayKey = checkDateTime.toFormat('ccc').toLowerCase(); // 'mon', 'tue', etc.
 
-    const hours = metadata.openingHours[dayKey];
+    const hours = oh[dayKey];
     if (hours) return toHoursString(hours);
 
     // 如果没有按天存储，尝试使用 weekday/weekend
     const isWeekend = checkDateTime.weekday >= 6; // 6 = Saturday, 7 = Sunday
-    const fallbackHours = isWeekend 
-      ? (metadata.openingHours.weekend || 'Closed')
-      : (metadata.openingHours.weekday || 'Closed');
-    return toHoursString(fallbackHours);
+    const fallbackHours = isWeekend
+      ? (oh.weekend ?? null)
+      : (oh.weekday ?? null);
+    const result = toHoursString(fallbackHours ?? 'Closed');
+    // 无明确营业时间数据时（weekday/weekend 均未配置），视为未知而非 Closed，避免自然景点被误判为不营业
+    if (result === 'Closed' && fallbackHours === null) {
+      return OPENING_HOURS_UNKNOWN;
+    }
+    return result;
   }
 }
 

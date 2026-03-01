@@ -625,7 +625,7 @@ export class RouteOptimizerService {
   ): Promise<RouteSolution> {
     this.logger.debug('使用 VRPTW 算法优化路线');
 
-    // 1. 构建时间矩阵（N×N 矩阵）
+    // 1. 构建时间矩阵（N×N 矩阵），应用冲突衍生的最小交通时间约束
     const n = places.length;
     const timeMatrix: number[][] = [];
     for (let i = 0; i < n; i++) {
@@ -634,8 +634,13 @@ export class RouteOptimizerService {
         if (i === j) {
           row.push(0);
         } else {
-          const time = this.getTimeFromMatrix(String(places[i].id), String(places[j].id));
-          row.push(time ?? this.fallbackEstimateTransportTime(places[i].location, places[j].location));
+          let time = this.getTimeFromMatrix(String(places[i].id), String(places[j].id))
+            ?? this.fallbackEstimateTransportTime(places[i].location, places[j].location);
+          const overrideKey = `${places[i].id}-${places[j].id}`;
+          if (config.minTravelTimeOverrides?.[overrideKey] != null) {
+            time = Math.max(time, config.minTravelTimeOverrides[overrideKey]);
+          }
+          row.push(time);
         }
       }
       timeMatrix.push(row);
@@ -655,22 +660,30 @@ export class RouteOptimizerService {
     // 4. 将 VRPTW 结果转换为 RouteSolution
     const optimizedNodes = vrptwResult.route.map((index) => places[index]);
     
-    // 5. 构建时间安排
+    // 5. 构建时间安排（应用冲突衍生的最小交通时间约束）
     const schedule: RouteSolution['schedule'] = [];
     for (let i = 0; i < optimizedNodes.length; i++) {
       const arrivalTime = vrptwResult.arrivalTimes[i];
       const departureTime = vrptwResult.departureTimes[i];
-      
+      let transportTime: number | undefined;
+      if (i < optimizedNodes.length - 1) {
+        transportTime = this.getTimeFromMatrix(
+          String(optimizedNodes[i].id),
+          String(optimizedNodes[i + 1].id)
+        ) ?? this.fallbackEstimateTransportTime(
+          optimizedNodes[i].location,
+          optimizedNodes[i + 1].location
+        );
+        const overrideKey = `${optimizedNodes[i].id}-${optimizedNodes[i + 1].id}`;
+        if (config.minTravelTimeOverrides?.[overrideKey] != null) {
+          transportTime = Math.max(transportTime, config.minTravelTimeOverrides[overrideKey]);
+        }
+      }
       schedule.push({
         nodeIndex: i,
         startTime: arrivalTime,
         endTime: departureTime,
-        transportTime: i < optimizedNodes.length - 1
-          ? this.getTimeFromMatrix(
-              String(optimizedNodes[i].id),
-              String(optimizedNodes[i + 1].id)
-            ) ?? undefined
-          : undefined,
+        transportTime,
       });
     }
 
@@ -748,26 +761,28 @@ export class RouteOptimizerService {
       const startTime = currentTime.toISO();
       const endTimeForNode = currentTime.plus({ minutes: duration }).toISO();
 
-      schedule.push({
-        nodeIndex: i,
-        startTime: startTime!,
-        endTime: endTimeForNode!,
-        transportTime: i < route.nodes.length - 1
-          ? this.estimateTransportTime(
-              { ...node.location, id: String(node.id) },
-              { ...route.nodes[i + 1].location, id: String(route.nodes[i + 1].id) }
-            )
-          : undefined,
-      });
-
-      // 移动到下一个节点（包含交通时间）
-      const transportTime =
+      let transportTime =
         i < route.nodes.length - 1
           ? this.estimateTransportTime(
               { ...node.location, id: String(node.id) },
               { ...route.nodes[i + 1].location, id: String(route.nodes[i + 1].id) }
             )
           : 0;
+
+      // 应用冲突衍生的最小交通时间约束（TRANSPORT_INSUFFICIENT）
+      const overrideKey = i < route.nodes.length - 1
+        ? `${node.id}-${route.nodes[i + 1].id}`
+        : null;
+      if (overrideKey && config.minTravelTimeOverrides?.[overrideKey] != null) {
+        transportTime = Math.max(transportTime, config.minTravelTimeOverrides[overrideKey]);
+      }
+
+      schedule.push({
+        nodeIndex: i,
+        startTime: startTime!,
+        endTime: endTimeForNode!,
+        transportTime: i < route.nodes.length - 1 ? transportTime : undefined,
+      });
 
       // 应用弹性因子
       const bufferTime = transportTime * config.pacingFactor + 15;

@@ -7,6 +7,8 @@ export { OptimizationAdminController } from './optimization-admin.controller';
 export { RealtimeAdminController } from './realtime-admin.controller';
 export { ABTestingAdminController } from './ab-testing-admin.controller';
 export { AxiomAdminController } from './axiom-admin.controller';
+export { DSOAuditAdminController } from './dso-audit-admin.controller';
+export { MetricsAdminController } from './metrics-admin.controller';
 
 // DTOs
 export type {

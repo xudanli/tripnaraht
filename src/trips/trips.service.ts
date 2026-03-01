@@ -2484,32 +2484,41 @@ export class TripsService {
       completedAt: trip.createdAt?.toISOString(),
     });
 
+    // 阶段3 前置计算（用于阶段2 推断）
+    const totalItems = trip.TripDay.reduce((sum, day) => sum + day.ItineraryItem.length, 0);
+    const daysWithItems = trip.TripDay.filter(day => day.ItineraryItem.length > 0).length;
+    const totalDays = trip.TripDay.length;
+    const stage3Completed = totalDays > 0 && totalItems > 0 && daysWithItems === totalDays;
+
     // 阶段2: 判断路线是否成立
-    const hasRoute = trip.metadata && (trip.metadata as any).routeDirectionId;
+    // 方案B：若阶段3已完成（日程已排满），推断路线已成立
+    const metadata = (trip.metadata as Record<string, unknown>) || {};
+    const hasRoute = !!(metadata.routeDirectionId ?? metadata.route_direction_id);
+    const decisionState = metadata.decisionState as { completedSteps?: { routeSelection?: boolean } } | undefined;
+    const routeSelected = decisionState?.completedSteps?.routeSelection === true;
+    const stage2Completed = hasRoute || routeSelected || stage3Completed;
     stages.push({
       id: '2',
       name: '判断路线是否成立',
-      status: hasRoute ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS,
+      status: stage2Completed ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS,
+      completedAt: stage2Completed ? trip.updatedAt?.toISOString() : undefined,
     });
 
     // 阶段3: 生成可执行日程
-    const totalItems = trip.TripDay.reduce((sum, day) => sum + day.ItineraryItem.length, 0);
-    const daysWithItems = trip.TripDay.filter(day => day.ItineraryItem.length > 0).length;
     
     let stage3Status = PipelineStageStatus.PENDING;
     let stage3Summary = '';
     
     if (totalItems > 0) {
-      stage3Status = PipelineStageStatus.IN_PROGRESS;
-      
-      // 计算平均每日活动数
-      const avgItemsPerDay = totalItems / trip.TripDay.length;
+      // 已完成：所有天都有活动安排
+      const allDaysScheduled = totalDays > 0 && daysWithItems === totalDays;
+      stage3Status = allDaysScheduled ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS;
       
       // 检查是否有密集的行程
       const denseDays = trip.TripDay.filter(day => day.ItineraryItem.length > 8);
       
       stage3Summary = `建议驾驶时长：每天 3–5 小时\n`;
-      stage3Summary += `已安排活动：${totalItems} 个（${daysWithItems}/${trip.TripDay.length} 天）\n`;
+      stage3Summary += `已安排活动：${totalItems} 个（${daysWithItems}/${totalDays} 天）\n`;
       
       if (denseDays.length > 0) {
         stage3Summary += `🚨 第 ${denseDays.map((_, idx) => trip.TripDay.indexOf(denseDays[idx]) + 1).join('、')} 天稍紧张`;
@@ -2523,6 +2532,7 @@ export class TripsService {
       name: '生成可执行日程',
       status: stage3Status,
       summary: stage3Summary || undefined,
+      completedAt: stage3Status === PipelineStageStatus.COMPLETED ? trip.updatedAt?.toISOString() : undefined,
     });
 
     // 阶段4: 风险评估与缓冲
@@ -2535,18 +2545,28 @@ export class TripsService {
       alerts = [];
     }
     const riskAlerts = alerts.filter(a => a.severity === AlertSeverity.WARNING);
+    const stage4Completed = totalItems > 0 && riskAlerts.length === 0;
+    const stage4Status = riskAlerts.length > 0
+      ? PipelineStageStatus.RISK
+      : totalItems > 0
+        ? (stage4Completed ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS)
+        : PipelineStageStatus.PENDING;
     
     stages.push({
       id: '4',
       name: '风险评估与缓冲',
-      status: riskAlerts.length > 0 ? PipelineStageStatus.RISK : (totalItems > 0 ? PipelineStageStatus.IN_PROGRESS : PipelineStageStatus.PENDING),
+      status: stage4Status,
+      completedAt: stage4Completed ? trip.updatedAt?.toISOString() : undefined,
     });
 
-    // 阶段5: Plan B 备选系统
+    // 阶段5: Plan B 备选系统（阶段3、4完成后视为已就绪）
+    const stage5Completed = stage3Status === PipelineStageStatus.COMPLETED && stage4Status === PipelineStageStatus.COMPLETED;
+    const planBFromMeta = !!(metadata.planAlternatives ?? metadata.planBReady);
     stages.push({
       id: '5',
       name: 'Plan B 备选系统',
-      status: PipelineStageStatus.PENDING,
+      status: (stage5Completed || planBFromMeta) ? PipelineStageStatus.COMPLETED : PipelineStageStatus.PENDING,
+      completedAt: (stage5Completed || planBFromMeta) ? trip.updatedAt?.toISOString() : undefined,
     });
 
     // 阶段6: 行前准备清单
@@ -2554,10 +2574,26 @@ export class TripsService {
     const startDate = new Date(trip.startDate);
     const daysUntilTrip = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
+    let stage6Status = PipelineStageStatus.PENDING;
+    if (daysUntilTrip <= 0) {
+      stage6Status = PipelineStageStatus.COMPLETED; // 行程已开始，清单阶段结束
+    } else if (daysUntilTrip <= 7) {
+      // 7 天内：检查是否有准备度决策记录
+      try {
+        const readinessCount = await this.prisma.tripReadinessDecision.count({
+          where: { tripId },
+        });
+        stage6Status = readinessCount > 0 ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS;
+      } catch {
+        stage6Status = PipelineStageStatus.IN_PROGRESS;
+      }
+    }
+    
     stages.push({
       id: '6',
       name: '行前准备清单',
-      status: daysUntilTrip <= 7 && daysUntilTrip > 0 ? PipelineStageStatus.IN_PROGRESS : PipelineStageStatus.PENDING,
+      status: stage6Status,
+      completedAt: stage6Status === PipelineStageStatus.COMPLETED ? trip.updatedAt?.toISOString() : undefined,
     });
 
     return { stages };

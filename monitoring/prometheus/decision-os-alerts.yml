@@ -1,0 +1,245 @@
+# Decision OS Prometheus 告警规则
+# 
+# 使用方法:
+# 1. 将此文件放入 Prometheus rules 目录
+# 2. 在 prometheus.yml 中添加: rule_files: ["decision-os-alerts.yml"]
+# 3. 重启 Prometheus
+
+groups:
+  # ========== 决策性能告警 ==========
+  - name: decision-os-performance
+    interval: 30s
+    rules:
+      - alert: HighDecisionLatencyP95
+        expr: histogram_quantile(0.95, rate(decision_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "决策延迟 P95 过高"
+          description: "Decision OS 决策延迟 P95 超过 500ms，当前值: {{ $value | printf \"%.2f\" }}s"
+          runbook_url: "https://docs.example.com/runbooks/decision-os/high-latency"
+
+      - alert: HighDecisionLatencyP99
+        expr: histogram_quantile(0.99, rate(decision_latency_seconds_bucket[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: critical
+          team: decision-os
+        annotations:
+          summary: "决策延迟 P99 严重过高"
+          description: "Decision OS 决策延迟 P99 超过 1s，当前值: {{ $value | printf \"%.2f\" }}s"
+          runbook_url: "https://docs.example.com/runbooks/decision-os/critical-latency"
+
+      - alert: LowDecisionThroughput
+        expr: rate(decision_total[5m]) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "决策吞吐量过低"
+          description: "Decision OS 决策吞吐量低于 0.1/s，当前值: {{ $value | printf \"%.3f\" }}/s"
+
+  # ========== 效用和质量告警 ==========
+  - name: decision-os-quality
+    interval: 1m
+    rules:
+      - alert: LowAverageUtility
+        expr: avg_over_time(decision_utility[15m]) < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "平均决策效用过低"
+          description: "Decision OS 平均效用低于 0.5，当前值: {{ $value | printf \"%.3f\" }}"
+
+      - alert: HighConstraintViolationRate
+        expr: rate(decision_constraint_violations_total[5m]) / rate(decision_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "约束违反率过高"
+          description: "Decision OS 约束违反率超过 10%，当前值: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: LowDecisionConfidence
+        expr: avg_over_time(decision_confidence[10m]) < 0.6
+        for: 10m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "决策置信度过低"
+          description: "Decision OS 平均置信度低于 0.6，当前值: {{ $value | printf \"%.3f\" }}"
+
+  # ========== 学习系统告警 ==========
+  - name: decision-os-learning
+    interval: 1m
+    rules:
+      - alert: LearningNotConverging
+        expr: decision_learning_convergence_status != 1 
+        for: 30m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "学习系统未收敛"
+          description: "Decision OS 学习系统已超过 30 分钟未收敛"
+
+      - alert: HighRegretValue
+        expr: decision_regret_cumulative > 100
+        for: 1h
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "累计遗憾值过高"
+          description: "Decision OS 累计遗憾值超过 100，当前值: {{ $value | printf \"%.1f\" }}"
+
+      - alert: LyapunovInstability
+        expr: decision_lyapunov_value > 1.0
+        for: 5m
+        labels:
+          severity: critical
+          team: decision-os
+        annotations:
+          summary: "Lyapunov 稳定性警告"
+          description: "Decision OS Lyapunov 值超过 1.0，系统可能不稳定，当前值: {{ $value | printf \"%.3f\" }}"
+
+  # ========== 系统健康告警 ==========
+  - name: decision-os-health
+    interval: 30s
+    rules:
+      - alert: DecisionOSDown
+        expr: up{job="decision-os"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: decision-os
+        annotations:
+          summary: "Decision OS 服务不可用"
+          description: "Decision OS 实例 {{ $labels.instance }} 已宕机超过 1 分钟"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="decision-os"} / 1024 / 1024 / 1024 > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "内存使用过高"
+          description: "Decision OS 内存使用超过 3GB，当前值: {{ $value | printf \"%.2f\" }}GB"
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="decision-os"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "CPU 使用过高"
+          description: "Decision OS CPU 使用率超过 80%，当前值: {{ $value | printf \"%.1f\" }}%"
+
+  # ========== 熔断器告警 ==========
+  - name: decision-os-circuit-breaker
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: decision_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: critical
+          team: decision-os
+        annotations:
+          summary: "熔断器已打开"
+          description: "Decision OS 熔断器 {{ $labels.circuit_name }} 已打开超过 1 分钟"
+
+      - alert: CircuitBreakerHalfOpen
+        expr: decision_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "熔断器处于半开状态"
+          description: "Decision OS 熔断器 {{ $labels.circuit_name }} 处于半开状态超过 5 分钟"
+
+  # ========== 缓存告警 ==========
+  - name: decision-os-cache
+    interval: 1m
+    rules:
+      - alert: LowCacheHitRate
+        expr: rate(decision_cache_hits_total[5m]) / (rate(decision_cache_hits_total[5m]) + rate(decision_cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "缓存命中率过低"
+          description: "Decision OS 缓存命中率低于 50%，当前值: {{ $value | printf \"%.1f\" }}%"
+
+  # ========== 限流告警 ==========
+  - name: decision-os-rate-limit
+    interval: 30s
+    rules:
+      - alert: HighRateLimitRejects
+        expr: rate(decision_rate_limit_rejected_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "限流拒绝次数过多"
+          description: "Decision OS 限流拒绝超过 10/s，当前值: {{ $value | printf \"%.1f\" }}/s"
+
+  # ========== 错误告警 ==========
+  - name: decision-os-errors
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: rate(decision_errors_total[5m]) / rate(decision_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: decision-os
+        annotations:
+          summary: "错误率过高"
+          description: "Decision OS 错误率超过 5%，当前值: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: LockTimeoutErrors
+        expr: rate(decision_lock_timeout_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "分布式锁超时频繁"
+          description: "Decision OS 分布式锁超时超过 1/s，当前值: {{ $value | printf \"%.2f\" }}/s"
+
+  # ========== 数据库告警 ==========
+  - name: decision-os-database
+    interval: 1m
+    rules:
+      - alert: HighDatabaseLatency
+        expr: histogram_quantile(0.95, rate(decision_db_query_duration_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "数据库查询延迟过高"
+          description: "Decision OS 数据库查询 P95 延迟超过 100ms，当前值: {{ $value | printf \"%.3f\" }}s"
+
+      - alert: HighDatabaseConnectionUsage
+        expr: decision_db_connections_active / decision_db_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: decision-os
+        annotations:
+          summary: "数据库连接池使用率过高"
+          description: "Decision OS 数据库连接池使用率超过 80%，当前值: {{ $value | printf \"%.1f\" }}%"

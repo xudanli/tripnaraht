@@ -2625,3 +2625,98 @@ enum ApprovalStatus {
   EXPIRED
   CANCELLED
 }
+
+// ========== Decision OS 学习模块表 ==========
+
+/// 用户决策权重表
+/// 存储每个用户的个性化目标函数权重
+model UserDecisionWeights {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.VarChar(255)
+  weights            Json
+  version            Int      @default(1)
+  learningConfidence Float    @default(0.5) @map("learning_confidence")
+  totalFeedback      Int      @default(0) @map("total_feedback")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("user_decision_weights")
+}
+
+/// 权重学习历史表
+/// 记录每次权重更新的详细信息，用于审计和回滚
+model WeightLearningHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.VarChar(255)
+  tripId         String?  @map("trip_id") @db.VarChar(255)
+  weightsBefore  Json     @map("weights_before")
+  weightsAfter   Json     @map("weights_after")
+  feedbackData   Json?    @map("feedback_data")
+  learningMethod String?  @map("learning_method") @db.VarChar(50)
+  learningRate   Float?   @map("learning_rate")
+  confidence     Float?
+  utilityBefore  Float?   @map("utility_before")
+  utilityAfter   Float?   @map("utility_after")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("weight_learning_history")
+}
+
+/// DSO 快照表
+/// 存储决策状态对象的历史快照，支持审计、调试和回滚
+model DsoSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  requestId     String   @map("request_id") @db.VarChar(255)
+  version       Int
+  phase         String   @db.VarChar(50)
+  dsoData       Json     @map("dso_data")
+  confidence    Float?
+  lyapunovValue Float?   @map("lyapunov_value")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([requestId, version])
+  @@index([requestId])
+  @@index([createdAt])
+  @@map("dso_snapshots")
+}
+
+/// P0.2 优化：RLHF 反馈记录持久化，支持权重学习数据飞轮
+model RlhfFeedbackRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.VarChar(255)
+  tripId        String   @map("trip_id") @db.VarChar(255)
+  feedbackType  String   @map("feedback_type") @db.VarChar(50)
+  feedbackData  Json     @map("feedback_data")
+  weightsAtTime Json     @map("weights_at_time")
+  utilityAtTime Float    @map("utility_at_time")
+  contextHash   String?  @map("context_hash") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([feedbackType])
+  @@index([createdAt])
+  @@map("rlhf_feedback_records")
+}
+
+/// P0.2 优化：学习收敛追踪，记录 Regret 和学习进度
+model LearningConvergenceLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.VarChar(255)
+  round          Int
+  utility        Float
+  optimalUtility Float    @map("optimal_utility")
+  regret         Float
+  cumulativeRegret Float  @map("cumulative_regret")
+  theoreticalBound Float  @map("theoretical_bound")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([round])
+  @@index([createdAt])
+  @@map("learning_convergence_logs")
+}

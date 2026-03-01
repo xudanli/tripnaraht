@@ -146,6 +146,7 @@ export class RouteOptimizationService {
       seed: dto.config.seed,
       multiStartTrials: dto.config.multiStartTrials,
       useORTools: dto.config.useORTools,
+      minTravelTimeOverrides: (dto.config as any).minTravelTimeOverrides,
       clustering: {
         minPoints: 2,
         epsilon: 2000, // 2 公里

@@ -1,12 +1,15 @@
 // src/trips/decision/optimization/probabilistic/expected-utility.service.ts
 /**
  * 期望效用服务
- * 
+ *
  * Phase 2 核心：使用 Monte Carlo 采样计算期望效用
- * 
- * 关键算法：
- * E[U] = (1/N) * Σ U(s_i)
- * 其中 s_i ~ P(WorldState)
+ *
+ * 研究级表述（专利 3.3.1）：
+ * U(a|b) = E_s∼b[R(s,a)] − λC(a) − γRisk(s,a) + δP(a)
+ *
+ * 本服务实现 E_s∼b[R(s,a)] 部分：
+ * E_s∼b[R(s,a)] ≈ (1/N) * Σ_i R(s_i, a)，其中 s_i ~ b(s) = P(s|observations)
+ * 通过 sampleWorldState 从 ProbabilisticWorldModelContext 采样 s_i，近似信念状态 b(s)
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -60,6 +63,41 @@ export const DEFAULT_MONTE_CARLO_CONFIG: MonteCarloConfig = {
   minSamples: 100,
   confidenceLevel: 0.95,
 };
+
+// ========== P1.3 优化：自适应采样预算 ==========
+
+/**
+ * 自适应采样配置
+ */
+export interface AdaptiveSamplingConfig {
+  minSamples: number;
+  maxSamples: number;
+  targetVarianceCoef: number;
+  convergenceThreshold: number;
+  checkInterval: number;
+  earlyStopPatience: number;
+}
+
+export const DEFAULT_ADAPTIVE_CONFIG: AdaptiveSamplingConfig = {
+  minSamples: 50,
+  maxSamples: 5000,
+  targetVarianceCoef: 0.05,
+  convergenceThreshold: 0.01,
+  checkInterval: 50,
+  earlyStopPatience: 3,
+};
+
+/**
+ * 自适应采样结果
+ */
+export interface AdaptiveSamplingResult {
+  finalSampleSize: number;
+  estimatedOptimalSize: number;
+  converged: boolean;
+  varianceHistory: number[];
+  convergenceReason: 'variance_target' | 'convergence' | 'max_samples' | 'early_stop';
+  efficiencyGain: number;
+}
 
 /**
  * 期望效用结果
@@ -153,6 +191,45 @@ export interface SensitivityAnalysisResult {
   rank: number;
 }
 
+/**
+ * 重要性采样配置
+ * 
+ * 专利实现：通过提议分布 q(s) 采样降低方差
+ */
+export interface ImportanceSamplingConfig extends MonteCarloConfig {
+  /** 提议分布类型 */
+  proposalType: 'SHIFTED_MEAN' | 'WIDENED_VARIANCE' | 'MIXTURE';
+  /** 提议分布偏移因子（用于 SHIFTED_MEAN） */
+  shiftFactor?: number;
+  /** 方差扩展因子（用于 WIDENED_VARIANCE） */
+  varianceExpansion?: number;
+  /** 最大权重截断比例 */
+  maxWeightRatio?: number;
+}
+
+/**
+ * 重要性采样结果
+ */
+export interface ImportanceSamplingResult {
+  /** 加权期望效用 */
+  weightedMean: number;
+  /** 有效样本数 ESS = 1 / Σ w_i² */
+  effectiveSampleSize: number;
+  /** 原始权重 */
+  weights: number[];
+  /** 归一化权重 */
+  normalizedWeights: number[];
+  /** 方差减少比例 */
+  varianceReductionRatio: number;
+  /** 诊断信息 */
+  diagnostics: {
+    maxWeight: number;
+    minWeight: number;
+    weightVariance: number;
+    weightEntropy: number;
+  };
+}
+
 @Injectable()
 export class ExpectedUtilityService {
   private readonly logger = new Logger(ExpectedUtilityService.name);
@@ -161,10 +238,10 @@ export class ExpectedUtilityService {
   private rng: () => number = Math.random;
 
   /**
-   * 计算期望效用
-   * 
-   * 核心算法：Monte Carlo 积分
-   * E[U(plan)] = (1/N) * Σ_i U(plan | worldState_i)
+   * 计算期望效用 E_s∼b[R(s,a)]
+   *
+   * 核心算法：Monte Carlo 积分，近似信念状态 b(s) 下的期望
+   * E[U(plan)] = (1/N) * Σ_i U(plan | worldState_i)，其中 worldState_i ~ b(s)
    */
   computeExpectedUtility(
     plan: RoutePlanDraft,
@@ -256,6 +333,170 @@ export class ExpectedUtilityService {
         convergenceAchieved: utilities.length < config.sampleSize,
         effectiveSampleSize: this.estimateEffectiveSampleSize(utilities),
       },
+    };
+  }
+
+  /**
+   * P1.3 优化：使用自适应采样计算期望效用
+   *
+   * 根据采样方差动态调整采样数量，在精度和效率之间取得平衡
+   * 算法：基于 CLT，当 σ/√N < ε 时停止
+   */
+  computeExpectedUtilityAdaptive(
+    plan: RoutePlanDraft,
+    probabilisticContext: ProbabilisticWorldModelContext,
+    weights: ObjectiveFunctionWeights,
+    adaptiveConfig: Partial<AdaptiveSamplingConfig> = {},
+  ): ExpectedUtilityResult & { adaptiveSampling: AdaptiveSamplingResult } {
+    const config = { ...DEFAULT_ADAPTIVE_CONFIG, ...adaptiveConfig };
+    this.logger.debug(`[ExpectedUtility] 启用自适应采样，范围: ${config.minSamples}-${config.maxSamples}`);
+
+    const utilities: number[] = [];
+    const varianceHistory: number[] = [];
+    const dimensionSamples: Record<string, number[]> = {
+      safety: [], experience: [], philosophy: [], timeSlack: [],
+      fatigueRisk: [], weatherRisk: [], budgetOverrun: [], pacingVariance: [],
+    };
+    let feasibleCount = 0;
+    let converged = false;
+    let convergenceReason: AdaptiveSamplingResult['convergenceReason'] = 'max_samples';
+    let noImprovementCount = 0;
+    let lastVariance = Infinity;
+
+    while (utilities.length < config.maxSamples) {
+      const batchSize = Math.min(config.checkInterval, config.maxSamples - utilities.length);
+      const worldSamples = this.sampleWorldStates(probabilisticContext, batchSize);
+
+      for (const sample of worldSamples) {
+        const evaluation = this.evaluatePlanWithSample(plan, sample, weights);
+        utilities.push(evaluation.utility);
+
+        for (const dim of Object.keys(dimensionSamples)) {
+          dimensionSamples[dim].push(evaluation.dimensions[dim] || 0);
+        }
+
+        if (evaluation.isFeasible) {
+          feasibleCount++;
+        }
+      }
+
+      if (utilities.length >= config.minSamples) {
+        const currentMean = this.mean(utilities);
+        const currentVariance = this.variance(utilities);
+        const standardError = Math.sqrt(currentVariance / utilities.length);
+        const coeffOfVariation = currentMean !== 0 ? standardError / Math.abs(currentMean) : Infinity;
+
+        varianceHistory.push(currentVariance);
+
+        if (coeffOfVariation <= config.targetVarianceCoef) {
+          converged = true;
+          convergenceReason = 'variance_target';
+          this.logger.debug(
+            `[ExpectedUtility] 方差目标达成，CV=${coeffOfVariation.toFixed(4)}, N=${utilities.length}`,
+          );
+          break;
+        }
+
+        if (varianceHistory.length >= 2) {
+          const prevVariance = varianceHistory[varianceHistory.length - 2];
+          const varianceChange = Math.abs(currentVariance - prevVariance) / (prevVariance || 1);
+
+          if (varianceChange < config.convergenceThreshold) {
+            noImprovementCount++;
+            if (noImprovementCount >= config.earlyStopPatience) {
+              converged = true;
+              convergenceReason = 'early_stop';
+              this.logger.debug(
+                `[ExpectedUtility] 提前停止（方差稳定），N=${utilities.length}`,
+              );
+              break;
+            }
+          } else {
+            noImprovementCount = 0;
+          }
+        }
+
+        lastVariance = currentVariance;
+      }
+    }
+
+    const statistics = this.computeStatistics(utilities);
+    const confidenceInterval = this.computeConfidenceInterval(utilities, 0.95);
+
+    const dimensionExpectations: any = {};
+    for (const dim of Object.keys(dimensionSamples)) {
+      dimensionExpectations[dim] = this.mean(dimensionSamples[dim]);
+    }
+
+    const riskMetrics = this.computeRiskMetrics(utilities);
+    const currentVariance = this.variance(utilities);
+    const estimatedOptimalSize = Math.ceil(
+      (currentVariance / Math.pow(config.targetVarianceCoef * statistics.mean || 0.01, 2)) || config.minSamples,
+    );
+
+    const efficiencyGain = config.maxSamples > 0
+      ? (config.maxSamples - utilities.length) / config.maxSamples
+      : 0;
+
+    const adaptiveSamplingResult: AdaptiveSamplingResult = {
+      finalSampleSize: utilities.length,
+      estimatedOptimalSize: Math.min(estimatedOptimalSize, config.maxSamples),
+      converged,
+      varianceHistory,
+      convergenceReason,
+      efficiencyGain,
+    };
+
+    return {
+      expectedUtility: statistics.mean,
+      statistics,
+      confidenceInterval,
+      dimensionExpectations,
+      riskMetrics,
+      feasibilityProbability: feasibleCount / utilities.length,
+      samplingDetails: {
+        totalSamples: utilities.length,
+        convergenceAchieved: converged,
+        effectiveSampleSize: this.estimateEffectiveSampleSize(utilities),
+      },
+      adaptiveSampling: adaptiveSamplingResult,
+    };
+  }
+
+  /**
+   * P1.3 优化：估计达到目标精度所需的采样数
+   *
+   * 基于初始采样估计方差，计算满足 σ/√N < ε 的最小 N
+   */
+  estimateRequiredSampleSize(
+    plan: RoutePlanDraft,
+    probabilisticContext: ProbabilisticWorldModelContext,
+    weights: ObjectiveFunctionWeights,
+    targetCoefOfVariation: number = 0.05,
+    pilotSampleSize: number = 100,
+  ): { estimatedSize: number; pilotMean: number; pilotStd: number; confidence: number } {
+    const worldSamples = this.sampleWorldStates(probabilisticContext, pilotSampleSize);
+    const utilities: number[] = [];
+
+    for (const sample of worldSamples) {
+      const evaluation = this.evaluatePlanWithSample(plan, sample, weights);
+      utilities.push(evaluation.utility);
+    }
+
+    const pilotMean = this.mean(utilities);
+    const pilotVariance = this.variance(utilities);
+    const pilotStd = Math.sqrt(pilotVariance);
+
+    const targetStandardError = Math.abs(pilotMean) * targetCoefOfVariation;
+    const estimatedSize = Math.ceil(pilotVariance / Math.pow(targetStandardError, 2));
+
+    const confidence = pilotSampleSize >= 30 ? 0.9 : 0.7;
+
+    return {
+      estimatedSize: Math.max(pilotSampleSize, estimatedSize),
+      pilotMean,
+      pilotStd,
+      confidence,
     };
   }
 
@@ -544,27 +785,86 @@ export class ExpectedUtilityService {
 
   // ========== 采样方法 ==========
 
+  /**
+   * 高斯分布采样
+   */
   private sampleGaussian(dist: GaussianDistribution): number {
-    // Box-Muller 变换
-    const u1 = this.rng();
-    const u2 = this.rng();
-    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    const z = this.sampleStandardNormal();
     return dist.params.mean + Math.sqrt(dist.params.variance) * z;
   }
 
+  /**
+   * Beta 分布采样 - 使用 Gamma 分布比值法
+   * Beta(α, β) = X / (X + Y)，其中 X ~ Gamma(α, 1), Y ~ Gamma(β, 1)
+   * 
+   * 专利实现：真正的 Beta 分布采样，替代简化的正态近似
+   */
   private sampleBeta(dist: BetaDistribution): number {
-    // 简化：使用 gamma 分布的比值
     const alpha = dist.params.alpha;
     const beta = dist.params.beta;
     
-    // 简单近似：均值 + 扰动
-    const mean = alpha / (alpha + beta);
-    const variance = (alpha * beta) / ((alpha + beta) ** 2 * (alpha + beta + 1));
-    const stdDev = Math.sqrt(variance);
+    // 使用 Gamma 分布比值法
+    const x = this.sampleGamma(alpha, 1);
+    const y = this.sampleGamma(beta, 1);
     
-    // 使用截断正态近似
-    let sample = mean + stdDev * (this.rng() * 2 - 1) * 2;
-    return Math.max(0, Math.min(1, sample));
+    if (x + y === 0) {
+      // 边界情况，返回均值
+      return alpha / (alpha + beta);
+    }
+    
+    return x / (x + y);
+  }
+
+  /**
+   * Gamma 分布采样 - Marsaglia and Tsang's Method
+   * 对于 shape >= 1，使用 Marsaglia-Tsang 变换
+   * 对于 shape < 1，使用 Ahrens-Dieter 方法
+   * 
+   * 专利实现：支持 Monte Carlo 采样的基础分布
+   */
+  private sampleGamma(shape: number, scale: number): number {
+    if (shape < 1) {
+      // Ahrens-Dieter method for shape < 1
+      // Gamma(α) = Gamma(α + 1) * U^(1/α)
+      const sample = this.sampleGamma(shape + 1, 1);
+      return scale * sample * Math.pow(this.rng(), 1 / shape);
+    }
+    
+    // Marsaglia and Tsang's method for shape >= 1
+    const d = shape - 1/3;
+    const c = 1 / Math.sqrt(9 * d);
+    
+    while (true) {
+      let x: number;
+      let v: number;
+      
+      do {
+        x = this.sampleStandardNormal();
+        v = 1 + c * x;
+      } while (v <= 0);
+      
+      v = v * v * v;
+      const u = this.rng();
+      
+      // 快速接受检验
+      if (u < 1 - 0.0331 * (x * x) * (x * x)) {
+        return scale * d * v;
+      }
+      
+      // 完整接受检验
+      if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) {
+        return scale * d * v;
+      }
+    }
+  }
+
+  /**
+   * 标准正态分布采样 - Box-Muller 变换
+   */
+  private sampleStandardNormal(): number {
+    const u1 = this.rng();
+    const u2 = this.rng();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
   }
 
   private sampleTruncatedNormal(dist: TruncatedNormalDistribution): number {
@@ -657,9 +957,41 @@ export class ExpectedUtilityService {
     };
   }
 
+  /**
+   * 有效样本数估计 (ESS) - 使用自相关分析
+   * ESS = N / (1 + 2 * Σ ρ_k)，其中 ρ_k 为 k 阶自相关系数
+   * 
+   * 专利实现：用于评估 Monte Carlo 采样质量
+   */
   private estimateEffectiveSampleSize(values: number[]): number {
-    // 简化：假设独立采样，有效样本大小等于实际样本数
-    return values.length;
+    const n = values.length;
+    if (n < 10) return n;
+
+    const m = this.mean(values);
+    const v = this.variance(values);
+    
+    if (v === 0) return n;
+
+    // 计算自相关函数
+    let sumRho = 0;
+    const maxLag = Math.min(Math.floor(n / 4), 50); // 限制最大滞后
+    
+    for (let k = 1; k <= maxLag; k++) {
+      let autoCorr = 0;
+      for (let i = 0; i < n - k; i++) {
+        autoCorr += (values[i] - m) * (values[i + k] - m);
+      }
+      autoCorr /= (n - k) * v;
+      
+      // 当自相关变为负值或非常小时停止
+      if (autoCorr < 0.05) break;
+      
+      sumRho += autoCorr;
+    }
+
+    // ESS = N / (1 + 2 * Σ ρ_k)
+    const ess = n / (1 + 2 * sumRho);
+    return Math.max(1, Math.min(n, ess));
   }
 
   // ========== 辅助方法 ==========
@@ -742,5 +1074,332 @@ export class ExpectedUtilityService {
     }
     
     return factors;
+  }
+
+  // ========== 重要性采样 (Importance Sampling) ==========
+
+  /**
+   * 使用重要性采样计算期望效用
+   * 
+   * 专利实现：通过提议分布 q(s) 采样，使用权重 w(s) = p(s)/q(s) 校正
+   * E_p[f(s)] = E_q[f(s) * w(s)]
+   * 
+   * 目的：降低方差，提高采样效率，特别是对于稀有事件
+   */
+  computeExpectedUtilityWithImportanceSampling(
+    plan: RoutePlanDraft,
+    probabilisticContext: ProbabilisticWorldModelContext,
+    weights: ObjectiveFunctionWeights,
+    config: ImportanceSamplingConfig,
+  ): ExpectedUtilityResult & { importanceSampling: ImportanceSamplingResult } {
+    this.logger.debug(`[ExpectedUtility] 使用重要性采样，提议类型: ${config.proposalType}`);
+
+    // 初始化随机数生成器
+    if (config.seed !== undefined) {
+      this.initializeRNG(config.seed);
+    }
+
+    // 1. 创建提议分布
+    const proposalContext = this.createProposalDistribution(
+      probabilisticContext,
+      config,
+    );
+
+    // 2. 从提议分布采样
+    const samples = this.sampleWorldStates(proposalContext, config.sampleSize);
+
+    // 3. 计算重要性权重 w(s) = p(s) / q(s)
+    const importanceWeights = samples.map(sample =>
+      this.computeImportanceWeight(sample, probabilisticContext, proposalContext),
+    );
+
+    // 4. 权重截断（防止方差爆炸）
+    const maxWeightRatio = config.maxWeightRatio ?? 10;
+    const meanWeight = this.mean(importanceWeights);
+    const truncatedWeights = importanceWeights.map(w =>
+      Math.min(w, meanWeight * maxWeightRatio),
+    );
+
+    // 5. 归一化权重
+    const weightSum = truncatedWeights.reduce((a, b) => a + b, 0);
+    const normalizedWeights = truncatedWeights.map(w => w / weightSum);
+
+    // 6. 计算加权效用
+    const utilities: number[] = [];
+    const weightedUtilities: number[] = [];
+    const dimensionSamples: Record<string, number[]> = {
+      safety: [], experience: [], philosophy: [], timeSlack: [],
+      fatigueRisk: [], weatherRisk: [], budgetOverrun: [], pacingVariance: [],
+    };
+    let feasibleCount = 0;
+
+    for (let i = 0; i < samples.length; i++) {
+      const evaluation = this.evaluatePlanWithSample(plan, samples[i], weights);
+      utilities.push(evaluation.utility);
+      weightedUtilities.push(evaluation.utility * normalizedWeights[i] * samples.length);
+
+      for (const dim of Object.keys(dimensionSamples)) {
+        dimensionSamples[dim].push(evaluation.dimensions[dim] || 0);
+      }
+
+      if (evaluation.isFeasible) {
+        feasibleCount += normalizedWeights[i];
+      }
+    }
+
+    // 7. 计算有效样本数 ESS = 1 / Σ w_i²
+    const sumSquaredWeights = normalizedWeights.reduce((sum, w) => sum + w * w, 0);
+    const effectiveSampleSize = 1 / sumSquaredWeights;
+
+    // 8. 计算统计量
+    const weightedMean = normalizedWeights.reduce(
+      (sum, w, i) => sum + w * utilities[i],
+      0,
+    );
+
+    // 标准 Monte Carlo 的方差
+    const standardVariance = this.variance(utilities);
+    // 重要性采样的方差（近似）
+    const isVariance = normalizedWeights.reduce(
+      (sum, w, i) => sum + w * Math.pow(utilities[i] - weightedMean, 2),
+      0,
+    );
+    const varianceReductionRatio = standardVariance > 0 ? isVariance / standardVariance : 1;
+
+    // 9. 计算诊断信息
+    const weightEntropy = -normalizedWeights
+      .filter(w => w > 0)
+      .reduce((sum, w) => sum + w * Math.log(w), 0);
+
+    const importanceSamplingResult: ImportanceSamplingResult = {
+      weightedMean,
+      effectiveSampleSize,
+      weights: truncatedWeights,
+      normalizedWeights,
+      varianceReductionRatio,
+      diagnostics: {
+        maxWeight: Math.max(...truncatedWeights),
+        minWeight: Math.min(...truncatedWeights),
+        weightVariance: this.variance(truncatedWeights),
+        weightEntropy,
+      },
+    };
+
+    // 10. 构建完整结果
+    const statistics = this.computeStatistics(utilities);
+    statistics.mean = weightedMean; // 使用加权均值
+
+    const confidenceInterval = this.computeWeightedConfidenceInterval(
+      utilities,
+      normalizedWeights,
+      config.confidenceLevel ?? 0.95,
+    );
+
+    const dimensionExpectations: any = {};
+    for (const dim of Object.keys(dimensionSamples)) {
+      dimensionExpectations[dim] = normalizedWeights.reduce(
+        (sum, w, i) => sum + w * dimensionSamples[dim][i],
+        0,
+      );
+    }
+
+    const riskMetrics = this.computeWeightedRiskMetrics(utilities, normalizedWeights);
+
+    return {
+      expectedUtility: weightedMean,
+      statistics,
+      confidenceInterval,
+      dimensionExpectations,
+      riskMetrics,
+      feasibilityProbability: feasibleCount,
+      samplingDetails: {
+        totalSamples: samples.length,
+        convergenceAchieved: false,
+        effectiveSampleSize: Math.round(effectiveSampleSize),
+      },
+      importanceSampling: importanceSamplingResult,
+    };
+  }
+
+  /**
+   * 创建提议分布
+   * 
+   * 策略：根据配置类型修改原始分布以提高采样效率
+   */
+  private createProposalDistribution(
+    original: ProbabilisticWorldModelContext,
+    config: ImportanceSamplingConfig,
+  ): ProbabilisticWorldModelContext {
+    const proposal = JSON.parse(JSON.stringify(original)) as ProbabilisticWorldModelContext;
+
+    switch (config.proposalType) {
+      case 'SHIFTED_MEAN':
+        // 将均值向风险方向偏移，以更多采样风险区域
+        const shiftFactor = config.shiftFactor ?? 0.3;
+        proposal.physical.weather.windSpeed.params.mean *= (1 + shiftFactor);
+        proposal.physical.weather.precipitation.params.mean *= (1 + shiftFactor);
+        break;
+
+      case 'WIDENED_VARIANCE':
+        // 扩大方差以覆盖更多尾部事件
+        const expansion = config.varianceExpansion ?? 2;
+        proposal.physical.weather.windSpeed.params.variance *= expansion;
+        proposal.physical.weather.precipitation.params.variance *= expansion;
+        proposal.human.maxDailyAscent.params.variance *= expansion;
+        proposal.human.fatigueThreshold.params.variance *= expansion;
+        break;
+
+      case 'MIXTURE':
+        // 混合分布：组合原始分布和扩展分布
+        // 这里简化为扩大方差
+        proposal.physical.weather.windSpeed.params.variance *= 1.5;
+        proposal.physical.weather.precipitation.params.variance *= 1.5;
+        proposal.human.maxDailyAscent.params.variance *= 1.5;
+        break;
+    }
+
+    return proposal;
+  }
+
+  /**
+   * 计算重要性权重 w(s) = p(s) / q(s)
+   */
+  private computeImportanceWeight(
+    sample: WorldStateSample,
+    targetContext: ProbabilisticWorldModelContext,
+    proposalContext: ProbabilisticWorldModelContext,
+  ): number {
+    // 计算目标分布下的概率密度
+    const targetLogProb = this.computeLogProbability(sample, targetContext);
+    // 计算提议分布下的概率密度
+    const proposalLogProb = this.computeLogProbability(sample, proposalContext);
+
+    // w(s) = exp(log p(s) - log q(s))
+    const logWeight = targetLogProb - proposalLogProb;
+    
+    // 防止数值溢出
+    return Math.exp(Math.max(-20, Math.min(20, logWeight)));
+  }
+
+  /**
+   * 计算样本在分布下的对数概率密度
+   */
+  private computeLogProbability(
+    sample: WorldStateSample,
+    context: ProbabilisticWorldModelContext,
+  ): number {
+    let logProb = 0;
+
+    // 天气因素
+    logProb += this.gaussianLogPdf(
+      sample.weather.windSpeedMs,
+      context.physical.weather.windSpeed.params.mean,
+      context.physical.weather.windSpeed.params.variance,
+    );
+    logProb += this.gaussianLogPdf(
+      sample.weather.precipitationMm,
+      context.physical.weather.precipitation.params.mean,
+      context.physical.weather.precipitation.params.variance,
+    );
+
+    // 人体能力因素
+    logProb += this.gaussianLogPdf(
+      sample.humanCapability.maxDailyAscentM,
+      context.human.maxDailyAscent.params.mean,
+      context.human.maxDailyAscent.params.variance,
+    );
+
+    return logProb;
+  }
+
+  /**
+   * 高斯分布对数概率密度函数
+   */
+  private gaussianLogPdf(x: number, mean: number, variance: number): number {
+    if (variance <= 0) return 0;
+    const diff = x - mean;
+    return -0.5 * Math.log(2 * Math.PI * variance) - (diff * diff) / (2 * variance);
+  }
+
+  /**
+   * 计算加权置信区间
+   */
+  private computeWeightedConfidenceInterval(
+    values: number[],
+    weights: number[],
+    level: number,
+  ): { lower: number; upper: number; level: number } {
+    // 创建加权排序
+    const indexed = values.map((v, i) => ({ value: v, weight: weights[i] }));
+    indexed.sort((a, b) => a.value - b.value);
+
+    const alpha = 1 - level;
+    let cumWeight = 0;
+    let lower = indexed[0].value;
+    let upper = indexed[indexed.length - 1].value;
+
+    for (const item of indexed) {
+      cumWeight += item.weight;
+      if (cumWeight >= alpha / 2 && lower === indexed[0].value) {
+        lower = item.value;
+      }
+      if (cumWeight >= 1 - alpha / 2) {
+        upper = item.value;
+        break;
+      }
+    }
+
+    return { lower, upper, level };
+  }
+
+  /**
+   * 计算加权风险指标
+   */
+  private computeWeightedRiskMetrics(
+    utilities: number[],
+    weights: number[],
+  ): ExpectedUtilityResult['riskMetrics'] {
+    const threshold = 0.5;
+    
+    // 加权下行风险概率
+    let downRiskProbability = 0;
+    for (let i = 0; i < utilities.length; i++) {
+      if (utilities[i] < threshold) {
+        downRiskProbability += weights[i];
+      }
+    }
+
+    // 加权分位数
+    const indexed = utilities.map((v, i) => ({ value: v, weight: weights[i] }));
+    indexed.sort((a, b) => a.value - b.value);
+
+    let cumWeight = 0;
+    let worstCase = indexed[0].value;
+    let bestCase = indexed[indexed.length - 1].value;
+
+    for (const item of indexed) {
+      cumWeight += item.weight;
+      if (cumWeight >= 0.05 && worstCase === indexed[0].value) {
+        worstCase = item.value;
+      }
+      if (cumWeight >= 0.95) {
+        bestCase = item.value;
+        break;
+      }
+    }
+
+    // 加权波动性
+    const weightedMean = weights.reduce((sum, w, i) => sum + w * utilities[i], 0);
+    const weightedVariance = weights.reduce(
+      (sum, w, i) => sum + w * Math.pow(utilities[i] - weightedMean, 2),
+      0,
+    );
+
+    return {
+      downRiskProbability,
+      worstCase,
+      bestCase,
+      volatility: Math.sqrt(weightedVariance),
+    };
   }
 }

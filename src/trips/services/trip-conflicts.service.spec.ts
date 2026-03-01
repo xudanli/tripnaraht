@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripConflictsService } from './trip-conflicts.service';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
+import { TravelTimeEstimatorService } from '../../transport/services/travel-time-estimator.service';
 
 describe('TripConflictsService', () => {
   let service: TripConflictsService;
@@ -21,6 +22,7 @@ describe('TripConflictsService', () => {
           provide: SmartRoutesService,
           useValue: { getRoutes: jest.fn().mockResolvedValue([]) },
         },
+        TravelTimeEstimatorService,
       ],
     }).compile();
 

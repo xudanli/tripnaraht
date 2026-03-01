@@ -66,6 +66,7 @@ import { McpOAuthModule } from './mcp/mcp-oauth.module';
 import { McpCapabilityModule } from './mcp/mcp-capability.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DecisionKernelModule } from './decision/decision-kernel.module';
+import { SafetyModule } from './safety/safety.module';
 
 @Module({
   imports: [
@@ -149,6 +150,7 @@ import { DecisionKernelModule } from './decision/decision-kernel.module';
     McpOAuthModule, // MCP OAuth 回调模块（处理所有 MCP 服务的 OAuth 回调）
     McpCapabilityModule, // MCP 能力管理模块（统一控制各能力的开启/关闭）
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
+    SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
   ],
 })
 export class AppModule {}

@@ -16,8 +16,9 @@
  * - 在线学习（bandit）
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ObjectiveFunctionWeights, DEFAULT_OBJECTIVE_WEIGHTS } from '../objective-function.interface';
+import { RegretTrackerService } from '../theory/regret-tracker.service';
 
 /**
  * 反馈类型
@@ -180,12 +181,19 @@ export interface UserWeightProfile {
 @Injectable()
 export class WeightLearnerService {
   private readonly logger = new Logger(WeightLearnerService.name);
-  
+
+  constructor(
+    @Optional() private readonly regretTracker?: RegretTrackerService,
+  ) {}
+
   // 用户权重配置缓存
   private userProfiles: Map<string, UserWeightProfile> = new Map();
-  
+
   // 反馈历史（内存缓存，生产环境应使用数据库）
   private feedbackHistory: FeedbackRecord[] = [];
+
+  /** 学习轮次（用于 Regret 追踪） */
+  private learnRoundCounter = 0;
 
   /**
    * 从反馈学习权重
@@ -221,7 +229,15 @@ export class WeightLearnerService {
     
     // 7. 分析结果
     const analysis = this.analyzeResult(gradients, weightChanges, feedback);
-    
+
+    // 专利 4.14.4：Regret 追踪集成
+    if (this.regretTracker && feedback.length > 0) {
+      this.learnRoundCounter += 1;
+      const avgUtility =
+        feedback.reduce((s, f) => s + (f.utilityAtTime ?? 0), 0) / feedback.length;
+      this.regretTracker.recordUtility(this.learnRoundCounter, avgUtility);
+    }
+
     return {
       updatedWeights,
       weightChanges,

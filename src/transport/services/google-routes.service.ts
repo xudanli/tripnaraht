@@ -29,6 +29,9 @@ export class GoogleRoutesService implements OnModuleInit {
   private isCircuitOpen = false;
   private circuitOpenUntil: number | null = null;
   private readonly circuitResetMs = 5 * 60 * 1000; // 5分钟后重试
+  /** 熔断器日志节流：避免 240+ 次重复日志 */
+  private lastCircuitLogAt = 0;
+  private readonly circuitLogIntervalMs = 60_000; // 每分钟最多打印一次
 
   constructor(@Optional() private configService?: ConfigService) {
     this.apiKey = this.configService?.get<string>('GOOGLE_ROUTES_API_KEY');
@@ -197,7 +200,11 @@ export class GoogleRoutesService implements OnModuleInit {
     // 检查熔断器状态
     if (this.isCircuitOpen) {
       if (this.circuitOpenUntil && Date.now() < this.circuitOpenUntil) {
-        this.logger.debug('Google Routes API 熔断器开启，使用估算数据');
+        const now = Date.now();
+        if (now - this.lastCircuitLogAt >= this.circuitLogIntervalMs) {
+          this.lastCircuitLogAt = now;
+          this.logger.debug('Google Routes API 熔断器开启，使用估算数据');
+        }
         return [];
       } else {
         // 熔断器超时，尝试重置
