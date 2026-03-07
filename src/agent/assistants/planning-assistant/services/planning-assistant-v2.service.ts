@@ -373,6 +373,26 @@ export class PlanningAssistantV2Service {
       `context.countryCode=${dto.context?.countryCode || 'none'}`
     );
 
+    // 规划工作台：若 tripId 存在但 countryCode 缺失，从行程 destination 推断
+    if (dto.context?.tripId && !dto.context?.countryCode && this.prisma) {
+      try {
+        const trip = await this.prisma.trip.findUnique({
+          where: { id: dto.context.tripId },
+          select: { destination: true },
+        });
+        if (trip?.destination) {
+          const dest = String(trip.destination).trim().toUpperCase();
+          const countryCode = dest.includes('_') ? dest.split('_')[0] : dest;
+          if (countryCode.length === 2 && /^[A-Z]{2}$/.test(countryCode)) {
+            dto.context = { ...dto.context, countryCode };
+            this.logger.debug(`[规划工作台] 从行程 destination 推断 countryCode: ${trip.destination} -> ${countryCode}`);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`无法从行程 ${dto.context.tripId} 推断 countryCode: ${err?.message}`);
+      }
+    }
+
     // 规划工作台场景校验：若 tripId 或 countryCode 任一存在，则两者都必需
     const isPlanningWorkbench = !!(dto.context?.tripId || dto.context?.countryCode);
     if (isPlanningWorkbench) {

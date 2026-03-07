@@ -34,6 +34,18 @@ export interface CGUSCandidate {
   feasible: boolean;
 }
 
+/** Monte Carlo 采样详情（专利 3.6.1 Step 3） */
+export interface MonteCarloSamplingDetails {
+  /** 总采样数 */
+  totalSamples: number;
+  /** 各候选分配到的采样数（候选 id → 数量） */
+  samplesPerCandidate?: Record<string, number>;
+  /** 是否使用效用加权预算分配（专利：采样概率 ∝ exp(β·Û)·σ） */
+  usedUtilityWeightedAllocation?: boolean;
+  /** 数据来源说明：当前由 fromDeterministicModel 从 worldContext 推断分布，无外部预报 PDF */
+  dataSourceNote?: string;
+}
+
 /** CGUS 输出 */
 export interface CGUSSearchResult {
   /** 按 U(a) 降序排列的候选 */
@@ -47,6 +59,8 @@ export interface CGUSSearchResult {
     feasibilityProbability?: number;
     /** Step 4：世界模型推演结果 */
     rolloutPrediction?: { feasibilityProbability: number; estimatedUtility: number };
+    /** Monte Carlo 采样详情（当 usedMonteCarlo 时） */
+    samplingDetails?: { totalSamples: number; effectiveSampleSize?: number };
   }>;
   /** 推荐方案（最高效用且可行） */
   recommended?: CGUSCandidate;
@@ -58,6 +72,8 @@ export interface CGUSSearchResult {
   usedExploration?: boolean;
   /** 专利 4.14.2：决策复杂度报告 O(N·ρ·H) */
   complexityReport?: ComplexityReport;
+  /** Monte Carlo 采样数据详情（当 usedMonteCarlo 时，便于诊断「采样数据有没有」） */
+  monteCarloSamplingDetails?: MonteCarloSamplingDetails;
 }
 
 @Injectable()
@@ -85,6 +101,10 @@ export class CGUSSearchService {
       useMonteCarlo?: boolean;
       sampleSize?: number;
       useUtilityPrior?: boolean;
+      /** 专利 3.6.1：采样概率 ∝ exp(β·Û(a))·σ(a)，启用时按效用先验分配采样预算 */
+      useUtilityWeightedSampling?: boolean;
+      /** 效用加权采样的 β（默认 2，Û 高则多采样） */
+      utilityWeightedBeta?: number;
       useWorldModelRollout?: boolean;
       rolloutTopK?: number;
       /** 专利 3.12.2：Exploration 系数 β，U'(a)=U(a)+β·InformationGain(a)，0 表示关闭 */
@@ -125,7 +145,9 @@ export class CGUSSearchService {
 
     let usedMonteCarlo = false;
     let usedRollout = false;
-    let finalResults = withPrior.map((r) => ({
+    let monteCarloSamplingDetails: MonteCarloSamplingDetails | undefined;
+    let usedUtilityWeightedAllocation = false;
+    const finalResults = withPrior.map((r) => ({
       candidate: r.candidate,
       utility: r.utility,
       utilityPrior: r.utilityPrior,
@@ -133,9 +155,11 @@ export class CGUSSearchService {
       confidenceInterval: undefined as { lower: number; upper: number } | undefined,
       feasibilityProbability: undefined as number | undefined,
       rolloutPrediction: undefined as { feasibilityProbability: number; estimatedUtility: number } | undefined,
+      samplingDetails: undefined as { totalSamples: number; effectiveSampleSize?: number } | undefined,
     }));
 
     // Step 3：不确定性采样 — 当有条件时执行 Monte Carlo
+    // 专利 3.6.1：采样概率可正比于 exp(β·Û(a))·σ(a)
     const shouldMonteCarlo =
       options?.useMonteCarlo !== false &&
       this.expectedUtility &&
@@ -148,21 +172,66 @@ export class CGUSSearchService {
           worldContext,
           DEFAULT_UNCERTAINTY_CONFIG,
         );
-        const sampleSize = options?.sampleSize ?? 200;
+        const totalSampleBudget = options?.sampleSize ?? 200;
+        const utilityWeightedBeta = options?.utilityWeightedBeta ?? 2;
+        const minSamplesPerCandidate = 20;
+
+        // 专利 3.6.1：按 exp(β·Û)·σ 分配采样预算；σ 用 (1 + 软约束违反数) 近似不确定性
+        let sampleAllocations: number[];
+        if (options?.useUtilityWeightedSampling === true && withPrior.some((r) => r.utilityPrior !== undefined)) {
+          const sigmaProxy = (r: (typeof withPrior)[0]) =>
+            1 + (r.candidate.constraintViolations?.filter((v) => v.severity === 'SOFT').length ?? 0) * 0.2;
+          const uMin = Math.min(...withPrior.map((r) => r.utilityPrior ?? 0));
+          const uRange = Math.max(1e-6, Math.max(...withPrior.map((r) => r.utilityPrior ?? 0)) - uMin);
+          const weights = withPrior.map((r) => {
+            const uNorm = ((r.utilityPrior ?? 0) - uMin) / uRange;
+            return Math.exp(utilityWeightedBeta * uNorm) * sigmaProxy(r);
+          });
+          const sumW = weights.reduce((s, w) => s + w, 0);
+          sampleAllocations = weights.map((w) =>
+            Math.max(minSamplesPerCandidate, Math.round((w / sumW) * totalSampleBudget)),
+          );
+          const allocated = sampleAllocations.reduce((s, n) => s + n, 0);
+          if (allocated > totalSampleBudget) {
+            sampleAllocations = sampleAllocations.map((n) =>
+              Math.max(minSamplesPerCandidate, Math.round((n / allocated) * totalSampleBudget)),
+            );
+          }
+          usedUtilityWeightedAllocation = true;
+        } else {
+          sampleAllocations = withPrior.map(() => Math.max(minSamplesPerCandidate, Math.floor(totalSampleBudget / withPrior.length)));
+        }
+
+        const samplesPerCandidate: Record<string, number> = {};
+        let totalSamplesUsed = 0;
 
         for (let i = 0; i < finalResults.length; i++) {
           const { candidate } = finalResults[i];
+          const perSize = sampleAllocations[i] ?? Math.floor(totalSampleBudget / finalResults.length);
           const result = this.expectedUtility!.computeExpectedUtility(
             candidate.plan,
             probabilisticContext,
             DEFAULT_OBJECTIVE_WEIGHTS,
-            { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize },
+            { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize: perSize },
           );
           finalResults[i].expectedUtility = result.expectedUtility;
           finalResults[i].confidenceInterval = result.confidenceInterval;
           finalResults[i].feasibilityProbability = result.feasibilityProbability;
+          finalResults[i].samplingDetails = {
+            totalSamples: result.samplingDetails?.totalSamples ?? perSize,
+            effectiveSampleSize: result.samplingDetails?.effectiveSampleSize,
+          };
+          samplesPerCandidate[candidate.id] = result.samplingDetails?.totalSamples ?? perSize;
+          totalSamplesUsed += result.samplingDetails?.totalSamples ?? perSize;
         }
         usedMonteCarlo = true;
+        monteCarloSamplingDetails = {
+          totalSamples: totalSamplesUsed,
+          samplesPerCandidate,
+          usedUtilityWeightedAllocation,
+          dataSourceNote:
+            '当前由 ProbabilisticWorldModel.fromDeterministicModel 从 worldContext 推断概率分布（天气、道路等），无外部预报 PDF 注入。若需真实不确定性，可扩展 physical.climateSeasonality 注入 API 分布参数。',
+        };
       } catch (err) {
         this.logger.warn(`[CGUS] Monte Carlo 失败，使用确定性效用: ${(err as Error)?.message}`);
       }
@@ -258,6 +327,7 @@ export class CGUSSearchService {
       usedRollout,
       usedExploration,
       complexityReport,
+      monteCarloSamplingDetails,
     };
   }
 

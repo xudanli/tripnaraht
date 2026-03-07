@@ -28,7 +28,7 @@ export interface PhaseExecutorContext {
     start_date?: string;
     days?: number;
     mode?: string;
-    party?: { count: number; fitness_level?: string };
+    party?: { count: number; fitness_level?: string; has_elderly?: boolean };
     party_profile?: { risk_tolerance?: string; fitness?: string };
   };
 }
@@ -102,3 +102,61 @@ export interface IRepairExecutor {
     repairApplied: boolean;
   }>;
 }
+
+/** INTAKE 缺口类型 */
+export type IntakeGapType = 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
+
+/** INTAKE 阶段执行器上下文扩展（P3 B: tripPlanRequest + orchestratorState 由 Conductor 传入） */
+export interface IntakeExecutorContext extends PhaseExecutorContext {
+  /** 已转换的 TripPlanRequest（Conductor 调用 convertToTripPlanRequest 后传入） */
+  tripPlanRequest: PhaseExecutorContext['tripPlanRequest'] & { request_id?: string };
+  /** OrchestratorState 快照，供 PlannerAgent.analyzeRequest 使用 */
+  orchestratorState?: unknown;
+}
+
+/** INTAKE 阶段执行器 */
+export interface IIntakeExecutor {
+  execute(
+    dso: DecisionState,
+    ctx: IntakeExecutorContext,
+  ): Promise<{
+    tripPlanRequest: IntakeExecutorContext['tripPlanRequest'];
+    gaps: Array<{ type: IntakeGapType; severity: 'HARD' | 'SOFT'; detail: string }>;
+    clarificationQuestions: Array<{
+      id: string;
+      question: string;
+      type: string;
+      required: boolean;
+      options?: unknown[];
+      placeholder?: string;
+      hint?: string;
+      validation?: unknown;
+    }>;
+    intent?: string;
+    candidate_structure?: { suggested_days?: number; suggested_route?: string[]; key_pois?: string[] };
+  }>;
+}
+
+/** NARRATE 阶段叙述输出（P3 C） */
+export interface NarrationLike {
+  user_friendly_summary: string;
+  day_by_day_narrative: Array<{ day: number; date: string; narrative: string }>;
+  highlights: string[];
+  tips: string[];
+  warnings?: string[];
+}
+
+/** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */
+export interface NarrateExecutorContext extends PhaseExecutorContext {
+  /** OrchestratorState 快照，供 NarratorAgent.narrate 使用 */
+  orchestratorState?: unknown;
+}
+
+/** NARRATE 阶段执行器（P3 C） */
+export interface INarrateExecutor {
+  execute(
+    dso: DecisionState,
+    ctx: NarrateExecutorContext,
+  ): Promise<{ narration: NarrationLike }>;
+}
+

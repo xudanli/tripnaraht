@@ -20,6 +20,7 @@ model City {
   timezone    String?
   metadata    Json?
   Place       Place[]
+  District    District[]
 
   @@index([countryCode])
   @@index([nameCN])
@@ -220,15 +221,79 @@ model Place {
   lastVerifiedAt                  DateTime?                 @map("last_verified_at") @db.Timestamptz(6)
   dataSource                      String?                   @map("data_source") @db.VarChar(50)
   dataFreshness                   String?                   @map("data_freshness") @db.VarChar(20)
+  districtId                     Int?
   ItineraryItem                   ItineraryItem[]
   City                            City?                     @relation(fields: [cityId], references: [id])
+  District                        District?                 @relation(fields: [districtId], references: [id], onDelete: SetNull)
   Trail_Trail_endPlaceIdToPlace   Trail[]                   @relation("Trail_endPlaceIdToPlace")
   Trail_Trail_startPlaceIdToPlace Trail[]                   @relation("Trail_startPlaceIdToPlace")
   TrailWaypoint                   TrailWaypoint[]
+  PlaceEdgeFrom                   PlaceEdge[]               @relation("PlaceEdgeFrom")
+  PlaceEdgeTo                     PlaceEdge[]               @relation("PlaceEdgeTo")
+  CrowdCurve                      CrowdCurve[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
   @@index([lastVerifiedAt])
   @@index([dataFreshness])
+  @@index([districtId])
+}
+
+/// Travel World Model Phase 2: Place 间显式边，支持 Micro Route 与路径优化
+model PlaceEdge {
+  id                 Int       @id @default(autoincrement())
+  fromPlaceId        Int
+  toPlaceId          Int
+  distanceM          Int?
+  walkTimeMin        Int?
+  transitTimeMin     Int?
+  experienceTransition String? @db.VarChar(64)
+  source             String?   @default("computed") @db.VarChar(32)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  fromPlace          Place     @relation("PlaceEdgeFrom", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlace            Place     @relation("PlaceEdgeTo", fields: [toPlaceId], references: [id], onDelete: Cascade)
+
+  @@unique([fromPlaceId, toPlaceId])
+  @@index([fromPlaceId])
+  @@index([toPlaceId])
+}
+
+/// Travel World Model Phase 3: 城市区域模型，支持区域游览约束与 District 级体验描述
+model District {
+  id                  Int       @id @default(autoincrement())
+  cityId              Int
+  name                String
+  nameCN              String?
+  nameEN              String?
+  center              Unsupported("geography")?
+  radiusM             Int?
+  dominantExperience  String?   @db.VarChar(64)
+  vibe                Json?     // ["historic","walkable","modern",...]
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  city                City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  Place               Place[]
+
+  @@index([cityId])
+}
+
+/// Travel World Model Phase 6: Place × Hour → crowdLevel，支持 Travel Simulation 与时段建议
+model CrowdCurve {
+  id         Int      @id @default(autoincrement())
+  placeId    Int
+  hour       Int      // 0–23
+  crowdLevel Float    // 0–1，低到高
+  source     String?  @default("estimated") @db.VarChar(32) // google_popular_times | estimated | manual
+  dayOfWeek  Int?     // 0–6，可选
+  createdAt  DateTime @default(now())
+
+  place      Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, hour, dayOfWeek])
+  @@index([placeId])
 }
 
 model RailPassProfile {
@@ -660,16 +725,35 @@ model TripShare {
 
 /// 决策/优化模块：团队协同（多用户协商计划）
 model CollaborationTeam {
-  id                  String                   @id
+  id                  String                     @id
   name                String
-  type                String                   @db.VarChar(20)
-  decisionWeightMode  String                   @map("decision_weight_mode") @db.VarChar(20)
-  teamConstraints     Json                    @map("team_constraints")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  type                String                     @db.VarChar(20)
+  decisionWeightMode  String                     @map("decision_weight_mode") @db.VarChar(20)
+  teamConstraints     Json                       @map("team_constraints")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
   members             CollaborationTeamMember[]
+  invites             CollaborationTeamInvite[]
 
   @@index([type])
+}
+
+/// 决策/优化模块：团队邀请链接
+model CollaborationTeamInvite {
+  id           String    @id @default(uuid()) @db.Uuid
+  teamId       String    @map("team_id")
+  inviteToken  String    @unique @map("invite_token") @db.VarChar(64)
+  inviterUserId String   @map("inviter_user_id") @db.VarChar(255)
+  tripId       String?   @map("trip_id") @db.VarChar(255)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  maxUses      Int       @default(0) @map("max_uses")
+  usesCount    Int       @default(0) @map("uses_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  team         CollaborationTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([inviteToken])
+  @@index([expiresAt])
 }
 
 /// 决策/优化模块：团队成员

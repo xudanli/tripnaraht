@@ -83,7 +83,13 @@ export class VRPTWOptimizerService {
     const startIndex = input.startIndex ?? 0;
     const route: number[] = [startIndex];
     const visited = new Set<number>([startIndex]);
-    let currentTime = DateTime.now(); // 使用当前时间作为起点时间
+    // 避免半夜安排：优先使用配置的 globalStartTime（如 09:00），不再使用 DateTime.now()
+    let currentTime = input.globalStartTime
+      ? DateTime.fromISO(input.globalStartTime)
+      : DateTime.now().set({ hour: 9, minute: 0, second: 0, millisecond: 0 });
+    if (!currentTime.isValid) {
+      currentTime = DateTime.now().set({ hour: 9, minute: 0, second: 0, millisecond: 0 });
+    }
 
     // 如果有起点的时间窗，使用时间窗的开始时间
     if (input.locations[startIndex].window) {
@@ -223,13 +229,18 @@ export class VRPTWOptimizerService {
     const departureTimes: string[] = [];
     const violations: VRPTWResult['violations'] = [];
 
-    // 确定起点时间
+    // 确定起点时间（避免半夜安排：使用 globalStartTime 或 09:00，不再使用 DateTime.now()）
     let currentTime: DateTime;
     const startIndex = route[0];
     if (input.locations[startIndex].window) {
       currentTime = DateTime.fromISO(input.locations[startIndex].window[0]);
+    } else if (input.globalStartTime) {
+      currentTime = DateTime.fromISO(input.globalStartTime);
     } else {
-      currentTime = DateTime.now();
+      currentTime = DateTime.now().set({ hour: 9, minute: 0, second: 0, millisecond: 0 });
+    }
+    if (!currentTime.isValid) {
+      currentTime = DateTime.now().set({ hour: 9, minute: 0, second: 0, millisecond: 0 });
     }
 
     arrivalTimes.push(currentTime.toISO()!);

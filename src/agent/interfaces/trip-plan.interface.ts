@@ -156,6 +156,10 @@ export interface ItineraryItem {
     risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
     distance_meters?: number; // 步行距离（米）
     transport_mode_changed?: boolean; // 交通方式是否已更改
+    /** 专利实施例 2：航班号（REPLAN 替代航班） */
+    flight?: string;
+    /** 航班价格 */
+    price?: number;
   };
 }
 

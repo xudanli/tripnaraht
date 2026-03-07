@@ -259,34 +259,6 @@ async function testAdminAPIs(): Promise<TestResult[]> {
   return results;
 }
 
-async function testLegacyAPIs(): Promise<TestResult[]> {
-  console.log('\n🟢 旧版 API 兼容测试\n');
-  const results: TestResult[] = [];
-
-  // 旧版优化 API
-  console.log('--- /api/v2/optimization (legacy) ---');
-  
-  results.push(await httpRequest('POST', '/api/v2/optimization/evaluate', {
-    plan: mockPlan,
-    context: mockContext,
-  }));
-  printResult(results[results.length - 1]);
-
-  // 旧版团队 API
-  console.log('\n--- /api/v2/team (legacy) ---');
-  
-  results.push(await httpRequest('GET', '/api/v2/team/test-team-001'));
-  printResult(results[results.length - 1]);
-
-  // 旧版公理 API
-  console.log('\n--- /api/v2/axioms (legacy) ---');
-  
-  results.push(await httpRequest('GET', '/api/v2/axioms/report'));
-  printResult(results[results.length - 1]);
-
-  return results;
-}
-
 // ========== 主函数 ==========
 
 async function main() {
@@ -338,7 +310,6 @@ async function main() {
   
   allResults.push(...await testUserAPIs());
   allResults.push(...await testAdminAPIs());
-  allResults.push(...await testLegacyAPIs());
 
   // 统计结果
   console.log('\n' + '='.repeat(60));

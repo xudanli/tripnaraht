@@ -412,19 +412,48 @@ export class LlmResponseTransformerService {
         });
       }
 
-      // 🆕 HCI优化：处理条件输入字段（标准化triggerValue）
+      // 🆕 HCI优化：处理条件输入字段（支持 snake_case 兼容、single_choice/multiple_choice）
+      // 🆕 产品优化：补充偏好问题不得多一层「请选择您感兴趣的方面」，直接展示节奏/美食/住宿等输入项
       let processedConditionalInputs = question.conditionalInputs;
+      const isSupplementPref = /补充偏好|supplement_preferences|supplementPreferences/i.test(question.id || '') ||
+        /补充.*偏好|补充.*信息/i.test((question.question || question.text || '').toString());
+      if (isSupplementPref && processedConditionalInputs?.length) {
+        const hasMetaCategoryStep = processedConditionalInputs.some((inp: any) => {
+          const lb = (inp.label || '').toString();
+          const opts = Array.isArray(inp.options) ? inp.options : [];
+          const optStrs = opts.map((o: any) => (typeof o === 'string' ? o : (o?.value ?? o?.label ?? '')).toString());
+          return /选择的?方面|感兴趣的方面|您想补充/i.test(lb) ||
+            optStrs.some((s: string) => /旅行节奏偏好|特色活动兴趣|住宿类型倾向|美食偏好/.test(s));
+        });
+        if (hasMetaCategoryStep) {
+          const triggerVal = (processedConditionalInputs[0]?.triggerValue || '补充偏好信息').toString().trim();
+          processedConditionalInputs = this.getDirectPreferenceConditionalInputs(triggerVal);
+          this.logger.debug('已替换补充偏好中间步，改为直接展示节奏/美食/住宿等输入项');
+        }
+      }
       if (processedConditionalInputs && Array.isArray(processedConditionalInputs)) {
-        processedConditionalInputs = processedConditionalInputs.map((input: any) => ({
-          ...input,
-          triggerValue: input.triggerValue?.toString().trim() || '', // 标准化triggerValue
-          inputType: input.inputType,
-          label: input.label?.trim(),
-          placeholder: input.placeholder?.trim(),
-          required: input.required !== undefined ? input.required : true,
-          validation: input.validation,
-          hint: input.hint?.trim(),
-        }));
+        processedConditionalInputs = processedConditionalInputs.map((input: any) => {
+          // 兼容 snake_case：trigger_value, input_type, param_key
+          const raw = { ...input, ...(input.trigger_value !== undefined && { triggerValue: input.trigger_value }), ...(input.input_type !== undefined && { inputType: input.input_type }), ...(input.param_key !== undefined && { paramKey: input.param_key }) };
+          let inputType = (raw.inputType || raw.input_type || 'text').toString().trim();
+          if (inputType === 'multiple_choice') inputType = 'multi_choice'; // 统一为 multi_choice
+          // 标准化 options（single_choice / multi_choice 时）
+          let optOptions = raw.options;
+          if (optOptions && Array.isArray(optOptions)) {
+            optOptions = optOptions.map((o: any) => (typeof o === 'string' ? o.trim() : { value: (o.value || o.label || o).toString().trim(), label: (o.label || o.value || o).toString().trim() }));
+          }
+          return {
+            triggerValue: (raw.triggerValue || raw.trigger_value || '').toString().trim(),
+            inputType,
+            label: (raw.label || '').toString().trim() || undefined,
+            options: optOptions,
+            placeholder: (raw.placeholder || '').toString().trim() || undefined,
+            hint: (raw.hint || '').toString().trim() || undefined,
+            required: raw.required !== undefined ? !!raw.required : true,
+            validation: raw.validation,
+            paramKey: (raw.paramKey || raw.param_key || '').toString().trim() || undefined,
+          };
+        });
       }
 
       transformedQuestions.push({
@@ -432,7 +461,7 @@ export class LlmResponseTransformerService {
         question: trimmedQuestionText, // 使用清理后的questionText
         type: questionType,
         options: processedOptions, // 🆕 使用标准化后的选项
-        required: question.required,
+        required: isSupplementPref ? false : question.required, // 补充偏好保持可选
         placeholder: question.placeholder,
         hint: question.hint,
         default: question.default,
@@ -444,6 +473,20 @@ export class LlmResponseTransformerService {
 
     // 最终验证：确保没有空卡片或重复卡片
     return this.finalizeQuestions(transformedQuestions);
+  }
+
+  /**
+   * 补充偏好直接输入项（无「请选择您感兴趣的方面」中间步）
+   * 全部 required: false，保持可选性
+   */
+  private getDirectPreferenceConditionalInputs(triggerValue: string): any[] {
+    return [
+      { triggerValue, inputType: 'single_choice', label: '请选择旅行节奏', paramKey: 'pace', options: ['紧凑', '悠闲', '适中'], required: false },
+      { triggerValue, inputType: 'multi_choice', label: '请选择美食偏好', paramKey: 'cuisine', options: ['中餐', '西餐', '海鲜', '当地特色', '无特别要求'], required: false },
+      { triggerValue, inputType: 'multi_choice', label: '请选择住宿风格', paramKey: 'accommodation_style', options: ['经济型', '舒适型', '精品酒店', '民宿', '青旅'], required: false },
+      { triggerValue, inputType: 'single_choice', label: '请选择徒步强度', paramKey: 'hiking_intensity', options: ['轻松', '中等', '高强度', '不涉及徒步'], required: false },
+      { triggerValue, inputType: 'text', label: '其他偏好描述', placeholder: '例如：户外徒步、观星、节奏悠闲、偏好美食', hint: '您的偏好将帮助筛选活动和住宿，让行程更个性化。', paramKey: 'other', required: false },
+    ];
   }
 
   /**
@@ -524,7 +567,7 @@ export class LlmResponseTransformerService {
    * @returns 标准化后的文本
    */
   private normalizeQuestionText(text: string): string {
-    return text
+    let normalized = text
       // 去除所有标点符号（包括中文和英文标点）
       .replace(/[，。！？；：、,\.!?;:]/g, '')
       // 统一空格（多个空格合并为一个）
@@ -533,6 +576,13 @@ export class LlmResponseTransformerService {
       .trim()
       // 转换为小写（仅对英文，中文不受影响）
       .toLowerCase();
+    // 🆕 同类问题归一化去重，但区分不同维度（补充偏好 vs 补充安全），避免误删
+    if (/补充.*安全|补充安全/.test(normalized)) {
+      normalized = '是否需要补充安全信息';
+    } else if (/补充.*偏好|补充偏好/.test(normalized)) {
+      normalized = '是否需要补充偏好信息';
+    }
+    return normalized;
   }
 
   /**

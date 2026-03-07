@@ -8,6 +8,8 @@
  */
 
 import { Module, Global, forwardRef } from '@nestjs/common';
+import { DsoFeedbackPersistenceModule } from '../trips/decision/dso-feedback-persistence.module';
+import { ReplanModule } from '../trips/decision/replan.module';
 import { DecisionKernelService } from './kernel/decision-kernel.service';
 import { StateManagerService } from './kernel/state-manager.service';
 import { ConstraintEngineAdapterService } from './kernel/constraint-engine-adapter.service';
@@ -28,6 +30,8 @@ import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executo
     forwardRef(() => OptimizationModule), // Scheme A: Monte Carlo 集成，ExpectedUtilityService
     forwardRef(() => AgentFeedbackModule), // Phase C: 反馈学习模块，forwardRef 避免与 AgentFeedbackModule->DecisionKernelModule 循环
     forwardRef(() => AgentPhaseExecutorModule), // Phase 2: IResearchExecutor 等 Phase Executors
+    forwardRef(() => DsoFeedbackPersistenceModule), // 专利 6.1.5: 用户反馈通过 STATE_UPDATE 写入 DSO
+    forwardRef(() => ReplanModule), // 专利实施例 2: 环境变化触发 RESEARCH→PLAN_GEN→VERIFY
   ],
   providers: [
     StateManagerService,

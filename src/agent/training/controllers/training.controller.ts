@@ -19,6 +19,7 @@ import {
   CompareRequest,
   LoraEvalRequest,
 } from '../services/llm-judge-client.service';
+import { ModelDeploymentService } from '../services/model-deployment.service';
 
 /**
  * 启动训练请求
@@ -111,6 +112,7 @@ export class TrainingController {
     private readonly fineTuneService: FineTuneService,
     private readonly vllmClientService: VllmClientService,
     private readonly llmJudgeClientService: LlmJudgeClientService,
+    private readonly modelDeploymentService: ModelDeploymentService,
   ) {}
   
   // ============================================
@@ -141,6 +143,21 @@ export class TrainingController {
   @ApiResponse({ status: 200, description: 'GPU 信息' })
   async getGpuInfo() {
     return this.fineTuneService.getGpuInfo();
+  }
+
+  @Get('deployment/audit')
+  @ApiOperation({ summary: '获取部署审计日志（P5：部署流程可追溯）' })
+  @ApiResponse({ status: 200, description: '最近 100 条部署/回滚记录' })
+  getDeploymentAudit() {
+    return this.modelDeploymentService.getDeploymentAudit();
+  }
+
+  @Get('deployment/current')
+  @ApiOperation({ summary: '获取当前生产版本' })
+  @ApiResponse({ status: 200, description: '当前部署的模型版本' })
+  async getCurrentDeployedVersion() {
+    const version = await this.modelDeploymentService.getCurrentDeployedVersion();
+    return { version };
   }
   
   // ============================================

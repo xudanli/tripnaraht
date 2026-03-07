@@ -373,6 +373,57 @@ export class AgentService {
   }
 
   /**
+   * P4 可观测性：从编排结果计算 step_latency_ms、gate_block_rate、skill_success_rate
+   */
+  private computeP4ObservabilityMetrics(orchestrationResult: {
+    decisionLog?: DecisionLogEntry[];
+    stepsExecuted?: Array<{ stepId: string; success: boolean; duration: number }>;
+    result?: Record<string, any>;
+  }): {
+    step_latency_ms?: Record<string, number>;
+    gate_block_rate?: number;
+    skill_success_rate?: number;
+  } {
+    const out: { step_latency_ms?: Record<string, number>; gate_block_rate?: number; skill_success_rate?: number } = {};
+    const log = orchestrationResult.decisionLog || [];
+    const steps = orchestrationResult.stepsExecuted || [];
+
+    // step_latency_ms: 优先从 decision_log，否则从 stepsExecuted
+    if (log.length > 0) {
+      const stepLatency: Record<string, number> = {};
+      for (const e of log) {
+        const ms = e.metadata?.duration_ms ?? 0;
+        if (e.step && ms > 0) {
+          stepLatency[e.step] = (stepLatency[e.step] ?? 0) + ms;
+        }
+      }
+      if (Object.keys(stepLatency).length > 0) out.step_latency_ms = stepLatency;
+    } else if (steps.length > 0) {
+      const stepLatency: Record<string, number> = {};
+      for (const s of steps) {
+        if (s.stepId && s.duration > 0) {
+          stepLatency[s.stepId] = (stepLatency[s.stepId] ?? 0) + s.duration;
+        }
+      }
+      if (Object.keys(stepLatency).length > 0) out.step_latency_ms = stepLatency;
+    }
+
+    // gate_block_rate: 本请求若 Gate 为 BLOCK 则为 1，否则 0
+    const gateResult = orchestrationResult.result?.gate_result?.gate_result;
+    if (gateResult !== undefined) {
+      out.gate_block_rate = gateResult === 'BLOCK' ? 1 : 0;
+    }
+
+    // skill_success_rate: 成功步骤数 / 总步骤数
+    if (steps.length > 0) {
+      const ok = steps.filter(s => s.success).length;
+      out.skill_success_rate = ok / steps.length;
+    }
+
+    return out;
+  }
+
+  /**
    * 生成请求哈希（用于去重和 ModeLock）
    */
   private hashRequest(request: RouteAndRunRequestDto): string {
@@ -1392,6 +1443,8 @@ export class AgentService {
         fallback_used: false,
         // Trace 信息（用于观测和回放）
         trace: traceInfo,
+        // P4 可观测性
+        ...this.computeP4ObservabilityMetrics(orchestrationResult),
       },
     };
 
@@ -1505,6 +1558,7 @@ export class AgentService {
             cost_est_usd: 0,
             fallback_used: false,
             trace: traceInfo, // Trace 信息（用于观测和回放）
+            ...this.computeP4ObservabilityMetrics(orchestrationResult),
           },
         };
       }
@@ -1618,6 +1672,8 @@ export class AgentService {
         fallback_used: false,
         // Trace 信息（用于观测和回放）
         trace: traceInfo,
+        // P4 可观测性
+        ...this.computeP4ObservabilityMetrics(orchestrationResult),
       },
     };
 

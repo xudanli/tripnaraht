@@ -13,10 +13,17 @@ import { PlanningWorkbenchAgentService } from '../../agent/services/planning-wor
 import { IncrementalItineraryGeneratorService } from '../../agent/context-engine/services/incremental-itinerary-generator.service';
 import { DateTime } from 'luxon';
 
+/** 环境状态（专利实施例 2：含替代航班等） */
+export interface ItineraryGenerateEnvironmentState {
+  flights?: Array<{ flight?: string; status?: string; price?: number }>;
+}
+
 export interface ItineraryGenerateInput extends SkillInput {
   request: TripPlanRequest;
   research_data?: Record<string, any>;
   gate_result?: GateResult;
+  /** 环境状态（如 REPLAN 后的替代航班），供 Day1 行程使用 */
+  environment_state?: ItineraryGenerateEnvironmentState;
 }
 
 export interface ItineraryGenerateOutput extends SkillOutput {
@@ -66,7 +73,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
     this.logger.debug(`执行 itinerary.generate: request_id=${requestId}`);
 
     try {
-      const { request, research_data, gate_result } = input;
+      const { request, research_data, gate_result, environment_state } = input;
 
       // 分段规划 POC: 当 days >= 3 时使用 Day1→Day2→Day3 迭代生成
       const useIncremental =
@@ -79,6 +86,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
             request: { ...request, request_id: requestId } as TripPlanRequest,
             research_data,
             gate_result,
+            environment_state,
             minDaysToTrigger: 3,
           });
           return {
@@ -115,9 +123,34 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       const itineraryDays: ItineraryDay[] = [];
       const itemsPerDay = Math.ceil(pois.length / days);
 
+      // 专利实施例 2：替代航班（environment_state.flights）优先用于 Day1
+      const scheduledFlights = (environment_state?.flights ?? []).filter(
+        (f) => (f?.status ?? '').toLowerCase() === 'scheduled',
+      );
+      const firstFlight = scheduledFlights[0];
+      const hasOriginDest =
+        request.origin && request.destination && request.origin !== request.destination;
+
       for (let dayIndex = 0; dayIndex < days; dayIndex++) {
         const currentDate = startDate.plus({ days: dayIndex });
         const dayItems: ItineraryItem[] = [];
+
+        // Day1 且有替代航班时，在首位加入航班行程项
+        if (dayIndex === 0 && firstFlight?.flight && hasOriginDest) {
+          dayItems.push({
+            id: `${request.request_id}_day1_flight`,
+            type: 'TRANSIT',
+            start_window: '08:00',
+            end_window: '14:00',
+            location_ref: {
+              name: `${request.origin} → ${request.destination}（${firstFlight.flight}）`,
+            },
+            evidence_refs: [],
+            verified: false,
+            verification_status: 'ASSUMPTION',
+            metadata: { flight: firstFlight.flight, price: firstFlight.price },
+          });
+        }
 
         // 为每一天分配 POI
         const startPoiIndex = dayIndex * itemsPerDay;
@@ -132,9 +165,12 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
           const poiCoords = poi.coordinates || (poi.lat && poi.lng ? { lat: poi.lat, lng: poi.lng } : undefined);
 
           // 计算时间窗（简单分配：每个 POI 2 小时，从 9:00 开始）
-          const startHour = 9 + i * 2;
+          // 🆕 限制在 08:00-22:00 内，避免半夜安排行程
+          const rawStartHour = 9 + i * 2;
+          const startHour = Math.min(Math.max(rawStartHour, 8), 20);
+          const endHour = Math.min(startHour + 2, 22);
           const startTime = `${startHour.toString().padStart(2, '0')}:00`;
-          const endTime = `${(startHour + 2).toString().padStart(2, '0')}:00`;
+          const endTime = `${endHour.toString().padStart(2, '0')}:00`;
 
           const item: ItineraryItem = {
             id: `${request.request_id}_day${dayIndex + 1}_item${i + 1}`,

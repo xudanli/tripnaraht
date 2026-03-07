@@ -31,6 +31,8 @@ export function extractTokenUsage(
       return extractDeepSeekTokenUsage(response, prompt);
     case LlmProvider.GEMINI:
       return extractGeminiTokenUsage(response, prompt);
+    case LlmProvider.VLLM:
+      return extractOpenAITokenUsage(response, prompt); // vLLM 使用 OpenAI 兼容格式
     default:
       return estimateTokenUsage(prompt, '');
   }

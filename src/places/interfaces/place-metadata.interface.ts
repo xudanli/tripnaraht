@@ -1,4 +1,6 @@
 // src/places/interfaces/place-metadata.interface.ts
+import type { ExperienceVector } from './experience-vector.interface';
+
 export interface PlaceMetadata {
   // ⏰ 营业时间 (结构化，方便前端展示或逻辑判断)
   openingHours?: {
@@ -89,5 +91,11 @@ export interface PlaceMetadata {
   googlePopularTimesDurationMin?: number;
   /** 同类 POI 统计中位数（分钟）- 按 category + subCategory + country 计算 */
   medianDurationBySimilarPoi?: number;
+
+  /** Travel World Model: 体验向量 (culture/nature/food/...) 权重 0-1 */
+  experienceVector?: ExperienceVector;
+
+  /** Travel World Model: 用于节奏控制，如 MUSEUM、TEMPLE */
+  canonicalType?: string;
 }
 

@@ -26,10 +26,16 @@ export interface DaySummary {
   keyLocations: string[];
 }
 
+export interface IncrementalItineraryEnvironmentState {
+  flights?: Array<{ flight?: string; status?: string; price?: number }>;
+}
+
 export interface IncrementalItineraryInput {
   request: TripPlanRequest;
   research_data?: Record<string, any>;
   gate_result?: GateResult;
+  /** 环境状态（如 REPLAN 后的替代航班），供 Day1 使用 */
+  environment_state?: IncrementalItineraryEnvironmentState;
   /** 最小天数才启用分段生成，默认 3 */
   minDaysToTrigger?: number;
 }
@@ -62,7 +68,7 @@ export class IncrementalItineraryGeneratorService {
     daySummaries: DaySummary[];
     mode: 'incremental' | 'full';
   }> {
-    const { request, research_data, gate_result, minDaysToTrigger = 3 } = input;
+    const { request, research_data, gate_result, environment_state, minDaysToTrigger = 3 } = input;
     const requestId = (request as any).request_id ?? 'unknown';
 
     const { days, startDate, pois } = this.extractParams(request, research_data);
@@ -70,7 +76,7 @@ export class IncrementalItineraryGeneratorService {
     // 天数不足则使用全量模式（单次生成）
     const useIncremental = days >= minDaysToTrigger;
     if (!useIncremental) {
-      const itineraryDays = this.generateAllDaysAtOnce(request, days, startDate, pois);
+      const itineraryDays = this.generateAllDaysAtOnce(request, days, startDate, pois, environment_state);
       return {
         itinerary: { request_id: requestId, days: itineraryDays },
         daySummaries: this.compressPreviousDays(itineraryDays),
@@ -97,6 +103,7 @@ export class IncrementalItineraryGeneratorService {
         pois,
         itemsPerDay,
         previousSummaries,
+        environment_state,
       });
 
       itineraryDays.push(dayContent);
@@ -151,6 +158,7 @@ export class IncrementalItineraryGeneratorService {
     days: number,
     startDate: DateTime,
     pois: any[],
+    environment_state?: IncrementalItineraryEnvironmentState,
   ): ItineraryDay[] {
     const itemsPerDay = Math.ceil(pois.length / days);
     const result: ItineraryDay[] = [];
@@ -164,6 +172,7 @@ export class IncrementalItineraryGeneratorService {
         pois,
         itemsPerDay,
         previousSummaries: [],
+        environment_state,
       });
       result.push(dayContent);
     }
@@ -178,12 +187,33 @@ export class IncrementalItineraryGeneratorService {
     pois: any[];
     itemsPerDay: number;
     previousSummaries: DaySummary[];
+    environment_state?: IncrementalItineraryEnvironmentState;
   }): ItineraryDay {
-    const { request, dayIndex, days, startDate, pois, itemsPerDay } = params;
+    const { request, dayIndex, days, startDate, pois, itemsPerDay, environment_state } = params;
     const requestId = (request as any).request_id ?? 'unknown';
     const currentDate = startDate.plus({ days: dayIndex });
 
     const dayItems: ItineraryItem[] = [];
+
+    // 专利实施例 2：Day1 且有替代航班时，首位加入航班项
+    if (dayIndex === 0 && environment_state?.flights?.length) {
+      const first = environment_state.flights.find((f) => (f?.status ?? '').toLowerCase() === 'scheduled');
+      if (first?.flight && request.origin && request.destination && request.origin !== request.destination) {
+        dayItems.push({
+          id: `${requestId}_day1_flight`,
+          type: 'TRANSIT',
+          start_window: '08:00',
+          end_window: '14:00',
+          location_ref: {
+            name: `${request.origin} → ${request.destination}（${first.flight}）`,
+          },
+          evidence_refs: [],
+          verified: false,
+          verification_status: 'ASSUMPTION',
+          metadata: { flight: first.flight, price: first.price },
+        });
+      }
+    }
     const startPoiIndex = dayIndex * itemsPerDay;
     const endPoiIndex = Math.min(startPoiIndex + itemsPerDay, pois.length);
     const dayPois = pois.slice(startPoiIndex, endPoiIndex);
@@ -196,9 +226,12 @@ export class IncrementalItineraryGeneratorService {
         poi.coordinates ??
         (poi.lat && poi.lng ? { lat: poi.lat, lng: poi.lng } : undefined);
 
-      const startHour = 9 + i * 2;
+      // 🆕 限制在 08:00-22:00 内，避免半夜安排行程
+      const rawStartHour = 9 + i * 2;
+      const startHour = Math.min(Math.max(rawStartHour, 8), 20);
+      const endHour = Math.min(startHour + 2, 22);
       const startTime = `${startHour.toString().padStart(2, '0')}:00`;
-      const endTime = `${(startHour + 2).toString().padStart(2, '0')}:00`;
+      const endTime = `${endHour.toString().padStart(2, '0')}:00`;
 
       dayItems.push({
         id: `${requestId}_day${dayIndex + 1}_item${i + 1}`,

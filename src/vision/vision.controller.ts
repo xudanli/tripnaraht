@@ -9,6 +9,7 @@ import {
   Body,
   BadRequestException,
 } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -36,6 +37,7 @@ interface MulterFile {
 @ApiTags('vision')
 @ApiExtraModels(ApiSuccessResponseDto, ApiErrorResponseDto)
 @Controller('vision')
+@Public() // 公开接口，便于测试和前端调用
 export class VisionController {
   constructor(private readonly visionService: VisionService) {}
 

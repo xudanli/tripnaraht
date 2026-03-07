@@ -40,6 +40,8 @@ export interface ContextBuildInput extends SkillInput {
   
   /** 需要排除的主题块 */
   excludeTopics?: string[];
+  /** 目的地国家代码（tripId 不可用时用于构建国家包块，如 from-natural-language 流程） */
+  destinationCountryCode?: string;
 }
 
 export interface ContextBuildOutput extends SkillOutput {
@@ -102,6 +104,7 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
         includePrivate: input.includePrivate,
         requiredTopics: input.requiredTopics,
         excludeTopics: input.excludeTopics,
+        destinationCountryCode: input.destinationCountryCode,
       };
 
       const contextEngineer = this.getContextEngineer();

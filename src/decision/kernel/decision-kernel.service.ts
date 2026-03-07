@@ -9,7 +9,7 @@
  * 参考: docs/DECISION_KERNEL_UPGRADE_ROADMAP.md
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import {
   DecisionState,
   DecisionStatePatch,
@@ -26,11 +26,20 @@ import { OptimizationEngineAdapterService } from './optimization-engine-adapter.
 import { ContextEngineAdapterService, ContextPackageOverrides } from './context-engine-adapter.service';
 import { FeedbackEngineAdapterService } from './feedback-engine-adapter.service';
 import { inferDecisionMeta } from './decision-meta-inference';
-import { orchestratorStateToDecisionStatePatch } from './orchestrator-state-mapper';
+import { orchestratorStateToDecisionStatePatch, buildHistoryDeltasFromPatch } from './orchestrator-state-mapper';
+import {
+  DSO_FEEDBACK_PERSISTENCE,
+  type IDsoFeedbackPersistence,
+} from './dso-feedback-persistence.interface';
+import { REPLAN_TRIGGER, type IReplanTrigger } from './replan-trigger.interface';
+import type { DecisionStateFeedback } from './decision-state.types';
 import { buildWorldStateSummaryFromDso } from './world-state-summary.types';
 import type { OrchestratorState } from '../../agent/interfaces/trip-plan.interface';
 import type { PhaseExecutorContext } from './interfaces/phase-executor.interface';
+import type { IntakeExecutorContext, NarrateExecutorContext } from './interfaces/phase-executor.interface';
 import { ResearchExecutorService } from '../../agent/execution/research-executor.service';
+import { IntakeExecutorService } from '../../agent/execution/intake-executor.service';
+import { NarrateExecutorService } from '../../agent/execution/narrate-executor.service';
 import { GateEvalExecutorService } from '../../agent/execution/gate-eval-executor.service';
 import { PlanGenExecutorService } from '../../agent/execution/plan-gen-executor.service';
 import { VerifyExecutorService } from '../../agent/execution/verify-executor.service';
@@ -51,6 +60,10 @@ export class DecisionKernelService {
     @Optional() private readonly planGenExecutor?: PlanGenExecutorService,
     @Optional() private readonly verifyExecutor?: VerifyExecutorService,
     @Optional() private readonly repairExecutor?: RepairExecutorService,
+    @Optional() private readonly intakeExecutor?: IntakeExecutorService,
+    @Optional() private readonly narrateExecutor?: NarrateExecutorService,
+    @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly feedbackPersistence?: IDsoFeedbackPersistence,
+    @Optional() @Inject(REPLAN_TRIGGER) private readonly replanTrigger?: IReplanTrigger,
   ) {}
 
   /**
@@ -95,6 +108,51 @@ export class DecisionKernelService {
       stageOutput,
     };
     return this.stateManager.commit(transaction, current);
+  }
+
+  /**
+   * 带重试的原子提交（多代理并发场景）
+   * 当 StateCommitConflictError 时，从 getLatestState 刷新后重试
+   * 用于：WeatherAgent 等后台 Agent 与 PLAN_GEN 并发提交时的协调
+   *
+   * @param getLatestState 可选，返回 store 中的最新 DSO；无则只尝试一次，冲突时抛出
+   * @param maxRetries 最大重试次数，默认 3
+   */
+  async commitStateUpdateWithRetry(
+    current: DecisionState,
+    patch: DecisionStatePatch,
+    stageOutput?: string,
+    options?: {
+      getLatestState?: () => Promise<DecisionState | undefined>;
+      maxRetries?: number;
+    },
+  ): Promise<StateCommitResult> {
+    const maxRetries = options?.maxRetries ?? 3;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return this.commitStateUpdate(current, patch, stageOutput);
+      } catch (err) {
+        lastError = err;
+        if (
+          !(err instanceof StateCommitConflictError) ||
+          !options?.getLatestState ||
+          attempt >= maxRetries
+        ) {
+          throw err;
+        }
+        this.logger.debug(
+          `[Kernel] commitStateUpdate 版本冲突 (attempt ${attempt + 1}/${maxRetries + 1})，刷新 state 后重试`,
+        );
+        const fresh = await options.getLatestState();
+        if (!fresh) {
+          throw err;
+        }
+        current = fresh;
+      }
+    }
+    throw lastError;
   }
 
   /**
@@ -163,11 +221,107 @@ export class DecisionKernelService {
   }
 
   /**
+   * P3 A.2: CONTEXT_BUILD 步骤封装
+   * 封装 getContextPackage + DSO 更新，Conductor 调用此方法
+   */
+  async executeContextBuild(
+    state: DecisionState,
+    overrides?: ContextPackageOverrides,
+  ): Promise<{ newState: DecisionState; contextPackage?: DecisionState['contextPackage'] }> {
+    const pkg = await this.getContextPackage(state, overrides);
+    const newState = pkg ? this.updateState(state, { contextPackage: pkg }) : state;
+    return { newState, contextPackage: pkg ?? state.contextPackage };
+  }
+
+  /**
+   * P3 A.3: OPTIMIZE 步骤封装
+   * 封装 fatigue 合并 + getOptimizationHints + getConstraintReport
+   * Conductor 预计算 TDFPM fatigue 后传入 options.fatigue
+   */
+  async executeOptimize(
+    state: DecisionState,
+    options?: { fatigue?: number },
+  ): Promise<{ newState: DecisionState; optimizationHints?: OptimizationHints }> {
+    let current = state;
+    if (options?.fatigue !== undefined) {
+      current = this.updateState(current, {
+        tripState: { ...(current.tripState || {}), fatigue: options.fatigue },
+      });
+    }
+    let hints = await this.getOptimizationHintsAsync(current);
+    if (!hints) {
+      hints = this.getOptimizationHints(current);
+    }
+    if (hints) {
+      current = this.updateState(current, { optimizationHints: hints });
+    }
+    const planDraft = current.tripState?.planDraft;
+    if (!current.constraints && planDraft) {
+      try {
+        const report = await this.getConstraintReportAsync(current);
+        if (report) {
+          current = this.updateState(current, { constraints: report });
+        }
+      } catch (e) {
+        this.logger.warn(`[Kernel] executeOptimize getConstraintReportAsync 失败: ${(e as Error)?.message}`);
+      }
+    }
+    return { newState: current, optimizationHints: hints };
+  }
+
+  /**
+   * P3 A.4: FEEDBACK 步骤封装
+   * 封装 updateState + recordDecisionLog，Conductor 构建 patch 后调用
+   */
+  async executeFeedback(
+    current: DecisionState,
+    patch: DecisionStatePatch,
+  ): Promise<{ newState: DecisionState }> {
+    const synced = this.updateState(current, patch);
+    this.recordDecisionLog(synced, 'NARRATE_DONE').catch((e: unknown) => {
+      this.logger.warn(`[Kernel] executeFeedback recordDecisionLog 失败: ${(e as Error)?.message}`);
+    });
+    return { newState: synced };
+  }
+
+  /**
    * 追加状态变化差分（Token 优化：只记录 Δ）
    * 用于：模型评估、自动学习、异常检测
    */
   appendHistoryDelta(state: DecisionState, delta: StateHistoryDelta, maxEntries = 50): DecisionState {
     return this.stateManager.appendHistoryDelta(state, delta, maxEntries);
+  }
+
+  /**
+   * P3 A.1: STATE_UPDATE 步骤封装
+   * 原子提交 + 版本冲突时回退到 merge + history delta
+   * Conductor 调用此方法替代直接调用 commitStateUpdateWithRetry
+   */
+  async executeStateUpdate(
+    current: DecisionState,
+    patch: DecisionStatePatch,
+    options?: {
+      getLatestState?: () => Promise<DecisionState | undefined>;
+      maxRetries?: number;
+    },
+  ): Promise<{ newState: DecisionState }> {
+    try {
+      const result = await this.commitStateUpdateWithRetry(current, patch, 'STATE_UPDATE', options);
+      return { newState: result.newState };
+    } catch (err) {
+      if (err instanceof StateCommitConflictError) {
+        this.logger.warn(
+          `[Kernel] executeStateUpdate 版本冲突 expected=${err.expectedVersion} actual=${err.actualVersion}，回退到 merge`,
+        );
+        let merged = this.updateState(current, patch);
+        const deltas = buildHistoryDeltasFromPatch(patch);
+        for (const d of deltas) {
+          merged = this.appendHistoryDelta(merged, d);
+        }
+        return { newState: merged };
+      }
+      throw err;
+    }
   }
 
   /**
@@ -317,6 +471,89 @@ export class DecisionKernelService {
   }
 
   /**
+   * INTAKE 阶段：Kernel 原生执行（P3 B）
+   * 封装 IIntakeExecutor，解析请求、识别缺口、生成澄清问题
+   */
+  async executeIntake(
+    dso: DecisionState,
+    ctx: IntakeExecutorContext,
+  ): Promise<{
+    newState: DecisionState;
+    tripPlanRequest: IntakeExecutorContext['tripPlanRequest'];
+    gaps: Array<{ type: import('./interfaces/phase-executor.interface').IntakeGapType; severity: 'HARD' | 'SOFT'; detail: string }>;
+    clarificationQuestions: Array<{
+      id: string;
+      question: string;
+      type: string;
+      required: boolean;
+      options?: unknown[];
+      placeholder?: string;
+      hint?: string;
+      validation?: unknown;
+    }>;
+    intent?: string;
+    candidate_structure?: { suggested_days?: number; suggested_route?: string[]; key_pois?: string[] };
+  }> {
+    if (!this.intakeExecutor) {
+      this.logger.warn('[Kernel] IIntakeExecutor 未注入，无法执行 executeIntake');
+      return {
+        newState: dso,
+        tripPlanRequest: ctx.tripPlanRequest ?? {},
+        gaps: [],
+        clarificationQuestions: [],
+      };
+    }
+    const startMs = Date.now();
+    const result = await this.intakeExecutor.execute(dso, ctx);
+    // INTAKE 只更新 systemState；userIntent 由 OrchestratorState 经 orchestratorStateToDecisionStatePatch 同步
+    const newState = this.stateManager.merge(dso, {
+      systemState: {
+        requestId: ctx.requestId,
+        currentPhase: 'INTAKE',
+        lastUpdatedAt: new Date().toISOString(),
+      },
+    });
+    this.logger.debug(
+      `[Kernel] executeIntake 完成 duration_ms=${Date.now() - startMs} gaps=${result.gaps.length} questions=${result.clarificationQuestions.length}`,
+    );
+    return {
+      newState,
+      tripPlanRequest: result.tripPlanRequest,
+      gaps: result.gaps,
+      clarificationQuestions: result.clarificationQuestions,
+      intent: result.intent,
+      candidate_structure: result.candidate_structure,
+    };
+  }
+
+  /**
+   * NARRATE 阶段：Kernel 原生执行（P3 C）
+   * 封装 INarrateExecutor，产出用户可读解释（不得改硬字段）
+   */
+  async executeNarrate(
+    dso: DecisionState,
+    ctx: NarrateExecutorContext,
+  ): Promise<{ narration: import('./interfaces/phase-executor.interface').NarrationLike }> {
+    if (!this.narrateExecutor) {
+      this.logger.warn('[Kernel] INarrateExecutor 未注入，无法执行 executeNarrate');
+      return {
+        narration: {
+          user_friendly_summary: '',
+          day_by_day_narrative: [],
+          highlights: [],
+          tips: [],
+        },
+      };
+    }
+    const startMs = Date.now();
+    const result = await this.narrateExecutor.execute(dso, ctx);
+    this.logger.debug(
+      `[Kernel] executeNarrate 完成 duration_ms=${Date.now() - startMs} narrative_days=${result.narration.day_by_day_narrative?.length ?? 0}`,
+    );
+    return { narration: result.narration };
+  }
+
+  /**
    * 执行阶段并同步 DSO（Phase B：Conductor 只调 Kernel）
    * 执行 executeFn → 从 OrchestratorState 取 patch → 原子提交
    */
@@ -364,11 +601,143 @@ export class DecisionKernelService {
   /**
    * 记录用户反馈（专利：反馈学习模块）
    * 供 API 层统一入口，与现有 RLHF 埋点兼容
+   * 同时通过 STATE_UPDATE 将 feedback 原子写入 DSO（专利实施例 6.1.5）
    */
-  recordUserFeedback(
+  async recordUserFeedback(
     params: import('./feedback-engine-adapter.service').RecordUserFeedbackParams,
   ): Promise<void> {
-    return this.feedbackAdapter.recordUserFeedback(params);
+    await this.feedbackAdapter.recordUserFeedback(params);
+
+    if (this.feedbackPersistence) {
+      const dsoFeedback = this.mapToDecisionStateFeedback(params);
+      await this.commitFeedbackToDso(params.tripRunId, dsoFeedback);
+    }
+  }
+
+  /**
+   * 世界模型异步推送：将 environmentState delta 通过 STATE_UPDATE 原子写入 DSO
+   * 专利实施例步骤 7：WeatherAgent 等后台 Agent 与 PLAN_GEN 并发提交时的协调
+   * @param sourcePhase 提交方阶段（用于 STAGE_PRIORITY，RESEARCH=2）
+   */
+  async pushEnvironmentDelta(
+    tripRunIdOrTripId: string,
+    environmentPatch: import('./decision-state.types').EnvironmentState,
+    sourcePhase = 'RESEARCH',
+  ): Promise<void> {
+    if (!this.feedbackPersistence) return;
+
+    try {
+      const getLatest = () => this.feedbackPersistence!.getDso(tripRunIdOrTripId);
+      const dso = await getLatest();
+      if (!dso) return;
+
+      const patch = {
+        environmentState: environmentPatch,
+        systemState: { currentPhase: sourcePhase },
+      } as import('./decision-state.types').DecisionStatePatch;
+      const result = await this.commitStateUpdateWithRetry(dso, patch, 'world_model_push', {
+        getLatestState: getLatest,
+        maxRetries: 3,
+      });
+      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, result.newState);
+      this.logger.debug(
+        `[Kernel] pushEnvironmentDelta: tripRunId=${tripRunIdOrTripId}, phase=${sourcePhase}, version ${dso.systemState?.version ?? 0}→${result.newVersion}`,
+      );
+      const replanCheck = this.shouldReplan(result.newState);
+      if (replanCheck.needed && this.replanTrigger) {
+        this.replanTrigger.triggerReplan(tripRunIdOrTripId, replanCheck.reason ?? 'environment_change').catch((e) =>
+          this.logger.warn(`[Kernel] replanTrigger 失败: ${(e as Error)?.message}`),
+        );
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Kernel] pushEnvironmentDelta 失败: ${(e as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * 检测 DSO 是否需触发重规划（专利实施例 2：航班取消、道路封闭等）
+   * 供编排层或调度器调用，返回 true 时执行 RESEARCH → PLAN_GEN → VERIFY
+   */
+  shouldReplan(state: DecisionState): { needed: boolean; reason?: string } {
+    const env = state.environmentState ?? {};
+    const flights = env.flights as Array<{ status?: string }> | undefined;
+    if (Array.isArray(flights)) {
+      const cancelled = flights.find((f) => (f?.status ?? '').toLowerCase() === 'cancelled');
+      if (cancelled) {
+        return { needed: true, reason: 'flight_cancelled' };
+      }
+    }
+    const roads = env.roadConditions as Record<string, { status?: string }> | undefined;
+    if (roads && typeof roads === 'object') {
+      const closed = Object.entries(roads).find(
+        ([_, v]) => (v?.status ?? '').toLowerCase() === 'closed',
+      );
+      if (closed) return { needed: true, reason: 'road_closed' };
+    }
+    return { needed: false };
+  }
+
+  /**
+   * 将用户反馈通过 STATE_UPDATE 原子写入 DSO（专利实施例 6.1.5）
+   */
+  async commitFeedbackToDso(
+    tripRunIdOrTripId: string,
+    feedback: DecisionStateFeedback,
+  ): Promise<void> {
+    if (!this.feedbackPersistence) return;
+
+    try {
+      const dso = await this.feedbackPersistence.getDso(tripRunIdOrTripId);
+      if (!dso) return;
+
+      const patch = {
+        feedback: {
+          ...feedback,
+          submittedAt: new Date().toISOString(),
+        },
+      };
+      const result = this.commitStateUpdate(dso, patch, 'FEEDBACK');
+      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, result.newState);
+      this.logger.debug(
+        `[Kernel] commitFeedbackToDso: tripRunId=${tripRunIdOrTripId}, version ${dso.systemState?.version ?? 0}→${result.newVersion}`,
+      );
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Kernel] commitFeedbackToDso 失败: ${(e as Error)?.message}`,
+      );
+    }
+  }
+
+  private mapToDecisionStateFeedback(
+    params: import('./feedback-engine-adapter.service').RecordUserFeedbackParams,
+  ): DecisionStateFeedback {
+    const v = (params.value as Record<string, unknown>) ?? {};
+    const sigs = (v.behaviorSignals as DecisionStateFeedback['behaviorSignals']) ?? {};
+    switch (params.feedbackType) {
+      case 'ACCEPT':
+        return { accepted: true, behaviorSignals: { ...sigs, savePlan: true } };
+      case 'REJECT':
+        return {
+          accepted: false,
+          modifications: (params.context?.reason as string) ? [(params.context.reason as string)] : [],
+        };
+      case 'RATING':
+        return {
+          satisfactionScore: (v.rating as number) ?? 0,
+          accepted: ((v.rating as number) ?? 0) >= 4,
+        };
+      case 'MODIFY': {
+        const mod = v.modification as { field?: string; to?: unknown } | undefined;
+        return {
+          accepted: false,
+          modifications: mod ? [`${mod.field ?? 'unknown'}: ${JSON.stringify(mod.to ?? '')}`] : [],
+        };
+      }
+      default:
+        return { accepted: (v.accepted as boolean) ?? undefined };
+    }
   }
 
   /**

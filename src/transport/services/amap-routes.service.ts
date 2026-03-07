@@ -26,6 +26,7 @@ export class AmapRoutesService {
     
     this.axiosInstance = axios.create({
       timeout: 10000, // 10 秒超时
+      proxy: false, // 直连高德 API，不走本地代理（避免 HTTP_PROXY=127.0.0.1:9090 未启动时 ECONNREFUSED）
       params: {
         key: this.apiKey || '',
       },
@@ -121,30 +122,30 @@ export class AmapRoutesService {
       return options;
     }
 
+    // 安全解析数字，避免 NaN（高德 API 可能返回空字符串或异常格式）
+    const safeInt = (v: any, fallback = 0): number => {
+      const n = typeof v === 'string' ? parseInt(v, 10) : (Number(v) || 0);
+      return Number.isNaN(n) ? fallback : n;
+    };
+    const safeFloat = (v: any, fallback = 0): number => {
+      const n = typeof v === 'string' ? parseFloat(v) : (Number(v) || 0);
+      return Number.isNaN(n) ? fallback : n;
+    };
+
     // 公交路线
     if (travelMode === 'transit' && data.route?.transits) {
       for (const transit of data.route.transits.slice(0, 3)) { // 最多返回 3 个方案
-        // 高德 API 返回的 duration 和 cost 可能是字符串，需要转换
-        const durationSeconds = typeof transit.duration === 'string' 
-          ? parseInt(transit.duration, 10) 
-          : (transit.duration || 0);
+        const durationSeconds = safeInt(transit.duration);
         const duration = Math.round(durationSeconds / 60); // 秒转分钟
-        const distance = typeof transit.distance === 'string'
-          ? parseInt(transit.distance, 10)
-          : (transit.distance || 0);
-        const cost = typeof transit.cost === 'string'
-          ? parseFloat(transit.cost)
-          : (transit.cost || 0);
+        const distance = safeInt(transit.distance);
+        const cost = safeFloat(transit.cost);
 
         // 计算步行距离（使用 walking_distance 字段，如果没有则从 segments 计算）
-        let walkDistance = parseInt(transit.walking_distance || '0', 10);
+        let walkDistance = safeInt(transit.walking_distance);
         if (walkDistance === 0 && transit.segments) {
           for (const segment of transit.segments) {
             if (segment.walking) {
-              const segDistance = typeof segment.walking.distance === 'string'
-                ? parseInt(segment.walking.distance, 10)
-                : (segment.walking.distance || 0);
-              walkDistance += segDistance;
+              walkDistance += safeInt(segment.walking?.distance);
             }
           }
         }

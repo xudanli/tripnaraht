@@ -153,7 +153,7 @@ interface DecisionNode {
 **架构体现**：
 - Sub-Agents 的输出归因到三人格
 - `GateResult.guardian_results` - 三人格评审结果
-- 参考：`prompts/agents/AGENT_COLLABORATION.md`
+- 参考：`.claude/roles/AGENT_COLLABORATION.md`
 
 ## 你必须理解的核心概念
 
@@ -911,7 +911,7 @@ interface DecisionNode {
 - `docs/AGENT_UNIFIED_ENTRY_API.md` - API 文档
 - `docs/AGENT_CALL_SEQUENCE.md` - 调用顺序文档
 - `docs/ARCHITECTURE_EVALUATION.md` - 架构评估报告
-- `prompts/agents/AGENT_COLLABORATION.md` - Agent 协作机制
+- `.claude/roles/AGENT_COLLABORATION.md` - Agent 协作机制
 
 ## 关键结论必须用 **粗体**
 

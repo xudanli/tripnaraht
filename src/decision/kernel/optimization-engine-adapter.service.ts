@@ -20,6 +20,11 @@ import { DEFAULT_UNCERTAINTY_CONFIG } from '../../trips/decision/optimization/pr
 import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../trips/decision/optimization/objective-function.interface';
 import { UnifiedDecisionFormulaService } from '../../trips/decision/optimization/unified-decision-formula.service';
 import { MetaPolicyService } from '../../trips/decision/optimization/meta/meta-policy.service';
+import {
+  CGUSSearchService,
+  type CGUSCandidate,
+  type CGUSSearchResult,
+} from '../../trips/decision/optimization/cgus-search.service';
 
 @Injectable()
 export class OptimizationEngineAdapterService {
@@ -30,6 +35,7 @@ export class OptimizationEngineAdapterService {
     @Optional() private readonly probabilisticWorldModel?: ProbabilisticWorldModelService,
     @Optional() private readonly unifiedFormula?: UnifiedDecisionFormulaService,
     @Optional() private readonly metaPolicy?: MetaPolicyService,
+    @Optional() private readonly cgusSearch?: CGUSSearchService,
   ) {}
 
   /**
@@ -75,15 +81,26 @@ export class OptimizationEngineAdapterService {
   }
 
   /**
-   * 异步获取优化提示（Scheme A: Monte Carlo 路径）
-   * 当 planDraft 存在且存在不确定性指标时，调用 Monte Carlo 计算概率期望效用
-   * 返回时合并 confidenceInterval、feasibilityProbability
+   * 异步获取优化提示（Scheme A: Monte Carlo 路径；Scheme B: CGUS 五步流程）
+   * 专利实施例步骤 8：当 planDraft 存在时，优先尝试 CGUS 约束引导效用搜索
+   * 降级：无 CGUS 或无不确定性时走 Monte Carlo 或确定性 Hints
    */
   async getHintsAsync(state: DecisionState): Promise<OptimizationHints | undefined> {
-    const baseHints = this.getHints(state);
-    if (!baseHints) return undefined;
+    let baseHints = this.getHints(state);
+    if (!baseHints) baseHints = {};
 
     const planDraft = state.tripState?.planDraft as Itinerary | undefined;
+    const worldContext = dsoToMinimalWorldModelContext(state);
+
+    if (this.cgusSearch && planDraft?.days?.length && worldContext) {
+      try {
+        const cgusHints = await this.getHintsViaCGUS(state, planDraft, worldContext, baseHints);
+        if (cgusHints) return cgusHints;
+      } catch (e: unknown) {
+        this.logger.warn(`[OptimizationAdapter] CGUS 路径失败，降级: ${(e as Error)?.message}`);
+      }
+    }
+
     const env = state.environmentState ?? {};
     const hasUncertainty =
       env.weatherRisk !== undefined ||
@@ -96,7 +113,7 @@ export class OptimizationEngineAdapterService {
       !this.probabilisticWorldModel ||
       !hasUncertainty
     ) {
-      return baseHints;
+      return Object.keys(baseHints).length > 0 ? baseHints : undefined;
     }
 
     try {
@@ -157,6 +174,61 @@ export class OptimizationEngineAdapterService {
       );
       return baseHints;
     }
+  }
+
+  /**
+   * 专利实施例步骤 8：CGUS 五步流程集成
+   * 可行域投影 → 效用先验 → 不确定性采样 → 世界模型推演 → 最优选择
+   */
+  private async getHintsViaCGUS(
+    state: DecisionState,
+    planDraft: Itinerary,
+    worldContext: NonNullable<ReturnType<typeof dsoToMinimalWorldModelContext>>,
+    baseHints: OptimizationHints,
+  ): Promise<OptimizationHints | undefined> {
+    if (!this.cgusSearch) return undefined;
+
+    const env = state.environmentState ?? {};
+    const routeDirectionId = env.routeDirectionId ?? 'unknown';
+    const tripId = state.systemState?.requestId ?? state.requestId ?? 'unknown';
+    const plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
+
+    const violations = (state.constraints?.violations ?? []).map((v) => ({
+      type: v.type,
+      severity: v.severity,
+      degree: v.degree ?? (v.severity === 'HARD' ? 1 : 0.5),
+    }));
+
+    const candidate: CGUSCandidate = {
+      id: 'plan-1',
+      plan,
+      constraintViolations: violations,
+      feasible: state.constraints?.feasible ?? true,
+    };
+
+    const result: CGUSSearchResult = await this.cgusSearch.search(
+      [candidate],
+      worldContext,
+      { useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel, sampleSize: 100 },
+    );
+
+    const top = result.rankedCandidates[0];
+    const eu = top?.expectedUtility ?? top?.utility;
+    const fp = top?.feasibilityProbability;
+
+    this.logger.debug(
+      `[OptimizationAdapter] CGUS: recommended=${!!result.recommended}, E[U]=${eu?.toFixed(3) ?? 'N/A'}, P(feasible)=${fp?.toFixed(2) ?? 'N/A'}`,
+    );
+
+    const ci = top?.confidenceInterval;
+    return {
+      ...baseHints,
+      ...(eu !== undefined && { expectedUtility: eu }),
+      ...(fp !== undefined && { feasibilityProbability: fp }),
+      ...(ci && {
+        confidenceInterval: { lower: ci.lower, upper: ci.upper, level: (ci as { level?: number }).level ?? 0.95 },
+      }),
+    };
   }
 
   /**

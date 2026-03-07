@@ -10,3 +10,4 @@ export * from './multi-user-collaboration.interface';
 
 // 服务
 export { TeamCollaborationService } from './team-collaboration.service';
+export { TeamInviteService } from './team-invite.service';

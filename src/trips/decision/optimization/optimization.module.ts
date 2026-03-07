@@ -69,6 +69,7 @@ import { DecisionOSFacadeService } from './decision-os-facade.service';
 
 // 中期：多用户协同
 import { TeamCollaborationService } from './collaboration/team-collaboration.service';
+import { TeamInviteService } from './collaboration/team-invite.service';
 import { NegotiateContextLoaderService } from './collaboration/negotiate-context-loader.service';
 
 // 中期：实时状态更新
@@ -81,19 +82,15 @@ import { ABTestingService } from './experiments/ab-testing.service';
 import { AxiomValidatorService } from './axioms/axiom-validator.service';
 import { HierarchicalUtilityService } from './axioms/hierarchical-utility.service';
 
-// 旧版控制器（保留兼容）
-import { OptimizationController } from './controllers/optimization.controller';
-import { TeamCollaborationController } from './controllers/team-collaboration.controller';
-import { RealtimeStateController } from './controllers/realtime-state.controller';
-import { ABTestingController } from './controllers/ab-testing.controller';
-import { AxiomValidationController } from './controllers/axiom-validation.controller';
+// 公开邀请（无认证）
+import { TeamInvitePublicController } from './controllers/team-invite-public.controller';
 
-// 新版：用户端控制器
+// 用户端控制器
 import { OptimizationUserController } from './controllers/user/optimization-user.controller';
 import { TeamUserController } from './controllers/user/team-user.controller';
 import { RealtimeUserController } from './controllers/user/realtime-user.controller';
 
-// 新版：管理端控制器
+// 管理端控制器
 import { OptimizationAdminController } from './controllers/admin/optimization-admin.controller';
 import { RealtimeAdminController } from './controllers/admin/realtime-admin.controller';
 import { ABTestingAdminController } from './controllers/admin/ab-testing-admin.controller';
@@ -109,19 +106,15 @@ import { PrismaModule } from '../../../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [
-    // 旧版（保留兼容，/api/v2/...）
-    OptimizationController,
-    TeamCollaborationController,
-    RealtimeStateController,
-    ABTestingController,
-    AxiomValidationController,
+    // 公开邀请（/api/v2/team/invites）
+    TeamInvitePublicController,
     
-    // 新版：用户端（/api/v2/user/...）
+    // 用户端（/api/v2/user/...）
     OptimizationUserController,
     TeamUserController,
     RealtimeUserController,
     
-    // 新版：管理端（/api/v2/admin/...）
+    // 管理端（/api/v2/admin/...）
     OptimizationAdminController,
     RealtimeAdminController,
     ABTestingAdminController,
@@ -181,6 +174,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     
     // 中期：多用户协同
     TeamCollaborationService,
+    TeamInviteService,
     NegotiateContextLoaderService,
     
     // 中期：实时状态更新
@@ -244,6 +238,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     
     // 中期
     TeamCollaborationService,
+    TeamInviteService,
     RealtimeWorldStateService,
     ABTestingService,
     

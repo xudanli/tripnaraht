@@ -2,7 +2,8 @@
  * DSO 稳定性监控服务
  *
  * 专利 4.14.3：V(DSO_t) ≤ V(DSO_{t−1})，证明系统在扰动下稳定
- * V(dso) = 1 - consistencyScore，当 version 递增且 consistency 通过时 V 不增
+ * V(prev, curr) = 1 - consistencyScore(curr) + transitionPenalty(prev, curr)
+ * 当 version 单调递增且 consistency 通过时 V 不增
  *
  * 参考：docs/Decision_OS_技术交底书.md 4.14.3
  */
@@ -14,12 +15,30 @@ import { IDSOStabilityMonitor } from './dso-stability.interface';
 @Injectable()
 export class DSOStabilityMonitorService implements IDSOStabilityMonitor {
   /**
-   * 计算 DSO Lyapunov 函数值 V(curr)
-   * V = 1 - consistencyScore，consistent 时 V≈0，不一致时 V≈1
+   * 计算 DSO Lyapunov 函数值 V(prev, curr)
+   * 真实验证：使用 prev 与 curr 比较，检测版本回退或约束退化
+   * V = 1 - consistencyScore(curr) + transitionPenalty(prev→curr)
    */
-  computeDSOLyapunov(_prev: DecisionState, curr: DecisionState): number {
+  computeDSOLyapunov(prev: DecisionState, curr: DecisionState): number {
     const consistencyScore = this.computeConsistencyScore(curr);
-    return Math.max(0, 1 - consistencyScore);
+    const baseV = Math.max(0, 1 - consistencyScore);
+    const penalty = this.computeTransitionPenalty(prev, curr);
+    return baseV + penalty;
+  }
+
+  /**
+   * 过渡惩罚：版本回退或约束退化时 V 增加
+   * 专利：V(DSO_t) ≤ V(DSO_{t−1}) 要求合法过渡不增加 V
+   */
+  private computeTransitionPenalty(prev: DecisionState, curr: DecisionState): number {
+    let penalty = 0;
+    const prevVer = prev.systemState?.version ?? 0;
+    const currVer = curr.systemState?.version ?? 0;
+    if (currVer < prevVer) penalty += 1; // 版本回退，严重违反
+    if (prev.constraints?.feasible === true && curr.constraints?.feasible === false) {
+      penalty += 0.5; // 可行→不可行，约束退化
+    }
+    return penalty;
   }
 
   /** 一致性得分 [0,1]：结构有效 + 约束可行 */

@@ -145,6 +145,48 @@ export class CreateTripDraftDto {
   @IsString()
   @IsOptional()
   endDate?: string;
+
+  /** TripNara Phase 4+5: 使用算法编排替代 LLM 选点，LLM 仅负责解释/风格化。默认 false 保持兼容 */
+  @ApiPropertyOptional({ description: '使用算法编排（路径优化引擎）替代 LLM 选点' })
+  @IsBoolean()
+  @IsOptional()
+  useAlgorithmicDraft?: boolean;
+
+  /** Travel World Model Phase 4: 路线方向 ID（uuid 或数字），用于候选检索优先 signaturePois / RouteTemplate */
+  @ApiPropertyOptional({ description: '路线方向 ID，优先检索该路线的代表性 POI' })
+  @IsString()
+  @IsOptional()
+  routeDirectionId?: string;
+
+  /** 用户指定的城市列表（如杭州、千岛湖），用于候选检索按城市过滤 */
+  @ApiPropertyOptional({ description: '城市列表', type: [String], example: ['杭州', '千岛湖'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  cities?: string[];
+
+  /** 必含 POI/景点（如苏堤、灵隐、茶园），编排时优先包含 */
+  @ApiPropertyOptional({ description: '必含景点/POI 列表', type: [String], example: ['苏堤', '灵隐寺'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  mustHavePois?: string[];
+
+  /** 按天的城市分配（如杭州2天、千岛湖1天），编排时按天分配城市 */
+  @ApiPropertyOptional({
+    description: '城市天数分配',
+    type: 'array',
+    items: { type: 'object', properties: { city: { type: 'string' }, days: { type: 'number' } } },
+  })
+  @IsArray()
+  @IsOptional()
+  dayAllocation?: Array<{ city: string; days: number }>;
+
+  /** 用户原始输入（供 LLM 编排时参考） */
+  @ApiPropertyOptional({ description: '用户原始输入' })
+  @IsString()
+  @IsOptional()
+  userInput?: string;
 }
 
 /**

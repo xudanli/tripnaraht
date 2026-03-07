@@ -443,6 +443,16 @@ scripts/
 └── mcp-server-airbnb-code-verifier.txt     # Airbnb 代码验证器
 ```
 
+**持久化（Devbox / Docker）**：File Extractor MCP 支持 `TRIPNARA_MCP_CONFIG_DIR`，指向可持久化目录避免每次启动重新认证：
+
+```bash
+# 项目内目录（已加入 .gitignore）
+export TRIPNARA_MCP_CONFIG_DIR=./.mcp-tokens
+
+# Docker 卷挂载
+docker run -e TRIPNARA_MCP_CONFIG_DIR=/data/mcp -v mcp-data:/data/mcp ...
+```
+
 **安全提示**: 
 - 这些文件包含敏感信息，请妥善保管
 - 不要将 `~/.tripnara-mcp/` 目录提交到版本控制

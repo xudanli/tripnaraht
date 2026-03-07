@@ -22,6 +22,7 @@ import { WeightLearnerService, FeedbackRecord } from '../../learning/weight-lear
 import { WeightPersistenceService } from '../../learning/weight-persistence.service';
 import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
 import { RoutePlanDraft, WorldModelContext } from '../../../shared/world-model.types';
+import { PrismaService } from '../../../../../prisma/prisma.service';
 
 // ========== Request DTOs ==========
 
@@ -150,6 +151,8 @@ export interface NegotiationSummary {
     dreUtility: number;
     neptuneUtility: number;
     criticalConcerns: string[];
+    /** 建议及对应维度（前端可展示 [安全] 采纳后可提升安全分） */
+    suggestionsWithDimension?: Array<{ text: string; dimension: string; dimensionLabel: string }>;
   };
   /** 投票结果 */
   votingResult: {
@@ -191,6 +194,7 @@ export class OptimizationUserController {
     private readonly weightLearner: WeightLearnerService,
     private readonly weightPersistence: WeightPersistenceService,
     private readonly negotiateLoader: NegotiateContextLoaderService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ========== 计划评估 ==========
@@ -474,16 +478,25 @@ export class OptimizationUserController {
     if (!plan.tripId) {
       throw new BadRequestException('请求错误: plan.tripId 不能为空。plan 对象必须包含 tripId 字段');
     }
+    await this.enrichRouteDirectionName(world);
     const result = await this.guardianDebate.negotiate(plan, world, DEFAULT_NEGOTIATION_CONFIG);
     
     const abuEval = result.evaluations.find(e => e.persona === 'ABU');
     const dreEval = result.evaluations.find(e => e.persona === 'DRE');
     const neptuneEval = result.evaluations.find(e => e.persona === 'NEPTUNE');
     
+    // 人格 → 维度标签（对应评估维度：安全守护者/节奏守护者/修复守护者）
+    const PERSONA_DIMENSION: Record<string, { dimension: string; dimensionLabel: string }> = {
+      ABU: { dimension: 'safety', dimensionLabel: '安全' },
+      DRE: { dimension: 'rhythm', dimensionLabel: '节奏' },
+      NEPTUNE: { dimension: 'philosophy', dimensionLabel: '修复' },
+    };
     // 合并各角色关注点与建议，去重，用户可读（无 [ABU] 等前缀），用于展示「具体问题」
     const seen = new Set<string>();
     const criticalConcerns: string[] = [];
+    const suggestionsWithDimension: Array<{ text: string; dimension: string; dimensionLabel: string }> = [];
     for (const evaluation of result.evaluations) {
+      const dim = PERSONA_DIMENSION[evaluation.persona] ?? { dimension: 'general', dimensionLabel: '综合' };
       const items = [
         ...(evaluation.primaryConcerns || []),
         ...(evaluation.suggestedAdjustments || []),
@@ -493,6 +506,7 @@ export class OptimizationUserController {
         if (t && !seen.has(t)) {
           seen.add(t);
           criticalConcerns.push(t);
+          suggestionsWithDimension.push({ text: t, dimension: dim.dimension, dimensionLabel: dim.dimensionLabel });
         }
       }
     }
@@ -512,6 +526,7 @@ export class OptimizationUserController {
         dreUtility: dreEval?.utility ?? 0,
         neptuneUtility: neptuneEval?.utility ?? 0,
         criticalConcerns,
+        suggestionsWithDimension,
       },
       votingResult: {
         approve: Math.max(0, result.votes.filter(v => v.vote === 'APPROVE').length),
@@ -520,6 +535,34 @@ export class OptimizationUserController {
       },
       fatiguePrediction: result.fatiguePrediction,
     };
+  }
+
+  /**
+   * 当 world.routeDirection 缺少 nameCN 时，根据 id 从数据库补齐实际路线名称（用于优化建议展示）
+   */
+  private async enrichRouteDirectionName(world: WorldModelContext): Promise<void> {
+    const rd = world?.routeDirection as { id?: string | number; nameCN?: string; name?: string } | undefined;
+    if (!rd?.id) return;
+    const hasName = Boolean((rd.nameCN || rd.name || '').trim());
+    if (hasName) return;
+
+    try {
+      const idStr = String(rd.id).trim();
+      if (!idStr) return;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+      const numId = parseInt(idStr, 10);
+      const db = isUuid
+        ? await this.prisma.routeDirection.findFirst({ where: { uuid: idStr } })
+        : Number.isInteger(numId) && numId > 0
+          ? await this.prisma.routeDirection.findFirst({ where: { id: numId } })
+          : null;
+      if (db) {
+        (rd as Record<string, unknown>).nameCN = db.nameCN ?? db.name ?? '';
+        (rd as Record<string, unknown>).name = db.name ?? db.nameCN ?? '';
+      }
+    } catch (e) {
+      this.logger.debug(`[Enrich] 无法补齐路线名称: ${(e as Error).message}`);
+    }
   }
 
   // ========== 测试端点（无需认证） ==========

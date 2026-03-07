@@ -126,7 +126,26 @@ Plan C：保底方案（风险 5%）
 - **TripDetail**：决策回放、反事实模拟（What-if）、历史风格建模
 - **Execution**：执行信号采集、偏差反馈、RLHF 闭环
 
-**状态机编排**：CLAUDE_SM（8步流程：INTAKE → RESEARCH → GATE_EVAL → PLAN_GEN → VERIFY → REPAIR → NARRATE → DONE）
+**状态机编排**：CLAUDE_SM（12 步流程，严格顺序）：
+```
+INTAKE → STATE_UPDATE → RESEARCH → GATE_EVAL → CONTEXT_BUILD → PLAN_GEN → OPTIMIZE → VERIFY → [REPAIR] → NARRATE → FEEDBACK → HALLUCINATION_DETECTION → DONE
+```
+- **STATE_UPDATE**：显式 DSO 同步（专利权利要求 7），各阶段完成后原子合并
+- **CONTEXT_BUILD**：构建 Context Package（Kernel/ContextEngineer）
+- **OPTIMIZE**：抽取 Optimization Hints（Kernel）
+- **FEEDBACK**：记录决策日志、RLHF 信号（异步）
+- **HALLUCINATION_DETECTION**：防幻觉检测
+
+**Kernel 与 Phase Executors**（`DECISION_KERNEL_ENABLED=true` 且 `KERNEL_NATIVE_EXECUTION=true` 时）：
+- **INTAKE** → `Kernel.executeIntake()` → IntakeExecutorService
+- **RESEARCH** → `Kernel.executeResearch()` → ResearchExecutorService
+- **GATE_EVAL** → `Kernel.executeGateEval()` → GateEvalExecutorService
+- **PLAN_GEN** → `Kernel.executePlanGen()` → PlanGenExecutorService
+- **VERIFY** → `Kernel.executeVerify()` → VerifyExecutorService
+- **REPAIR** → `Kernel.executeRepair()` → RepairExecutorService
+- **NARRATE** → `Kernel.executeNarrate()` → NarrateExecutorService
+
+**状态持有**：DSO（DecisionState）为主状态源，OrchestratorState 由 DSO 派生（`decisionStateToOrchestratorState`）。
 
 **Skills系统**：
 - **能力颗粒**：最小可复用的能力单元
@@ -139,12 +158,14 @@ Plan C：保底方案（风险 5%）
 - **参考**：`src/rag/`、`src/places/services/vector-search.service.ts`
 
 **参考文件**：
-- `prompts/agents/README.md` - AI-native 决策系统架构
-- `prompts/agents/*.md` - 各 Agent 角色定义
-- `docs/AGENT_ARCHITECTURE_LATEST.md` - 最新架构文档
-- `src/agent/services/claude-orchestrator.service.ts` - Claude编排器
-- `src/llm/services/llm.service.ts` - LLM服务
-- `src/skills/README.md` - Skills架构
+- `.claude/roles/AGENT_COLLABORATION.md` - AI-native 决策系统架构与 Agent 协作
+- `docs/AGENT_CALL_SEQUENCE.md` - 状态机步骤、调用顺序、数据流（权威参考）
+- `docs/ARCHITECT_IMPLEMENTATION_STATUS.md` - 实现状态快照
+- `src/agent/services/claude-orchestrator.service.ts` - Claude 编排器
+- `src/decision/kernel/decision-kernel.service.ts` - 决策内核
+- `src/agent/execution/*-executor.service.ts` - Phase Executors
+- `src/llm/services/llm.service.ts` - LLM 服务
+- `src/skills/README.md` - Skills 架构
 
 ### AI技术前沿
 
@@ -203,9 +224,10 @@ Plan C：保底方案（风险 5%）
 ### 2. 多智能体系统优化
 
 **当前架构**：
-- **6个Sub-Agents**：各司其职，通过`OrchestratorState`共享状态
-- **状态机编排**：CLAUDE_SM（8步流程）
+- **6个Sub-Agents**：各司其职，经 Kernel 读写 DSO，OrchestratorState 由 DSO 派生
+- **状态机编排**：CLAUDE_SM（12 步：INTAKE→STATE_UPDATE→RESEARCH→GATE_EVAL→CONTEXT_BUILD→PLAN_GEN→OPTIMIZE→VERIFY→[REPAIR]→NARRATE→FEEDBACK→HALLUCINATION_DETECTION→DONE）
 - **三人格系统**：Abu、Dr.Dre、Neptune
+- **Phase Executors**：IntakeExecutor、ResearchExecutor、GateEvalExecutor、PlanGenExecutor、VerifyExecutor、RepairExecutor、NarrateExecutor（KERNEL_NATIVE_EXECUTION 时经 Kernel 执行）
 
 **优化方向**：
 - **智能路由**：根据任务复杂度选择Sub-Agent
@@ -220,8 +242,9 @@ Plan C：保底方案（风险 5%）
 - **可解释性**：决策日志完整性
 
 **参考**：
-- `src/agent/services/sub-agents/` - Sub-Agents实现
-- `docs/AGENT_ARCHITECTURE_LATEST.md` - 架构文档
+- `src/agent/services/sub-agents/` - Sub-Agents 实现
+- `src/agent/execution/*-executor.service.ts` - Phase Executors
+- `docs/AGENT_CALL_SEQUENCE.md` - 架构与调用顺序
 
 ### 3. RAG系统优化
 

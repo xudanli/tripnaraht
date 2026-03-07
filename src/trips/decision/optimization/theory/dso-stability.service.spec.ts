@@ -62,4 +62,20 @@ describe('DSOStabilityMonitorService', () => {
   it('checkStrictStability: ΔV > −ε 应返回 false', () => {
     expect(service.checkStrictStability(0.25, 0.3, 0.1)).toBe(false);
   });
+
+  it('版本回退时 V 应增加（prev 真实验证）', () => {
+    const prev = createDSO(2, true);
+    const curr = createDSO(1, true); // version 回退
+    const vPrev = service.computeDSOLyapunov(prev, prev);
+    const vCurr = service.computeDSOLyapunov(prev, curr);
+    expect(vCurr).toBeGreaterThan(vPrev);
+  });
+
+  it('约束退化时 V 应增加', () => {
+    const prev = createDSO(1, true);
+    const curr = createDSO(2, false); // feasible → infeasible
+    const vPrev = service.computeDSOLyapunov(prev, prev);
+    const vCurr = service.computeDSOLyapunov(prev, curr);
+    expect(vCurr).toBeGreaterThan(vPrev);
+  });
 });

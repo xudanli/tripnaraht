@@ -17,12 +17,14 @@ import { AgentModule } from '../agent/agent.module';
 import { SkillsModule } from '../skills/skills.module';
 import { LlmModule } from '../llm/llm.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 
 @Module({
   imports: [
     PrismaModule,
     forwardRef(() => AgentModule), // 使用 forwardRef 避免循环依赖（AgentModule -> DecisionDraftModule -> ChainOfWorkModule）
     forwardRef(() => SkillsModule), // 使用 forwardRef 避免循环依赖（ChainOfWorkModule -> SkillsModule -> ... -> DecisionDraftModule -> ChainOfWorkModule）
+    forwardRef(() => DecisionDraftModule), // 用于 chain-of-work admin 的 draft step 编辑（复用 DecisionDraftEditorService）
     LlmModule,
   ],
   controllers: [ChainOfWorkController, ChainOfWorkAdminController],

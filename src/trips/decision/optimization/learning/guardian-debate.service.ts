@@ -382,6 +382,41 @@ export class GuardianDebateService {
     return map;
   }
 
+  /** 路线 tag 中易受天气影响的活动类型（用于天气建议文案） */
+  private static readonly WEATHER_SENSITIVE_TAGS = new Set([
+    '徒步', '观景', '冰川', '摄影', '极光', '船游', '皮划艇', '户外', '登山', '登山徒步',
+    'hiking', 'viewpoint', 'glacier', 'photography', 'aurora', 'boat', 'kayaking', 'outdoor',
+  ]);
+
+  /**
+   * 从 plan 的 segment.metadata.activityNames 提取具体活动名称（优先用于天气建议）
+   */
+  private getPlanActivityNames(plan: RoutePlanDraft): string[] {
+    const segments = plan?.segments ?? [];
+    const names = new Set<string>();
+    for (const seg of segments) {
+      const arr = seg?.metadata?.activityNames;
+      if (Array.isArray(arr)) {
+        for (const n of arr) {
+          const s = String(n).trim();
+          if (s) names.add(s);
+        }
+      }
+    }
+    return [...names].slice(0, 6); // 最多 6 个，避免过长
+  }
+
+  /**
+   * 从路线 tags 提取易受天气影响的活动类型（用户可读）
+   */
+  private getWeatherSensitiveActivityTags(world: WorldModelContext): string[] {
+    const tags = world?.routeDirection?.tags;
+    if (!Array.isArray(tags) || tags.length === 0) return [];
+    const matched = tags
+      .filter((t) => t && GuardianDebateService.WEATHER_SENSITIVE_TAGS.has(String(t).trim()));
+    return [...new Set(matched.map((t) => String(t).trim()))].slice(0, 4); // 最多 4 个
+  }
+
   /**
    * 按天/时段细化关注点（用户可读，如「Day2 驾驶时间较长…」）。
    * 若 plan 由 tripId 加载且 segments 无 distanceKm/ascentM，则仅可能产出天气相关一条。
@@ -447,7 +482,17 @@ export class GuardianDebateService {
     }
 
     if ((baseEvaluation.breakdown?.weatherRiskPenalty ?? 0) > 0.15) {
-      out.push('天气存在不确定性，建议调整停留顺序或预留备选方案');
+      const activityNames = this.getPlanActivityNames(plan);
+      const tags = this.getWeatherSensitiveActivityTags(world);
+      const activityHint =
+        activityNames.length > 0
+          ? `如 ${activityNames.join('、')} 等`
+          : tags.length > 0
+            ? `您行程中的${tags.join('、')}等活动`
+            : '行程中的户外活动（观景、徒步等）';
+      out.push(
+        `部分日期天气可能不佳。建议：① 把${activityHint}优先安排到预报较好的日子；② 为易受天气影响的项目预留室内备选。点击「去改行程」可查看每日具体活动并调整`
+      );
     }
 
     return out.slice(0, 5);
@@ -497,6 +542,15 @@ export class GuardianDebateService {
   /**
    * 生成人格建议
    */
+  /** 软约束 ID → 用户可执行的具体建议 */
+  private static readonly SOFT_CONSTRAINT_TO_USER_TIP: Record<string, string> = {
+    SC_FATIGUE: '某天行程负荷过重，建议拆分该日行程或增加休息时间',
+    SC_ROLLING_ASCENT: '连续几天爬升较多，建议调整行程节奏或插入休息日',
+    SC_BUDGET: '预算可能超支，建议削减部分活动或选择更经济的住宿/餐饮',
+    SC_WEATHER: '天气可能影响部分活动，建议关注预报并为户外项目预留室内备选',
+    SC_PHILOSOPHY: '部分安排偏离路线特色，建议优先保留核心体验项目',
+  };
+
   private generatePersonaSuggestions(
     values: PersonaValues,
     evaluation: ObjectiveEvaluationResult,
@@ -504,13 +558,25 @@ export class GuardianDebateService {
   ): string[] {
     const suggestions: string[] = [];
     const constraints = evaluation.constraints || { hardViolations: [], softViolations: [] };
-    
+    const softViolations = constraints.softViolations || [];
+
     if (values.persona === 'ABU') {
-      if ((constraints.softViolations || []).length > 0) {
-        suggestions.push('建议处理软约束以降低风险');
+      for (const v of softViolations) {
+        if (v.violationDegree <= 0.3) continue;
+        const tip =
+          v.repairSuggestion ||
+          v.violationExplanation ||
+          GuardianDebateService.SOFT_CONSTRAINT_TO_USER_TIP[v.constraintId] ||
+          '建议根据具体提示调整行程';
+        if (tip && !suggestions.includes(tip)) {
+          suggestions.push(tip);
+        }
+      }
+      if (softViolations.length > 0 && suggestions.length === 0) {
+        suggestions.push('行程存在若干风险点，建议点击「去改行程」逐一查看并调整');
       }
     }
-    
+
     if (values.persona === 'DRE') {
       if (evaluation.breakdown.fatigueRiskPenalty > 0.15) {
         suggestions.push('建议拆分高负荷天或插入休息日');
@@ -519,13 +585,13 @@ export class GuardianDebateService {
         suggestions.push('建议重新平衡各天的负荷');
       }
     }
-    
+
     if (values.persona === 'NEPTUNE') {
       if (evaluation.breakdown.philosophyScore < 0.8) {
         suggestions.push('建议确保核心体验不被削减');
       }
     }
-    
+
     return suggestions;
   }
 

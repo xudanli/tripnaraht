@@ -980,7 +980,7 @@ export class ContextEngineerService {
         // 精简文本：只列出工具名与推荐原因，控制 Token
         const toolSummary = result.tools
           .map(
-            (t) =>
+            (t: { name: string; description?: string; reason: string }) =>
               `- ${t.name}: ${t.description?.substring(0, 60) || t.reason} (${t.reason})`,
           )
           .join('\n');

@@ -78,13 +78,17 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (this.apiKey) {
-      // 初始化 HTTP 客户端（支持代理）
-      const proxyUrl =
-        process.env.HTTPS_PROXY ||
-        process.env.https_proxy ||
-        process.env.ALL_PROXY ||
-        process.env.all_proxy;
-      
+      // 初始化 HTTP 客户端；LLM_DISABLE_PROXY=true 时直连，避免代理未启动导致 ECONNREFUSED
+      const disableProxy =
+        process.env.LLM_DISABLE_PROXY === 'true' ||
+        process.env.GOOGLE_DISABLE_PROXY === 'true';
+      const proxyUrl = disableProxy
+        ? undefined
+        : process.env.HTTPS_PROXY ||
+          process.env.https_proxy ||
+          process.env.ALL_PROXY ||
+          process.env.all_proxy;
+
       const httpsAgent = proxyUrl
         ? new HttpsProxyAgent<string>(proxyUrl)
         : new https.Agent({

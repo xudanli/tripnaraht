@@ -7,6 +7,7 @@ import { RewardSignalExtractorService } from './reward-signal-extractor.service'
 import { TrainingDataPreparationService } from './training-data-preparation.service';
 import { TrainingPipelineService } from './training-pipeline.service';
 import { ModelRegistryService } from './model-registry.service';
+import { ModelDeploymentService } from './model-deployment.service';
 import { EvalSuiteService } from './eval-suite.service';
 import { RegressionGateService } from './regression-gate.service';
 import { ReplayComparatorService } from './replay-comparator.service';
@@ -39,6 +40,7 @@ export class IterativeDeploymentWorkflowService {
     private readonly dataPrep: TrainingDataPreparationService,
     private readonly trainingPipeline: TrainingPipelineService,
     private readonly modelRegistry: ModelRegistryService,
+    private readonly modelDeployment: ModelDeploymentService,
     private readonly evalSuite: EvalSuiteService,
     private readonly regressionGate: RegressionGateService,
     private readonly replayComparator: ReplayComparatorService,
@@ -269,12 +271,17 @@ export class IterativeDeploymentWorkflowService {
       // 步骤 8: 部署模型（如果启用自动部署）
       if (options.autoDeploy) {
         this.logger.log(`[IterativeDeployment] 步骤 8: 部署模型`);
-        await this.modelRegistry.setProductionVersion(modelVersion.version);
+        const deployResult = await this.modelDeployment.deployVersion(modelVersion.version);
 
         steps.push({
           step: 'deploy_model',
-          status: 'SUCCESS',
-          result: { productionVersion: modelVersion.version },
+          status: deployResult.success ? 'SUCCESS' : 'FAILED',
+          result: {
+            productionVersion: modelVersion.version,
+            deployedAt: deployResult.deployedAt,
+            success: deployResult.success,
+          },
+          error: deployResult.error,
         });
       } else {
         steps.push({

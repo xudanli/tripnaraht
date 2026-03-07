@@ -1,5 +1,6 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../../prisma/prisma.module';
+import { DemModule } from '../../../trips/dem/dem.module';
 import { GeoAgentService } from './geo-agent.service';
 import { WeatherAgentService } from './weather-agent.service';
 import { CostAgentService } from './cost-agent.service';
@@ -25,6 +26,7 @@ import { DomainAgentErrorHandler } from './domain-agent-error-handler.service';
 @Module({
   imports: [
     PrismaModule,
+    DemModule, // GeoAgent 需要 DEMElevationService 获取海拔
   ],
   providers: [
     GeoAgentService,

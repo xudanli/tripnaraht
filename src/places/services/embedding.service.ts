@@ -122,58 +122,38 @@ export class EmbeddingService {
 
   /**
    * 获取当前使用的提供商
+   * 不使用 OpenAI 向量，仅返回配置的 provider
    */
   getCurrentProvider(): EmbeddingProvider {
-    // 如果配置为 python 且 Python 服务可用，返回 python
-    if (this.provider === 'python' && this.pythonAIService?.isAvailable()) {
-      return 'python';
-    }
-    // 否则降级到 openai
-    return 'openai';
+    return this.provider;
   }
 
   /**
    * 内部方法：实际生成 embedding
    * 
-   * 路由策略：
-   * 1. 配置为 python 时，优先尝试 Python AI 服务
-   * 2. Python 失败或不可用时，降级到 OpenAI
-   * 3. 所有提供商失败时，返回零向量
+   * 路由策略（不使用 OpenAI 向量）：
+   * 1. 配置为 python 时，仅使用 Python AI 服务 (BGE-M3)
+   * 2. Python 失败或不可用时，返回零向量
    */
   private async generateEmbeddingInternal(text: string, normalizedText: string): Promise<number[]> {
     let embedding: number[] | null = null;
-    let usedProvider: EmbeddingProvider = this.provider;
 
-    // 策略1：优先尝试 Python AI 服务（如果配置为 python）
-    if (this.provider === 'python' && this.pythonAIService) {
-      if (this.pythonAIService.isAvailable()) {
-        try {
-          embedding = await this.pythonAIService.generateEmbedding(text);
-          usedProvider = 'python';
-          this.logger.debug(`✅ Python AI (BGE-M3) embedding 生成成功: ${text.substring(0, 50)}...`);
-        } catch (error: any) {
-          this.logger.warn(`Python AI 服务失败: ${error.message}，降级到 OpenAI...`);
-        }
-      } else {
-        this.logger.debug(`Python AI 服务不可用，降级到 OpenAI`);
-      }
-    }
-
-    // 策略2：降级到 OpenAI（如果 Python 失败或配置为 openai）
-    if (!embedding) {
+    // 仅使用 Python AI 服务 (BGE-M3)
+    if (this.provider === 'python' && this.pythonAIService?.isAvailable()) {
       try {
-        embedding = await this.generateOpenAIEmbedding(text);
-        usedProvider = 'openai';
-        this.logger.debug(`✅ OpenAI embedding 生成成功: ${text.substring(0, 50)}...`);
+        embedding = await this.pythonAIService.generateEmbedding(text);
+        this.logger.debug(`✅ Python AI (BGE-M3) embedding 生成成功: ${text.substring(0, 50)}...`);
       } catch (error: any) {
-        this.logger.error(`OpenAI embedding 也失败: ${error.message}`);
+        this.logger.warn(`Python AI 服务失败: ${error.message}`);
       }
+    } else if (this.provider === 'python') {
+      this.logger.debug(`Python AI 服务不可用`);
     }
 
-    // Python AI 服务失败，返回零向量（最终降级）
+    // Python AI 失败时，返回零向量（不降级到 OpenAI）
     if (!embedding) {
       const dimension = 1024; // BGE-M3 固定1024维
-      this.logger.error(`Python AI 服务失败，返回零向量（维度: ${dimension}）`);
+      this.logger.error(`Python AI 服务失败，返回零向量（维度: ${dimension}），不使用 OpenAI`);
       return new Array(dimension).fill(0);
     }
 

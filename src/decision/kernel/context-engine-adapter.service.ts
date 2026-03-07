@@ -20,6 +20,8 @@ export interface ContextPackageOverrides {
   phase?: string;
   agent?: string;
   tokenBudget?: number;
+  /** 目的地国家代码（tripId 不可用时用于构建国家包块，如 from-natural-language 流程） */
+  destinationCountryCode?: string;
 }
 
 @Injectable()
@@ -49,6 +51,23 @@ export class ContextEngineAdapterService {
       return undefined;
     }
 
+    // 当 tripId 不可用时，尝试从 overrides / state 获取 destinationCountryCode，避免「无法获取国家代码」警告
+    let destinationCountryCode = overrides.destinationCountryCode;
+    if (!destinationCountryCode && !tripId) {
+      const destFromState = this.extractCountryCodeFromState(state);
+      const destFromQuery = this.extractCountryCodeFromQuery(userQuery);
+      destinationCountryCode = destFromState || destFromQuery;
+    }
+
+    // GATE_EVAL 阶段：显式传入门控相关主题，确保 RoadRules/Safety/Weather 等块被包含
+    const gateEvalTopics = ['ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS', 'VISA'];
+    const requiredTopicsOverride =
+      phase === 'GATE_EVAL'
+        ? gateEvalTopics
+        : !tripId && destinationCountryCode
+          ? gateEvalTopics
+          : undefined;
+
     try {
       const package_ = await this.contextEngineer.build({
         tripId,
@@ -58,6 +77,8 @@ export class ContextEngineAdapterService {
         userQuery,
         tokenBudget: overrides.tokenBudget,
         includePrivate: false,
+        destinationCountryCode,
+        requiredTopics: requiredTopicsOverride,
       });
       this.logger.debug(`[ContextAdapter] Built: blocks=${package_.blocks?.length ?? 0}, tokens=${package_.totalTokens ?? 0}`);
       return package_;
@@ -76,5 +97,42 @@ export class ContextEngineAdapterService {
     if (u.mode) parts.push(u.mode);
     if (u.dateRange) parts.push(`${u.dateRange.startDate}~${u.dateRange.endDate}`);
     return parts.length > 0 ? parts.join('，') : '行程规划';
+  }
+
+  /** 从 state 提取国家代码（environmentState.countryCode 或 userIntent.destination） */
+  private extractCountryCodeFromState(state: DecisionState): string | undefined {
+    const envCode = (state as any).environmentState?.countryCode;
+    if (envCode && typeof envCode === 'string' && envCode.length >= 2) return envCode.toUpperCase().slice(0, 2);
+    const dest = state.userIntent?.destination;
+    if (typeof dest === 'string') return this.parseDestinationToCountryCode(dest);
+    return undefined;
+  }
+
+  /** 从 userQuery 文本中提取国家代码（简单关键词匹配） */
+  private extractCountryCodeFromQuery(query: string): string | undefined {
+    return this.parseDestinationToCountryCode(query);
+  }
+
+  /** 将目的地字符串解析为 ISO 3166-1 alpha-2 国家代码 */
+  private parseDestinationToCountryCode(text: string): string | undefined {
+    if (!text || typeof text !== 'string') return undefined;
+    const t = text.toLowerCase();
+    const map: Array<[string, string]> = [
+      ['冰岛', 'IS'], ['iceland', 'IS'],
+      ['新西兰', 'NZ'], ['new zealand', 'NZ'], ['大溪地', 'PF'], ['tahiti', 'PF'], ['法属波利尼西亚', 'PF'],
+      ['日本', 'JP'], ['japan', 'JP'], ['东京', 'JP'], ['tokyo', 'JP'],
+      ['中国', 'CN'], ['china', 'CN'],
+      ['泰国', 'TH'], ['thailand', 'TH'],
+      ['格陵兰', 'GL'], ['greenland', 'GL'],
+      ['斯瓦尔巴', 'SJ'], ['svalbard', 'SJ'],
+      ['阿根廷', 'AR'], ['argentina', 'AR'],
+      ['阿尔卑斯', 'AL'], ['alps', 'AL'],
+    ];
+    for (const [key, code] of map) {
+      if (t.includes(key)) return code;
+    }
+    const m = text.match(/\b([A-Za-z]{2})\b/);
+    if (m) return m[1].toUpperCase();
+    return undefined;
   }
 }

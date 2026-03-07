@@ -10,6 +10,7 @@
 import {
   DecisionState,
   DecisionStatePatch,
+  StateHistoryDelta,
   UserIntent,
   ConstraintReport,
   EnvironmentState,
@@ -118,6 +119,35 @@ export function buildPatchFromDSOPrimary(
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;
 
   return patch;
+}
+
+/**
+ * 从 patch 构建 history 差分（Token 优化：只记录变化）
+ * P3: 供 Kernel.executeStateUpdate 冲突回退时使用
+ */
+export function buildHistoryDeltasFromPatch(patch: DecisionStatePatch): StateHistoryDelta[] {
+  const now = new Date().toISOString();
+  const deltas: StateHistoryDelta[] = [];
+  if (patch.userIntent) {
+    deltas.push({ type: 'userIntent', summary: 'intent synced', at: now });
+  }
+  if (patch.environmentState) {
+    deltas.push({ type: 'weather', summary: 'env synced', at: now });
+  }
+  if (patch.tripState?.delayMinutes !== undefined) {
+    deltas.push({ type: 'delay', summary: `delay=${patch.tripState.delayMinutes}m`, at: now });
+  }
+  if (patch.constraints) {
+    deltas.push({
+      type: 'constraints',
+      summary: patch.constraints.feasible ? 'allowed' : `violations=${patch.constraints.violations?.length ?? 0}`,
+      at: now,
+    });
+  }
+  if (patch.tripState?.planDraft) {
+    deltas.push({ type: 'plan', summary: 'plan draft updated', at: now });
+  }
+  return deltas;
 }
 
 /**

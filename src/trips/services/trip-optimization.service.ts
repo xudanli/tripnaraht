@@ -250,12 +250,20 @@ export class TripOptimizationService {
           removed.push(item);
         }
 
-        // 添加新的项
+        // 🆕 添加新的项：按 placeId 去重，同一天同一地点只保留首次出现
+        const seenPlaceIds = new Set<number>();
         for (const node of nodes) {
+          const pid = node.placeId ?? node.node_id ?? node.id;
+          if (pid != null && seenPlaceIds.has(Number(pid))) {
+            this.logger.debug(`跳过重复行程项：date=${date}, placeId=${pid}`);
+            continue;
+          }
+          if (pid != null) seenPlaceIds.add(Number(pid));
           added.push(node);
         }
       } else {
-        // 合并模式：只添加新项，不删除现有项
+        // 合并模式：只添加新项，不删除现有项；同一天同一 placeId 只保留首次
+        const seenPlaceIds = new Set<number>();
         for (const node of nodes) {
           // 提取节点 ID（支持多种格式）
           const nodePlaceId = node.placeId ?? node.node_id ?? node.id;
@@ -263,12 +271,19 @@ export class TripOptimizationService {
             this.logger.warn('节点缺少 ID 字段，跳过', JSON.stringify(node));
             continue;
           }
-          
+          const pid = Number(nodePlaceId);
+          // 🆕 同一天内重复 placeId 只保留首次
+          if (seenPlaceIds.has(pid)) {
+            this.logger.debug(`跳过重复行程项：date=${date}, placeId=${pid}`);
+            continue;
+          }
+          seenPlaceIds.add(pid);
+
           // 检查是否已存在类似项（通过 placeId 匹配）
-          const existing = existingItems.find((item: any) => 
+          const existing = existingItems.find((item: any) =>
             item.placeId === nodePlaceId
           );
-          
+
           if (existing) {
             modified.push({ existing, new: node });
           } else {

@@ -65,6 +65,30 @@ export class ItineraryItemsService {
     }
 
     // ============================================
+    // 步骤 2.4: 酒店去重 - 每天最多一个住宿项
+    // ============================================
+    if (dto.placeId) {
+      const place = await this.prisma.place.findUnique({
+        where: { id: dto.placeId },
+        select: { category: true },
+      });
+      if (place?.category === PlaceCategory.HOTEL) {
+        const existingHotel = await this.prisma.itineraryItem.findFirst({
+          where: {
+            tripDayId: dto.tripDayId,
+            type: 'REST',
+            Place: { category: 'HOTEL' },
+          },
+        });
+        if (existingHotel) {
+          throw new BadRequestException(
+            '该行程日已有住宿安排，每天最多安排一个酒店。请移除或修改现有住宿后再添加。'
+          );
+        }
+      }
+    }
+
+    // ============================================
     // 步骤 2.5: 校验日期一致性
     // ============================================
     // 行程项的开始时间应该在 TripDay 的日期范围内
@@ -1913,6 +1937,7 @@ export class ItineraryItemsService {
 
   /**
    * 获取某天所有行程项之间的交通信息
+   * 推断交通方式时尊重行程意图（pacingConfig.travelMode），避免「自驾游」出现公交/驾车混用
    */
   async getDayTravelInfo(tripId: string, dayId: string) {
     // 验证 TripDay 存在且属于该 Trip
@@ -1922,6 +1947,7 @@ export class ItineraryItemsService {
         Trip: { id: tripId },
       },
       include: {
+        Trip: { select: { pacingConfig: true } },
         ItineraryItem: {
           include: {
             Place: true,
@@ -1933,6 +1959,35 @@ export class ItineraryItemsService {
 
     if (!tripDay) {
       throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
+    }
+
+    // 解析默认交通方式，优先级：行程配置 > 用户偏好 > 默认驾车
+    let defaultMode: 'DRIVING' | 'TRANSIT' = 'DRIVING';
+    const tm = (tripDay.Trip?.pacingConfig as { travelMode?: string } | null)?.travelMode?.toUpperCase();
+    if (tm === 'PUBLIC_TRANSIT') {
+      defaultMode = 'TRANSIT';
+    } else if (tm === 'DRIVING' || tm === 'MIXED') {
+      defaultMode = 'DRIVING';
+    } else {
+      // 行程未指定时，尝试从用户偏好获取
+      try {
+        const owner = await this.prisma.tripCollaborator.findFirst({
+          where: { tripId, role: 'OWNER' },
+          select: { userId: true },
+        });
+        if (owner?.userId) {
+          const profile = await this.prisma.userProfile.findUnique({
+            where: { userId: owner.userId },
+            select: { preferences: true },
+          });
+          const userTm = (profile?.preferences as { travelPreferences?: { travelMode?: string } } | null)
+            ?.travelPreferences?.travelMode?.toUpperCase();
+          if (userTm === 'PUBLIC_TRANSIT') defaultMode = 'TRANSIT';
+          else if (userTm === 'DRIVING' || userTm === 'MIXED') defaultMode = 'DRIVING';
+        }
+      } catch {
+        // 静默忽略，使用默认值
+      }
     }
 
     const items = tripDay.ItineraryItem;
@@ -1975,9 +2030,17 @@ export class ItineraryItemsService {
         );
         distance = Math.round(calculatedDistance * 1000); // 转为米
 
-        // 根据距离估算时间（与 getConflicts 使用同一套公式）
+        // 根据距离 + 行程意图推断交通方式：自驾游时长距离不再误判为公交
         const mode =
-          calculatedDistance < 2 ? 'WALKING' : calculatedDistance < 50 ? 'DRIVING' : 'TRANSIT';
+          calculatedDistance < 1
+            ? 'WALKING'
+            : defaultMode === 'TRANSIT'
+              ? calculatedDistance < 2
+                ? 'WALKING'
+                : calculatedDistance < 50
+                  ? 'DRIVING'
+                  : 'TRANSIT'
+              : 'DRIVING'; // 自驾：除极短距离外统一驾车
         travelMode = mode;
         duration = this.travelTimeEstimator
           ? this.travelTimeEstimator.estimateDurationMinutes(calculatedDistance, mode)

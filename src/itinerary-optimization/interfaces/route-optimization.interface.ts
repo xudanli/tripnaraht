@@ -231,6 +231,9 @@ export interface VRPTWInput {
   
   /** 终点索引（如果与起点不同） */
   endIndex?: number;
+
+  /** 全局起点时间（ISO 8601），当起点无时间窗时使用，避免半夜安排行程 */
+  globalStartTime?: string;
 }
 
 /**

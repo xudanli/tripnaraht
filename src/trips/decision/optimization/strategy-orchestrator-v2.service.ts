@@ -54,8 +54,12 @@ export interface StrategyOrchestrationResultV2 {
     originalUtility: number;
     /** 最终效用 */
     finalUtility: number;
-    /** 效用提升百分比 */
+    /** 效用提升百分比（可为负，表示优化后更差） */
     improvementPct: number;
+    /** 变更项数量（用于前端展示「共X项变更」） */
+    changeCount?: number;
+    /** 效用是否下降（优化后更差，前端可展示「以满足约束为主，综合评分略有下降」） */
+    utilityDecreased?: boolean;
     /** 安全性分数 */
     safetyScore: number;
     /** 约束满足度 */
@@ -176,7 +180,7 @@ export class StrategyOrchestratorV2Service {
             abuResult,
             dreResult: null as any, // Dre 未执行
             neptuneResult,
-            summary: this.buildSummary(originalEvaluation, repairEvaluation, abuResult),
+            summary: this.buildSummary(originalEvaluation, repairEvaluation, abuResult, null),
           };
         }
       }
@@ -190,7 +194,7 @@ export class StrategyOrchestratorV2Service {
         abuResult,
         dreResult: null as any,
         neptuneResult,
-        summary: this.buildSummary(originalEvaluation, abuResult.objectiveEvaluation, abuResult),
+        summary: this.buildSummary(originalEvaluation, abuResult.objectiveEvaluation, abuResult, null),
       };
     }
 
@@ -260,7 +264,7 @@ export class StrategyOrchestratorV2Service {
       objectiveEvaluation: finalEvaluation,
       abuResult,
       dreResult,
-      summary: this.buildSummary(originalEvaluation, finalEvaluation, abuResult),
+      summary: this.buildSummary(originalEvaluation, finalEvaluation, abuResult, dreResult),
       userJudgmentPoints,
     };
   }
@@ -271,7 +275,8 @@ export class StrategyOrchestratorV2Service {
   private buildSummary(
     originalEvaluation: ObjectiveEvaluationResult,
     finalEvaluation: ObjectiveEvaluationResult,
-    abuResult: AbuOptimizationResponse
+    abuResult: AbuOptimizationResponse,
+    dreResult?: DreOptimizationResult | null
   ): StrategyOrchestrationResultV2['summary'] {
     const orig = typeof originalEvaluation.totalUtility === 'number' && !Number.isNaN(originalEvaluation.totalUtility)
       ? originalEvaluation.totalUtility : 0;
@@ -279,10 +284,14 @@ export class StrategyOrchestratorV2Service {
       ? finalEvaluation.totalUtility : 0;
     const improvement = final_ - orig;
     const improvementPct = orig > 0 ? (improvement / orig) * 100 : 0;
+    const changeCount = dreResult?.recommendedCandidate?.modifications?.length ?? 0;
+    const utilityDecreased = improvementPct < 0;
     return {
       originalUtility: orig,
       finalUtility: final_,
       improvementPct: Number.isNaN(improvementPct) ? 0 : improvementPct,
+      changeCount,
+      utilityDecreased,
       safetyScore: finalEvaluation.breakdown?.safetyScore ?? 0,
       constraintSatisfaction: abuResult.evaluation?.overallSatisfaction ?? 0,
       confidence: abuResult.evaluation?.confidence ?? 0,

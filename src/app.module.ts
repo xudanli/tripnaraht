@@ -67,6 +67,7 @@ import { McpCapabilityModule } from './mcp/mcp-capability.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DecisionKernelModule } from './decision/decision-kernel.module';
 import { SafetyModule } from './safety/safety.module';
+import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 
 @Module({
   imports: [
@@ -151,6 +152,7 @@ import { SafetyModule } from './safety/safety.module';
     McpCapabilityModule, // MCP 能力管理模块（统一控制各能力的开启/关闭）
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
     SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
+    WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
   ],
 })
 export class AppModule {}

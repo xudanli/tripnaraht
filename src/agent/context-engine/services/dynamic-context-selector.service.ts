@@ -106,6 +106,8 @@ const PHASE_DEFAULT_TOPICS: Record<string, CountryPackTopic[]> = {
   adjustment: ['ROAD_RULES', 'WEATHER_WINDOWS'],
   repair: ['ROAD_RULES', 'SAFETY'],
   readiness: ['VISA', 'MONEY', 'LOCAL_TRANSPORT'],
+  /** GATE_EVAL：门控评估需要道路规则、安全、天气窗口（F-road/路况/风险） */
+  gate_eval: ['ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS', 'VISA'],
 };
 
 /** 关键词 -> 需要排除的 Block 类型 */

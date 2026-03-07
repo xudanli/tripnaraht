@@ -5,13 +5,15 @@
  * 提供多用户（家庭/团队）协同决策功能
  */
 
-import { Controller, Post, Get, Delete, Body, Param, Req, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
-import { IsOptional, IsString, IsObject, IsArray, ValidateNested } from 'class-validator';
+import { IsOptional, IsString, IsObject, IsArray, IsNumber, ValidateNested } from 'class-validator';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 
 import { TeamCollaborationService } from '../../collaboration/team-collaboration.service';
+import { TeamInviteService } from '../../collaboration/team-invite.service';
 import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
+import { CurrentUser, CurrentUserPayload } from '../../../../../auth/decorators/current-user.decorator';
 import {
   TeamConfig,
   TeamMember,
@@ -83,6 +85,18 @@ export class TeamMemberInput {
 
 export class AddMemberDto extends TeamMemberInput {}
 
+export class CreateInviteDto {
+  @IsOptional()
+  @IsNumber()
+  expiresInDays?: number;
+  @IsOptional()
+  @IsNumber()
+  maxUses?: number;
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+}
+
 export class TeamNegotiateDto {
   /** 待协商的计划（与 world 二选一：若只传 tripId 则后端按 tripId 加载 plan + world） */
   @IsOptional()
@@ -132,6 +146,7 @@ export class TeamUserController {
 
   constructor(
     private readonly teamService: TeamCollaborationService,
+    private readonly inviteService: TeamInviteService,
     private readonly negotiateLoader: NegotiateContextLoaderService,
   ) {}
 
@@ -178,6 +193,93 @@ export class TeamUserController {
   @ApiResponse({ status: 200, description: '返回团队信息' })
   async getTeam(@Param('teamId') teamId: string): Promise<TeamConfig | null> {
     return (await this.teamService.getTeam(teamId)) ?? null;
+  }
+
+  // ========== 邀请链接 ==========
+
+  @Post(':teamId/invites')
+  @ApiOperation({ summary: '生成邀请链接' })
+  @ApiParam({ name: 'teamId', description: '团队 ID' })
+  @ApiResponse({ status: 201, description: '返回邀请链接' })
+  @ApiResponse({ status: 403, description: '无权限（仅创建者/领队可生成）' })
+  async createInvite(
+    @Param('teamId') teamId: string,
+    @Body() dto: CreateInviteDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const userId = user?.userId;
+    if (!userId) {
+      throw new ForbiddenException({ message: '需要登录才能生成邀请', code: 'UNAUTHORIZED' });
+    }
+    const raw = (dto as Record<string, unknown>) || {};
+    const expiresInDays = dto.expiresInDays ?? (raw.expiresInDays as number) ?? 7;
+    const maxUses = dto.maxUses ?? (raw.maxUses as number) ?? 0;
+    const tripId = (dto.tripId ?? (raw.tripId as string))?.trim() || undefined;
+    try {
+      return await this.inviteService.createInvite({
+        teamId,
+        inviterUserId: userId,
+        expiresInDays,
+        maxUses,
+        tripId,
+      });
+    } catch (e: any) {
+      if (String(e?.message).includes('TEAM_INVITE_FORBIDDEN')) {
+        throw new ForbiddenException({ message: '仅团队创建者或领队可生成邀请', code: 'TEAM_INVITE_FORBIDDEN' });
+      }
+      if (String(e?.message).includes('TEAM_NOT_FOUND')) {
+        throw new BadRequestException({ message: '团队不存在', code: 'TEAM_NOT_FOUND' });
+      }
+      throw e;
+    }
+  }
+
+  @Get(':teamId/invites')
+  @ApiOperation({ summary: '列出团队有效邀请' })
+  @ApiParam({ name: 'teamId', description: '团队 ID' })
+  @ApiResponse({ status: 200, description: '返回邀请列表' })
+  async listInvites(
+    @Param('teamId') teamId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const userId = user?.userId;
+    if (!userId) {
+      throw new ForbiddenException({ message: '需要登录才能查看邀请', code: 'UNAUTHORIZED' });
+    }
+    const canCreate = await this.inviteService.canCreateInvite(teamId, userId);
+    if (!canCreate) {
+      throw new ForbiddenException({ message: '仅团队创建者或领队可查看邀请', code: 'TEAM_INVITE_FORBIDDEN' });
+    }
+    return this.inviteService.listInvites(teamId);
+  }
+
+  @Delete(':teamId/invites/:token')
+  @ApiOperation({ summary: '撤销邀请链接' })
+  @ApiParam({ name: 'teamId', description: '团队 ID' })
+  @ApiParam({ name: 'token', description: '邀请 token' })
+  @ApiResponse({ status: 200, description: '撤销成功' })
+  async revokeInvite(
+    @Param('teamId') teamId: string,
+    @Param('token') token: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const userId = user?.userId;
+    if (!userId) {
+      throw new ForbiddenException({ message: '需要登录才能撤销邀请', code: 'UNAUTHORIZED' });
+    }
+    const canCreate = await this.inviteService.canCreateInvite(teamId, userId);
+    if (!canCreate) {
+      throw new ForbiddenException({ message: '仅团队创建者或领队可撤销邀请', code: 'TEAM_INVITE_FORBIDDEN' });
+    }
+    try {
+      await this.inviteService.revokeInvite(teamId, token);
+      return { success: true };
+    } catch (e: any) {
+      if (String(e?.message).includes('TEAM_INVITE_NOT_FOUND')) {
+        throw new BadRequestException({ message: '邀请链接不存在', code: 'TEAM_INVITE_NOT_FOUND' });
+      }
+      throw e;
+    }
   }
 
   @Post(':teamId/members')

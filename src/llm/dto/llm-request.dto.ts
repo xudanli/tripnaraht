@@ -77,6 +77,23 @@ export class TripCreationParams {
 
   @ApiPropertyOptional({ description: '旅行偏好', type: Object })
   preferences?: Record<string, any>;
+
+  /** 用户指定的城市列表（如杭州、千岛湖），用于行程编排按城市分配 */
+  @ApiPropertyOptional({ description: '城市列表', type: [String], example: ['杭州', '千岛湖'] })
+  cities?: string[];
+
+  /** 必含 POI/景点（如苏堤、灵隐、茶园、运河），编排时优先包含 */
+  @ApiPropertyOptional({ description: '必含景点/POI 列表', type: [String], example: ['苏堤', '灵隐寺', '茶园'] })
+  mustHavePois?: string[];
+
+  /** 按天的城市分配（如杭州2-3天、千岛湖1-2天） */
+  @ApiPropertyOptional({
+    description: '城市天数分配',
+    type: 'array',
+    items: { type: 'object', properties: { city: { type: 'string' }, days: { type: 'number' } } },
+    example: [{ city: '杭州', days: 2 }, { city: '千岛湖', days: 1 }],
+  })
+  dayAllocation?: Array<{ city: string; days: number }>;
 }
 
 export class HumanizeResultDto {

@@ -1,9 +1,13 @@
 // src/vision/vision.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AssistantSuggestion, PoiCandidate } from '../assist/dto/action.dto';
 import { MockOcrProvider } from '../providers/ocr/mock-ocr.provider';
+import { GoogleOcrProvider } from '../providers/ocr/google-ocr.provider';
+import { DeepSeekOcrProvider } from '../providers/ocr/deepseek-ocr.provider';
 import { MockPoiProvider } from '../providers/poi/mock-poi.provider';
+import { GooglePoiProvider } from '../providers/poi/google-poi.provider';
 import {
   successResponse,
   errorResponse,
@@ -16,8 +20,14 @@ import { KeywordExtractor } from './utils/keyword-extractor.util';
 
 /**
  * 视觉识别服务
- * 
+ *
  * 处理拍照识别场景：OCR 提取文字 → POI 搜索 → 返回候选和建议
+ *
+ * OCR 优先级：DeepSeek-OCR > Google Vision > Mock
+ * - DEEPSEEK_OCR_API_KEY 或 DEEPSEEK_API_KEY: DeepSeek-OCR
+ * - GOOGLE_VISION_API_KEY: Google Vision
+ *
+ * POI: GOOGLE_PLACES_API_KEY 启用真实 POI，否则 Mock
  */
 @Injectable()
 export class VisionService {
@@ -25,9 +35,12 @@ export class VisionService {
   private readonly keywordExtractor = new KeywordExtractor();
 
   constructor(
-    // 暂时使用 Mock Provider，后续可替换为真实实现
     private readonly mockOcrProvider: MockOcrProvider,
-    private readonly mockPoiProvider: MockPoiProvider
+    private readonly mockPoiProvider: MockPoiProvider,
+    @Optional() private readonly googleOcrProvider?: GoogleOcrProvider,
+    @Optional() private readonly deepseekOcrProvider?: DeepSeekOcrProvider,
+    @Optional() private readonly googlePoiProvider?: GooglePoiProvider,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   /**
@@ -69,14 +82,37 @@ export class VisionService {
         );
       }
 
+      const useDeepSeekOcr =
+        !!(this.configService?.get<string>('DEEPSEEK_OCR_API_KEY') ||
+          this.configService?.get<string>('DEEPSEEK_API_KEY')) &&
+        !!this.deepseekOcrProvider;
+      const useGoogleOcr =
+        !!this.configService?.get<string>('GOOGLE_VISION_API_KEY') &&
+        !!this.googleOcrProvider;
+      const useRealOcr = useDeepSeekOcr || useGoogleOcr;
+      const useRealPoi =
+        !!this.configService?.get<string>('GOOGLE_PLACES_API_KEY') &&
+        !!this.googlePoiProvider;
+
+      const ocrProviderName = useDeepSeekOcr
+        ? 'DeepSeek'
+        : useGoogleOcr
+          ? 'Google'
+          : 'Mock';
+
       this.logger.log(
-        `[${requestId}] Processing image: size=${image.length}, lat=${opts.lat}, lng=${opts.lng}`
+        `[${requestId}] Processing image: size=${image.length}, lat=${opts.lat}, lng=${opts.lng}, ocr=${ocrProviderName}, poi=${useRealPoi ? 'Google' : 'Mock'}`
       );
 
-      // 步骤 1: OCR 提取文字
+      // 步骤 1: OCR 提取文字（优先 DeepSeek > Google > Mock）
       let ocrResult;
       try {
-        ocrResult = await this.mockOcrProvider.extractText(image, {
+        const ocrProvider = useDeepSeekOcr
+          ? this.deepseekOcrProvider!
+          : useGoogleOcr
+            ? this.googleOcrProvider!
+            : this.mockOcrProvider;
+        ocrResult = await ocrProvider.extractText(image, {
           locale: opts.locale || 'zh-CN',
         });
       } catch (error: any) {
@@ -84,7 +120,10 @@ export class VisionService {
         return errorResponse(
           ErrorCode.PROVIDER_ERROR,
           'OCR 提取文字失败',
-          { provider: 'MockOcrProvider', originalError: error.message }
+          {
+            provider: ocrProviderName + 'OcrProvider',
+            originalError: error.message,
+          }
         );
       }
 
@@ -107,12 +146,13 @@ export class VisionService {
         });
       }
 
-      // 步骤 3: POI 搜索（尝试多个候选名称）
+      // 步骤 3: POI 搜索（有 GOOGLE_PLACES_API_KEY 时使用真实 POI 搜索）
       const allCandidates: PoiCandidate[] = [];
       try {
+        const poiProvider = useRealPoi ? this.googlePoiProvider! : this.mockPoiProvider;
         for (const name of candidateNames) {
           if (name.trim().length > 0) {
-            const results = await this.mockPoiProvider.textSearch({
+            const results = await poiProvider.textSearch({
               query: name,
               lat: opts.lat,
               lng: opts.lng,
@@ -127,7 +167,7 @@ export class VisionService {
         return errorResponse(
           ErrorCode.PROVIDER_ERROR,
           'POI 搜索失败',
-          { provider: 'MockPoiProvider', originalError: error.message }
+          { provider: useRealPoi ? 'GooglePoiProvider' : 'MockPoiProvider', originalError: error.message }
         );
       }
 
@@ -214,14 +254,32 @@ export class VisionService {
         );
       }
 
+      const useDeepSeekOcr =
+        !!(this.configService?.get<string>('DEEPSEEK_OCR_API_KEY') ||
+          this.configService?.get<string>('DEEPSEEK_API_KEY')) &&
+        !!this.deepseekOcrProvider;
+      const useGoogleOcr =
+        !!this.configService?.get<string>('GOOGLE_VISION_API_KEY') &&
+        !!this.googleOcrProvider;
+      const ocrProviderName = useDeepSeekOcr
+        ? 'DeepSeek'
+        : useGoogleOcr
+          ? 'Google'
+          : 'Mock';
+
       this.logger.log(
-        `[${requestId}] Extracting text from image: size=${image.length}`
+        `[${requestId}] Extracting text from image: size=${image.length}, ocr=${ocrProviderName}`
       );
 
       // OCR 提取文字
       let ocrResult;
       try {
-        ocrResult = await this.mockOcrProvider.extractText(image, {
+        const ocrProvider = useDeepSeekOcr
+          ? this.deepseekOcrProvider!
+          : useGoogleOcr
+            ? this.googleOcrProvider!
+            : this.mockOcrProvider;
+        ocrResult = await ocrProvider.extractText(image, {
           locale: opts?.locale || 'zh-CN',
         });
       } catch (error: any) {
@@ -389,9 +447,21 @@ export class VisionService {
       };
 
       // 1. OCR提取文字（用于场景推断）
+      const useDeepSeekOcr =
+        !!(this.configService?.get<string>('DEEPSEEK_OCR_API_KEY') ||
+          this.configService?.get<string>('DEEPSEEK_API_KEY')) &&
+        !!this.deepseekOcrProvider;
+      const useGoogleOcr =
+        !!this.configService?.get<string>('GOOGLE_VISION_API_KEY') &&
+        !!this.googleOcrProvider;
       let ocrResult;
       try {
-        ocrResult = await this.mockOcrProvider.extractText(imageBuffer, {
+        const ocrProvider = useDeepSeekOcr
+          ? this.deepseekOcrProvider!
+          : useGoogleOcr
+            ? this.googleOcrProvider!
+            : this.mockOcrProvider;
+        ocrResult = await ocrProvider.extractText(imageBuffer, {
           locale: opts?.locale || 'zh-CN',
         });
         

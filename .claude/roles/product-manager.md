@@ -82,15 +82,21 @@ Plan C：保底方案（风险 5%）
 2. **CLAUDE_DYNAMIC**：Claude 动态编排（适用于灵活 QA、简单任务）
 3. **CLAUDE_SM**：Claude 状态机编排（适用于复杂规划、需要结构化输出）
 
-**状态机流程**（CLAUDE_SM 模式，严格顺序）：
-1. **INTAKE** → 解析请求 & 缺口识别（PlannerAgent）
-2. **RESEARCH** → 调用 Skills 获取硬数据
-3. **GATE_EVAL** → 执行 Should-Exist Gate 决策（GatekeeperAgent - **必须在 PLAN_GEN 之前**）
-4. **PLAN_GEN** → 生成结构化行程草案（PlannerAgent，仅在 Gate = ALLOW/ADJUST_REQUIRED 时执行）
-5. **VERIFY** → 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
-6. **REPAIR** → 替换POI/改路线/加buffer/换交通/降级（条件执行）
-7. **NARRATE** → 产出用户可读解释（NarratorAgent，**不得改硬字段**）
-8. **DONE** / **FAILED**
+**状态机流程**（CLAUDE_SM 模式，严格顺序，共 12 步）：
+1. **INTAKE** → 解析请求 & 缺口识别（PlannerAgent / IntakeExecutor）
+2. **STATE_UPDATE** → 显式 DSO 同步（Kernel，专利权利要求 7）
+3. **RESEARCH** → 调用 Skills 获取硬数据（LocalInsight / Domain Agents）
+4. **GATE_EVAL** → 执行 Should-Exist Gate 决策（GatekeeperAgent - **必须在 PLAN_GEN 之前**）
+5. **CONTEXT_BUILD** → 构建 Context Package（Kernel / ContextEngineer）
+6. **PLAN_GEN** → 生成结构化行程草案（PlannerAgent，仅在 Gate = ALLOW/ADJUST_REQUIRED 时执行）
+7. **OPTIMIZE** → 抽取 Optimization Hints（Kernel）
+8. **VERIFY** → 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
+9. **REPAIR** → 替换POI/改路线/加buffer/换交通/降级（条件执行）
+10. **NARRATE** → 产出用户可读解释（NarratorAgent，**不得改硬字段**）
+11. **FEEDBACK** → 记录决策日志、RLHF 信号（异步）
+12. **HALLUCINATION_DETECTION** → 防幻觉检测 → **DONE** / **FAILED**
+
+**状态持有**：DSO（DecisionState）为唯一状态源，OrchestratorState 由 DSO 派生（`decisionStateToOrchestratorState`）。编排层经 Kernel 间接写 DSO。
 
 ### 核心能力
 
@@ -122,7 +128,7 @@ Plan C：保底方案（风险 5%）
 
 **多智能体协作**：
 - PlannerAgent、GatekeeperAgent、LocalInsightAgent、NarratorAgent、ComplianceAgent、CoreDecisionAgent
-- 通过 `OrchestratorState` 共享状态
+- **DSO 为唯一状态源**，OrchestratorState 由 DSO 派生；编排层经 Kernel 调用 Phase Executors
 - 所有决策归因到三人格
 
 ### 模型训练与迭代（新增）
@@ -359,7 +365,8 @@ Plan C：保底方案（风险 5%）
 - `src/agent/training/controllers/training.controller.ts` - 训练管理 API
 
 **文档**：
-- `docs/AGENT_CALL_SEQUENCE.md` - 调用顺序详细说明
-- `docs/ARCHITECTURE_EVALUATION.md` - 架构评估报告
-- `docs/AGENT_UNIFIED_ENTRY_API.md` - API 文档
-- `docs/LORA_FINETUNE_GUIDE.md` - **LoRA 微调指南（新增）**
+- `docs/AGENT_CALL_SEQUENCE.md` - **调用顺序与状态机流程（必读）**
+- `docs/ARCHITECT_GAP_REMEDIATION_PLAN.md` - 架构补救方案
+- `docs/ARCHITECT_IMPLEMENTATION_STATUS.md` - 实现状态快照
+- `docs/ITERATIVE_DEPLOYMENT_APPLICATION.md` - 迭代部署应用指南
+- `docs/LORA_FINETUNE_GUIDE.md` - LoRA 微调指南（如有）

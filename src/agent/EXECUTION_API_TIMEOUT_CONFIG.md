@@ -16,13 +16,13 @@
 |--------|---------|------|
 | `get_status` | 60秒 | 快速响应，无外部依赖 |
 | `remind` | 60秒 | 通常不需要 LLM，应该较快 |
-| `handle_change` | **120秒** | 需要调用 LLM，可能较慢 |
-| `fallback` | **120秒** | 需要调用 LLM，可能较慢 |
+| `handle_change` | **300秒** | 需要调用 LLM，可能较慢（建议 5 分钟，避免 120 秒超时） |
+| `fallback` | **300秒** | 需要调用 LLM，可能较慢（建议 5 分钟，避免 120 秒超时） |
 
 ### 1.2 实现原理
 
 - **快速操作**（`get_status`, `remind`）: 60秒超时足够
-- **LLM 操作**（`handle_change`, `fallback`）: 120秒超时，因为 LLM 调用可能需要 30-60 秒
+- **LLM 操作**（`handle_change`, `fallback`）: 300秒超时，因为 LLM 调用可能需要 30-120 秒，120 秒易超时
 
 ---
 
@@ -42,8 +42,8 @@ export function getExecutionApiTimeout(action: string): number {
   const timeoutConfig: Record<string, number> = {
     'get_status': 60000,      // 60秒（通常很快）
     'remind': 60000,           // 60秒（通常不需要 LLM）
-    'handle_change': 120000,   // 120秒（需要 LLM）
-    'fallback': 120000,        // 120秒（需要 LLM）
+    'handle_change': 300000,   // 300秒/5分钟（需要 LLM，120秒易超时）
+    'fallback': 300000,        // 300秒/5分钟（需要 LLM，120秒易超时）
   };
 
   return timeoutConfig[action] || 60000; // 默认 60 秒
@@ -318,10 +318,10 @@ function ExecutePage() {
 - 60秒足够处理大部分情况
 - 如果超时，可能是网络问题
 
-**120秒** (`handle_change`, `fallback`):
+**300秒** (`handle_change`, `fallback`):
 - 这些操作需要调用 LLM
-- LLM 调用可能需要 30-60 秒
-- 加上网络延迟和处理时间，120秒更安全
+- LLM 调用可能需要 30-120 秒
+- 加上网络延迟和处理时间，300秒（5分钟）更安全，避免「请求超时（已等待 120 秒）」报错
 
 ### 5.2 可调整性
 

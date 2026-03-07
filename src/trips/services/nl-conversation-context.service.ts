@@ -25,6 +25,12 @@ export interface ConversationMessageMetadata {
   tripId?: string;
   /** 是否成功（当行程创建成功时） */
   success?: boolean;
+  /** 思考过程（用于 NLChatInterface MessageBubble 展示，会话恢复时从 metadata 读取） */
+  thinkingProcess?: { summary: string; content: string };
+  /** 进展步骤（用于 NLChatInterface MessageBubble 展示，会话恢复时从 metadata 读取） */
+  progressSteps?: Array<{ id?: string; label: string; detail?: string; status?: string }>;
+  /** 阶段指示器（分层可见，会话恢复时从 metadata 读取） */
+  phaseIndicator?: { phase: number; phaseName: string; progress: string; totalPhases?: number };
   /** 其他元数据 */
   [key: string]: any;
 }
@@ -283,6 +289,32 @@ export class NLConversationContextService {
   }
 
   /**
+   * 更新指定消息的 metadata（用于补全 clarificationQuestions、plannerResponseBlocks 等）
+   */
+  async updateMessageMetadata(
+    sessionId: string,
+    userId: string,
+    messageId: string,
+    metadataUpdates: Partial<ConversationMessageMetadata>
+  ): Promise<NLConversationContext> {
+    const context = await this.getContext(sessionId, userId);
+    if (!context) {
+      throw new Error(`会话 ${sessionId} 不存在或已过期`);
+    }
+    const message = context.messages.find((m) => m.id === messageId);
+    if (!message) {
+      throw new Error(`消息 ${messageId} 不存在`);
+    }
+    if (!message.metadata) {
+      message.metadata = {};
+    }
+    Object.assign(message.metadata, metadataUpdates);
+    context.updatedAt = new Date().toISOString();
+    await this.saveContext(context);
+    return context;
+  }
+
+  /**
    * 删除会话（会话退出时调用）
    * 
    * ⚠️ 重要：前端在以下场景应调用此方法：
@@ -502,14 +534,33 @@ export class NLConversationContextService {
     };
     
     // 🆕 将 questionAnswers 同步到 partialParams
-    // 1. 获取问题定义（从 clarificationQuestions 中获取 fieldName 映射）
+    // 1. 获取问题定义（从 clarificationQuestions 中获取 fieldName 映射及 conditionalInputs 的 paramKey）
     const clarificationQuestions = message.metadata.clarificationQuestions as any[] | undefined;
     const questionToParamMap: Record<string, string> = {};
+    const conditionalInputParamMap: Record<string, string> = {};
     
     if (clarificationQuestions && Array.isArray(clarificationQuestions)) {
       for (const question of clarificationQuestions) {
         if (question.id && question.metadata?.fieldName) {
           questionToParamMap[question.id] = question.metadata.fieldName;
+        }
+        // 为 conditionalInputs 建立映射
+        // 有 paramKey: {questionId}_{paramKey} -> preferences.paramKey
+        // 无 paramKey: {questionId}_{triggerValue} -> preferences.freeText
+        const conditionalInputs = question.conditionalInputs as Array<{ paramKey?: string; triggerValue: string }> | undefined;
+        if (conditionalInputs?.length && question.id) {
+          let basePath = question.metadata?.fieldName === 'supplementPreferences' ? 'preferences' : (question.metadata?.fieldName || question.id);
+          // 🆕 归一化：LLM 可能生成 qN_preferences，统一映射到 preferences，确保页面展示与下游创建行程一致
+          if (/^q\d+_preferences$/i.test(question.id)) {
+            basePath = 'preferences';
+          }
+          for (const inp of conditionalInputs) {
+            if (inp.paramKey) {
+              conditionalInputParamMap[`${question.id}_${inp.paramKey}`] = `${basePath}.${inp.paramKey}`;
+            } else {
+              conditionalInputParamMap[`${question.id}_${inp.triggerValue}`] = `${basePath}.freeText`;
+            }
+          }
         }
       }
     }
@@ -517,19 +568,66 @@ export class NLConversationContextService {
     // 2. 将问题答案转换为参数（使用 fieldName 映射，如果没有则使用问题ID）
     const paramsToUpdate: Record<string, any> = {};
     for (const [questionId, answer] of Object.entries(questionAnswers)) {
-      // 优先使用 fieldName，如果没有则使用问题ID（去掉前缀，如 gl_experience_level -> experienceLevel）
-      const paramName = questionToParamMap[questionId] || this.questionIdToParamName(questionId);
-      paramsToUpdate[paramName] = answer;
+      // 🆕 confirm_inferred_info 的 conditionalInputs 需映射到顶层行程参数
+      if (questionId.startsWith('confirm_inferred_info_')) {
+        const paramKey = questionId.replace(/^confirm_inferred_info_/, '');
+        if (paramKey === 'total_budget') {
+          paramsToUpdate.totalBudget = typeof answer === 'number' ? answer : (answer != null ? Number(answer) : undefined);
+        } else if (paramKey === 'date_range' && answer && typeof answer === 'object') {
+          const range = answer as { start?: string; end?: string; startDate?: string; endDate?: string };
+          const start = range.start ?? range.startDate;
+          const end = range.end ?? range.endDate;
+          if (start) paramsToUpdate.startDate = start;
+          if (end) paramsToUpdate.endDate = end;
+        } else if (paramKey === 'other') {
+          paramsToUpdate.confirmInferredOther = answer;
+        }
+        continue;
+      }
+      if (conditionalInputParamMap[questionId]) {
+        // conditionalInput 答案：merge 到嵌套路径
+        // 注意：当前仅支持二级路径（如 preferences.pace），不支持三级路径
+        const path = conditionalInputParamMap[questionId];
+        const [parent, key] = path.includes('.') ? path.split(/\.(.*)/).filter(Boolean) : [path, null];
+        if (parent && key) {
+          if (!paramsToUpdate[parent]) paramsToUpdate[parent] = {};
+          paramsToUpdate[parent][key] = answer;
+        } else {
+          paramsToUpdate[questionId] = answer;
+        }
+      } else {
+        const paramName = questionToParamMap[questionId] || this.questionIdToParamName(questionId);
+        paramsToUpdate[paramName] = answer;
+      }
     }
     
-    // 3. 更新 partialParams
+    // 3. 更新 partialParams（嵌套对象如 preferences 需深度合并）
     if (!context.partialParams) {
       context.partialParams = {};
     }
-    context.partialParams = {
-      ...context.partialParams,
-      ...paramsToUpdate,
+    const isOtherModifyChoice = (val: unknown) => {
+      if (val == null) return false;
+      const s = String(val).trim();
+      return /其他需要修改|其他需要调整/i.test(s);
     };
+    for (const [k, v] of Object.entries(paramsToUpdate)) {
+      // 🆕 防止覆盖：用户已选「确认无误」后，不允许多余的「其他需要修改」覆盖（常见于前端重复 PUT 或默认值误触发）
+      if (
+        k === 'confirmInferred' &&
+        isOtherModifyChoice(v) &&
+        (context.partialParams.confirmInferred === 'confirm' || context.partialParams.confirmInferred === '确认无误')
+      ) {
+        this.logger.debug(
+          `忽略覆盖 confirmInferred：用户已确认，跳过将「${v}」写入（防止重复追问）`
+        );
+        continue;
+      }
+      if (v !== null && v !== undefined && typeof v === 'object' && !Array.isArray(v) && context.partialParams[k] && typeof context.partialParams[k] === 'object') {
+        context.partialParams[k] = { ...context.partialParams[k], ...v };
+      } else {
+        context.partialParams[k] = v;
+      }
+    }
     
     this.logger.debug(
       `同步问题答案到参数: ${JSON.stringify(questionAnswers)} -> ${JSON.stringify(paramsToUpdate)}`

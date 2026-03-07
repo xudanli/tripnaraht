@@ -1,0 +1,75 @@
+# TripNARA AI 服务一体化部署
+# Embedding + Rerank + Inference (vLLM)
+# 使用: docker compose -f docker/docker-compose.ai.yml up -d
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Embedding + Rerank 服务（BGE-M3 + BGE-Reranker）
+  # ============================================
+  ai-embedding:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.embedding
+    container_name: tripnara-ai-embedding
+    restart: unless-stopped
+    environment:
+      - EMBEDDING_SERVICE_HOST=0.0.0.0
+      - EMBEDDING_SERVICE_PORT=8001
+      - REDIS_URL=${REDIS_URL:-}
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - ai-services
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ============================================
+  # vLLM 推理服务（Qwen2.5-7B）
+  # ============================================
+  ai-vllm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.vllm
+    container_name: tripnara-ai-vllm
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=Qwen/Qwen2.5-7B-Instruct
+      - TENSOR_PARALLEL_SIZE=1
+      - GPU_MEMORY_UTILIZATION=0.85
+      - MAX_MODEL_LEN=8192
+      - ENABLE_LORA=true
+      - HF_TOKEN=${HF_TOKEN:-}
+    ports:
+      - "8080:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - ai-services
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+networks:
+  ai-services:
+    driver: bridge

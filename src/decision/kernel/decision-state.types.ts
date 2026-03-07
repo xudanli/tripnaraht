@@ -54,6 +54,13 @@ export interface TripState {
   qualityScore?: number;
 }
 
+/** 航班信息（实施例 2 动态重规划） */
+export interface EnvironmentFlight {
+  flight?: string;
+  status?: 'scheduled' | 'delayed' | 'cancelled' | string;
+  price?: number;
+}
+
 /** 环境状态（世界模型输出） */
 export interface EnvironmentState {
   countryCode?: string;
@@ -71,6 +78,10 @@ export interface EnvironmentState {
   accessibilityScore?: number;
   /** 价格水平 (0-1)（用于 differentiable-decision） */
   priceLevel?: number;
+  /** 航班信息（实施例 2：航班取消时触发 REPLAN） */
+  flights?: EnvironmentFlight[];
+  /** 扩展字段（测试/世界模型推送用，如 _weatherUpdateAt、_simulatedBy） */
+  [key: string]: unknown;
 }
 
 /** 系统状态 */
@@ -110,6 +121,16 @@ export interface ConstraintReport {
   hardViolationCount?: number;
   /** 软约束满足率 (0-1)（用于 differentiable-decision） */
   softSatisfactionRate?: number;
+}
+
+/**
+ * 可行域判定：专利形式 g_i(s,a) ≤ 0, ∀i
+ * 方案在可行域内 ⟺ 所有约束满足（violations 为空或所有 degree≤0）
+ */
+export function isInFeasibleRegion(cr: ConstraintReport | undefined): boolean {
+  if (!cr) return true;
+  const violations = cr.violations ?? [];
+  return cr.feasible && violations.every((v) => (v.degree ?? 1) <= 0);
 }
 
 /**
@@ -248,6 +269,12 @@ export interface DecisionState {
    */
   uncertaintyProfile?: UncertaintyProfile;
 
+  /**
+   * 用户反馈（专利实施例 6.1.5，FEEDBACK 阶段通过 STATE_UPDATE 写入）
+   * 用户查看/采纳/修改行程后的反馈，供反馈学习模块使用
+   */
+  feedback?: DecisionStateFeedback;
+
   /** 兼容：关联 request_id 便于与现有 OrchestratorState 映射 */
   requestId?: string;
 }
@@ -270,6 +297,27 @@ export interface UncertaintyProfile {
   sources?: Array<'weather' | 'road' | 'human' | 'budget'>;
   /** 建议采样数量（用于 Monte Carlo） */
   suggestedSampleSize?: number;
+}
+
+/**
+ * DSO 用户反馈（专利实施例 6.1.5）
+ * 用户查看/采纳/修改行程后的反馈，通过 STATE_UPDATE 原子写入 DSO
+ */
+export interface DecisionStateFeedback {
+  /** 是否采纳方案 */
+  accepted?: boolean;
+  /** 用户修改项（如「将第2天改为酒庄参观」） */
+  modifications?: string[];
+  /** 满意度评分（如 4.6/5） */
+  satisfactionScore?: number;
+  /** 行为信号 */
+  behaviorSignals?: {
+    savePlan?: boolean;
+    sharePlan?: boolean;
+    exportPlan?: boolean;
+  };
+  /** 反馈时间 ISO 8601 */
+  submittedAt?: string;
 }
 
 /** 从 OrchestratorState 投影为 DecisionState 的辅助类型 */

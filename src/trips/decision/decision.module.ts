@@ -116,6 +116,9 @@ import { CalibrationSchedulerService } from './services/calibration-scheduler.se
 import { WearableIntegrationService } from './services/wearable-integration.service';
 import { FitnessAnalyticsController } from './controllers/fitness-analytics.controller';
 import { DecisionStateManagerService } from './services/decision-state-manager.service';
+import { DsoLatestStateFromTripProvider } from './services/dso-latest-state-from-trip.provider';
+import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { ThreeLayerExplanationService } from './services/three-layer-explanation.service';
 import { DecisionSupportService } from './services/decision-support.service';
 import { RhythmMatchingService } from './services/rhythm-matching.service';
@@ -147,6 +150,7 @@ try {
 
 @Module({
   imports: [
+    PrismaModule, // DsoLatestStateFromTripProvider 需要
     TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
     DemModule, // 恢复：DemModule 不是问题
     ...(DataQualityModule ? [forwardRef(() => DataQualityModule)] : []), // 数据质量模块（用于信息源标注）
@@ -229,6 +233,7 @@ try {
     DecisionLogStorageService, // 必需：TripsService 需要它
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
     DecisionStateManagerService, // 决策状态管理服务
+    { provide: DSO_LATEST_STATE_PROVIDER, useClass: DsoLatestStateFromTripProvider },
     ThreeLayerExplanationService, // 三层解释服务
     RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）
     MultiPersonDecisionService, // 多人决策协调服务（冲突分析、协调方案生成、群体决策支持）
@@ -257,6 +262,7 @@ try {
   ],
   exports: [
     TripDecisionEngineService,
+    DSO_LATEST_STATE_PROVIDER,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
     // CandidatePoolService,
     // TravelReliabilityService,

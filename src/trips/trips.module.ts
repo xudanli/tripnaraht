@@ -12,6 +12,14 @@ import { TripEmergencyService } from './services/trip-emergency.service';
 import { TripBudgetService } from './services/trip-budget.service';
 import { TripAdjustmentService } from './services/trip-adjustment.service';
 import { TripDraftService } from './services/trip-draft.service';
+import { CandidateRetrievalEngine } from './services/candidate-retrieval.engine';
+import { SpatialClusteringEngine } from './services/spatial-clustering.engine';
+import { ConstraintEngine } from './services/constraint.engine';
+import { RouteOptimizationEngine } from './services/route-optimization.engine';
+import { FatiguePredictionEngine } from './services/fatigue-prediction.engine';
+import { PacingEngine } from './services/pacing.engine';
+import { BestVisitTimeResolver } from './services/best-visit-time.resolver';
+import { TravelSimulationService } from './services/travel-simulation.service';
 import { TripMetricsService } from './services/trip-metrics.service';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
@@ -41,9 +49,11 @@ import { DestinationClarificationModule } from './nl-clarification/destination-c
 import { BookingComModule } from '../mcp/booking-com.module';
 import { DecisionKernelModule } from '../decision/decision-kernel.module';
 import { TransportModule } from '../transport/transport.module';
+import { RouteDirectionsModule } from '../route-directions/route-directions.module';
+import { DsoFeedbackPersistenceModule } from './decision/dso-feedback-persistence.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule], // 必需：TripsService 需要 DecisionLogStorageService, TripsController 需要 JwtService, NLConversationContextService 需要 RedisService, ContextEngineerService 用于构建 Context Package, DecisionDraftModule 用于生成决策草案, PlacesModule 用于酒店推荐（使用 forwardRef 避免循环依赖：TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule，以及 TripsModule -> PlacesModule -> RagModule -> SkillsModule -> TripsModule），DestinationClarificationModule 用于目的地特化澄清，BookingComModule 用于租车成本估算和需求检查
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController],
   providers: [
     TripsService, 
@@ -56,6 +66,14 @@ import { TransportModule } from '../transport/transport.module';
     TripEmergencyService, 
     TripBudgetService, 
     TripAdjustmentService, 
+    SpatialClusteringEngine,
+    ConstraintEngine,
+    FatiguePredictionEngine,
+    PacingEngine,
+    BestVisitTimeResolver,
+    TravelSimulationService, // Travel World Model Phase 5: 体验预测
+    RouteOptimizationEngine,
+    CandidateRetrievalEngine,
     TripDraftService, 
     TripMetricsService, 
     TripConflictsService, 

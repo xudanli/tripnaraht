@@ -25,6 +25,7 @@ export class LlmController {
     private readonly pythonAIService?: PythonAIService,
   ) {}
 
+  @Public() // 便于测试 Anthropic 等 LLM 代理
   @Post('natural-language-to-params')
   @ApiOperation({
     summary: '自然语言转接口参数',
@@ -133,6 +134,16 @@ export class LlmController {
           models: [
             { name: 'gemini-pro', label: 'Gemini Pro', available: !!process.env.GEMINI_API_KEY },
             { name: 'gemini-pro-vision', label: 'Gemini Pro Vision', available: !!process.env.GEMINI_API_KEY },
+          ],
+        },
+        {
+          provider: LlmProvider.VLLM,
+          models: [
+            {
+              name: 'Qwen/Qwen2.5-7B-Instruct',
+              label: 'Qwen2.5-7B (vLLM 自托管)',
+              available: true, // 可用性在调用时检查（VLLM_URL 默认 localhost:8080）
+            },
           ],
         },
       ];

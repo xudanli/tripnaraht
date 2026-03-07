@@ -23,9 +23,10 @@ export class FileExtractorOAuthProvider implements OAuthClientProvider {
   private configDir: string;
 
   constructor(private serverUrl: string, private clientName: string = 'TripNara File Extractor Client') {
-    // 创建配置目录
-    const homeDir = os.homedir();
-    this.configDir = path.join(homeDir, '.tripnara-mcp');
+    // 创建配置目录（支持 TRIPNARA_MCP_CONFIG_DIR 持久化到卷/项目目录，Docker 可挂载）
+    const baseDir =
+      process.env.TRIPNARA_MCP_CONFIG_DIR || path.join(os.homedir(), '.tripnara-mcp');
+    this.configDir = path.resolve(baseDir);
     if (!fs.existsSync(this.configDir)) {
       fs.mkdirSync(this.configDir, { recursive: true });
     }

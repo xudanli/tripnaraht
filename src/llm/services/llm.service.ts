@@ -35,7 +35,7 @@ export interface LlmTokenContext {
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly defaultProvider: LlmProvider;
+  private readonly defaultProvider!: LlmProvider; // 由 constructor 逻辑保证赋值
   private readonly useMock: boolean;
   
   // OpenAI HTTP 客户端（使用显式代理配置）
@@ -103,29 +103,53 @@ export class LlmService {
     this.useMock = (this.configService?.get<string>('LLM_USE_MOCK') || process.env.LLM_USE_MOCK) === 'true';
     
     // 根据环境变量确定默认提供商
-    // 优先使用 DeepSeek（如果配置了）
-    const deepseekKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
-    const openaiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
-    const geminiKey = this.configService?.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
-    const anthropicKey = this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
-    
-    if (deepseekKey) {
-      this.defaultProvider = LlmProvider.DEEPSEEK;
-    } else if (openaiKey) {
-      this.defaultProvider = LlmProvider.OPENAI;
-    } else if (geminiKey) {
-      this.defaultProvider = LlmProvider.GEMINI;
-    } else if (anthropicKey) {
-      this.defaultProvider = LlmProvider.ANTHROPIC;
-    } else {
-      this.defaultProvider = LlmProvider.DEEPSEEK; // 默认使用 DeepSeek
-      // 如果没有配置 API Key 且未启用 Mock，自动启用 Mock
-      if (!this.useMock) {
-        this.logger.warn('⚠️ LlmService Warning: No LLM API key configured (checked ConfigService and process.env), will use mock mode');
-        // 注意：这里不能直接修改 useMock，因为它是 readonly
-        // 实际会在 callLlm 中检查网络连接失败时自动回退
+    // 支持 LLM_DEFAULT_PROVIDER 显式指定（如 vllm 自托管模式，可不依赖外部 API）
+    const defaultProviderConfig =
+      this.configService?.get<string>('LLM_DEFAULT_PROVIDER') || process.env.LLM_DEFAULT_PROVIDER;
+    if (defaultProviderConfig) {
+      const mapped = this.parseDefaultProvider(defaultProviderConfig);
+      if (mapped) {
+        this.defaultProvider = mapped;
+        this.logger.log(`[LLM] 默认 Provider 由 LLM_DEFAULT_PROVIDER 指定: ${mapped}`);
       }
     }
+
+    if (!defaultProviderConfig || !this.parseDefaultProvider(defaultProviderConfig)) {
+      const deepseekKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
+      const openaiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
+      const geminiKey = this.configService?.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
+      const anthropicKey = this.configService?.get<string>('ANTHROPIC_API_KEY') || process.env.ANTHROPIC_API_KEY;
+
+      if (deepseekKey) {
+        this.defaultProvider = LlmProvider.DEEPSEEK;
+      } else if (openaiKey) {
+        this.defaultProvider = LlmProvider.OPENAI;
+      } else if (geminiKey) {
+        this.defaultProvider = LlmProvider.GEMINI;
+      } else if (anthropicKey) {
+        this.defaultProvider = LlmProvider.ANTHROPIC;
+      } else {
+        // 无 API Key 时优先尝试 vLLM 自托管（若配置了 VLLM_URL）
+        const vllmUrl = this.configService?.get<string>('VLLM_URL') || process.env.VLLM_URL;
+        this.defaultProvider = vllmUrl ? LlmProvider.VLLM : LlmProvider.DEEPSEEK;
+        if (!this.useMock) {
+          this.logger.warn(
+            `⚠️ LlmService: No LLM API key configured, 使用 ${this.defaultProvider} (${vllmUrl ? 'vLLM 自托管' : 'Mock 模式'})`
+          );
+        }
+      }
+    }
+  }
+
+  private parseDefaultProvider(config: string): LlmProvider | null {
+    const m: Record<string, LlmProvider> = {
+      vllm: LlmProvider.VLLM,
+      openai: LlmProvider.OPENAI,
+      deepseek: LlmProvider.DEEPSEEK,
+      gemini: LlmProvider.GEMINI,
+      anthropic: LlmProvider.ANTHROPIC,
+    };
+    return m[config.toLowerCase()] ?? null;
   }
 
   /**
@@ -202,24 +226,44 @@ export class LlmService {
       const shouldClarify = !hasAllRequiredFields || hasInferredFields || parsed.needsClarification;
 
       if (shouldClarify) {
-        // 使用智能旅行规划师风格生成澄清对话
-        this.logger.debug('Generating planner-style clarification dialog');
-        const clarification = await this.generatePlannerStyleClarification(
-          dto.text,
-          parsed,
-          parsed.inferredFields
-        );
+        // 🆕 优化：若首次 LLM 已返回 reply/suggestedQuestions，直接使用，避免第二次 LLM 调用（节省 15-60 秒）
+        const hasInlineClarification = parsed.reply && parsed.suggestedQuestions && Array.isArray(parsed.suggestedQuestions) && parsed.suggestedQuestions.length > 0;
+        let clarification: { reply: string; suggestedQuestions?: string[]; conversationContext?: Record<string, any>; llmRawOutput?: any };
 
-      return {
-        params: parsed as TripCreationParams,
-        needsClarification: true,
-          // 保留旧字段以保持向后兼容
+        if (hasInlineClarification) {
+          this.logger.debug('Using inline clarification from single LLM call (no second call)');
+          const suggestedQuestions = parsed.suggestedQuestions as string[];
+          clarification = {
+            reply: parsed.reply as string,
+            suggestedQuestions,
+            llmRawOutput: {
+              reply: parsed.reply,
+              suggestedQuestions,
+              responseBlocks: [{ type: 'paragraph', content: parsed.reply as string }],
+              clarificationQuestions: suggestedQuestions.map((q, i) => ({
+                id: `q_${i}`,
+                question: q,
+                type: 'text' as const,
+                required: true,
+              })),
+            },
+          };
+        } else {
+          this.logger.debug('Generating planner-style clarification via second LLM call');
+          clarification = await this.generatePlannerStyleClarification(
+            dto.text,
+            parsed,
+            parsed.inferredFields
+          );
+        }
+
+        return {
+          params: parsed as TripCreationParams,
+          needsClarification: true,
           clarificationQuestions: clarification.suggestedQuestions || this.generateFallbackQuestions(parsed, parsed.inferredFields),
-          // 新增：旅行规划师风格的响应
           plannerReply: clarification.reply,
           suggestedQuestions: clarification.suggestedQuestions,
           conversationContext: clarification.conversationContext,
-          // 🆕 原始LLM输出（用于响应转换）
           llmRawOutput: clarification.llmRawOutput,
         };
       }
@@ -378,6 +422,9 @@ export class LlmService {
           break;
         case LlmProvider.ANTHROPIC:
           result = await this.callAnthropicWithUsage(prompt, schema);
+          break;
+        case LlmProvider.VLLM:
+          result = await this.callVllmWithUsage(prompt, schema);
           break;
         default:
           throw new Error(`Unsupported LLM provider: ${provider}`);
@@ -623,6 +670,8 @@ export class LlmService {
         return this.configService?.get<string>('DEEPSEEK_MODEL') || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
       case LlmProvider.GEMINI:
         return this.configService?.get<string>('GEMINI_MODEL') || process.env.GEMINI_MODEL || 'gemini-pro';
+      case LlmProvider.VLLM:
+        return this.configService?.get<string>('VLLM_MODEL') || process.env.VLLM_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
       default:
         return 'unknown';
     }
@@ -980,6 +1029,70 @@ ${JSON.stringify(schema, null, 2)}
     }
   }
 
+  /**
+   * 调用 vLLM API（Qwen2.5-7B 自托管，OpenAI 兼容接口）
+   * 返回 content + rawResponse 用于 Token 打点
+   */
+  private async callVllmWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
+    const vllmUrl = this.configService?.get<string>('VLLM_URL') || process.env.VLLM_URL || 'http://localhost:8080';
+    let model = this.configService?.get<string>('VLLM_MODEL') || process.env.VLLM_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
+    const loraAdapter = this.configService?.get<string>('VLLM_LORA_ADAPTER') || process.env.VLLM_LORA_ADAPTER;
+
+    if (loraAdapter) {
+      model = `${model}:${loraAdapter}`;
+    }
+
+    let effectivePrompt = prompt;
+    if (schema) {
+      effectivePrompt += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
+    }
+
+    const body: any = {
+      model,
+      messages: [{ role: 'user', content: effectivePrompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    };
+
+    const apiUrl = `${vllmUrl.replace(/\/$/, '')}/v1/chat/completions`;
+    const timeout = prompt.length > 50000 ? 180000 : prompt.length > 20000 ? 120000 : 60000;
+
+    try {
+      this.logger.debug(`[vLLM] 调用 ${apiUrl}, model=${model}`);
+      const response = await retryWithBackoff(
+        () =>
+          axios.post(apiUrl, body, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout,
+            proxy: false,
+            ...(vllmUrl.startsWith('https') && { httpsAgent: this.httpsAgent }),
+          }),
+        {
+          maxRetries: 2,
+          initialDelayMs: 500,
+          maxDelayMs: 3000,
+          retryCondition: (error: any) =>
+            ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(error?.code) ||
+            error?.response?.status === 503,
+        }
+      );
+
+      const data = response.data as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      };
+      const content = data.choices?.[0]?.message?.content || '';
+      this.circuitBreaker.recordSuccess();
+      return { content, rawResponse: data };
+    } catch (error: any) {
+      this.circuitBreaker.recordFailure();
+      if (error.response) {
+        throw new Error(`vLLM API error: ${error.response.status} ${JSON.stringify(error.response.data)}`);
+      }
+      throw new Error(`vLLM API request failed: ${error.message}`);
+    }
+  }
+
   // ========== Prompt 构建方法 ==========
 
   private buildTripCreationPrompt(
@@ -1030,15 +1143,21 @@ ${contextInfo}
 从用户的自然语言中理解他们的旅行需求，并提取关键信息。
 
 ## 需要提取的信息
-- destination: 目的地国家代码（ISO 3166-1 alpha-2，如 JP、CN、US、TH、IS）
-- startDate: 开始日期（ISO 8601 格式）
-- endDate: 结束日期（ISO 8601 格式）
+### 硬约束（必需）
+- destination: 目的地国家代码（ISO 3166-1 alpha-2）
+- startDate, endDate: 出行日期
 - totalBudget: 总预算（人民币，元）
-- hasChildren: 是否有小孩同行（布尔值）
-- hasElderly: 是否有老人同行（布尔值）
-- preferences: 旅行偏好（对象，包含 style、interests、pace 等）
-- needsClarification: 是否需要进一步确认信息
-- inferredFields: 推断的字段列表
+### 人员与偏好
+- hasChildren, hasElderly: 是否有小孩/老人
+- preferences: 旅行偏好（style、interests、pace、accommodation、dining 等）
+### 专业规划师框架（可选，有则提取）
+- departureCity: 出发城市
+- travelStyle: relaxed|deep|dense|photo|food（放松/深度探索/高效打卡/摄影/美食）
+- pace: 2-3|3-5|5+（每天核心点数量，对应轻松/平衡/密集）
+- riskTolerance: low|medium|high
+- coreExpectation: 核心期待（relax/成就感/陪伴/逃离/探索未知）
+- whatToAvoid: 最不想发生（太累/太赶/迷路/下雨/被宰）
+- needsClarification, inferredFields: 推断标记
 
 ## 旅行规划专业知识
 
@@ -1051,6 +1170,15 @@ ${contextInfo}
 - 马来西亚：MY | 吉隆坡、槟城、兰卡威
 - 越南：VN | 河内、胡志明市、岘港
 - 欧洲国家：FR（法国）、IT（意大利）、ES（西班牙）、DE（德国）、GB（英国）、CH（瑞士）
+- 中国：CN | 杭州、千岛湖、西湖、苏堤、灵隐、北京、上海、成都、西安
+
+### 行程结构提取（多城市/多景点时必填）
+当用户描述了**多个城市**或**具体景点**时，必须提取：
+- **cities**: 城市列表，如 ["杭州", "千岛湖"]
+- **mustHavePois**: 必含景点/POI，如 ["苏堤", "灵隐寺", "茶园", "运河", "西湖"]
+- **dayAllocation**: 按天的城市分配，如 [{"city": "杭州", "days": 2}, {"city": "千岛湖", "days": 1}]
+  - 用户说"杭州2-3天、千岛湖1-2天" → dayAllocation: [{city: "杭州", days: 2}, {city: "千岛湖", days: 1}]
+  - 用户说"以西湖为核心，苏堤、灵隐" → mustHavePois: ["苏堤", "灵隐寺", "西湖"]
 
 ### 日期处理
 - "春节"（${currentYear}年或${currentYear + 1}年）：1月底~2月中
@@ -1106,22 +1234,34 @@ ${contextInfo}
    - 如果日期和活动偏好矛盾，优先使用日期推断的季节
 
 ## 输出格式
-返回纯 JSON，示例：
+返回纯 JSON。**重要**：当 needsClarification 为 true 时，必须同时输出 reply（规划师风格的自然语言回复）和 suggestedQuestions（追问问题数组，1-5 个），避免二次调用。
+
+示例（无需澄清）：
 {
   "destination": "JP",
   "startDate": "2026-04-01T00:00:00.000Z",
   "endDate": "2026-04-07T00:00:00.000Z",
   "totalBudget": 20000,
-  "hasChildren": true,
-  "hasElderly": false,
-  "preferences": {
-    "style": "family",
-    "interests": ["亲子", "樱花"],
-    "pace": "relaxed"
-  },
   "needsClarification": false,
   "inferredFields": []
-}${specializedSection ? `\n\n## 目的地特化提取规则（${destinationConfig.destinationName}）\n\n${specializedSection}` : ''}`;
+}
+
+示例（需要澄清时必填 reply 和 suggestedQuestions）：
+{
+  "destination": "CN",
+  "startDate": "2026-04-01T00:00:00.000Z",
+  "endDate": "2026-04-05T00:00:00.000Z",
+  "totalBudget": 15000,
+  "needsClarification": true,
+  "inferredFields": ["totalBudget"],
+  "reply": "好的，杭州+千岛湖是个很棒的选择！您提到的预算 1.5 万是单人还是全家总预算呢？",
+  "suggestedQuestions": ["预算 1.5 万是单人还是全家总预算？", "出发城市是哪里？"]
+}
+
+**当 needsClarification 为 true 时，必须同时输出**：
+- reply: 规划师风格的自然语言回复（热情、专业，帮助用户完善计划）
+- suggestedQuestions: 1-5 个追问问题（字符串数组），按优先级排列，缺什么问什么
+${specializedSection ? `\n\n## 目的地特化提取规则（${destinationConfig.destinationName}）\n\n${specializedSection}` : ''}`;
   }
 
   /**
@@ -1218,6 +1358,38 @@ ${JSON.stringify(error, null, 2)}
         hasChildren: { type: 'boolean' },
         hasElderly: { type: 'boolean' },
         preferences: { type: 'object' },
+        // 🆕 专业规划师框架：硬约束层
+        departureCity: {
+          type: 'string',
+          description: '出发城市，影响航线成本和路线结构',
+        },
+        dateFlexibility: {
+          type: 'number',
+          description: '日期是否可调整（±天数），0表示固定',
+        },
+        // 🆕 专业规划师框架：旅行偏好层
+        travelStyle: {
+          type: 'string',
+          description: '旅行风格: relaxed=放松度假, deep=深度探索, dense=高效打卡, photo=摄影创作, food=美食巡礼',
+        },
+        pace: {
+          type: 'string',
+          description: '节奏偏好: 2-3=轻松(每天2-3核心点), 3-5=平衡, 5+=密集',
+        },
+        riskTolerance: {
+          type: 'string',
+          description: '风险接受度: low=安全舒适, medium=愿意冒一些风险, high=追求刺激',
+        },
+        // 🆕 专业规划师框架：心理层
+        coreExpectation: {
+          type: 'string',
+          description: '核心期待: relax/成就感/陪伴/逃离/探索未知',
+        },
+        whatToAvoid: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '最不想发生: 太累/太赶/迷路/下雨/被宰',
+        },
         needsClarification: {
           type: 'boolean',
           description: '如果任何关键信息（日期、预算）是推断的，设置为 true',
@@ -1226,6 +1398,35 @@ ${JSON.stringify(error, null, 2)}
           type: 'array',
           items: { type: 'string' },
           description: '推断的字段列表，如 ["startDate", "totalBudget"]',
+        },
+        cities: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '用户指定的城市列表，如 ["杭州", "千岛湖"]',
+        },
+        mustHavePois: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '必含景点/POI 列表，如 ["苏堤", "灵隐寺", "茶园", "运河"]',
+        },
+        dayAllocation: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { city: { type: 'string' }, days: { type: 'number' } },
+            required: ['city', 'days'],
+          },
+          description: '按天的城市分配，如 [{"city": "杭州", "days": 2}, {"city": "千岛湖", "days": 1}]',
+        },
+        // 🆕 合并澄清到单次调用：当 needsClarification 为 true 时必须输出
+        reply: {
+          type: 'string',
+          description: '规划师风格的自然语言回复（当 needsClarification 为 true 时必填）',
+        },
+        suggestedQuestions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '追问问题列表，1-5 个（当 needsClarification 为 true 时必填）',
         },
       },
       required: ['destination', 'startDate', 'endDate', 'totalBudget'],
@@ -1384,6 +1585,12 @@ ${JSON.stringify(error, null, 2)}
 
     if (parsed.hasChildren) knownInfo.push('有小孩同行');
     if (parsed.hasElderly) knownInfo.push('有老人同行');
+    if (parsed.departureCity) knownInfo.push(`出发城市: ${parsed.departureCity}`);
+    if (parsed.travelStyle) knownInfo.push(`旅行风格: ${parsed.travelStyle}`);
+    if (parsed.pace) knownInfo.push(`节奏: ${parsed.pace}`);
+    if (parsed.riskTolerance) knownInfo.push(`风险偏好: ${parsed.riskTolerance}`);
+    if (parsed.preferences?.style) knownInfo.push(`风格: ${parsed.preferences.style}`);
+    if (parsed.preferences?.pace) knownInfo.push(`节奏: ${parsed.preferences.pace}`);
 
     return `你是一位专业、热情的旅行规划师。用户刚刚说了他们的旅行想法，你需要以自然、专业的方式与他们对话，帮助他们完善旅行计划。
 
@@ -1394,6 +1601,17 @@ ${JSON.stringify(error, null, 2)}
 ${knownInfo.length > 0 ? `✅ 已确认: ${knownInfo.join('、')}` : '（暂无确认信息）'}
 ${inferredInfo.length > 0 ? `🤔 推断值（需确认）: ${inferredInfo.join('、')}` : ''}
 ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
+
+## 专业规划师分层采集框架（重要）
+优秀规划师关注的 5 个核心变量：时间窗口、人群能力结构、节奏容忍度、风险容忍度、旅行心理目标。
+
+**按阶段顺序采集**（缺什么问什么，不跳阶段）：
+1. **第一阶段·硬约束**：出发城市、日期、人数与年龄、预算区间（缺失时优先生成）
+2. **第二阶段·风格选择**：旅行更接近哪种？A放松度假 B深度探索 C高效打卡 D摄影创作 E美食巡礼
+3. **第三阶段·节奏校准**：每天 2-3 核心点（轻松）| 3-5（平衡）| 5+（密集）
+4. **第四阶段·风险偏好**：可否接受夜间自驾、山路、小众地区、复杂换乘、天气不稳定
+
+效用函数输入：ExperienceWeight + RelaxationWeight + ExplorationWeight - FatigueRisk - TransferComplexity - WeatherRisk - BudgetOverrunRisk。你的问题应帮助补齐这些维度。
 
 ## 你的任务
 作为旅行规划师，生成结构化的回复内容，需要：
@@ -1423,6 +1641,11 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
   - 使用具体动作（如"补充偏好信息"、"补充安全信息"、"暂不补充"）
   - 避免使用模糊的选项（如"是，我想补充"、"否，信息已完整"）
   - 每个选项应该明确表达用户的选择意图
+
+- **避免内容重复**：
+  - summary_card 与规划基础：若 responseBlocks 中已有 summary_card，不要再添加 paragraph/list 重复解释 目的地、出行时间、预算 等；卡片已展示，最多加一句简短过渡语
+  - hint 与 placeholder：同一问题的提示与占位符不得重复（示例如「日本关西、新西兰南岛」只写一处）
+  - 补充偏好问题：仅保留一个「是否需要补充偏好信息」类问题，不要同时在 required 和 optional 都出现
 
 ## 对话风格示例
 ❌ 不好: "请告诉我您的出行日期？请告诉我您的预算范围？"
@@ -1462,20 +1685,31 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 **🆕 条件输入字段（重要）**：
 当问题类型为 single_choice 或 multi_choice 时，如果某个选项需要用户进一步输入信息，应该添加 conditionalInputs 字段：
 - **triggerValue**：触发此输入字段的选项值（必须与options中的某个选项完全匹配）
-- **inputType**：输入字段类型（text|date|number|date_range）
-  - text：文本输入框（用于需要用户输入文本的情况）
-  - date：日期选择框（用于需要用户选择日期的情况）
-  - date_range：日期范围选择框（用于需要用户选择日期范围的情况）
-  - number：数字输入框（用于需要用户输入数字的情况）
-- **label**：输入字段标签（可选，如"请选择正确的日期"）
-- **placeholder**：占位符（可选，如"请输入日期"）
+- **inputType**：输入字段类型（text|single_choice|multi_choice|number|date|date_range）
+  - text：文本输入框
+  - single_choice：单选（需提供 options）
+  - multi_choice：多选（需提供 options）
+  - date：日期选择框
+  - date_range：日期范围选择框
+  - number：数字输入框
+- **label**：输入字段标签（推荐，如"请选择旅行节奏"）
+- **options**：single_choice/multi_choice 时必填，格式 string[] 或 {value,label}[]
+- **placeholder**：占位符（可选）
+- **paramKey**：参数键名（推荐，用于存储到 preferences）
 - **required**：是否必填（默认true）
-- **validation**：验证规则（可选）
+- **validation**：验证规则（可选，number 可用 min/max）
 - **hint**：提示文本（可选）
 
 **示例**：
-- 日期确认问题：选项"不准确，需要修改" → 应添加 conditionalInputs，inputType: "date_range"
-- 预算确认问题：选项"需要调整，我的预算是____元" → 应添加 conditionalInputs，inputType: "number"
+- 补充节奏：inputType: "single_choice", options: ["紧凑","悠闲","适中"]
+- 补充美食偏好：inputType: "multi_choice", options: ["中餐","西餐","海鲜","当地特色"]
+- 日期确认：inputType: "date_range"
+- 预算调整：inputType: "number", validation: {min:1,max:10000000}
+
+**🆕 补充偏好信息约束（重要）**：
+- 当选项包含「补充偏好信息」时，conditionalInputs 必须**直接**展示节奏、美食、住宿等输入项
+- **禁止**多一层「请选择您感兴趣的方面」「请选择感兴趣的方面」等 meta 问题
+- 禁止出现「请至少选择一项」—— 补充偏好相关 conditionalInputs 必须 required: false，用户可全部跳过
 
 **🆕 问题分组要求（重要）**：
 - **必需问题（required）**：缺失的关键信息（目的地、日期、预算等），用户必须回答才能继续
@@ -1488,6 +1722,11 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
 - **可选问题（optional）**：不超过3个
 - 如果问题超过限制，请按优先级排序（metadata.priority: high > medium > low），只返回高优先级问题
 - 优先生成缺失的关键信息问题（目的地、日期、预算）
+
+**🆕 目的地问题约束（极其重要）**：
+- **当「已确认」或「推断值」中已包含目的地时**，绝对不要生成目的地选择类问题
+- 禁止出现选项为「去日本」「去泰国」「去欧洲」「其他目的地」等目的地列举的问题
+- 用户已明确说去哪（如新西兰南岛、冰岛、日本），就不要再问「您想去哪里」
 
 **🆕 选项设计要求（重要）**：
 - 选项应该清晰表达用户意图，避免语义重复

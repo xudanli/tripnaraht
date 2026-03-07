@@ -21,6 +21,7 @@ import { TrainingBatchProcessorService } from './services/training-batch-process
 import { TrainingQualityAnalyzerService } from './services/training-quality-analyzer.service';
 import { ModelCollapseMonitorService } from './services/model-collapse-monitor.service';
 import { IterativeDeploymentWorkflowService } from './services/iterative-deployment-workflow.service';
+import { ModelDeploymentService } from './services/model-deployment.service';
 import { EvalSuiteService } from './services/eval-suite.service';
 import { RegressionGateService } from './services/regression-gate.service';
 import { ReplayComparatorService } from './services/replay-comparator.service';
@@ -78,6 +79,7 @@ import { TrainingController } from './controllers/training.controller';
     ReplayComparatorService,
     TrajectoryETLService,
     IterativeDeploymentWorkflowService,
+    ModelDeploymentService,
   ],
   exports: [
     FineTuneService,
@@ -91,6 +93,7 @@ import { TrainingController } from './controllers/training.controller';
     MLflowClientService,
     ModelRegistryService,
     IterativeDeploymentWorkflowService,
+    ModelDeploymentService,
   ],
 })
 export class TrainingModule {}

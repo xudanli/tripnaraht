@@ -23,6 +23,8 @@ import { GateEvalExecutorService } from './gate-eval-executor.service';
 import { PlanGenExecutorService } from './plan-gen-executor.service';
 import { VerifyExecutorService } from './verify-executor.service';
 import { RepairExecutorService } from './repair-executor.service';
+import { IntakeExecutorService } from './intake-executor.service';
+import { NarrateExecutorService } from './narrate-executor.service';
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 import { CountryConfigService } from '../../skills/world/services/country-config.service';
@@ -51,6 +53,8 @@ import { AgentModule } from '../agent.module';
     PlanGenExecutorService,
     VerifyExecutorService,
     RepairExecutorService,
+    IntakeExecutorService,
+    NarrateExecutorService,
   ],
   exports: [
     WorldModelCollectorService,
@@ -61,6 +65,8 @@ import { AgentModule } from '../agent.module';
     PlanGenExecutorService,
     VerifyExecutorService,
     RepairExecutorService,
+    IntakeExecutorService,
+    NarrateExecutorService,
   ],
 })
 export class AgentPhaseExecutorModule {}

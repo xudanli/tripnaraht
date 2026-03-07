@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { RouteOptimizationService } from './itinerary-optimization.service';
 import { TripOptimizationService } from '../trips/services/trip-optimization.service';
 import { TripConflictsService } from '../trips/services/trip-conflicts.service';
+import { TripIntentService } from '../trips/services/trip-intent.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OptimizeRouteDto } from './dto/optimize-route.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
@@ -19,6 +20,7 @@ export class ItineraryOptimizationController {
     private readonly routeOptimizationService: RouteOptimizationService,
     private readonly tripOptimizationService: TripOptimizationService,
     private readonly tripConflictsService: TripConflictsService,
+    private readonly tripIntentService: TripIntentService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -29,6 +31,7 @@ export class ItineraryOptimizationController {
     description:
       '根据地点 ID 列表和配置，使用 VRPTW 等算法优化当日行程顺序与时间安排。' +
       '必须提供 tripId 和 dayId，优化结果将自动应用到指定行程日。' +
+      '未传 config.defaultTravelMode 时，自动从行程 intent（pacingConfig.travelMode）补齐，与 assess 保持一致。' +
       '会基于 TRANSPORT_INSUFFICIENT 冲突提取最小交通时间约束，减少优化后冲突。' +
       '返回 optimization、applied、conflictSummary、conflictsBefore、conflictsAfter。',
   })
@@ -74,6 +77,25 @@ export class ItineraryOptimizationController {
         },
       };
 
+      // 若请求未传 defaultTravelMode，从行程 intent 补齐（与 assessTrip 保持一致，请求参数优先）
+      let configWithIntent = { ...dtoWithDayConfig.config };
+      if (!configWithIntent.defaultTravelMode && dto.tripId) {
+        try {
+          const intent = await this.tripIntentService.getIntent(dto.tripId);
+          const tm = (intent.pacingConfig as { travelMode?: string })?.travelMode;
+          if (tm) {
+            const map: Record<string, 'TRANSIT' | 'WALKING' | 'DRIVING'> = {
+              DRIVING: 'DRIVING',
+              PUBLIC_TRANSIT: 'TRANSIT',
+              MIXED: 'TRANSIT',
+            };
+            configWithIntent.defaultTravelMode = map[tm] ?? undefined;
+          }
+        } catch {
+          // 静默忽略，使用 RouteOptimizer 的 hasElderly/hasChildren 逻辑
+        }
+      }
+
       // 优化前：获取当日冲突列表（用于前后对比 + 提取约束）
       const dayDateStr = dayDateIso ?? dto.config.date;
       const conflictsBefore = await this.tripConflictsService.getConflicts(
@@ -104,7 +126,7 @@ export class ItineraryOptimizationController {
       const dtoWithConflicts = {
         ...dtoWithDayConfig,
         config: {
-          ...dtoWithDayConfig.config,
+          ...configWithIntent,
           ...(Object.keys(minTravelTimeOverrides).length > 0 && { minTravelTimeOverrides }),
         },
       };

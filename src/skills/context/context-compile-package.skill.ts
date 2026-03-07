@@ -34,6 +34,8 @@ export interface ContextCompilePackageInput extends BaseSkillInput {
     };
     /** 约束列表（可选） */
     constraints?: string[];
+    /** 目的地国家代码（tripId 不可用时用于构建国家包块） */
+    destinationCountryCode?: string;
   };
   
   /** 编译选项 */
@@ -150,6 +152,7 @@ export class ContextCompilePackageSkill implements Skill<ContextCompilePackageIn
         tokenBudget: input.options?.tokenBudget || input.options?.maxTokens || 3600,
         includePrivate: input.options?.includePrivate || false,
         requiredTopics: input.inputContext.constraints,
+        destinationCountryCode: input.inputContext.destinationCountryCode,
       };
 
       const buildResult = await this.contextBuild.execute(buildInput);

@@ -92,12 +92,12 @@ export class AgentOptionsDto {
   @ApiPropertyOptional({ 
     description: 'LLM 提供商（auto/openai/deepseek/gemini/anthropic），auto 表示使用系统推荐的模型',
     example: 'auto',
-    enum: ['auto', 'openai', 'deepseek', 'gemini', 'anthropic'],
+    enum: ['auto', 'openai', 'deepseek', 'gemini', 'anthropic', 'vllm'],
     default: 'auto',
   })
   @IsOptional()
-  @IsEnum(['auto', 'openai', 'deepseek', 'gemini', 'anthropic'])
-  llm_provider?: 'auto' | 'openai' | 'deepseek' | 'gemini' | 'anthropic';
+  @IsEnum(['auto', 'openai', 'deepseek', 'gemini', 'anthropic', 'vllm'])
+  llm_provider?: 'auto' | 'openai' | 'deepseek' | 'gemini' | 'anthropic' | 'vllm';
 
   @ApiPropertyOptional({ 
     description: '是否使用 Claude 编排（Feature Flag）',
@@ -370,6 +370,12 @@ export class RouteAndRunResponseDto {
     tokens_est: number;
     cost_est_usd: number;
     fallback_used: boolean;
+    /** P4: 每步骤耗时（step → ms），便于聚合分析 */
+    step_latency_ms?: Record<string, number>;
+    /** P4: 本请求 Gate 是否 BLOCK（0=未阻止，1=阻止），可聚合为 gate_block_rate */
+    gate_block_rate?: number;
+    /** P4: 本请求 Skills 成功率（0–1），可聚合为 skill_success_rate */
+    skill_success_rate?: number;
     trace?: {
       orchestration: {
         // 实际执行的路径（强制，不可变）

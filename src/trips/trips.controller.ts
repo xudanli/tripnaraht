@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DateTime } from 'luxon';
@@ -66,7 +66,6 @@ import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user
 import { AdminTripListQueryDto, AdminTripStatsQueryDto, BatchOperationRequestDto } from './dto/admin-trip.dto';
 import { TokenService } from '../auth/services/token.service';
 import { JwtService } from '@nestjs/jwt';
-import { Req } from '@nestjs/common';
 import { Request } from 'express';
 import { ContextEngineerService } from '../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../skills/services/skills-registry.service';
@@ -82,6 +81,9 @@ import { GatePrecheckService } from './nl-clarification/services/gate-precheck.s
 import { AiDecisionLogicService } from './nl-clarification/services/ai-decision-logic.service';
 import { NLConversationContextService, ConversationMessage } from './services/nl-conversation-context.service';
 import { FeedbackEngineAdapterService } from '../decision/kernel/feedback-engine-adapter.service';
+import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
+import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('trips')
 @Public() // 临时开放测试，生产环境应移除
@@ -181,6 +183,25 @@ export class TripsController {
     return false;
   }
 
+  /**
+   * 判断是否为目的地选择类问题（选项为「去日本」「去泰国」「去欧洲」「其他目的地」等）
+   * 当地址已确认时，应过滤此类问题
+   */
+  private isDestinationSelectionQuestion(q: any): boolean {
+    const options = q.options || [];
+    const optValues = options.map((o: any) => (typeof o === 'string' ? o : o?.value ?? o?.label ?? '')).filter(Boolean);
+    const destinationSelectionPatterns = ['去日本', '去泰国', '去欧洲', '其他目的地', '日本', '泰国', '欧洲'];
+    const hasDestinationOptions = optValues.some((v: string) =>
+      destinationSelectionPatterns.some((p) => v.includes(p))
+    );
+    if (hasDestinationOptions) return true;
+    const questionText = (q.question || q.text || '').toLowerCase();
+    if ((questionText.includes('目的地') || questionText.includes('去哪')) && optValues.length >= 3) {
+      return true;
+    }
+    return false;
+  }
+
   constructor(
     private readonly tripsService: TripsService,
     private readonly tripExtendedService: TripExtendedService,
@@ -209,7 +230,9 @@ export class TripsController {
     @Optional() private readonly destinationClarificationConfigService?: DestinationClarificationConfigService,
     @Optional() private readonly gatePrecheckService?: GatePrecheckService,
     @Optional() private readonly aiDecisionLogicService?: AiDecisionLogicService,
-    @Optional() private readonly feedbackEngineAdapter?: FeedbackEngineAdapterService
+    @Optional() private readonly feedbackEngineAdapter?: FeedbackEngineAdapterService,
+    @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly dsoFeedbackPersistence?: IDsoFeedbackPersistence,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   @Post()
@@ -286,15 +309,20 @@ export class TripsController {
   })
   async createFromNaturalLanguage(
     @Body() dto: CreateTripFromNaturalLanguageDto,
-    @CurrentUser() user?: CurrentUserPayload
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request
   ) {
+    const flowStartMs = Date.now();
     try {
       // 🆕 测试模式：如果没有 userId，使用临时 userId（仅用于测试）
       let userId = user?.userId;
       if (!userId) {
-        // 测试模式：使用 sessionId 或生成临时 userId
-        // 注意：生产环境应该要求登录
-        if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_MODE === 'true') {
+        // 支持 X-Test-User-Id 请求头（测试脚本可传，无需重启服务）
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        if (testUserId) {
+          userId = testUserId;
+          this.logger.warn(`[测试模式] 使用 X-Test-User-Id: ${userId}`);
+        } else if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_MODE === 'true') {
           userId = dto.sessionId ? `temp_${dto.sessionId.split('_').pop()}` : `temp_${Date.now()}`;
           this.logger.warn(`[测试模式] 使用临时 userId: ${userId}`);
         } else {
@@ -390,31 +418,34 @@ export class TripsController {
         detectedCountryCode = this.extractCountryCodeFromText(dto.text);
       }
       
-      // 5.3 如果检测到目的地，通过 ContextEngineerService 构建完整 Context Package
-      if (detectedCountryCode && this.contextEngineerService) {
-        try {
-          this.logger.debug(`检测到目的地国家代码: ${detectedCountryCode}，通过 ContextEngineerService 构建 Context Package`);
-          const contextPackage = await this.contextEngineerService.build(
-            {
-              phase: 'planning',
-              agent: 'nl-parser',
-              userQuery: promptText,
-              destinationCountryCode: detectedCountryCode,
-              requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'],
-              userId,
-              includeToolSelection: false, // from-natural-language 聚焦解析，不注入工具选择
-            },
-            true, // useCache
-          );
-          if (contextPackage.blocks && contextPackage.blocks.length > 0) {
-            contextBlocks = contextPackage.blocks.filter((b) => b.visibility === 'public');
-            this.logger.debug(`成功构建 Context Package，包含 ${contextBlocks.length} 个块 (总 Token: ${contextPackage.totalTokens})`);
-          }
-        } catch (error: any) {
-          // Context Package 构建失败不影响主流程，只记录警告
-          this.logger.warn(`构建 Context Package 失败: ${error.message}`, error.stack);
-        }
+      // 5.3 并行：Context Package 构建 + 目的地特化配置（减少串行等待）
+      const beforeContextMs = Date.now();
+      const [contextResult, configResult] = await Promise.allSettled([
+        detectedCountryCode && this.contextEngineerService && process.env.SKIP_CONTEXT_FOR_NL_PARSE !== 'true'
+          ? this.contextEngineerService.build(
+              {
+                phase: 'planning',
+                agent: 'nl-parser',
+                userQuery: promptText,
+                destinationCountryCode: detectedCountryCode,
+                requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'],
+                userId,
+                includeToolSelection: false,
+              },
+              true,
+            )
+          : Promise.resolve(null),
+        detectedCountryCode && this.destinationClarificationConfigService
+          ? this.destinationClarificationConfigService.getConfig(detectedCountryCode)
+          : Promise.resolve(null),
+      ]);
+      if (contextResult.status === 'fulfilled' && contextResult.value?.blocks?.length) {
+        contextBlocks = contextResult.value.blocks.filter((b: any) => b.visibility === 'public');
+        this.logger.debug(`Context Package 构建完成: ${contextBlocks.length} 块, ${Date.now() - beforeContextMs}ms`);
+      } else if (contextResult.status === 'rejected') {
+        this.logger.warn(`Context Package 构建失败: ${contextResult.reason?.message || contextResult.reason}`);
       }
+      const destinationConfig = configResult.status === 'fulfilled' ? configResult.value : null;
 
       // 6. 提取历史澄清问题（用于过滤重复）
       const historicalQuestions: string[] = [];
@@ -432,15 +463,7 @@ export class TripsController {
       }
       this.logger.debug(`Found ${historicalQuestions.length} historical clarification questions`);
 
-      // 🆕 Step 6: 获取目的地特化配置
-      let destinationConfig: any = null;
-      if (detectedCountryCode && this.destinationClarificationConfigService) {
-        destinationConfig = await this.destinationClarificationConfigService.getConfig(
-          detectedCountryCode
-        );
-      }
-      
-      // 🆕 Step 7: 使用特化配置或通用流程
+      // 🆕 Step 7: 使用特化配置或通用流程（destinationConfig 已由上方并行获取）
       if (destinationConfig && destinationConfig.enabled && detectedCountryCode) {
         // 使用特化澄清流程（此时 detectedCountryCode 已确认不为 undefined）
         return await this.handleDestinationSpecificClarification(
@@ -454,6 +477,21 @@ export class TripsController {
           promptText
         );
       }
+
+      // 6.4 🆕 短路径：创建意图 / 确认卡片 / 补充偏好（已抽取为 tryShortPaths）
+      const trimmedText = dto.text.trim();
+      const pp = existingContext?.partialParams || {};
+      const shortPathResult = await this.tryShortPaths({
+        dto,
+        userId: userId!,
+        sessionId,
+        existingContext,
+        trimmedText,
+        pp,
+        detectedCountryCode,
+        destinationConfig,
+      });
+      if (shortPathResult.handled) return shortPathResult.result;
 
       // 7. 使用 LLM 解析自然语言（传入历史上下文和 Context Package）
       const parseResult = await this.llmService.naturalLanguageToTripParams({
@@ -542,6 +580,11 @@ export class TripsController {
 
         // 添加助手回复到会话（使用文本回复，用于历史记录）
         const assistantReply = structuredResponse.plannerReply || parseResult.plannerReply || parseResult.clarificationQuestions?.join('\n') || '需要更多信息';
+        const mergedParamsForFallback = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+        const qCountFallback = structuredResponse.clarificationQuestions?.length ?? 0;
+        const destNameForFallback = detectedCountryCode
+          ? this.getDestinationName(detectedCountryCode, destinationConfig)
+          : (parseResult.params?.destination || existingContext?.partialParams?.destination || '未指定');
         const savedContext = await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
           needsClarification: true,
           suggestedQuestions: parseResult.suggestedQuestions,
@@ -552,6 +595,11 @@ export class TripsController {
           parsedParams: parseResult.params,
           showConfirmCard: false, // 需要澄清时不显示确认卡片
           questionAnswers: {}, // 初始为空，用户回答后更新
+          thinkingProcess: this.buildEvolvedThinkingContent(mergedParamsForFallback, destNameForFallback, qCountFallback, 'clarify'),
+          progressSteps: [
+            { id: 'parse', label: '已解析自然语言', status: 'completed' },
+            { id: 'clarify', label: '需要澄清', status: 'running' },
+          ],
         });
         
         // 🆕 获取最后一条消息的ID（用于前端更新答案）
@@ -562,56 +610,101 @@ export class TripsController {
           this.logger.debug(`Final clarification questions count: ${structuredResponse.clarificationQuestions.length} (after history filtering)`);
         }
         
+        // 🆕 合并 partialParams：保留 PUT 更新的值（如 confirm_inferred_info_total_budget），避免 POST 时被 parseResult 覆盖
+        const mergedParams = { ...(existingContext?.partialParams || {}) };
+        const pp = existingContext?.partialParams || {};
+        const alreadyConfirmed = pp.confirmInferred === 'confirm' || pp.confirmInferred === '确认无误';
+        for (const [k, v] of Object.entries(parseResult.params || {})) {
+          if (v !== null && v !== undefined) {
+            if (k === 'confirmInferred' && alreadyConfirmed) continue; // 保留已确认，防止阶段回跳
+            mergedParams[k] = v;
+          }
+        }
+        // 🆕 首次解析时保存用户原始输入，供行程编排（userInput/cities/mustHavePois）使用
+        if (!mergedParams.originalUserInput && dto.text?.trim()) {
+          mergedParams.originalUserInput = dto.text.trim();
+        }
+
         // 更新对话上下文
         await this.nlConversationContextService.updateContext(sessionId, userId, {
           conversationContext: parseResult.conversationContext,
-          partialParams: parseResult.params,
+          partialParams: mergedParams,
         });
         
         // 🆕 获取目的地中文名称（用于前端显示）
         let destinationName = detectedCountryCode || parseResult.params.destination;
         if (detectedCountryCode) {
-          if (destinationConfig && destinationConfig.destinationName) {
-            destinationName = destinationConfig.destinationName;
-          } else {
-            const countryNameMap: Record<string, string> = {
-              'GL': '格陵兰',
-              'IS': '冰岛',
-              'SJ': '斯瓦尔巴',
-              'AR': '阿根廷',
-              'JP': '日本',
-              'CN': '中国',
-              'US': '美国',
-              'TH': '泰国',
-            };
-            destinationName = countryNameMap[detectedCountryCode] || detectedCountryCode;
-          }
+          destinationName = this.getDestinationName(detectedCountryCode, destinationConfig);
+        }
+        // 若 LLM 返回的 destination 为城市/区域名（如杭州、杭州和千岛湖），优先用于可读展示
+        const destFromParams = (parseResult.params as Record<string, any>)?.destination;
+        if (destFromParams && typeof destFromParams === 'string' && /[\u4e00-\u9fa5]/.test(destFromParams)) {
+          destinationName = destFromParams.trim();
         }
         
+        // 🆕 合并 partialParams（提前以便过滤使用）
+        const mergedParamsForFilter = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+        const knownDestination = mergedParamsForFilter.destination || detectedCountryCode;
+
         // 🆕 修复：确保clarificationQuestions不为空
         let clarificationQuestions = structuredResponse.clarificationQuestions || [];
         if (clarificationQuestions.length === 0) {
-          // 如果没有澄清问题，生成默认问题
+          // 如果没有澄清问题，生成默认问题（传入 inferredFields 以便在基础信息完整时生成确认类问题）
           clarificationQuestions = this.generateDefaultClarificationQuestions(
             'general',
             detectedCountryCode,
-            parseResult.params
+            mergedParamsForFilter,
+            undefined,
+            (parseResult.params as Record<string, any>)?.inferredFields
           );
           this.logger.warn(`needsClarification=true但clarificationQuestions为空，已生成默认问题: ${clarificationQuestions.length}个`);
         }
-        
+
+        // 🆕 当地址已确认时，过滤掉目的地选择类问题（避免「明明是新西兰还要选去日本/泰国/欧洲」）
+        if (knownDestination && clarificationQuestions.length > 0) {
+          const beforeCount = clarificationQuestions.length;
+          clarificationQuestions = clarificationQuestions.filter((q: any) => !this.isDestinationSelectionQuestion(q));
+          if (clarificationQuestions.length < beforeCount) {
+            this.logger.debug(`已过滤 ${beforeCount - clarificationQuestions.length} 个目的地选择类问题（目的地已确认: ${knownDestination}）`);
+          }
+        }
+
+        // 🆕 通用流程阶段 1 门：有推断的硬约束字段且未确认时，必须先展示确认问题；同时保留 LLM 的其余澄清问题作为可选
+        const { hasUnconfirmedPhase1Inferred } = await import('./nl-clarification/config/planning-phases.config');
+        const mergedForPhaseCheck = { ...mergedParamsForFilter, ...mergedParams };
+        let forcedPhase1 = false;
+        if (hasUnconfirmedPhase1Inferred(mergedForPhaseCheck)) {
+          const phase1Questions = this.generateDefaultClarificationQuestions(
+            'general',
+            detectedCountryCode,
+            mergedForPhaseCheck,
+            undefined,
+            ((mergedForPhaseCheck as Record<string, any>).inferredFields || (parseResult.params as Record<string, any>)?.inferredFields) as string[] | undefined
+          );
+          const confirmQ = phase1Questions.find((q: any) => q.id === 'confirm_inferred_info');
+          if (confirmQ) {
+            // 阶段 1：confirm_inferred_info 置顶（required），其余 LLM 问题保留为 optional
+            const beforeCount = clarificationQuestions.length;
+            clarificationQuestions = [
+              { ...confirmQ, group: 'required' },
+              ...clarificationQuestions.map((q: any) => ({ ...q, group: q.group || 'optional' })),
+            ];
+            forcedPhase1 = true;
+            this.logger.debug(`[通用流程] 阶段 1 推断未确认，confirm_inferred_info 置顶，保留 ${beforeCount} 个 LLM 问题为可选（共 ${clarificationQuestions.length} 个）`);
+          }
+        }
+
         // 🆕 P0优化：标记必需问题（澄清问题）为 'required' 分组
         clarificationQuestions = clarificationQuestions.map((q: any) => ({
           ...q,
           group: q.group || 'required', // 默认为必需问题
         }));
         
-        // 🆕 在澄清过程中，如果已经有一些基础信息，也添加补充问题
-        // 检查是否已经有基础信息（目的地、日期、预算等）
-        const hasBasicInfo = parseResult.params.destination || parseResult.params.startDate || parseResult.params.totalBudget;
+        // 🆕 添加偏好细化入口：即使阶段 1 强制时也展示「是否需要补充偏好」，与文案「确认后还可进一步细化」一致
+        const hasBasicInfo = mergedParams.destination || mergedParams.startDate || mergedParams.totalBudget;
         if (hasBasicInfo) {
           // 添加补充问题，询问是否需要进一步补充信息
-          const supplementaryQuestions = this.generateSupplementaryQuestions(parseResult.params, detectedCountryCode);
+          const supplementaryQuestions = this.generateSupplementaryQuestions(mergedParams, detectedCountryCode);
           if (supplementaryQuestions.length > 0) {
             // 🆕 P0优化：标记补充问题为 'optional' 分组
             const optionalQuestions = supplementaryQuestions.map((q: any) => ({
@@ -619,11 +712,18 @@ export class TripsController {
               group: 'optional', // 标记为可选问题
             }));
             // 🆕 修复重复澄清：补充问题也需过滤历史已问过的、以及已答字段，避免每轮重复添加「是否需要补充偏好？」等
+            // 🆕 若 LLM 已返回「补充偏好」类问题，则不再追加 supplement_preferences（避免内容重复）
+            const hasSupplementPrefInExisting = clarificationQuestions.some(
+              (q: any) =>
+                (q.id && /supplement_preferences|supplementPreferences|preferences_supplement|q\d+_preferences/i.test(q.id)) ||
+                /补充.*偏好|是否需要补充.*偏好/.test((q.question || q.text || '').toString())
+            );
             const filteredOptional = optionalQuestions.filter((q: any) => {
               const questionText = (q.question || q.text || '').trim();
               if (!questionText) return false;
+              if (hasSupplementPrefInExisting && (q.id === 'supplement_preferences' || /补充.*偏好/.test(questionText))) return false;
               if (historicalQuestions.length > 0 && this.isQuestionDuplicateOfHistory(questionText, historicalQuestions)) return false;
-              if (this.isQuestionAboutAlreadyAnsweredField(questionText, parseResult.params || {})) return false;
+              if (this.isQuestionAboutAlreadyAnsweredField(questionText, mergedParams)) return false;
               return true;
             });
             if (filteredOptional.length > 0) {
@@ -633,27 +733,223 @@ export class TripsController {
           }
         }
         
+        // 🆕 移除引用已过滤问题的 question_card，避免前端显示空卡片
+        const validQuestionIds = new Set(clarificationQuestions.map((q: any) => q.id));
+        let blocksToReturn = (structuredResponse.plannerResponseBlocks || []).filter((b: any) => {
+          if (b.type === 'question_card' && b.questionId && !validQuestionIds.has(b.questionId)) {
+            this.logger.debug(`移除孤立的 question_card: questionId=${b.questionId}`);
+            return false;
+          }
+          return true;
+        });
+        const hasConfirmInferred = clarificationQuestions.some((q: any) => q.id === 'confirm_inferred_info');
+        const params = mergedParams as Record<string, any>;
+        const hasSummaryData = params?.destination || params?.startDate || params?.totalBudget;
+        // 🆕 有已解析的基础信息时始终注入 summary_card，确保用户能看到目的地/日期/预算等（即使 LLM 未返回 confirm_inferred_info）
+        if (hasSummaryData) {
+          const hasExistingSummary = blocksToReturn.some((b: any) => b.type === 'summary_card');
+          if (!hasExistingSummary) {
+            let sd = params.startDate;
+            let ed = params.endDate;
+            if (sd?.includes('T')) sd = sd.split('T')[0];
+            if (ed?.includes('T')) ed = ed.split('T')[0];
+            const durationStr = sd && ed ? `${sd} 至 ${ed}` : (params.days ? `${params.days}天` : '未指定');
+            const travelersArray = params.travelers;
+            let travelersInfo = '未指定';
+            if (Array.isArray(travelersArray) && travelersArray.length > 0) {
+              travelersInfo = `${travelersArray.length}人`;
+            } else if (params.hasChildren || params.hasElderly) {
+              const parts: string[] = [];
+              if (params.hasChildren) parts.push('儿童');
+              if (params.hasElderly) parts.push('老人');
+              travelersInfo = parts.length ? parts.join('、') : '2人';
+            } else if (params.travelerCount) {
+              travelersInfo = `${params.travelerCount}人`;
+            }
+            const summaryBlock = {
+              type: 'summary_card',
+              summary: {
+                destination: destinationName || params.destination || '未指定',
+                duration: durationStr,
+                startDate: sd || undefined,
+                endDate: ed || undefined,
+                travelers: travelersInfo,
+                budget: params.totalBudget != null
+                  ? { amount: params.totalBudget, currency: params.currency || 'CNY' }
+                  : undefined,
+                // 🆕 将 LLM 解析的 cities/dayAllocation/mustHavePois 一并返回前端展示
+                ...(params.cities?.length ? { cities: params.cities } : {}),
+                ...(params.dayAllocation?.length
+                  ? {
+                      dayAllocation: params.dayAllocation,
+                      dayAllocationDisplay: this.formatDayAllocationDisplay(params.dayAllocation),
+                    }
+                  : {}),
+                ...(params.mustHavePois?.length ? { mustHavePois: params.mustHavePois } : {}),
+              },
+            };
+            const highlightText = hasConfirmInferred
+              ? '📋 第一阶段：请确认以下基础信息'
+              : '📋 行程基础信息';
+            // 🆕 避免重复：若紧随 summary_card 后有 paragraph/list 重复解释 目的地、出行时间、预算，则移除
+            const restBlocks = blocksToReturn;
+            const isRedundantPlanningBasis = (b: any): boolean => {
+              if (b?.type !== 'paragraph' && b?.type !== 'list') return false;
+              const content = (b.content || (b.items || []).join('')).toString();
+              const hasDest = /目的地|规划基础/.test(content);
+              const hasTimeOrBudget = /出行时间|预算|出发日期|返程/.test(content);
+              return hasDest && hasTimeOrBudget;
+            };
+            const trimmedRest = restBlocks.length > 0 && isRedundantPlanningBasis(restBlocks[0])
+              ? restBlocks.slice(1)
+              : restBlocks;
+            blocksToReturn = [
+              { type: 'highlight', highlightType: 'info', highlightText },
+              summaryBlock,
+              ...trimmedRest,
+            ];
+            if (trimmedRest.length < restBlocks.length) {
+              this.logger.debug('已移除与 summary_card 重复的规划基础段落');
+            }
+            this.logger.debug(`已注入 summary_card${hasConfirmInferred ? ' + 阶段 1 确认' : ''}`);
+          }
+        }
+        
+        // 🆕 持久化完整 metadata（clarificationQuestions、plannerResponseBlocks），供 GET 恢复会话时使用
+        const { buildPhaseIndicator } = await import('./nl-clarification/config/planning-phases.config');
+        const genericPhase = hasConfirmInferred ? 1 : 2; // 有 confirm_inferred 则阶段 1，否则阶段 2
+        await this.nlConversationContextService.updateMessageMetadata(
+          sessionId,
+          userId,
+          lastMessage.id,
+          {
+            clarificationQuestions,
+            plannerResponseBlocks: blocksToReturn,
+            phaseIndicator: buildPhaseIndicator(genericPhase),
+          }
+        );
+        
         this.logger.debug(`Returning planner-style clarification: ${structuredResponse.plannerReply?.substring(0, 100) || parseResult.plannerReply?.substring(0, 100)}...`);
+        const inferredDest = parseResult.params?.destination || mergedParams.destination;
+        const genericProgressSteps =
+          genericPhase === 1
+            ? [
+                { id: 'phase1', label: '第一阶段：硬约束确认', status: 'running' as const, detail: `${clarificationQuestions.length} 个问题待确认` },
+                { id: 'phase2', label: '第二阶段：风格选择', status: 'pending' as const },
+                { id: 'phase3', label: '第三阶段：节奏校准', status: 'pending' as const },
+                { id: 'phase4', label: '第四阶段：风险偏好', status: 'pending' as const },
+              ]
+            : [
+                { id: 'phase1', label: '第一阶段：硬约束确认', status: 'completed' as const },
+                { id: 'phase2', label: '第二阶段：风格选择', status: 'running' as const, detail: `${clarificationQuestions.length} 个问题待确认` },
+                { id: 'phase3', label: '第三阶段：节奏校准', status: 'pending' as const },
+                { id: 'phase4', label: '第四阶段：风险偏好', status: 'pending' as const },
+              ];
         return successResponse({
           sessionId, // 返回会话 ID，前端需要保存
           needsClarification: true,
-          // 🆕 结构化响应
-          plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
+          // 🆕 结构化响应（含 confirm_inferred_info 时的 summary_card）
+          plannerResponseBlocks: blocksToReturn,
           clarificationQuestions,
           // 向后兼容
           plannerReply: structuredResponse.plannerReply || parseResult.plannerReply,
           suggestedQuestions: parseResult.suggestedQuestions,
           conversationContext: parseResult.conversationContext,
-          partialParams: parseResult.params,
+          partialParams: this.normalizePartialParams(mergedParams),
           destination: detectedCountryCode || parseResult.params.destination, // 🆕 添加国家代码
           destinationName, // 🆕 添加中文目的地名称
           lastMessageId: lastMessage.id, // 🆕 添加最后一条消息的ID（用于前端更新答案）
+          thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destinationName, clarificationQuestions.length, 'clarify'),
+          progressSteps: genericProgressSteps,
+          phaseIndicator: buildPhaseIndicator(genericPhase),
         });
       }
 
       // 🆕 严格控制：即使所有必需字段都有了，也要先显示确认卡片，询问用户是否需要补充信息
       // 只有在用户明确确认后才创建行程
       this.logger.debug(`所有必需字段已齐全，但需要用户确认后才能创建行程`);
+
+      // 🆕 构建确认卡片前，先检查 Critical 字段（如货币 currency），缺失时优先澄清
+      const mergedParamsForConfirm = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) } as Record<string, any>;
+      const destCodeForConfirm = this.extractCountryCode(mergedParamsForConfirm.destination) || detectedCountryCode;
+      if (destCodeForConfirm && this.destinationClarificationConfigService) {
+        const criticalFieldsForConfirm = await this.destinationClarificationConfigService.getCriticalFields(destCodeForConfirm);
+        if (criticalFieldsForConfirm.length > 0) {
+          const missingForConfirm = criticalFieldsForConfirm.filter(
+            (field) =>
+              !mergedParamsForConfirm[field.fieldName] ||
+              mergedParamsForConfirm[field.fieldName] === null ||
+              mergedParamsForConfirm[field.fieldName] === undefined ||
+              String(mergedParamsForConfirm[field.fieldName] ?? '').trim() === ''
+          );
+          if (missingForConfirm.length > 0) {
+            const missingNames = missingForConfirm.map((f) => f.fieldName);
+            const criticalQuestions = await this.destinationClarificationConfigService.getQuestionsForFields(
+              destCodeForConfirm,
+              missingNames
+            );
+            const totalC = criticalFieldsForConfirm.length;
+            const completedC = totalC - missingForConfirm.length;
+            const destNameForBlock = this.getDestinationName(destCodeForConfirm, destinationConfig);
+            this.logger.debug(`[主流程] Critical 字段未齐（缺: ${missingNames.join(',')}），先澄清再确认`);
+            // 🆕 必须添加助手消息，否则 confirm-create 会读取上一轮 showConfirmCard 而误放行
+            const criticalReply = `请先确认以下信息：${missingForConfirm.map((f) => f.question).join('、')}`;
+            const criticalClarificationObjs = criticalQuestions.map((q) => ({
+              id: q.id,
+              question: q.question,
+              type: q.type,
+              options:
+                q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)
+                  ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+                  : q.options,
+              required: q.required,
+              hint: q.hint,
+              placeholder: q.placeholder,
+              metadata: q.metadata,
+            }));
+            await this.nlConversationContextService.addMessage(sessionId, userId!, 'assistant', criticalReply, {
+              needsClarification: true,
+              blockedByCriticalFields: true,
+              showConfirmCard: false,
+              clarificationQuestions: criticalClarificationObjs,
+              plannerResponseBlocks: [
+                { type: 'highlight', highlightType: 'warning', highlightText: `请先确认以下信息：${missingForConfirm.map((f) => f.question).join('、')}` },
+                { type: 'paragraph', content: `已完成 ${completedC}/${totalC} 项` },
+              ],
+            });
+            return successResponse({
+              sessionId,
+              needsClarification: true,
+              blockedByCriticalFields: true,
+              destination: destCodeForConfirm,
+              destinationName: destNameForBlock,
+              criticalFieldsProgress: { completed: completedC, total: totalC, percent: Math.round((completedC / totalC) * 100) },
+              plannerResponseBlocks: [
+                {
+                  type: 'highlight',
+                  highlightType: 'warning',
+                  highlightText: `请先确认以下信息：${missingForConfirm.map((f) => f.question).join('、')}`,
+                },
+                { type: 'paragraph', content: `已完成 ${completedC}/${totalC} 项` },
+              ],
+              clarificationQuestions: criticalQuestions.map((q) => ({
+                id: q.id,
+                question: q.question,
+                type: q.type,
+                options:
+                  q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)
+                    ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+                    : q.options,
+                required: q.required,
+                hint: q.hint,
+                placeholder: q.placeholder,
+                metadata: q.metadata,
+              })),
+              partialParams: this.normalizePartialParams(mergedParamsForConfirm),
+            });
+          }
+        }
+      }
       
       // 确保日期格式正确（用于显示）
       let startDate = parseResult.params.startDate;
@@ -670,21 +966,7 @@ export class TripsController {
       // 🆕 获取目的地中文名称
       let destinationName = detectedCountryCode || parseResult.params.destination;
       if (detectedCountryCode) {
-        if (destinationConfig && destinationConfig.destinationName) {
-          destinationName = destinationConfig.destinationName;
-        } else {
-          const countryNameMap: Record<string, string> = {
-            'GL': '格陵兰',
-            'IS': '冰岛',
-            'SJ': '斯瓦尔巴',
-            'AR': '阿根廷',
-            'JP': '日本',
-            'CN': '中国',
-            'US': '美国',
-            'TH': '泰国',
-          };
-          destinationName = countryNameMap[detectedCountryCode] || detectedCountryCode;
-        }
+        destinationName = this.getDestinationName(detectedCountryCode, destinationConfig);
       }
 
       // 🆕 构建确认卡片内容
@@ -742,6 +1024,10 @@ export class TripsController {
               amount: parseResult.params.totalBudget || 0,
               currency: parseResult.params.currency || 'CNY',
             },
+            ...(paramsAny.cities?.length ? { cities: paramsAny.cities } : {}),
+            ...(paramsAny.dayAllocation?.length ? { dayAllocation: paramsAny.dayAllocation } : {}),
+            ...(paramsAny.dayAllocation?.length ? { dayAllocationDisplay: this.formatDayAllocationDisplay(paramsAny.dayAllocation) } : {}),
+            ...(paramsAny.mustHavePois?.length ? { mustHavePois: paramsAny.mustHavePois } : {}),
           },
         },
       ];
@@ -774,8 +1060,9 @@ export class TripsController {
         return true;
       });
 
-      // 添加助手回复到会话
+      // 添加助手回复到会话（含 thinkingProcess/progressSteps 以便会话恢复时正确展示）
       const assistantReply = `我已经收集到创建行程所需的基本信息。请确认以下信息是否正确，或者告诉我是否需要补充其他信息。`;
+      const mergedParamsForConfirmCard = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
       const savedContext = await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
         needsClarification: false, // 不需要澄清，但需要确认
         needsConfirmation: true, // 🆕 标记需要用户确认
@@ -784,6 +1071,11 @@ export class TripsController {
         parsedParams: parseResult.params,
         showConfirmCard: true, // 🆕 显示确认卡片
         questionAnswers: {},
+        thinkingProcess: this.buildEvolvedThinkingContent(mergedParamsForConfirmCard, destinationName, 0, 'confirm'),
+        progressSteps: [
+          { id: 'collect', label: '已收集必需信息', status: 'completed' },
+          { id: 'confirm', label: '等待用户确认', detail: '请确认以上信息无误后创建行程', status: 'running' },
+        ],
       });
 
       // 🆕 获取最后一条消息的ID
@@ -798,11 +1090,16 @@ export class TripsController {
         clarificationQuestions: supplementaryQuestions, // 可选补充问题
         plannerReply: assistantReply,
         conversationContext: parseResult.conversationContext,
-        partialParams: parseResult.params,
+        partialParams: this.normalizePartialParams(parseResult.params || {}),
         destination: detectedCountryCode || parseResult.params.destination,
         destinationName,
         lastMessageId: lastMessage.id,
         showConfirmCard: true, // 🆕 前端应显示确认卡片
+        thinkingProcess: this.buildEvolvedThinkingContent(mergedParamsForConfirmCard, destinationName, 0, 'confirm'),
+        progressSteps: [
+          { id: 'collect', label: '已收集必需信息', status: 'completed' },
+          { id: 'confirm', label: '等待用户确认', detail: '请确认以上信息无误后创建行程', status: 'running' },
+        ],
       });
     } catch (error: any) {
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
@@ -868,11 +1165,17 @@ export class TripsController {
   async confirmCreateTrip(
     @Param('sessionId') sessionId: string,
     @Body() body: { confirm: boolean; additionalParams?: Record<string, any> },
-    @CurrentUser() user?: CurrentUserPayload
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request
   ) {
     try {
-      // 🆕 如果没有 userId，使用 sessionId 作为临时 userId
-      const userId = user?.userId || `temp_${sessionId}`;
+      // 优先: JWT user > X-Test-User-Id（测试脚本）> temp_${sessionId}
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        userId = testUserId || `temp_${sessionId}`;
+        if (testUserId) this.logger.warn(`[测试模式] confirm-create 使用 X-Test-User-Id: ${testUserId}`);
+      }
       
       if (!body.confirm) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, '用户未确认创建行程');
@@ -884,19 +1187,37 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, '会话不存在或已过期');
       }
 
-      // 2. 获取已收集的参数
-      const params = {
+      // 1.5 🆕 状态校验：仅在「等待确认」阶段允许 confirm-create，避免澄清中途误创建
+      // 规则：仅当 lastAssistant.metadata.showConfirmCard === true 时允许；否则拒绝
+      const lastAssistant = context.messages?.filter((m) => m.role === 'assistant').pop();
+      const inConfirmPhase = lastAssistant?.metadata?.showConfirmCard === true;
+      if (!inConfirmPhase) {
+        const reason =
+          lastAssistant?.metadata?.showConfirmCard === false
+            ? 'lastMsg.showConfirmCard=false'
+            : lastAssistant?.metadata?.showConfirmCard === undefined
+              ? 'lastMsg.showConfirmCard=undefined (未进入确认阶段)'
+              : 'no assistant message';
+        this.logger.warn(`[confirm-create] 拒绝：${reason}`);
+        return errorResponse(
+          ErrorCode.VALIDATION_ERROR,
+          '当前处于信息填写阶段，请先完成澄清问题后再确认创建。'
+        );
+      }
+
+      // 2. 获取已收集的参数（归一化展示结构，使 preferences 与用户输入一致）
+      const params = this.normalizePartialParams({
         ...(context.partialParams || {}),
         ...(body.additionalParams || {}),
-      };
+      });
 
       // 3. 验证必需字段
       if (!params.destination || !params.startDate || !params.endDate || !params.totalBudget) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, '缺少必需字段：destination、startDate、endDate、totalBudget');
       }
 
-      // 4. 检测目的地代码
-      const detectedCountryCode = params.destination?.toUpperCase() || null;
+      // 4. 检测目的地代码（使用 extractCountryCode 支持中文/城市名）
+      const detectedCountryCode = this.extractCountryCode(params.destination) || params.destination?.toUpperCase().trim() || null;
       
       // 5. 调用 createTripFromParams 创建行程
       const result = await this.createTripFromParams(
@@ -1037,6 +1358,54 @@ export class TripsController {
       // 1. 获取当前参数（从历史对话中累积）
       const currentParams = existingContext?.partialParams || {};
       
+      // 1.5 短路径：用户点击「补充偏好信息」时直接返回偏好追问
+      const suppPattern = /^(补充偏好|补充偏好信息|我想补充|补充其他偏好|yes)$/i;
+      const suppLoose = /^补充偏好信息\s*[（(]?如?.+[）)]?\s*$/i;
+      const suppContains = /[：:;]\s*补充偏好信息\s*[（(]?[^）)]*[）)]?\s*$/i;
+      const suppVal = currentParams.supplementPreferences;
+      const txt = dto.text.trim();
+      const isSupp = suppPattern.test(txt) || suppLoose.test(txt) || suppContains.test(txt) || (txt.includes('补充偏好信息') && txt.length <= 150) || ((suppVal === 'yes' || suppVal?.includes?.('补充偏好信息')) && txt.length <= 80);
+      if (isSupp && (currentParams.destination || currentParams.startDate)) {
+        const merged = { ...currentParams, supplementPreferences: 'yes' };
+        const prefQs = this.generatePreferenceSupplementQuestions(merged, destinationCode);
+        if (prefQs.length > 0) {
+          const reply = '好的，请告诉我您在住宿、餐饮和旅行节奏方面的偏好，这样我能更好地为您规划行程。';
+          const destNamePref = this.getDestinationName(destinationCode, config);
+          await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', reply, {
+            needsClarification: true,
+            plannerResponseBlocks: [{ type: 'paragraph', content: reply }, { type: 'highlight', highlightType: 'info', highlightText: '请选择或填写以下信息，也可直接文字描述您的偏好' }],
+            clarificationQuestions: prefQs,
+            parsedParams: merged,
+            showConfirmCard: false,
+            questionAnswers: {},
+            thinkingProcess: this.buildEvolvedThinkingContent(merged, destNamePref, prefQs.length, 'supplement_preference'),
+            progressSteps: [
+              { id: 'parse', label: '已解析用户意图', detail: '补充偏好', status: 'completed' },
+              { id: 'clarify', label: '正在询问偏好', detail: `${prefQs.length} 个偏好问题`, status: 'running' },
+            ],
+          });
+          await this.nlConversationContextService.updateContext(sessionId, userId, { partialParams: merged });
+          const ctx = await this.nlConversationContextService.getContext(sessionId, userId);
+          const lastMsg = ctx?.messages?.filter((m: any) => m.role === 'assistant').pop();
+          return successResponse({
+            sessionId,
+            needsClarification: true,
+            plannerResponseBlocks: [{ type: 'paragraph', content: reply }, { type: 'highlight', highlightType: 'info', highlightText: '请选择或填写以下信息，也可直接文字描述您的偏好' }],
+            clarificationQuestions: prefQs,
+            plannerReply: reply,
+            partialParams: merged,
+            destination: destinationCode,
+            destinationName: destNamePref,
+            lastMessageId: lastMsg?.id,
+            thinkingProcess: this.buildEvolvedThinkingContent(merged, destNamePref, prefQs.length, 'supplement_preference'),
+            progressSteps: [
+              { id: 'parse', label: '已解析用户意图', detail: '补充偏好', status: 'completed' },
+              { id: 'clarify', label: '正在询问偏好', detail: `${prefQs.length} 个偏好问题`, status: 'running' },
+            ],
+          });
+        }
+      }
+
       // 2. 使用 LLM 提取参数（带特化规则）
       const parseResult = await this.llmService.naturalLanguageToTripParams({
         text: promptText,
@@ -1046,11 +1415,20 @@ export class TripsController {
         destinationConfig: config,
       });
       
-      // 3. 合并参数
-      const mergedParams = {
-        ...currentParams,
-        ...parseResult.params,
-      };
+      // 3. 合并参数（🆕 仅用 parseResult 中非空值覆盖，保留 PUT 更新的 totalBudget 等）
+      const mergedParams: Record<string, any> = { ...currentParams };
+      const alreadyConfirmed =
+        currentParams.confirmInferred === 'confirm' || currentParams.confirmInferred === '确认无误';
+      for (const [k, v] of Object.entries(parseResult.params || {})) {
+        if (v !== null && v !== undefined) {
+          // 🆕 保护：用户已确认的 confirmInferred 不能被覆盖，防止从阶段 2 跳回阶段 1
+          if (k === 'confirmInferred' && alreadyConfirmed) {
+            this.logger.debug(`[分层] 保留已确认的 confirmInferred，跳过覆盖`);
+            continue;
+          }
+          mergedParams[k] = v;
+        }
+      }
       
       // 🆕 确保 inferredFields 被正确保留和累积
       // 这对于 Gate 预检查跳过推断字段的逻辑非常重要
@@ -1118,7 +1496,101 @@ export class TripsController {
       
       // 🆕 添加调试日志
       this.logger.debug(`合并后的参数: ${JSON.stringify(mergedParams, null, 2)}`);
-      
+
+      // 🆕 阶段 1 推断确认门：有推断的硬约束字段且未确认时，必须先确认再进入后续轮次
+      const { hasUnconfirmedPhase1Inferred, buildPhaseIndicator, ROUND_TO_PHASE } = await import(
+        './nl-clarification/config/planning-phases.config'
+      );
+      if (hasUnconfirmedPhase1Inferred(mergedParams)) {
+        this.logger.debug(`[分层] 阶段 1 推断未确认，强制返回确认问题`);
+        const phase1Questions = this.generateDefaultClarificationQuestions(
+          'general',
+          destinationCode,
+          mergedParams,
+          undefined,
+          mergedParams.inferredFields
+        );
+        const hasConfirmQ = phase1Questions.some((q: any) => q.id === 'confirm_inferred_info');
+        if (hasConfirmQ) {
+          // 注入 summary_card + 阶段指示；同时添加偏好细化入口，与文案「确认后还可进一步细化」一致
+          const params = mergedParams as Record<string, any>;
+          const suppQs = this.generateSupplementaryQuestions(mergedParams, destinationCode);
+          const questionsForPhase1 = [
+            ...phase1Questions.filter((q: any) => q.id === 'confirm_inferred_info'),
+            ...suppQs.map((q: any) => ({ ...q, group: q.group || 'optional' })),
+          ];
+          let sd = params.startDate,
+            ed = params.endDate;
+          if (sd?.includes('T')) sd = sd.split('T')[0];
+          if (ed?.includes('T')) ed = ed.split('T')[0];
+          const destName = config?.destinationName || destinationCode;
+          const blocksForPhase1: any[] = [
+            { type: 'highlight', highlightType: 'info', highlightText: '📋 第一阶段：请确认以下基础信息' },
+            {
+              type: 'summary_card',
+              summary: {
+                destination: destName,
+                duration: sd && ed ? `${sd} 至 ${ed}` : '未指定',
+                startDate: sd || undefined,
+                endDate: ed || undefined,
+                travelers: params.travelGroup || params.travelerCount ? `${params.travelerCount || params.travelGroup}人` : '未指定',
+                budget: params.totalBudget != null ? { amount: params.totalBudget, currency: params.currency || 'CNY' } : undefined,
+                ...(params.cities?.length ? { cities: params.cities } : {}),
+                ...(params.dayAllocation?.length ? { dayAllocation: params.dayAllocation } : {}),
+                ...(params.dayAllocation?.length ? { dayAllocationDisplay: this.formatDayAllocationDisplay(params.dayAllocation) } : {}),
+                ...(params.mustHavePois?.length ? { mustHavePois: params.mustHavePois } : {}),
+              },
+            },
+            { type: 'paragraph', content: '以下信息由系统根据您的描述推断，请确认是否正确。' },
+          ];
+          questionsForPhase1.forEach((q: any) => {
+            blocksForPhase1.push({ type: 'question_card', questionId: q.id });
+          });
+          const savedCtx = await this.nlConversationContextService.addMessage(
+            sessionId,
+            userId,
+            'assistant',
+            (parseResult as any).plannerReply || '请确认以上信息是否正确。',
+            {
+              needsClarification: true,
+              plannerResponseBlocks: blocksForPhase1,
+              clarificationQuestions: questionsForPhase1,
+              parsedParams: mergedParams,
+              showConfirmCard: false,
+              questionAnswers: {},
+              thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, config?.destinationName || destinationCode, questionsForPhase1.length, 'clarify'),
+              progressSteps: [
+                { id: 'phase1', label: '第一阶段：硬约束确认', status: 'running' },
+                { id: 'phase2', label: '第二阶段：风格选择', status: 'pending' },
+                { id: 'phase3', label: '第三阶段：节奏校准', status: 'pending' },
+                { id: 'phase4', label: '第四阶段：风险偏好', status: 'pending' },
+              ],
+              phaseIndicator: buildPhaseIndicator(1),
+            }
+          );
+          const lastMsg = savedCtx?.messages?.filter((m: any) => m.role === 'assistant').pop();
+          return successResponse({
+            sessionId,
+            needsClarification: true,
+            plannerResponseBlocks: blocksForPhase1,
+            clarificationQuestions: questionsForPhase1,
+            plannerReply: (parseResult as any).plannerReply,
+            partialParams: this.normalizePartialParams(mergedParams),
+            destination: destinationCode,
+            destinationName: config?.destinationName || destinationCode,
+            lastMessageId: lastMsg?.id,
+            thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, config?.destinationName || destinationCode, questionsForPhase1.length, 'clarify'),
+            progressSteps: [
+              { id: 'phase1', label: '第一阶段：硬约束确认', status: 'running' },
+              { id: 'phase2', label: '第二阶段：风格选择', status: 'pending' },
+              { id: 'phase3', label: '第三阶段：节奏校准', status: 'pending' },
+              { id: 'phase4', label: '第四阶段：风险偏好', status: 'pending' },
+            ],
+            phaseIndicator: buildPhaseIndicator(1),
+          });
+        }
+      }
+
       // 4. 获取当前轮次的问题
       if (!this.destinationClarificationConfigService) {
         // 降级到通用流程
@@ -1247,18 +1719,7 @@ export class TripsController {
           );
           
           // 🆕 获取目的地中文名称
-          let destinationName = destinationCode;
-          if (config && config.destinationName) {
-            destinationName = config.destinationName;
-          } else {
-            const countryNameMap: Record<string, string> = {
-              'GL': '格陵兰',
-              'IS': '冰岛',
-              'SJ': '斯瓦尔巴',
-              'AR': '阿根廷',
-            };
-            destinationName = countryNameMap[destinationCode] || destinationCode;
-          }
+          const destinationName = this.getDestinationName(destinationCode, config);
           
           // 🆕 修复：确保clarificationQuestions不为空
           let clarificationQuestions = gateResult.additionalQuestions || [];
@@ -1377,7 +1838,9 @@ export class TripsController {
         safetyCheckResult
       );
       
-      // 8. 保存到会话
+      // 8. 保存到会话（含 thinkingProcess/progressSteps 以便会话恢复时正确展示）
+      const destNameForThinking = config?.destinationName || destinationCode;
+      const qCountForThinking = structuredResponse.clarificationQuestions?.length || 0;
       const savedContext = await this.nlConversationContextService.addMessage(
         sessionId,
         userId,
@@ -1387,12 +1850,14 @@ export class TripsController {
           needsClarification: true,
           plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
           clarificationQuestions: structuredResponse.clarificationQuestions,
-          // 🆕 添加解析出的参数和确认卡片标记
           parsedParams: mergedParams,
-          showConfirmCard: false, // 需要澄清时不显示确认卡片
-          questionAnswers: {}, // 初始为空，用户回答后更新
-          personaInfo: structuredResponse.personaInfo, // 🆕 添加画像信息到metadata
-          recommendedRoutes: structuredResponse.recommendedRoutes, // 🆕 添加推荐路线到metadata
+          showConfirmCard: false,
+          questionAnswers: {},
+          personaInfo: structuredResponse.personaInfo,
+          recommendedRoutes: structuredResponse.recommendedRoutes,
+          thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destNameForThinking, qCountForThinking, 'clarify'),
+          progressSteps: this.buildPhaseProgressSteps(roundInfo.round.roundId, ROUND_TO_PHASE, destNameForThinking, qCountForThinking),
+          phaseIndicator: buildPhaseIndicator(ROUND_TO_PHASE[roundInfo.round.roundId] ?? 2),
         }
       );
       
@@ -1406,35 +1871,59 @@ export class TripsController {
       });
       
       // 🆕 获取目的地中文名称（用于前端显示）
-      let destinationName = destinationCode;
-      if (config && config.destinationName) {
-        destinationName = config.destinationName;
-      } else {
-        // 如果没有配置，使用默认映射
-        const countryNameMap: Record<string, string> = {
-          'GL': '格陵兰',
-          'IS': '冰岛',
-          'SJ': '斯瓦尔巴',
-          'AR': '阿根廷',
-          'JP': '日本',
-          'CN': '中国',
-          'US': '美国',
-          'TH': '泰国',
-        };
-        destinationName = countryNameMap[destinationCode] || destinationCode;
-      }
+      const destinationName = this.getDestinationName(destinationCode, config);
       
       // 🆕 修复：确保clarificationQuestions不为空
       let clarificationQuestions = structuredResponse.clarificationQuestions || [];
       if (clarificationQuestions.length === 0) {
-        // 如果没有澄清问题，生成默认问题
-        clarificationQuestions = this.generateDefaultClarificationQuestions(
-          'general',
-          destinationCode,
-          mergedParams
+        // 优先：从当前轮次的完成条件中获取缺失字段，用 getQuestionsForFields 生成问题
+        const completionFields = roundInfo.round.completionConditions?.requiredFields || [];
+        const missingRequiredFields = completionFields.filter(
+          (f: string) =>
+            mergedParams[f] === undefined ||
+            mergedParams[f] === null ||
+            mergedParams[f] === ''
         );
-        this.logger.warn(`needsClarification=true但clarificationQuestions为空，已生成默认问题: ${clarificationQuestions.length}个`);
+        if (
+          missingRequiredFields.length > 0 &&
+          this.destinationClarificationConfigService
+        ) {
+          const questionsForFields =
+            await this.destinationClarificationConfigService.getQuestionsForFields(
+              destinationCode,
+              missingRequiredFields
+            );
+          if (questionsForFields.length > 0) {
+            clarificationQuestions = questionsForFields.map((q: any) => ({
+              ...q,
+              group: q.group || 'required',
+            }));
+            this.logger.debug(
+              `从缺失字段生成澄清问题: ${missingRequiredFields.join(', ')}, 共 ${clarificationQuestions.length} 个`
+            );
+          }
+        }
+        // 兜底：通用默认问题
+        if (clarificationQuestions.length === 0) {
+          clarificationQuestions = this.generateDefaultClarificationQuestions(
+            'general',
+            destinationCode,
+            mergedParams,
+            missingRequiredFields
+          );
+          this.logger.warn(
+            `needsClarification=true但clarificationQuestions为空，已生成默认问题: ${clarificationQuestions.length}个`
+          );
+        }
       }
+      
+      // 🆕 持久化完整 metadata，供 GET 恢复会话时使用（澄清问题可能被 fallback 替换）
+      await this.nlConversationContextService.updateMessageMetadata(
+        sessionId,
+        userId,
+        lastMessage.id,
+        { clarificationQuestions, plannerResponseBlocks: structuredResponse.plannerResponseBlocks }
+      );
       
       const response = {
         sessionId,
@@ -1442,12 +1931,15 @@ export class TripsController {
         plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
         clarificationQuestions,
         plannerReply: structuredResponse.plannerReply,
-        partialParams: mergedParams,
-        destination: destinationCode, // 保留国家代码
-        destinationName, // 🆕 添加中文目的地名称
-        personaInfo: structuredResponse.personaInfo, // 🆕 添加画像信息
-        recommendedRoutes: structuredResponse.recommendedRoutes, // 🆕 添加推荐路线
-        lastMessageId: lastMessage.id, // 🆕 添加最后一条消息的ID（用于前端更新答案）
+        partialParams: this.normalizePartialParams(mergedParams),
+        destination: destinationCode,
+        destinationName,
+        personaInfo: structuredResponse.personaInfo,
+        recommendedRoutes: structuredResponse.recommendedRoutes,
+        lastMessageId: lastMessage.id,
+        thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destinationName, clarificationQuestions.length, 'clarify'),
+        progressSteps: this.buildPhaseProgressSteps(roundInfo.round.roundId, ROUND_TO_PHASE, destinationName, clarificationQuestions.length),
+        phaseIndicator: buildPhaseIndicator(ROUND_TO_PHASE[roundInfo.round.roundId] ?? 2),
       };
       
       this.logger.debug(`特化澄清流程返回响应: ${JSON.stringify(response, null, 2)}`);
@@ -1496,21 +1988,10 @@ export class TripsController {
           );
           
           // 🆕 获取目的地中文名称
-          let destinationName = destinationCode;
-          if (destinationCode && this.destinationClarificationConfigService) {
-            const destConfig = await this.destinationClarificationConfigService.getConfig(destinationCode);
-            if (destConfig && destConfig.destinationName) {
-              destinationName = destConfig.destinationName;
-            } else {
-              const countryNameMap: Record<string, string> = {
-                'GL': '格陵兰',
-                'IS': '冰岛',
-                'SJ': '斯瓦尔巴',
-                'AR': '阿根廷',
-              };
-              destinationName = countryNameMap[destinationCode] || destinationCode;
-            }
-          }
+          const destinationName = this.getDestinationName(
+            destinationCode,
+            destinationCode ? await this.destinationClarificationConfigService?.getConfig(destinationCode) : null
+          );
           
           return successResponse({
             sessionId,
@@ -1579,16 +2060,44 @@ export class TripsController {
     }
 
     const currency = params.currency || 'CNY';
-    const createTripDto: CreateTripDto = {
-      destination: params.destination,
+
+    // 🆕 映射规划师框架：节奏 2-3/3-5/5+ -> TripPace
+    const paceMap: Record<string, string> = {
+      '2-3': 'relaxed',
+      relaxed: 'relaxed',
+      '3-5': 'standard',
+      moderate: 'standard',
+      '5+': 'tight',
+      intensive: 'tight',
+    };
+    const tripPace = paceMap[params.pace || params.preferences?.pace || params.preferencePace || ''] || 'standard';
+
+    // 🆕 构建 preferences 标签（旅行风格、兴趣等，供下游优化使用）
+    const prefTags: string[] = [];
+    if (params.travelStyle) prefTags.push(params.travelStyle);
+    if (params.preferences?.style) prefTags.push(params.preferences.style);
+    if (params.preferences?.interests && Array.isArray(params.preferences.interests)) {
+      prefTags.push(...params.preferences.interests);
+    } else if (params.preferences?.interests && typeof params.preferences.interests === 'string') {
+      prefTags.push(params.preferences.interests);
+    }
+    if (params.riskTolerance) prefTags.push(`risk_${params.riskTolerance}`);
+
+    // 🆕 P0修复：优先使用 destinationCode（ISO），避免 params.destination 为「东京」「杭州」等导致创建失败
+    const isoDestination = destinationCode || this.extractCountryCode(params.destination) || params.destination;
+    const createTripDto = {
+      destination: isoDestination,
       startDate,
       endDate,
       totalBudget: params.totalBudget,
       travelers: travelers as any,
       currency,
-    };
+      pace: tripPace as any,
+      preferences: prefTags.length > 0 ? prefTags : undefined,
+      metadata: params.origin ? { origin: params.origin } : undefined,
+    } as CreateTripDto;
 
-    // 创建行程
+    // 创建行程（TripsService.create 会写入初始 DSO 到 Trip.metadata）
     const trip = await this.tripsService.create(createTripDto, userId);
 
     // 设置预算约束
@@ -1604,7 +2113,7 @@ export class TripsController {
 
     const currencyLabels: Record<string, string> = { CNY: '元', USD: '美元', EUR: '欧元', JPY: '日元', ISK: '冰岛克朗', NOK: '挪威克朗' };
     const currencyLabel = currencyLabels[currency] || currency;
-    // 添加成功消息到会话
+    // 添加成功消息到会话（含 thinkingProcess/progressSteps 以便会话恢复时正确展示）
     await this.nlConversationContextService.addMessage(
       sessionId,
       userId,
@@ -1615,44 +2124,43 @@ export class TripsController {
         success: true,
         parsedParams: params,
         showConfirmCard: false, // 行程已创建，不需要确认卡片
+        thinkingProcess: {
+          summary: '思考了一会儿',
+          content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数，校验通过后创建了行程。`,
+        },
+        progressSteps: [
+          { id: 'parse', label: '已解析自然语言需求', detail: `目的地：${params.destination}，${startDate} 至 ${endDate}`, status: 'completed' },
+          { id: 'create', label: '已创建行程', detail: `行程 ID: ${trip.id}`, status: 'completed' },
+          { id: 'items', label: '正在生成行程规划点', detail: '后台运行中，请稍后刷新查看', status: 'running' },
+        ],
       }
     );
     
     // 🆕 获取目的地中文名称
-    let tripDestinationName = params.destination;
-    if (destinationCode) {
-      if (this.destinationClarificationConfigService) {
-        const destConfig = await this.destinationClarificationConfigService.getConfig(destinationCode);
-        if (destConfig && destConfig.destinationName) {
-          tripDestinationName = destConfig.destinationName;
-        } else {
-          const countryNameMap: Record<string, string> = {
-            'GL': '格陵兰',
-            'IS': '冰岛',
-            'SJ': '斯瓦尔巴',
-            'AR': '阿根廷',
-            'JP': '日本',
-            'CN': '中国',
-            'US': '美国',
-            'TH': '泰国',
-          };
-          tripDestinationName = countryNameMap[destinationCode] || destinationCode;
-        }
-      }
-    }
+    const tripDestinationName = destinationCode
+      ? this.getDestinationName(destinationCode, await this.destinationClarificationConfigService?.getConfig(destinationCode))
+      : (params.destination || '未指定');
     
     // 异步生成行程规划点（不阻塞响应）
     const start = DateTime.fromISO(startDate);
     const end = DateTime.fromISO(endDate);
     const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
     
+    // USE_LLM_DRAFT=true 时使用 LLM 编排（质量更好，Token 约 40k）；否则使用算法编排（Token ~3k）
+    const useAlgorithmicDraft = this.configService?.get<string>('USE_LLM_DRAFT') !== 'true';
+    this.logger.debug(`行程编排模式: ${useAlgorithmicDraft ? '算法' : 'LLM'}`);
     this.generateDraftAsync(trip.id, {
-      destination: params.destination,
+      destination: isoDestination, // 使用 ISO 国家代码
       days: durationDays,
       startDate: startDate,
       endDate: endDate,
       style: params.preferences?.style || 'balanced',
       intensity: params.preferences?.intensity || 'balanced',
+      useAlgorithmicDraft,
+      cities: params.cities,
+      mustHavePois: params.mustHavePois,
+      dayAllocation: params.dayAllocation,
+      userInput: params.userInput || params.originalUserInput,
     }).catch((error: any) => {
       this.logger.error(`后台生成行程规划点失败 (tripId: ${trip.id}): ${error.message}`, error.stack);
     });
@@ -1691,6 +2199,16 @@ export class TripsController {
       destinationName: tripDestinationName,
       generatingItems: true, // 标记正在生成规划点
       message: '行程已创建，正在后台生成行程规划点，请稍后刷新查看',
+      // 🆕 思考过程和进展（前端可折叠展示）
+      thinkingProcess: {
+        summary: '思考了一会儿',
+        content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数，校验通过后创建了行程。`,
+      },
+      progressSteps: [
+        { id: 'parse', label: '已解析自然语言需求', detail: `目的地：${params.destination}，${startDate} 至 ${endDate}`, status: 'completed' },
+        { id: 'create', label: '已创建行程', detail: `行程 ID: ${trip.id}`, status: 'completed' },
+        { id: 'items', label: '正在生成行程规划点', detail: '后台运行中，请稍后刷新查看', status: 'running' },
+      ],
     });
   }
 
@@ -1698,15 +2216,67 @@ export class TripsController {
    * 🆕 生成默认澄清问题（当needsClarification=true但没有具体问题时使用）
    * 🆕 P0优化：标记为 'required' 分组
    * 🆕 P1优化：限制必需问题组不超过5个
+   * @param missingFields 可选，从轮次完成条件传入的缺失字段名，用于生成针对性问题
+   * @param inferredFields 可选，LLM 推断的字段（如 startDate、totalBudget），需要用户确认时生成确认类问题
    */
   private generateDefaultClarificationQuestions(
     reason: string,
     destinationCode?: string,
-    currentParams?: Record<string, any>
+    currentParams?: Record<string, any>,
+    missingFields?: string[],
+    inferredFields?: string[]
   ): any[] {
     const questions: any[] = [];
     const MAX_REQUIRED_QUESTIONS = 5; // 🆕 P1优化：限制必需问题数量
-    
+
+    // 🆕 通用兜底（仅 reason=general）：根据缺失字段生成问题（如 travelGroup、hasWinterDrivingExperience 等）
+    const fieldToQuestion: Record<string, { question: string; type: string; options?: Array<{ value: string; label: string }> }> = {
+      travelGroup: {
+        question: '你和谁一起旅行？',
+        type: 'single_choice',
+        options: [
+          { value: 'solo', label: '独旅' },
+          { value: 'couple', label: '情侣' },
+          { value: 'friends', label: '朋友小队' },
+          { value: 'family', label: '家庭（含儿童）' },
+          { value: 'group', label: '团队或小组' },
+        ],
+      },
+      hasWinterDrivingExperience: {
+        question: '你有冬季驾驶经验吗？',
+        type: 'boolean',
+      },
+      hasInsurance: {
+        question: '你是否已购买旅行保险？',
+        type: 'boolean',
+      },
+      currency: {
+        question: '你希望用什么货币来规划预算？',
+        type: 'single_choice',
+        options: [
+          { value: 'CNY', label: '人民币' },
+          { value: 'USD', label: '美元' },
+          { value: 'EUR', label: '欧元' },
+          { value: 'ISK', label: '冰岛克朗' },
+        ],
+      },
+    };
+    if (reason === 'general' && missingFields && missingFields.length > 0) {
+      for (const field of missingFields.slice(0, MAX_REQUIRED_QUESTIONS)) {
+        const def = fieldToQuestion[field];
+        if (def) {
+          questions.push({
+            id: `default_${field}`,
+            question: def.question,
+            type: def.type,
+            ...(def.options && { options: def.options }),
+            required: true,
+            metadata: { category: 'basic', priority: 'high', fieldName: field },
+          });
+        }
+      }
+    }
+
     // 根据原因生成相应的问题
     if (reason === 'decision_matrix_blocked') {
       // 决策矩阵阻止：询问用户是否要调整计划
@@ -1787,9 +2357,74 @@ export class TripsController {
             fieldName: 'missingInfo',
           },
         });
+      } else if (inferredFields && inferredFields.length > 0 && questions.length === 0) {
+        // 🆕 基础信息都有但存在推断字段：生成确认类问题（结构化选项 + conditionalInputs）
+        const inferredLabels: Record<string, string> = {
+          startDate: '出行时间',
+          endDate: '返程时间',
+          totalBudget: '预算',
+          hasChildren: '是否带儿童',
+          hasElderly: '是否有长辈同行',
+          'preferences.style': '旅行风格',
+          'preferences.pace': '旅行节奏',
+        };
+        const labels = inferredFields
+          .map((f) => inferredLabels[f] || f)
+          .filter(Boolean)
+          .slice(0, 3);
+        const hasDate = inferredFields.some((f) => f === 'startDate' || f === 'endDate');
+        const hasBudget = inferredFields.includes('totalBudget');
+        const condInputs: any[] = [];
+        if (hasDate) {
+          condInputs.push({
+            triggerValue: '不准确，需要修改日期',
+            inputType: 'date_range',
+            label: '请选择行程日期范围',
+            paramKey: 'date_range',
+            required: true,
+          });
+        }
+        if (hasBudget) {
+          condInputs.push({
+            triggerValue: '预算需要调整',
+            inputType: 'number',
+            label: '请输入总预算（元）',
+            placeholder: '例如：15000',
+            paramKey: 'total_budget',
+            required: true,
+            validation: { min: 1, max: 10000000 },
+          });
+        }
+        condInputs.push({
+          triggerValue: '其他需要修改',
+          inputType: 'text',
+          label: '请描述您想调整的内容',
+          placeholder: '例如：出行时间改为3月、预算增加到2万',
+          paramKey: 'other',
+          required: false,
+        });
+        const options: { value: string; label: string }[] = [
+          { value: 'confirm', label: '确认无误' },
+          ...(hasDate ? [{ value: '不准确，需要修改日期', label: '不准确，需要修改日期' }] : []),
+          ...(hasBudget ? [{ value: '预算需要调整', label: '预算需要调整' }] : []),
+          { value: '其他需要修改', label: '其他需要修改' },
+        ];
+        questions.push({
+          id: 'confirm_inferred_info',
+          question: labels.length > 0
+            ? `请确认以上${labels.join('、')}等信息是否正确，或选择需要调整的项`
+            : '请确认以上信息是否正确，或补充其他偏好',
+          type: 'single_choice',
+          options,
+          required: false,
+          metadata: {
+            category: 'confirmation',
+            priority: 'medium',
+            fieldName: 'confirmInferred',
+          },
+          conditionalInputs: condInputs,
+        });
       }
-      // 🆕 移除：不再询问"是否需要进一步澄清其他信息"
-      // 如果所有基础信息都有，直接返回已生成的问题（如果有）
     }
     
     // 🆕 P0优化：标记所有问题为 'required' 分组
@@ -1846,6 +2481,76 @@ export class TripsController {
   }
 
   /**
+   * 🆕 生成偏好补充追问（当用户点击「补充偏好信息」时直接返回）
+   */
+  private generatePreferenceSupplementQuestions(
+    params: Record<string, any>,
+    destinationCode?: string
+  ): any[] {
+    const questions: any[] = [];
+    const prefs = params.preferences || {};
+    if (!prefs.accommodation && !params.preferenceAccommodation) {
+      questions.push({
+        id: 'pref_accommodation',
+        question: '您偏好的住宿类型是？',
+        type: 'single_choice',
+        options: [
+          { value: 'hotel', label: '酒店' },
+          { value: 'bnb', label: '民宿/公寓' },
+          { value: 'camping', label: '露营/房车' },
+          { value: 'mix', label: '混合（根据路线灵活选择）' },
+        ],
+        required: false,
+        metadata: { category: 'preferences', priority: 'medium', fieldName: 'preferenceAccommodation' },
+        group: 'optional',
+      });
+    }
+    if (!prefs.dining && !params.preferenceDining && questions.length < 3) {
+      questions.push({
+        id: 'pref_dining',
+        question: '餐饮方面您的偏好是？',
+        type: 'single_choice',
+        options: [
+          { value: 'local', label: '多体验当地特色餐厅' },
+          { value: 'flexible', label: '随性探索或自己烹饪' },
+          { value: 'budget', label: '经济实惠为主' },
+          { value: 'fine', label: '精选品质餐厅' },
+        ],
+        required: false,
+        metadata: { category: 'preferences', priority: 'medium', fieldName: 'preferenceDining' },
+        group: 'optional',
+      });
+    }
+    if (!prefs.pace && !params.preferencePace && questions.length < 3) {
+      questions.push({
+        id: 'pref_pace',
+        question: '旅行节奏您更偏向？',
+        type: 'single_choice',
+        options: [
+          { value: 'relaxed', label: '宽松悠闲' },
+          { value: 'moderate', label: '适中' },
+          { value: 'intensive', label: '紧凑充实' },
+        ],
+        required: false,
+        metadata: { category: 'preferences', priority: 'medium', fieldName: 'preferencePace' },
+        group: 'optional',
+      });
+    }
+    if (questions.length === 0) {
+      questions.push({
+        id: 'pref_free_text',
+        question: '请用文字简单描述您的其他偏好（如住宿、餐饮、节奏等）',
+        type: 'text',
+        required: false,
+        placeholder: '例如：希望住民宿、喜欢当地小吃、节奏不要太赶',
+        metadata: { category: 'preferences', priority: 'low', fieldName: 'preferences.freeText' },
+        group: 'optional',
+      });
+    }
+    return questions.map((q) => ({ ...q, group: q.group || 'optional' }));
+  }
+
+  /**
    * 🆕 生成补充信息问题（在澄清过程中或所有必需字段都有时，询问用户是否需要补充其他信息）
    * 🆕 P0优化：限制问题数量，符合Miller's Law（7±2限制）
    * 🆕 P1优化：限制补充问题组不超过3个
@@ -1864,22 +2569,101 @@ export class TripsController {
     const hasOptionalInfo = params.preferences?.interests || params.preferences?.style || params.preferences?.pace;
     
     // 如果没有偏好信息，询问是否需要补充偏好信息
-    // 🆕 P2优化：使用更具体的选项，减少决策时间
+    // 🆕 使用 conditionalInputs 提供结构化表单（单选、多选、文本）
     if (!hasOptionalInfo && questions.length < MAX_SUPPLEMENTARY_QUESTIONS) {
+      // 选项值；triggerValue 用「补充偏好信息」支持包含匹配（兼容 补充偏好信息(节奏/活动) 等变体）
+      const supplementYesValue = '补充偏好信息（如徒步强度、美食、住宿风格）';
+      const triggerValue = '补充偏好信息';
       questions.push({
         id: 'supplement_preferences',
-        question: '是否需要补充其他偏好信息？（如旅行风格、兴趣点、节奏等）',
+        question: '是否需要补充旅行偏好信息？',
         type: 'single_choice',
         options: [
-          { value: 'yes', label: '补充偏好信息' },
-          { value: 'no', label: '暂不补充' },
+          { value: supplementYesValue, label: supplementYesValue },
+          { value: 'no', label: '暂不补充，先确认核心信息' },
         ],
         required: false,
+        group: 'optional',
         metadata: {
           category: 'preferences',
           priority: 'low',
           fieldName: 'supplementPreferences',
         },
+        conditionalInputs: [
+          {
+            triggerValue,
+            inputType: 'single_choice',
+            label: '这次旅行更接近哪种风格？',
+            paramKey: 'travelStyle',
+            options: [
+              { value: 'relaxed', label: 'A 放松度假' },
+              { value: 'deep', label: 'B 深度探索' },
+              { value: 'dense', label: 'C 高效打卡' },
+              { value: 'photo', label: 'D 摄影创作' },
+              { value: 'food', label: 'E 美食巡礼' },
+            ],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'single_choice',
+            label: '每天希望安排几个核心点？',
+            paramKey: 'pace',
+            options: [
+              { value: '2-3', label: '2-3 个（轻松）' },
+              { value: '3-5', label: '3-5 个（平衡）' },
+              { value: '5+', label: '5+ 个（密集）' },
+            ],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'multi_choice',
+            label: '可以接受哪些？',
+            paramKey: 'riskAccepted',
+            options: [
+              { value: 'night_driving', label: '夜间自驾' },
+              { value: 'mountain_roads', label: '山路' },
+              { value: 'remote_areas', label: '小众地区' },
+              { value: 'complex_transfer', label: '复杂换乘' },
+              { value: 'weather_unstable', label: '天气不稳定' },
+            ],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'multi_choice',
+            label: '请选择美食偏好',
+            paramKey: 'cuisine',
+            options: ['中餐', '西餐', '海鲜', '当地特色', '无特别要求'],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'multi_choice',
+            label: '请选择住宿风格',
+            paramKey: 'accommodation_style',
+            options: ['经济型', '舒适型', '精品酒店', '民宿', '青旅'],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'single_choice',
+            label: '请选择徒步强度',
+            paramKey: 'hiking_intensity',
+            options: ['轻松', '中等', '高强度', '不涉及徒步'],
+            required: false,
+          },
+          {
+            triggerValue,
+            inputType: 'text',
+            label: '其他偏好描述',
+            placeholder: '例如：户外徒步、观星、节奏悠闲、偏好美食',
+            hint: '您的偏好将帮助筛选活动和住宿，让行程更个性化。',
+            paramKey: 'other',
+            required: false,
+          },
+        ],
       });
     }
     
@@ -1890,26 +2674,616 @@ export class TripsController {
     
     // 如果目的地是高风险地区，询问是否需要补充安全相关信息
     // 🆕 P2优化：使用更具体的选项，减少决策时间
+    // 🆕 使用 conditionalInputs 提供安全信息描述输入
     const highRiskDestinations = ['GL', 'SJ', 'AR']; // 格陵兰、斯瓦尔巴、阿根廷（部分区域）
     if (destinationCode && highRiskDestinations.includes(destinationCode) && questions.length < MAX_SUPPLEMENTARY_QUESTIONS) {
+      const safetyYesValue = '补充安全信息（如健康状况、户外经验等）';
       questions.push({
         id: 'supplement_safety_info',
         question: '是否需要补充安全相关信息？（如健康状况、户外经验等）',
         type: 'single_choice',
         options: [
-          { value: 'yes', label: '补充安全信息' },
+          { value: safetyYesValue, label: safetyYesValue },
           { value: 'no', label: '暂不补充' },
         ],
         required: false,
+        group: 'optional',
         metadata: {
           category: 'safety',
           priority: 'medium',
           fieldName: 'supplementSafetyInfo',
         },
+        conditionalInputs: [
+          {
+            triggerValue: safetyYesValue,
+            inputType: 'text',
+            label: '请描述您的安全相关信息',
+            placeholder: '例如：无心脏病史、有高海拔经验、需携带药物',
+            required: false,
+            paramKey: 'freeText',
+          },
+        ],
       });
     }
     
     return questions;
+  }
+
+  /**
+   * 🆕 构建分层进展步骤（4 阶段，当前阶段 running）
+   */
+  private buildPhaseProgressSteps(
+    roundId: string,
+    roundToPhase: Record<string, number>,
+    destName: string,
+    qCount: number
+  ): Array<{ id: string; label: string; detail?: string; status: 'completed' | 'running' | 'pending' }> {
+    const currentPhase = roundToPhase[roundId] ?? 2;
+    const phases: Array<{ id: string; label: string; detail?: string; status: 'completed' | 'running' | 'pending' }> = [
+      { id: 'phase1', label: '第一阶段：硬约束确认', status: 'pending' },
+      { id: 'phase2', label: '第二阶段：风格选择', status: 'pending' },
+      { id: 'phase3', label: '第三阶段：节奏校准', status: 'pending' },
+      { id: 'phase4', label: '第四阶段：风险偏好', status: 'pending' },
+    ];
+    for (let i = 0; i < phases.length; i++) {
+      if (i + 1 < currentPhase) phases[i].status = 'completed';
+      else if (i + 1 === currentPhase) {
+        phases[i].status = 'running';
+        phases[i].detail = i === 0 ? `已识别：${destName}` : `${qCount} 个问题待确认`;
+      }
+    }
+    return phases;
+  }
+
+  /**
+   * 🆕 根据已收集的 partialParams 生成演进的思考内容
+   * 避免多轮澄清时始终显示「识别到目的地，还需确认」的静态文案，让用户感知对话在推进
+   */
+  private buildEvolvedThinkingContent(
+    params: Record<string, any> | null | undefined,
+    destName: string | undefined,
+    qCount: number,
+    phase: 'clarify' | 'confirm' | 'supplement_preference'
+  ): { summary: string; content: string } {
+    const p = params || {};
+    const confirmed: string[] = [];
+
+    if (destName || p.destination) {
+      confirmed.push(`目的地：${destName || p.destination}`);
+    }
+    if (p.startDate && p.endDate) {
+      confirmed.push(`日期 ${p.startDate} 至 ${p.endDate}`);
+    } else if (p.startDate) {
+      confirmed.push('出发日期');
+    }
+    if (p.totalBudget != null && p.totalBudget !== '') {
+      confirmed.push(`预算 ${p.totalBudget}${p.currency ? ` ${p.currency}` : ''}`);
+    }
+    const tc = p.travelerCount ?? p.travelGroup;
+    if (tc != null && tc !== '') {
+      const tcLabel = typeof tc === 'number' ? `${tc} 人` : String(tc);
+      confirmed.push(`出行人数：${tcLabel}`);
+    }
+    const hasPref =
+      p.preferences?.accommodation ||
+      p.preferences?.dining ||
+      p.preferences?.pace ||
+      p.preferenceAccommodation ||
+      p.preferenceDining ||
+      p.preferencePace ||
+      p.preferences?.interests ||
+      p.preferences?.style ||
+      p.preferences?.activityType ||
+      p.travelStyle ||
+      p.pace ||
+      p.riskTolerance ||
+      p.riskAccepted;
+    if (hasPref) {
+      confirmed.push('偏好');
+    }
+
+    if (phase === 'confirm') {
+      return {
+        summary: '思考了一会儿',
+        content:
+          confirmed.length > 0
+            ? `已确认：${confirmed.join('、')}。准备创建行程，请用户确认。`
+            : '已收集到所有必需信息。准备创建行程，请用户确认。',
+      };
+    }
+    if (phase === 'supplement_preference') {
+      return {
+        summary: '思考了一会儿',
+        content:
+          confirmed.length > 0
+            ? `已确认：${confirmed.join('、')}。用户希望补充偏好，正在询问住宿、餐饮和节奏。`
+            : '用户希望补充偏好信息。我将询问住宿、餐饮和旅行节奏方面的偏好。',
+      };
+    }
+    // phase === 'clarify'
+    if (confirmed.length > 0) {
+      return {
+        summary: '思考了一会儿',
+        content: `已确认：${confirmed.join('、')}。${qCount > 0 ? `还需确认 ${qCount} 个问题即可创建行程。` : '即将准备创建行程。'}`,
+      };
+    }
+    return {
+      summary: '思考了一会儿',
+      content: `用户发送了创建行程的请求。我已解析自然语言，识别到${destName ? `目的地：${destName}` : '部分信息'}，但还需要确认或补充一些关键信息才能创建行程。`,
+    };
+  }
+
+  /**
+   * 将 dayAllocation 数组格式化为可读字符串，避免前端直接渲染对象导致 [object Object]
+   * 例如 [{ city: "杭州", days: 3 }, { city: "千岛湖", days: 1 }] → "杭州 3 天、千岛湖 1 天"
+   */
+  private formatDayAllocationDisplay(dayAllocation: Array<{ city?: string; days?: number }> | undefined): string | undefined {
+    if (!dayAllocation?.length) return undefined;
+    return dayAllocation
+      .map((a) => (a?.city != null && a?.days != null ? `${a.city} ${a.days} 天` : null))
+      .filter(Boolean)
+      .join('、') || undefined;
+  }
+
+  /**
+   * 🆕 归一化 partialParams：将 LLM 生成的 qN_preferences 合并到 preferences，
+   * 确保页面展示与创建行程下游使用的结构一致
+   */
+  private normalizePartialParams(params: Record<string, any>): Record<string, any> {
+    if (!params || typeof params !== 'object') return params;
+    const out = { ...params };
+    for (const key of Object.keys(out)) {
+      if (/^q\d+_preferences$/i.test(key) && typeof out[key] === 'object') {
+        if (!out.preferences) out.preferences = {};
+        for (const [k, v] of Object.entries(out[key])) {
+          if (v !== null && v !== undefined) {
+            out.preferences[k] = v; // 直接覆盖，确保用户输入优先
+          }
+        }
+        delete out[key]; // 移除冗余的 qN_preferences
+      }
+    }
+    return out;
+  }
+
+  /** 目的地代码 -> 中文名称映射（集中维护，避免多处重复） */
+  private static readonly DESTINATION_NAME_MAP: Record<string, string> = {
+    GL: '格陵兰',
+    IS: '冰岛',
+    SJ: '斯瓦尔巴',
+    AR: '阿根廷',
+    JP: '日本',
+    CN: '中国',
+    US: '美国',
+    TH: '泰国',
+    NZ: '新西兰',
+  };
+
+  /** 内置的常见问题 value->label 映射（pref_* 等来自 nextClarificationQuestions，可能不在消息的 clarificationQuestions 中） */
+  private static readonly BUILTIN_VALUE_LABELS: Record<string, Record<string, string>> = {
+    pref_accommodation: { hotel: '酒店', bnb: '民宿/公寓', camping: '露营/房车', mix: '混合（根据路线灵活选择）' },
+    pref_dining: { local: '多体验当地特色餐厅', flexible: '随性探索或自己烹饪', budget: '经济实惠为主', fine: '精选品质餐厅' },
+    pref_pace: { relaxed: '宽松悠闲', moderate: '适中', intensive: '紧凑充实' },
+  };
+
+  /** 获取目的地中文名称（优先使用 config，否则查表） */
+  private getDestinationName(destinationCode: string | undefined, config?: { destinationName?: string } | null): string {
+    if (!destinationCode) return '未指定';
+    if (config?.destinationName) return config.destinationName;
+    return TripsController.DESTINATION_NAME_MAP[destinationCode] || destinationCode;
+  }
+
+  /**
+   * 短路径上下文（供 createFromNaturalLanguage 短路径复用）
+   */
+  private async tryShortPaths(ctx: {
+    dto: CreateTripFromNaturalLanguageDto;
+    userId: string;
+    sessionId: string;
+    existingContext: Awaited<ReturnType<NLConversationContextService['getContext']>>;
+    trimmedText: string;
+    pp: Record<string, any>;
+    detectedCountryCode: string | undefined;
+    destinationConfig: any;
+  }): Promise<{ handled: boolean; result?: any }> {
+    const r1 = await this.handleShortPathCreateIntent(ctx);
+    if (r1.handled) return r1;
+    const r2 = await this.handleShortPathConfirm(ctx);
+    if (r2.handled) return r2;
+    const r3 = await this.handleShortPathSupplementPref(ctx);
+    if (r3.handled) return r3;
+    return { handled: false };
+  }
+
+  /** 短路径 1：用户明确「创建」意图，且已在确认阶段 -> 直接创建行程 */
+  private async handleShortPathCreateIntent(ctx: {
+    dto: CreateTripFromNaturalLanguageDto;
+    userId: string;
+    sessionId: string;
+    existingContext: Awaited<ReturnType<NLConversationContextService['getContext']>>;
+    trimmedText: string;
+    pp: Record<string, any>;
+    detectedCountryCode: string | undefined;
+    destinationConfig: any;
+  }): Promise<{ handled: boolean; result?: any }> {
+    const { pp, trimmedText, detectedCountryCode } = ctx;
+    const hasRequiredForConfirm = pp.destination && pp.startDate && pp.endDate && pp.totalBudget != null;
+    const isCreateNowIntent =
+      /明确\s*confirm|确认\s*创建|创建\s*行程|开始\s*创建|立即\s*创建|马上\s*创建|确认出行|明确confirm/i.test(trimmedText) ||
+      /^(create|创建|confirm)$/i.test(trimmedText);
+    const lastAssistantMsg = ctx.existingContext?.messages?.filter((m) => m.role === 'assistant').pop();
+    const wasInConfirmPhase = lastAssistantMsg?.metadata?.showConfirmCard === true;
+    if (!hasRequiredForConfirm || !isCreateNowIntent || !wasInConfirmPhase) return { handled: false };
+    const params = this.normalizePartialParams({ ...pp }) as Record<string, any>;
+    const destCode = this.extractCountryCode(params.destination) || detectedCountryCode;
+    this.logger.debug(`[创建意图] 用户在确认阶段发送「${trimmedText}」，直接创建行程`);
+    const result = await this.createTripFromParams(params, ctx.userId, ctx.sessionId, destCode ?? undefined);
+    return { handled: true, result };
+  }
+
+  /** 短路径 2：用户「已确认」或 confirmInferred=confirm -> 返回确认卡片（或直接创建若 isCreateNowIntent） */
+  private async handleShortPathConfirm(ctx: {
+    dto: CreateTripFromNaturalLanguageDto;
+    userId: string;
+    sessionId: string;
+    existingContext: Awaited<ReturnType<NLConversationContextService['getContext']>>;
+    trimmedText: string;
+    pp: Record<string, any>;
+    detectedCountryCode: string | undefined;
+    destinationConfig: any;
+  }): Promise<{ handled: boolean; result?: any }> {
+    const { pp, trimmedText, detectedCountryCode, destinationConfig } = ctx;
+    const hasRequiredForConfirm = pp.destination && pp.startDate && pp.endDate && pp.totalBudget != null;
+    const isCreateNowIntent =
+      /明确\s*confirm|确认\s*创建|创建\s*行程|开始\s*创建|立即\s*创建|马上\s*创建|确认出行|明确confirm/i.test(trimmedText) ||
+      /^(create|创建|confirm)$/i.test(trimmedText);
+    const isShortConfirm = /^(已确认|确认|确认无误|好的|ok)$/i.test(trimmedText) && trimmedText.length <= 10;
+    const hasConfirmInferredConfirm =
+      hasRequiredForConfirm && (pp.confirmInferred === 'confirm' || pp.confirmInferred === '确认无误');
+    const ppNorm = this.normalizePartialParams(pp);
+    const hasPrefData =
+      ppNorm.preferences?.accommodation ||
+      ppNorm.preferences?.dining ||
+      ppNorm.preferences?.pace ||
+      ppNorm.preferenceAccommodation ||
+      ppNorm.preferenceDining ||
+      ppNorm.preferencePace;
+    const looksLikePrefSummary =
+      /您偏好的住宿类型|餐饮方面您的偏好|pref_accommodation|pref_dining/i.test(trimmedText) ||
+      /\b(camping|hotel|bnb|flex|flexible|local|budget|fine|relaxed|moderate|intensive)\b/i.test(trimmedText);
+    const isConfirmWithPrefSummary =
+      hasRequiredForConfirm && hasPrefData && looksLikePrefSummary && trimmedText.length <= 120;
+    if (!(isShortConfirm || isConfirmWithPrefSummary || hasConfirmInferredConfirm) || !hasRequiredForConfirm) {
+      return { handled: false };
+    }
+    if (isCreateNowIntent) {
+      const params = this.normalizePartialParams({ ...pp }) as Record<string, any>;
+      const destCode = this.extractCountryCode(params.destination) || detectedCountryCode;
+      this.logger.debug(`[创建意图] 用户文本「${trimmedText}」触发直接创建行程`);
+      const result = await this.createTripFromParams(params, ctx.userId, ctx.sessionId, destCode ?? undefined);
+      return { handled: true, result };
+    }
+    const params = { ...pp };
+    const destCode = this.extractCountryCode(params.destination) || detectedCountryCode;
+    if (destCode && this.destinationClarificationConfigService) {
+      const criticalFields = await this.destinationClarificationConfigService.getCriticalFields(destCode);
+      if (criticalFields.length > 0) {
+        const missingCriticalFields = criticalFields.filter(
+          (field) =>
+            !params[field.fieldName] ||
+            params[field.fieldName] === null ||
+            params[field.fieldName] === undefined ||
+            String(params[field.fieldName]).trim() === ''
+        );
+        if (missingCriticalFields.length > 0) {
+          const missingFieldNames = missingCriticalFields.map((f) => f.fieldName);
+          const questions = await this.destinationClarificationConfigService.getQuestionsForFields(destCode, missingFieldNames);
+          const totalCritical = criticalFields.length;
+          const completedCritical = totalCritical - missingCriticalFields.length;
+          const progressPercent = Math.round((completedCritical / totalCritical) * 100);
+          const destName = this.getDestinationName(destCode, destinationConfig);
+          this.logger.debug(`[短路径] Critical 字段未齐（缺: ${missingFieldNames.join(',')}），先澄清再确认`);
+          // 🆕 必须添加助手消息，否则 confirm-create 会读取上一轮 showConfirmCard:true 而误放行
+          const reply = `请先确认以下信息：${missingCriticalFields.map((f) => f.question).join('、')}`;
+          const clarificationObjs = questions.map((q) => ({
+            id: q.id,
+            question: q.question,
+            type: q.type,
+            options: q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)
+              ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+              : q.options,
+            required: q.required,
+            hint: q.hint,
+            placeholder: q.placeholder,
+            metadata: q.metadata,
+          }));
+          await this.nlConversationContextService.addMessage(ctx.sessionId, ctx.userId, 'assistant', reply, {
+            needsClarification: true,
+            blockedByCriticalFields: true,
+            showConfirmCard: false,
+            clarificationQuestions: clarificationObjs,
+            plannerResponseBlocks: [
+              { type: 'highlight', highlightType: 'warning', highlightText: `请先确认以下信息：${missingCriticalFields.map((f) => f.question).join('、')}` },
+              { type: 'paragraph', content: `已完成 ${completedCritical}/${totalCritical} 项（${progressPercent}%）` },
+            ],
+          });
+          return {
+            handled: true,
+            result: successResponse({
+              sessionId: ctx.sessionId,
+              needsClarification: true,
+              blockedByCriticalFields: true,
+              destination: destCode,
+              destinationName: destName,
+              criticalFieldsProgress: { completed: completedCritical, total: totalCritical, percent: progressPercent },
+              plannerResponseBlocks: [
+                { type: 'highlight', highlightType: 'warning', highlightText: `请先确认以下信息：${missingCriticalFields.map((f) => f.question).join('、')}` },
+                { type: 'paragraph', content: `已完成 ${completedCritical}/${totalCritical} 项（${progressPercent}%）` },
+              ],
+              clarificationQuestions: questions.map((q) => ({
+                id: q.id,
+                question: q.question,
+                type: q.type,
+                options: q.type === 'boolean' && (!q.options || !Array.isArray(q.options) || q.options.length === 0)
+                  ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+                  : q.options,
+                required: q.required,
+                hint: q.hint,
+                placeholder: q.placeholder,
+                metadata: q.metadata,
+              })),
+              partialParams: params,
+            }),
+          };
+        }
+      }
+    }
+    let sd = params.startDate;
+    let ed = params.endDate;
+    if (sd?.includes('T')) sd = sd.split('T')[0];
+    if (ed?.includes('T')) ed = ed.split('T')[0];
+    const destName = this.getDestinationName(detectedCountryCode ?? '', destinationConfig);
+    const travelersArray = params.travelers;
+    let travelersInfo = '2位成人';
+    if (Array.isArray(travelersArray) && travelersArray.length > 0) {
+      travelersInfo = `${travelersArray.length}人`;
+    } else if (params.hasChildren || params.hasElderly) {
+      const parts: string[] = [];
+      if (params.hasChildren) parts.push('儿童');
+      if (params.hasElderly) parts.push('老人');
+      if (parts.length) travelersInfo = parts.join('、');
+    }
+    const paramsAny = this.normalizePartialParams(params || {}) as Record<string, any>;
+    const hasPreferences =
+      paramsAny.preferences?.interests ||
+      paramsAny.preferences?.style ||
+      paramsAny.preferences?.pace ||
+      paramsAny.preferences?.accommodation ||
+      paramsAny.preferences?.dining ||
+      paramsAny.pace ||
+      paramsAny.preferenceAccommodation ||
+      paramsAny.preferenceDining ||
+      paramsAny.preferencePace;
+    const confirmationBlocks: any[] = [
+      { type: 'highlight', highlightType: 'info', highlightText: '✅ 已收集到所有必需信息，准备创建行程' },
+      {
+        type: 'summary_card',
+        summary: {
+          destination: destName || '未指定',
+          duration: sd && ed ? `${sd} 至 ${ed}` : '未指定',
+          travelers: travelersInfo,
+          budget: { amount: params.totalBudget ?? 0, currency: params.currency || 'CNY' },
+          ...(paramsAny.cities?.length ? { cities: paramsAny.cities } : {}),
+          ...(paramsAny.dayAllocation?.length ? { dayAllocation: paramsAny.dayAllocation } : {}),
+          ...(paramsAny.dayAllocation?.length ? { dayAllocationDisplay: this.formatDayAllocationDisplay(paramsAny.dayAllocation) } : {}),
+          ...(paramsAny.mustHavePois?.length ? { mustHavePois: paramsAny.mustHavePois } : {}),
+        },
+      },
+    ];
+    if (!hasPreferences) {
+      confirmationBlocks.push({
+        type: 'paragraph',
+        content: '⚙️ 偏好设置：未设置\n如需补充偏好信息（如旅行风格、兴趣点、节奏等），请告诉我。',
+      });
+    }
+    confirmationBlocks.push({
+      type: 'paragraph',
+      content: '在创建行程前，请确认以上信息是否正确，或者告诉我是否需要补充其他信息。',
+    });
+    const rawSupplementary = this.generateSupplementaryQuestions(params, ctx.detectedCountryCode).map((q: any) => ({
+      ...q,
+      group: 'optional',
+    }));
+    const assistantReply = '我已经收集到创建行程所需的基本信息。请确认以下信息是否正确，或者告诉我是否需要补充其他信息。';
+    await this.nlConversationContextService.addMessage(ctx.sessionId, ctx.userId, 'assistant', assistantReply, {
+      needsClarification: false,
+      needsConfirmation: true,
+      plannerResponseBlocks: confirmationBlocks,
+      clarificationQuestions: rawSupplementary,
+      parsedParams: params,
+      showConfirmCard: true,
+      questionAnswers: {},
+      thinkingProcess: this.buildEvolvedThinkingContent(pp, destName, 0, 'confirm'),
+      progressSteps: [
+        { id: 'collect', label: '已收集必需信息', status: 'completed' },
+        { id: 'confirm', label: '等待用户确认', status: 'running' },
+      ],
+    });
+    const savedCtx = await this.nlConversationContextService.getContext(ctx.sessionId, ctx.userId);
+    const lastMsg = savedCtx?.messages?.filter((m) => m.role === 'assistant').pop();
+    this.logger.debug(`[已确认] 短路径返回确认卡片${hasConfirmInferredConfirm ? '（来自 confirmInferred=confirm）' : ''}`);
+    return {
+      handled: true,
+      result: successResponse({
+        sessionId: ctx.sessionId,
+        needsClarification: false,
+        needsConfirmation: true,
+        plannerResponseBlocks: confirmationBlocks,
+        clarificationQuestions: rawSupplementary,
+        plannerReply: assistantReply,
+        partialParams: params,
+        destination: ctx.detectedCountryCode || params.destination,
+        destinationName: destName,
+        lastMessageId: lastMsg?.id,
+        showConfirmCard: true,
+        thinkingProcess: this.buildEvolvedThinkingContent(pp, destName, 0, 'confirm'),
+        progressSteps: [
+          { id: 'collect', label: '已收集必需信息', status: 'completed' },
+          { id: 'confirm', label: '等待用户确认', detail: '请确认以上信息无误后创建行程', status: 'running' },
+        ],
+      }),
+    };
+  }
+
+  /** 短路径 3：用户点击「补充偏好信息」-> 返回偏好追问 */
+  private async handleShortPathSupplementPref(ctx: {
+    dto: CreateTripFromNaturalLanguageDto;
+    userId: string;
+    sessionId: string;
+    existingContext: Awaited<ReturnType<NLConversationContextService['getContext']>>;
+    trimmedText: string;
+    pp: Record<string, any>;
+    detectedCountryCode: string | undefined;
+    destinationConfig: any;
+  }): Promise<{ handled: boolean; result?: any }> {
+    const { trimmedText, detectedCountryCode, destinationConfig } = ctx;
+    const supplementPreferencePattern = /^(补充偏好|补充偏好信息|我想补充|补充其他偏好|yes)$/i;
+    const supplementPreferenceLoose = /^补充偏好信息\s*[（(]?如?.+[）)]?\s*$/i;
+    const supplementPreferenceContains = /[：:;]\s*补充偏好信息\s*[（(]?[^）)]*[）)]?\s*$/i;
+    const supplementPrefValue = ctx.existingContext?.partialParams?.supplementPreferences;
+    const looksLikePreferenceAnswer =
+      /您偏好的住宿类型|餐饮方面您的偏好|请用文字简单描述您的其他偏好/i.test(trimmedText) ||
+      /\b(camping|hotel|bnb|flex|flexible|local|budget|fine|relaxed|moderate|intensive)\b/i.test(trimmedText) ||
+      /\b(pref_accommodation|pref_dining|pref_pace)[=:]/i.test(trimmedText);
+    const isSupplementPreferenceIntent =
+      !looksLikePreferenceAnswer &&
+      (supplementPreferencePattern.test(trimmedText) ||
+        supplementPreferenceLoose.test(trimmedText) ||
+        supplementPreferenceContains.test(trimmedText) ||
+        (trimmedText.includes('补充偏好信息') && trimmedText.length <= 150) ||
+        ((supplementPrefValue === 'yes' || supplementPrefValue?.includes?.('补充偏好信息')) && trimmedText.length <= 80));
+    const ppNorm = this.normalizePartialParams(ctx.existingContext?.partialParams || {});
+    const hasPrefAnswers =
+      ppNorm.preferences?.accommodation ||
+      ppNorm.preferences?.dining ||
+      ppNorm.preferences?.pace ||
+      ppNorm.preferenceAccommodation ||
+      ppNorm.preferenceDining ||
+      ppNorm.preferencePace;
+    if (
+      !isSupplementPreferenceIntent ||
+      hasPrefAnswers ||
+      !ctx.existingContext?.partialParams ||
+      (!ctx.existingContext.partialParams.destination && !ctx.existingContext.partialParams.startDate)
+    ) {
+      return { handled: false };
+    }
+    const mergedParams = { ...ctx.existingContext.partialParams, supplementPreferences: 'yes' };
+    const prefQuestions = this.generatePreferenceSupplementQuestions(mergedParams, detectedCountryCode);
+    const destNameForPref = this.getDestinationName(detectedCountryCode, destinationConfig);
+    if (prefQuestions.length === 0) return { handled: false };
+    const assistantReply = '好的，请告诉我您在住宿、餐饮和旅行节奏方面的偏好，这样我能更好地为您规划行程。';
+    await this.nlConversationContextService.addMessage(ctx.sessionId, ctx.userId, 'assistant', assistantReply, {
+      needsClarification: true,
+      plannerResponseBlocks: [
+        { type: 'paragraph', content: assistantReply },
+        { type: 'highlight', highlightType: 'info', highlightText: '请选择或填写以下信息，也可直接文字描述您的偏好' },
+      ],
+      clarificationQuestions: prefQuestions,
+      parsedParams: mergedParams,
+      showConfirmCard: false,
+      questionAnswers: {},
+      thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destNameForPref, prefQuestions.length, 'supplement_preference'),
+      progressSteps: [
+        { id: 'parse', label: '已解析用户意图', detail: '补充偏好', status: 'completed' },
+        { id: 'clarify', label: '正在询问偏好', detail: `${prefQuestions.length} 个偏好问题`, status: 'running' },
+      ],
+    });
+    await this.nlConversationContextService.updateContext(ctx.sessionId, ctx.userId, { partialParams: mergedParams });
+    const savedCtx = await this.nlConversationContextService.getContext(ctx.sessionId, ctx.userId);
+    const lastMsg = savedCtx?.messages?.filter((m) => m.role === 'assistant').pop();
+    this.logger.debug(`[补充偏好] 短路径返回 ${prefQuestions.length} 个偏好问题`);
+    return {
+      handled: true,
+      result: successResponse({
+        sessionId: ctx.sessionId,
+        needsClarification: true,
+        plannerResponseBlocks: [
+          { type: 'paragraph', content: assistantReply },
+          { type: 'highlight', highlightType: 'info', highlightText: '请选择或填写以下信息，也可直接文字描述您的偏好' },
+        ],
+        clarificationQuestions: prefQuestions,
+        plannerReply: assistantReply,
+        partialParams: this.normalizePartialParams(mergedParams),
+        destination: detectedCountryCode,
+        destinationName: destNameForPref,
+        lastMessageId: lastMsg?.id,
+        thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destNameForPref, prefQuestions.length, 'supplement_preference'),
+        progressSteps: [
+          { id: 'parse', label: '已解析用户意图', detail: '补充偏好', status: 'completed' },
+          { id: 'clarify', label: '正在询问偏好', detail: `${prefQuestions.length} 个偏好问题`, status: 'running' },
+        ],
+      }),
+    };
+  }
+
+  /**
+   * 🆕 将 questionAnswers 的 value 映射为 options 中的中文 label，供「已收集所有答案」展示
+   */
+  private buildQuestionAnswerLabels(
+    questionAnswers: Record<string, string | string[] | number | boolean | null>,
+    clarificationQuestions: any[]
+  ): Record<string, { value: string | string[]; label: string }> {
+    const out: Record<string, { value: string | string[]; label: string }> = {};
+    const getLabel = (opts: any[], val: any): string => {
+      if (val == null) return '';
+      const v = Array.isArray(val) ? val : [val];
+      const parts: string[] = [];
+      for (const item of v) {
+        const s = String(item).trim();
+        if (!opts?.length) {
+          parts.push(s);
+          continue;
+        }
+        const opt = opts.find((o: any) => {
+          const oVal = (typeof o === 'string' ? o : o?.value ?? o?.label ?? '').toString().trim();
+          return oVal === s;
+        });
+        parts.push(opt != null ? (typeof opt === 'string' ? opt : (opt?.label ?? opt?.value ?? s)) : s);
+      }
+      return parts.join('、');
+    };
+    for (const q of clarificationQuestions || []) {
+      const qid = q?.id;
+      if (!qid) continue;
+      const opts = Array.isArray(q.options) ? q.options : [];
+      if (opts.length && qid in questionAnswers) {
+        const ans = questionAnswers[qid];
+        const label = getLabel(opts, ans);
+        if (label) out[qid] = { value: Array.isArray(ans) ? (ans as string[]) : String(ans), label };
+      }
+      for (const inp of (q.conditionalInputs as any[]) || []) {
+        const pk = inp?.paramKey;
+        const key = pk ? `${qid}_${pk}` : `${qid}_${(inp?.triggerValue || '').toString().trim()}`;
+        if (key in questionAnswers) {
+          const inOpts = Array.isArray(inp?.options) ? inp.options : [];
+          const ans = questionAnswers[key];
+          const label = inOpts.length ? getLabel(inOpts, ans) : String(ans ?? '');
+          if (label) out[key] = { value: Array.isArray(ans) ? (ans as string[]) : String(ans), label };
+        }
+      }
+    }
+    // 兜底：使用内置映射（pref_accommodation、pref_dining、pref_pace 等）
+    for (const [key, ans] of Object.entries(questionAnswers)) {
+      if (key in out) continue;
+      const builtin = TripsController.BUILTIN_VALUE_LABELS[key];
+      if (builtin) {
+        const v = Array.isArray(ans) ? ans : [ans];
+        const labels = (v as string[]).map((x) => builtin[String(x).trim()] ?? x);
+        if (labels.some((l) => l)) out[key] = { value: v.length === 1 ? String(v[0]) : (v as string[]), label: labels.join('、') };
+      }
+    }
+    return out;
   }
 
   /**
@@ -2020,18 +3394,24 @@ export class TripsController {
       if (q.validation) question.validation = q.validation;
       if (q.dependencies) question.dependencies = q.dependencies;
       
-      // 🆕 HCI优化：保留条件输入字段（标准化triggerValue）
+      // 🆕 HCI优化：保留条件输入字段（支持 snake_case、paramKey、options）
       if (q.conditionalInputs && Array.isArray(q.conditionalInputs)) {
-        question.conditionalInputs = q.conditionalInputs.map((input: any) => ({
-          ...input,
-          triggerValue: input.triggerValue?.toString().trim() || '', // 标准化triggerValue
-          inputType: input.inputType,
-          label: input.label?.trim(),
-          placeholder: input.placeholder?.trim(),
-          required: input.required !== undefined ? input.required : true,
-          validation: input.validation,
-          hint: input.hint?.trim(),
-        }));
+        question.conditionalInputs = q.conditionalInputs.map((input: any) => {
+          const raw = { ...input, ...(input.trigger_value !== undefined && { triggerValue: input.trigger_value }), ...(input.input_type !== undefined && { inputType: input.input_type }), ...(input.param_key !== undefined && { paramKey: input.param_key }) };
+          let inputType = (raw.inputType || raw.input_type || 'text').toString().trim();
+          if (inputType === 'multiple_choice') inputType = 'multi_choice';
+          return {
+            triggerValue: (raw.triggerValue || raw.trigger_value || '').toString().trim(),
+            inputType,
+            label: (raw.label || '').toString().trim() || undefined,
+            options: raw.options,
+            placeholder: (raw.placeholder || '').toString().trim() || undefined,
+            hint: (raw.hint || '').toString().trim() || undefined,
+            required: raw.required !== undefined ? !!raw.required : true,
+            validation: raw.validation,
+            paramKey: (raw.paramKey || raw.param_key || '').toString().trim() || undefined,
+          };
+        });
       }
       
       // 🆕 HCI优化：标准化选项值（确保与conditionalInputs的triggerValue匹配）
@@ -2113,11 +3493,17 @@ export class TripsController {
   })
   async getConversationContext(
     @Param('sessionId') sessionId: string,
-    @CurrentUser() user?: CurrentUserPayload
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request
   ) {
     try {
-      // 🆕 修复：如果没有 userId，使用 sessionId 作为临时 userId（允许未登录用户恢复会话）
-      const userId = user?.userId || `temp_${sessionId}`;
+      // 优先: JWT user > X-Test-User-Id（测试脚本）> temp_${sessionId}
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        userId = testUserId || `temp_${sessionId}`;
+        if (testUserId) this.logger.warn(`[测试模式] GET 使用 X-Test-User-Id: ${testUserId}`);
+      }
       
       // 🆕 修复：允许通过 sessionId 恢复会话，即使没有认证
       // 先尝试使用原始 userId，如果失败则尝试使用 sessionId 作为 userId
@@ -2133,7 +3519,12 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, '会话不存在或已过期');
       }
 
-      return successResponse(context);
+      // 🆕 归一化 partialParams，使 preferences 与用户输入一致（qN_preferences → preferences）
+      const normalized = {
+        ...context,
+        partialParams: context.partialParams ? this.normalizePartialParams(context.partialParams) : context.partialParams,
+      };
+      return successResponse(normalized);
     } catch (error: any) {
       this.logger.error(`获取对话上下文失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, '获取对话上下文失败');
@@ -2239,11 +3630,17 @@ export class TripsController {
     @Param('sessionId') sessionId: string,
     @Param('messageId') messageId: string,
     @Body() body: { questionAnswers: Record<string, string | string[] | number | boolean | null> },
-    @CurrentUser() user?: CurrentUserPayload
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request
   ) {
     try {
-      // 🆕 如果没有 userId，使用 sessionId 作为临时 userId
-      const userId = user?.userId || `temp_${sessionId}`;
+      // 优先: JWT user > X-Test-User-Id（测试脚本）> temp_${sessionId}
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        userId = testUserId || `temp_${sessionId}`;
+        if (testUserId) this.logger.warn(`[测试模式] PUT messages 使用 X-Test-User-Id: ${testUserId}`);
+      }
       
       const message = await this.nlConversationContextService.updateMessageQuestionAnswers(
         sessionId,
@@ -2252,10 +3649,77 @@ export class TripsController {
         body.questionAnswers
       );
       
-      return successResponse({
+      // 🆕 6.1 适配：点击「补充偏好信息」时仅发 PUT 不发 POST，在此返回偏好追问供前端渲染
+      const qa = body.questionAnswers || {};
+      const isSupplementChoice = (v: any) => {
+        if (v == null) return false;
+        const s = Array.isArray(v) ? (v[0] ?? '') : String(v);
+        return /补充偏好|yes/i.test(s) && s.length <= 200;
+      };
+      // 匹配问题 id：supplement_preferences、supplementPreferences，或 LLM 生成的变体（如 q2_preferences）
+      const suppKey = Object.keys(qa).find(
+        k => /supplement_preferences|supplementPreferences|preferences_supplement|need_preferences/i.test(k)
+      );
+      const suppVal = suppKey ? qa[suppKey] : null;
+      const hasSupplementByKey = suppKey && isSupplementChoice(suppVal);
+      // 兜底：任一问答案包含「补充偏好」也触发（兼容 LLM 生成的不同 question id）
+      const hasSupplementByValue = Object.values(qa).some(v => isSupplementChoice(v));
+      let nextClarificationQuestions: any[] | undefined;
+      if (hasSupplementByKey || hasSupplementByValue) {
+        const ctx = await this.nlConversationContextService.getContext(sessionId, userId);
+        const merged = { ...ctx?.partialParams };
+        const destCode = merged?.destination ? this.extractCountryCode(merged.destination) : undefined;
+        if (merged?.destination || merged?.startDate) {
+          const prefQs = this.generatePreferenceSupplementQuestions(merged, destCode);
+          if (prefQs.length > 0) {
+            nextClarificationQuestions = prefQs;
+            this.logger.debug(`[PUT 补充偏好] 返回 ${prefQs.length} 个偏好追问`);
+          }
+        }
+      }
+      // 🆕 6.1 适配：点击「其他需要修改」时，返回文本输入追问供用户描述调整内容（conditionalInput 可能未展开即提交）
+      const confirmKey = Object.keys(qa).find(k => /confirm_inferred_info$/i.test(k));
+      const confirmVal = confirmKey ? qa[confirmKey] : null;
+      const otherKey = 'confirm_inferred_info_other';
+      const hasOtherAnswer = otherKey in qa && qa[otherKey] != null && String(qa[otherKey]).trim() !== '';
+      const isOtherModifyChoice = (v: any) => {
+        if (v == null) return false;
+        const s = Array.isArray(v) ? (v[0] ?? '') : String(v);
+        return /其他需要修改|其他需要调整/i.test(s);
+      };
+      if (!nextClarificationQuestions && confirmKey && isOtherModifyChoice(confirmVal) && !hasOtherAnswer) {
+        nextClarificationQuestions = [{
+          id: otherKey,
+          question: '请描述您想调整的内容',
+          type: 'text',
+          required: false,
+          placeholder: '例如：出行时间改为3月、预算增加到2万',
+          metadata: { category: 'confirmation', fieldName: 'confirmInferredOther' },
+          group: 'required',
+        }];
+        this.logger.debug('[PUT 其他需要修改] 返回文本输入追问');
+      }
+      
+      // 🆕 根据 clarificationQuestions 的 options 将 value 映射为中文 label，供「已收集所有答案」展示
+      const qaFinal = message.metadata?.questionAnswers || {};
+      const questions = (message.metadata?.clarificationQuestions as any[]) || [];
+      const questionAnswerLabels = this.buildQuestionAnswerLabels(qaFinal, questions);
+      
+      // 🆕 点击「补充偏好信息」时，同时返回 plannerResponseBlocks 供前端渲染（与 POST 响应结构一致）
+      const responsePayload: Record<string, any> = {
         messageId: message.id,
-        questionAnswers: message.metadata?.questionAnswers || {},
-      });
+        questionAnswers: qaFinal,
+        ...(Object.keys(questionAnswerLabels).length > 0 && { questionAnswerLabels }),
+        ...(nextClarificationQuestions && { nextClarificationQuestions }),
+      };
+      if (nextClarificationQuestions && nextClarificationQuestions.length > 0) {
+        responsePayload.plannerResponseBlocks = [
+          { type: 'highlight', highlightType: 'info', highlightText: '请选择或填写以下信息，也可直接文字描述您的偏好' },
+        ];
+        responsePayload.needsClarification = true;
+      }
+      
+      return successResponse(responsePayload);
     } catch (error: any) {
       // 如果消息不存在，记录警告而不是错误（可能是前端重复请求或使用了错误的ID）
       if (error.message.includes('不存在')) {
@@ -4585,6 +6049,15 @@ export class TripsController {
       '中国': 'CN',
       'China': 'CN',
       'china': 'CN',
+      '新西兰': 'NZ',
+      'New Zealand': 'NZ',
+      'new zealand': 'NZ',
+      'NZ': 'NZ',
+      '大溪地': 'PF',
+      'Tahiti': 'PF',
+      'tahiti': 'PF',
+      '法属波利尼西亚': 'PF',
+      'French Polynesia': 'PF',
       '日本': 'JP',
       'Japan': 'JP',
       'japan': 'JP',
@@ -4745,7 +6218,11 @@ export class TripsController {
     if (!destination) {
       return undefined;
     }
-    
+    const destStr = destination.trim();
+    const countryNames: Record<string, string> = { 新西兰: 'NZ', 'New Zealand': 'NZ', 'new zealand': 'NZ', NZ: 'NZ', 冰岛: 'IS', 日本: 'JP', 基督城: 'NZ' };
+    for (const [name, code] of Object.entries(countryNames)) {
+      if (destStr.includes(name) || destStr.toLowerCase().includes(name.toLowerCase())) return code;
+    }
     const upperDest = destination.toUpperCase();
     
     // 🆕 特殊目的地代码映射（优先检查）

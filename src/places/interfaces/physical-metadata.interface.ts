@@ -27,5 +27,8 @@ export interface PhysicalMetadata {
   
   /** 预估游玩时长（分钟） */
   estimated_duration_min?: number;
+
+  /** Travel World Model: 最佳访问时段，供路径优化时段匹配 */
+  bestVisitTime?: 'morning' | 'afternoon' | 'evening' | 'any';
 }
 

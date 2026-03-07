@@ -18,6 +18,10 @@ import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.ser
 import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
 import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
 import { UnsplashService } from './services/unsplash.service';
+import { ExperienceVectorService } from './services/experience-vector.service';
+import { PlaceGraphService } from './services/place-graph.service';
+import { DistrictService } from './services/district.service';
+import { CrowdCurveService } from './services/crowd-curve.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsModule } from '../hotels/hotels.module';
 import { RagModule } from '../rag/rag.module';
@@ -50,6 +54,10 @@ import { LlmModule } from '../llm/llm.module';
     IcelandPoiFeaturesService,
     PlaceTrailEnrichmentService,
     UnsplashService, // 图片服务
+    ExperienceVectorService, // Travel World Model: 体验向量
+    PlaceGraphService, // Travel World Model: Place Graph
+    DistrictService, // Travel World Model: District 区域模型
+    CrowdCurveService, // Travel World Model Phase 6: 人流曲线
   ],
   exports: [
     PlacesService,
@@ -66,6 +74,10 @@ import { LlmModule } from '../llm/llm.module';
     SvalbardPoiFeaturesService,
     IcelandPoiFeaturesService,
     UnsplashService, // 图片服务
+    ExperienceVectorService,
+    PlaceGraphService,
+    DistrictService,
+    CrowdCurveService,
   ],
 })
 export class PlacesModule {}

@@ -8,7 +8,7 @@
  * - Visa / Drone / RoadRules / Money / Safety / WeatherWindows / LocalTransport / BookingNorms
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContextBlock } from '../../agent/context-engine/types/context-package.types';
@@ -63,9 +63,34 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
   };
 
   constructor(
-    @Inject('PrismaService') @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly packStorage?: PackStorageService,
   ) {}
+
+  /** 将可能是 string 或 {en,zh} 对象的值转为可搜索字符串，避免 toLowerCase is not a function */
+  private toSearchStr(v: any): string {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    return (v?.en ?? v?.zh ?? '') as string;
+  }
+
+  /**
+   * 当 PackStorageService 未注入时，用 Prisma 直接按 countryCode 查询 ReadinessPack
+   */
+  private async findPacksByCountryFallback(countryCode: string): Promise<any[]> {
+    if (!this.prisma) return [];
+    try {
+      const records = await this.prisma.readinessPack.findMany({
+        where: { countryCode: countryCode.toUpperCase(), isActive: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return records.map((r) => r.packData as any);
+    } catch (err: any) {
+      this.logger.warn(`findPacksByCountryFallback(${countryCode}) failed: ${err?.message}`);
+      return [];
+    }
+  }
 
   async execute(input: CountryPackGetBlocksInput): Promise<CountryPackGetBlocksOutput> {
     this.logger.debug(
@@ -77,30 +102,49 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
 
     try {
       // 1. 判断 packId 是 countryCode 还是 readinessPackId
-      let countryCode: string;
-      let countryName: string;
-      let packData: any;
+      let countryCode: string = input.packId;
+      let countryName: string = '';
+      let packData: any = null;
 
-      // 尝试从 ReadinessPack 获取
-      if (this.prisma && this.packStorage) {
+      // 尝试从 ReadinessPack 获取（需 Prisma）
+      if (this.prisma) {
         try {
-          const readinessPack = await this.prisma.readinessPack.findUnique({
-            where: { packId: input.packId },
+          let readinessPack = await this.prisma.readinessPack.findFirst({
+            where: { packId: input.packId, isActive: true },
           });
+
+          // 当 packId 为 2 字母国家代码（如 IS）且未找到时，按 countryCode 查找
+          if (!readinessPack && /^[A-Za-z]{2}$/.test(input.packId)) {
+            const packRecords = this.packStorage
+              ? await this.packStorage.findPacksByCountry(input.packId.toUpperCase())
+              : await this.findPacksByCountryFallback(input.packId.toUpperCase());
+            if (packRecords.length > 0) {
+              const pack = packRecords[0] as any;
+              countryCode = pack.geo?.countryCode || input.packId.toUpperCase();
+              countryName = typeof pack.displayName === 'string' ? pack.displayName : pack.displayName?.en || pack.displayName?.zh || countryCode;
+              packData = pack;
+              const countryPackConfig = getCountryPack(countryCode);
+              if (countryPackConfig?.riskThresholds && !packData.riskThresholds) {
+                packData = { ...packData, riskThresholds: countryPackConfig.riskThresholds };
+              }
+            }
+          }
 
           if (readinessPack) {
             countryCode = readinessPack.countryCode;
             countryName = readinessPack.displayName;
             packData = readinessPack.packData as any;
-          } else {
-            // 作为 countryCode 处理
+            const countryPackConfig = getCountryPack(countryCode);
+            if (countryPackConfig?.riskThresholds && !packData.riskThresholds) {
+              packData = { ...packData, riskThresholds: countryPackConfig.riskThresholds };
+            }
+          } else if (!packData) {
+            const countryPack = getCountryPack(input.packId);
             countryCode = input.packId;
-            const countryPack = getCountryPack(countryCode);
             countryName = countryPack.countryName;
             packData = countryPack;
           }
         } catch (error) {
-          // 降级：作为 countryCode 处理
           countryCode = input.packId;
           const countryPack = getCountryPack(countryCode);
           countryName = countryPack.countryName;
@@ -205,13 +249,15 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
    * 提取签证块（从 ReadinessPack 完整提取）
    */
   private extractVisaBlock(packData: any, countryCode: string, countryName: string): ContextBlock | null {
-    // 从 ReadinessPack 的 rules 中提取 entry_transit 类别的规则
-    const visaRules = packData.rules?.filter((rule: any) => 
-      rule.category === 'entry_transit' || 
-      rule.id?.toLowerCase().includes('visa') ||
-      rule.then?.message?.toLowerCase().includes('visa') ||
-      rule.then?.tasks?.some((task: any) => task.tags?.includes('visa'))
-    ) || [];
+    const visaRules = packData.rules?.filter((rule: any) => {
+      const msg = this.toSearchStr(rule.then?.message);
+      return (
+        rule.category === 'entry_transit' ||
+        this.toSearchStr(rule.id).toLowerCase().includes('visa') ||
+        msg.toLowerCase().includes('visa') ||
+        rule.then?.tasks?.some((task: any) => task.tags?.includes('visa'))
+      );
+    }) || [];
 
     if (visaRules.length === 0) {
       return null; // 没有签证相关信息，返回 null
@@ -266,14 +312,14 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
    */
   private extractDroneBlock(packData: any, countryCode: string, countryName: string): ContextBlock | null {
     // 查找包含 'drone' 关键词的规则和清单
-    const droneRules = packData.rules?.filter((rule: any) => 
-      rule.id?.toLowerCase().includes('drone') ||
-      rule.then?.message?.toLowerCase().includes('drone') ||
-      rule.when?.containsAny?.values?.some((v: string) => v.toLowerCase().includes('drone')) ||
-      rule.then?.tasks?.some((task: any) => 
-        task.title?.toLowerCase().includes('drone') || 
-        task.tags?.includes('drone')
-      )
+    const droneRules = packData.rules?.filter((rule: any) =>
+      this.toSearchStr(rule.id).toLowerCase().includes('drone') ||
+      this.toSearchStr(rule.then?.message).toLowerCase().includes('drone') ||
+      rule.when?.containsAny?.values?.some((v: string) => this.toSearchStr(v).toLowerCase().includes('drone')) ||
+      rule.then?.tasks?.some((task: any) =>
+        this.toSearchStr(task.title).toLowerCase().includes('drone') ||
+        task.tags?.includes('drone'),
+      ),
     ) || [];
 
     const droneChecklists = packData.checklists?.filter((checklist: any) =>
@@ -341,13 +387,16 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
     const riskThresholds = packData.riskThresholds;
     
     // 2. 从 ReadinessPack 的 rules 中提取 safety_hazards 和 terrain 相关的规则
-    const roadRules = packData.rules?.filter((rule: any) => 
-      rule.category === 'safety_hazards' ||
-      rule.id?.toLowerCase().includes('road') ||
-      rule.id?.toLowerCase().includes('terrain') ||
-      rule.id?.toLowerCase().includes('f-road') ||
-      rule.id?.toLowerCase().includes('driving')
-    ) || [];
+    const roadRules = packData.rules?.filter((rule: any) => {
+      const id = this.toSearchStr(rule.id).toLowerCase();
+      return (
+        rule.category === 'safety_hazards' ||
+        id.includes('road') ||
+        id.includes('terrain') ||
+        id.includes('f-road') ||
+        id.includes('driving')
+      );
+    }) || [];
 
     const terrainHazards = packData.hazards?.filter((hazard: any) => 
       hazard.type === 'terrain' || hazard.type === 'weather_extreme'
@@ -430,15 +479,19 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
    */
   private extractMoneyBlock(packData: any, countryCode: string, countryName: string): ContextBlock | null {
     // 从 logistics 相关的规则和清单中提取货币/支付信息
-    const moneyRules = packData.rules?.filter((rule: any) => 
-      rule.category === 'logistics' ||
-      rule.id?.toLowerCase().includes('money') ||
-      rule.id?.toLowerCase().includes('currency') ||
-      rule.id?.toLowerCase().includes('payment') ||
-      rule.id?.toLowerCase().includes('cash') ||
-      rule.then?.message?.toLowerCase().includes('currency') ||
-      rule.then?.message?.toLowerCase().includes('payment')
-    ) || [];
+    const moneyRules = packData.rules?.filter((rule: any) => {
+      const id = this.toSearchStr(rule.id).toLowerCase();
+      const msg = this.toSearchStr(rule.then?.message).toLowerCase();
+      return (
+        rule.category === 'logistics' ||
+        id.includes('money') ||
+        id.includes('currency') ||
+        id.includes('payment') ||
+        id.includes('cash') ||
+        msg.includes('currency') ||
+        msg.includes('payment')
+      );
+    }) || [];
 
     const moneyChecklists = packData.checklists?.filter((checklist: any) =>
       checklist.category === 'logistics' ||
@@ -574,15 +627,19 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
    */
   private extractLocalTransportBlock(packData: any, countryCode: string, countryName: string): ContextBlock | null {
     // 从 logistics 相关的规则和清单中提取交通信息
-    const transportRules = packData.rules?.filter((rule: any) => 
-      rule.category === 'logistics' ||
-      rule.id?.toLowerCase().includes('transport') ||
-      rule.id?.toLowerCase().includes('bus') ||
-      rule.id?.toLowerCase().includes('taxi') ||
-      rule.id?.toLowerCase().includes('car') ||
-      rule.id?.toLowerCase().includes('ferry') ||
-      rule.then?.message?.toLowerCase().match(/(transport|bus|taxi|car|ferry|public transport)/i)
-    ) || [];
+    const transportRules = packData.rules?.filter((rule: any) => {
+      const id = this.toSearchStr(rule.id).toLowerCase();
+      const msg = this.toSearchStr(rule.then?.message).toLowerCase();
+      return (
+        rule.category === 'logistics' ||
+        id.includes('transport') ||
+        id.includes('bus') ||
+        id.includes('taxi') ||
+        id.includes('car') ||
+        id.includes('ferry') ||
+        /(transport|bus|taxi|car|ferry|public transport)/i.test(msg)
+      );
+    }) || [];
 
     const transportChecklists = packData.checklists?.filter((checklist: any) =>
       checklist.category === 'logistics' ||
@@ -639,12 +696,15 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
    */
   private extractBookingNormsBlock(packData: any, countryCode: string, countryName: string): ContextBlock | null {
     // 从 activities_bookings 类别的规则和清单中提取预订信息
-    const bookingRules = packData.rules?.filter((rule: any) => 
-      rule.category === 'activities_bookings' ||
-      rule.id?.toLowerCase().includes('booking') ||
-      rule.id?.toLowerCase().includes('reservation') ||
-      rule.then?.tasks?.some((task: any) => task.tags?.includes('booking'))
-    ) || [];
+    const bookingRules = packData.rules?.filter((rule: any) => {
+      const id = this.toSearchStr(rule.id).toLowerCase();
+      return (
+        rule.category === 'activities_bookings' ||
+        id.includes('booking') ||
+        id.includes('reservation') ||
+        rule.then?.tasks?.some((task: any) => task.tags?.includes('booking'))
+      );
+    }) || [];
 
     const bookingChecklists = packData.checklists?.filter((checklist: any) =>
       checklist.category === 'activities_bookings' ||
@@ -661,10 +721,10 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
     // 提取预订任务（包含提前天数信息）
     const bookingTasks = bookingRules
       .flatMap((rule: any) => rule.then?.tasks || [])
-      .filter((task: any) => 
-        task.tags?.includes('booking') || 
-        task.title?.toLowerCase().includes('book') ||
-        task.title?.toLowerCase().includes('reservation')
+      .filter((task: any) =>
+        task.tags?.includes('booking') ||
+        this.toSearchStr(task.title).toLowerCase().includes('book') ||
+        this.toSearchStr(task.title).toLowerCase().includes('reservation'),
       )
       .map((task: any) => {
         const title = typeof task.title === 'string' ? task.title : task.title?.en || task.title?.zh || '';

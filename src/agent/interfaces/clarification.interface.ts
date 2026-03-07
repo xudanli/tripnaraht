@@ -28,24 +28,48 @@ export interface ClarificationValidation {
 }
 
 /**
+ * 条件输入字段的类型（支持单选、多选等结构化输入）
+ * multiple_choice 与 multi_choice 等价，前端兼容
+ */
+export type ConditionalInputType =
+  | 'text'
+  | 'single_choice'
+  | 'multi_choice'
+  | 'multiple_choice'
+  | 'number'
+  | 'date'
+  | 'date_range';
+
+/**
  * 🆕 HCI优化：条件输入字段配置
  * 当用户选择特定选项时，显示后续输入字段
  */
 export interface ConditionalInputField {
-  /** 触发此输入字段的选项值（当用户选择此选项时显示输入字段） */
+  /** 触发此输入字段的选项值（与 options[].value 或 label 匹配） */
   triggerValue: string;
   /** 输入字段类型 */
-  inputType: 'text' | 'date' | 'number' | 'date_range';
-  /** 输入字段标签 */
+  inputType: ConditionalInputType;
+  /** 输入框标签，如「请选择旅行节奏」 */
   label?: string;
-  /** 占位符 */
+  /** single_choice / multiple_choice 时必填，格式：string[] 或 { value, label }[] */
+  options?: (string | { value: string; label: string })[];
+  /** 占位符（如 text 类型） */
   placeholder?: string;
-  /** 是否必填 */
+  /** 辅助说明文案 */
+  hint?: string;
+  /** 是否必填，默认 true */
   required?: boolean;
   /** 验证规则 */
   validation?: ClarificationValidation;
-  /** 提示文本 */
-  hint?: string;
+  /**
+   * 参数键名，提交时使用 {questionId}_{paramKey}，合并到 partialParams.preferences
+   */
+  paramKey?: string;
+  /**
+   * 确认提交按钮文案。当存在时，前端应为此条件输入渲染独立提交按钮，
+   * 便于用户填写数字/日期等后明确确认（如「预算需要调整」+ 预算输入框 +「确认提交」）。
+   */
+  submitLabel?: string;
 }
 
 /**
@@ -60,8 +84,8 @@ export interface ClarificationQuestion {
   question: string;
   /** 问题类型 */
   type: ClarificationQuestionType;
-  /** 选项列表（用于 single_choice 和 multi_choice） */
-  options?: string[];
+  /** 选项列表（用于 single_choice 和 multi_choice），支持 string[] 或 { value, label }[] */
+  options?: (string | { value: string; label: string })[];
   /** 是否必填 */
   required: boolean;
   /** 占位符（用于 text 和 number） */

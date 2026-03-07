@@ -6,11 +6,14 @@
  * 提供管理端接口：统计、监控、配置等
  */
 
-import { Controller, Get, Post, Put, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, Logger, Optional } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { ChainOfWorkService } from '../services/chain-of-work.service';
 import { VersionService } from '../version/version.service';
 import { ChainOfWorkStorageService } from '../storage/chain-of-work-storage.service';
+import { DecisionDraftStorageService } from '../../decision-draft/storage/decision-draft-storage.service';
+import { DecisionDraftEditorService } from '../../decision-draft/services/decision-draft-editor.service';
+import { EditDecisionStepDto } from '../../decision-draft/dto/decision-draft.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import { TripNARAWorkflowDraft, ExecutionResult } from '../interfaces/chain-of-work.interface';
 
@@ -24,6 +27,8 @@ export class ChainOfWorkAdminController {
     private readonly chainOfWorkService: ChainOfWorkService,
     private readonly versionService: VersionService,
     private readonly storageService: ChainOfWorkStorageService,
+    @Optional() private readonly decisionDraftStorage?: DecisionDraftStorageService,
+    @Optional() private readonly decisionDraftEditor?: DecisionDraftEditorService,
   ) {}
 
   @Get('stats')
@@ -134,6 +139,60 @@ export class ChainOfWorkAdminController {
     }
     
     return result;
+  }
+
+  @Post('draft/:draftId/validate')
+  @ApiOperation({ summary: '验证单个草案', description: '验证指定草案的完整性（步骤是否存在等）' })
+  @ApiBearerAuth()
+  @ApiResponse({ status: 200, description: '验证成功' })
+  @ApiResponse({ status: 404, description: '草案不存在' })
+  async validateDraft(@Param('draftId') draftId: string): Promise<{
+    draft_id: string;
+    success: boolean;
+    error?: string;
+  }> {
+    this.logger.log(`[ChainOfWorkAdmin] validateDraft called: ${draftId}`);
+    const result = await this.storageService.batchOperation('validate', [draftId]);
+    const item = result.results[0];
+    return {
+      draft_id: draftId,
+      success: item?.success ?? false,
+      error: item?.error,
+    };
+  }
+
+  @Put('draft/:draftId/step/:stepId')
+  @ApiOperation({ summary: '编辑草案步骤', description: '编辑指定草案的单个决策步骤（approve/reject/modify）' })
+  @ApiBearerAuth()
+  @ApiParam({ name: 'draftId', description: '草案 ID' })
+  @ApiParam({ name: 'stepId', description: '步骤 ID（如 step-intake）' })
+  @ApiResponse({ status: 200, description: '编辑成功' })
+  @ApiResponse({ status: 404, description: '草案或步骤不存在' })
+  async editDraftStep(
+    @Param('draftId') draftId: string,
+    @Param('stepId') stepId: string,
+    @Body() dto: EditDecisionStepDto,
+  ): Promise<{ draft: any }> {
+    this.logger.log(`[ChainOfWorkAdmin] editDraftStep called: draft_id=${draftId}, step_id=${stepId}`);
+
+    if (!this.decisionDraftStorage || !this.decisionDraftEditor) {
+      throw new Error('DecisionDraft 服务未注入，无法编辑步骤');
+    }
+    if (!dto?.operation?.action) {
+      throw new Error('缺少 operation.action 字段');
+    }
+
+    const decisionDraft = await this.decisionDraftStorage.loadDecisionDraft(draftId);
+    if (!decisionDraft) {
+      throw new Error(`决策草案不存在: ${draftId}`);
+    }
+
+    const updatedDraft = await this.decisionDraftEditor.editDecisionStep(decisionDraft, {
+      ...dto.operation,
+      decision_step_id: stepId,
+    });
+    const savedDraft = await this.decisionDraftStorage.saveDecisionDraft(updatedDraft);
+    return { draft: savedDraft };
   }
 
   @Post('draft/:draftId/execute')

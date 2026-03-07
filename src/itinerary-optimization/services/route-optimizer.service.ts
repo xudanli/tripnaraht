@@ -758,6 +758,15 @@ export class RouteOptimizerService {
         break;
       }
 
+      // 🆕 避免半夜安排：将开始时间限制在 08:00-22:00 合理时段内
+      const dayStart = currentTime.startOf('day');
+      const hour = currentTime.hour;
+      if (hour < 8) {
+        currentTime = dayStart.set({ hour: 8, minute: 0, second: 0, millisecond: 0 });
+      } else if (hour >= 22) {
+        currentTime = dayStart.set({ hour: 21, minute: 0, second: 0, millisecond: 0 });
+      }
+
       const startTime = currentTime.toISO();
       const endTimeForNode = currentTime.plus({ minutes: duration }).toISO();
 

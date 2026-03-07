@@ -18,10 +18,14 @@ export interface LoadedNegotiateContext {
   world: WorldModelContext;
 }
 
+interface ItineraryItemWithPlace {
+  Place?: { nameCN?: string; nameEN?: string; metadata?: unknown } | null;
+}
+
 interface TripDayWithItems {
   id: string;
   date: Date;
-  ItineraryItem: Array<{ Place?: { metadata?: unknown } | null } | null>;
+  ItineraryItem: Array<ItineraryItemWithPlace | null>;
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -94,12 +98,14 @@ export class NegotiateContextLoaderService {
   ): RoutePlanDraft {
     const segments: RouteSegment[] = days.map((day, index) => {
       const { distanceKm, ascentM } = this.computeSegmentMetrics(day.ItineraryItem);
+      const activityNames = this.extractActivityNames(day.ItineraryItem);
       return {
         segmentId: day.id,
         dayIndex: index + 1,
         distanceKm,
         ascentM,
         slopePct: distanceKm > 0 ? (ascentM / (distanceKm * 1000)) * 100 : 0,
+        metadata: activityNames.length > 0 ? { activityNames } : undefined,
       };
     });
 
@@ -118,6 +124,20 @@ export class NegotiateContextLoaderService {
       routeDirectionId,
       segments,
     };
+  }
+
+  /**
+   * 从行程项提取活动名称（用于优化建议展示具体活动）
+   */
+  private extractActivityNames(items: ItineraryItemWithPlace[]): string[] {
+    const names = new Set<string>();
+    for (const item of items || []) {
+      const place = item?.Place;
+      if (!place) continue;
+      const name = (place.nameCN || place.nameEN || '').trim();
+      if (name && !names.has(name)) names.add(name);
+    }
+    return [...names];
   }
 
   /**

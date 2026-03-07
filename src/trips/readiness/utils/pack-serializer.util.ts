@@ -100,6 +100,7 @@ function serializeActionForAdmin(action: Action, lang: 'zh' | 'en' = 'zh'): any 
  * 序列化 Checklist 用于管理界面显示
  */
 function serializeChecklistForAdmin(checklist: any, lang: 'zh' | 'en' = 'zh'): any {
+  const items = checklist.items ?? [];
   return {
     ...checklist,
     // 🆕 序列化前端文档兼容字段
@@ -107,8 +108,8 @@ function serializeChecklistForAdmin(checklist: any, lang: 'zh' | 'en' = 'zh'): a
     titleRaw: checklist.title,
     description: checklist.description ? getLocalizedText(checklist.description, lang) : undefined,
     descriptionRaw: checklist.description,
-    items: checklist.items.map((item: LocalizedString) => getLocalizedText(item, lang)),
-    itemsRaw: checklist.items, // 保留原始 LocalizedString 数组
+    items: items.map((item: LocalizedString) => getLocalizedText(item, lang)),
+    itemsRaw: items, // 保留原始 LocalizedString 数组
     required: checklist.required,
     priority: checklist.priority,
     checklistCategory: checklist.checklistCategory,
@@ -134,8 +135,8 @@ function serializeHazardForAdmin(hazard: any, lang: 'zh' | 'en' = 'zh'): any {
     seasons: hazard.seasons,
     summary: getLocalizedText(hazard.summary, lang),
     summaryRaw: hazard.summary,
-    mitigations: hazard.mitigations.map((m: LocalizedString) => getLocalizedText(m, lang)),
-    mitigationsRaw: hazard.mitigations, // 保留原始 LocalizedString 数组
+    mitigations: (hazard.mitigations ?? []).map((m: LocalizedString) => getLocalizedText(m, lang)),
+    mitigationsRaw: hazard.mitigations ?? [], // 保留原始 LocalizedString 数组
     metadata: hazard.metadata ? {
       ...hazard.metadata,
       description: description ? getLocalizedText(description, lang) : undefined,

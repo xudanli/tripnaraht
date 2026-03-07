@@ -79,6 +79,7 @@ export class StateManagerService {
     if (patch.decisionMeta !== undefined) updated.decisionMeta = this.mergeDecisionMeta(current.decisionMeta, patch.decisionMeta);
     if (patch.history !== undefined) updated.history = this.mergeHistory(current.history, patch.history);
     if (patch.confidence !== undefined) updated.confidence = patch.confidence;
+    if (patch.feedback !== undefined) updated.feedback = { ...(current.feedback ?? {}), ...patch.feedback };
 
     this.logger.debug(`[StateManager] Merged: requestId=${updated.requestId}, phase=${updated.systemState.currentPhase}`);
     return updated;
@@ -289,6 +290,9 @@ export class StateManagerService {
     }
     if (patch.tripState?.planDraft) {
       deltas.push({ type: 'plan', summary: stageOutput ?? 'plan draft updated', at: now });
+    }
+    if (patch.feedback) {
+      deltas.push({ type: 'feedback', summary: stageOutput ?? 'user feedback submitted', at: now });
     }
     return deltas;
   }

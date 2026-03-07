@@ -27,24 +27,17 @@ import {
 import { ItemType } from '../../itinerary-items/dto/create-itinerary-item.dto';
 import { PlaceCategory } from '@prisma/client';
 import type { ContextBlock } from '../../agent/context-engine/types/context-package.types';
+import {
+  CandidateRetrievalEngine,
+  type CandidatePlace,
+} from './candidate-retrieval.engine';
+import { ConstraintEngine } from './constraint.engine';
+import { RouteOptimizationEngine } from './route-optimization.engine';
+import { FatiguePredictionEngine } from './fatigue-prediction.engine';
+import { PacingEngine } from './pacing.engine';
 
-/**
- * 候选地点信息（用于 LLM 编排）
- */
-interface CandidatePlace {
-  id: number;
-  nameCN: string;
-  nameEN?: string | null;
-  type: string; // PlaceCategory
-  category: string;
-  lat: number;
-  lng: number;
-  openingHours?: any;
-  avgVisitDuration?: number; // 分钟
-  tags?: string[];
-  popularity?: number;
-  rating?: number;
-}
+/** 候选地点信息（与 CandidateRetrievalEngine 导出类型兼容） */
+type CandidatePlaceType = CandidatePlace;
 
 /**
  * TripDraftService
@@ -70,6 +63,11 @@ export class TripDraftService {
   constructor(
     private prisma: PrismaService,
     private llmService: LlmService,
+    private candidateEngine: CandidateRetrievalEngine,
+    private constraintEngine: ConstraintEngine,
+    private routeEngine: RouteOptimizationEngine,
+    private fatigueEngine: FatiguePredictionEngine,
+    private pacingEngine: PacingEngine,
   ) {}
 
   /**
@@ -103,9 +101,9 @@ export class TripDraftService {
       throw new BadRequestException('行程天数必须在 1-14 天之间');
     }
 
-    // Step 1: 候选检索
+    // Step 1: 候选检索（TripNara 多阶段检索引擎）
     this.logger.log(`开始检索候选地点（国家: ${countryCode}, 风格: ${dto.style || 'balanced'}）`);
-    const candidates = await this.retrieveCandidates(dto);
+    const candidates = await this.candidateEngine.retrieve(dto);
     
     if (candidates.length < 20) {
       throw new BadRequestException(
@@ -116,13 +114,29 @@ export class TripDraftService {
     // Step 2: 构建日期列表
     const days = this.buildDayList(dto);
 
-    // Step 3: LLM 编排选择（可选注入 Context 上下文，专利方案 C 增强）
-    this.logger.log(`使用 LLM 从 ${candidates.length} 个候选中编排 ${dto.days} 天行程${contextBlocks?.length ? `（含 ${contextBlocks.length} 个上下文块）` : ''}`);
-    const llmResult = await this.llmOrchestrate(dto, candidates, days, onProgress, contextBlocks);
+    // Step 3: 编排选择（TripNara Phase 4+5: 算法优先，否则 LLM）
+    let llmResult: { days: any[] };
+    if (dto.useAlgorithmicDraft) {
+      this.logger.log(`使用路径优化引擎编排 ${dto.days} 天行程（算法模式）`);
+      if (onProgress) {
+        await onProgress({
+          status: 'generating',
+          stage: 'route_optimization',
+          message: '正在优化路线...',
+        });
+      }
+      llmResult = await this.routeEngine.optimize(candidates, days, dto);
+    } else {
+      this.logger.log(`使用 LLM 从 ${candidates.length} 个候选中编排 ${dto.days} 天行程${contextBlocks?.length ? `（含 ${contextBlocks.length} 个上下文块）` : ''}`);
+      llmResult = await this.llmOrchestrate(dto, candidates, days, onProgress, contextBlocks);
+    }
 
     // Step 4: 规则校验和修复
     const validationWarnings: string[] = [];
-    const validatedDays = await this.validateAndRepair(days, llmResult, candidates, validationWarnings);
+    const validatedDays = await this.validateAndRepair(days, llmResult, candidates, validationWarnings, {
+      intensity: dto.intensity,
+      transport: dto.transport,
+    });
 
     // Step 5: 构建响应
     const generationTime = Date.now() - startTime;
@@ -137,77 +151,9 @@ export class TripDraftService {
       validationWarnings: validationWarnings.length > 0 ? validationWarnings : undefined,
       metadata: {
         generationTime,
-        llmProvider: 'deepseek',
+        llmProvider: dto.useAlgorithmicDraft ? 'algorithm' : 'deepseek',
       },
     };
-  }
-
-  /**
-   * 候选检索
-   */
-  private async retrieveCandidates(dto: CreateTripDraftDto): Promise<CandidatePlace[]> {
-    const countryCode = dto.destination.toUpperCase().trim();
-
-    // 构建类别过滤
-    const categoryFilter = dto.style 
-      ? this.getCategoryFilterByStyle(dto.style)
-      : [];
-
-    const categorySql = categoryFilter.length > 0
-      ? Prisma.sql`AND category = ANY(${categoryFilter}::"PlaceCategory"[])`
-      : Prisma.sql``;
-
-    // 使用 Raw Query 提取坐标
-    const rawPlaces = await this.prisma.$queryRaw<Array<{
-      id: number;
-      nameCN: string;
-      nameEN: string | null;
-      category: string;
-      metadata: any;
-      physicalMetadata: any;
-      rating: number | null;
-      lat: number;
-      lng: number;
-    }>>`
-      SELECT 
-        p.id,
-        p."nameCN",
-        p."nameEN",
-        p.category,
-        p.metadata,
-        p."physicalMetadata",
-        p.rating,
-        ST_Y(p.location::geometry) as lat,
-        ST_X(p.location::geometry) as lng
-      FROM "Place" p
-      INNER JOIN "City" c ON p."cityId" = c.id
-      WHERE c."countryCode" = ${countryCode}
-        AND p.location IS NOT NULL
-        ${categorySql}
-      ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
-      LIMIT 200
-    `;
-
-    // 转换为候选格式
-    return rawPlaces.map(place => {
-      const metadata = place.metadata as PlaceMetadata | null;
-      const physicalMetadata = place.physicalMetadata as PhysicalMetadata | null;
-
-      return {
-        id: place.id,
-        nameCN: place.nameCN,
-        nameEN: place.nameEN,
-        type: place.category,
-        category: place.category,
-        lat: place.lat,
-        lng: place.lng,
-        openingHours: metadata?.openingHours,
-        avgVisitDuration: physicalMetadata?.estimated_duration_min || 60,
-        tags: metadata?.rawTags || [],
-        popularity: place.rating ? place.rating * 2 : 5, // 简化：用 rating * 2 作为 popularity
-        rating: place.rating || undefined,
-      };
-    });
   }
 
   /**
@@ -532,8 +478,18 @@ ${contextBlocks
 `
         : '';
 
-    return `${contextSection}你是一个专业的旅行规划助手。请根据用户需求和候选地点，为 ${dto.days} 天的行程安排每天的时段活动。
+    const userPlanSection =
+      dto.userInput || dto.cities?.length || dto.mustHavePois?.length || dto.dayAllocation?.length
+        ? `
+用户原始描述：${dto.userInput || '（无）'}
+${dto.cities?.length ? `- 指定城市：${dto.cities.join('、')}` : ''}
+${dto.mustHavePois?.length ? `- 必含景点（优先安排）：${dto.mustHavePois.join('、')}` : ''}
+${dto.dayAllocation?.length ? `- 城市天数分配：${dto.dayAllocation.map((a) => `${a.city}${a.days}天`).join('，')}` : ''}
+`
+        : '';
 
+    return `${contextSection}你是一个专业的旅行规划助手。请根据用户需求和候选地点，为 ${dto.days} 天的行程安排每天的时段活动。
+${userPlanSection}
 用户需求：
 - 目的地：${dto.destination}
 - 风格：${dto.style || 'balanced'}
@@ -576,7 +532,8 @@ ${candidatesJson}
     days: Array<{ day: number; date: string }>,
     llmResult: any,
     candidates: CandidatePlace[],
-    warnings: string[]
+    warnings: string[],
+    options?: { intensity?: string; transport?: import('../dto/trip-draft.dto').TransportMode }
   ): Promise<DraftDay[]> {
     const validatedDays: DraftDay[] = [];
     
@@ -677,6 +634,107 @@ ${candidatesJson}
 
       dailyPlaceIds.set(dayData.day, dayPlaceIds);
       dailyRestaurantIds.set(dayData.day, dayRestaurantIds);
+
+      // TripNara Phase 3: 地理约束（同一天 cluster/District 不超过 2 个）检查与修复
+      const slotMap = Object.fromEntries(
+        Object.entries(slots).map(([k, v]) => [k, { placeId: v.placeId }]),
+      );
+      const hasDistrictData = Object.values(slots).some((s) => {
+        const c = candidates.find((x) => x.id === s.placeId);
+        return c?.districtId != null;
+      });
+      if (hasDistrictData) {
+        const districtResult = this.constraintEngine.checkDistrictConstraint(slotMap, candidates);
+        if (!districtResult.ok && districtResult.excessDistrictIds.length > 0) {
+          const keepDistrictIds = districtResult.districtIds.filter(
+            (id) => !districtResult.excessDistrictIds.includes(id),
+          );
+          for (const [slotKey, draftItem] of Object.entries(slots)) {
+            const c = candidates.find((x) => x.id === draftItem.placeId);
+            if (c?.districtId != null && districtResult.excessDistrictIds.includes(c.districtId)) {
+              const isMeal = slotKey === 'lunch' || slotKey === 'dinner';
+              const replacement = this.constraintEngine.suggestReplacementFromDistricts(
+                draftItem.placeId,
+                districtResult.excessDistrictIds,
+                keepDistrictIds,
+                candidates,
+                isMeal ? 'RESTAURANT' : undefined,
+              );
+              if (replacement && !dayPlaceIds.has(replacement)) {
+                const oldId = draftItem.placeId;
+                dayPlaceIds.delete(oldId);
+                dayPlaceIds.add(replacement);
+                globalPlaceIds.set(oldId, (globalPlaceIds.get(oldId) ?? 1) - 1);
+                globalPlaceIds.set(replacement, (globalPlaceIds.get(replacement) ?? 0) + 1);
+                if (c.category === 'RESTAURANT') dayRestaurantIds.delete(oldId);
+                const repCandidate = candidates.find((x) => x.id === replacement);
+                if (repCandidate?.category === 'RESTAURANT') dayRestaurantIds.add(replacement);
+                draftItem.placeId = replacement;
+                draftItem.reason = (draftItem.reason || '') + ' [District约束修复]';
+                warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段因 District 约束将 ${oldId} 替换为 ${replacement}`);
+              }
+            }
+          }
+        }
+      } else {
+        const clusterResult = this.constraintEngine.checkClusterConstraint(slotMap, candidates);
+        if (!clusterResult.ok && clusterResult.excessClusterIds.length > 0) {
+          for (const [slotKey, draftItem] of Object.entries(slots)) {
+            const c = candidates.find((x) => x.id === draftItem.placeId);
+            if (c?.clusterId !== undefined && clusterResult.excessClusterIds.includes(c.clusterId)) {
+              const isMeal = slotKey === 'lunch' || slotKey === 'dinner';
+              const replacement = this.constraintEngine.suggestReplacementFromClusters(
+                draftItem.placeId,
+                clusterResult.excessClusterIds,
+                clusterResult.clusterIds.filter((id) => !clusterResult.excessClusterIds.includes(id)),
+                candidates,
+                isMeal ? 'RESTAURANT' : undefined,
+              );
+              if (replacement && !dayPlaceIds.has(replacement)) {
+                const oldId = draftItem.placeId;
+                dayPlaceIds.delete(oldId);
+                dayPlaceIds.add(replacement);
+                globalPlaceIds.set(oldId, (globalPlaceIds.get(oldId) ?? 1) - 1);
+                globalPlaceIds.set(replacement, (globalPlaceIds.get(replacement) ?? 0) + 1);
+                if (c.category === 'RESTAURANT') dayRestaurantIds.delete(oldId);
+                const repCandidate = candidates.find((x) => x.id === replacement);
+                if (repCandidate?.category === 'RESTAURANT') dayRestaurantIds.add(replacement);
+                draftItem.placeId = replacement;
+                draftItem.reason = (draftItem.reason || '') + ' [cluster约束修复]';
+                warnings.push(`第 ${dayData.day} 天 ${slotKey} 时段因 cluster 约束将 ${oldId} 替换为 ${replacement}`);
+              }
+            }
+          }
+        }
+      }
+
+      // TripNara Phase 3: 距离约束检查（按交通方式：步行 5km，公交 30km，自驾 150km）
+      const distViolations = this.constraintEngine.checkDistanceConstraint(
+        slotMap,
+        candidates,
+        options?.transport,
+      );
+      const maxDistKm = options?.transport === 'car' ? 150 : options?.transport === 'transit' ? 30 : 5;
+      for (const v of distViolations) {
+        warnings.push(
+          `第 ${dayData.day} 天 ${v.slotA}→${v.slotB} 距离 ${v.distanceKm}km 超过 ${maxDistKm}km，建议优化路线`,
+        );
+      }
+
+      // TripNara Phase A: 疲劳预测检查（按交通方式与强度）
+      const fatigueResult = this.fatigueEngine.compute(slotMap, candidates, options?.transport);
+      const maxFatigue = this.fatigueEngine.getMaxScoreForIntensity(options?.intensity);
+      if (fatigueResult.score > maxFatigue) {
+        warnings.push(
+          `第 ${dayData.day} 天疲劳分 ${fatigueResult.score.toFixed(1)} 超过限制 ${maxFatigue}（强度=${options?.intensity || 'balanced'}），步行约 ${fatigueResult.walkingDistanceKm}km，${fatigueResult.placeCount} 个地点`,
+        );
+      }
+
+      // TripNara Phase A: 节奏约束检查（连续 museum ≤ 1，连续 attraction ≤ 2）
+      const pacingViolations = this.pacingEngine.check(slotMap, candidates);
+      for (const pv of pacingViolations) {
+        warnings.push(`第 ${dayData.day} 天 ${pv.slot} 时段：${pv.message}`);
+      }
       
       // 🆕 检查去重后某天是否缺少行程项，如果缺少则尝试填充
       const slotCount = Object.keys(slots).length;
@@ -946,6 +1004,24 @@ ${candidatesJson}
     
     const placeCategoryMap = new Map(places.map(p => [p.id, p.category]));
 
+    // 🆕 酒店去重：每天最多保留一个住宿项（HOTEL 类别 → REST 类型）
+    const filteredItemsToCreate: typeof itemsToCreate = [];
+    const hotelAddedPerDay = new Map<string, boolean>();
+    for (const item of itemsToCreate) {
+      const category = item.placeId ? placeCategoryMap.get(item.placeId) : null;
+      if (category === PlaceCategory.HOTEL) {
+        const alreadyHasHotel = hotelAddedPerDay.get(item.tripDayId);
+        if (alreadyHasHotel) {
+          this.logger.warn(`跳过重复酒店：tripDayId=${item.tripDayId}, placeId=${item.placeId}`);
+          continue;
+        }
+        hotelAddedPerDay.set(item.tripDayId, true);
+      }
+      filteredItemsToCreate.push(item);
+    }
+    itemsToCreate.length = 0;
+    itemsToCreate.push(...filteredItemsToCreate);
+
     // 更新 itemsToCreate 的 type（根据时段和 place category 确定）
     for (const item of itemsToCreate) {
       // 根据开始时间确定时段
@@ -1122,15 +1198,11 @@ ${candidatesJson}
     // 如果同城市候选不足（少于5个），扩展到同国家
     if (candidates.length < 5) {
       this.logger.log(`同城市候选不足，扩展到同国家检索`);
-      const countryCandidates = await this.retrieveCandidates({
-      destination: countryCode,
-      days: 1,
-      style: dto.preferredStyle,
-      constraints: dto.constraints ? {
-        mustBeOpen: dto.constraints.mustBeOpen,
-        avoidCategories: dto.constraints.avoidCategories,
-      } : undefined,
-    } as CreateTripDraftDto);
+      const countryCandidates = await this.candidateEngine.retrieve({
+        destination: countryCode,
+        days: 1,
+        style: dto.preferredStyle,
+      });
       
       // 过滤出其他城市的候选（排除同城市的）
       const otherCityCandidates = countryCandidates.filter(c => 

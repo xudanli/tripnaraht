@@ -63,6 +63,10 @@ data/geographic/dem/**/*
 # TypeScript
 *.tsbuildinfo
 
+# MCP OAuth tokens（持久化目录，勿提交）
+.mcp-tokens/
+.tripnara-mcp/
+
 # Misc
 .cache/
 .temp/

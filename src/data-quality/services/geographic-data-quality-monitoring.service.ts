@@ -44,11 +44,24 @@ export class GeographicDataQualityMonitoringService {
     private readonly resolutionCache: DEMResolutionCacheService,
   ) {}
 
+  /** 检测是否为 Prisma 断开连接错误（应用关闭时常见） */
+  private isPrismaDisconnectionError(error: any): boolean {
+    const msg = String(error?.message ?? '');
+    return (
+      msg.includes('Engine is not yet connected') ||
+      msg.includes('Response from the Engine was empty')
+    );
+  }
+
   /**
    * 定时任务：每30分钟执行一次地理数据质量监控
+   * 当 SKIP_GEO_MONITORING=1 时跳过（用于测试/脚本环境）
    */
   @Cron('*/30 * * * *') // 每30分钟
   async runGeographicMonitoringTask() {
+    if (process.env.SKIP_GEO_MONITORING === '1') {
+      return;
+    }
     this.logger.log('开始执行地理数据质量监控任务...');
 
     try {
@@ -110,6 +123,10 @@ export class GeographicDataQualityMonitoringService {
           querySuccessRate: queryPerformance.successRate,
         });
       } catch (error: any) {
+        if (this.isPrismaDisconnectionError(error)) {
+          this.logger.debug(`监控DEM数据跳过 (${countryCode}): 数据库已断开`);
+          return;
+        }
         this.logger.error(`监控DEM数据失败 (${countryCode}): ${error.message}`);
       }
     }
@@ -169,6 +186,12 @@ export class GeographicDataQualityMonitoringService {
             querySuccessRate: queryPerformance.successRate,
           });
         } catch (error: any) {
+          if (this.isPrismaDisconnectionError(error)) {
+            this.logger.debug(
+              `监控地理特征数据跳过 (${countryCode}, ${featureType}): 数据库已断开`
+            );
+            return;
+          }
           this.logger.error(
             `监控地理特征数据失败 (${countryCode}, ${featureType}): ${error.message}`
           );

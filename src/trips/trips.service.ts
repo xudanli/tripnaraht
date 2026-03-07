@@ -1,5 +1,5 @@
 // src/trips/trips.service.ts
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Place } from '@prisma/client';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
@@ -39,6 +39,10 @@ import { EvidenceTriggerService, EvidenceTriggerResult } from './services/eviden
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
 import { BookingComIntegrationService } from '../mcp/booking-com-integration.service';
+import { RouteDirectionsService } from '../route-directions/route-directions.service';
+import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
+import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
+import type { DecisionState } from '../decision/kernel/decision-state.types';
 
 @Injectable()
 export class TripsService {
@@ -170,6 +174,8 @@ export class TripsService {
     private evidenceCompletenessChecker: EvidenceCompletenessChecker,
     private evidenceTrigger: EvidenceTriggerService,
     private bookingComIntegration?: BookingComIntegrationService,
+    @Optional() private routeDirectionsService?: RouteDirectionsService,
+    @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private dsoFeedbackPersistence?: IDsoFeedbackPersistence,
   ) {}
 
   /**
@@ -210,6 +216,23 @@ export class TripsService {
       throw new NotFoundException(
         `目的地国家 ${normalizedCountryCode} 没有城市数据。系统暂不支持该目的地，或该国家尚未导入城市数据。`
       );
+    }
+
+    // 验证该国家是否有 RouteDirection 数据（Should-Exist Gate 前置，与 TripNARA 范式一致）
+    if (this.routeDirectionsService) {
+      try {
+        const { active } = await this.routeDirectionsService.findRouteDirectionsByCountry(normalizedCountryCode);
+        if (!active || active.length === 0) {
+          throw new NotFoundException(
+            `目的地 ${normalizedCountryCode} 暂无可用路线方向，暂不支持行程规划。请联系运营或稍后再试。`
+          );
+        }
+      } catch (error: any) {
+        if (error instanceof NotFoundException) {
+          throw error;
+        }
+        this.logger.warn(`RouteDirection 校验失败，跳过（允许创建）: ${error?.message}`);
+      }
     }
 
     // ============================================
@@ -334,7 +357,7 @@ export class TripsService {
     });
 
     // 使用事务确保 Trip 和 TripDay 要么全部创建成功，要么全部失败
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // A. 创建 Trip 主记录
       // 使用规范化后的国家代码
       const trip = await tx.trip.create({
@@ -392,6 +415,46 @@ export class TripsService {
         },
       };
     });
+
+    // 专利实施例：写入初始 DSO 到 Trip.metadata，供 REPLAN/反馈/世界模型推送使用
+    if (this.dsoFeedbackPersistence) {
+      try {
+        const origin = (dto as any).metadata?.origin as string | undefined;
+        const initialDso = this.buildInitialDsoFromCreateDto(result.id, dto, origin);
+        await this.dsoFeedbackPersistence.persistDso(result.id, initialDso);
+      } catch (e: unknown) {
+        this.logger.warn(`[TripsService.create] 初始 DSO 持久化失败: ${(e as Error)?.message}`);
+      }
+    }
+
+    return result;
+  }
+
+  private buildInitialDsoFromCreateDto(
+    tripId: string,
+    dto: CreateTripDto,
+    origin?: string,
+  ): DecisionState {
+    const start = dto.startDate?.includes('T') ? dto.startDate.slice(0, 10) : dto.startDate;
+    const end = dto.endDate?.includes('T') ? dto.endDate.slice(0, 10) : dto.endDate;
+    const days = start && end
+      ? Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1
+      : 1;
+    return {
+      requestId: tripId,
+      userIntent: {
+        destination: dto.destination,
+        origin,
+        dateRange: start && end ? { startDate: start, endDate: end } : undefined,
+        days,
+        budget: dto.totalBudget,
+        party: { count: dto.travelers?.length ?? 1 },
+        preferences: dto.preferences?.length ? { tags: dto.preferences } : undefined,
+      },
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: tripId, version: 1 },
+    };
   }
 
   /**

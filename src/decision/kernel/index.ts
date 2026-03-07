@@ -19,3 +19,4 @@ export * from './context-engine-adapter.service';
 export * from './feedback-engine-adapter.service';
 export * from './orchestrator-state-mapper';
 export * from './world-state-summary.types';
+export * from './dso-latest-state-provider.interface';

@@ -803,14 +803,17 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
       };
     }
     const routeMatch = plan?.routeDirectionId === routeDirection.id;
+    const routeName = (routeDirection.nameCN || routeDirection.name || '').trim();
 
     return {
       constraintId: constraint.id,
       satisfied: routeMatch,
       satisfactionScore: routeMatch ? 1 : 0.5,
       violationDegree: routeMatch ? 0 : 0.5,
-      violationExplanation: !routeMatch 
-        ? '计划与选定的路线方向不匹配' 
+      violationExplanation: !routeMatch
+        ? routeName
+          ? `您选择的是「${routeName}」，但当前行程是按其他路线规划的。建议点击「去改行程」在规划工作台重新选择路线方向并重新规划`
+          : '当前行程的路线方向与您选择的不一致。建议点击「去改行程」在规划工作台重新选择路线并重新规划'
         : undefined,
     };
   }

@@ -81,12 +81,17 @@ import {
   decisionStateToOrchestratorState,
   buildPatchFromDSOPrimary,
 } from '../../decision/kernel/orchestrator-state-mapper';
-import { StateCommitConflictError } from '../../decision/kernel/decision-state.types';
-import { DecisionState, DecisionStatePatch, StateHistoryDelta } from '../../decision/kernel/decision-state.types';
+import { DecisionState, DecisionStatePatch } from '../../decision/kernel/decision-state.types';
+import type { IDsoLatestStateProvider } from '../../decision/kernel/dso-latest-state-provider.interface';
+import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 // 护城河扩展：预测性世界模型
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 import { aggregateWeatherRisk } from '../utils/weather-risk-aggregator.util';
+import {
+  generateClarificationQuestions,
+  identifyGapsFromRequest,
+} from '../utils/clarification-question-generator.util';
 /**
  * Claude Orchestrator Service
  * 
@@ -131,6 +136,8 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly tokenStatsService?: TokenStatsService,
     // P1: TDFPM → fatigueTrend（按日计算疲劳，写入 DSO tripState.fatigue）
     @Optional() private readonly tdfpmCalculator?: TdfpmCalculatorService,
+    // 多代理并发：提交前从 store 读取最新 DSO，冲突时重试
+    @Optional() @Inject(DSO_LATEST_STATE_PROVIDER) private readonly dsoLatestStateProvider?: IDsoLatestStateProvider,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -221,6 +228,8 @@ export class ClaudeOrchestratorService {
           return LlmProvider.GEMINI;
         case 'anthropic':
           return LlmProvider.ANTHROPIC;
+        case 'vllm':
+          return LlmProvider.VLLM;
         default:
           break;
       }
@@ -232,15 +241,15 @@ export class ClaudeOrchestratorService {
 
   /**
    * 获取降级提供商列表（当主提供商失败时使用）
+   * 包含 vLLM 自托管，可在无 API Key 时降级使用
    */
   private getFallbackProviders(primaryProvider: LlmProvider): LlmProvider[] {
     const fallbackOrder: LlmProvider[] = [
-      LlmProvider.DEEPSEEK,  // 优先使用 DeepSeek（成本低、速度快）
-      LlmProvider.OPENAI,     // 其次 OpenAI
-      LlmProvider.GEMINI,     // 最后 Gemini
+      LlmProvider.VLLM,       // 自托管，零 API 成本
+      LlmProvider.DEEPSEEK,
+      LlmProvider.OPENAI,
+      LlmProvider.GEMINI,
     ];
-    
-    // 移除主提供商，返回其他提供商作为降级选项
     return fallbackOrder.filter(p => p !== primaryProvider);
   }
 
@@ -2007,6 +2016,42 @@ ${JSON.stringify(routingDecision, null, 2)}
       '美国': 'US',
       'United States': 'US',
       'USA': 'US',
+      '新西兰': 'NZ',
+      'New Zealand': 'NZ',
+      'new zealand': 'NZ',
+      'NZ': 'NZ',
+      '大溪地': 'PF',
+      'Tahiti': 'PF',
+      'tahiti': 'PF',
+      '法属波利尼西亚': 'PF',
+      'French Polynesia': 'PF',
+      '泰国': 'TH',
+      'Thailand': 'TH',
+      'thailand': 'TH',
+      '新加坡': 'SG',
+      'Singapore': 'SG',
+      'singapore': 'SG',
+      '韩国': 'KR',
+      'Korea': 'KR',
+      'korea': 'KR',
+      '马来西亚': 'MY',
+      'Malaysia': 'MY',
+      'malaysia': 'MY',
+      '越南': 'VN',
+      'Vietnam': 'VN',
+      'vietnam': 'VN',
+      '格陵兰': 'GL',
+      'Greenland': 'GL',
+      'greenland': 'GL',
+      'GL': 'GL',
+      '斯瓦尔巴': 'SJ',
+      'Svalbard': 'SJ',
+      'svalbard': 'SJ',
+      'SJ': 'SJ',
+      '阿根廷': 'AR',
+      'Argentina': 'AR',
+      'argentina': 'AR',
+      'AR': 'AR',
       // 阿尔卑斯（跨越多国）
       '阿尔卑斯': 'AL',
       '阿尔卑斯山': 'AL',
@@ -2529,6 +2574,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * INTAKE 步骤：解析请求 & 缺口识别
+   * P3 B: 优先经 Kernel.executeIntake（IntakeExecutor 封装 PlannerAgent），否则降级到直接调用
    */
   private async executeIntakeStep(
     request: RouteAndRunRequestDto,
@@ -2542,71 +2588,61 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 INTAKE 步骤...`);
 
     try {
-      // 转换为 TripPlanRequest
       const tripPlanRequest = this.convertToTripPlanRequest(request, state);
       state.trip_plan_request = tripPlanRequest;
 
-      // 调用 Planner Agent 解析请求
-      if (this.plannerAgent) {
-        const analysisResult = await this.plannerAgent.analyzeRequest(tripPlanRequest, state);
-        
-        // 记录缺口
-        state.gaps = analysisResult.gaps;
-        
-        // 如果有 HARD 缺口，生成结构化澄清问题
-        const hardGaps = analysisResult.gaps.filter(g => g.severity === 'HARD');
-        if (hardGaps.length > 0) {
-          state.clarification_questions = this.generateClarificationQuestions(hardGaps, tripPlanRequest);
-          this.logger.debug(`[Claude Orchestrator] 生成了 ${state.clarification_questions.length} 个结构化澄清问题`);
-        }
-        
-        // 记录决策日志
+      if (this.decisionKernel) {
+        const intakeCtx: import('../../decision/kernel/interfaces/phase-executor.interface').IntakeExecutorContext = {
+          requestId: state.request_id,
+          userId: request.user_id,
+          tripPlanRequest: tripPlanRequest as any,
+          orchestratorState: state,
+        };
+        const dso = this.decisionKernel.createInitialState(state.request_id);
+        const result = await this.decisionKernel.executeIntake(dso, intakeCtx);
+
+        state.gaps = result.gaps as OrchestratorState['gaps'];
+        state.clarification_questions = result.clarificationQuestions as any;
         state.decision_log.push({
           request_id: state.request_id,
           step: 'INTAKE',
           actor: 'Planner',
           inputs_summary: `用户请求: ${request.message.substring(0, 100)}...`,
-          outputs_summary: `意图: ${analysisResult.intent}, 缺口数量: ${analysisResult.gaps.length}`,
+          outputs_summary: `意图: ${result.intent ?? 'PLAN_TRIP'}, 缺口数量: ${result.gaps.length}`,
           evidence_refs: [],
           timestamp: new Date().toISOString(),
           metadata: {
             duration_ms: Date.now() - stepStartTime,
-            gaps: analysisResult.gaps,
-            candidate_structure: analysisResult.candidate_structure,
-            clarification_questions_count: state.clarification_questions?.length || 0,
+            gaps: result.gaps,
+            candidate_structure: result.candidate_structure,
+            clarification_questions_count: result.clarificationQuestions?.length || 0,
           },
         });
       } else {
-        // 降级：使用 LLM 分析意图
-        const intentAnalysis = await this.analyzeIntent(request, context, provider);
-        
-        // 降级情况下，也尝试识别缺口并生成澄清问题
-        const gaps = this.identifyGapsFromRequest(tripPlanRequest);
-        const hardGaps = gaps.filter(g => g.severity === 'HARD');
+        // P3 D.1: 降级路径统一为 util 规则识别，不再直接调用 plannerAgent
+        const gaps = identifyGapsFromRequest(tripPlanRequest);
+        state.gaps = gaps as OrchestratorState['gaps'];
+        const hardGaps = gaps.filter((g) => g.severity === 'HARD');
         if (hardGaps.length > 0) {
-          state.gaps = gaps;
-          state.clarification_questions = this.generateClarificationQuestions(hardGaps, tripPlanRequest);
-          this.logger.debug(`[Claude Orchestrator] 降级模式：生成了 ${state.clarification_questions.length} 个结构化澄清问题`);
+          state.clarification_questions = generateClarificationQuestions(hardGaps, tripPlanRequest);
         }
-        
         state.decision_log.push({
           request_id: state.request_id,
           step: 'INTAKE',
           actor: 'Orchestrator',
           inputs_summary: `用户请求: ${request.message.substring(0, 100)}...`,
-          outputs_summary: `意图类型: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`,
+          outputs_summary: `意图: PLAN_TRIP（规则识别）, 缺口数量: ${gaps.length}`,
           evidence_refs: [],
           timestamp: new Date().toISOString(),
           metadata: {
             duration_ms: Date.now() - stepStartTime,
+            gaps,
             clarification_questions_count: state.clarification_questions?.length || 0,
           },
         });
       }
 
       state.metadata.last_updated_at = new Date().toISOString();
-
-      // P0: 生成 Decision Step（Decision-First Engine 集成）
       await this.generateDecisionStepForStep(state, 'INTAKE', 'Planner');
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] INTAKE 步骤失败: ${error?.message}`);
@@ -2631,34 +2667,6 @@ ${JSON.stringify(routingDecision, null, 2)}
     if (verifyErrors.length > 0) confidence -= 0.2 * verifyErrors.length;
     if (hasVerificationIssues) confidence -= 0.1;
     return this.decisionKernel.setConfidence(decisionState, Math.max(0.1, confidence));
-  }
-
-  /**
-   * 从 patch 构建 history 差分（Token 优化：只记录变化）
-   */
-  private buildHistoryDeltasFromPatch(patch: DecisionStatePatch): StateHistoryDelta[] {
-    const now = new Date().toISOString();
-    const deltas: StateHistoryDelta[] = [];
-    if (patch.userIntent) {
-      deltas.push({ type: 'userIntent', summary: 'intent synced', at: now });
-    }
-    if (patch.environmentState) {
-      deltas.push({ type: 'weather', summary: 'env synced', at: now });
-    }
-    if (patch.tripState?.delayMinutes !== undefined) {
-      deltas.push({ type: 'delay', summary: `delay=${patch.tripState.delayMinutes}m`, at: now });
-    }
-    if (patch.constraints) {
-      deltas.push({
-        type: 'constraints',
-        summary: patch.constraints.feasible ? 'allowed' : `violations=${patch.constraints.violations?.length ?? 0}`,
-        at: now,
-      });
-    }
-    if (patch.tripState?.planDraft) {
-      deltas.push({ type: 'plan', summary: 'plan draft updated', at: now });
-    }
-    return deltas;
   }
 
   /**
@@ -3003,24 +3011,16 @@ ${JSON.stringify(routingDecision, null, 2)}
       patch.worldStateSummary = worldStateSummary;
     }
 
-    let updated: DecisionState;
-    try {
-      const result = this.decisionKernel.commitStateUpdate(decisionState, patch, 'STATE_UPDATE');
-      updated = result.newState;
-    } catch (err) {
-      if (err instanceof StateCommitConflictError) {
-        this.logger.warn(
-          `[Claude Orchestrator] STATE_UPDATE 版本冲突 expected=${err.expectedVersion} actual=${err.actualVersion}，回退到 merge`,
-        );
-        updated = this.decisionKernel.updateState(decisionState, patch);
-        const deltas = this.buildHistoryDeltasFromPatch(patch);
-        for (const d of deltas) {
-          updated = this.decisionKernel.appendHistoryDelta(updated, d);
-        }
-      } else {
-        throw err;
-      }
-    }
+    const requestId = state.request_id;
+    const getLatestState = this.dsoLatestStateProvider
+      ? () => this.dsoLatestStateProvider!.getLatest(requestId)
+      : undefined;
+
+    // P3 A.1: 经 Kernel.executeStateUpdate 封装（原子提交 + 冲突回退）
+    const { newState: updated } = await this.decisionKernel.executeStateUpdate(decisionState, patch, {
+      getLatestState,
+      maxRetries: 3,
+    });
 
     // DSO 为主时：派生 OrchestratorState 兼容字段
     const derived = decisionStateToOrchestratorState(updated, state);
@@ -3044,6 +3044,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * RESEARCH 步骤：调用 skills 获取硬数据
    * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
+   * @deprecated 优先使用 Kernel.executeResearch。此降级路径将逐步废弃，见 P3 阶段 D.2
    */
   private async executeResearchStep(
     request: RouteAndRunRequestDto,
@@ -3249,6 +3250,7 @@ ${JSON.stringify(routingDecision, null, 2)}
    * GATE_EVAL 步骤：执行 Should-Exist Gate 决策
    * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
    * 强制：Gate 在 Plan 之前执行
+   * @deprecated 优先使用 Kernel.executeGateEval。此降级路径将逐步废弃，见 P3 阶段 D.2
    */
   private async executeGateEvalStep(
     request: RouteAndRunRequestDto,
@@ -3629,6 +3631,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * CONTEXT_BUILD 步骤：Phase 2.3 在 PLAN 前构建 Context Package
+   * P3 A.2: 经 Kernel.executeContextBuild 封装
    */
   private async executeContextBuildStep(
     request: RouteAndRunRequestDto,
@@ -3642,17 +3645,22 @@ ${JSON.stringify(routingDecision, null, 2)}
     const stepStartTime = Date.now();
     this.logger.debug(`[Claude Orchestrator] 执行 CONTEXT_BUILD 步骤...`);
 
+    const tripId = state.metadata?.tripId as string | undefined;
+    const destinationCountryCode =
+      !tripId && request.message
+        ? this.extractCountryCodeFromMessage(request.message)
+        : undefined;
+    const overrides = {
+      tripId,
+      userId: state.metadata?.userId as string | undefined,
+      userQuery: request.message,
+      phase: 'PLANNING' as const,
+      agent: 'PLANNER' as const,
+      destinationCountryCode,
+    };
+
     try {
-      const pkg = await this.decisionKernel.getContextPackage(decisionState, {
-        tripId: state.metadata?.tripId as string | undefined,
-        userId: state.metadata?.userId as string | undefined,
-        userQuery: request.message,
-        phase: 'PLANNING',
-        agent: 'PLANNER',
-      });
-      if (pkg) {
-        decisionState = this.decisionKernel.updateState(decisionState, { contextPackage: pkg });
-      }
+      const { newState, contextPackage: pkg } = await this.decisionKernel.executeContextBuild(decisionState, overrides);
       state.decision_log.push({
         request_id: state.request_id,
         step: 'CONTEXT_BUILD' as OrchestrationStep,
@@ -3663,6 +3671,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         timestamp: new Date().toISOString(),
         metadata: { duration_ms: Date.now() - stepStartTime },
       });
+      state.metadata.last_updated_at = new Date().toISOString();
+      return newState;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] CONTEXT_BUILD 失败: ${error?.message}`);
       state.decision_log.push({
@@ -3675,9 +3685,9 @@ ${JSON.stringify(routingDecision, null, 2)}
         timestamp: new Date().toISOString(),
         metadata: { duration_ms: Date.now() - stepStartTime, error: true },
       });
+      state.metadata.last_updated_at = new Date().toISOString();
+      return decisionState;
     }
-    state.metadata.last_updated_at = new Date().toISOString();
-    return decisionState;
   }
 
   /**
@@ -3714,7 +3724,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * OPTIMIZE 步骤：Phase 2.3 抽取 Optimization Hints
-   * P1: 若 planDraft（Itinerary）存在且 TdfpmCalculator 可用，计算 fatigue 写入 tripState
+   * P3 A.3: 经 Kernel.executeOptimize 封装；TDFPM fatigue 由 Orchestrator 预计算后传入
    */
   private async executeOptimizeStep(
     state: OrchestratorState,
@@ -3726,45 +3736,24 @@ ${JSON.stringify(routingDecision, null, 2)}
     const stepStartTime = Date.now();
     this.logger.debug(`[Claude Orchestrator] 执行 OPTIMIZE 步骤...`);
 
+    // TDFPM: 预计算 fatigue 传入 Kernel（Kernel 无 TdfpmCalculator 依赖）
+    let fatigue: number | undefined;
     const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
     if (planDraft?.days?.length && this.tdfpmCalculator) {
       try {
         const contexts = this.itineraryToTdfpmDayContexts(planDraft);
         const scores = contexts.map((ctx) => this.tdfpmCalculator!.computeFatigueScore(ctx).fatigueScore);
         const maxScore = Math.max(...scores, 0);
-        const fatigue = Math.min(1, maxScore / 100);
-        decisionState = this.decisionKernel.updateState(decisionState, {
-          tripState: { ...(decisionState.tripState || {}), fatigue },
-        });
+        fatigue = Math.min(1, maxScore / 100);
         this.logger.debug(`[Claude Orchestrator] TDFPM fatigue: maxScore=${maxScore}, fatigue=${fatigue.toFixed(2)}`);
       } catch (e: any) {
         this.logger.warn(`[Claude Orchestrator] TDFPM 计算失败: ${e?.message}`);
       }
     }
 
-    // Scheme A: 优先尝试 Monte Carlo 路径（不确定性时）
-    let hints = await this.decisionKernel.getOptimizationHintsAsync(decisionState);
-    if (!hints) {
-      hints = this.decisionKernel.getOptimizationHints(decisionState);
-    }
-    if (hints) {
-      decisionState = this.decisionKernel.updateState(decisionState, { optimizationHints: hints });
-    }
-
-    // P1: 当 constraints 为空且 planDraft 存在时，调用 trips ConstraintEngine 补充
-    if (!decisionState.constraints && planDraft?.days?.length) {
-      try {
-        const report = await this.decisionKernel.getConstraintReportAsync(decisionState);
-        if (report) {
-          decisionState = this.decisionKernel.updateState(decisionState, { constraints: report });
-          this.logger.debug(
-            `[Claude Orchestrator] trips ConstraintEngine 补充 constraints: feasible=${report.feasible}`,
-          );
-        }
-      } catch (e: any) {
-        this.logger.warn(`[Claude Orchestrator] getConstraintReportAsync 失败: ${e?.message}`);
-      }
-    }
+    const { newState, optimizationHints: hints } = await this.decisionKernel.executeOptimize(decisionState, {
+      fatigue,
+    });
 
     state.decision_log.push({
       request_id: state.request_id,
@@ -3777,12 +3766,13 @@ ${JSON.stringify(routingDecision, null, 2)}
       metadata: { duration_ms: Date.now() - stepStartTime },
     });
     state.metadata.last_updated_at = new Date().toISOString();
-    return decisionState;
+    return newState;
   }
 
   /**
    * PLAN_GEN 步骤：生成结构化行程草案
    * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
+   * @deprecated 优先使用 Kernel.executePlanGen。此降级路径将逐步废弃，见 P3 阶段 D.2
    */
   private async executePlanGenStep(
     request: RouteAndRunRequestDto,
@@ -3921,6 +3911,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * VERIFY 步骤：验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
    * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
+   * @deprecated 优先使用 Kernel.executeVerify。此降级路径将逐步废弃，见 P3 阶段 D.2
    */
   private async executeVerifyStep(
     request: RouteAndRunRequestDto,
@@ -4000,6 +3991,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * REPAIR 步骤：替换POI/改路线/加buffer/换交通/降级
    * 降级路径：KERNEL_NATIVE_EXECUTION=false 时由 executePhaseViaKernel 调用
+   * @deprecated 优先使用 Kernel.executeRepair。此降级路径将逐步废弃，见 P3 阶段 D.2
    */
   private async executeRepairStep(
     request: RouteAndRunRequestDto,
@@ -4091,6 +4083,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /**
    * NARRATE 步骤：产出用户可读解释（不得改硬字段）
+   * P3 C: 优先经 Kernel.executeNarrate（NarrateExecutor 封装 NarratorAgent），否则降级到直接调用
    */
   private async executeNarrateStep(
     request: RouteAndRunRequestDto,
@@ -4104,20 +4097,23 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 NARRATE 步骤...`);
 
     try {
-      // 调用 Narrator Agent 生成用户可读的解释
-      // 重要：不得修改 itinerary 的硬字段
-      if (this.narratorAgent && state.itinerary && state.gate_result) {
-        try {
-          const narration = await this.narratorAgent.narrate(
-            state.itinerary,
-            state.gate_result,
-            state.decision_log,
-            state,
-          );
-          state.narration = narration;
-        } catch (error: any) {
-          this.logger.warn(`[Claude Orchestrator] Narrator Agent 失败: ${error?.message}`);
-        }
+      if (this.decisionKernel && state.itinerary && state.gate_result) {
+        const narrateCtx: import('../../decision/kernel/interfaces/phase-executor.interface').NarrateExecutorContext = {
+          requestId: state.request_id,
+          userId: request.user_id,
+          orchestratorState: state,
+        };
+        const dso = this.decisionKernel.createInitialState(state.request_id);
+        const result = await this.decisionKernel.executeNarrate(dso, narrateCtx);
+        state.narration = result.narration as any;
+      } else {
+        // P3 D.1: 降级路径统一为空叙述，不再直接调用 narratorAgent
+        state.narration = {
+          user_friendly_summary: '',
+          day_by_day_narrative: [],
+          highlights: [],
+          tips: [],
+        };
       }
 
       state.decision_log.push({
@@ -4149,7 +4145,8 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
-   * FEEDBACK 步骤：专利反馈学习模块，记录决策日志（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN）
+   * FEEDBACK 步骤：专利反馈学习模块，记录决策日志
+   * P3 A.4: 经 Kernel.executeFeedback 封装
    */
   private async executeFeedbackStep(
     state: OrchestratorState,
@@ -4161,11 +4158,8 @@ ${JSON.stringify(routingDecision, null, 2)}
     const patch = this.isDsoAsPrimary()
       ? buildPatchFromDSOPrimary(decisionState, state)
       : orchestratorStateToDecisionStatePatch(state);
-    const synced = this.decisionKernel.updateState(decisionState, patch);
 
-    this.decisionKernel.recordDecisionLog(synced, 'NARRATE_DONE').catch((e: unknown) => {
-      this.logger.warn(`[Claude Orchestrator] FEEDBACK recordDecisionLog 失败: ${(e as Error)?.message}`);
-    });
+    const { newState: synced } = await this.decisionKernel.executeFeedback(decisionState, patch);
 
     state.decision_log.push({
       request_id: state.request_id,
@@ -4297,169 +4291,6 @@ ${JSON.stringify(routingDecision, null, 2)}
       // Decision Step 生成失败不应阻塞主流程
       this.logger.warn(`[Claude Orchestrator] Decision Step 生成失败，跳过: ${error?.message}`);
     }
-  }
-
-  /**
-   * 生成结构化澄清问题
-   * 
-   * 根据缺口（gaps）生成对应的结构化澄清问题
-   */
-  private generateClarificationQuestions(
-    gaps: Array<{
-      type: 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
-      severity: 'HARD' | 'SOFT';
-      detail: string;
-    }>,
-    tripPlanRequest: TripPlanRequest,
-  ): ClarificationQuestion[] {
-    const questions: ClarificationQuestion[] = [];
-    let questionId = 1;
-
-    for (const gap of gaps) {
-      switch (gap.type) {
-        case 'MISSING_DESTINATION':
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '请选择您的目的地',
-            type: 'text',
-            required: true,
-            placeholder: '例如：冰岛、日本、瑞士',
-            hint: '这将帮助我们为您推荐合适的景点和活动',
-          });
-          break;
-
-        case 'MISSING_DATES':
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const twoYearsLater = new Date();
-          twoYearsLater.setFullYear(twoYearsLater.getFullYear() + 2);
-          
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '请选择您的出行日期',
-            type: 'date',
-            required: true,
-            hint: '建议选择 1 个月后的日期，以便提前预订',
-            validation: {
-              min: tomorrow.getTime(),
-              max: twoYearsLater.getTime(),
-            },
-          });
-          
-          // 如果已有开始日期，询问结束日期
-          if (tripPlanRequest.start_date || tripPlanRequest.date_range?.start_date) {
-            questions.push({
-              id: `question-${questionId++}`,
-              question: '请选择您的返回日期',
-              type: 'date',
-              required: true,
-              hint: '返回日期必须晚于出发日期',
-              validation: {
-                min: tripPlanRequest.start_date 
-                  ? new Date(tripPlanRequest.start_date).getTime() 
-                  : tripPlanRequest.date_range?.start_date 
-                    ? new Date(tripPlanRequest.date_range.start_date).getTime()
-                    : tomorrow.getTime(),
-                max: twoYearsLater.getTime(),
-              },
-            });
-          }
-          break;
-
-        case 'MISSING_CONSTRAINTS':
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '同行人数',
-            type: 'single_choice',
-            required: true,
-            options: ['1人', '2人', '3-4人', '5人以上'],
-            hint: '这将影响住宿和交通安排',
-          });
-          
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '总预算（人民币）',
-            type: 'number',
-            required: true,
-            placeholder: '例如：100000',
-            hint: '包含机票、住宿、餐饮、活动等所有费用',
-            validation: {
-              min: 100,
-              max: 1000000,
-            },
-          });
-          break;
-
-        case 'MISSING_PREFERENCES':
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '您的主要兴趣（可多选）',
-            type: 'multi_choice',
-            required: false,
-            options: ['极光', '冰川', '温泉', '文化', '美食', '户外运动', '购物', '摄影'],
-            hint: '帮助我们为您推荐合适的景点和活动',
-          });
-          
-          questions.push({
-            id: `question-${questionId++}`,
-            question: '节奏偏好',
-            type: 'single_choice',
-            required: false,
-            options: ['轻松', '平衡', '紧凑'],
-            hint: '轻松：每天安排较少活动；平衡：适中安排；紧凑：尽可能多安排活动',
-            default: '平衡',
-          });
-          break;
-      }
-    }
-
-    return questions;
-  }
-
-  /**
-   * 识别缺口（降级模式）
-   * 
-   * 当 PlannerAgent 不可用时，使用简单规则识别缺口
-   */
-  private identifyGapsFromRequest(tripPlanRequest: TripPlanRequest): Array<{
-    type: 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
-    severity: 'HARD' | 'SOFT';
-    detail: string;
-  }> {
-    const gaps: Array<{
-      type: 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
-      severity: 'HARD' | 'SOFT';
-      detail: string;
-    }> = [];
-
-    // 检查目的地
-    if (!tripPlanRequest.destination || tripPlanRequest.destination === '未指定') {
-      gaps.push({
-        type: 'MISSING_DESTINATION',
-        severity: 'HARD',
-        detail: '缺少目的地信息',
-      });
-    }
-
-    // 检查日期
-    if (!tripPlanRequest.start_date && !tripPlanRequest.date_range) {
-      gaps.push({
-        type: 'MISSING_DATES',
-        severity: 'HARD',
-        detail: '缺少出行日期信息',
-      });
-    }
-
-    // 检查约束（预算、人数）
-    if (!tripPlanRequest.party?.count || tripPlanRequest.party.count <= 0) {
-      gaps.push({
-        type: 'MISSING_CONSTRAINTS',
-        severity: 'HARD',
-        detail: '缺少同行人数信息',
-      });
-    }
-
-    return gaps;
   }
 
   /**

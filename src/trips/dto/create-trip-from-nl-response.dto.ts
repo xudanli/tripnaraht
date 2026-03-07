@@ -26,10 +26,20 @@ export class SummaryCardDto {
   @IsOptional()
   destination?: string;
 
-  @ApiPropertyOptional({ description: '行程天数，如"10天"' })
+  @ApiPropertyOptional({ description: '行程天数或日期范围，如"10天"或"2026-03-20 至 2026-03-25"' })
   @IsString()
   @IsOptional()
   duration?: string;
+
+  @ApiPropertyOptional({ description: '出行时间（开始日期），供前端展示「出行时间」' })
+  @IsString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: '返程时间（结束日期），供前端展示「返程时间」' })
+  @IsString()
+  @IsOptional()
+  endDate?: string;
 
   @ApiPropertyOptional({ description: '旅行者信息，如"双人"' })
   @IsString()
@@ -42,6 +52,27 @@ export class SummaryCardDto {
   @ValidateNested()
   @Type(() => BudgetInfoDto)
   budget?: BudgetInfoDto;
+
+  @ApiPropertyOptional({ description: '城市列表（LLM 解析结果）', type: [String] })
+  @IsArray()
+  @IsOptional()
+  cities?: string[];
+
+  @ApiPropertyOptional({ description: '城市天数分配（LLM 解析结果）', type: [Object] })
+  @IsArray()
+  @IsOptional()
+  dayAllocation?: Array<{ city: string; days: number }>;
+
+  /** 预格式化的天数分配文案，供前端直接展示，避免 [object Object]，如 "杭州 3 天、千岛湖 1 天" */
+  @ApiPropertyOptional({ description: '天数分配可读文案（供前端直接展示）' })
+  @IsString()
+  @IsOptional()
+  dayAllocationDisplay?: string;
+
+  @ApiPropertyOptional({ description: '必含景点（LLM 解析结果）', type: [String] })
+  @IsArray()
+  @IsOptional()
+  mustHavePois?: string[];
 }
 
 /**
@@ -281,17 +312,82 @@ export class ClarificationQuestionDto implements ClarificationQuestion {
   @IsOptional()
   conditionalInputs?: Array<{
     triggerValue: string;
-    inputType: 'text' | 'date' | 'number' | 'date_range';
+    inputType: 'text' | 'single_choice' | 'multi_choice' | 'multiple_choice' | 'number' | 'date' | 'date_range';
     label?: string;
+    options?: (string | { value: string; label: string })[];
     placeholder?: string;
+    hint?: string;
     required?: boolean;
+    paramKey?: string;
     validation?: {
       min?: number;
       max?: number;
       pattern?: string;
     };
-    hint?: string;
   }>;
+}
+
+/**
+ * 阶段指示器（分层可见，前端展示「第一阶段」「第二阶段」等）
+ */
+export class PhaseIndicatorDto {
+  @ApiProperty({ description: '当前阶段 1-4', example: 1 })
+  phase!: number;
+
+  @ApiProperty({ description: '阶段名称', example: '硬约束确认' })
+  phaseName!: string;
+
+  @ApiProperty({ description: '进度如 1/4', example: '1/4' })
+  progress!: string;
+
+  @ApiPropertyOptional({ description: '总阶段数', example: 4 })
+  @IsOptional()
+  totalPhases?: number;
+}
+
+/**
+ * 思考过程（用于前端可折叠展示，参考「思考了一会儿」样式）
+ */
+export class ThinkingProcessDto {
+  @ApiProperty({ description: '简要标题，如「思考了一会儿」' })
+  @IsString()
+  summary!: string;
+
+  @ApiProperty({ description: '详细推理内容（可折叠）' })
+  @IsString()
+  content!: string;
+}
+
+/**
+ * 进展步骤（用于前端展示当前执行状态）
+ */
+export class ProgressStepDto {
+  @ApiPropertyOptional({ description: '步骤唯一ID' })
+  @IsString()
+  @IsOptional()
+  id?: string;
+
+  @ApiProperty({ description: '步骤描述，如「已解析目的地」' })
+  @IsString()
+  label!: string;
+
+  @ApiPropertyOptional({ description: '步骤详情，如「11个内容」' })
+  @IsString()
+  @IsOptional()
+  detail?: string;
+
+  @ApiPropertyOptional({
+    description: '步骤状态',
+    enum: ['pending', 'running', 'completed', 'failed'],
+  })
+  @IsEnum(['pending', 'running', 'completed', 'failed'])
+  @IsOptional()
+  status?: 'pending' | 'running' | 'completed' | 'failed';
+
+  @ApiPropertyOptional({ description: '图标类型（前端可选：search/check/loading 等）' })
+  @IsString()
+  @IsOptional()
+  icon?: string;
 }
 
 /**
@@ -368,6 +464,44 @@ export class CreateTripFromNLResponseDto {
   @IsString()
   @IsOptional()
   message?: string;
+
+  /**
+   * 🆕 阶段指示器（分层可见，前端展示当前阶段与进度）
+   */
+  @ApiPropertyOptional({
+    description: '当前采集阶段（1=硬约束 2=风格 3=节奏 4=风险）',
+    type: PhaseIndicatorDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PhaseIndicatorDto)
+  phaseIndicator?: PhaseIndicatorDto;
+
+  /**
+   * 🆕 思考过程（用于前端可折叠展示，如「思考了一会儿」）
+   */
+  @ApiPropertyOptional({
+    description: '思考过程（可折叠展示）',
+    type: ThinkingProcessDto,
+  })
+  @IsObject()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ThinkingProcessDto)
+  thinkingProcess?: ThinkingProcessDto;
+
+  /**
+   * 🆕 进展步骤（按执行顺序，前端展示当前进度）
+   */
+  @ApiPropertyOptional({
+    description: '进展步骤数组',
+    type: [ProgressStepDto],
+  })
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ProgressStepDto)
+  progressSteps?: ProgressStepDto[];
 
   // 🆕 酒店推荐信息
   @ApiPropertyOptional({

@@ -98,6 +98,13 @@ const DEFAULT_PRICING_CONFIG: PricingConfig[] = [
     promptTokensPer1k: 0.0005,
     completionTokensPer1k: 0.0015,
   },
+  // vLLM 自托管（Qwen2.5-7B）
+  {
+    provider: LlmProvider.VLLM,
+    model: 'Qwen/Qwen2.5-7B-Instruct',
+    promptTokensPer1k: 0,
+    completionTokensPer1k: 0,
+  },
 ];
 
 @Injectable()

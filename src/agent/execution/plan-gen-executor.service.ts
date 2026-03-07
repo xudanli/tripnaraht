@@ -47,6 +47,9 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
         request: req,
         research_data: ctx.researchData as Record<string, any>,
         gate_result: ctx.gateResult as GateResult,
+        environment_state: dso.environmentState
+          ? { flights: dso.environmentState.flights }
+          : undefined,
       });
 
       if (result && typeof result === 'object' && 'request_id' in result && 'days' in result) {

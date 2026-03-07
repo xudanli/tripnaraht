@@ -445,9 +445,10 @@ async function bootstrap() {
   console.log('🌐 [Bootstrap] 开始监听端口...');
   const port = Number(process.env.PORT ?? 3000);
   
-  // 设置HTTP服务器超时（默认2分钟，对于规划工作台等长时间操作）
+  // 设置HTTP服务器超时（from-natural-language、规划工作台等含 LLM 的操作可能超过 120 秒）
   const server = await app.listen(port, '0.0.0.0'); // ✅ 关键：不要只绑 127.0.0.1
-  server.timeout = 120000; // 2分钟超时（120秒），适用于规划工作台等长时间操作
+  const httpTimeoutMs = parseInt(process.env.HTTP_SERVER_TIMEOUT_MS ?? '300000', 10); // 默认 5 分钟
+  server.timeout = httpTimeoutMs;
   server.keepAliveTimeout = 65000; // keep-alive超时（65秒）
   server.headersTimeout = 66000; // headers超时（66秒，必须大于keepAliveTimeout）
   

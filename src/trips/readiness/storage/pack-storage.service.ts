@@ -390,6 +390,17 @@ export class PackStorageService {
   }
 
   /**
+   * 解析 lastReviewedAt，无效时返回当前时间
+   */
+  private parseLastReviewedAt(value: string | Date | undefined | null): Date {
+    if (value == null || value === '') {
+      return new Date();
+    }
+    const d = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+
+  /**
    * 从 LocalizedString 提取中英文字段
    */
   private extractLocalizedFields(value: string | { en: string; zh?: string } | undefined): {
@@ -425,6 +436,8 @@ export class PackStorageService {
       const regionFields = this.extractLocalizedFields(pack.geo.region as any);
       const cityFields = this.extractLocalizedFields(pack.geo.city as any);
 
+      const lastReviewedAt = this.parseLastReviewedAt(pack.lastReviewedAt);
+
       const packData = {
         packId: pack.packId,
         destinationId: pack.destinationId,
@@ -432,7 +445,7 @@ export class PackStorageService {
         displayNameEN: displayNameFields.en,
         displayNameCN: displayNameFields.cn,
         version: pack.version,
-        lastReviewedAt: new Date(pack.lastReviewedAt),
+        lastReviewedAt,
         countryCode: pack.geo.countryCode,
         region: regionFields.default,
         regionEN: regionFields.en,
