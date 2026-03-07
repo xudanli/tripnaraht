@@ -11,7 +11,8 @@ import * as https from 'https';
 // pdf-parse v2.4.5 使用 PDFParse 类
 import { PDFParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
 export interface FileMetadata {
@@ -148,8 +149,12 @@ export class FileExtractorDirectService implements OnModuleInit {
         case 'xlsx':
         case 'xls':
           try {
-            const workbook = XLSX.read(buffer, { type: 'buffer' });
-            metadata.sheets = workbook.SheetNames;
+            if (ext === 'xls') {
+              this.logger.warn('xls format not fully supported by exceljs, metadata may be limited');
+            }
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(buffer as any);
+            metadata.sheets = workbook.worksheets.map((w) => w.name);
             metadata.mimeType = ext === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel';
           } catch (error: any) {
             this.logger.warn('Failed to parse Excel metadata:', error.message);
@@ -304,23 +309,30 @@ export class FileExtractorDirectService implements OnModuleInit {
     options?: { search?: string; sheet?: string; caseSensitive?: boolean }
   ): Promise<FileContent> {
     try {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const sheetName = options?.sheet || workbook.SheetNames[0];
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as any);
+      const sheetNames = workbook.worksheets.map((w) => w.name);
+      const sheetName = options?.sheet || sheetNames[0];
 
-      if (!workbook.Sheets[sheetName]) {
-        throw new Error(`Sheet "${sheetName}" not found. Available sheets: ${workbook.SheetNames.join(', ')}`);
+      const worksheet = workbook.getWorksheet(sheetName);
+      if (!worksheet) {
+        throw new Error(`Sheet "${sheetName}" not found. Available sheets: ${sheetNames.join(', ')}`);
       }
 
-      const worksheet = workbook.Sheets[sheetName];
-      let data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      const data: any[][] = [];
+      worksheet.eachRow({ includeEmpty: true }, (row) => {
+        const values = row.values as any[];
+        const rowData = values ? values.slice(1).map((v) => (v != null ? v : '')) : [];
+        data.push(rowData);
+      });
 
-      // 如果指定了搜索关键词
+      let filteredData = data;
       if (options?.search) {
         const searchTerm = options.caseSensitive
           ? options.search
           : options.search.toLowerCase();
 
-        data = data.filter((row: any) => {
+        filteredData = data.filter((row: any) => {
           const rowText = JSON.stringify(row);
           const searchText = options.caseSensitive ? rowText : rowText.toLowerCase();
           return searchText.includes(searchTerm);
@@ -328,7 +340,7 @@ export class FileExtractorDirectService implements OnModuleInit {
       }
 
       return {
-        content: data,
+        content: filteredData,
         sheet: sheetName,
       };
     } catch (error: any) {
@@ -345,17 +357,15 @@ export class FileExtractorDirectService implements OnModuleInit {
   ): Promise<FileContent> {
     try {
       const csvText = buffer.toString('utf-8');
-      const workbook = XLSX.read(csvText, { type: 'string' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      let data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      const data = parseCsv(csvText, { relax_column_count: true }) as string[][];
 
-      // 如果指定了搜索关键词
+      let filteredData = data;
       if (options?.search) {
         const searchTerm = options.caseSensitive
           ? options.search
           : options.search.toLowerCase();
 
-        data = data.filter((row: any) => {
+        filteredData = data.filter((row: any) => {
           const rowText = JSON.stringify(row);
           const searchText = options.caseSensitive ? rowText : rowText.toLowerCase();
           return searchText.includes(searchTerm);
@@ -363,7 +373,7 @@ export class FileExtractorDirectService implements OnModuleInit {
       }
 
       return {
-        content: data,
+        content: filteredData,
       };
     } catch (error: any) {
       throw new Error(`Failed to extract CSV content: ${error.message}`);
