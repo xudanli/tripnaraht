@@ -7,7 +7,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { TerrainFacts, RiskFlag } from '../types/terrain-facts.types';
+import { TerrainFacts } from '../types/terrain-facts.types';
 import { DEFAULT_TERRAIN_POLICY } from '../config/terrain-policy.config';
 
 @Injectable()

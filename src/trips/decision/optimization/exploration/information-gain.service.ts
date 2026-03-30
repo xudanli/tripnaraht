@@ -162,7 +162,7 @@ export class InformationGainService implements IInformationGainService {
       counts[idx]++;
     }
     let h = 0;
-    let n = samples.length;
+    const n = samples.length;
     for (const c of counts) {
       if (c > 0) {
         const p = c / n;

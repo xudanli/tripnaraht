@@ -295,7 +295,7 @@ export class TrailDifficultyAssessor {
    */
   private static fromSubCategory(
     subCategory: string,
-    metadata: any
+    _metadata: any
   ): TrailDifficultyMetadata {
     const lower = subCategory.toLowerCase();
     

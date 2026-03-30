@@ -2341,7 +2341,24 @@ async function main() {
     const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
     console.error('Initializing MCP Skills Server...');
     console.error('Calling createMcpServer...');
-    const { server, app, allSkills, airbnbClient: client, googleMapsDirectService: mapsService, weatherDirectService: weatherService, railClient: rail, fileExtractorClient: fileExtractor, stripeClient: stripe, stripeDirectService: stripeDirect, restaurantDirectService: restaurantDirect, currencyDirectService: currencyDirect, hotelDirectService: hotelDirect, translationDirectService: translationDirect, imageDirectService: imageDirect, visionService: vision } = await createMcpServer();
+    const {
+      server,
+      allSkills,
+      airbnbClient: client,
+      googleMapsDirectService: mapsService,
+      weatherDirectService: weatherService,
+      railClient: rail,
+      fileExtractorClient: fileExtractor,
+      stripeClient: stripe,
+      stripeDirectService,
+      restaurantDirectService,
+      currencyDirectService,
+      hotelDirectService,
+      translationDirectService,
+      imageDirectService,
+      postgresqlMcpService,
+      browserbaseMcpService,
+    } = await createMcpServer();
     airbnbClient = client;
     googleMapsDirectService = mapsService;
     railClient = rail;

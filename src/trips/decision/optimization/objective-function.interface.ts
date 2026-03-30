@@ -12,7 +12,6 @@
  */
 
 import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
-import { HumanCapabilityModel } from '../models/human-capability.model';
 
 /**
  * 目标函数权重（Phase 1: 可配置，Phase 2: 可学习）

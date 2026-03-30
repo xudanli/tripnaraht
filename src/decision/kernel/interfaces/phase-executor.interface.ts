@@ -41,6 +41,12 @@ export interface GateResultLike {
   confidence: number;
 }
 
+/** 与 `OrchestratorState.alternatives` / TD-03 计数口径一致，写入 DSO `tripState.orchestratorAlternatives` */
+export type OrchestratorAlternativesLike = {
+  alternative_pois: unknown[];
+  alternative_routes: unknown[];
+};
+
 /** Itinerary 兼容结构 */
 export interface ItineraryLike {
   request_id: string;
@@ -67,6 +73,8 @@ export interface IGateEvalExecutor {
   ): Promise<{
     constraints: ConstraintReport;
     gateResult: GateResultLike;
+    /** BLOCK 时建议带出可执行替代；缺省由 Kernel 写入可读 fallback 至 DSO */
+    alternatives?: OrchestratorAlternativesLike;
   }>;
 }
 

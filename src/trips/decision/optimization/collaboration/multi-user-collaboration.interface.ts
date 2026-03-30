@@ -11,7 +11,6 @@
  */
 
 import { ObjectiveFunctionWeights } from '../objective-function.interface';
-import { PersonaEvaluation, NegotiationResult } from '../learning/guardian-persona.interface';
 
 /**
  * 用户角色

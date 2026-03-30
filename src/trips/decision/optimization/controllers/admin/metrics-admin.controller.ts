@@ -88,13 +88,6 @@ export class MetricsSummaryResponse {
   histograms!: Record<string, HistogramStats>;
 }
 
-// Legacy interface alias
-interface ComponentHealth {
-  status: 'up' | 'down' | 'degraded';
-  lastCheck: string;
-  message?: string;
-}
-
 @ApiTags('Admin - Metrics')
 @ApiBearerAuth()
 @Controller('api/v2/admin/metrics')

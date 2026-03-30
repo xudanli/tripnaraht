@@ -446,8 +446,8 @@ export class ResultPresentationService {
    */
   private async findSimilarRoutes(
     originalRoute: RouteDirectionData,
-    user: any,
-    context: any,
+    _user: any,
+    _context: any,
   ): Promise<RouteDirectionData[]> {
     try {
       if (!this.routeDirectionsService) {

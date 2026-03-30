@@ -6,7 +6,7 @@ import { Itinerary, GateResult, DecisionLogEntry, OrchestratorState } from '../.
 import { NarratorAgentService as LangGraphNarratorAgentService } from '../../../trips/decision/orchestration/narrator-agent.service';
 import { DecisionExplainForHumanSkill } from '../../../skills/decision/decision-explain-for-human.skill';
 import { LlmService } from '../../../llm/services/llm.service';
-import { DecisionOutput, ComparisonMatrix, TradeoffDimension } from '../../interfaces/decision-node.interface';
+import { DecisionOutput, ComparisonMatrix } from '../../interfaces/decision-node.interface';
 
 /**
  * 决策故事输出
@@ -100,7 +100,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
     itinerary: Itinerary,
     gateResult: GateResult,
     decisionLog: DecisionLogEntry[],
-    context: OrchestratorState,
+    _context: OrchestratorState,
   ): Promise<{
     user_friendly_summary: string;
     day_by_day_narrative: Array<{
@@ -426,7 +426,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
   /**
    * 生成警告
    */
-  private generateWarnings(gateResult: GateResult, decisionLog: DecisionLogEntry[]): string[] | undefined {
+  private generateWarnings(gateResult: GateResult, _decisionLog: DecisionLogEntry[]): string[] | undefined {
     const warnings: string[] = [];
 
     if (gateResult.violations) {
@@ -450,7 +450,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
    * AI-Native 核心原则：展示"为什么排除其他选项"而非仅展示"推荐哪个"
    */
   generateDecisionStory(decisionOutput: DecisionOutput): DecisionStory {
-    const { ranked_plans, comparison, user_judgment_required } = decisionOutput;
+    const { ranked_plans } = decisionOutput;
 
     // 1. 生成排除叙事
     const eliminatedOptions = ranked_plans.slice(2).map(plan => ({
@@ -710,7 +710,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
 
   private generateUserActions(
     decisionOutput: DecisionOutput,
-    gateResult: GateResult,
+    _gateResult: GateResult,
   ): Array<{
     action_id: string;
     label: string;

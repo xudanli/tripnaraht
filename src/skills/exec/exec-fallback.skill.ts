@@ -9,7 +9,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { FallbackPlan, FallbackSolution } from './shared/execution-state.types';
+import { FallbackPlan } from './shared/execution-state.types';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { randomUUID } from 'crypto';

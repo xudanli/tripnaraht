@@ -1,5 +1,5 @@
 // src/trips/dto/create-trip-from-nl.dto.ts
-import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 

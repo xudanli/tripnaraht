@@ -31,7 +31,7 @@ export class ClaudeLocalInsightAgentService implements LocalInsightAgent {
   async suggestAlternatives(
     request: TripPlanRequest,
     gateResult: GateResult,
-    context: OrchestratorState,
+    _context: OrchestratorState,
   ): Promise<{
     alternative_pois: Array<{
       poi_id: string;

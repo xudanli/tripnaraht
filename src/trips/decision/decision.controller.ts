@@ -1,5 +1,5 @@
 // src/trips/decision/decision.controller.ts
-import { Controller, Post, Get, Body, Param, Query, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Logger, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
@@ -18,7 +18,7 @@ import { DailyUtilityCalculatorService } from './optimization/daily-utility';
 import { PlanModificationLogService } from './services/plan-modification-log.service';
 import { PlanModificationEventDto } from './dto/plan-modification.dto';
 import { MultiPlanGenerator } from './services/multi-plan-generator.service';
-import { ConstraintDSLDto, DetectConflictsRequestDto, GenerateMultiplePlansRequestDto } from './dto/constraint-dsl.dto';
+import { DetectConflictsRequestDto, GenerateMultiplePlansRequestDto } from './dto/constraint-dsl.dto';
 import { TripWorldState } from './world-model';
 import { TripPlan } from './plan-model';
 import { FeedbackCollectorService } from './feedback/feedback-collector.service';
@@ -305,9 +305,9 @@ export class DecisionController {
    * 生成备选路线
    */
   private async generateAlternativeRoutes(
-    worldContext: WorldModelContext,
-    originalPlan: RoutePlanDraft,
-    violationLogs: any[]
+    _worldContext: WorldModelContext,
+    _originalPlan: RoutePlanDraft,
+    _violationLogs: any[]
   ): Promise<Array<{
     description: string;
     plan: RoutePlanDraft;

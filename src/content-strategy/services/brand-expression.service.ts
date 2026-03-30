@@ -203,7 +203,7 @@ export class BrandExpressionService {
    */
   private generateSuggestionLayer(
     data: any,
-    context: ExpressionContext,
+    _context: ExpressionContext,
   ): RationalExpression['suggestionLayer'] {
     const suggestions: string[] = [];
     const rationale: string[] = [];
@@ -234,7 +234,7 @@ export class BrandExpressionService {
   /**
    * 生成理解维度
    */
-  private generateUnderstanding(userContext: UserContext): WarmthExpression['understanding'] {
+  private generateUnderstanding(_userContext: UserContext): WarmthExpression['understanding'] {
     return {
       message: '我理解你的想法和顾虑',
       empathy: [
@@ -262,7 +262,7 @@ export class BrandExpressionService {
   /**
    * 生成鼓励维度
    */
-  private generateEncouragement(userContext: UserContext): WarmthExpression['encouragement'] {
+  private generateEncouragement(_userContext: UserContext): WarmthExpression['encouragement'] {
     return {
       message: '相信你能做出最适合自己的决定',
       positive: [
@@ -316,7 +316,7 @@ export class BrandExpressionService {
    */
   private generateRationalText(
     expression: RationalExpression,
-    ratio: number,
+    _ratio: number,
   ): string {
     const parts: string[] = [];
 

@@ -6,11 +6,11 @@
  * 将 DecisionParams 注入到决策引擎的各个组件中
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DecisionParams } from '../interfaces/decision-params.interface';
 import { MemoryService } from './memory.service';
 import { UserProfileMapperService } from './user-profile-mapper.service';
-import { RouteDirectionHealth, calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
+import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 
 @Injectable()

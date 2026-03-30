@@ -8,9 +8,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ToTEvaluatorService } from './tot-evaluator.service';
-import { ThoughtInput, ThoughtNode } from './tot-evaluator.interface';
+import { ThoughtNode } from './tot-evaluator.interface';
 import { ToTScoreResult } from './score-result';
-import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
 
 /**

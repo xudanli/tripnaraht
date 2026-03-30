@@ -55,9 +55,6 @@ export class ScenarioOptimizationService {
 
     const modified = { ...request };
 
-    // 应用体力约束
-    const fitness = config.walking.fitness_constraints;
-
     // 调整交通策略（如果尚未设置）
     modified.transport_policy = {
       ...modified.transport_policy,

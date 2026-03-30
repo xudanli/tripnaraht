@@ -7,7 +7,7 @@
  */
 
 import { Injectable, Optional } from '@nestjs/common';
-import { ReadinessPack, Rule, SupportedLanguage, UserQuestion, LocalizedString } from '../types/readiness-pack.types';
+import { ReadinessPack, Rule, SupportedLanguage } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
 import { ReadinessFinding, ReadinessFindingItem, ReadinessCheckResult, FrontendUserQuestion } from '../types/readiness-findings.types';
 import { RuleEngine } from './rule-engine';

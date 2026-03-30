@@ -7,7 +7,6 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { createConnection, SmitheryAuthorizationError } from '@smithery/api/mcp';
-import { Smithery } from '@smithery/api';
 
 /**
  * Airbnb MCP 客户端（使用 Connect API）

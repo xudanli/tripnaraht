@@ -239,7 +239,6 @@ export class OptimizationEngineAdapterService {
   private buildDimensionBreakdown(state: DecisionState): OptimizationHints['dimensionBreakdown'] {
     const env = state.environmentState ?? {};
     const trip = state.tripState ?? {};
-    const intent = state.userIntent ?? {};
 
     // 疲劳：tripState.fatigue (0-1)，由 TDFPM 在 OPTIMIZE 步骤写入；无数据时用 failureRiskLevel 推断
     let fatigue = trip.fatigue;

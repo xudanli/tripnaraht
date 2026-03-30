@@ -91,7 +91,7 @@ export class FlywheelPipelineService {
         return {
           success: false,
           samplesUsed: feedback.length,
-          message: `样本不足，需要至少 10 条反馈，当前 ${feedback.length}。建议 50–100 次旅行后启动。`,
+          message: `样本不足，需要至少 10 条反馈，当前 ${feedback.length}。建议累计约 ${minTrips} 次旅行后再启动学习。`,
         };
       }
 
@@ -174,7 +174,7 @@ export class FlywheelPipelineService {
     });
 
     const behaviors = await this.behaviorLog.getForLearning(userId, undefined, 200);
-    const decisions = await this.decisionLog.getByUserId(userId, {
+    await this.decisionLog.getByUserId(userId, {
       since: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
       limit: 200,
     });

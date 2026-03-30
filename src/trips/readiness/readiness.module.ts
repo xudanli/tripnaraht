@@ -44,8 +44,6 @@ import { CapabilityPackChecklistService } from './services/capability-pack-check
 import { CoverageMapService } from './services/coverage-map.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
 import { UserDecisionService } from './services/user-decision.service';
-import { TrustMetricsService } from './services/trust-metrics.service';
-import { RiskQuantificationService } from './services/risk-quantification.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';

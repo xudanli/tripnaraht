@@ -178,7 +178,7 @@ export class RAGQueryCollectorService {
   /**
    * 获取收集的 query-document 对（用于评估或微调）
    */
-  async getCollectedPairs(options?: {
+  async getCollectedPairs(_options?: {
     source?: string;
     collection?: string;
     countryCode?: string;

@@ -220,7 +220,6 @@ export class AmadeusService implements OnModuleInit, OnModuleDestroy {
       try {
         await tempClient.connect();
         // 如果连接成功，说明已经授权
-        const connectionId = tempClient.getConnectionId();
         throw new Error('Already authorized');
       } catch (error: any) {
         if (error.message?.includes('OAuth authorization required')) {

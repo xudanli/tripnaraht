@@ -7,13 +7,11 @@ import {
   IsObject,
   IsArray,
   ValidateNested,
-  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TripPlanRequest } from '../../agent/interfaces/trip-plan.interface';
 import { DecisionDraftGenerationConfig } from '../interfaces/decision-draft.interface';
-import { DecisionStepEditOperation } from '../services/decision-draft-editor.service';
 import { PartialRegenerationConfig } from '../services/decision-draft-editor.service';
 
 /**

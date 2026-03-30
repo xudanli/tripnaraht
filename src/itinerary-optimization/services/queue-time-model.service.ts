@@ -185,7 +185,6 @@ export class QueueTimeModelService {
   ): number {
     const hour = dateTime.hour;
     const minute = dateTime.minute;
-    const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
     // 查找匹配的时段
     for (const [range, multiplier] of Object.entries(timeOfDayMultiplier)) {
@@ -210,7 +209,7 @@ export class QueueTimeModelService {
    */
   private calculateConfidence(
     config: QueueTimeModelConfig,
-    dateTime: DateTime
+    _dateTime: DateTime
   ): number {
     let confidence = 0.7; // 基础置信度
 

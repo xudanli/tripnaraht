@@ -104,7 +104,7 @@ export class KnowledgeValidationService {
   async validateOutput(
     params: OutputValidationParams
   ): Promise<OutputValidationResult> {
-    const { output, sources, query, context, options } = params;
+    const { output, sources, query, options } = params;
 
     // 0. 检查缓存
     if (this.cacheService) {
@@ -274,7 +274,7 @@ ${content.substring(0, 500)}
   /**
    * 评估信息完整性
    */
-  private async assessCompleteness(content: string, context?: Record<string, any>): Promise<number> {
+  private async assessCompleteness(content: string, _context?: Record<string, any>): Promise<number> {
     // 简化版：基于内容长度和关键信息存在性
     if (!content || content.length < 50) {
       return 0.3;
@@ -291,23 +291,15 @@ ${content.substring(0, 500)}
    * 检查内容内部一致性、与上下文一致性
    */
   private async checkConsistency(
-    content: string,
-    source?: string,
-    context?: Record<string, any>
+    _content: string,
+    _source?: string,
+    _context?: Record<string, any>
   ): Promise<'consistent' | 'inconsistent' | 'unknown'> {
     if (!this.llmService) {
       return 'unknown';
     }
 
     try {
-      // 检查内容内部是否存在矛盾
-      const prompt = `请检查以下文本内部是否存在矛盾或不一致的地方。只回答"consistent"（一致）、"inconsistent"（不一致）或"unknown"（无法判断）。
-
-文本：
-${content.substring(0, 500)}
-
-请只回答一个词：consistent、inconsistent或unknown`;
-
       // 使用naturalLanguageToTripParams作为临时方案（实际上我们需要一个简单的文本生成方法）
       // TODO: 在LlmService中添加公共的文本生成方法
       // 暂时使用简化实现，不使用LLM
@@ -350,7 +342,7 @@ ${content.substring(0, 500)}
     // 2. 提取引用标记（如 [1], [2] 等）
     const citationMarkRegex = /\[(\d+)\]/g;
     const marks = Array.from(content.matchAll(citationMarkRegex));
-    marks.forEach((match, index) => {
+    marks.forEach((match) => {
       citations.push({
         id: `mark_${match[1]}`,
         content: match[0],
@@ -538,7 +530,7 @@ ${output.substring(0, 1000)}
   /**
    * 检查引用完整性
    */
-  private async checkCitationIntegrity(output: string, sources: ValidatedRetrievalResult[]) {
+  private async checkCitationIntegrity(_output: string, _sources: ValidatedRetrievalResult[]) {
     // TODO: 实现引用完整性检查
     // 检查输出中提到的引用是否真实存在
     return { allValid: true, invalidCount: 0 };
@@ -547,7 +539,7 @@ ${output.substring(0, 1000)}
   /**
    * 检查输出完整性
    */
-  private async checkOutputCompleteness(output: string, query: string) {
+  private async checkOutputCompleteness(_output: string, _query: string) {
     // TODO: 实现输出完整性检查
     // 检查输出是否完整回答了查询
     return { isComplete: true };

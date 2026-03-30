@@ -311,7 +311,6 @@ export class IcelandInfoController {
       // 使用冰岛安全适配器获取安全信息
       if (this.icelandSafetyAdapter) {
         const alerts = await this.icelandSafetyAdapter.getSafetyAlerts();
-        const criticalAlerts = await this.icelandSafetyAdapter.getCriticalSafetyAlerts();
 
         // 过滤警报
         let filteredAlerts = alerts;

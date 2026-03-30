@@ -1,14 +1,12 @@
 // src/trips/decision/services/decision-support.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   DecisionOptions,
   RouteOption,
   RouteComparison,
   MatchingAnalysis,
   SystemAnalysis,
-  UserWant,
-  UserConcern,
   RhythmOption,
   RhythmComparison,
   ConditionalSupport,
@@ -360,7 +358,7 @@ export class DecisionSupportService {
    */
   private generateUserGuidance(
     options: RouteOption[],
-    userContext: any,
+    _userContext: any,
   ): string {
     if (options.length === 0) {
       return '暂无可用选项';
@@ -422,7 +420,7 @@ export class DecisionSupportService {
   private checkMatch(
     route: RouteDirectionData,
     userContext: any,
-    wants: import('../interfaces/decision-support.interface').UserWantItem[],
+    _wants: import('../interfaces/decision-support.interface').UserWantItem[],
   ): 'MATCH' | 'PARTIAL_MATCH' | 'NO_MATCH' {
     const matching = this.analyzeMatching(route, userContext);
     const matchCount = [
@@ -463,8 +461,8 @@ export class DecisionSupportService {
   private generateJudgment(
     route: RouteDirectionData,
     userContext: any,
-    wants: import('../interfaces/decision-support.interface').UserWantItem[],
-    concerns: import('../interfaces/decision-support.interface').UserConcernItem[],
+    _wants: import('../interfaces/decision-support.interface').UserWantItem[],
+    _concerns: import('../interfaces/decision-support.interface').UserConcernItem[],
   ): MatchingAnalysis['overallJudgment'] {
     const matching = this.analyzeMatching(route, userContext);
     const factors: string[] = [];
@@ -537,7 +535,7 @@ export class DecisionSupportService {
   /**
    * 生成节奏选项
    */
-  private generateRhythmOptions(userContext: any): {
+  private generateRhythmOptions(_userContext: any): {
     options: RhythmOption[];
     comparison: RhythmComparison;
   } {
@@ -618,7 +616,7 @@ export class DecisionSupportService {
    */
   private generateConditionalSupport(
     routes: RouteDirectionData[],
-    userContext: any,
+    _userContext: any,
   ): ConditionalSupport {
     const scenarios: ConditionalScenario[] = [];
 

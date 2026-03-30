@@ -2,7 +2,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DecisionOutput, TradeoffDimension } from '../interfaces/decision-node.interface';
+import { DecisionOutput } from '../interfaces/decision-node.interface';
 
 /**
  * 行为信号

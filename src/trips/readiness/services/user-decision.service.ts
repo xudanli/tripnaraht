@@ -7,7 +7,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Rule, Action, UserDecision, DecisionBranch, UserQuestion, QuestionGroup, LocalizedString } from '../types/readiness-pack.types';
+import { Rule, Action, DecisionBranch, UserQuestion, QuestionGroup, LocalizedString } from '../types/readiness-pack.types';
 
 export interface ProcessUserDecisionResult {
   updatedAction: Action;

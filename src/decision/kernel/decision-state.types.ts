@@ -52,6 +52,13 @@ export interface TripState {
   completionRate?: number;
   /** 质量评分 (0-1)（用于 differentiable-decision） */
   qualityScore?: number;
+  /**
+   * Gate BLOCK 时与 Agent `OrchestratorState.alternatives` 对齐的替代项（replan / 持久化出口，供 TD-03 校验）
+   */
+  orchestratorAlternatives?: {
+    alternative_pois: unknown[];
+    alternative_routes: unknown[];
+  };
 }
 
 /** 航班信息（实施例 2 动态重规划） */
@@ -121,6 +128,11 @@ export interface ConstraintReport {
   hardViolationCount?: number;
   /** 软约束满足率 (0-1)（用于 differentiable-decision） */
   softSatisfactionRate?: number;
+  /**
+   * 与 `GateResult.gate_result` 对齐（G-01）。
+   * 当为 `NEED_USER_CONFIRM` 时，仅用 `feasible`/`violations` 无法与 `ADJUST_REQUIRED` 区分，往返映射时必须显式携带。
+   */
+  gateOutcome?: 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK' | 'NEED_USER_CONFIRM';
 }
 
 /**
@@ -196,6 +208,16 @@ export interface DecisionMeta {
 /** 状态变化差分类型（Token 优化：只记录变化） */
 export type StateHistoryDeltaType = 'weather' | 'userIntent' | 'delay' | 'constraints' | 'plan' | string;
 
+/** History 事件元信息（兼容扩展） */
+export interface StateHistoryDeltaMeta {
+  request_id?: string;
+  trace_id?: string;
+  version?: number;
+  status?: string;
+  signal_type?: string;
+  [key: string]: unknown;
+}
+
 /** 状态变化差分条目 */
 export interface StateHistoryDelta {
   type: StateHistoryDeltaType;
@@ -206,6 +228,10 @@ export interface StateHistoryDelta {
   /** 可选：变化前后快照（用于审计，可压缩） */
   prev?: unknown;
   next?: unknown;
+  /** 可选：审计扩展信息（request/trace/version/status 等） */
+  meta?: StateHistoryDeltaMeta;
+  /** 可选：仲裁/冲突等结构化载荷（如 kernel_arbitration） */
+  payload?: unknown;
 }
 
 /** 状态变化历史（RLHF/异常检测/模型评估核心） */
@@ -277,6 +303,76 @@ export interface DecisionState {
 
   /** 兼容：关联 request_id 便于与现有 OrchestratorState 映射 */
   requestId?: string;
+
+  /**
+   * 旅行本体扩展状态（Data/Logic/Action 融合）
+   * 作为 DSO 子状态保存，避免引入平行状态源。
+   */
+  travelOntologyState?: {
+    /** 业务行程 ID（与 trips 域对齐时的主键） */
+    tripId?: string;
+    nouns?: {
+      flights?: Array<{
+        id: string;
+        flightNo?: string;
+        airline?: string;
+        from?: string;
+        to?: string;
+        departureTime?: string;
+        arrivalTime?: string;
+        price?: number;
+      }>;
+      hotels?: Array<{
+        id: string;
+        name?: string;
+        checkIn?: string;
+        checkOut?: string;
+        nightlyPrice?: number;
+        roomAvailable?: boolean;
+      }>;
+      activities?: Array<{
+        id: string;
+        name?: string;
+        type?: string;
+        startTime?: string;
+        endTime?: string;
+        location?: string;
+        price?: number;
+      }>;
+      destination?: {
+        id?: string;
+        name?: string;
+        countryCode?: string;
+      };
+      transportation?: Array<{
+        id?: string;
+        mode: 'RAIL' | 'SUBWAY' | 'TAXI' | 'BIKE' | 'BUS' | 'WALK' | 'MIXED';
+        provider?: string;
+        etaMinutes?: number;
+        costEstimate?: number;
+      }>;
+    };
+    verbs?: {
+      pending?: Array<{
+        actionId: string;
+        verb:
+          | 'BOOK'
+          | 'CANCEL'
+          | 'ADJUST'
+          | 'NOTIFY'
+          | 'OPTIMIZE'
+          | 'MODIFY'
+          | 'SELECT'
+          | 'PAY';
+        targetType: 'FLIGHT' | 'HOTEL' | 'ACTIVITY' | 'TRANSPORT' | 'ITINERARY';
+        targetRef?: string;
+        requiresConfirmation: boolean;
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+      }>;
+      committed?: string[];
+      rolledBack?: string[];
+    };
+  };
 }
 
 /** 信念状态采样（b(s) 的离散近似） */

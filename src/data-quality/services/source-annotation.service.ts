@@ -6,8 +6,6 @@ import {
   SourceAnnotatedData,
   BatchAnnotationResult,
   VerificationLevel,
-  DataSourceType,
-  DataSource,
 } from '../interfaces/source-annotation.interface';
 
 /**

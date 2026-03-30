@@ -76,7 +76,7 @@ export function createWebBrowseActions(
           error: { type: 'string' },
         },
       },
-      execute: async (input: any, state: any): Promise<any> => {
+      execute: async (input: any, _state: any): Promise<any> => {
         // 验证必需的 URL 参数
         if (!input.url || typeof input.url !== 'string') {
           return {

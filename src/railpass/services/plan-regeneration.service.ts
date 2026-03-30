@@ -11,9 +11,7 @@ import {
   RailPassProfile,
   RailSegment,
   ReservationTask,
-  FallbackOption,
 } from '../interfaces/railpass.interface';
-import { RegeneratePlanRequest } from '../interfaces/executability-check.interface';
 import { ReservationDecisionEngineService } from './reservation-decision-engine.service';
 import { ReservationOrchestrationService } from './reservation-orchestration.service';
 import { TravelDayCalculationEngineService } from './travel-day-calculation-engine.service';
@@ -100,8 +98,6 @@ export class PlanRegenerationService {
 
     for (const segment of segments) {
       const requirement = this.reservationEngine.checkReservation(segment);
-      const task = reservationTasks.find(t => t.segmentId === segment.segmentId);
-
       // 如果必须订座且配额风险高，尝试找替代方案
       if (requirement.required && requirement.quotaRisk === 'HIGH') {
         const fallbackOptions = this.reservationEngine.generateFallbackOptions(segment);
@@ -217,7 +213,6 @@ export class PlanRegenerationService {
 
     const changes: RegeneratePlanResult['changes'] = [];
     const newSegments: RailSegment[] = [];
-    let travelDaysSaved = 0;
 
     // 计算当前 Travel Day 消耗
     const currentTravelDayResult = this.travelDayCalculator.calculateTravelDays({
@@ -236,7 +231,7 @@ export class PlanRegenerationService {
     }
 
     // 优化策略：合并同一天的行程，避免跨午夜
-    for (const [date, segs] of segmentsByDate.entries()) {
+    for (const [, segs] of segmentsByDate.entries()) {
       // 检查是否有跨午夜的夜车
       const nightTrains = segs.filter(s => s.isNightTrain && s.crossesMidnight);
 
@@ -263,7 +258,6 @@ export class PlanRegenerationService {
           };
 
           newSegments.push(daySegment);
-          travelDaysSaved++; // 从 2 天变为 1 天
           continue;
         }
       }
@@ -319,16 +313,9 @@ export class PlanRegenerationService {
     const newSegments: RailSegment[] = [];
     let costChange = 0;
 
-    // 计算当前总费用（Pass 价格 + 订座费用）
-    const totalReservationFee = reservationTasks.reduce((sum, task) => {
-      return sum + (task.cost || 0);
-    }, 0);
-
     // 简化：对于短途/非热门线路，建议直购票可能更便宜
     for (const segment of segments) {
       const requirement = this.reservationEngine.checkReservation(segment);
-      const task = reservationTasks.find(t => t.segmentId === segment.segmentId);
-
       // 如果订座费用较高（> 20 EUR）且距离较短，建议直购票
       if (requirement.feeEstimate && requirement.feeEstimate.max > 20) {
         // 估算直购票价格（简化：基于距离估算）

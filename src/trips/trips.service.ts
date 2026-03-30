@@ -17,13 +17,12 @@ import { TaskDto, TaskPriority, TaskCategory } from './dto/tasks.dto';
 import { PipelineStatusResponseDto, PipelineStageDto, PipelineStageStatus } from './dto/pipeline-status.dto';
 import { DecisionLogStorageService } from './decision/services/decision-log-storage.service';
 import { TripDraftService } from './services/trip-draft.service';
-import { SaveTripDraftDto, TripDraftResponseDto } from './dto/trip-draft.dto';
+import { SaveTripDraftDto } from './dto/trip-draft.dto';
 import { 
   EvidenceItemDto, 
   EvidenceListResponseDto, 
   GetEvidenceQueryDto, 
   EvidenceType, 
-  EvidenceSeverity,
   UpdateEvidenceRequestDto,
   UpdateEvidenceResponseDto,
   BatchUpdateEvidenceRequestDto,
@@ -292,7 +291,7 @@ export class TripsService {
     );
     
     // 检查是否需要租车并估算租车成本
-    let estimatedCarRentalCost = 0;
+    const estimatedCarRentalCost = 0;
     const needsCarRental = await this.checkCarRentalNeeds(dto, normalizedCountryCode);
     if (needsCarRental && this.bookingComIntegration) {
       try {
@@ -959,7 +958,7 @@ export class TripsService {
     const isCollected = userId ? (trip.TripCollection?.length > 0) : false;
 
     // 移除内部使用的字段，避免暴露给前端
-    const { _count, TripLike, TripCollection, ...tripData } = trip;
+    const { _count, TripLike: _tripLike, TripCollection: _tripCollection, ...tripData } = trip;
 
     // 转换 Place 数据为规范化格式
     // P0 必须返回：id, nameCN, nameEN, category, address, rating, metadata.openingHours
@@ -1021,7 +1020,7 @@ export class TripsService {
   /**
    * 🆕 计算行程项的跨天信息
    */
-  private calculateCrossDayInfo(item: any, tripDayDate: Date): {
+  private calculateCrossDayInfo(item: any, _tripDayDate: Date): {
     isCrossDay: boolean;
     crossDays: number;
     isCheckoutItem: boolean;

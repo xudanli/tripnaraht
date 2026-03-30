@@ -150,7 +150,7 @@ export class RouterService {
    */
   private checkHardRules(
     userInput: string,
-    context?: any
+    _context?: any
   ): RouterOutput | null {
     const input = userInput.toLowerCase();
 
@@ -240,7 +240,7 @@ export class RouterService {
    */
   private extractFeatures(
     userInput: string,
-    context?: any
+    _context?: any
   ): {
     constraintCount: number;
     ambiguity: number;
@@ -340,7 +340,7 @@ export class RouterService {
   /**
    * 获取所需能力
    */
-  private getRequiredCapabilities(route: RouteType, features: any): string[] {
+  private getRequiredCapabilities(route: RouteType, _features: any): string[] {
     const capabilities: string[] = [];
 
     if (route === RouteType.SYSTEM1_RAG || route === RouteType.SYSTEM2_REASONING) {

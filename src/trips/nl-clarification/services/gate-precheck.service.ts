@@ -6,7 +6,6 @@ import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 import {
   GatePrecheckConfig,
   GatePrecheckResult,
-  ClarificationQuestionDef,
 } from '../config/destination-clarification.config';
 
 @Injectable()
@@ -242,7 +241,7 @@ export class GatePrecheckService {
   private async executeLLMCheck(
     precheck: GatePrecheckConfig,
     currentParams: Record<string, any>,
-    destinationCode: string
+    _destinationCode: string
   ): Promise<{ passed: boolean; reason?: string }> {
     if (!this.llmService || !precheck.checkLogic.llmPrompt) {
       return { passed: true };

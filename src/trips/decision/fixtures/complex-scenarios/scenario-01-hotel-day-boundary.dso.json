@@ -1,0 +1,25 @@
+{
+  "_comment": "S-TD-01 样例1：日界/酒店时间窗错误（checkout 不晚于 checkin）→ TIME_CONFLICT travel_ontology_hotel_dates",
+  "requestId": "td-sample-01",
+  "userIntent": {},
+  "tripState": {},
+  "environmentState": {},
+  "systemState": {
+    "requestId": "td-sample-01",
+    "version": 0
+  },
+  "travelOntologyState": {
+    "tripId": "trip-sample-01",
+    "nouns": {
+      "hotels": [
+        {
+          "id": "h-day-boundary",
+          "name": "DayBoundaryHotel",
+          "checkIn": "2026-07-02T14:00:00.000Z",
+          "checkOut": "2026-07-02T10:00:00.000Z",
+          "nightlyPrice": 100
+        }
+      ]
+    }
+  }
+}

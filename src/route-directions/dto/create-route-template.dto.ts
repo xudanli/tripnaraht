@@ -5,12 +5,10 @@ import {
   IsArray,
   IsOptional,
   IsObject,
-  IsEnum,
   IsBoolean,
-  ValidateNested,
   IsIn,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { DayPlan } from '../interfaces/route-direction.interface';
 
 export class CreateRouteTemplateDto {

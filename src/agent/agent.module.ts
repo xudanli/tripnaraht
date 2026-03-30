@@ -1,6 +1,7 @@
 // src/agent/agent.module.ts
 import { Module, Optional, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
+import { ActionsController } from './actions.controller';
 import { AgentService } from './services/agent.service';
 import { RouterService } from './services/router.service';
 import { AgentStateService } from './services/agent-state.service';
@@ -65,6 +66,7 @@ import { PlanningWorkbenchController } from './planning-workbench.controller';
 import { AgentAdminController } from './agent-admin.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
 import { TripRunManagerService } from './services/trip-run-manager.service';
+import { ActionExecutionService } from './services/action-execution.service';
 import { SkillsModule } from '../skills/skills.module';
 // 子 Agent 服务（Claude 编排）
 import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
@@ -114,7 +116,7 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     forwardRef(() => DecisionDraftModule), // 使用 forwardRef 避免循环依赖
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
   ],
-  controllers: [AgentController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
+  controllers: [AgentController, ActionsController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
   providers: [
     AgentService,
     RouterService,
@@ -151,6 +153,7 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
     AgentRunAdminService, // Agent 运行管理服务（后台管理）
     TripRunManagerService, // TripRun 和 TripAttempt 管理服务
+    ActionExecutionService, // Action 执行域（preview/commit/rollback）
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [

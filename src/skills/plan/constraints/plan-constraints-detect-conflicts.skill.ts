@@ -80,7 +80,7 @@ export class PlanConstraintsDetectConflictsSkill implements Skill<PlanConstraint
           type: 'pace',
           severity: input.planState.pace.fatigueScore.paceScore > 85 ? 'high' : 'medium',
           description: `疲劳评分过高: ${input.planState.pace.fatigueScore.paceScore}/100`,
-          affectedDays: input.planState.pace.fatigueScore.fatigueDrivers.map(d => 0), // 简化
+          affectedDays: input.planState.pace.fatigueScore.fatigueDrivers.map(() => 0), // 简化
           affectedSegments: undefined,
         });
       }

@@ -1,0 +1,89 @@
+name: ROLL Prod Ramp Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_traffic:
+        description: "Target traffic percent (10/30/60/100)"
+        required: true
+        default: "10"
+      real_policy_rate:
+        description: "Observed real policy rate (0..1)"
+        required: true
+      fallback_rate:
+        description: "Observed fallback rate (0..1)"
+        required: true
+      simulation_rate:
+        description: "Observed simulation rate (0..1)"
+        required: true
+      p95_latency_ms:
+        description: "Observed p95 latency (ms)"
+        required: true
+      error_rate:
+        description: "Observed error rate (0..1)"
+        required: true
+      contract_violation_rate:
+        description: "Observed contract violation rate (0..1)"
+        required: true
+        default: "0"
+      live_traffic_summary_path:
+        description: "Optional: path to live-traffic-summary.json for proof gate"
+        required: false
+        default: ""
+      ab_uplift_evaluation_path:
+        description: "Optional: path to ab-uplift-evaluation.json for proof gate"
+        required: false
+        default: ""
+      sample_coverage_path:
+        description: "Optional: path to sample-coverage.json for segment coverage gate"
+        required: false
+        default: ""
+      ab_uplift_stratified_path:
+        description: "Optional: path to ab-uplift-stratified.json for stratified proof gate"
+        required: false
+        default: ""
+
+jobs:
+  prod-ramp-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare script
+        run: |
+          chmod +x scripts/rl-infra/roll/verify-prod-ramp-thresholds.sh
+          chmod +x scripts/rl-infra/roll/verify-ramp-with-proof.sh
+          chmod +x scripts/rl-infra/roll/resolve-ramp-threshold-profile.sh
+
+      - name: Resolve dynamic thresholds by traffic profile
+        working-directory: scripts/rl-infra/roll
+        run: |
+          ./resolve-ramp-threshold-profile.sh "${{ github.event.inputs.target_traffic }}" ramp-thresholds.env
+          cat ramp-thresholds.env
+
+      - name: Verify thresholds
+        working-directory: scripts/rl-infra/roll
+        env:
+          REAL_POLICY_RATE: ${{ github.event.inputs.real_policy_rate }}
+          FALLBACK_RATE: ${{ github.event.inputs.fallback_rate }}
+          SIMULATION_RATE: ${{ github.event.inputs.simulation_rate }}
+          P95_LATENCY_MS: ${{ github.event.inputs.p95_latency_ms }}
+          ERROR_RATE: ${{ github.event.inputs.error_rate }}
+          CONTRACT_VIOLATION_RATE: ${{ github.event.inputs.contract_violation_rate }}
+        run: |
+          source ramp-thresholds.env
+          ./verify-prod-ramp-thresholds.sh
+
+      - name: Verify live proof gate (optional)
+        if: ${{ github.event.inputs.live_traffic_summary_path != '' && github.event.inputs.ab_uplift_evaluation_path != '' }}
+        run: |
+          scripts/rl-infra/roll/verify-ramp-with-proof.sh \
+            "${{ github.event.inputs.live_traffic_summary_path }}" \
+            "${{ github.event.inputs.ab_uplift_evaluation_path }}" \
+            "${{ github.event.inputs.target_traffic }}" \
+            "${{ github.event.inputs.sample_coverage_path }}" \
+            "${{ github.event.inputs.ab_uplift_stratified_path }}"
+
+      - name: Emit ramp decision
+        run: echo "Ramp to ${{ github.event.inputs.target_traffic }}% approved by threshold gate"

@@ -354,9 +354,9 @@ export class EntityResolutionService {
    */
   private async resolveMustHavePoi(
     poiQuery: string,
-    extracted: { cities: string[]; counties: string[]; pois: string[] },
-    lat?: number,
-    lng?: number
+    _extracted: { cities: string[]; counties: string[]; pois: string[] },
+    _lat?: number,
+    _lng?: number
   ): Promise<EntityResolutionResult | null> {
     // 2.1: 别名匹配
     const cityHint = this.adminDivisionService.mapPoiAliasToCity(poiQuery);
@@ -478,6 +478,7 @@ export class EntityResolutionService {
           )
           AND location IS NOT NULL
           ${cityFilter}
+          ${categoryFilter && categoryFilter.length > 0 ? Prisma.sql`AND category IN (${Prisma.join(categoryFilter.map(c => Prisma.sql`${c}::"PlaceCategory"`), ', ')})` : Prisma.sql``}
         LIMIT 1
       `;
 
@@ -592,14 +593,11 @@ export class EntityResolutionService {
    */
   private async vectorSearchWithCityScope(
     query: string,
-    cities: string[],
+    _cities: string[],
     lat?: number,
     lng?: number,
     limit: number = 10
   ): Promise<EntityResolutionResult[]> {
-    // 规范化城市名称
-    const normalizedCities = await this.adminDivisionService.normalizeCityNames(cities);
-    
     // 调用vector-search服务
     const results = await this.vectorSearchService.hybridSearch(
       query,
@@ -680,8 +678,8 @@ export class EntityResolutionService {
   private async tryExternalGeocoding(
     poiName: string,
     extracted: { cities: string[]; counties: string[]; pois: string[] },
-    lat?: number,
-    lng?: number
+    _lat?: number,
+    _lng?: number
   ): Promise<EntityResolutionResult | null> {
     // 确定城市提示
     const cityHint = this.adminDivisionService.mapPoiAliasToCity(poiName);

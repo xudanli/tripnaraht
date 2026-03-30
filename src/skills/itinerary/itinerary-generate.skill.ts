@@ -7,7 +7,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { TripPlanRequest, Itinerary, ItineraryDay, ItineraryItem, GateResult } from '../../agent/interfaces/trip-plan.interface';
+import { TripPlanRequest, ItineraryDay, ItineraryItem, GateResult } from '../../agent/interfaces/trip-plan.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { PlanningWorkbenchAgentService } from '../../agent/services/planning-workbench-agent.service';
 import { IncrementalItineraryGeneratorService } from '../../agent/context-engine/services/incremental-itinerary-generator.service';

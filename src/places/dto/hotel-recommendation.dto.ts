@@ -1,6 +1,6 @@
 // src/places/dto/hotel-recommendation.dto.ts
 import { IsString, IsEnum, IsNumber, IsOptional, IsArray, IsBoolean } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { HotelRecommendationStrategy } from '../interfaces/hotel-strategy.interface';
 
 /**

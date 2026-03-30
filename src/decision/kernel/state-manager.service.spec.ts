@@ -62,6 +62,35 @@ describe('StateManagerService', () => {
       state = service.merge(state, { environmentState: { countryCode: 'IS' } });
       expect(state.systemState?.version).toBe(2);
     });
+
+    it('应合并 travelOntologyState 且保留已提交动词列表', () => {
+      let state = createInitialState();
+      state = service.merge(state, {
+        travelOntologyState: {
+          tripId: 'T1',
+          nouns: { destination: { id: 'd1', name: 'Paris' } },
+          verbs: { pending: [], committed: ['c0'], rolledBack: [] },
+        },
+      });
+      expect(state.travelOntologyState?.tripId).toBe('T1');
+      state = service.merge(state, {
+        travelOntologyState: {
+          verbs: {
+            pending: [
+              {
+                actionId: 'a1',
+                verb: 'BOOK',
+                targetType: 'FLIGHT',
+                requiresConfirmation: false,
+                riskLevel: 'LOW',
+              },
+            ],
+          },
+        },
+      });
+      expect(state.travelOntologyState?.verbs?.committed).toEqual(['c0']);
+      expect(state.travelOntologyState?.verbs?.pending).toHaveLength(1);
+    });
   });
 
   describe('commit', () => {

@@ -271,7 +271,7 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
 
   private generateSuggestedFixes(
     warnings: TripQuickEvaluateOutput['warnings'],
-    conflicts: any
+    _conflicts: any
   ): TripQuickEvaluateOutput['suggestedFixes'] {
     const fixes: TripQuickEvaluateOutput['suggestedFixes'] = [];
 

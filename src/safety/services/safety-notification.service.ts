@@ -11,7 +11,6 @@ import {
   SafetyNotificationPreferencesDto,
 } from '../dto/geopolitical-risk.dto';
 import { SAFETY_EVENTS } from './geopolitical-risk.service';
-import { COUNTRY_NAMES } from '../interfaces/travel-advisory-adapter.interface';
 
 /**
  * 通知渠道
@@ -475,7 +474,7 @@ ${impact.alternativeDestinations && impact.alternativeDestinations.length > 0
    * 获取受影响的用户
    * 实际实现需要查询数据库找出行程涉及这些国家的用户
    */
-  private async getAffectedUsers(alert: SafetyAlertDto): Promise<string[]> {
+  private async getAffectedUsers(_alert: SafetyAlertDto): Promise<string[]> {
     // 占位实现 - 实际需要查询数据库
     // SELECT DISTINCT user_id FROM trips 
     // WHERE destinations OVERLAPS alert.affectedRegions

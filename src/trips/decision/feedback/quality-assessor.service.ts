@@ -263,7 +263,7 @@ export class QualityAssessorService {
   /**
    * 评估决策速度
    */
-  private assessDecisionSpeed(log: DecisionRunLog): number {
+  private assessDecisionSpeed(_log: DecisionRunLog): number {
     // TODO: 从日志中提取实际决策时间
     // 目前先返回默认值
     return 0.8; // 假设速度较快

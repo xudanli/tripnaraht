@@ -1,0 +1,67 @@
+name: ROLL Staging Burn-in
+
+on:
+  workflow_dispatch:
+    inputs:
+      burnin_hours:
+        description: "Burn-in duration hours"
+        required: false
+        default: "48"
+      burnin_interval_sec:
+        description: "Request interval seconds"
+        required: false
+        default: "15"
+
+jobs:
+  staging-burnin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure scripts executable
+        run: |
+          chmod +x scripts/rl-infra/roll/verify-staging-no-simulation.sh
+          chmod +x scripts/rl-infra/roll/run-staging-burnin.sh
+          chmod +x scripts/rl-infra/roll/generate-burnin-report.sh
+
+      - name: Start staging stack
+        working-directory: scripts/rl-infra/roll
+        run: |
+          docker compose --env-file .env.staging \
+            -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+
+      - name: Verify strict no simulation
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLL_BRIDGE_URL: http://localhost:8001
+        run: ./verify-staging-no-simulation.sh
+
+      - name: Run burn-in
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLL_BRIDGE_URL: http://localhost:8001
+          BURNIN_HOURS: ${{ github.event.inputs.burnin_hours || '48' }}
+          BURNIN_INTERVAL_SEC: ${{ github.event.inputs.burnin_interval_sec || '15' }}
+          BURNIN_OUTPUT: burnin-summary.jsonl
+        run: ./run-staging-burnin.sh
+
+      - name: Generate burn-in report
+        working-directory: scripts/rl-infra/roll
+        run: |
+          ./generate-burnin-report.sh burnin-summary.jsonl burnin-report.json burnin-report.md
+
+      - name: Upload burn-in artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-burnin-results
+          path: |
+            scripts/rl-infra/roll/burnin-summary.jsonl
+            scripts/rl-infra/roll/burnin-report.json
+            scripts/rl-infra/roll/burnin-report.md
+
+      - name: Teardown
+        if: always()
+        working-directory: scripts/rl-infra/roll
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v || true

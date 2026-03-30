@@ -94,7 +94,7 @@ export class MultiStepPlanningService implements IMultiStepPlanningService {
     candidateActions: DecisionAction[],
     config?: Partial<MultiStepPlanningConfig>,
   ): Promise<{ bestAction: DecisionAction; expectedReturn: number }> {
-    const { horizon, discountFactor } = { ...DEFAULT_CONFIG, ...config };
+    const { horizon, discountFactor: _discountFactor } = { ...DEFAULT_CONFIG, ...config };
 
     let bestAction = candidateActions[0];
     let bestReturn = -Infinity;

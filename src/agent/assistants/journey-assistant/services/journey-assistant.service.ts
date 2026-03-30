@@ -36,9 +36,7 @@ import {
   JourneyAssistantResponse,
   TripPhase,
   Reminder,
-  ReminderType,
   TripEvent,
-  EventType,
   EmergencyOption,
   ScheduleItem,
   JourneyIntent,
@@ -212,7 +210,7 @@ export class JourneyAssistantService {
     }
 
     const state = await this.loadJourneyState(request.tripId, request.userId);
-    const { itemId, newTime, cancel, replace } = request.adjustmentParams;
+    const { itemId, newTime, cancel } = request.adjustmentParams;
 
     // 找到要调整的项目
     const item = state.todaySchedule.find(i => i.id === itemId);
@@ -1088,7 +1086,7 @@ What do you need?`,
   /**
    * 分析意图
    */
-  private async analyzeIntent(message: string, state: JourneyState): Promise<JourneyIntent> {
+  private async analyzeIntent(message: string, _state: JourneyState): Promise<JourneyIntent> {
     const lowerMessage = message.toLowerCase();
     
     if (lowerMessage.includes('附近') || lowerMessage.includes('nearby') ||
@@ -1167,7 +1165,7 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
   /**
    * 获取建议操作
    */
-  private getSuggestedActions(state: JourneyState): JourneyAssistantResponse['suggestedActions'] {
+  private getSuggestedActions(_state: JourneyState): JourneyAssistantResponse['suggestedActions'] {
     return [
       { action: 'view_schedule', label: "View today's schedule", labelCN: '查看今日行程' },
       { action: 'nearby_food', label: 'Find food nearby', labelCN: '附近美食' },
@@ -1185,7 +1183,7 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
   /**
    * 生成应急方案
    */
-  private async generateEmergencyOptions(event: TripEvent, state: JourneyState): Promise<EmergencyOption[]> {
+  private async generateEmergencyOptions(event: TripEvent, _state: JourneyState): Promise<EmergencyOption[]> {
     // 根据事件类型生成应急方案
     if (event.type === 'FLIGHT_DELAY') {
       return [
@@ -1225,9 +1223,9 @@ Budget used: $${state.stats.spentBudget}/$${state.stats.totalBudget}`,
    * 执行选择的方案
    */
   private async executeSelectedOption(
-    request: JourneyAssistantRequest, 
-    state: JourneyState, 
-    event: TripEvent
+    _request: JourneyAssistantRequest,
+    state: JourneyState,
+    _event: TripEvent
   ): Promise<JourneyAssistantResponse> {
     return {
       message: `Got it! I've noted your choice. Here's what happens next...`,

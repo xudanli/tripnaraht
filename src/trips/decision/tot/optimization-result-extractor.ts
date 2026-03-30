@@ -18,7 +18,7 @@ import { TripWorldState } from '../world-model';
  */
 export function extractPlanRequestFromResult(
   optimizationResult: OptimizationResult,
-  world: TripWorldState
+  _world: TripWorldState
 ): Partial<PlanRequest> {
   const extracted: Partial<PlanRequest> = {};
 
@@ -45,11 +45,7 @@ export function extractPlanRequestFromResult(
   // 4. 从 dropped 节点提取 drop_penalty 信息
   const dropped = optimizationResult.dropped ?? [];
   if (dropped.length > 0) {
-    // 可以统计平均 penalty，用于推断 drop_penalty 权重
-    const avgPenalty = dropped.reduce((sum, node) => sum + (node.penalty || 0), 0) / dropped.length;
-    
-    // 如果平均 penalty 很高，说明 drop_penalty 权重可能较高
-    // 但这只是推断，实际应该从原始 PlanRequest 获取
+    // 可在此用 dropped 的 penalty 分布推断 objective_weights（当前返回空 Partial）
   }
 
   // 5. 从 route 提取 travel/wait 信息
@@ -70,7 +66,7 @@ export function extractPlanRequestFromResult(
  */
 export function inferObjectiveWeights(
   optimizationResult: OptimizationResult,
-  world: TripWorldState
+  _world: TripWorldState
 ): PlanRequest['objective_weights'] {
   const weights: PlanRequest['objective_weights'] = {};
 

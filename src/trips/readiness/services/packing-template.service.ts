@@ -117,7 +117,7 @@ export class PackingTemplateService {
    */
   private parseQuickChecklistItems(
     checklist: QuickChecklistTemplate,
-    context: PackingListContext
+    _context: PackingListContext
   ): EnhancedPackingListItem[] {
     const items: EnhancedPackingListItem[] = [];
 
@@ -150,7 +150,7 @@ export class PackingTemplateService {
    */
   private parseItemString(itemStr: string, defaultPriority: 'must' | 'should' | 'optional'): EnhancedPackingListItem | null {
     // 移除标记符号
-    let cleanStr = itemStr.replace(/^[✅❌☐]\s*/, '').trim();
+    const cleanStr = itemStr.replace(/^[✅❌☐]\s*/, '').trim();
     if (!cleanStr) return null;
 
     // 提取数量（格式：物品名称x数量 或 物品名称(数量)）
@@ -336,7 +336,7 @@ export class PackingTemplateService {
   /**
    * 获取活动特定物品
    */
-  private getActivityItems(activities: string[], context: PackingListContext): EnhancedPackingListItem[] {
+  private getActivityItems(activities: string[], _context: PackingListContext): EnhancedPackingListItem[] {
     const items: EnhancedPackingListItem[] = [];
 
     for (const activity of activities) {

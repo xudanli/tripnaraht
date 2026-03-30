@@ -113,7 +113,7 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
   /**
    * 注册 Agent（用于扩展）
    */
-  registerAgent(agentType: any, agent: any): void {
+  registerAgent(agentType: any, _agent: any): void {
     this.logger.debug(`注册 Agent: ${agentType}`);
     // TODO: 实现 Agent 注册逻辑
   }

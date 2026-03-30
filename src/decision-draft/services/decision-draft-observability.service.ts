@@ -10,7 +10,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   DecisionDraft,
-  DecisionStep,
   LLMCall,
   SkillCall,
   PerformanceMetrics,
@@ -256,7 +255,6 @@ export class DecisionDraftObservabilityService {
     let skillCall = trace.skill_calls.find(sc => sc.skill_name === skillName);
     
     if (!skillCall) {
-      const callId = `skill-${traceId}-${skillName}-${Date.now()}`;
       skillCall = {
         skill_name: skillName,
         call_count: 0,

@@ -201,7 +201,7 @@ export class TripConflictsService {
    * 检测单日冲突
    * @param dayIndex 1-based 天数索引，用于与证据 ID 关联（ev-place-{id}-day-{dayIndex}-opening-hours）
    */
-  private async detectDayConflicts(tripId: string, day: any, dayIndex: number): Promise<ConflictDto[]> {
+  private async detectDayConflicts(tripId: string, day: any, _dayIndex: number): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     const items = day.ItineraryItem || [];
     const date = DateTime.fromJSDate(day.date).toISODate() || '';
@@ -1009,7 +1009,7 @@ export class TripConflictsService {
       };
     }
 
-    const [firstItem, secondItem] = items;
+    const [, secondItem] = items;
     const secondStartTime = secondItem.startTime;
     const secondEndTime = secondItem.endTime;
     if (!secondStartTime || !secondEndTime) {
@@ -1335,8 +1335,8 @@ export class TripConflictsService {
   private async resolveMealMissing(
     tripId: string,
     conflict: ConflictDto,
-    strategy: ConflictResolutionStrategy,
-    dryRun: boolean
+    _strategy: ConflictResolutionStrategy,
+    _dryRun: boolean
   ): Promise<ConflictResolutionResultDto> {
     const isLunch = conflict.type === ConflictType.LUNCH_MISSING;
     const mealType = isLunch ? '午餐' : '晚餐';
@@ -1359,8 +1359,8 @@ export class TripConflictsService {
   private async resolveLunchWindow(
     tripId: string,
     conflict: ConflictDto,
-    strategy: ConflictResolutionStrategy,
-    dryRun: boolean
+    _strategy: ConflictResolutionStrategy,
+    _dryRun: boolean
   ): Promise<ConflictResolutionResultDto> {
     // 此类冲突通常需要更复杂的调整，暂时跳过
     return {

@@ -511,8 +511,6 @@ export class ItineraryValidationService {
       return undefined;
     }
 
-    // 计算当前行程项的新结束时间
-    const newStartTime = dto.startTime ? new Date(dto.startTime) : existingItem.startTime;
     const newEndTime = dto.endTime 
       ? new Date(dto.endTime) 
       : existingItem.endTime;

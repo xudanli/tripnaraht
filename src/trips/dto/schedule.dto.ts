@@ -1,5 +1,5 @@
 // src/trips/dto/schedule.dto.ts
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { DayScheduleResult } from '../../planning-policy/interfaces/scheduler.interface';
 
 /**

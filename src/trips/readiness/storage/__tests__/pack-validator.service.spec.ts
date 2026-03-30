@@ -3,7 +3,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PackValidatorService } from '../pack-validator.service';
 import { PackStorageService } from '../pack-storage.service';
-import { ReadinessPack, UserDecision, UserQuestion, DecisionBranch } from '../../types/readiness-pack.types';
+import { ReadinessPack } from '../../types/readiness-pack.types';
 
 describe('PackValidatorService - UserDecision Validation', () => {
   let service: PackValidatorService;

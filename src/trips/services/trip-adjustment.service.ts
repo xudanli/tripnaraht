@@ -1,5 +1,5 @@
 // src/trips/services/trip-adjustment.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { TripDecisionEngineService } from '../decision/trip-decision-engine.service';
@@ -86,8 +86,6 @@ export class TripAdjustmentService {
 
     const changes: TripAdjustmentResult['changes'] = [];
     const notifications: TripAdjustmentResult['notifications'] = [];
-    let budgetUpdate: TripAdjustmentResult['budgetUpdate'] | undefined;
-
     // 处理每个修改
     for (const modification of request.modifications) {
       switch (modification.type) {
@@ -154,7 +152,7 @@ export class TripAdjustmentService {
     await this.triggerPacingAdjustment(request.tripId, changes);
 
     // 重新计算预算
-    budgetUpdate = await this.recalculateBudget(request.tripId);
+    const budgetUpdate = await this.recalculateBudget(request.tripId);
 
     // 获取更新后的行程
     const adjustedTrip = await this.prisma.trip.findUnique({
@@ -283,7 +281,7 @@ export class TripAdjustmentService {
     activityData: any,
     newDate: string,
     changes: TripAdjustmentResult['changes'],
-    notifications: TripAdjustmentResult['notifications']
+    _notifications: TripAdjustmentResult['notifications']
   ): Promise<void> {
     // 查找或创建 TripDay
     const newDateObj = DateTime.fromISO(newDate);
@@ -373,7 +371,7 @@ export class TripAdjustmentService {
       dayId?: string;
     },
     changes: TripAdjustmentResult['changes'],
-    notifications: TripAdjustmentResult['notifications']
+    _notifications: TripAdjustmentResult['notifications']
   ): Promise<void> {
     const bufferDuration = options.bufferDuration || 30; // 默认 30 分钟
     const applyToAllDays = options.applyToAllDays || false;

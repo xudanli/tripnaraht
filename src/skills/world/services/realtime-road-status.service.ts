@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RoadStatusUpdate } from '../interfaces/unified-world-model.interface';
 import { HttpClientFactory } from '../../../common/utils/http-client.factory';
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import { GoogleMapsDirectService } from '../../../mcp/google-maps-direct.service';
 import { CountryConfigService } from './country-config.service';
 
@@ -122,7 +122,7 @@ export class RealtimeRoadStatusService {
     if (this.googleMapsDirectService?.isServiceAvailable()) {
       try {
         // 获取道路位置（如果有countryCode）
-        let location: { lat: number; lng: number } | null = null;
+        const location: { lat: number; lng: number } | null = null;
         
         // 尝试从roadId提取位置信息，或使用国家中心坐标
         // 这里简化处理：如果有countryConfigService，使用国家中心坐标
@@ -288,7 +288,7 @@ export class RealtimeRoadStatusService {
       // 根据Road.is API的实际响应格式解析
       // 注意：实际格式可能因API版本而异
       let status: RoadStatusUpdate['currentStatus'] = 'OPEN';
-      let confidence = 0.8;
+      const confidence = 0.8;
 
       // 尝试从不同可能的响应格式中提取状态
       if (data.status) {
@@ -372,7 +372,7 @@ export class RealtimeRoadStatusService {
     roadId: string,
     status: 'OPEN' | 'CLOSED' | 'CONDITIONAL',
     userId: string,
-    metadata?: any,
+    _metadata?: any,
   ): Promise<void> {
     this.logger.log(
       `[RealtimeRoadStatus] 用户报告道路状态: roadId=${roadId}, status=${status}, userId=${userId}`,

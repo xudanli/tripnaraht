@@ -1,0 +1,33 @@
+name: ROLL Week1-3 Readiness Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/rl-infra/roll/**"
+      - ".github/workflows/roll-readiness-check.yml"
+  pull_request:
+    paths:
+      - "scripts/rl-infra/roll/**"
+      - ".github/workflows/roll-readiness-check.yml"
+
+jobs:
+  readiness-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure script executable
+        run: chmod +x scripts/rl-infra/roll/verify-week1-3-readiness.sh
+
+      - name: Run Week1-3 readiness verification
+        run: ./scripts/rl-infra/roll/verify-week1-3-readiness.sh week1-3-readiness-report.json
+
+      - name: Upload readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week1-3-readiness-report
+          path: week1-3-readiness-report.json
+          if-no-files-found: warn

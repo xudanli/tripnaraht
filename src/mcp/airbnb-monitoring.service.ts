@@ -67,7 +67,6 @@ export class AirbnbMonitoringService implements OnModuleInit {
   async recordCall(metrics: AirbnbCallMetrics): Promise<void> {
     try {
       const date = new Date().toISOString().split('T')[0];
-      const timestamp = Date.now();
 
       // 存储单个调用指标（简化处理：只更新每日统计，不存储单个指标）
       // 注意：RedisService 不支持 lpush/ltrim/expire，这里跳过单个指标存储

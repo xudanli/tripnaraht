@@ -1,6 +1,6 @@
 // src/weather/weather.controller.ts
 
-import { Controller, Get, Query, BadRequestException, Optional } from '@nestjs/common';
+import { Controller, Get, Query, Optional } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
 import { WeatherQuery, WeatherData } from '../data-contracts/interfaces/weather.interface';

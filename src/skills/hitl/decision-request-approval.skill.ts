@@ -10,9 +10,9 @@
  * 输出：{ approvalId, status, message, userPrompt }
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { ApprovalService } from '../../trips/decision/services/approval.service';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';

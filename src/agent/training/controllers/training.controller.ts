@@ -9,7 +9,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../../../auth/decorators/public.decorator';
 import { FineTuneService, FineTuneConfig, TrainingTask } from '../services/fine-tune.service';
 import { VllmClientService } from '../services/vllm-client.service';

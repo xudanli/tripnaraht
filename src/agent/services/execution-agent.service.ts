@@ -14,7 +14,7 @@ import { Injectable, Logger, Optional, Inject, forwardRef, NotFoundException, Ba
 import { ExecRemindSkill } from '../../skills/exec/exec-remind.skill';
 import { ExecHandleChangeSkill } from '../../skills/exec/exec-handle-change.skill';
 import { ExecFallbackSkill } from '../../skills/exec/exec-fallback.skill';
-import { ExecutionState, Reminder, ChangeHandlingResult, FallbackPlan, FallbackSolution } from '../../skills/exec/shared/execution-state.types';
+import { ExecutionState, Reminder, ChangeHandlingResult, FallbackPlan } from '../../skills/exec/shared/execution-state.types';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
 import { TripsService } from '../../trips/trips.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';

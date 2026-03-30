@@ -4,7 +4,6 @@ import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseAdapter } from './base.adapter';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
-import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
 
 /**
  * 极光监测适配器
@@ -152,7 +151,7 @@ export class IcelandAuroraAdapter extends BaseAdapter {
   /**
    * 获取极光预测（未来几小时）
    */
-  async getAuroraForecast(lat: number, lng: number, hours: number = 24): Promise<Array<{
+  async getAuroraForecast(lat: number, lng: number, _hours: number = 24): Promise<Array<{
     time: Date;
     kpIndex: number;
     cloudCover: number;

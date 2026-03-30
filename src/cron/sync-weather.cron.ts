@@ -74,7 +74,7 @@ export class SyncWeatherCron {
     let warningCount = 0;
     let highRiskCount = 0;
 
-    allForecasts.forEach((forecast, region) => {
+    allForecasts.forEach((forecast) => {
       warningCount += forecast.warnings.length;
 
       const hasHighRisk = forecast.hazards.some(

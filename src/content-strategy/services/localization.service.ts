@@ -195,7 +195,7 @@ export class LocalizationService {
   /**
    * 不同城市用户的沟通适配
    */
-  adaptForCityUser(text: string, cityTier: CityTier, cityName?: string): string {
+  adaptForCityUser(text: string, cityTier: CityTier, _cityName?: string): string {
     const rules = this.cityAdaptationRules[cityTier.toLowerCase() as keyof CityAdaptationRules];
     if (!rules) {
       return text;
@@ -331,19 +331,8 @@ export class LocalizationService {
    * 使用自然中文
    */
   private useNaturalChinese(text: string): string {
-    // 将正式用语转换为更自然的表达
-    const naturalMap: Record<string, string> = {
-      '您': '你', // 在某些场景下更自然
-      '敬请': '请',
-      '敬请期待': '敬请期待', // 保留
-      '敬请关注': '请关注',
-    };
-
-    let natural = text;
-    // 注意：这里只是示例，实际应该根据上下文判断是否替换"您"
-    // 在正式场合应该保留"您"
-
-    return natural;
+    // 注意：正式/口语「您」替换应结合上下文；当前保持原文
+    return text;
   }
 
   /**
@@ -381,9 +370,9 @@ export class LocalizationService {
    */
   private adaptForTier1City(
     text: string,
-    rules: CityAdaptationRules['tier1'],
+    _rules: CityAdaptationRules['tier1'],
   ): string {
-    let adapted = text;
+    const adapted = text;
 
     // 简化实现：添加效率相关的表达
     if (!adapted.includes('效率') && !adapted.includes('快速')) {
@@ -399,7 +388,7 @@ export class LocalizationService {
    */
   private adaptForTier2City(
     text: string,
-    rules: CityAdaptationRules['tier2'],
+    _rules: CityAdaptationRules['tier2'],
   ): string {
     let adapted = text;
 
@@ -419,7 +408,7 @@ export class LocalizationService {
    */
   private adaptForTier3City(
     text: string,
-    rules: CityAdaptationRules['tier3'],
+    _rules: CityAdaptationRules['tier3'],
   ): string {
     let adapted = text;
 
@@ -437,7 +426,7 @@ export class LocalizationService {
    */
   private adaptForOverseasChinese(
     text: string,
-    rules: CityAdaptationRules['overseas'],
+    _rules: CityAdaptationRules['overseas'],
   ): string {
     let adapted = text;
 

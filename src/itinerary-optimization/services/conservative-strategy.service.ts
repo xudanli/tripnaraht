@@ -1,7 +1,7 @@
 // src/itinerary-optimization/services/conservative-strategy.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PlanRequest, OptimizationResult } from '../interfaces/plan-request.interface';
+import { PlanRequest } from '../interfaces/plan-request.interface';
 import { DataExpiryPolicyService, TimestampedData } from './data-expiry-policy.service';
 
 /**

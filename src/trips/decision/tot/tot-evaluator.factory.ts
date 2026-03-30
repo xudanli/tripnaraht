@@ -16,7 +16,7 @@ import { ToTEvaluatorService } from './tot-evaluator.service';
  * @param deps 依赖项（目前 ToTEvaluatorService 无外部依赖，保留接口以便未来扩展）
  * @returns ToT 评分器实例
  */
-export function createToTEvaluator(deps?: {
+export function createToTEvaluator(_deps?: {
   // 未来可能需要注入的服务
   // abu?: AbuStrategy;
   // objectiveConfig?: ObjectiveConfigService;

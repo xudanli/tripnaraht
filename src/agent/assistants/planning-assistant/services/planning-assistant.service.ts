@@ -29,7 +29,7 @@ import { PlanningWorkbenchAgentService, PlanningWorkbenchResponse } from '../../
 import { PersonaShellService, PersonaShellOutput } from '../../../services/persona-shell.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { PersonaLanguageService, PersonaContext } from '../../shared/services/persona-language.service';
-import { RecommendationEngineService, ScoredDestination } from '../../shared/services/recommendation-engine.service';
+import { RecommendationEngineService } from '../../shared/services/recommendation-engine.service';
 import { PreferenceLearningService } from '../../shared/services/preference-learning.service';
 import { LLMExecutorService } from '../../../infra/llm-executor.service';
 import { CoreGatewayService } from '../../../infra/core-gateway.service';
@@ -38,7 +38,6 @@ import {
   PlanningAssistantRequest,
   PlanningAssistantResponse,
   PlanningIntent,
-  ConversationPhase,
   UserPreferences,
   DestinationRecommendation,
   PlanCandidate,
@@ -877,7 +876,7 @@ CN: [中文回复]`;
   /**
    * 默认问答处理
    */
-  private handleQuestionDefault(state: PlanningConversationState, request: PlanningAssistantRequest): PlanningAssistantResponse {
+  private handleQuestionDefault(state: PlanningConversationState, _request: PlanningAssistantRequest): PlanningAssistantResponse {
     return {
       message: `That's a great question! Based on my knowledge, I'd suggest exploring more about your destination. Is there anything specific about ${state.selectedDestination || 'your trip'} you'd like to know?`,
       messageCN: `这是个好问题！根据我的了解，建议你多了解目的地的情况。关于${state.selectedDestination || '你的旅行'}，有什么具体想知道的吗？`,
@@ -925,7 +924,7 @@ CN: [中文回复]`;
   /**
    * 默认通用对话
    */
-  private handleGeneralDefault(state: PlanningConversationState, request: PlanningAssistantRequest): PlanningAssistantResponse {
+  private handleGeneralDefault(state: PlanningConversationState, _request: PlanningAssistantRequest): PlanningAssistantResponse {
     return {
       message: `I'm here to help you plan your perfect trip! 🌟
 
@@ -956,7 +955,7 @@ What would you like to do?`,
   /**
    * 处理探索意图
    */
-  private async handleExplore(state: PlanningConversationState, request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
+  private async handleExplore(_state: PlanningConversationState, _request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
     return {
       message: `Great! I'd love to help you plan your trip! 🌟
 
@@ -1022,7 +1021,7 @@ To give you the best recommendations, I'd like to know a bit more:
   /**
    * 处理方案对比
    */
-  private async handleCompare(state: PlanningConversationState, request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
+  private async handleCompare(state: PlanningConversationState, _request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
     const candidates = state.planCandidates || [];
     
     return {
@@ -1039,7 +1038,7 @@ To give you the best recommendations, I'd like to know a bit more:
   /**
    * 处理调整请求
    */
-  private async handleAdjust(state: PlanningConversationState, request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
+  private async handleAdjust(_state: PlanningConversationState, _request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
     return {
       message: `Sure! What would you like to adjust?
 - Duration
@@ -1088,7 +1087,7 @@ To give you the best recommendations, I'd like to know a bit more:
     };
   }
 
-  private createErrorResponse(errorMessage: string): PlanningAssistantResponse {
+  private createErrorResponse(_errorMessage: string): PlanningAssistantResponse {
     return {
       message: `I apologize, something went wrong. Please try again.`,
       messageCN: `抱歉，出了点问题。请重试。`,

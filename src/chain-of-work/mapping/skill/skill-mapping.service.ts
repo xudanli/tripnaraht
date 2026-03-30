@@ -23,7 +23,7 @@ export class SkillMappingService {
    */
   async mapStepToSkills(
     step: TripNARAStepDraft,
-    context?: OrchestratorState,
+    _context?: OrchestratorState,
   ): Promise<SkillMapping[]> {
     this.logger.debug(`[SkillMapping] 开始映射步骤到 Skills: step_id=${step.id}, step_type=${step.step_type}`);
     

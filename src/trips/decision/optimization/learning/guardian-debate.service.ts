@@ -18,7 +18,6 @@ import { ObjectiveFunctionService } from '../objective-function.service';
 import { TdfpmCalculatorService, TdfpmDayContext, TdfpmResult } from '../../services/tdfpm-calculator.service';
 import { ObjectiveEvaluationResult, ObjectiveFunctionWeights } from '../objective-function.interface';
 import {
-  GuardianPersonaType,
   PersonaValues,
   PersonaEvaluation,
   DebateArgument,
@@ -554,7 +553,7 @@ export class GuardianDebateService {
   private generatePersonaSuggestions(
     values: PersonaValues,
     evaluation: ObjectiveEvaluationResult,
-    world: WorldModelContext
+    _world: WorldModelContext
   ): string[] {
     const suggestions: string[] = [];
     const constraints = evaluation.constraints || { hardViolations: [], softViolations: [] };
@@ -759,10 +758,10 @@ export class GuardianDebateService {
    */
   private generateArgument(
     evaluation: PersonaEvaluation,
-    plan: RoutePlanDraft,
-    world: WorldModelContext,
+    _plan: RoutePlanDraft,
+    _world: WorldModelContext,
     otherEvaluations: PersonaEvaluation[],
-    previousArguments: DebateArgument[]
+    _previousArguments: DebateArgument[]
   ): DebateArgument {
     const type = evaluation.stance === 'STRONG_OPPOSE' || evaluation.stance === 'CONCERN'
       ? 'OPPOSE'
@@ -974,7 +973,7 @@ export class GuardianDebateService {
     votes: VoteResult[],
     consensus: number,
     decision: NegotiationResult['decision'],
-    config: NegotiationConfig
+    _config: NegotiationConfig
   ): NegotiationResult {
     // 收集所有条件
     const allConditions = votes

@@ -11,7 +11,6 @@ import { Public } from '../../../../../auth/decorators/public.decorator';
 
 import { RealtimeWorldStateService } from '../../realtime/realtime-world-state.service';
 import {
-  SubscriptionConfig,
   WorldObservation,
   StateChangeEvent,
 } from '../../realtime/realtime-world-state.interface';

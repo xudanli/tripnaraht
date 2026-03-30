@@ -1,6 +1,6 @@
 // src/planning-policy/interfaces/replanner.interface.ts
 
-import { DayScheduleResult, PlannedStop } from './scheduler.interface';
+import { DayScheduleResult } from './scheduler.interface';
 import { DayOfWeek } from '../utils/time-utils';
 
 /**

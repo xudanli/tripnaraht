@@ -33,7 +33,7 @@ export function computeBaseWeights(
   const dayW = planRequest?.objective_weights ?? {};
 
   // 映射
-  let w: DimensionWeights = {
+  const w: DimensionWeights = {
     pref: objectiveWeights.satisfaction,
     risk: objectiveWeights.violationRisk + 0.5 * objectiveWeights.robustness,
     cost: objectiveWeights.cost,
@@ -52,7 +52,7 @@ export function applyDynamicAdjust(
   world: TripWorldState,
   plan: TripPlan
 ): DimensionWeights {
-  let w = { ...baseWeights };
+  const w = { ...baseWeights };
 
   const pace = world.context.preferences.pace;
   const riskTolerance = world.context.preferences.riskTolerance;

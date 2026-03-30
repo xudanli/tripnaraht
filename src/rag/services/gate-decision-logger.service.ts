@@ -336,7 +336,7 @@ export class GateDecisionLoggerService {
   /**
    * 查询决策日志
    */
-  async getDecisionLogs(params: {
+  async getDecisionLogs(_params: {
     requestId?: string;
     step?: WorkflowStep;
     actor?: Actor;
@@ -360,7 +360,7 @@ export class GateDecisionLoggerService {
   /**
    * 获取请求的完整决策链路
    */
-  async getDecisionChain(requestId: string): Promise<DecisionLogEntry[]> {
+  async getDecisionChain(_requestId: string): Promise<DecisionLogEntry[]> {
     // TODO: 实现查询
     // 按 timestamp 排序返回该 request_id 的所有步骤
     return [];
@@ -371,7 +371,7 @@ export class GateDecisionLoggerService {
    *
    * 用于评估 Gate 的准确率、证据覆盖率等
    */
-  async analyzeGateQuality(params?: {
+  async analyzeGateQuality(_params?: {
     startDate?: Date;
     endDate?: Date;
     limit?: number;

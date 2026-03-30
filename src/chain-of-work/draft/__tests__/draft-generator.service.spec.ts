@@ -11,7 +11,6 @@ import { DraftGeneratorService } from '../draft-generator.service';
 import { LlmService } from '../../../llm/services/llm.service';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
 import { TripPlanRequest } from '../../../agent/interfaces/trip-plan.interface';
-import { TripNARAWorkflowDraft } from '../../interfaces/chain-of-work.interface';
 
 describe('DraftGeneratorService', () => {
   let service: DraftGeneratorService;

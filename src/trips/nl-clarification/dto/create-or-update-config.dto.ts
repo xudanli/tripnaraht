@@ -1,8 +1,7 @@
 // src/trips/nl-clarification/dto/create-or-update-config.dto.ts
 
-import { IsString, IsBoolean, IsOptional, IsObject, ValidateNested } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { DestinationClarificationConfig } from '../config/destination-clarification.config';
 
 export class CreateOrUpdateDestinationClarificationConfigDto {

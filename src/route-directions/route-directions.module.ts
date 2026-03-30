@@ -18,7 +18,6 @@ import { forwardRef } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { POIModule } from '../poi/poi.module';
-import { MemoryModule } from '../agent/memory/memory.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
 

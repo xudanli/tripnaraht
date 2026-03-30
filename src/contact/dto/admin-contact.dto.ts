@@ -1,6 +1,6 @@
 // src/contact/dto/admin-contact.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, IsEnum, IsArray } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, IsEnum } from 'class-validator';
 
 export enum ContactMessageStatus {
   PENDING = 'pending',

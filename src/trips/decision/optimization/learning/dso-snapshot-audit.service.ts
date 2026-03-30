@@ -13,23 +13,16 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
 
-// Conditional TypeORM imports - optional dependency
-let InjectRepository: any;
-let Repository: any;
+// Conditional TypeORM imports - optional dependency（查询条件构造器）
 let Between: any;
 let MoreThanOrEqual: any;
 let LessThanOrEqual: any;
 try {
-  const typeorm = require('@nestjs/typeorm');
-  InjectRepository = typeorm.InjectRepository;
   const typeormCore = require('typeorm');
-  Repository = typeormCore.Repository;
   Between = typeormCore.Between;
   MoreThanOrEqual = typeormCore.MoreThanOrEqual;
   LessThanOrEqual = typeormCore.LessThanOrEqual;
 } catch {
-  InjectRepository = () => () => {};
-  Repository = class {};
   Between = (a: unknown, b: unknown) => ({ _type: 'between', a, b });
   MoreThanOrEqual = (a: unknown) => ({ _type: 'gte', a });
   LessThanOrEqual = (a: unknown) => ({ _type: 'lte', a });
@@ -136,7 +129,7 @@ export class DSOSnapshotAuditService {
   async recordSnapshot(
     requestId: string,
     dso: DecisionState,
-    metadata?: SnapshotMetadata,
+    _metadata?: SnapshotMetadata,
   ): Promise<DSOSnapshotEntity> {
     // 获取当前版本号
     const currentVersion = await this.getLatestVersion(requestId);

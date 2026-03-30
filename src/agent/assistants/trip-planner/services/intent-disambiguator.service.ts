@@ -1,11 +1,9 @@
 // src/agent/assistants/trip-planner/services/intent-disambiguator.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import {
   TripPlannerIntent,
   TripPlannerState,
-  TripContext,
 } from '../interfaces/trip-planner.interface';
 import {
   IntentUncertainty,
@@ -13,7 +11,6 @@ import {
   DisambiguationResult,
   ClarificationRequest,
   ClarificationOption,
-  ContextDiscovery,
   ItineraryGap,
   QUERY_KEYWORDS,
   ADD_KEYWORDS,
@@ -371,7 +368,7 @@ export class IntentDisambiguatorService {
   private handleAmbiguousAction(
     message: string,
     intent: TripPlannerIntent,
-    state: TripPlannerState,
+    _state: TripPlannerState,
   ): DisambiguationResult {
     return {
       uncertainty: IntentUncertainty.AMBIGUOUS_ACTION,

@@ -144,7 +144,7 @@ export class DataArchitectureService {
    */
   async collectAndStore(
     sources: Array<{ sourceId: string; sourceName: string; data: any; timestamp?: string }>,
-    config?: Record<string, any>
+    _config?: Record<string, any>
   ): Promise<RawData[]> {
     this.logger.debug(`Layer 1: Collecting and storing data from ${sources.length} sources`);
 
@@ -269,7 +269,7 @@ export class DataArchitectureService {
    */
   async prepareDecisionData(
     processedData: ProcessedData,
-    config?: Record<string, any>
+    _config?: Record<string, any>
   ): Promise<DecisionData> {
     this.logger.debug('Layer 3: Preparing decision support data');
 
@@ -307,7 +307,7 @@ export class DataArchitectureService {
    */
   async prepareUIData(
     decisionData: DecisionData,
-    config?: Record<string, any>
+    _config?: Record<string, any>
   ): Promise<UIData> {
     this.logger.debug('Layer 4: Preparing UI data');
 

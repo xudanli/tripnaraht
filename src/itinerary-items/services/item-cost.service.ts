@@ -1,5 +1,5 @@
 // src/itinerary-items/services/item-cost.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ItemType } from '../dto/create-itinerary-item.dto';
 import { 

@@ -19,6 +19,7 @@ import {
   StateUpdateTransaction,
   StateCommitResult,
   StateCommitConflictError,
+  TripState,
 } from './decision-state.types';
 import { StateManagerService } from './state-manager.service';
 import { ConstraintEngineAdapterService } from './constraint-engine-adapter.service';
@@ -33,10 +34,20 @@ import {
 } from './dso-feedback-persistence.interface';
 import { REPLAN_TRIGGER, type IReplanTrigger } from './replan-trigger.interface';
 import type { DecisionStateFeedback } from './decision-state.types';
+import {
+  evaluateTravelOntologyConstraints,
+  mergeOntologyViolationsIntoGateResult,
+} from './travel-ontology-constraints';
 import { buildWorldStateSummaryFromDso } from './world-state-summary.types';
 import type { OrchestratorState } from '../../agent/interfaces/trip-plan.interface';
-import type { PhaseExecutorContext } from './interfaces/phase-executor.interface';
-import type { IntakeExecutorContext, NarrateExecutorContext } from './interfaces/phase-executor.interface';
+import type {
+  PhaseExecutorContext,
+  GateResultLike,
+  OrchestratorAlternativesLike,
+  IGateEvalExecutor,
+  IntakeExecutorContext,
+  NarrateExecutorContext,
+} from './interfaces/phase-executor.interface';
 import { ResearchExecutorService } from '../../agent/execution/research-executor.service';
 import { IntakeExecutorService } from '../../agent/execution/intake-executor.service';
 import { NarrateExecutorService } from '../../agent/execution/narrate-executor.service';
@@ -400,9 +411,27 @@ export class DecisionKernelService {
       };
     }
     const startMs = Date.now();
-    const { constraints, gateResult } = await this.gateEvalExecutor.execute(dso, ctx);
+    const gateEvalOutcome = (await this.gateEvalExecutor.execute(dso, ctx)) as Awaited<
+      ReturnType<IGateEvalExecutor['execute']>
+    >;
+    let { constraints, gateResult } = gateEvalOutcome;
+    const { alternatives } = gateEvalOutcome;
+    const ontologyViolations = evaluateTravelOntologyConstraints(dso);
+    if (ontologyViolations.length > 0) {
+      const merged = mergeOntologyViolationsIntoGateResult(constraints, gateResult, ontologyViolations);
+      constraints = merged.constraints;
+      gateResult = merged.gateResult;
+      this.logger.debug(
+        `[Kernel] travelOntology constraints merged: +${ontologyViolations.length} violation(s), gate=${gateResult.gate_result}`,
+      );
+    }
+    const tripStatePatch: Partial<TripState> =
+      gateResult.gate_result === 'BLOCK'
+        ? { orchestratorAlternatives: normalizeBlockAlternativesForDso(gateResult, alternatives) }
+        : { orchestratorAlternatives: undefined };
     const newState = this.stateManager.merge(dso, {
       constraints,
+      tripState: tripStatePatch,
       systemState: {
         requestId: ctx.requestId,
         currentPhase: 'GATE_EVAL',
@@ -639,7 +668,25 @@ export class DecisionKernelService {
         getLatestState: getLatest,
         maxRetries: 3,
       });
-      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, result.newState);
+      const nextState = this.appendHistoryDelta(
+        result.newState,
+        {
+          type: 'kernel_arbitration',
+          at: new Date().toISOString(),
+          summary: `world model push (${sourcePhase})`,
+          payload: {
+            status: 'SUCCESS',
+            merge_strategy: 'OPTIMISTIC_LOCK',
+            conflict_detected: false,
+            dso_version_before: dso.systemState?.version,
+            dso_version_after: result.newVersion,
+          },
+        },
+        100,
+      );
+      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, nextState, {
+        expectedVersion: dso.systemState?.version,
+      });
       this.logger.debug(
         `[Kernel] pushEnvironmentDelta: tripRunId=${tripRunIdOrTripId}, phase=${sourcePhase}, version ${dso.systemState?.version ?? 0}→${result.newVersion}`,
       );
@@ -650,6 +697,39 @@ export class DecisionKernelService {
         );
       }
     } catch (e: unknown) {
+      if (e instanceof StateCommitConflictError) {
+        this.logger.warn(
+          `[Kernel] pushEnvironmentDelta 版本冲突: expected=${e.expectedVersion} actual=${e.actualVersion}`,
+        );
+        try {
+          const latest = await this.feedbackPersistence.getDso(tripRunIdOrTripId);
+          if (latest) {
+            const conflictState = this.appendHistoryDelta(
+              latest,
+              {
+                type: 'kernel_arbitration',
+                at: new Date().toISOString(),
+                summary: `world model push conflict (${sourcePhase})`,
+                payload: {
+                  status: 'FAILED',
+                  merge_strategy: 'OPTIMISTIC_LOCK',
+                  conflict_detected: true,
+                  conflict_resolution: 'ABORT',
+                  dso_version_before: e.expectedVersion,
+                  dso_version_after: e.actualVersion,
+                },
+              },
+              100,
+            );
+            await this.feedbackPersistence.persistDso(tripRunIdOrTripId, conflictState, {
+              expectedVersion: latest.systemState?.version,
+            });
+          }
+        } catch {
+          // 冲突审计写入失败不影响主流程
+        }
+        return;
+      }
       this.logger.warn(
         `[Kernel] pushEnvironmentDelta 失败: ${(e as Error)?.message}`,
       );
@@ -699,11 +779,62 @@ export class DecisionKernelService {
         },
       };
       const result = this.commitStateUpdate(dso, patch, 'FEEDBACK');
-      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, result.newState);
+      const nextState = this.appendHistoryDelta(
+        result.newState,
+        {
+          type: 'kernel_arbitration',
+          at: new Date().toISOString(),
+          summary: 'feedback state commit',
+          payload: {
+            status: 'SUCCESS',
+            merge_strategy: 'OPTIMISTIC_LOCK',
+            conflict_detected: false,
+            dso_version_before: dso.systemState?.version,
+            dso_version_after: result.newVersion,
+          },
+        },
+        100,
+      );
+      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, nextState, {
+        expectedVersion: dso.systemState?.version,
+      });
       this.logger.debug(
         `[Kernel] commitFeedbackToDso: tripRunId=${tripRunIdOrTripId}, version ${dso.systemState?.version ?? 0}→${result.newVersion}`,
       );
     } catch (e: unknown) {
+      if (e instanceof StateCommitConflictError) {
+        this.logger.warn(
+          `[Kernel] commitFeedbackToDso 版本冲突: expected=${e.expectedVersion} actual=${e.actualVersion}`,
+        );
+        try {
+          const latest = await this.feedbackPersistence.getDso(tripRunIdOrTripId);
+          if (latest) {
+            const conflictState = this.appendHistoryDelta(
+              latest,
+              {
+                type: 'kernel_arbitration',
+                at: new Date().toISOString(),
+                summary: 'feedback state commit conflict',
+                payload: {
+                  status: 'FAILED',
+                  merge_strategy: 'OPTIMISTIC_LOCK',
+                  conflict_detected: true,
+                  conflict_resolution: 'ABORT',
+                  dso_version_before: e.expectedVersion,
+                  dso_version_after: e.actualVersion,
+                },
+              },
+              100,
+            );
+            await this.feedbackPersistence.persistDso(tripRunIdOrTripId, conflictState, {
+              expectedVersion: latest.systemState?.version,
+            });
+          }
+        } catch {
+          // 冲突审计写入失败不影响主流程
+        }
+        return;
+      }
       this.logger.warn(
         `[Kernel] commitFeedbackToDso 失败: ${(e as Error)?.message}`,
       );
@@ -715,13 +846,14 @@ export class DecisionKernelService {
   ): DecisionStateFeedback {
     const v = (params.value as Record<string, unknown>) ?? {};
     const sigs = (v.behaviorSignals as DecisionStateFeedback['behaviorSignals']) ?? {};
+    const context = params.context as Record<string, unknown> | undefined;
     switch (params.feedbackType) {
       case 'ACCEPT':
         return { accepted: true, behaviorSignals: { ...sigs, savePlan: true } };
       case 'REJECT':
         return {
           accepted: false,
-          modifications: (params.context?.reason as string) ? [(params.context.reason as string)] : [],
+          modifications: typeof context?.reason === 'string' && context.reason.length > 0 ? [context.reason] : [],
         };
       case 'RATING':
         return {
@@ -755,4 +887,38 @@ export class DecisionKernelService {
     });
     return this.stateManager.merge(state, { decisionMeta: meta });
   }
+}
+
+function countOrchestratorAlternativeEntries(alternatives?: OrchestratorAlternativesLike): number {
+  if (!alternatives) return 0;
+  const pois = Array.isArray(alternatives.alternative_pois) ? alternatives.alternative_pois.length : 0;
+  const routes = Array.isArray(alternatives.alternative_routes) ? alternatives.alternative_routes.length : 0;
+  return pois + routes;
+}
+
+/** BLOCK 时写入 DSO：执行器非空 alternatives 优先，否则生成满足 TD-03 可读性的占位 POI */
+function normalizeBlockAlternativesForDso(
+  gateResult: GateResultLike,
+  alternatives?: OrchestratorAlternativesLike,
+): NonNullable<TripState['orchestratorAlternatives']> {
+  if (countOrchestratorAlternativeEntries(alternatives) > 0) {
+    return {
+      alternative_pois: alternatives!.alternative_pois ?? [],
+      alternative_routes: alternatives!.alternative_routes ?? [],
+    };
+  }
+  const detail =
+    gateResult.violations?.find((v) => typeof v.detail === 'string' && v.detail.trim())?.detail ||
+    '门控阻断：请调整约束或日期后重试';
+  return {
+    alternative_pois: [
+      {
+        poi_id: 'kernel-gate-block-fallback',
+        name: '调整约束后重新生成行程',
+        reason: detail.slice(0, 280),
+        evidence_status: 'UNVERIFIED',
+      },
+    ],
+    alternative_routes: [],
+  };
 }

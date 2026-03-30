@@ -7,7 +7,6 @@ import {
   ItineraryCostInput,
   PlanningPolicy,
 } from '../interfaces/planning-policy.interface';
-import { TransitSegment } from '../interfaces/transit-segment.interface';
 
 /**
  * 默认代价模型

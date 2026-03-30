@@ -10,9 +10,6 @@ import { TrainingBatchProcessorService } from './services/training-batch-process
 import { ModelCollapseMonitorService } from './services/model-collapse-monitor.service';
 import { TrainingQualityAnalyzerService } from './services/training-quality-analyzer.service';
 import { CollectTrajectoryDto, ValidateTrajectoryDto } from './dto/trajectory.dto';
-import { GateResult } from '../interfaces/trip-plan.interface';
-import { ApprovalStatus } from '@prisma/client';
-import { ComplianceResult } from './interfaces/trajectory.interface';
 
 describe('TrainingController', () => {
   let controller: TrainingController;

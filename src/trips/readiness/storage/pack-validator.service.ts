@@ -355,7 +355,7 @@ export class PackValidatorService {
   private validateGeo(
     pack: ReadinessPack,
     errors: ValidationError[],
-    warnings: ValidationWarning[]
+    _warnings: ValidationWarning[]
   ): void {
     if (!pack.geo) {
       errors.push({ path: 'geo', message: 'geo is required', code: 'MISSING_FIELD' });
@@ -516,7 +516,7 @@ export class PackValidatorService {
     path: string,
     questions: UserQuestion[],
     errors: ValidationError[],
-    warnings: ValidationWarning[]
+    _warnings: ValidationWarning[]
   ): void {
     // 1. 验证 condition
     if (!branch.condition) {

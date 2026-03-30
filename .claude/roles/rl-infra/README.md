@@ -82,6 +82,40 @@ rl-infra/
 
 ## 🎯 角色概览
 
+## 🧩 基于当前项目实际的专家团队配置（推荐）
+
+结合当前仓库状态（ROLL gate/canary/ramp/readiness 已有脚本与工作流）：
+
+- 已具备：staging/prod gate、canary 放量与回滚、release health score、week1-3 readiness 检查
+- 当前主风险：发布门禁一致性、回滚时效、阈值治理、评测闭环
+
+建议采用 **“核心必备 + 按需专家”** 的团队配置，而不是全角色同时常驻。
+
+### A. 核心必备（发布链路必须常驻）
+
+1. **Backend/Infra Engineer**  
+   - 负责 Orchestrator 接入、运行时契约、观测、熔断限流
+2. **RL/ML Platform Engineer**  
+   - 负责 bridge/worker 稳定性、训练与推理平台、服务编排
+3. **SRE / Safety-Operations Owner**  
+   - 负责 prod guardrail、canary/rollback、发布窗口处置
+4. **Evaluation Engineer**  
+   - 负责 release health score、readiness gate、离线评测结论
+5. **PM（RL产品负责人）**  
+   - 负责 KPI 阈值确认、Go/No-Go 拍板、灰度节奏
+6. **Data Engineer（轨迹数据工程）**  
+   - 负责训练/评测数据质量、版本化与脱敏
+
+### B. 按需专家（触发条件满足时介入）
+
+1. **UX Writer / Interaction Designer（按需）**  
+   - 触发条件：新增/变更用户可见风险提示、审批确认文案、解释结构  
+   - 注意：不参与纯后端性能与基础设施改造
+2. **Domain Expert Network（按需）**  
+   - 触发条件：高风险目的地扩展、季节性规则更新、反例库补充
+3. **LLM Judge / RM Engineer（按需）**  
+   - 触发条件：上线前质量评分争议、reward 偏移、模型投机风险上升
+
 ### P0角色（立即实施）
 
 1. **RL/ML Platform Engineer**（训练与服务平台工程）
@@ -112,10 +146,11 @@ rl-infra/
    - 职责：Reward定义、用户反馈闭环、A/B实验设计、可解释输出
    - 文档：`pm-rl-product.md`
 
-### P3角色（强烈建议，会显著降低试错成本）
+### P3角色（按需投入，不要求常驻）
 
 7. **UX Writer / Interaction Designer**（解释与信任体验）
    - 职责：追问话术、风险提示、决策解释、反馈入口
+   - 介入边界：仅在用户可见链路字段/文案/解释结构变更时介入
    - 文档：`ux-writer.md`
 
 8. **Domain Expert Network**（目的地/户外安全顾问）

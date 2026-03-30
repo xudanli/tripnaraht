@@ -12,7 +12,6 @@ import {
   ReservationTask,
   ReservationTaskStatus,
   ReservationPlanResult,
-  ReservationRequirement,
   FallbackOption,
 } from '../interfaces/railpass.interface';
 import { ReservationDecisionEngineService } from './reservation-decision-engine.service';

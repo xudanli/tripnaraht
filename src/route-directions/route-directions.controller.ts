@@ -38,7 +38,7 @@ import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-c
 import { AvailablePoisQueryDto } from './dto/available-pois-query.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
-import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('route-directions')
 @Controller('route-directions')

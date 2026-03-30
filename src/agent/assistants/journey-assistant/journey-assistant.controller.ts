@@ -1,7 +1,7 @@
 // src/agent/assistants/journey-assistant/journey-assistant.controller.ts
 
 import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JourneyAssistantService } from './services/journey-assistant.service';
 import { Public } from '../../../auth/decorators/public.decorator';
 import {

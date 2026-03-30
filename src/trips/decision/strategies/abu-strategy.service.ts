@@ -18,7 +18,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionSource, DecisionStage } from '../shared/decision-result.types';
+import { DecisionResult } from '../shared/decision-result.types';
 import { validatePhysicalRealityModel } from '../models/physical-reality.model';
 import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
 import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
@@ -462,11 +462,6 @@ export class AbuStrategy implements DecisionPersonaStrategy {
               firstNodeLocation.lat && firstNodeLocation.lng &&
               lastNodeLocation.lat && lastNodeLocation.lng) {
             // 估算日期和时间
-            const currentYear = new Date().getFullYear();
-            const month = physical.month;
-            const firstDayDate = new Date(currentYear, month - 1, 1);
-            const lastDayDate = new Date(currentYear, month - 1, plan.segments.length);
-            
             const pickupTime = '10:00';
             const dropoffTime = '10:00';
             const driverAge = (world.human as any)?.driverAge || 25;

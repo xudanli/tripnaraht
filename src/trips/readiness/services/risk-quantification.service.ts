@@ -235,7 +235,7 @@ export class RiskQuantificationService {
     return { levelExplanation };
   }
 
-  private estimateProbability(riskType: HazardType, severity: RuleSeverity, context?: TripContext): number | undefined {
+  private estimateProbability(riskType: HazardType, severity: RuleSeverity, _context?: TripContext): number | undefined {
     switch (severity) {
       case 'high': return 0.05 + Math.random() * 0.10;
       case 'medium': return 0.01 + Math.random() * 0.04;

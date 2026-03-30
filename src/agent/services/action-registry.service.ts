@@ -1,6 +1,6 @@
 // src/agent/services/action-registry.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { Action, ActionKind, ActionCost, ActionSideEffect } from '../interfaces/action.interface';
+import { Action } from '../interfaces/action.interface';
 
 /**
  * Action Registry Service

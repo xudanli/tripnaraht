@@ -1,7 +1,6 @@
 // src/places/dto/update-place.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber, IsEnum, IsObject, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsNumber, IsEnum, IsObject } from 'class-validator';
 import { PlaceCategory } from '@prisma/client';
 
 export class UpdatePlaceDto {

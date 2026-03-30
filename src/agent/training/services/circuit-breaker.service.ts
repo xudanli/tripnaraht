@@ -91,7 +91,7 @@ export class CircuitBreakerService {
   /**
    * 失败回调
    */
-  private onFailure(breaker: CircuitBreakerState, config: CircuitBreakerConfig): void {
+  private onFailure(breaker: CircuitBreakerState, _config: CircuitBreakerConfig): void {
     breaker.failureCount++;
     breaker.lastFailureTime = Date.now();
 

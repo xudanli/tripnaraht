@@ -1,6 +1,6 @@
 // src/users/dto/admin-user.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, IsEmail, IsBoolean, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, IsEmail, IsBoolean } from 'class-validator';
 
 export class GetUsersQueryDto {
   @ApiPropertyOptional({ description: '页码', example: 1, default: 1 })

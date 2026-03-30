@@ -13,7 +13,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { RouteDirectionRecommendation } from '../services/route-direction-selector.service';
-import { TripPlan, PlanDay } from '../../trips/decision/plan-model';
+import { TripPlan } from '../../trips/decision/plan-model';
 import { RouteConstraints, ComplianceRules } from '../interfaces/route-direction.interface';
 
 export interface ComplianceChecklistItem {
@@ -248,7 +248,7 @@ export class CompliancePluginService {
   private createRestrictionItem(
     countryCode: string,
     restrictedAreas: string[],
-    regions?: string[]
+    _regions?: string[]
   ): ComplianceChecklistItem {
     return {
       id: `restriction_${countryCode}`,
@@ -267,10 +267,10 @@ export class CompliancePluginService {
    * 检查行程草案的合规要求
    */
   private checkItineraryCompliance(
-    itinerary: TripPlan,
-    countryCode: string,
-    regions?: string[],
-    poiTypes?: string[]
+    _itinerary: TripPlan,
+    _countryCode: string,
+    _regions?: string[],
+    _poiTypes?: string[]
   ): ComplianceChecklistItem[] {
     const items: ComplianceChecklistItem[] = [];
 

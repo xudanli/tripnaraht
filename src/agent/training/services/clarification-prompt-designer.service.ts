@@ -24,7 +24,7 @@ export class ClarificationPromptDesignerService {
   getPrompt(
     scenario: string,
     missingField: string,
-    language: 'en' | 'zh' = 'en',
+    _language: 'en' | 'zh' = 'en',
   ): ClarificationPromptTemplate | null {
     // 查找匹配的模板
     const template = Array.from(this.templates.values()).find(

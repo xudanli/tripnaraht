@@ -104,8 +104,8 @@ export class ConstraintConflictResolver {
    */
   private detectBudgetVsComfortConflict(
     constraints: ConstraintDSL,
-    plan: TripPlan | null,
-    state: TripWorldState
+    _plan: TripPlan | null,
+    _state: TripWorldState
   ): ConstraintConflict | null {
     const budget = constraints.hard_constraints!.budget!;
     const comfort = constraints.soft_constraints!.comfort_level!;
@@ -154,8 +154,8 @@ export class ConstraintConflictResolver {
    */
   private detectPaceVsPhysicalConflict(
     constraints: ConstraintDSL,
-    plan: TripPlan | null,
-    state: TripWorldState
+    _plan: TripPlan | null,
+    _state: TripWorldState
   ): ConstraintConflict | null {
     const pace = constraints.soft_constraints!.pace!;
     const physical = constraints.hard_constraints!.physical_limitations!;
@@ -201,7 +201,7 @@ export class ConstraintConflictResolver {
   private detectDateWindowVsActivityConflict(
     constraints: ConstraintDSL,
     plan: TripPlan,
-    state: TripWorldState
+    _state: TripWorldState
   ): ConstraintConflict | null {
     const dateWindow = constraints.hard_constraints!.date_window!;
     const startDate = new Date(dateWindow.start);
@@ -243,7 +243,7 @@ export class ConstraintConflictResolver {
   private detectTransportVsTimeConflict(
     constraints: ConstraintDSL,
     plan: TripPlan,
-    state: TripWorldState
+    _state: TripWorldState
   ): ConstraintConflict | null {
     const travelMode = constraints.hard_constraints!.travel_mode!;
 
@@ -316,7 +316,7 @@ export class ConstraintConflictResolver {
   private detectRiskToleranceConflict(
     constraints: ConstraintDSL,
     plan: TripPlan,
-    state: TripWorldState
+    _state: TripWorldState
   ): ConstraintConflict | null {
     const riskTolerance = constraints.soft_constraints!.risk_tolerance!;
 
@@ -357,7 +357,7 @@ export class ConstraintConflictResolver {
    */
   generateTradeoffExplanation(
     conflict: ConstraintConflict,
-    currentPlan: TripPlan | null
+    _currentPlan: TripPlan | null
   ): TradeoffExplanation {
     const [constraintA, constraintB] = conflict.between;
 
@@ -368,7 +368,7 @@ export class ConstraintConflictResolver {
         constraint_b_value: conflict.details?.[constraintB] || 'unknown',
         conflict_reason: conflict.description,
       },
-      options: conflict.tradeoff_options.map((option, index) => {
+      options: conflict.tradeoff_options.map((option, _index) => {
         // 根据选项内容判断推荐程度
         let recommendation: 'recommended' | 'optional' | 'not_recommended' = 'optional';
         if (option.includes('增加') || option.includes('调整')) {

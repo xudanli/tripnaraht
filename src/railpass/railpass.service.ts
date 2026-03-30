@@ -24,7 +24,7 @@ import { ReservationOrchestrationService } from './services/reservation-orchestr
 import { TravelDayCalculationEngineService } from './services/travel-day-calculation-engine.service';
 import { ComplianceValidatorService } from './services/compliance-validator.service';
 import { ExecutabilityCheckService } from './services/executability-check.service';
-import { PlanRegenerationService, RegeneratePlanResult } from './services/plan-regeneration.service';
+import { PlanRegenerationService } from './services/plan-regeneration.service';
 import { RailPassRuleEngineService } from './rules/railpass-rule-engine.service';
 import { PassCoverageCheckerService } from './services/pass-coverage-checker.service';
 import { ReservationChannelPolicyService } from './services/reservation-channel-policy.service';
@@ -203,7 +203,7 @@ export class RailPassService {
   /**
    * 改方案
    */
-  async regeneratePlan(dto: RegeneratePlanDto): Promise<{
+  async regeneratePlan(_dto: RegeneratePlanDto): Promise<{
     segments: RailSegment[];
     reservationTasks: ReservationTask[];
     changes: Array<{

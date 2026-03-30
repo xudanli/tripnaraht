@@ -8,10 +8,10 @@
  * 输出：学习结果（更新的Block优先级、推荐的Block组合、学习置信度）
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { ContextLearningService, ContextLearningInput, ContextLearningOutput } from '../../agent/context-engine/services/context-learning.service';
+import { ContextLearningService, ContextLearningInput } from '../../agent/context-engine/services/context-learning.service';
 import { ContextPackage } from '../../agent/context-engine/types/context-package.types';
 
 export interface ContextLearnInput extends SkillInput {

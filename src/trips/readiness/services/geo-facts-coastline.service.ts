@@ -12,7 +12,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaClient } from '@prisma/client';
 
 export interface CoastlineFeatures {
   /** 到最近海岸线的距离（米） */

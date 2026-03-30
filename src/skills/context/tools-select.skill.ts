@@ -364,7 +364,7 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
   /**
    * 构建简化 schema
    */
-  private buildSimplifiedSchema(skill: any): Record<string, any> {
+  private buildSimplifiedSchema(_skill: any): Record<string, any> {
     // 简化实现：返回基本结构
     // 实际应该从 skill 的输入接口中提取
     return {

@@ -173,8 +173,8 @@ describe('TrainingBatchProcessorService', () => {
     it('should return only active tasks', async () => {
       trainingDataPrep.prepareTrainingBatch.mockResolvedValue(mockBatch as any);
 
-      const task1 = await service.createBatchTask({});
-      const task2 = await service.createBatchTask({});
+      await service.createBatchTask({});
+      await service.createBatchTask({});
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 

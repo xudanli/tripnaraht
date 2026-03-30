@@ -25,7 +25,7 @@ export class RiskPromptDesignerService {
     sevLevel: 'SEV-1' | 'SEV-2' | 'SEV-3' | 'SEV-4',
     category: RiskPromptTemplate['category'],
     reason: string,
-    language: 'en' | 'zh' = 'en',
+    _language: 'en' | 'zh' = 'en',
   ): RiskPromptTemplate | null {
     // 查找匹配的模板
     const template = Array.from(this.templates.values()).find(

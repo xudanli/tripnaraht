@@ -7,7 +7,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import { createOpenAIHttp } from '../../llm/utils/openai-http.factory';
 import { retryWithBackoff } from '../../llm/utils/retry-with-backoff';
 

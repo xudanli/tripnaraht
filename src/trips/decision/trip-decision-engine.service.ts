@@ -23,7 +23,7 @@ import { RouteDirectionPoiGeneratorService } from '../../route-directions/servic
 import { RouteDirectionObservabilityService } from '../../route-directions/services/route-direction-observability.service';
 import { CompliancePluginService } from '../../route-directions/plugins/compliance-plugin.service';
 import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
-import { getPolicyProfile, POLICY_PROFILES } from './config/objective-config';
+import { getPolicyProfile } from './config/objective-config';
 import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
 import { MemoryService } from '../../agent/memory/services/memory.service';
 import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
@@ -42,7 +42,7 @@ import { DemDecisionEvidenceService } from './services/dem-decision-evidence.ser
 import { DemEvidencePipelineResult, DemDecisionEvidence } from './interfaces/dem-decision-evidence.interface';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
 import { PlanConverterService } from './services/plan-converter.service';
-import { WorldModelContext, RoutePlanDraft } from './shared/world-model.types';
+import { WorldModelContext } from './shared/world-model.types';
 import { DecisionLogEntry } from './shared/decision-result.types';
 import { mapUserPersonaToDecisionParams, extractPersonaKeywordsFromPreferences } from './config/user-persona-mapping.config';
 import { createHumanCapabilityModelFromProfile } from './models/human-capability.model';
@@ -453,7 +453,7 @@ export class TripDecisionEngineService {
 
       // Abu: choose what to keep under daily limits (rough by pace)
       // 根据 pace 和策略配置调整每日活动时间限制
-      const policyProfile = getPolicyProfile(pace);
+      void getPolicyProfile(pace); // 预留：策略画像微调 Abu 时间预算
       
       // 基础时间限制
       let maxActiveMin =
@@ -486,7 +486,6 @@ export class TripDecisionEngineService {
       
       // PART 2: 在 Abu 选择前，检查是否有需要避免的 HARD violation
       // 如果有前一天的 demEvidence，检查是否可以忽略 violation
-      let shouldBeMoreConservative = false;
       if (this.demEvidenceEnforcer && i > 0 && (state as any).previousDayDemEvidence) {
         const prevDayEvidence = (state as any).previousDayDemEvidence as DemDecisionEvidence[];
         for (const evidence of prevDayEvidence) {
@@ -499,7 +498,6 @@ export class TripDecisionEngineService {
               this.logger.warn(
                 `Abu 不能忽略前一天的 HARD violation (${evidence.segmentId}): ${canIgnore.reason}，今天将更保守地选择活动`
               );
-              shouldBeMoreConservative = true;
               // 调整 limits，使 Abu 更保守
               maxActiveMin = Math.round(maxActiveMin * 0.9); // 减少10%的时间预算
             }
@@ -826,7 +824,7 @@ export class TripDecisionEngineService {
           preferences: intentKeys, // 转换为 string[]
           riskTolerance: state.context.preferences.riskTolerance,
         });
-        const mappedDecisionParams = mapUserPersonaToDecisionParams(personaKeywords);
+        void mapUserPersonaToDecisionParams(personaKeywords); // 预留：注入 orchestrator / 约束
 
         // 2. 构建 WorldModelContext
         const countryCode = this.extractCountryCode(state.context.destination);
@@ -850,9 +848,7 @@ export class TripDecisionEngineService {
           }
         }
 
-        // 转换天气证据（如果有）
-        const weatherEvidence: any[] = [];
-        // TODO: 从 WeatherDecisionEvidenceService 获取天气证据
+        // TODO: 从 WeatherDecisionEvidenceService 获取天气证据并并入 worldContext
 
         // 转换合规证据
         const complianceEvidence: any[] = [];

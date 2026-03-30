@@ -4,7 +4,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ConfidenceLevel,
   ConfidenceLevelDefinition,
-  UncertaintyType,
   UncertaintyAnnotation,
   EnhancedConfidenceAnnotation,
   ConfidenceAnnotatedData,
@@ -424,7 +423,7 @@ export class ConfidenceAnnotationService {
    */
   private generateDisplaySuggestion(
     confidence: EnhancedConfidenceAnnotation,
-    config: ConfidenceAnnotationConfig,
+    _config: ConfidenceAnnotationConfig,
   ): ConfidenceAnnotatedData['displaySuggestion'] {
     const suggestion: ConfidenceAnnotatedData['displaySuggestion'] = {
       showConfidence: true,

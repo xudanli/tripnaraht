@@ -1,6 +1,6 @@
 // src/content-strategy/services/user-journey-communication.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   Stage1Response,
   Stage2Response,
@@ -164,7 +164,7 @@ TripNARA帮你看清：
   /**
    * 生成快速反馈
    */
-  private generateQuickFeedback(userContext: UserContext): Stage1Response['quickFeedback'] {
+  private generateQuickFeedback(_userContext: UserContext): Stage1Response['quickFeedback'] {
     return {
       message: '告诉我们你的想法，我们会帮你找到最适合的路线。',
       actions: [
@@ -247,7 +247,7 @@ TripNARA帮你看清：
    */
   private async generateComparisonTool(
     route: RouteDirectionData,
-    userContext: UserContext,
+    _userContext: UserContext,
   ): Promise<Stage2Response['comparisonTool']> {
     // 简化实现：返回当前路线
     return {
@@ -481,8 +481,8 @@ TripNARA帮你看清：
    * 生成决策反问
    */
   private async generateDecisionReflection(
-    route: RouteDirectionData,
-    userContext: UserContext,
+    _route: RouteDirectionData,
+    _userContext: UserContext,
   ): Promise<Stage3Response['decisionReflection']> {
     return {
       questions: [
@@ -506,8 +506,8 @@ TripNARA帮你看清：
    * 生成确认信息（GO）
    */
   private async generateGoConfirmation(
-    decision: UserDecision,
-    userContext: UserContext,
+    _decision: UserDecision,
+    _userContext: UserContext,
   ): Promise<Stage4Response> {
     return {
       confirmation: {
@@ -549,8 +549,8 @@ TripNARA帮你看清：
    * 生成反决定回应（NO_GO）
    */
   private async generateNoGoResponse(
-    decision: UserDecision,
-    userContext: UserContext,
+    _decision: UserDecision,
+    _userContext: UserContext,
   ): Promise<Stage4Response> {
     return {
       noGoResponse: {
@@ -569,8 +569,8 @@ TripNARA帮你看清：
    * 生成延期回应（DEFER）
    */
   private async generateDeferResponse(
-    decision: UserDecision,
-    userContext: UserContext,
+    _decision: UserDecision,
+    _userContext: UserContext,
   ): Promise<Stage4Response> {
     return {
       deferResponse: {

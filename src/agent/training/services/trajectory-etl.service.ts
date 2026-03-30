@@ -17,7 +17,6 @@ import { ComplianceResult } from '../interfaces/trajectory.interface';
 import { DataQualityCheckerService } from './data-quality-checker.service';
 import { PIIAnonymizerService, PIIAnonymizationConfig } from './pii-anonymizer.service';
 import { DatasetVersionManagerService } from './dataset-version-manager.service';
-import { DataQualityResult } from './data-quality-checker.service';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';

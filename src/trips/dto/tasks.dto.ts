@@ -1,6 +1,6 @@
 // src/trips/dto/tasks.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean } from 'class-validator';
 
 /**
  * 任务优先级

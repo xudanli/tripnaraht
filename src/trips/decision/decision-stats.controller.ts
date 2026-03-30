@@ -5,7 +5,7 @@
  * 提供决策统计 API 端点，供前端/Dashboard 使用
  */
 
-import { Controller, Get, Query, Param } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { DecisionStatsService } from './services/decision-stats.service';
 import { HeuristicDietService } from './services/heuristic-diet.service';

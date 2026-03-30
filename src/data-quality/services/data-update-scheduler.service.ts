@@ -1,7 +1,7 @@
 // src/data-quality/services/data-update-scheduler.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataCollectionService } from './data-collection.service';
 import { DataQualityAlertService } from './data-quality-alert.service';

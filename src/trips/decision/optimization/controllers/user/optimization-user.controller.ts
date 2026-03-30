@@ -8,16 +8,15 @@
 import { Controller, Post, Get, Body, Param, Req, Logger, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Public } from '../../../../../auth/decorators/public.decorator';
-import { IsNotEmpty, IsOptional, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsOptional } from 'class-validator';
 
 import { ObjectiveFunctionService } from '../../objective-function.service';
-import { ObjectiveEvaluationResult, ObjectiveFunctionWeights, DEFAULT_OBJECTIVE_WEIGHTS } from '../../objective-function.interface';
+import { ObjectiveEvaluationResult, ObjectiveFunctionWeights } from '../../objective-function.interface';
 import { StrategyOrchestratorV2Service, StrategyOrchestrationResultV2 } from '../../strategy-orchestrator-v2.service';
 import { ProbabilisticWorldModelService } from '../../probabilistic/probabilistic-world-model.service';
 import { ExpectedUtilityService, ExpectedUtilityResult } from '../../probabilistic/expected-utility.service';
 import { GuardianDebateService } from '../../learning/guardian-debate.service';
-import { NegotiationResult, DEFAULT_NEGOTIATION_CONFIG, DebateArgument } from '../../learning/guardian-persona.interface';
+import { DEFAULT_NEGOTIATION_CONFIG } from '../../learning/guardian-persona.interface';
 import { WeightLearnerService, FeedbackRecord } from '../../learning/weight-learner.service';
 import { WeightPersistenceService } from '../../learning/weight-persistence.service';
 import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';

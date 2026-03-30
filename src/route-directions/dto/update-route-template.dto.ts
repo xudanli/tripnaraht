@@ -5,9 +5,7 @@ import {
   IsArray,
   IsOptional,
   IsObject,
-  IsEnum,
   IsBoolean,
-  ValidateNested,
   IsIn,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';

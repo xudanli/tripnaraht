@@ -13,7 +13,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ContextPackage, ContextBlock } from '../types/context-package.types';
+import { ContextPackage } from '../types/context-package.types';
 import { ParallelExecutorService } from '../../../rag/services/parallel-executor.service';
 import { ContextPrometheusMetricsService } from './context-prometheus-metrics.service';
 

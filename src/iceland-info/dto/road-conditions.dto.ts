@@ -1,7 +1,7 @@
 // src/iceland-info/dto/road-conditions.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsArray } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export enum RoadStatus {
   OPEN = 'open',

@@ -6,7 +6,7 @@
  * 定义 AI 增强功能的类型
  */
 
-import { ReadinessCheckResult, ReadinessFindingItem } from './readiness-findings.types';
+import { ReadinessCheckResult } from './readiness-findings.types';
 
 /**
  * 用户画像

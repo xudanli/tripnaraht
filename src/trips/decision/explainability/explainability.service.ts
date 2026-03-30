@@ -174,7 +174,7 @@ export class ExplainabilityService {
   /**
    * 解释单个时间槽
    */
-  private explainSlot(slot: PlanSlot, date: string): SlotExplanation {
+  private explainSlot(slot: PlanSlot, _date: string): SlotExplanation {
     const reasons = slot.reasons || [];
     const warnings: string[] = [];
     const suggestions: string[] = [];

@@ -135,7 +135,7 @@ export class EmbeddingService {
    * 1. 配置为 python 时，仅使用 Python AI 服务 (BGE-M3)
    * 2. Python 失败或不可用时，返回零向量
    */
-  private async generateEmbeddingInternal(text: string, normalizedText: string): Promise<number[]> {
+  private async generateEmbeddingInternal(text: string, _normalizedText: string): Promise<number[]> {
     let embedding: number[] | null = null;
 
     // 仅使用 Python AI 服务 (BGE-M3)

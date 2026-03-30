@@ -72,7 +72,7 @@ export class DecisionDraftStorageService {
         updateData.debugInfo = decisionDraft.debug_info as any;
       }
       
-      const savedDraft = await this.prisma.decisionDraft.upsert({
+      await this.prisma.decisionDraft.upsert({
         where: { draftId: decisionDraft.draft_id },
         create: createData,
         update: updateData,

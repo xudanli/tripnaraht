@@ -364,7 +364,6 @@ export class PlanningAssistantV2Service {
    * 智能对话（主要入口，AI增强，支持智能路由）
    */
   async chat(dto: ChatRequestDto): Promise<ChatResponseDto> {
-    const requestStartTime = Date.now();
     this.logger.debug(
       `[智能对话] 开始处理请求: sessionId=${dto.sessionId}, ` +
       `message="${dto.message.substring(0, 50)}...", ` +
@@ -1361,7 +1360,7 @@ export class PlanningAssistantV2Service {
                 }
 
                 try {
-                  let origin = routingResult.extractedParams?.origin || '';
+                  const origin = routingResult.extractedParams?.origin || '';
                   let destination = routingResult.extractedParams?.destination || '';
                   // 从行程上下文推断目的地（如 countryCode=IS → KEF）
                   if (!destination && dto.context?.countryCode) {
@@ -1775,7 +1774,7 @@ export class PlanningAssistantV2Service {
                 try {
                   // 优先使用会话中的目的地或 context.countryCode
                   const countryCode = routingResult.extractedParams?.countryCode || dto.context?.countryCode;
-                  let destination = selectedDestination || routingResult.extractedParams?.destination || countryCode || '';
+                  const destination = selectedDestination || routingResult.extractedParams?.destination || countryCode || '';
                   
                   if (!destination) {
                     throw new Error('请提供目的地（例如："冰岛租车推荐"）');
@@ -3127,7 +3126,7 @@ export class PlanningAssistantV2Service {
         tripId = randomUUID();
 
         // 使用事务确保 Trip 和 TripCollaborator 要么全部创建成功，要么全部失败
-        const trip = await this.prisma.$transaction(async (tx) => {
+        await this.prisma.$transaction(async (tx) => {
           // 创建 Trip 主记录
           const createdTrip = await tx.trip.create({
             data: {
@@ -3891,7 +3890,6 @@ export class PlanningAssistantV2Service {
 
     // 2. 分析行程的健康度
     const budgetConfig = trip.budgetConfig as any;
-    const pacingConfig = trip.pacingConfig as any;
     const totalDays = trip.TripDay.length;
     const totalItems = trip.TripDay.reduce((sum, day) => sum + day.ItineraryItem.length, 0);
     const avgItemsPerDay = totalDays > 0 ? totalItems / totalDays : 0;
@@ -3956,7 +3954,6 @@ export class PlanningAssistantV2Service {
     }
 
     // 节奏相关建议
-    const pacePreference = pacingConfig?.pacePreference || 'BALANCED';
     if (avgItemsPerDay > 6) {
       suggestions.push({
         type: 'pace',
@@ -5739,7 +5736,7 @@ ${combinedText}`;
       };
     } else if (toolName === 'exa.webSearch') {
       // Web 搜索。Exa MCP 可能返回: JSON { results: [...] } 或 Markdown 格式（Title/URL/Text）
-      let rawResults =
+      const rawResults =
         parsedResult?.results ??
         parsedResult?.data?.results ??
         (Array.isArray(parsedResult?.data) ? parsedResult.data : parsedResult?.data) ??
@@ -5802,7 +5799,7 @@ ${combinedText}`;
         phase: 'RECOMMENDING',
       }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
 
-      const response: ChatResponseDto = {
+      return {
         message: messageCN || 'Calendar operation completed',
         messageCN,
         reply: isChinese ? messageCN : 'Calendar operation completed',
@@ -5820,7 +5817,7 @@ ${combinedText}`;
       };
     } else if (toolName === 'exa.webSearchAdvanced' || toolName === 'exa.deepSearch') {
       // Exa 高级搜索（与 exa.webSearch 相同的结果提取逻辑，含 Markdown 回退）
-      let rawResults =
+      const rawResults =
         parsedResult?.results ??
         parsedResult?.data?.results ??
         (Array.isArray(parsedResult?.data) ? parsedResult.data : parsedResult?.data) ??

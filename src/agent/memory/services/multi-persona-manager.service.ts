@@ -75,9 +75,6 @@ export class MultiPersonaManagerService {
     profile: MultiPersonaUserTravelProfile,
   ): Promise<void> {
     try {
-      // 序列化personas到metadata
-      const serializedPersonas = profile.personas.map(p => this.serializePersona(p));
-
       await this.prisma.userTravelProfile.upsert({
         where: { userId: profile.userId },
         create: {

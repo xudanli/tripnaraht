@@ -85,7 +85,7 @@ export class E2ECaseStorageService {
       const examplePath = path.join(__dirname, 'e2e-cases', `${caseId}.ts`);
       // 注意：这里需要动态导入 TypeScript 文件，实际实现可能需要调整
       // 目前返回 null，表示需要手动创建 JSON 文件
-      this.logger.debug(`尝试从示例加载 E2E Case: ${caseId}`);
+      this.logger.debug(`尝试从示例加载 E2E Case: ${caseId} path=${examplePath}`);
       return null;
     } catch (error: any) {
       return null;

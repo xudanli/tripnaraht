@@ -126,7 +126,6 @@ export class RagFreshnessService {
     }
 
     const rule = this.FRESHNESS_RULES[category];
-    const now = new Date();
 
     this.logger.debug(
       `[Freshness] 检查新鲜度: category=${category}, chunks=${chunks.length}, rule=${JSON.stringify(rule)}`
@@ -491,7 +490,7 @@ export class RagFreshnessService {
   /**
    * 获取新鲜度统计
    */
-  async getFreshnessStats(params?: {
+  async getFreshnessStats(_params?: {
     category?: ChunkCategory;
   }): Promise<{
     totalChunks: number;

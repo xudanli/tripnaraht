@@ -8,7 +8,7 @@
  * 支持缓存机制以减少重复请求
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import puppeteer, { Browser, Page } from 'puppeteer';

@@ -1,13 +1,8 @@
 // src/trips/decision/dto/decision.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  TripWorldState,
-  TripContextState,
-  ActivityCandidate,
-} from '../world-model';
+import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
-import { DecisionTrigger } from '../decision-log';
 import { TravelReadinessResult } from '../readiness/types/readiness-checklist.types';
 
 /**

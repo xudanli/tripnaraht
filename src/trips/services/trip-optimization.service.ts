@@ -90,8 +90,6 @@ export class TripOptimizationService {
         preview: dryRun ? [] : undefined,
       };
     }
-    
-    const timeline = result.timeline || [];
 
     // 检查 route 中的节点格式，判断是否需要从 trip 日期推断
     const hasRouteNodeFormat = route.length > 0 && route.some(node => 
@@ -365,7 +363,6 @@ export class TripOptimizationService {
           let startTime: string;
           let endTime: string | undefined;
           let type: string = 'ACTIVITY';
-          let note: string | undefined;
           
           // 提取 placeId
           if (node.placeId !== undefined) {
@@ -424,10 +421,9 @@ export class TripOptimizationService {
               type = 'ACTIVITY';
             }
           }
-          
-          // 提取 note
-          note = node.note || node.reason || undefined;
-          
+
+          const note = node.note || node.reason || undefined;
+
           try {
           await this.itineraryItemsService.create({
             tripDayId: tripDay.id,

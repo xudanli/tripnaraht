@@ -1,0 +1,76 @@
+name: ROLL Live Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      events_artifact_path:
+        description: "Path to events JSONL in repo workspace"
+        required: true
+        default: "scripts/rl-infra/roll/sample-events.jsonl"
+      control_metrics_path:
+        description: "Path to control metrics JSON"
+        required: true
+        default: "scripts/rl-infra/roll/sample-control-metrics.json"
+      treatment_metrics_path:
+        description: "Path to treatment metrics JSON"
+        required: true
+        default: "scripts/rl-infra/roll/sample-treatment-metrics.json"
+      control_segments_path:
+        description: "Optional: path to control stratified segments JSON"
+        required: false
+        default: ""
+      treatment_segments_path:
+        description: "Optional: path to treatment stratified segments JSON"
+        required: false
+        default: ""
+
+jobs:
+  live-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare scripts
+        run: |
+          chmod +x scripts/rl-infra/roll/generate-live-traffic-summary.sh
+          chmod +x scripts/rl-infra/roll/evaluate-ab-uplift.sh
+          chmod +x scripts/rl-infra/roll/evaluate-ab-uplift-stratified.sh
+          chmod +x scripts/rl-infra/roll/check-sample-coverage.sh
+
+      - name: Generate live traffic summary
+        run: |
+          scripts/rl-infra/roll/generate-live-traffic-summary.sh \
+            "${{ github.event.inputs.events_artifact_path }}" \
+            "live-traffic-summary.json"
+
+      - name: Evaluate AB uplift
+        run: |
+          scripts/rl-infra/roll/evaluate-ab-uplift.sh \
+            "${{ github.event.inputs.control_metrics_path }}" \
+            "${{ github.event.inputs.treatment_metrics_path }}" \
+            "ab-uplift-evaluation.json"
+
+      - name: Evaluate AB uplift stratified (optional)
+        if: ${{ github.event.inputs.control_segments_path != '' && github.event.inputs.treatment_segments_path != '' }}
+        run: |
+          scripts/rl-infra/roll/evaluate-ab-uplift-stratified.sh \
+            "${{ github.event.inputs.control_segments_path }}" \
+            "${{ github.event.inputs.treatment_segments_path }}" \
+            "ab-uplift-stratified.json"
+
+      - name: Generate sample coverage report
+        run: |
+          scripts/rl-infra/roll/check-sample-coverage.sh \
+            "${{ github.event.inputs.events_artifact_path }}" \
+            "sample-coverage.json"
+
+      - name: Upload proof artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rl-live-proof
+          path: |
+            live-traffic-summary.json
+            ab-uplift-evaluation.json
+            ab-uplift-stratified.json
+            sample-coverage.json

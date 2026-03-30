@@ -2,7 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  ScenarioType,
   ErrorType,
   FirstTimeUserCopy,
   RouteComparisonCopy,
@@ -12,7 +11,6 @@ import {
   ExceptionCopy,
 } from '../interfaces/copy-examples.interface';
 import { RouteDirectionData } from '../../route-directions/interfaces/route-direction.interface';
-import { UserContext } from '../interfaces/copy-standards.interface';
 
 /**
  * 系统话术示例库服务
@@ -253,7 +251,7 @@ ${reason}
   /**
    * 系统错误
    */
-  getSystemErrorCopy(error: { code?: string; message?: string }): ErrorCopy {
+  getSystemErrorCopy(_error: { code?: string; message?: string }): ErrorCopy {
     return {
       title: '系统暂时出现问题',
       description: '抱歉，系统遇到了一个临时问题。我们正在努力解决。',

@@ -22,7 +22,7 @@ import { RagTestsetService, RagEvalTestset } from './services/rag-testset.servic
 import { IndexingService } from '../knowledge-base/services/indexing.service';
 import { RagMetricsService } from './services/rag-metrics.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
-import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { ApiSuccessResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('rag')
@@ -65,10 +65,10 @@ export class RagController {
   @ApiQuery({ name: 'limit', description: '返回数量限制', required: false, type: Number })
   @ApiResponse({ status: 410, description: '端点已废弃' })
   async retrieve(
-    @Query('query') query: string,
-    @Query('collection') collection: string,
-    @Query('countryCode') countryCode?: string,
-    @Query('limit') limit?: number,
+    @Query('query') _query: string,
+    @Query('collection') _collection: string,
+    @Query('countryCode') _countryCode?: string,
+    @Query('limit') _limit?: number,
   ) {
     return errorResponse(
       ErrorCode.BUSINESS_ERROR,
@@ -112,7 +112,8 @@ export class RagController {
   })
   @ApiResponse({ status: 410, description: '端点已废弃' })
   async search(
-    @Body() body: {
+    @Body()
+    _body: {
       query: string;
       collection: string;
       countryCode?: string;
@@ -168,7 +169,7 @@ export class RagController {
   })
   @ApiBody({ type: Object, description: '文档索引项' })
   @ApiResponse({ status: 410, description: '端点已废弃' })
-  async indexDocument(@Body() item: DocumentIndexItem) {
+  async indexDocument(@Body() _item: DocumentIndexItem) {
     throw new Error('document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）');
   }
 
@@ -202,7 +203,7 @@ export class RagController {
     }
   })
   @ApiResponse({ status: 410, description: '端点已废弃' })
-  async indexDocuments(@Body() body: DocumentIndexItem[] | any) {
+  async indexDocuments(@Body() _body: DocumentIndexItem[] | any) {
     throw new Error('document_index表已删除，此端点不再可用。请使用新系统（KnowledgeFile + Chunks）');
   }
 
@@ -211,7 +212,7 @@ export class RagController {
    */
   private convertRouteToDocuments(routeData: any): DocumentIndexItem[] {
     const documents: DocumentIndexItem[] = [];
-    const { route, metadata, data_provenance } = routeData;
+    const { route, metadata } = routeData;
 
     if (!route) {
       return documents;
@@ -402,7 +403,7 @@ export class RagController {
   /**
    * 格式化站点内容
    */
-  private formatStopContent(stop: any, route: any): string {
+  private formatStopContent(stop: any, _route: any): string {
     const parts: string[] = [];
 
     parts.push(`站点名称：${stop.name || stop.name_en || '未知站点'}`);
@@ -465,7 +466,7 @@ export class RagController {
   /**
    * 格式化风险评估
    */
-  private formatRiskAssessment(risk: any, route: any): string {
+  private formatRiskAssessment(risk: any, _route: any): string {
     const parts: string[] = [];
 
     parts.push(`总体风险等级：${risk.overall_risk_level || '未知'}`);
@@ -574,7 +575,7 @@ export class RagController {
   /**
    * 格式化决策支持信息
    */
-  private formatDecisionSupport(decision: any, route: any): string {
+  private formatDecisionSupport(decision: any, _route: any): string {
     const parts: string[] = [];
 
     if (decision.should_you_go) {
@@ -1235,8 +1236,8 @@ export class RagController {
   })
   @ApiResponse({ status: 410, description: '端点已废弃' })
   async updateDocument(
-    @Param('id') id: string,
-    @Body() item: Partial<DocumentIndexItem>,
+    @Param('id') _id: string,
+    @Body() _item: Partial<DocumentIndexItem>,
   ) {
     throw new Error('document_index表已删除，此端点不再可用');
   }
@@ -1256,7 +1257,7 @@ export class RagController {
   })
   @ApiParam({ name: 'id', description: '文档 ID' })
   @ApiResponse({ status: 410, description: '端点已废弃' })
-  async deleteDocument(@Param('id') id: string) {
+  async deleteDocument(@Param('id') _id: string) {
     throw new Error('document_index表已删除，此端点不再可用');
   }
 

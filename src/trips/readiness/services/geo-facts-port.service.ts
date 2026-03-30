@@ -12,7 +12,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaClient } from '@prisma/client';
 
 export interface PortFeatures {
   /** 到最近港口的距离（米） */

@@ -1,7 +1,7 @@
 // src/agent/services/planning-workbench-task.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { PlanningWorkbenchRequest, PlanningWorkbenchResponse } from './planning-workbench-agent.service';
+import { PlanningWorkbenchResponse } from './planning-workbench-agent.service';
 
 /**
  * 规划工作台任务状态

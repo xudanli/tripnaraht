@@ -1,8 +1,6 @@
 // src/skills/world/services/road-status-realtime.service.spec.ts
 
-import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
-import { RoadStatusRealtimeService, RoadStatus } from './road-status-realtime.service';
+import { RoadStatusRealtimeService } from './road-status-realtime.service';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 

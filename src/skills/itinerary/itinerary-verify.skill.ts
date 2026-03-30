@@ -9,9 +9,10 @@
  * - 疲劳阈值
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
-import { Itinerary, ItineraryDay, ItineraryItem } from '../../agent/interfaces/trip-plan.interface';
+import { Itinerary } from '../../agent/interfaces/trip-plan.interface';
+import { applyRiskTagsFromVerifyIssues } from '../../agent/utils/itinerary-risk-tags.util';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { OpeningHoursUtil } from '../../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
@@ -100,6 +101,9 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
 
       const errorCount = issues.filter(i => i.severity === 'ERROR').length;
       const warningCount = issues.filter(i => i.severity === 'WARNING').length;
+
+      // ADR-B1：按验证问题写入 item.metadata.risk_tags / risk_level（原地更新 itinerary）
+      applyRiskTagsFromVerifyIssues(itinerary, issues);
 
       return {
         verified: errorCount === 0,

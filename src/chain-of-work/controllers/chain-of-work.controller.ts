@@ -1,6 +1,6 @@
 // src/chain-of-work/controllers/chain-of-work.controller.ts
 
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ChainOfWorkService } from '../services/chain-of-work.service';
 import { VersionService } from '../version/version.service';
@@ -78,7 +78,7 @@ export class ChainOfWorkController {
   @Get('draft/:draftId')
   @ApiOperation({ summary: '查询步骤草案' })
   @ApiResponse({ status: 200, description: '步骤草案查询成功' })
-  async getDraft(@Param('draftId') draftId: string): Promise<{
+  async getDraft(@Param('draftId') _draftId: string): Promise<{
     draft: TripNARAWorkflowDraft;
   }> {
     // TODO: 从数据库查询
@@ -89,8 +89,8 @@ export class ChainOfWorkController {
   @ApiOperation({ summary: '执行步骤草案' })
   @ApiResponse({ status: 200, description: '执行成功' })
   async executeDraft(
-    @Param('draftId') draftId: string,
-    @Body() dto: ExecuteDraftDto,
+    @Param('draftId') _draftId: string,
+    @Body() _dto: ExecuteDraftDto,
   ): Promise<{
     execution_id: string;
     result: ExecutionResult;

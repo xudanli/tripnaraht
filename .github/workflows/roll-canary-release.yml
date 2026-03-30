@@ -1,0 +1,48 @@
+name: ROLL Canary Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      new_model_version:
+        description: "New model version"
+        required: true
+      traffic_percent:
+        description: "Canary traffic percent (5/20/50)"
+        required: true
+        default: "5"
+      rollback:
+        description: "Rollback instead of rollout"
+        required: false
+        default: "false"
+
+jobs:
+  canary-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare scripts
+        run: |
+          chmod +x scripts/rl-infra/roll/canary-rollout.sh
+          chmod +x scripts/rl-infra/roll/canary-rollback.sh
+
+      - name: Canary rollout
+        if: ${{ github.event.inputs.rollback != 'true' }}
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLL_CURRENT_MODEL_VERSION: ${{ vars.ROLL_CURRENT_MODEL_VERSION }}
+        run: |
+          ./canary-rollout.sh "${{ github.event.inputs.new_model_version }}" "${{ github.event.inputs.traffic_percent }}"
+
+      - name: Canary rollback
+        if: ${{ github.event.inputs.rollback == 'true' }}
+        working-directory: scripts/rl-infra/roll
+        run: |
+          ./canary-rollback.sh
+
+      - name: Upload canary state
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-state
+          path: scripts/rl-infra/roll/canary-state.env

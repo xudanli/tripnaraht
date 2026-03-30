@@ -20,6 +20,8 @@ import { RollClientService } from './roll-client.service';
 export class RollPolicyAdapterService {
   private readonly logger = new Logger(RollPolicyAdapterService.name);
   private readonly enabled: boolean;
+  private readonly allowFallback: boolean;
+  private readonly fallbackAllowedCodes: string[];
 
   constructor(
     private readonly configService: ConfigService,
@@ -28,9 +30,14 @@ export class RollPolicyAdapterService {
     this.enabled =
       this.configService.get<boolean>('ROLL_POLICY_ENABLED') !== false &&
       !!this.rollClient;
+    this.allowFallback = this.getEnvFlag('ROLL_ALLOW_FALLBACK', true);
+    this.fallbackAllowedCodes = this.getEnvList(
+      'ROLL_FALLBACK_ALLOWED_CODES',
+      ['TIMEOUT', 'HTTP_5XX', 'WORKER_UNAVAILABLE'],
+    );
     
     this.logger.log(
-      `[RollPolicyAdapter] 初始化: enabled=${this.enabled}`,
+      `[RollPolicyAdapter] 初始化: enabled=${this.enabled}, allowFallback=${this.allowFallback}, codes=${this.fallbackAllowedCodes.join(',')}`,
     );
   }
 
@@ -98,12 +105,49 @@ export class RollPolicyAdapterService {
       );
 
       // 如果启用回退，返回默认响应
-      if (useFallback) {
+      const errCode = this.extractErrorCode(error?.message);
+      const fallbackAllowedByCode = this.fallbackAllowedCodes.includes(errCode);
+      if (useFallback && this.allowFallback && fallbackAllowedByCode) {
+        this.logger.warn(
+          `[roll_event] event=policy_fallback_used request_id=${request.request_id} code=${errCode} reason="${error?.message ?? 'unknown'}"`,
+        );
         return this.getFallbackResponse(request);
       }
 
+      this.logger.error(
+        `[roll_event] event=policy_fallback_blocked request_id=${request.request_id} use_fallback=${useFallback} allow_fallback=${this.allowFallback} code=${errCode} allowed_codes=${this.fallbackAllowedCodes.join(',')}`,
+      );
+
       throw error;
     }
+  }
+
+  private getEnvFlag(key: string, fallback: boolean): boolean {
+    const value = this.configService.get<string | boolean>(key);
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      if (v === 'true' || v === '1' || v === 'yes') return true;
+      if (v === 'false' || v === '0' || v === 'no') return false;
+    }
+    return fallback;
+  }
+
+  private getEnvList(key: string, fallback: string[]): string[] {
+    const value = this.configService.get<string>(key);
+    if (!value) return fallback;
+    const out = value
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean);
+    return out.length > 0 ? out : fallback;
+  }
+
+  private extractErrorCode(message?: string): string {
+    if (!message) return 'UNKNOWN';
+    const idx = message.indexOf(':');
+    if (idx <= 0) return 'UNKNOWN';
+    return message.slice(0, idx).trim().toUpperCase();
   }
 
   /**

@@ -18,7 +18,6 @@ import {
   CreateOrUpdateDestinationClarificationConfigDto,
   TestConfigDto,
 } from './dto/create-or-update-config.dto';
-import { DestinationClarificationConfig } from './config/destination-clarification.config';
 import { successResponse } from '../../common/dto/standard-response.dto';
 
 @Controller('admin/destination-clarification')

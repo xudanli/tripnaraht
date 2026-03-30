@@ -30,6 +30,7 @@ export class RequestDeduplicationService {
   
   // 去重缓存存储
   private readonly dedupCache: Map<string, DedupCacheItem> = new Map();
+  private readonly genericCache: Map<string, { payload: unknown; timestamp: number; requestCount: number }> = new Map();
   
   // 默认 TTL：5 秒（短时间内）
   private readonly defaultTTL = 5 * 1000;
@@ -155,7 +156,34 @@ export class RequestDeduplicationService {
    */
   clear(): void {
     this.dedupCache.clear();
+    this.genericCache.clear();
     this.logger.debug('Deduplication cache cleared');
+  }
+
+  /**
+   * 通用去重检查（用于非 route_and_run 场景，如 action commit）
+   */
+  checkGenericDuplicate<T>(key: string): T | null {
+    const cached = this.genericCache.get(key);
+    if (!cached) return null;
+    const age = Date.now() - cached.timestamp;
+    if (age > this.defaultTTL) {
+      this.genericCache.delete(key);
+      return null;
+    }
+    cached.requestCount++;
+    return cached.payload as T;
+  }
+
+  /**
+   * 通用去重缓存写入（用于非 route_and_run 场景）
+   */
+  cacheGenericResponse<T>(key: string, payload: T): void {
+    this.genericCache.set(key, {
+      payload,
+      timestamp: Date.now(),
+      requestCount: 1,
+    });
   }
 
   /**

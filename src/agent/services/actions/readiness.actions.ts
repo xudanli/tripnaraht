@@ -111,7 +111,7 @@ export function createReadinessActions(
             enhance_with_geo?: boolean;
           };
         },
-        state: any
+        _state: any
       ) => {
         // 构建 TripContext
         const context: TripContext = {

@@ -1,0 +1,38 @@
+# TD-05：按 fixture id 并行回放（与 src/trips/decision/evaluation/e2e-cases/registry.ts 对齐）
+name: TD Replay Fixtures Matrix
+
+on:
+  push:
+    paths:
+      - "src/trips/decision/evaluation/**"
+      - ".github/workflows/td-replay-matrix.yml"
+  pull_request:
+    paths:
+      - "src/trips/decision/evaluation/**"
+      - ".github/workflows/td-replay-matrix.yml"
+
+jobs:
+  replay-fixture:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture_id:
+          - iceland-highlands-001
+          - iceland-highlands-dem-missing-001
+          - iceland-highlands-pace-adjust-001
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Replay single fixture (TD_REPLAY_MATRIX_ID)
+        env:
+          TD_REPLAY_MATRIX_ID: ${{ matrix.fixture_id }}
+        run: npx jest src/trips/decision/evaluation/e2e-replay.fixtures-matrix.spec.ts --runInBand

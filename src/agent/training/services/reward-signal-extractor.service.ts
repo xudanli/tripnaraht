@@ -2,7 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
-import { RewardSignal, RewardSignalType, ExecutionResult } from '../interfaces/trajectory.interface';
+import { RewardSignal, ExecutionResult } from '../interfaces/trajectory.interface';
 import { TripNARAApprovalSignals, GatedRewardMetrics } from '../interfaces/product.interface';
 
 /**

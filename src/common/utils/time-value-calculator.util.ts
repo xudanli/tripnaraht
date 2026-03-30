@@ -287,7 +287,7 @@ export class TimeValueCalculator {
    */
   private static inferTimeSensitivity(
     avgPlacesPerDay: number,
-    budgetConfig?: any
+    _budgetConfig?: any
   ): 'HIGH' | 'MEDIUM' | 'LOW' {
     // 根据行程密度推断
     if (avgPlacesPerDay >= 4) {
@@ -302,7 +302,7 @@ export class TimeValueCalculator {
   /**
    * 推断旅行类型
    */
-  private static inferTripType(budgetConfig?: any): 'BUSINESS' | 'LEISURE' | 'FAMILY' | 'BACKPACKING' {
+  private static inferTripType(_budgetConfig?: any): 'BUSINESS' | 'LEISURE' | 'FAMILY' | 'BACKPACKING' {
     // 可以根据预算、旅行者类型等推断
     // 这里简化处理，默认返回 LEISURE
     return 'LEISURE';

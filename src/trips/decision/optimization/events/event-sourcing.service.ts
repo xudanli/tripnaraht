@@ -9,7 +9,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { DecisionEvent, DecisionEventType, DecisionEventBus } from './decision-events';
+import { DecisionEventType } from './decision-events';
 
 // ========== 类型定义 ==========
 

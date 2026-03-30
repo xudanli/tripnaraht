@@ -108,7 +108,6 @@ export class MultiStrategyRouteGeneratorService {
     baseRequest: PlanRequest,
     config: MultiStrategyConfig
   ): Promise<MultiStrategyResult> {
-    const startTime = Date.now();
     this.logger.debug(
       `开始生成候选路线: ${config.strategies.length} 种策略, ` +
       `${config.start_candidates?.length || 1} 个起点候选`
@@ -191,7 +190,7 @@ export class MultiStrategyRouteGeneratorService {
     );
 
     // 4. 收集成功的结果
-    results.forEach((result, index) => {
+    results.forEach((result, _index) => {
       if (result.status === 'fulfilled' && result.value.success) {
         candidates.push(result.value.candidate);
       }
@@ -225,7 +224,6 @@ export class MultiStrategyRouteGeneratorService {
     }
 
     // 9. 计算统计信息
-    const totalTime = Date.now() - startTime;
     const avgSolveTime =
       filteredCandidates.length > 0
         ? filteredCandidates.reduce((sum, c) => sum + (c.metadata.solve_time_ms || 0), 0) /
@@ -270,10 +268,8 @@ export class MultiStrategyRouteGeneratorService {
     request: PlanRequest,
     strategy: StrategyConfig,
     sampleIndex: number,
-    timeBudgetMs?: number
+    _timeBudgetMs?: number
   ): Promise<OptimizationResult> {
-    const startTime = Date.now();
-
     switch (strategy.name) {
       case 'VRPTW':
         // 使用 VRPTW 优化器

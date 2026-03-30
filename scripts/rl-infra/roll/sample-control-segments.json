@@ -1,0 +1,16 @@
+{
+  "segments": {
+    "new_user": {
+      "sample_size": 300,
+      "accept_rate": 0.58,
+      "adherence_rate": 0.7,
+      "satisfaction_score": 4.0
+    },
+    "returning_user": {
+      "sample_size": 900,
+      "accept_rate": 0.64,
+      "adherence_rate": 0.75,
+      "satisfaction_score": 4.25
+    }
+  }
+}

@@ -276,7 +276,7 @@ export class RiskTypeMapperService {
    */
   private generateMitigationDetails(
     mitigations: string[],
-    lang: 'en' | 'zh'
+    _lang: 'en' | 'zh'
   ): Array<{ action: string; priority: 'high' | 'medium' | 'low' }> {
     return mitigations.map((mitigation, index) => ({
       action: mitigation,

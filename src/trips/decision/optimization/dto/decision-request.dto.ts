@@ -18,7 +18,6 @@ import {
   Max,
   MinLength,
   MaxLength,
-  IsUUID,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';

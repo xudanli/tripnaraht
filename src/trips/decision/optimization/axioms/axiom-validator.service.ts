@@ -9,7 +9,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   AxiomId,
   AxiomViolationError,
-  NormalizedScore,
   HierarchicalUtilityStructure,
   RobustnessConstraints,
   DEFAULT_ROBUSTNESS_CONSTRAINTS,
@@ -20,7 +19,6 @@ import {
   AGENT_EXECUTION_ORDER,
   validateHierarchicalWeights,
   validateParameterUpdate,
-  validateWeightNormalization,
   validateAgentOperation,
   evaluateRobustness,
 } from './axiom-system';

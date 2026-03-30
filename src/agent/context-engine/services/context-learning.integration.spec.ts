@@ -17,7 +17,6 @@ describe('ContextLearningService Integration', () => {
   let contextLearnSkill: ContextLearnSkill;
   let contextEngineer: jest.Mocked<ContextEngineerService>;
   let contextLearningService: jest.Mocked<ContextLearningService>;
-  let prisma: jest.Mocked<PrismaService>;
 
   beforeEach(async () => {
     const mockContextEngineer = {
@@ -64,7 +63,6 @@ describe('ContextLearningService Integration', () => {
     contextLearnSkill = module.get<ContextLearnSkill>(ContextLearnSkill);
     contextEngineer = module.get(ContextEngineerService);
     contextLearningService = module.get(ContextLearningService);
-    prisma = module.get(PrismaService);
   });
 
   describe('context.build 和 context.learn 集成', () => {

@@ -1,7 +1,7 @@
 // src/data-quality/services/geographic-data-quality-monitoring.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataQualityAlertService } from './data-quality-alert.service';
 import { DEMResolutionCacheService } from './dem-resolution-cache.service';
@@ -203,7 +203,7 @@ export class GeographicDataQualityMonitoringService {
   /**
    * 评估DEM空间精度
    */
-  private async assessDEMSpatialAccuracy(countryCode: string): Promise<number> {
+  private async assessDEMSpatialAccuracy(_countryCode: string): Promise<number> {
     try {
       // 尝试从DEM表获取分辨率信息
       const resolution = await this.getDEMResolution();
@@ -224,7 +224,7 @@ export class GeographicDataQualityMonitoringService {
   /**
    * 评估DEM坐标系统一致性
    */
-  private async assessDEMCoordinateSystemConsistency(countryCode: string): Promise<number> {
+  private async assessDEMCoordinateSystemConsistency(_countryCode: string): Promise<number> {
     // DEM数据通常使用WGS84，假设一致性为1.0
     // 实际应该检查SRID是否一致
     return 1.0;
@@ -332,8 +332,8 @@ export class GeographicDataQualityMonitoringService {
    * 评估地理特征坐标系统一致性
    */
   private async assessFeatureCoordinateSystemConsistency(
-    countryCode: string,
-    featureType: string
+    _countryCode: string,
+    _featureType: string
   ): Promise<number> {
     // 假设地理特征数据使用WGS84，一致性为1.0
     return 1.0;

@@ -32,29 +32,6 @@ import { TripContext } from '../types/trip-context.types';
 import { ReadinessCacheService } from './readiness-cache.service';
 import { ChunkRetrievalService } from '../../../rag/services/chunk-retrieval.service';
 
-/**
- * AI 增强错误类型
- */
-enum AIEnhancementErrorType {
-  TIMEOUT = 'TIMEOUT',
-  RATE_LIMIT = 'RATE_LIMIT',
-  SCHEMA_VALIDATION = 'SCHEMA_VALIDATION',
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  API_ERROR = 'API_ERROR',
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
-}
-
-interface AIEnhancementError {
-  type: AIEnhancementErrorType;
-  message: string;
-  originalError?: Error;
-  context?: {
-    feature: string;
-    tripId?: string;
-    userId?: string;
-  };
-}
-
 @Injectable()
 export class ReadinessAIService {
   private readonly logger = new Logger(ReadinessAIService.name);

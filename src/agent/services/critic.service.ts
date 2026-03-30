@@ -458,7 +458,7 @@ export class CriticService {
   /**
    * 计算最小松弛时间
    */
-  private calculateMinSlack(state: AgentState): number | undefined {
+  private calculateMinSlack(_state: AgentState): number | undefined {
     // 简化实现
     return undefined;
   }

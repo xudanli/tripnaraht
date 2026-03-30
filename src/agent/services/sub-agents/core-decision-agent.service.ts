@@ -13,7 +13,6 @@ import {
   TradeoffModel,
   UncertaintyProfile,
   ComparisonMatrix,
-  Constraint,
 } from '../../interfaces/decision-node.interface';
 
 /**
@@ -63,7 +62,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
       evidence_refs: string[];
     }>,
     request: TripPlanRequest,
-    context: OrchestratorState,
+    _context: OrchestratorState,
   ): Promise<{
     selected_itinerary: Itinerary;
     decision_reasoning: string;
@@ -113,7 +112,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
   private generateDecisionReasoning(
     selected: { itinerary: Itinerary; score: number; pros: string[]; cons: string[] },
     allCandidates: Array<{ itinerary: Itinerary; score: number; pros: string[]; cons: string[] }>,
-    request: TripPlanRequest,
+    _request: TripPlanRequest,
   ): string {
     const parts: string[] = [];
 
@@ -269,7 +268,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
   /**
    * 对方案进行排序
    */
-  private rankOptions(options: DecisionOption[], weights: Record<TradeoffDimension, number>): DecisionOption[] {
+  private rankOptions(options: DecisionOption[], _weights: Record<TradeoffDimension, number>): DecisionOption[] {
     return [...options]
       .sort((a, b) => b.score - a.score)
       .map((opt, idx) => ({ ...opt, ranking: idx + 1 }));
@@ -331,7 +330,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
    */
   private identifyUserJudgmentPoints(
     options: DecisionOption[],
-    comparison: ComparisonMatrix,
+    _comparison: ComparisonMatrix,
   ): Array<{
     question: string;
     context: string;
@@ -444,7 +443,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
     return Math.min(100, Math.max(0, 50 + avgItemsPerDay * 10 - days * 2));
   }
 
-  private calculateCostScore(itinerary: Itinerary): number {
+  private calculateCostScore(_itinerary: Itinerary): number {
     return 60; // Placeholder - would integrate with CostAgent
   }
 
@@ -455,7 +454,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
     return Math.min(100, baseScore + prosBonus + diversityBonus);
   }
 
-  private calculateRiskScore(itinerary: Itinerary, cons: string[], tolerance: 'LOW' | 'MEDIUM' | 'HIGH'): number {
+  private calculateRiskScore(_itinerary: Itinerary, cons: string[], tolerance: 'LOW' | 'MEDIUM' | 'HIGH'): number {
     const baseRisk = 20;
     const consRisk = Math.min(40, cons.length * 15);
     const toleranceFactor = tolerance === 'LOW' ? 1.3 : tolerance === 'HIGH' ? 0.7 : 1;
@@ -464,7 +463,7 @@ export class ClaudeCoreDecisionAgentService implements CoreDecisionAgent {
 
   private calculateUncertainty(
     candidate: { evidence_refs: string[]; cons: string[] },
-    tolerance: 'LOW' | 'MEDIUM' | 'HIGH',
+    _tolerance: 'LOW' | 'MEDIUM' | 'HIGH',
   ): UncertaintyProfile {
     const evidenceCount = candidate.evidence_refs.length;
     const confidence = Math.min(0.95, 0.5 + evidenceCount * 0.1);

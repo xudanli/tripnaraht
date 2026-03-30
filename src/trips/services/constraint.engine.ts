@@ -68,6 +68,7 @@ export class ConstraintEngine {
     const sorted = [...clusterCounts.entries()].sort((a, b) => b[1] - a[1]);
     const keep = sorted.slice(0, MAX_CLUSTERS_PER_DAY).map(([id]) => id);
     const excess = sorted.slice(MAX_CLUSTERS_PER_DAY).map(([id]) => id);
+    void keep;
 
     return { ok: false, clusterIds: arr, excessClusterIds: excess };
   }
@@ -103,7 +104,7 @@ export class ConstraintEngine {
       }
     }
     const sorted = [...districtCounts.entries()].sort((a, b) => b[1] - a[1]);
-    const keep = sorted.slice(0, MAX_DISTRICTS_PER_DAY).map(([id]) => id);
+    const _keep = sorted.slice(0, MAX_DISTRICTS_PER_DAY).map(([id]) => id);
     const excess = sorted.slice(MAX_DISTRICTS_PER_DAY).map(([id]) => id);
 
     return { ok: false, districtIds: arr, excessDistrictIds: excess };

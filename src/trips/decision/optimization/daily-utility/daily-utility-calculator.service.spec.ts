@@ -6,7 +6,6 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DailyUtilityCalculatorService } from './daily-utility-calculator.service';
-import { FatigueCalculatorService } from '../../services/fatigue-calculator.service';
 import { TripPlan, PlanDay } from '../../plan-model';
 import { TripWorldState } from '../../world-model';
 

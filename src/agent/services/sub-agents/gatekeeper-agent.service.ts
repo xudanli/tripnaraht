@@ -2,10 +2,9 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { GatekeeperAgent } from '../../interfaces/sub-agent.interface';
-import { TripPlanRequest, OrchestratorState, GateResult, EvidenceRef } from '../../interfaces/trip-plan.interface';
+import { TripPlanRequest, OrchestratorState, GateResult } from '../../interfaces/trip-plan.interface';
 import { PlanGateRunThreeGuardiansSkill } from '../../../skills/plan/gate/plan-gate-run-three-guardians.skill';
 import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-precheck.skill';
-import { checkHardGate, HardGateResult } from '../../../trips/decision/tot/hard-gate';
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
@@ -47,7 +46,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
   async evaluateGate(
     request: TripPlanRequest,
     researchData: Record<string, any>,
-    context: OrchestratorState,
+    _context: OrchestratorState,
   ): Promise<GateResult> {
     this.logger.debug(`[GatekeeperAgent] 执行 Gate 评估: request_id=${request.request_id}`);
 

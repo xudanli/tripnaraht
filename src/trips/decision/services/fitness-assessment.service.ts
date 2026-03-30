@@ -21,10 +21,6 @@ import {
   ConfidenceLevel,
   createHumanCapabilityModelFromQuestionnaire,
   calibrateModelFromFeedback,
-  calculateQuestionnaireScore,
-  questionnaireScoreToFitnessLevel,
-  calculateAgeModifier,
-  ageGroupToMidAge,
 } from '../models/human-capability.model';
 
 /**
@@ -146,7 +142,7 @@ export class FitnessAssessmentService {
   /**
    * 获取标准化问卷问题
    */
-  getQuestionnaire(locale: 'en' | 'zh' = 'zh'): {
+  getQuestionnaire(_locale: 'en' | 'zh' = 'zh'): {
     questions: FitnessQuestion[];
     ageQuestion: FitnessQuestion;
   } {

@@ -7,7 +7,7 @@
  * 定义POI与路线方向的匹配度评分和解释
  */
 
-import { RouteDirectionData, SignaturePois, ObjectiveWeights } from '../../route-directions/interfaces/route-direction.interface';
+import { ObjectiveWeights } from '../../route-directions/interfaces/route-direction.interface';
 
 /**
  * POI 路线亲和度评分结果

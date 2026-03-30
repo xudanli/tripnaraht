@@ -13,7 +13,6 @@ import {
   ReasoningGraph,
   GraphNode,
   GraphEdge,
-  EdgeType,
 } from '../interfaces/graph-reasoning.interface';
 import { GraphReasoningService } from './graph-reasoning.service';
 
@@ -329,8 +328,8 @@ export class CausalModelingService {
   }
 
   private determineTemporalOrder(
-    causeNode: GraphNode,
-    effectNode: GraphNode
+    _causeNode: GraphNode,
+    _effectNode: GraphNode
   ): 'BEFORE' | 'SIMULTANEOUS' | 'AFTER' {
     // 简化实现：通常原因是先发生的
     return 'BEFORE';
@@ -411,7 +410,7 @@ export class CausalModelingService {
   private generateChainExplanation(
     graph: ReasoningGraph,
     nodeIds: string[],
-    relations: CausalRelation[]
+    _relations: CausalRelation[]
   ): string {
     const nodeLabels = nodeIds.map(id => graph.nodes.get(id)?.label || id);
     return `因果链：${nodeLabels.join(' → ')}`;

@@ -1,5 +1,5 @@
 // src/trips/dto/trip-share.dto.ts
-import { IsString, IsEnum, IsOptional, IsDateString } from 'class-validator';
+import { IsEnum, IsOptional, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum SharePermission {

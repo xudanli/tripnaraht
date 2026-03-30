@@ -7,7 +7,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('IcelandWeatherRealtimeService', () => {
   let service: IcelandWeatherRealtimeService;
-  let prisma: PrismaService;
 
   const mockPrisma = {
     weatherForecastRealtime: {
@@ -40,7 +39,6 @@ describe('IcelandWeatherRealtimeService', () => {
     }).compile();
 
     service = module.get<IcelandWeatherRealtimeService>(IcelandWeatherRealtimeService);
-    prisma = module.get<PrismaService>(PrismaService);
 
     // Reset mocks
     jest.clearAllMocks();

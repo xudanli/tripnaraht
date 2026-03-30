@@ -1,6 +1,6 @@
 // src/data-pipeline/services/data-pipeline.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataQualityFrameworkService } from '../../data-quality/services/data-quality-framework.service';
 import { DataPrivacyFrameworkService } from '../../data-privacy/services/data-privacy-framework.service';
 import { DataCleaningService } from './data-cleaning.service';
@@ -15,7 +15,6 @@ import {
 import {
   PipelineDefinition,
   PipelineStep,
-  PipelineStepStatus,
   PipelineExecutionState,
   PipelineExecutionResult,
   PipelineMonitoringConfig,
@@ -307,7 +306,7 @@ export class DataPipelineService {
   /**
    * 发送到推理引擎
    */
-  private async sendToInferenceEngine(data: any): Promise<void> {
+  private async sendToInferenceEngine(_data: any): Promise<void> {
     this.logger.debug('Sending data to inference engine');
     // 实际实现应该调用推理引擎服务
   }
@@ -315,7 +314,7 @@ export class DataPipelineService {
   /**
    * 发送到风险系统
    */
-  private async sendToRiskSystem(data: any): Promise<void> {
+  private async sendToRiskSystem(_data: any): Promise<void> {
     this.logger.debug('Sending data to risk system');
     // 实际实现应该调用风险系统服务
   }
@@ -323,7 +322,7 @@ export class DataPipelineService {
   /**
    * 发送到决策系统
    */
-  private async sendToDecisionSystem(data: any): Promise<void> {
+  private async sendToDecisionSystem(_data: any): Promise<void> {
     this.logger.debug('Sending data to decision system');
     // 实际实现应该调用决策系统服务
   }
@@ -331,7 +330,7 @@ export class DataPipelineService {
   /**
    * 发送到UI
    */
-  private async sendToUI(data: any): Promise<void> {
+  private async sendToUI(_data: any): Promise<void> {
     this.logger.debug('Sending data to UI');
     // 实际实现应该调用UI服务或通过WebSocket推送
   }
@@ -339,7 +338,7 @@ export class DataPipelineService {
   /**
    * 记录决策数据
    */
-  private async logDecisionData(processedData: ProcessedData): Promise<void> {
+  private async logDecisionData(_processedData: ProcessedData): Promise<void> {
     this.logger.debug('Logging decision data');
     // 实际实现应该记录到决策日志表
   }
@@ -387,7 +386,7 @@ export class DataPipelineService {
   async executePipeline(
     definition: PipelineDefinition,
     inputData?: any,
-    monitoringConfig?: PipelineMonitoringConfig
+    _monitoringConfig?: PipelineMonitoringConfig
   ): Promise<PipelineExecutionResult> {
     const executionId = `exec_${Date.now()}`;
     const startTime = new Date().toISOString();

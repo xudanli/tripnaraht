@@ -340,8 +340,7 @@ export class FineTuneService implements OnModuleInit {
     try {
       const plan = trajectory.plan as any;
       const decisionTrace = trajectory.decisionTrace as any;
-      const researchData = trajectory.researchData as any;
-      
+
       // 构建用户输入
       let userContent = '请帮我规划行程：\n';
       if (plan?.request) {

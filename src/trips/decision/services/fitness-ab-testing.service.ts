@@ -368,7 +368,7 @@ export class FitnessABTestingService {
   }> {
     // 从分配记录中获取该变体的用户
     const users: string[] = [];
-    for (const [key, assignment] of this.assignments) {
+    for (const [, assignment] of this.assignments) {
       if (assignment.experimentId === experimentId && assignment.variant === variant) {
         users.push(assignment.userId);
       }

@@ -8,7 +8,6 @@ import {
   IsEnum,
   IsBoolean,
   ValidateNested,
-  IsObject,
   Length,
 } from 'class-validator';
 import { Type } from 'class-transformer';

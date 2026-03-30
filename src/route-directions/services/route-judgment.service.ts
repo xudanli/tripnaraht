@@ -1,6 +1,6 @@
 // src/route-directions/services/route-judgment.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   RouteExistenceJudgment,
   FeasibilityJudgment,
@@ -200,7 +200,7 @@ export class RouteJudgmentService {
   /**
    * 检查地理可达性
    */
-  private async checkAccessibility(route: RouteDirectionData): Promise<{
+  private async checkAccessibility(_route: RouteDirectionData): Promise<{
     available: boolean;
     explanation: string;
     limitations?: string[];
@@ -255,8 +255,8 @@ export class RouteJudgmentService {
    * 检查交通可用性
    */
   private async checkTransportAvailability(
-    route: RouteDirectionData,
-    context: RouteContext,
+    _route: RouteDirectionData,
+    _context: RouteContext,
   ): Promise<{
     available: boolean;
     methods: string[];

@@ -7,7 +7,6 @@ import { RoadStatusRealtimeService } from './services/road-status-realtime.servi
 
 describe('FRoadCheckSkill', () => {
   let skill: FRoadCheckSkill;
-  let roadService: RoadStatusRealtimeService;
 
   const mockRoadService = {
     getRoadStatus: jest.fn(),
@@ -37,7 +36,6 @@ describe('FRoadCheckSkill', () => {
     }).compile();
 
     skill = module.get<FRoadCheckSkill>(FRoadCheckSkill);
-    roadService = module.get<RoadStatusRealtimeService>(RoadStatusRealtimeService);
 
     jest.clearAllMocks();
   });

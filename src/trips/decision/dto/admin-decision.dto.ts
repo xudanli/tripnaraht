@@ -3,7 +3,7 @@
  * 决策日志管理后台接口 DTO
  */
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsInt, Min, Max, IsEnum, IsDateString } from 'class-validator';
 
 export enum DecisionPersona {

@@ -97,7 +97,7 @@ export class EncryptionService {
       const combined = Buffer.from(encryptedData.encrypted, 'base64');
 
       // 提取各个部分
-      const salt = combined.slice(0, this.saltLength);
+      const _salt = combined.slice(0, this.saltLength);
       const iv = combined.slice(this.saltLength, this.saltLength + this.ivLength);
       const authTag = combined.slice(
         this.saltLength + this.ivLength,

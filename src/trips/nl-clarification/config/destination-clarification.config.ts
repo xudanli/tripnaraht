@@ -6,15 +6,8 @@
  * 支持为不同目的地配置特化的澄清问题和 Gate 预检查规则
  */
 
-// 导入用户画像数据
+// 导入用户画像数据（其余目的地通过文件末尾 re-export 暴露）
 import { GREENLAND_USER_PERSONAS } from './greenland-personas.config';
-import { K2_USER_PERSONAS } from './k2-personas.config';
-import { ALPS_USER_PERSONAS } from './alps-personas.config';
-import { SVALBARD_USER_PERSONAS } from './svalbard-personas.config';
-
-// 导入目的地配置模板
-import { ALPS_CONFIG_TEMPLATE } from './alps-clarification.config';
-import { SVALBARD_CONFIG_TEMPLATE } from './svalbard-clarification.config';
 
 /**
  * 目的地澄清配置

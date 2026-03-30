@@ -89,7 +89,7 @@ export class VisionService {
       const useGoogleOcr =
         !!this.configService?.get<string>('GOOGLE_VISION_API_KEY') &&
         !!this.googleOcrProvider;
-      const useRealOcr = useDeepSeekOcr || useGoogleOcr;
+      const _useRealOcr = useDeepSeekOcr || useGoogleOcr;
       const useRealPoi =
         !!this.configService?.get<string>('GOOGLE_PLACES_API_KEY') &&
         !!this.googlePoiProvider;

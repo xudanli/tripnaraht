@@ -6,7 +6,9 @@
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
     "build": "nest build && bash scripts/post-build.sh",
     "start": "node dist/src/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings 0",
+    "lint:p1-decision": "eslint \"src/decision/kernel/**/*.ts\" \"src/trips/decision/**/*.ts\" --max-warnings 0",
+    "lint:p1-agent": "eslint \"src/agent/**/*.ts\" --max-warnings 0",
     "backend:dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
     "backend:build": "nest build && bash scripts/post-build.sh",
     "backend:start": "node dist/src/main",
@@ -95,6 +97,19 @@
     "test:context-engine": "jest --testPathPatterns=context-engine",
     "test:skills": "jest --testPathPatterns=skills",
     "test:acceptance": "jest --testPathPatterns=acceptance-tests",
+    "test:ao-gate-p0": "jest src/agent/execution/gate-eval-executor.service.spec.ts src/agent/services/claude-orchestrator.gate-eval-step.spec.ts src/decision/kernel/decision-kernel.execute-gate-eval.spec.ts src/decision/kernel/decision-kernel.k4-state-safety.spec.ts src/decision/kernel/orchestrator-state-mapper.gate-migration.spec.ts",
+    "test:ao-verify-repair-p0": "jest src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/services/claude-orchestrator.verify-repair-step.spec.ts src/agent/services/claude-orchestrator.verify-repair-phase-kernel.spec.ts",
+    "test:ao-p0": "npm run test:ao-gate-p0 && npm run test:ao-verify-repair-p0 && jest src/agent/agent.controller.ao-p0.contract.spec.ts src/agent/agent.controller.ao-p0.integration.spec.ts src/agent/services/agent.service.route-and-run-ao-p0.integration.spec.ts src/agent/agent.route-and-run.ao-p0.e2e.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/contracts/route-and-run-k3-decision-log.contract.spec.ts src/agent/contracts/p1-route-and-run-validators.spec.ts",
+    "test:ao-p1-contract": "jest src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/contracts/route-and-run-k3-decision-log.contract.spec.ts src/agent/contracts/p1-route-and-run-validators.spec.ts src/decision/kernel/decision-kernel.k3-route-and-run.contract.spec.ts src/decision/kernel/orchestrator-state-mapper.dso-decision-log.contract.spec.ts",
+    "test:td-replay": "jest src/trips/decision/evaluation/e2e-replay.service.spec.ts src/trips/decision/evaluation/e2e-replay.fixtures-matrix.spec.ts",
+    "test:td-complex-samples": "jest src/trips/decision/complex-scenario-samples.baseline.spec.ts",
+    "test:td-verify-repair": "jest src/trips/decision/services/replan-coordinator.verify-repair.spec.ts",
+    "test:td-p0-core": "npm run test:td-complex-samples && npm run test:td-verify-repair && jest src/trips/decision/contracts/alternatives-min-contract.spec.ts src/trips/decision/contracts/decision-log-traceability.contract.spec.ts src/trips/decision/services/decision-log-storage.service.traceability.spec.ts src/trips/decision/services/replan-coordinator.dso-alternatives.spec.ts",
+    "test:td-p0": "npm run test:td-p0-core && npm run test:td-replay",
+    "test:td-p1-alternatives": "jest src/trips/decision/contracts/alternatives-min-contract.spec.ts",
+    "readiness:p1": "bash scripts/readiness-p1.sh",
+    "release-gate:v2": "bash scripts/release-gate-v2.sh",
+    "release-gate:v2:strict": "RELEASE_GATE_C1_STRICT=1 bash scripts/release-gate-v2.sh",
     "policy-service:start": "ts-node scripts/rl-infra/policy-service.ts",
     "policy-service:test": "ts-node scripts/rl-infra/test-policy-service.ts",
     "script:clean-iceland-poi": "tsx scripts/clean-iceland-poi-data.ts",
@@ -198,6 +213,7 @@
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "google-auth-library": "^10.5.0",
     "i18n-iso-countries": "^7.14.0",
@@ -219,7 +235,6 @@
     "rxjs": "^7.8.2",
     "stripe": "^20.3.1",
     "typeorm": "^0.3.28",
-    "exceljs": "^4.4.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -236,12 +251,16 @@
     "@types/nodemailer": "^6.4.14",
     "@types/pdf-parse": "^1.1.5",
     "@types/shapefile": "^0.6.4",
+    "@types/supertest": "^7.2.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8",
     "https-proxy-agent": "^7.0.6",
     "jest": "^30.2.0",
     "jsdom": "^27.0.1",
     "nodemon": "^3.1.11",
     "shapefile": "^0.6.6",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5"
@@ -259,6 +278,17 @@
     "@tootallnate/once": "^3.0.1",
     "ip": "^1.1.9",
     "pac-resolver": "^7.0.1",
-    "ajv": "^8.18.0"
+    "ajv": "^8.18.0",
+    "eslint": {
+      "ajv": "6.12.6",
+      "minimatch": "3.1.2"
+    },
+    "@eslint/eslintrc": {
+      "ajv": "6.12.6",
+      "minimatch": "3.1.2"
+    },
+    "@humanwhocodes/config-array": {
+      "minimatch": "3.1.2"
+    }
   }
 }

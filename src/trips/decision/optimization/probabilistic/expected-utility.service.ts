@@ -14,7 +14,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  Distribution,
   GaussianDistribution,
   BetaDistribution,
   TruncatedNormalDistribution,
@@ -26,10 +25,7 @@ import {
   WorldStateSample,
 } from './probabilistic-world-model.interface';
 import { RoutePlanDraft } from '../../shared/world-model.types';
-import {
-  ObjectiveEvaluationResult,
-  ObjectiveFunctionWeights,
-} from '../objective-function.interface';
+import { ObjectiveFunctionWeights } from '../objective-function.interface';
 
 /**
  * Monte Carlo 配置
@@ -361,7 +357,6 @@ export class ExpectedUtilityService {
     let converged = false;
     let convergenceReason: AdaptiveSamplingResult['convergenceReason'] = 'max_samples';
     let noImprovementCount = 0;
-    let lastVariance = Infinity;
 
     while (utilities.length < config.maxSamples) {
       const batchSize = Math.min(config.checkInterval, config.maxSamples - utilities.length);
@@ -415,8 +410,6 @@ export class ExpectedUtilityService {
             noImprovementCount = 0;
           }
         }
-
-        lastVariance = currentVariance;
       }
     }
 

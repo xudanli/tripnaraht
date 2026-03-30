@@ -164,7 +164,7 @@ export class DomainAgentErrorHandler {
     const strategy = { ...this.defaultStrategies[agent], ...customStrategy };
 
     // 创建标准化错误
-    const domainError = new DomainAgentError(
+    const _domainError = new DomainAgentError(
       errorType,
       agent,
       operation,

@@ -246,8 +246,8 @@ export class RouteDirectionCacheService {
    * 使 RD selection 缓存失效
    */
   async invalidateRdSelectionCache(
-    countryCode: string,
-    month?: number
+    _countryCode: string,
+    _month?: number
   ): Promise<void> {
     try {
       // 由于使用了哈希，我们需要删除所有匹配的键

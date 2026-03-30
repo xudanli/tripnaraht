@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { WeatherPrediction } from '../interfaces/unified-world-model.interface';
 import { HttpClientFactory } from '../../../common/utils/http-client.factory';
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 // 使用WeatherSearchSkill替代直接API调用
 import { WeatherSearchSkill } from '../../weather/weather-search.skill';
 import { CountryConfigService } from './country-config.service';

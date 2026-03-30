@@ -1,6 +1,6 @@
 // src/trips/decision/services/three-layer-explanation.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   ThreeLayerExplanation,
   EvidenceChainItem,

@@ -12,10 +12,6 @@ import { HotelsModule } from '../hotels/hotels.module';
 import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.service';
 import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
 
-// 检查是否在 MCP 模式下
-const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
-                  process.env.MCP_MODE === 'true';
-
 @Module({
   imports: [PrismaModule, HotelsModule],
   // MCP 模式下不包含 controllers

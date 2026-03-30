@@ -307,7 +307,7 @@ export class OfflinePolicyEvaluatorService {
   private calculateConfidenceInterval(
     trajectories: RLTrajectory[],
     estimatedReward: number,
-    method: string,
+    _method: string,
   ): OPEResult['confidence_interval'] {
     // 简化实现：使用标准误差
     const rewards = trajectories.map((t) => t.metadata.total_reward || 0);

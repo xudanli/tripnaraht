@@ -140,8 +140,6 @@ export class LlmResponseTransformerService {
         const questionIdMatch = error.message.match(/questionId: (\w+)/);
         if (questionIdMatch && fixed.responseBlocks) {
           const missingQuestionId = questionIdMatch[1];
-          // 尝试从clarificationQuestions中找到匹配的问题，或创建新的
-          const existingQuestions = fixed.clarificationQuestions || [];
           const questionCardBlocks = fixed.responseBlocks.filter((b: any) => 
             b.type === 'question_card' && b.questionId === missingQuestionId
           );

@@ -259,7 +259,7 @@ export class AlternativeComparisonService {
   private identifyImprovements(
     original: OptimizationResult,
     alternative: OptimizationResult,
-    context?: any
+    _context?: any
   ): Improvement[] {
     const improvements: Improvement[] = [];
 
@@ -342,7 +342,7 @@ export class AlternativeComparisonService {
   private identifyTradeoffs(
     original: OptimizationResult,
     alternative: OptimizationResult,
-    context?: any
+    _context?: any
   ): Tradeoff[] {
     const tradeoffs: Tradeoff[] = [];
 
@@ -383,7 +383,7 @@ export class AlternativeComparisonService {
     scoreDelta: number,
     improvements: Improvement[],
     tradeoffs: Tradeoff[],
-    context?: any
+    _context?: any
   ): 'ACCEPT' | 'REJECT' | 'NEED_USER_CONFIRM' {
     // 如果总体分数显著提升且无严重权衡，直接接受
     if (scoreDelta > 0.1 && tradeoffs.filter(t => t.severity === 'HIGH').length === 0) {
@@ -419,7 +419,7 @@ export class AlternativeComparisonService {
     scoreDelta: number,
     improvements: Improvement[],
     tradeoffs: Tradeoff[],
-    recommendation: 'ACCEPT' | 'REJECT' | 'NEED_USER_CONFIRM'
+    _recommendation: 'ACCEPT' | 'REJECT' | 'NEED_USER_CONFIRM'
   ): string {
     if (improvements.length === 0 && tradeoffs.length === 0) {
       return '替代方案与原始方案相似';

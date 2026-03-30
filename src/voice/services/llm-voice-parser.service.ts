@@ -2,7 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DayScheduleResult } from '../../planning-policy/interfaces/scheduler.interface';
-import { AssistantSuggestion, AssistantAction } from '../../assist/dto/action.dto';
+import { AssistantSuggestion } from '../../assist/dto/action.dto';
 import {
   generateVoiceSuggestionId,
   generateClarificationSuggestionId,

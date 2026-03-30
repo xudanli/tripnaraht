@@ -1,5 +1,5 @@
 // src/trips/dto/trip-collaborator.dto.ts
-import { IsString, IsEnum, IsEmail } from 'class-validator';
+import { IsEnum, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum CollaboratorRole {

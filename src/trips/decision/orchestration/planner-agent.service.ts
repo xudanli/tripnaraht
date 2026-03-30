@@ -11,7 +11,6 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IPlannerAgent, LangGraphState } from './langgraph-orchestrator.interface';
-import { TripNaraCoreToolInput } from '../tools/tripnara-core-tool.interface';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
@@ -415,7 +414,7 @@ export class PlannerAgentService implements IPlannerAgent {
   /**
    * 推断下一步
    */
-  private inferNextStep(query: string, countryCode?: string): 'CORE_DECISION' | 'COMPLIANCE_CHECK' | 'LOCAL_INSIGHT' {
+  private inferNextStep(query: string, _countryCode?: string): 'CORE_DECISION' | 'COMPLIANCE_CHECK' | 'LOCAL_INSIGHT' {
     // 如果涉及合规相关关键词，先做合规检查
     if (query.includes('签证') || query.includes('visa') || query.includes('许可') || query.includes('permit')) {
       return 'COMPLIANCE_CHECK';

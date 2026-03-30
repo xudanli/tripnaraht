@@ -25,7 +25,7 @@ import {
 } from '@nestjs/swagger';
 import { AirbnbService } from './airbnb.service';
 import { AirbnbMonitoringService } from './airbnb-monitoring.service';
-import { AirbnbSearchDto, AirbnbListingDetailsDto } from './dto/airbnb-search.dto';
+import { AirbnbSearchDto } from './dto/airbnb-search.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';

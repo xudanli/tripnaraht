@@ -2,7 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ConstraintRule, ConstraintType, ConstraintSeverity } from '../interfaces/safety-compliance.interface';
+import { ConstraintRule, ConstraintType } from '../interfaces/safety-compliance.interface';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

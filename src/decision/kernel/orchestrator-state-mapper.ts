@@ -24,6 +24,10 @@ import {
   RequiredAdjustment,
 } from '../../agent/interfaces/trip-plan.interface';
 import { inferDecisionMeta, DecisionMetaInput } from './decision-meta-inference';
+import {
+  buildTravelOntologyStateFromOrchestrator,
+  mergeTravelOntologyState,
+} from './travel-ontology.mapper';
 
 /**
  * 从 OrchestratorState 投影为 DecisionStatePatch（增量更新用）
@@ -73,6 +77,9 @@ export function orchestratorStateToDecisionStatePatch(
   };
   patch.decisionMeta = inferDecisionMeta(metaInput);
 
+  const travelOntology = buildTravelOntologyStateFromOrchestrator(os);
+  if (travelOntology) patch.travelOntologyState = travelOntology;
+
   return patch;
 }
 
@@ -118,6 +125,10 @@ export function buildPatchFromDSOPrimary(
 
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;
 
+  if (fromO.travelOntologyState) {
+    patch.travelOntologyState = mergeTravelOntologyState(dso.travelOntologyState, fromO.travelOntologyState);
+  }
+
   return patch;
 }
 
@@ -146,6 +157,9 @@ export function buildHistoryDeltasFromPatch(patch: DecisionStatePatch): StateHis
   }
   if (patch.tripState?.planDraft) {
     deltas.push({ type: 'plan', summary: 'plan draft updated', at: now });
+  }
+  if (patch.travelOntologyState) {
+    deltas.push({ type: 'ontology', summary: 'travelOntologyState updated', at: now });
   }
   return deltas;
 }
@@ -278,8 +292,12 @@ export function decisionStateToOrchestratorState(
   }
 
   // Scheme B: 保留 base 的运行时累积字段（alternatives、compliance_result、narration 等）
-  // 当 DSO 为主状态源时，派生 O 需保留这些 Skills/步骤产出
-  if (base?.alternatives) out.alternatives = base.alternatives;
+  // DSO `tripState.orchestratorAlternatives`（Kernel GATE_EVAL BLOCK 写入）优先于 base
+  if (dso.tripState?.orchestratorAlternatives) {
+    out.alternatives = dso.tripState.orchestratorAlternatives as OrchestratorState['alternatives'];
+  } else if (base?.alternatives) {
+    out.alternatives = base.alternatives;
+  }
   if (base?.compliance_result) out.compliance_result = base.compliance_result;
   if (base?.narration) out.narration = base.narration;
   if (base?.clarification_questions?.length) out.clarification_questions = base.clarification_questions;
@@ -317,6 +335,23 @@ function userIntentToTripPlanRequest(intent: UserIntent, requestId: string): Tri
 }
 
 function constraintReportToGateResult(cr: ConstraintReport): GateResult {
+  if (cr.gateOutcome === 'NEED_USER_CONFIRM') {
+    const violations: GateViolation[] = (cr.violations ?? []).map((v) => ({
+      type: v.type as GateViolation['type'],
+      severity: v.severity,
+      detail: v.detail,
+    }));
+    const required_adjustments: RequiredAdjustment[] = (cr.feasibleActions ?? []).map((a) => ({
+      action: a as RequiredAdjustment['action'],
+      why: a,
+    }));
+    return {
+      gate_result: 'NEED_USER_CONFIRM',
+      violations,
+      required_adjustments,
+      confidence: 0.8,
+    };
+  }
   const gate_result: GateResultStatus = cr.feasible ? 'ALLOW' : cr.violations?.some((v) => v.severity === 'HARD') ? 'BLOCK' : 'ADJUST_REQUIRED';
   const violations: GateViolation[] = (cr.violations ?? []).map((v) => ({
     type: v.type as GateViolation['type'],
@@ -355,6 +390,20 @@ function environmentStateToResearchData(env: EnvironmentState): Record<string, u
  * 从 GateResult 投影为 ConstraintReport
  */
 function gateResultToConstraintReport(gate: GateResult): ConstraintReport {
+  if (gate.gate_result === 'NEED_USER_CONFIRM') {
+    const violations = (gate.violations || []).map((v) => ({
+      type: v.type,
+      severity: v.severity,
+      detail: v.detail,
+      degree: v.severity === 'HARD' ? 1 : 0.5,
+    }));
+    return {
+      feasible: false,
+      violations,
+      feasibleActions: gate.required_adjustments?.map((a) => a.action),
+      gateOutcome: 'NEED_USER_CONFIRM',
+    };
+  }
   const feasible = gate.gate_result === 'ALLOW';
   const violations = (gate.violations || []).map((v) => ({
     type: v.type,

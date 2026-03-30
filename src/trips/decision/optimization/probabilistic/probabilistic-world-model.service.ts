@@ -11,16 +11,13 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  Distribution,
   GaussianDistribution,
   BetaDistribution,
   TruncatedNormalDistribution,
   CategoricalDistribution,
   createGaussian,
-  createBeta,
   createTruncatedNormal,
   createCategorical,
-  fromPointEstimate,
   fromProbabilityEstimate,
 } from './distribution.interface';
 import {
@@ -268,7 +265,7 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
    */
   private convertHazards(
     hazardZones: WorldModelContext['physical']['hazardZones'],
-    config: UncertaintyConfig
+    _config: UncertaintyConfig
   ): ProbabilisticHazard[] {
     if (!Array.isArray(hazardZones)) {
       return [];

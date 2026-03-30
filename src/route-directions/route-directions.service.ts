@@ -10,7 +10,7 @@ import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
-import { RouteDirectionData, RouteTemplateData, DayPlan } from './interfaces/route-direction.interface';
+import { DayPlan } from './interfaces/route-direction.interface';
 import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
 
 @Injectable()
@@ -1814,7 +1814,7 @@ export class RouteDirectionsService {
   private async retrievePlaceCandidates(
     countryCode: string,
     dayPlans: DayPlan[],
-    routeDirection: any
+    _routeDirection: any
   ): Promise<Array<{ id: number; nameCN: string; nameEN?: string; category: string; lat: number; lng: number; uuid?: string; isRequired?: boolean }>> {
     // 1. 优先收集 dayPlans 中的 pois 字段（如果存在）
     const poisFromTemplate: Array<{
@@ -2003,20 +2003,7 @@ export class RouteDirectionsService {
       ? Prisma.sql`AND p.category = ANY(${categories}::"PlaceCategory"[])`
       : Prisma.sql``;
 
-    // 3. 构建 requiredNodes 过滤（优先匹配 requiredNodes）
-    let requiredNodesSql = Prisma.sql``;
-    if (requiredNodeIds.length > 0 || requiredNodeNames.length > 0) {
-      const conditions: string[] = [];
-      if (requiredNodeIds.length > 0) {
-        conditions.push(`p.uuid = ANY(${requiredNodeIds}::text[])`);
-      }
-      if (requiredNodeNames.length > 0) {
-        conditions.push(`(p."nameCN" = ANY(${requiredNodeNames}::text[]) OR p."nameEN" = ANY(${requiredNodeNames}::text[]))`);
-      }
-      requiredNodesSql = Prisma.sql`OR (${Prisma.raw(conditions.join(' OR '))})`;
-    }
-
-    // 4. 查询地点（优先返回 requiredNodes，然后返回其他候选）
+    // 3. 查询地点（优先返回 requiredNodes，然后返回其他候选）
     // 如果 requiredNodes 存在，优先查询这些节点
     if (requiredNodeIds.length > 0 || requiredNodeNames.length > 0) {
       const requiredPlaces = await this.prisma.$queryRaw<Array<{
@@ -2187,47 +2174,6 @@ export class RouteDirectionsService {
     startDate: Date,
     durationDays: number
   ): Promise<any> {
-    // 构建 prompt
-    const prompt = this.buildOrchestrationPrompt(template, dto, candidates, startDate, durationDays);
-
-    // 定义输出 schema
-    const slotItemSchema = {
-      type: 'object',
-      properties: {
-        placeId: { type: 'number' },
-        reason: { type: 'string' },
-        required: { type: 'boolean' },
-      },
-      required: ['placeId', 'reason'],
-    };
-
-    const schema = {
-      type: 'object',
-      properties: {
-        days: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              day: { type: 'number' },
-              slots: {
-                type: 'object',
-                properties: {
-                  morning: slotItemSchema,
-                  lunch: slotItemSchema,
-                  afternoon: slotItemSchema,
-                  dinner: slotItemSchema,
-                  evening: slotItemSchema,
-                },
-              },
-            },
-            required: ['day', 'slots'],
-          },
-        },
-      },
-      required: ['days'],
-    };
-
     try {
       // 注意：这里需要注入 LlmService，暂时返回 mock 数据
       // 实际实现时需要调用 LlmService
@@ -2259,7 +2205,6 @@ export class RouteDirectionsService {
     // 按类别分组候选POI
     const restaurants = candidates.filter(c => c.category === 'RESTAURANT');
     const attractions = candidates.filter(c => c.category === 'ATTRACTION');
-    const hotels = candidates.filter(c => c.category === 'HOTEL');
     
     // 🆕 获取模板中定义的POI（按 startTime 排序，如果没有则按数组顺序）
     const getTemplatePOIs = (dayPlan: DayPlan | undefined): Array<{ 
@@ -2517,7 +2462,6 @@ export class RouteDirectionsService {
       if (!slots.lunch && templateRestaurants.length > 0) {
         const poi = getUnusedPOI(restaurants, templateRestaurants) || getUnusedPOI(restaurants, themeRestaurants);
         if (poi) {
-          const candidate = candidates.find(c => c.id === poi);
           slots.lunch = {
             placeId: poi,
             reason: '午餐推荐',
@@ -2541,7 +2485,6 @@ export class RouteDirectionsService {
       if (!slots.dinner && templateRestaurants.length > 0) {
         const poi = getUnusedPOI(restaurants, templateRestaurants) || getUnusedPOI(restaurants, themeRestaurants);
         if (poi) {
-          const candidate = candidates.find(c => c.id === poi);
           slots.dinner = {
             placeId: poi,
             reason: '晚餐推荐',
@@ -2567,8 +2510,8 @@ export class RouteDirectionsService {
     template: any,
     dto: CreateTripFromRouteTemplateDto,
     candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string }>,
-    startDate: Date,
-    durationDays: number
+    _startDate: Date,
+    _durationDays: number
   ): string {
     return `你是一个旅行规划助手。请根据提供的路线模板和候选地点，为每一天的每个时段选择合适的 placeId。
 

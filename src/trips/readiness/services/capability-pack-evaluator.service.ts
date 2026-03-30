@@ -10,7 +10,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TripContext } from '../types/trip-context.types';
 import {
   CapabilityPackConfig,
-  CapabilityPackType,
   CapabilityCondition,
   CapabilityPackResult,
 } from '../types/capability-pack.types';
@@ -93,7 +92,7 @@ export class CapabilityPackEvaluatorService {
   convertToReadinessPack(
     pack: CapabilityPackConfig,
     destinationId: string,
-    geo?: TripContext['geo']
+    _geo?: TripContext['geo']
   ): ReadinessPack {
     const rules: Rule[] = pack.rules.map(rule => ({
       id: rule.id,

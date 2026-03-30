@@ -1,6 +1,6 @@
 // src/agent/training/dto/trajectory.dto.ts
 
-import { IsString, IsOptional, IsObject, IsArray, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Itinerary, DecisionLogEntry, GateResult } from '../../interfaces/trip-plan.interface';
 import { ComplianceResult } from '../interfaces/trajectory.interface';

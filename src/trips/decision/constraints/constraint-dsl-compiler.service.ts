@@ -171,7 +171,7 @@ export class ConstraintDSLCompiler {
   private compileSoftConstraints(
     soft: SoftConstraints,
     output: Record<string, any>,
-    paceMultiplier: { ascent: number; elevation: number; buffer: number }
+    _paceMultiplier: { ascent: number; elevation: number; buffer: number }
   ): void {
     // 节奏偏好（转换为目标函数权重）
     if (soft.pace) {

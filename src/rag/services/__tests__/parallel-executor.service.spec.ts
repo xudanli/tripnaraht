@@ -215,8 +215,7 @@ describe('ParallelExecutorService', () => {
 
   describe('executeBatch', () => {
     it('应该按批次执行任务', async () => {
-      const executionBatches: string[][] = [];
-      let currentBatch: string[] = [];
+      const currentBatch: string[] = [];
 
       const createTask = (id: string) => ({
         id,

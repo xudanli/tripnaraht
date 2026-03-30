@@ -1,0 +1,153 @@
+name: ROLL Auto Rollback Trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      current_model_version:
+        description: "Current canary model version"
+        required: true
+      previous_model_version:
+        description: "Previous stable model version"
+        required: true
+      fallback_rate:
+        description: "Observed fallback rate (0..1)"
+        required: true
+      error_rate:
+        description: "Observed error rate (0..1)"
+        required: true
+      simulation_rate:
+        description: "Observed simulation rate (0..1)"
+        required: true
+      trigger_reason:
+        description: "Optional manual reason"
+        required: false
+        default: ""
+  repository_dispatch:
+    types: [roll_auto_rollback]
+
+jobs:
+  auto-rollback:
+    concurrency:
+      group: roll-auto-rollback-global
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare rollback script
+        run: |
+          chmod +x scripts/rl-infra/roll/canary-rollback.sh
+          chmod +x scripts/rl-infra/roll/rollback-cooldown-guard.sh
+          chmod +x scripts/rl-infra/roll/rollback-consecutive-guard.sh
+
+      - name: Normalize rollback inputs
+        id: input
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          payload = {}
+          if event_name == "repository_dispatch":
+            payload = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")).get("client_payload", {}) or {}
+
+          def pick(name, default=""):
+            if event_name == "workflow_dispatch":
+              return os.environ.get(f"INPUT_{name.upper()}", default)
+            return str(payload.get(name, default))
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as f:
+            f.write(f"current_model_version={pick('current_model_version')}\n")
+            f.write(f"previous_model_version={pick('previous_model_version')}\n")
+            f.write(f"fallback_rate={pick('fallback_rate', '0')}\n")
+            f.write(f"error_rate={pick('error_rate', '0')}\n")
+            f.write(f"simulation_rate={pick('simulation_rate', '0')}\n")
+            f.write(f"trigger_reason={pick('trigger_reason', '')}\n")
+          PY
+
+      - name: Decide rollback
+        id: decision
+        run: |
+          python3 - <<'PY'
+          import os
+          fallback = float(os.environ["FALLBACK_RATE"])
+          error = float(os.environ["ERROR_RATE"])
+          simulation = float(os.environ["SIMULATION_RATE"])
+
+          # Week3 rollback policy
+          rollback = (
+              simulation > 0.0 or
+              fallback > 0.03 or
+              error > 0.03
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"rollback={'true' if rollback else 'false'}\n")
+          print(f"rollback={rollback}")
+          PY
+        env:
+          FALLBACK_RATE: ${{ steps.input.outputs.fallback_rate }}
+          ERROR_RATE: ${{ steps.input.outputs.error_rate }}
+          SIMULATION_RATE: ${{ steps.input.outputs.simulation_rate }}
+
+      - name: Cooldown guard
+        id: cooldown
+        if: ${{ steps.decision.outputs.rollback == 'true' }}
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLLBACK_COOLDOWN_MINUTES: ${{ vars.ROLLBACK_COOLDOWN_MINUTES || '10' }}
+        run: |
+          ./rollback-cooldown-guard.sh rollback-cooldown-state.env
+
+      - name: Consecutive anomaly guard
+        id: consecutive
+        if: ${{ steps.decision.outputs.rollback == 'true' }}
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLLBACK_MIN_CONSECUTIVE_WINDOWS: ${{ vars.ROLLBACK_MIN_CONSECUTIVE_WINDOWS || '2' }}
+        run: |
+          ./rollback-consecutive-guard.sh true rollback-consecutive-state.env
+
+      - name: Consecutive anomaly reset (no anomaly)
+        if: ${{ steps.decision.outputs.rollback != 'true' }}
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLLBACK_MIN_CONSECUTIVE_WINDOWS: ${{ vars.ROLLBACK_MIN_CONSECUTIVE_WINDOWS || '2' }}
+        run: |
+          ./rollback-consecutive-guard.sh false rollback-consecutive-state.env
+
+      - name: Seed canary state
+        if: ${{ steps.decision.outputs.rollback == 'true' && steps.cooldown.outputs.cooldown_block != 'true' && steps.consecutive.outputs.consecutive_block != 'true' }}
+        working-directory: scripts/rl-infra/roll
+        run: |
+          cat > canary-state.env <<EOF
+          ROLL_PREVIOUS_MODEL_VERSION=${{ steps.input.outputs.previous_model_version }}
+          ROLL_CANARY_MODEL_VERSION=${{ steps.input.outputs.current_model_version }}
+          ROLL_CANARY_TRAFFIC_PERCENT=0
+          EOF
+
+      - name: Execute rollback
+        if: ${{ steps.decision.outputs.rollback == 'true' && steps.cooldown.outputs.cooldown_block != 'true' && steps.consecutive.outputs.consecutive_block != 'true' }}
+        working-directory: scripts/rl-infra/roll
+        run: ./canary-rollback.sh
+
+      - name: Emit rollback decision
+        run: |
+          echo "rollback=${{ steps.decision.outputs.rollback }}"
+          echo "cooldown_block=${{ steps.cooldown.outputs.cooldown_block || 'false' }}"
+          echo "consecutive_block=${{ steps.consecutive.outputs.consecutive_block || 'false' }}"
+          echo "consecutive_count=${{ steps.consecutive.outputs.consecutive_count || '0' }}"
+          echo "reason=${{ steps.input.outputs.trigger_reason }}"
+
+      - name: Upload rollback state
+        if: ${{ steps.decision.outputs.rollback == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-state
+          path: |
+            scripts/rl-infra/roll/canary-state.env
+            scripts/rl-infra/roll/rollback-cooldown-state.env
+            scripts/rl-infra/roll/rollback-consecutive-state.env

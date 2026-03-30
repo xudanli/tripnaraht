@@ -5,7 +5,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ApprovalStatus } from '@prisma/client';
 import {
   TrajectoryCollectionData,
-  TrajectoryUpdateData,
   ExecutionResult,
 } from '../interfaces/trajectory.interface';
 import { TrajectoryValidatorService } from './trajectory-validator.service';
@@ -14,7 +13,7 @@ import { RollTrajectoryAdapterService } from './roll-trajectory-adapter.service'
 import { GateResult } from '../../interfaces/trip-plan.interface';
 import { RewardSignal } from '../interfaces/trajectory.interface';
 // 护城河扩展：用户反馈学习系统
-import { UserFeedbackService, SubmitFeedbackRequest } from '../../../skills/world/services/user-feedback.service';
+import { UserFeedbackService } from '../../../skills/world/services/user-feedback.service';
 import { UserCapabilityLearningService } from '../../../skills/world/services/user-capability-learning.service';
 
 /**

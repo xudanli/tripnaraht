@@ -261,7 +261,7 @@ export class StateStoreService {
   /**
    * 更新状态（乐观锁）
    */
-  async update<T>(
+  async update(
     stateId: string,
     stateType: StateType,
     patches: JsonPatch[],

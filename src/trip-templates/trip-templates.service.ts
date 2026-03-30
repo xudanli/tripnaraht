@@ -87,8 +87,7 @@ export class TripTemplatesService {
     // 合并模板配置和用户提供的配置
     const config = template.config as any;
     const budgetConfig = dto.overrideConfig?.budgetConfig || config.budgetConfig || {};
-    const pacingConfig = dto.overrideConfig?.pacingConfig || config.pacingConfig || {};
-    
+
     // 如果用户提供了总预算，覆盖模板的预算配置
     if (dto.totalBudget) {
       budgetConfig.totalBudget = dto.totalBudget;

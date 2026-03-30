@@ -99,7 +99,7 @@ describe('TFJSModelPersistenceService', () => {
       await new Promise(resolve => setTimeout(resolve, 1100));
 
       const model2 = createTestModel();
-      const info2 = await service.saveModel(model2, 'multi_version', 'policy');
+      await service.saveModel(model2, 'multi_version', 'policy');
       model2.dispose();
 
       const loadedV1 = await service.loadModel('multi_version', { version: info1.version });

@@ -255,7 +255,7 @@ export class ContextEvaluateSkill implements Skill<ContextEvaluateInput, Context
    */
   private evaluateQuality(
     metrics: ContextEvaluateOutput['metrics'],
-    contextPackage: ContextPackage,
+    _contextPackage: ContextPackage,
   ): {
     quality: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR';
     issues: string[];

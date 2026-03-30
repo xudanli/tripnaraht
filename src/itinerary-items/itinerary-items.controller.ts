@@ -1,5 +1,5 @@
 // src/itinerary-items/itinerary-items.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException, NotFoundException, Logger, ParseFloatPipe, ParseEnumPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { ItineraryItemsService } from './itinerary-items.service';
 import { ItineraryValidationService } from './services/itinerary-validation.service';
@@ -8,7 +8,7 @@ import { CreateItineraryItemDto } from './dto/create-itinerary-item.dto';
 import { UpdateItineraryItemDto } from './dto/update-itinerary-item.dto';
 import { AggregatedValidationResultDto, BatchValidationResultDto } from './dto/validation-result.dto';
 import { ItemCostDto, BatchUpdateCostDto, TripCostSummaryDto, BatchUpdateCostResultDto } from './dto/item-cost.dto';
-import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
+import { SearchNearbyPoiQueryDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';

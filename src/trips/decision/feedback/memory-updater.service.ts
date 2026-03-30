@@ -9,7 +9,6 @@
 
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { DecisionRunLog } from '../decision-log';
-import { ConstraintConflict } from '../constraints/constraint-dsl.types';
 import { LearningService } from '../learning/learning.service';
 import {
   PlanVariantFeedback,

@@ -19,7 +19,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TripPlan, PlanDay } from '../plan-model';
 import { DEMElevationService } from '../../dem/services/dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
+import { DEMEffortMetadataService } from '../../dem/services/dem-effort-metadata.service';
 import {
   DemDecisionEvidence,
   DemEvidencePipelineResult,
@@ -268,7 +268,6 @@ export class DemDecisionEvidencePipelineService {
 
     // 收集所有海拔数据
     const elevations: number[] = [];
-    const slopes: number[] = [];
 
     for (const day of plan.days) {
       if (day.terrainFacts?.maxElevation) {
@@ -380,7 +379,7 @@ export class DemDecisionEvidencePipelineService {
   private generateExplainableFailure(
     evidences: DemDecisionEvidence[],
     rollingFatigue?: RollingFatigueDetection,
-    userConstraints?: {
+    _userConstraints?: {
       maxDailyAscentM?: number;
       maxElevationM?: number;
       maxSlopePct?: number;

@@ -7,11 +7,8 @@ import {
   TERRAIN_INTENSITY,
   TerrainType,
   TRAIL_DIFFICULTY,
-  TrailDifficulty,
   ACCESS_TYPES,
-  AccessType,
   TYPICAL_STAY,
-  TypicalStay,
   METADATA_LIMITS,
   HIGH_ELEVATION_THRESHOLD,
 } from './physical-metadata-constants';
@@ -157,7 +154,7 @@ export class PhysicalMetadataGenerator {
   private static enhanceFromMetadata(
     base: PhysicalMetadata,
     metadata: any,
-    category: PlaceCategory
+    _category: PlaceCategory
   ): PhysicalMetadata {
     const patches: PhysicalMetadataPatch[] = [];
 
@@ -459,7 +456,7 @@ export class PhysicalMetadataGenerator {
     base: PhysicalMetadata,
     patches: PhysicalMetadataPatch[]
   ): PhysicalMetadata {
-    let result = { ...base };
+    const result = { ...base };
     
     // 地形类型：使用最高强度的（优先级：STAIRS_ONLY > HILLY > FLAT > ELEVATOR_AVAILABLE）
     let maxTerrainIntensity = TERRAIN_INTENSITY[result.terrain_type as TerrainType] || 1;

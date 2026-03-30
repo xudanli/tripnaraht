@@ -268,7 +268,7 @@ export class ModelABTestService {
   private generateRecommendation(
     improvement: Record<string, { absolute: number; percentage: number }>,
     statisticalSignificance: Record<string, { pValue: number; significant: boolean }>,
-    experimentResult: any,
+    _experimentResult: any,
   ): { recommendation: 'PROMOTE' | 'REJECT' | 'CONTINUE'; reasoning: string } {
     // 检查关键指标
     const keyMetrics = ['accuracy', 'success_rate', 'user_satisfaction'];

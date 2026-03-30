@@ -8,7 +8,6 @@
 
 import { ISODatetime, ISODate } from './world-model';
 import { DecisionPersona, DecisionAction } from './shared/decision-result.types';
-import { TripPlan } from './plan-model';
 import { ConstraintConflict } from './constraints/constraint-dsl.types';
 
 export type DecisionTrigger =

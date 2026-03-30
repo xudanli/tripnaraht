@@ -39,7 +39,7 @@ Plan B：稳妥方案（风险 12%）
 Plan C：保底方案（风险 5%）
 ```
 
-**UI 展示的是：「你在为哪种风险付费」**
+**UI 展示的是：「选择某行动后，状态如何变化（Delta）以及风险轨迹如何演化」**（你在为未来状态变化的风险变化付费，而不是静态提醒）
 
 ### 与传统旅行产品的差异
 
@@ -71,7 +71,36 @@ Plan C：保底方案（风险 5%）
 
 - **TripNARA 产品哲学优先**：决策优先、可执行优先、安全与可达性门控优先、解释与责任优先。
 
+- **对外人格边界（已定稿）**：**用户可见的具名人格仅** **Abu**、**Dr.Dre**、**Neptune** 三者；**PlannerAgent、NarratorAgent、ComplianceAgent** 等其余 Sub-Agent **不得在 UI / 用户文案 / 对外材料中独立具名**；其输出与能力一律**归并到三人格叙事与决策归因**（研发文档、日志、排障可写真实 Agent 名）。
+
 ## [TripNARA 关键要素（按需启用）]
+
+### TripNARA 本体论（Ontology，世界模型）
+
+**核心思想**：将「旅行」建模为**可计算的世界**——有类型化的对象、关系与状态，系统在该世界上做**决策**而非仅生成文本。
+
+**五大对象**（PRD / 字段设计时优先用此语言对齐 **DSO**）：
+
+| 对象 | 含义 | 典型实例 / 属性 |
+|------|------|-----------------|
+| **Agent** | 人 | 用户、同行人；体能、偏好、风险承受 |
+| **Place** | 空间 | 景点、餐厅、区域；地理位置、拥挤度、开放时间、类型标签 |
+| **Action** | 行为 | 去某地、就餐、徒步、交通移动（可执行单元） |
+| **Resource** | 资源 | **时间**、金钱、**体力**（约束与消耗，门控与 VERIFY 高频） |
+| **Event** | 事件 | 天气、延误、拥堵、风险（外生，可触发 REPLAN / Gate） |
+
+**关系（本体的灵魂，用边表达）**：
+
+- **Agent → performs → Action**
+- **Action → occurs at → Place**
+- **Action → consumes → Resource**
+- **Event → impacts → Action / Place**（及对 Resource 的间接影响，如延误吞时间）
+
+**状态**：**S = (Agent, Place, Time, Resource, Context)** — 实现上对应 **DSO（DecisionState）** 与 **OrchestratorState** 的派生关系；**STATE_UPDATE** 即显式同步该世界状态。
+
+**决策本质**：在合法转移与约束下选择 **Action 序列** → **Itinerary = Decision Path**（行程即决策路径）。
+
+**对外叙事（可选）**：**TripNARA** = 人类**体验**世界的可计算本体；与「企业运营本体」类比时强调 **experiences vs operations**、**Decision Intelligence Infrastructure**（非单纯「行程生成工具」）。
 
 ### 核心架构
 
@@ -115,11 +144,11 @@ Plan C：保底方案（风险 5%）
 - RESEARCH 阶段调用 `dem.get.profile` Skill
 - VERIFY 阶段验证疲劳阈值
 
-**三人格决策系统**：
+**三人格决策系统（对外唯一具名人格）**：
 - **Abu**（GatekeeperAgent）：安全与现实守门
 - **Dr.Dre**（PaceAgent / CoreDecisionAgent）：节奏与体感
 - **Neptune**（LocalInsightAgent）：空间结构修复
-- 只暴露三人格给用户，其他 Sub-Agents 隐藏
+- **硬性规则**：**仅**上述三人出现在用户侧（卡片、解释、门控结论、多方案对比）；**其他 Sub-Agent 不具名、不单独占屏**；PRD 与验收中凡写「用户看到谁」，**答案只能是这三人格**。
 
 **决策日志与可解释性**：
 - `DecisionLogEntry` 记录每个步骤的决策
@@ -283,6 +312,7 @@ Plan C：保底方案（风险 5%）
 - **0.4** 需求范围（In/Out）与约束（数据、合规、设备、地区）
 - **0.5** 竞品与对标（如涉及必须搜索核验）
 - **0.6** 总体方案概览（端到端闭环图：输入→门控→生成→执行→反馈）
+  - **TripNARA 本体论**：五对象（Agent / Place / Action / Resource / Event）+ 关系 + **S** 与 **DSO** 对应 + **Itinerary = Decision Path**
 - **0.7** 关键流程（用户流 + 系统流 + 异常流）
   - 必须说明走哪种编排模式（LEGACY / CLAUDE_DYNAMIC / CLAUDE_SM）
   - 状态机步骤（如果是 CLAUDE_SM）
@@ -298,14 +328,21 @@ Plan C：保底方案（风险 5%）
   - RESEARCH 阶段 DEM 数据收集
   - VERIFY 阶段疲劳评分
 - **0.11** 页面与交互设计（信息架构、组件、状态、文案）
-  - 三人格卡片（Abu/Dr.Dre/Neptune）
+  - 三人格卡片（**仅** Abu / Dr.Dre / Neptune，已定稿）
   - 证据抽屉（Evidence Drawer）
-  - 决策日志展示
+  - 决策日志展示（归因语言仍落在三人格）
+  - **Delta 状态变化展示**（risk_score/cost/fatigue/continuity/satisfaction 的 Delta + 对应概率或置信度）
+  - **风险轨迹展示**（时间轴，多步预测事件链，用于短 horizon 高频重规划的可回放对比）
 - **0.12** 数据模型与字段字典（Entity/字段/来源/校验/状态机）
+  - 字段说明尽量映射到**本体**（Agent / Place / Action / Resource / Event）与 **DSO** 片段，避免无域名的散落字段
+  - **本体 ↔ 字段对照表**：`docs/TRIPNARA_ONTOLOGY_FIELD_MAPPING.md`
   - `TripPlanRequest`、`OrchestratorState`、`GateResult`、`Itinerary`、`DecisionLogEntry`
-  - 参考 `src/agent/interfaces/trip-plan.interface.ts`
+  - 参考 `src/agent/interfaces/trip-plan.interface.ts`、`src/decision/kernel/decision-state.types.ts`
+  - **Latent Contract（潜在空间协议）字段字典**：必须显式定义 `z_env / z_user / z_state` 及其归一化范围、缺失值策略
+  - **多头 Predictor 输出字段**：risk/continuity/fatigue/cost 等 head 的概率/分布格式，以及它们如何映射到 EvidenceRef 与用户可读语义（Explain Layer）
+  - **Decision Trace 与预测误差字段**：必须定义 `z_pred / z_real / delta`，并可落地三类 error（World Error / User Drift / Utility Error）
 - **0.13** 多智能体与决策日志（Planner/Narrator/Compliance/Insight/CoreDecision）
-  - Sub-Agents 协作流程
+  - Sub-Agents 协作流程（**用户侧不具名**其他 Agent）
   - 三人格映射规则
   - 决策日志格式
 - **0.14** 服务端与接口（API、权限、缓存、降级、容灾）
@@ -315,6 +352,7 @@ Plan C：保底方案（风险 5%）
 - **0.15** 埋点与数据分析（事件、漏斗、A/B、质量监控）
   - Trace 信息：`RouteAndRunResponseDto.observability.trace`
   - 结构化日志字段
+  - **预测误差埋点**（Prediction Error）：World Error / User Drift / Utility Error 的统计口径与回归用途
 - **0.16** 风控、合规与责任边界（提示、免责声明、人工兜底）
   - ComplianceAgent 职责
   - 风险提示规则
@@ -365,6 +403,7 @@ Plan C：保底方案（风险 5%）
 - `src/agent/training/controllers/training.controller.ts` - 训练管理 API
 
 **文档**：
+- `docs/TRIPNARA_ONTOLOGY_FIELD_MAPPING.md` - **本体论与 DSO/接口字段映射**
 - `docs/AGENT_CALL_SEQUENCE.md` - **调用顺序与状态机流程（必读）**
 - `docs/ARCHITECT_GAP_REMEDIATION_PLAN.md` - 架构补救方案
 - `docs/ARCHITECT_IMPLEMENTATION_STATUS.md` - 实现状态快照

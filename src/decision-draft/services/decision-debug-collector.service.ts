@@ -124,9 +124,6 @@ export class DecisionDebugCollectorService {
     const completedSteps = executionTrace.steps.filter(
       (step) => step.status === 'completed',
     );
-    const failedSteps = executionTrace.steps.filter(
-      (step) => step.status === 'failed',
-    );
 
     const successRate =
       executionTrace.steps.length > 0

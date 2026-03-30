@@ -228,7 +228,6 @@ export class EvidenceTriggerService {
         m => recommendation.affectedPois.includes(m.poiId)
       );
 
-      const poiNames = affectedPois.map(p => p.poiName).join('、');
       const reason = affectedPois.map(p => p.reason).join('；');
 
       suggestions.push({

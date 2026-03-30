@@ -7,9 +7,6 @@
  */
 
 import { WorldModelContext } from '../../../trips/decision/shared/world-model.types';
-import { PhysicalRealityModel } from '../../../trips/decision/models/physical-reality.model';
-import { HumanCapabilityModel } from '../../../trips/decision/models/human-capability.model';
-import { RouteDirectionWithPhilosophy } from '../../../trips/decision/shared/world-model.types';
 
 /**
  * 实时天气预警

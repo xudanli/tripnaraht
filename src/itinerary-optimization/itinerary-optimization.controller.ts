@@ -78,7 +78,7 @@ export class ItineraryOptimizationController {
       };
 
       // 若请求未传 defaultTravelMode，从行程 intent 补齐（与 assessTrip 保持一致，请求参数优先）
-      let configWithIntent = { ...dtoWithDayConfig.config };
+      const configWithIntent = { ...dtoWithDayConfig.config };
       if (!configWithIntent.defaultTravelMode && dto.tripId) {
         try {
           const intent = await this.tripIntentService.getIntent(dto.tripId);

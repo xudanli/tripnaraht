@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
 import { VedurWeatherQueryDto, VedurWeatherResponseDto, HighlandRegion } from '../dto/vedur-weather.dto';
-import axios, { AxiosInstance } from 'axios';
+import type { AxiosInstance } from 'axios';
 
 @Injectable()
 export class VedurService {
@@ -51,7 +51,7 @@ export class VedurService {
   /**
    * 解析vedur.is API响应
    */
-  private parseVedurResponse(data: any, query: VedurWeatherQueryDto): VedurWeatherResponseDto {
+  private parseVedurResponse(data: any, _query: VedurWeatherQueryDto): VedurWeatherResponseDto {
     // 根据实际API响应格式解析
     // 这里需要根据实际API文档调整
     return {

@@ -142,7 +142,7 @@ export class LearningService {
    */
   private analyzePatterns(
     logs: DecisionRunLog[],
-    metrics: LearningMetrics
+    _metrics: LearningMetrics
   ): Record<string, any> {
     const patterns: Record<string, any> = {};
 

@@ -8,7 +8,7 @@
  * Abu → Dr.Dre → Neptune → Finalize
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AbuStrategy } from '../strategies/abu-strategy.service';
 import { DrDreStrategy } from '../strategies/dr-dre-strategy.service';
@@ -17,7 +17,7 @@ import {
   WorldModelContext,
   RoutePlanDraft,
 } from '../shared/world-model.types';
-import { DecisionResult, DecisionLogEntry } from '../shared/decision-result.types';
+import { DecisionLogEntry } from '../shared/decision-result.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';

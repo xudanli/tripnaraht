@@ -10,8 +10,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RealtimeRoadStatusService } from './realtime-road-status.service';
 import { RealtimeWeatherService } from './realtime-weather.service';
-import { RoadStatusUpdate } from '../interfaces/unified-world-model.interface';
-
 /**
  * 实时状态变化
  */
@@ -118,7 +116,7 @@ export class AutoRepairService {
   /**
    * 检测实时状态变化（从计划中提取）
    */
-  async detectRealtimeChanges(plan: any): Promise<RealtimeChange[]> {
+  async detectRealtimeChanges(_plan: any): Promise<RealtimeChange[]> {
     const changes: RealtimeChange[] = [];
 
     // 检查计划中涉及的道路

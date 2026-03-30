@@ -512,11 +512,6 @@ export class DecisionDraftEditorService {
   }> {
     this.logger.log(`[DecisionDraftEditor] 应用决策草案: draft_id=${decisionDraft.draft_id}`);
 
-    // 1. 验证所有决策步骤都已批准或修改
-    const approvedOrModifiedSteps = decisionDraft.decision_steps.filter(
-      (step) => step.status === 'approved' || step.status === 'modified',
-    );
-
     const pendingSteps = decisionDraft.decision_steps.filter(
       (step) => step.status === 'pending',
     );

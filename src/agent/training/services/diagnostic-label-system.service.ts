@@ -2,7 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DiagnosticLabel } from '../interfaces/enhancement.interface';
-import { randomUUID } from 'crypto';
 
 /**
  * DiagnosticLabelSystemService
@@ -80,7 +79,7 @@ export class DiagnosticLabelSystemService {
   /**
    * 检查证据缺失
    */
-  private checkEvidenceMissing(plan: any, evidence: any[]): boolean {
+  private checkEvidenceMissing(_plan: any, _evidence: any[]): boolean {
     // 简化实现：检查plan中是否有未验证的条目
     return false; // TODO: 实际实现
   }
@@ -88,7 +87,7 @@ export class DiagnosticLabelSystemService {
   /**
    * 检查幻觉风险
    */
-  private checkHallucinationRisk(plan: any, evidence: any[]): boolean {
+  private checkHallucinationRisk(_plan: any, _evidence: any[]): boolean {
     // 简化实现：检查是否有未关联证据的声明
     return false; // TODO: 实际实现
   }
@@ -96,7 +95,7 @@ export class DiagnosticLabelSystemService {
   /**
    * 检查可执行性
    */
-  private checkExecutability(plan: any): boolean {
+  private checkExecutability(_plan: any): boolean {
     // 简化实现：检查时间冲突、地点可达性等
     return false; // TODO: 实际实现
   }
@@ -104,7 +103,7 @@ export class DiagnosticLabelSystemService {
   /**
    * 检查安全担忧
    */
-  private checkSafetyConcern(plan: any, decisionLog: any[]): boolean {
+  private checkSafetyConcern(_plan: any, _decisionLog: any[]): boolean {
     // 简化实现：检查是否有安全相关的警告
     return false; // TODO: 实际实现
   }
@@ -112,7 +111,7 @@ export class DiagnosticLabelSystemService {
   /**
    * 检查合规问题
    */
-  private checkComplianceIssue(plan: any, decisionLog: any[]): boolean {
+  private checkComplianceIssue(_plan: any, _decisionLog: any[]): boolean {
     // 简化实现：检查是否有合规相关的警告
     return false; // TODO: 实际实现
   }

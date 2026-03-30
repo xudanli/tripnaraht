@@ -47,12 +47,7 @@ export class SpatialClusteringService {
     }
 
     try {
-      // 使用 PostGIS 的 ST_ClusterDBSCAN 进行聚类
-      // 注意：需要先创建临时表或使用 CTE
-      const placeIds = places.map((p) => p.id);
-      const lats = places.map((p) => p.location.lat);
-      const lngs = places.map((p) => p.location.lng);
-
+      // 使用 PostGIS 的 ST_ClusterDBSCAN 进行聚类（当前降级为 K-Means，未拼 raw SQL）
       // 构建动态 SQL（使用 Prisma 的 $queryRawUnsafe 或简化处理）
       // 由于 Prisma 的限制，这里使用简化的 K-Means 聚类
       // 实际生产环境可以创建临时表或使用存储过程

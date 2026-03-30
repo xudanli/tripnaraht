@@ -1,7 +1,6 @@
 // src/hotels/services/hotel-price.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 
 /**
  * 酒店价格估算服务

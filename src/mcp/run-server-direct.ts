@@ -13,7 +13,7 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // 确保所有输出都到 stderr（这样我们可以看到所有日志）
-const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+const _originalStdoutWrite = process.stdout.write.bind(process.stdout);
 process.stdout.write = function(chunk: any, encoding?: any, cb?: any) {
   process.stderr.write(chunk, encoding, cb);
   return true;

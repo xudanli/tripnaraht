@@ -97,7 +97,7 @@ export class ApprovalService {
     // 检查是否过期
     if (request.expiresAt && request.expiresAt < new Date()) {
       // 自动更新为过期状态
-      const expired = await this.prisma!.approvalRequest.update({
+      await this.prisma!.approvalRequest.update({
         where: { id: requestId },
         data: {
           status: ApprovalStatus.EXPIRED,

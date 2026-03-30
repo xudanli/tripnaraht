@@ -102,7 +102,7 @@ export class SkillInputValidatorService {
     const missingParams: string[] = [];
     const typeErrors: Array<{ param: string; message: string }> = [];
     const processedInput = { ...input };
-    const { context, request, stepResults, planSteps } = validationContext;
+    const { context, request } = validationContext;
 
     // 1. 使用提取器填充参数
     if (schema.extractors) {
@@ -172,11 +172,7 @@ export class SkillInputValidatorService {
 
     if (missingParams.length > 0 || typeErrors.length > 0) {
       const uniqueMissingParams = [...new Set(missingParams)];
-      const errorMessages = [
-        ...uniqueMissingParams.map(p => `缺少参数: ${p}`),
-        ...typeErrors.map(e => e.message),
-      ];
-      
+
       return {
         valid: false,
         missingParams: uniqueMissingParams,

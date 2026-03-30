@@ -14,34 +14,27 @@ import { LlmResponseTransformerService } from '../llm/services/llm-response-tran
 import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
 import { SelectGateAlternativeDto } from './dto/select-gate-alternative.dto';
-import { GetConversationContextDto, UpdateConversationContextDto, DeleteConversationDto } from './dto/nl-conversation-context.dto';
-import { TripStateDto } from './dto/trip-state.dto';
-import { ScheduleResponseDto, SaveScheduleDto } from './dto/schedule.dto';
+import { UpdateConversationContextDto } from './dto/nl-conversation-context.dto';
+import { SaveScheduleDto } from './dto/schedule.dto';
 import { CreateTripShareDto } from './dto/trip-share.dto';
 import { AddCollaboratorDto } from './dto/trip-collaborator.dto';
 import { DeleteTripDto } from './dto/delete-trip.dto';
-import { PersonaAlertDto } from './dto/persona-alerts.dto';
-import { DecisionLogResponseDto } from './dto/decision-log.dto';
-import { TaskDto, UpdateTaskStatusDto } from './dto/tasks.dto';
-import { PipelineStatusResponseDto } from './dto/pipeline-status.dto';
-import { CreateTripDraftDto, TripDraftResponseDto, SaveTripDraftDto, ReplaceItineraryItemDto, ReplaceItineraryItemResponseDto, RegenerateTripDto, RegenerateTripResponseDto } from './dto/trip-draft.dto';
+import { UpdateTaskStatusDto } from './dto/tasks.dto';
+import { CreateTripDraftDto, SaveTripDraftDto, ReplaceItineraryItemDto, RegenerateTripDto } from './dto/trip-draft.dto';
 import { TripDraftService } from './services/trip-draft.service';
-import { 
-  GetEvidenceQueryDto, 
-  EvidenceListResponseDto,
+import {
+  GetEvidenceQueryDto,
   UpdateEvidenceRequestDto,
-  UpdateEvidenceResponseDto,
   BatchUpdateEvidenceRequestDto,
-  BatchUpdateEvidenceResponseDto
 } from './dto/evidence.dto';
-import { GetAttentionQueueQueryDto, AttentionQueueResponseDto } from './dto/attention-queue.dto';
+import { GetAttentionQueueQueryDto } from './dto/attention-queue.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
-import { DayMetricsResponseDto, TripMetricsResponseDto, AssessTripRequestDto, AssessTripResponseDto } from './dto/trip-metrics.dto';
-import { ConflictsResponseDto, ConflictSeverity, ResolveConflictsRequestDto, ResolveConflictsResponseDto } from './dto/trip-conflicts.dto';
-import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from './dto/trip-intent.dto';
-import { ApplyOptimizationRequestDto, ApplyOptimizationResponseDto } from './dto/trip-optimization.dto';
+import { AssessTripRequestDto } from './dto/trip-metrics.dto';
+import { ConflictSeverity, ResolveConflictsRequestDto } from './dto/trip-conflicts.dto';
+import { UpdateIntentRequestDto } from './dto/trip-intent.dto';
+import { ApplyOptimizationRequestDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
@@ -51,19 +44,14 @@ import { TripOptimizationService } from './services/trip-optimization.service';
 import { HotelRecommendationService } from '../places/services/hotel-recommendation.service';
 import { TripSuggestionsService } from './services/trip-suggestions.service';
 import { TripInsightService } from './services/trip-insight.service';
-import { 
-  SuggestionListResponseDto, 
-  SuggestionStatsDto,
+import {
   SuggestionPersona,
   SuggestionScope,
   SuggestionSeverity,
   SuggestionStatus,
   ApplySuggestionRequestDto,
-  ApplySuggestionResponseDto
 } from './dto/suggestions.dto';
-import { TripInsightResponseDto } from './dto/trip-insight.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
-import { AdminTripListQueryDto, AdminTripStatsQueryDto, BatchOperationRequestDto } from './dto/admin-trip.dto';
 import { TokenService } from '../auth/services/token.service';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
@@ -75,11 +63,10 @@ import { ContextBlock } from '../agent/context-engine/types/context-package.type
 import { DecisionDraftGeneratorService } from '../decision-draft/services/decision-draft-generator.service';
 import { DecisionDraftStorageService } from '../decision-draft/storage/decision-draft-storage.service';
 import { TripPlanRequest } from '../agent/interfaces/trip-plan.interface';
-import { randomUUID } from 'crypto';
 import { DestinationClarificationConfigService } from './nl-clarification/services/destination-clarification-config.service';
 import { GatePrecheckService } from './nl-clarification/services/gate-precheck.service';
 import { AiDecisionLogicService } from './nl-clarification/services/ai-decision-logic.service';
-import { NLConversationContextService, ConversationMessage } from './services/nl-conversation-context.service';
+import { NLConversationContextService } from './services/nl-conversation-context.service';
 import { FeedbackEngineAdapterService } from '../decision/kernel/feedback-engine-adapter.service';
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
@@ -312,7 +299,6 @@ export class TripsController {
     @CurrentUser() user?: CurrentUserPayload,
     @Req() req?: Request
   ) {
-    const flowStartMs = Date.now();
     try {
       // 🆕 测试模式：如果没有 userId，使用临时 userId（仅用于测试）
       let userId = user?.userId;
@@ -672,7 +658,6 @@ export class TripsController {
         // 🆕 通用流程阶段 1 门：有推断的硬约束字段且未确认时，必须先展示确认问题；同时保留 LLM 的其余澄清问题作为可选
         const { hasUnconfirmedPhase1Inferred } = await import('./nl-clarification/config/planning-phases.config');
         const mergedForPhaseCheck = { ...mergedParamsForFilter, ...mergedParams };
-        let forcedPhase1 = false;
         if (hasUnconfirmedPhase1Inferred(mergedForPhaseCheck)) {
           const phase1Questions = this.generateDefaultClarificationQuestions(
             'general',
@@ -689,7 +674,6 @@ export class TripsController {
               { ...confirmQ, group: 'required' },
               ...clarificationQuestions.map((q: any) => ({ ...q, group: q.group || 'optional' })),
             ];
-            forcedPhase1 = true;
             this.logger.debug(`[通用流程] 阶段 1 推断未确认，confirm_inferred_info 置顶，保留 ${beforeCount} 个 LLM 问题为可选（共 ${clarificationQuestions.length} 个）`);
           }
         }
@@ -830,7 +814,6 @@ export class TripsController {
         );
         
         this.logger.debug(`Returning planner-style clarification: ${structuredResponse.plannerReply?.substring(0, 100) || parseResult.plannerReply?.substring(0, 100)}...`);
-        const inferredDest = parseResult.params?.destination || mergedParams.destination;
         const genericProgressSteps =
           genericPhase === 1
             ? [
@@ -2485,7 +2468,7 @@ export class TripsController {
    */
   private generatePreferenceSupplementQuestions(
     params: Record<string, any>,
-    destinationCode?: string
+    _destinationCode?: string
   ): any[] {
     const questions: any[] = [];
     const prefs = params.preferences || {};
@@ -4903,9 +4886,9 @@ export class TripsController {
   })
   async getBudgetSummary(
     @Param('id') id: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('category') category?: string
+    @Query('startDate') _startDate?: string,
+    @Query('endDate') _endDate?: string,
+    @Query('category') _category?: string
   ) {
     try {
       const summary = await this.tripBudgetService.getBudgetSummary(id);
@@ -5086,7 +5069,7 @@ export class TripsController {
   })
   async getBudgetMonitor(
     @Param('id') id: string,
-    @Query('realtime') realtime?: boolean
+    @Query('realtime') _realtime?: boolean
   ) {
     try {
       const monitor = await this.tripBudgetService.getBudgetMonitor(id);

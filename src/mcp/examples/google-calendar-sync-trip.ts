@@ -52,7 +52,7 @@ export async function syncTripToGoogleCalendar(trip: Trip): Promise<void> {
     for (const day of trip.days) {
       for (const item of day.items) {
         try {
-          const event = await client.createEvent({
+          await client.createEvent({
             calendarId,
             summary: `${day.date} - ${item.placeName}`,
             start: {

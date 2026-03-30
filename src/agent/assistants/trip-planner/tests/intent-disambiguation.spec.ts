@@ -7,11 +7,9 @@ import {
   TripContext,
   TripDayContext,
   TripPlannerState,
-  TripPlannerIntent,
 } from '../interfaces/trip-planner.interface';
 import {
   IntentUncertainty,
-  ItineraryGapType,
 } from '../interfaces/intent-uncertainty.interface';
 
 describe('Intent Disambiguation System', () => {

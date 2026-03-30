@@ -198,9 +198,9 @@ export class ExaIntegrationService {
    */
   private parseRiskSearchResult(
     result: any,
-    countryCode: string,
-    routeName: string,
-    month: number,
+    _countryCode: string,
+    _routeName: string,
+    _month: number,
   ): RealTimeRiskInfo {
     if (!result || !result.content || !result.content[0]) {
       return { hasRisk: false };
@@ -440,7 +440,7 @@ export class ExaIntegrationService {
    */
   async crawlOfficialPage(
     url: string,
-    purpose: string = 'official information',
+    _purpose: string = 'official information',
   ): Promise<{
     content: string;
     success: boolean;

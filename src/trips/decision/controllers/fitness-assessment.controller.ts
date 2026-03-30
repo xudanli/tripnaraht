@@ -32,7 +32,6 @@ import { CurrentUser, CurrentUserPayload } from '../../../auth/decorators/curren
 import { Public } from '../../../auth/decorators/public.decorator';
 import { FitnessAssessmentService } from '../services/fitness-assessment.service';
 import {
-  FitnessQuestionnaireAnswersDto,
   TripFitnessFeedbackDto,
   FitnessProfileResponseDto,
   FitnessQuestionnaireResponseDto,

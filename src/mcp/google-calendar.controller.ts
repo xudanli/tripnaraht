@@ -35,7 +35,7 @@ import {
   QuickAddDto,
 } from './dto/google-calendar.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
-import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { ApiSuccessResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('google-calendar')
@@ -381,7 +381,7 @@ export class GoogleCalendarController {
   })
   async deleteTripEvents(
     @Param('tripId') tripId: string,
-    @Body() body: { userId: string },
+    @Body() _body: { userId: string },
   ) {
     try {
       const result = await this.integrationService.deleteTripEvents(tripId);

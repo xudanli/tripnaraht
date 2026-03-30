@@ -203,15 +203,7 @@ describe('TrustMetricsService', () => {
 
       expect(metricsZh.capability.explanation).toBeDefined();
       expect(metricsEn.capability.explanation).toBeDefined();
-      
-      // 检查解释是否不同（语言不同）
-      const zhExplanation = typeof metricsZh.capability.explanation === 'string'
-        ? metricsZh.capability.explanation
-        : metricsZh.capability.explanation.zh || metricsZh.capability.explanation.en;
-      const enExplanation = typeof metricsEn.capability.explanation === 'string'
-        ? metricsEn.capability.explanation
-        : metricsEn.capability.explanation.en || metricsEn.capability.explanation.zh;
-      
+
       // 分数应该相同，但解释可能不同
       expect(metricsZh.overall).toBe(metricsEn.overall);
     });

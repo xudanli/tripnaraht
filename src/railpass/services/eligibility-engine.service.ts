@@ -45,7 +45,7 @@ export class EligibilityEngineService {
     isCrossResidencyCountry?: boolean;
     departureDate: ISODate;
   }): EligibilityResult {
-    const { residencyCountry, travelCountries, isCrossResidencyCountry, departureDate } = args;
+    const { residencyCountry, travelCountries, isCrossResidencyCountry } = args;
 
     // 判断 Pass Family
     const recommendedPassFamily = this.determinePassFamily(residencyCountry);

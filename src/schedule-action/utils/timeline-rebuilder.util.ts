@@ -236,7 +236,7 @@ export class TimelineRebuilder {
   /**
    * 获取 POI 的最早到达时间（基于营业时间）
    */
-  private getEarliestArrivalTime(poi: Poi, dayStartMin: number): number | null {
+  private getEarliestArrivalTime(poi: Poi, _dayStartMin: number): number | null {
     if (!poi.openingHours) {
       return null;
     }

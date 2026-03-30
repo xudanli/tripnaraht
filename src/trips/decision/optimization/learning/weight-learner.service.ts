@@ -347,7 +347,7 @@ export class WeightLearnerService {
       if (fb.data.overallSatisfaction !== undefined) {
         const target = fb.data.overallSatisfaction / 5; // 归一化到 0-1
         const predicted = fb.utilityAtTime;
-        const error = predicted - target;
+        const _error = predicted - target;
         
         // 分解误差到各维度
         if (fb.data.safetyPerception !== undefined) {
@@ -517,7 +517,7 @@ export class WeightLearnerService {
   private estimateImprovement(
     before: ObjectiveFunctionWeights,
     after: ObjectiveFunctionWeights,
-    feedback: FeedbackRecord[]
+    _feedback: FeedbackRecord[]
   ): number {
     // 简化：基于权重变化幅度估算
     let totalChange = 0;
@@ -554,7 +554,7 @@ export class WeightLearnerService {
   private analyzeResult(
     gradients: Partial<ObjectiveFunctionWeights>,
     weightChanges: Partial<ObjectiveFunctionWeights>,
-    feedback: FeedbackRecord[]
+    _feedback: FeedbackRecord[]
   ): WeightLearningResult['analysis'] {
     const mainFactors: string[] = [];
     const recommendations: string[] = [];

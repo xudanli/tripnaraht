@@ -10,7 +10,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { WorldBuildContextSkill } from '../world-build-context.skill';
 import { UnifiedWorldModel, UnifiedWorldModelRequest } from '../interfaces/unified-world-model.interface';
 import { WorldModelContext } from '../../../trips/decision/shared/world-model.types';
-import { executeWithFallback, executeWithConditionalFallback } from '../utils/fallback-helper';
+import { executeWithConditionalFallback } from '../utils/fallback-helper';
 
 // 护城河扩展服务
 import { RealtimeWeatherService } from './realtime-weather.service';
@@ -516,7 +516,7 @@ export class UnifiedWorldModelService {
     request: UnifiedWorldModelRequest,
   ): Promise<UnifiedWorldModel['learnedCapabilities']> {
     let userCapability = null;
-    let routeDifficultyCorrection = null;
+    const routeDifficultyCorrection = null;
 
     try {
       // 1. 获取用户能力（学习后的）
@@ -736,10 +736,7 @@ export class UnifiedWorldModelService {
 
     try {
       // 获取协作的世界模型（当前实现返回空，因为需要智能体注册贡献）
-      const collaborativeWorldModel =
-        await this.multiAgentCollaborationService.getCollaborativeWorldModel(
-          tripId,
-        );
+      await this.multiAgentCollaborationService.getCollaborativeWorldModel(tripId);
 
       // 返回协作状态（简化实现）
       return {

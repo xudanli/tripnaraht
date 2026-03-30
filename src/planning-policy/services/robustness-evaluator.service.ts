@@ -2,22 +2,14 @@
 
 import { Injectable } from '@nestjs/common';
 import { PlanningPolicy } from '../interfaces/planning-policy.interface';
-import {
-  DayScheduleResult,
-  PlannedStop,
-} from '../interfaces/scheduler.interface';
-import { Poi, OpeningHours } from '../interfaces/poi.interface';
+import { DayScheduleResult } from '../interfaces/scheduler.interface';
+import { Poi } from '../interfaces/poi.interface';
 import { TransitSegment } from '../interfaces/transit-segment.interface';
 import { DefaultCostModelInstance } from './cost-model.service';
 import { HpSimulatorService } from './hp-simulator.service';
 import {
-  isOpenAt,
-  latestEntryMin,
-  isHoliday,
-  hhmmToMin,
   withinTimeWindowForEvaluation,
   getEntryDeadlineInfoForEvaluation,
-  TimeWindowStatus,
   DayOfWeek,
 } from '../utils/time-utils';
 
@@ -1028,9 +1020,6 @@ export class RobustnessEvaluatorService {
     const missByPoi = new Map(
       metrics.perPoiMissProb.map((x) => [x.poiId, x])
     );
-    const waitByPoi = new Map(
-      metrics.perPoiWaitProb.map((x) => [x.poiId, x])
-    );
 
     const suggestions: OptimizationSuggestion[] = [];
 
@@ -1229,8 +1218,7 @@ export class RobustnessEvaluatorService {
 
     // SHIFT 后若出现 stop.startMin < 0 太多（超过 2 个），判为"变形过大"
     const clampedToZero = candidate.stops.filter((s) => s.startMin === 0 && base.stops.some(bs => bs.id === s.id && bs.startMin > 0)).length;
-    const negativeCount = candidate.stops.filter((s) => s.startMin < 0).length;
-    
+
     // 计算 shift delta（如果是从 base 前移的）
     const minStartMin = Math.min(...candidate.stops.map(s => s.startMin).filter(m => m >= 0));
     const firstPoiIdx = candidate.stops.findIndex(s => s.kind === 'POI');
@@ -1810,9 +1798,7 @@ export class RobustnessEvaluatorService {
 
       // 使用更可读的变量名
       const missImprove = -(delta.missDelta ?? 0); // 正数表示改善
-      const waitImprove = -(delta.waitDelta ?? 0); // 正数表示改善
       const completionDrop = -(delta.completionP10Delta ?? 0); // 正数表示变差
-      const onTimeImprove = delta.onTimeDelta ?? 0; // 正数表示改善
 
       // Gate 规则 1：若 completionRateP10 比 base 低 > 5pp → 不允许成为 winner
       // （除非 missProb 显著下降，比如 > 15pp）

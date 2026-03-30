@@ -10,9 +10,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { DecisionRunLog } from '../decision-log';
-import { ConstraintConflict } from '../constraints/constraint-dsl.types';
-import { TripPlan } from '../plan-model';
 import { ContextLearningService } from '../../../agent/context-engine/services/context-learning.service';
 
 /**
@@ -483,8 +480,8 @@ export class FeedbackCollectorService {
       // 从additionalFeedback中尝试提取Block相关信息（如果有）
       // 这里简化处理，主要记录满意度信息
       // 未来可以从additionalFeedback中解析出relevantBlocks、irrelevantBlocks等
-      const feedbackText = feedback.additionalFeedback || '';
-      
+      void (feedback.additionalFeedback || '');
+
       // 简单的关键词匹配，提取Block相关信息（可选）
       const relevantBlocks: string[] = [];
       const irrelevantBlocks: string[] = [];

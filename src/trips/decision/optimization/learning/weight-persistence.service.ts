@@ -484,7 +484,7 @@ export class WeightPersistenceService implements OnModuleInit {
     
     let deletedFeedback = 0;
     
-    for (const [userId, userData] of this.userDataCache) {
+    for (const [, userData] of this.userDataCache) {
       const originalLength = userData.feedbackHistory.length;
       userData.feedbackHistory = userData.feedbackHistory.filter(
         f => f.timestamp > cutoffStr

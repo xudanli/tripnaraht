@@ -2,8 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  NodeType,
-  EdgeType,
   GraphNode,
   GraphEdge,
   ReasoningGraph,

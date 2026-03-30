@@ -8,7 +8,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DEMElevationService } from '../../dem/services/dem-elevation.service';
-import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
+import { DEMEffortMetadataService } from '../../dem/services/dem-effort-metadata.service';
 import { TerrainFacts, TerrainStats, EffortLevel, RouteSegmentId } from '../types/terrain-facts.types';
 import { DEFAULT_TERRAIN_POLICY, EffortLevelMapping } from '../config/terrain-policy.config';
 import * as crypto from 'crypto';
@@ -68,7 +68,7 @@ export class TerrainFactsService {
    */
   private async profileLine(
     lineString: LineString,
-    stepM: number
+    _stepM: number
   ): Promise<Array<{ distance: number; lat: number; lng: number; elevationM: number }>> {
     const coordinates = lineString.coordinates;
     if (coordinates.length < 2) {

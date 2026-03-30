@@ -15,7 +15,7 @@
  * - 目标：最小化疲劳方差 + 最大化可持续性
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DecisionPersonaStrategy } from '../strategies/decision-persona-strategy.interface';
 import { WorldModelContext, RoutePlanDraft, RouteSegment } from '../shared/world-model.types';
 import { DecisionResult, DecisionLogEntry } from '../shared/decision-result.types';

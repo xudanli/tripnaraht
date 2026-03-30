@@ -18,14 +18,6 @@ import { BestVisitTimeResolver } from './best-visit-time.resolver';
 import { PlaceGraphService } from '../../places/services/place-graph.service';
 import { TravelSimulationService } from './travel-simulation.service';
 
-const SLOT_ORDER: TimeSlot[] = [
-  TimeSlot.MORNING,
-  TimeSlot.LUNCH,
-  TimeSlot.AFTERNOON,
-  TimeSlot.DINNER,
-  TimeSlot.EVENING,
-];
-
 /** 与 LLM 输出格式兼容 */
 export interface OptimizedDayResult {
   day: number;
@@ -150,14 +142,6 @@ export class RouteOptimizationEngine {
     );
     const restaurants = inScope.filter((c) => c.category === 'RESTAURANT');
 
-    const slotHour: Record<TimeSlot, number> = {
-      [TimeSlot.MORNING]: 9,
-      [TimeSlot.LUNCH]: 12,
-      [TimeSlot.AFTERNOON]: 14,
-      [TimeSlot.DINNER]: 18,
-      [TimeSlot.EVENING]: 20,
-    };
-    const candidateMap = new Map(candidates.map((c) => [c.id, c]));
     const pick = async (
       pool: CandidatePlace[],
       avoidIds: Set<number>,

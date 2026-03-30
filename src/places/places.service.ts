@@ -327,7 +327,7 @@ export class PlacesService {
   /**
    * 一个辅助函数示例：判断当前是否营业
    */
-  private checkIfOpen(openingHours: any): boolean {
+  private checkIfOpen(_openingHours: any): boolean {
     // 这里写解析 "Mon-Fri 09:00-18:00" 的逻辑
     return true; // 占位
   }

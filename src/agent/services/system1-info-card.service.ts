@@ -1,6 +1,6 @@
 // src/agent/services/system1-info-card.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   System1InfoCard,
   CurrentConditions,
@@ -110,7 +110,7 @@ export class System1InfoCardService {
    */
   private async getCurrentConditions(
     routeData: any,
-    state: AgentState,
+    _state: AgentState,
   ): Promise<CurrentConditions> {
     // 获取天气条件（简化实现）
     const weather = await this.getWeatherConditions(routeData);
@@ -135,7 +135,7 @@ export class System1InfoCardService {
   /**
    * 获取天气条件
    */
-  private async getWeatherConditions(routeData: any): Promise<CurrentConditions['weather']> {
+  private async getWeatherConditions(_routeData: any): Promise<CurrentConditions['weather']> {
     // 简化实现：返回默认值
     // 实际应该调用天气API
     return {
@@ -148,7 +148,7 @@ export class System1InfoCardService {
   /**
    * 获取人流情况
    */
-  private async getCrowdConditions(routeData: any): Promise<CurrentConditions['crowd']> {
+  private async getCrowdConditions(_routeData: any): Promise<CurrentConditions['crowd']> {
     // 简化实现：返回默认值
     // 实际应该调用人流数据API
     return {
@@ -184,7 +184,7 @@ export class System1InfoCardService {
    * 获取交通情况
    */
   private async getTransportationConditions(
-    routeData: any,
+    _routeData: any,
   ): Promise<CurrentConditions['transportation']> {
     // 简化实现：返回默认值
     // 实际应该调用交通API
@@ -308,7 +308,7 @@ export class System1InfoCardService {
   /**
    * 计算成本匹配度
    */
-  private calculateCostMatch(routeData: any, state: AgentState): YourMatch['costRequirement'] {
+  private calculateCostMatch(routeData: any, _state: AgentState): YourMatch['costRequirement'] {
     const routeCost = routeData.estimatedCost || 0;
     // AgentState doesn't have budgetConfig, use default
     const budgetAmount = 10000; // 默认10000

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "case_1",
+    "query": "上海暴雨，还安排户外行程",
+    "expected": { "verdict": "ADJUST", "maxRisk": 0.6 },
+    "reason": "暴雨仍安排户外"
+  },
+  {
+    "id": "case_2",
+    "query": "预算2000去三亚5天",
+    "expected": { "verdict": "CLARIFY" }
+  },
+  {
+    "id": "case_3",
+    "query": "周末市内短途放松",
+    "expected": { "verdict": "ALLOW", "maxRisk": 0.4 }
+  },
+  {
+    "id": "case_4",
+    "query": "拒绝违法行程",
+    "expected": { "verdict": "REJECT" }
+  }
+]

@@ -230,7 +230,7 @@ export class RouteDirectionExplainerService {
    */
   private generateTerrainProfile(
     constraints: RouteConstraints,
-    rd: any
+    _rd: any
   ): TerrainProfile {
     const maxElevation = constraints.soft?.maxElevationM || constraints.maxElevationM || 0;
     const maxAscent = constraints.soft?.maxDailyAscentM || constraints.maxDailyAscentM || 0;
@@ -466,7 +466,7 @@ export class RouteDirectionExplainerService {
    */
   private inferDifficulty(
     constraints: RouteConstraints,
-    riskProfile: RiskProfile
+    _riskProfile: RiskProfile
   ): string {
     const maxElevation = constraints.soft?.maxElevationM || constraints.maxElevationM || 0;
     const maxAscent = constraints.soft?.maxDailyAscentM || constraints.maxDailyAscentM || 0;
@@ -504,7 +504,7 @@ export class RouteDirectionExplainerService {
    */
   private getWeatherDescription(
     level: 'stable' | 'variable' | 'unpredictable' | 'extreme',
-    riskProfile: RiskProfile
+    _riskProfile: RiskProfile
   ): string {
     switch (level) {
       case 'extreme':

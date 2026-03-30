@@ -146,7 +146,7 @@ export class WeatherSyncCronService {
     const alerts: WeatherAlert[] = [];
     if (!data.hourly) return alerts;
 
-    const { time, weather_code, wind_speed_10m, wind_gusts_10m, visibility, precipitation, temperature_2m } = data.hourly;
+    const { time, weather_code, wind_speed_10m, wind_gusts_10m, visibility, temperature_2m } = data.hourly;
 
     let currentAlert: WeatherAlert | null = null;
 

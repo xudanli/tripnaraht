@@ -8,7 +8,6 @@ import { ReplanEvent } from '../interfaces/replanner.interface';
 import {
   isOpenAt,
   latestEntryMin,
-  calculateDistance,
   isHoliday,
   DayOfWeek,
 } from '../utils/time-utils';

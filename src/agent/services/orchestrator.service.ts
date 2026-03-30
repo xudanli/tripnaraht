@@ -11,7 +11,6 @@
  */
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
-import { RouteType } from '../interfaces/router.interface';
 import { ActionRegistryService } from './action-registry.service';
 import { CriticService } from './critic.service';
 import { AgentStateService } from './agent-state.service';

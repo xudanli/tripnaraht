@@ -10,9 +10,6 @@
  * - 阶段四：决策确认 → 行动启动
  */
 
-import { RouteDirectionData } from '../../route-directions/interfaces/route-direction.interface';
-import { UserContext } from './copy-standards.interface';
-
 /**
  * 阶段一响应：模糊意向 → 兴趣激发
  */

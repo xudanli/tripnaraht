@@ -64,7 +64,7 @@ export class AmapRoutesService {
 
     try {
       let apiPath: string;
-      let params: Record<string, any> = {
+      const params: Record<string, any> = {
         origin: `${fromLng},${fromLat}`, // 高德使用 经度,纬度 格式
         destination: `${toLng},${toLat}`,
       };
@@ -137,7 +137,6 @@ export class AmapRoutesService {
       for (const transit of data.route.transits.slice(0, 3)) { // 最多返回 3 个方案
         const durationSeconds = safeInt(transit.duration);
         const duration = Math.round(durationSeconds / 60); // 秒转分钟
-        const distance = safeInt(transit.distance);
         const cost = safeFloat(transit.cost);
 
         // 计算步行距离（使用 walking_distance 字段，如果没有则从 segments 计算）
@@ -195,7 +194,6 @@ export class AmapRoutesService {
         const duration = Math.round((path.duration || 0) / 60);
         const distance = path.distance || 0;
         const tolls = path.tolls || 0; // 过路费（元）
-        const tollDistance = path.toll_distance || 0; // 收费路段距离（米）
 
         // 估算打车费用：起步价 + 里程费
         const estimatedCost = this.estimateTaxiCost(distance, duration);
@@ -232,7 +230,7 @@ export class AmapRoutesService {
    * 根据城市不同，起步价和里程费不同
    * 这里使用通用估算：起步价 13 元，每公里 2.5 元
    */
-  private estimateTaxiCost(distanceMeters: number, durationMinutes: number): number {
+  private estimateTaxiCost(distanceMeters: number, _durationMinutes: number): number {
     const distanceKm = distanceMeters / 1000;
     
     // 起步价 13 元（3 公里内）

@@ -6,7 +6,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { TripPlan, PlanDay } from '../plan-model';
+import { TripPlan } from '../plan-model';
 import { RoutePlanDraft, RouteSegment } from '../shared/world-model.types';
 import { TripWorldState } from '../world-model';
 
@@ -72,7 +72,7 @@ export class PlanConverterService {
   applyRoutePlanDraftToTripPlan(
     draft: RoutePlanDraft,
     originalPlan: TripPlan,
-    world: TripWorldState
+    _world: TripWorldState
   ): TripPlan {
     const updatedDays = [...originalPlan.days];
 

@@ -8,7 +8,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ActivityCandidate } from '../world-model';
-import { PlanSlot, PlanDay } from '../plan-model';
+import { PlanDay } from '../plan-model';
 
 export interface MutexGroup {
   groupId: string;
@@ -241,7 +241,7 @@ export class AdvancedConstraintsService {
     return result;
   }
 
-  private getGroupId(activityId: string): string | null {
+  private getGroupId(_activityId: string): string | null {
     // 简化实现：从 activityId 推断
     // 实际应该从 ActivityCandidate 中获取 alternativeGroupId
     return null;

@@ -86,7 +86,7 @@ export class ScheduleActionService {
    */
   private queryNextStop(
     schedule: DayScheduleResult,
-    requestId: string
+    _requestId: string
   ): StandardResponse<{
     applied: false;
     answer: { title: string; details: string };
@@ -562,7 +562,7 @@ export class ScheduleActionService {
   private generateWarnings(
     oldSchedule: DayScheduleResult,
     newSchedule: DayScheduleResult,
-    action: AssistantAction
+    _action: AssistantAction
   ): string[] {
     const warnings: string[] = [];
 

@@ -1,5 +1,5 @@
 // src/admin/controllers/conversation-admin.controller.ts
-import { Controller, Post, Delete, Get, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { NLConversationContextService } from '../../trips/services/nl-conversation-context.service';

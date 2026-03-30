@@ -1,7 +1,6 @@
 // src/trips/dto/nl-conversation-context.dto.ts
-import { IsString, IsOptional, IsEnum, IsObject, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 
 /**

@@ -21,7 +21,6 @@ import {
   Param,
   Body,
   Res,
-  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';

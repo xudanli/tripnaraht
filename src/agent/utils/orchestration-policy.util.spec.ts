@@ -5,8 +5,6 @@ import { RoutingSignals, signalsFromRequest } from './orchestration-signals.util
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 
 describe('routePolicy - 决策真值表测试', () => {
-  const env = process.env;
-
   // 测试用例表
   const testCases: Array<{
     name: string;

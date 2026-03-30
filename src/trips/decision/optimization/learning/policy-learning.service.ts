@@ -17,13 +17,11 @@ import {
 } from './policy-learning.interface';
 import { OptimizationEngineAdapterService } from '../../../../decision/kernel/optimization-engine-adapter.service';
 import { WeightLearnerService } from './weight-learner.service';
-import { DEFAULT_OBJECTIVE_WEIGHTS } from '../objective-function.interface';
 import { dsoToMinimalWorldModelContext } from '../../../../decision/kernel/dso-to-world-model-converter';
 import { itineraryToRoutePlanDraft } from '../../../../decision/kernel/dso-to-trips-converter';
 import { CGUSSearchService, CGUSCandidate } from '../cgus-search.service';
 import { MetaPolicyService } from '../meta/meta-policy.service';
 import type { Itinerary } from '../../../../agent/interfaces/trip-plan.interface';
-import type { RoutePlanDraft } from '../../shared/world-model.types';
 
 @Injectable()
 export class PolicyLearningService implements IPolicyLearningService {

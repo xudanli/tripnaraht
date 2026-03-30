@@ -17,7 +17,6 @@ import {
   latestEntryMin,
   calculateDistance,
   isHoliday,
-  DayOfWeek,
 } from '../utils/time-utils';
 
 /**

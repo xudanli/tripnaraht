@@ -1,6 +1,6 @@
 // src/data-pipeline/interfaces/pipeline-definition.interface.ts
 
-import { CollectionTaskConfig, ProcessedData } from './data-pipeline.interface';
+import { ProcessedData } from './data-pipeline.interface';
 
 /**
  * 管道步骤类型

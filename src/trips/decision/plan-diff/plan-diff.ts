@@ -6,7 +6,7 @@
  * 实现"最小改动"策略：slot-level diff 和智能修复
  */
 
-import { PlanSlot, PlanDay, TripPlan } from '../plan-model';
+import { PlanSlot, TripPlan } from '../plan-model';
 
 export type SlotChangeType = 'moved' | 'removed' | 'added' | 'swap' | 'unchanged';
 

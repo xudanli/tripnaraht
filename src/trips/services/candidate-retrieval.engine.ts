@@ -14,7 +14,6 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { PlaceMetadata } from '../../places/interfaces/place-metadata.interface';
-import { PhysicalMetadata } from '../../places/interfaces/physical-metadata.interface';
 import type { ExperienceVector } from '../../places/interfaces/experience-vector.interface';
 import { CreateTripDraftDto } from '../dto/trip-draft.dto';
 import { TravelStyle } from '../dto/trip-draft.dto';
@@ -464,7 +463,7 @@ export class CandidateRetrievalEngine {
    */
   private diversitySample(places: Array<CandidatePlace & { compositeScore: number }>): CandidatePlace[] {
     if (places.length <= 50) {
-      return places.map(({ compositeScore, ...rest }) => rest);
+      return places.map(({ compositeScore: _compositeScore, ...rest }) => rest);
     }
 
     // 按 compositeScore 降序
@@ -505,7 +504,7 @@ export class CandidateRetrievalEngine {
     }
 
     const result = sorted.filter((p) => selectedIds.has(p.id));
-    return result.map(({ compositeScore, ...rest }) => rest);
+    return result.map(({ compositeScore: _compositeScore, ...rest }) => rest);
   }
 
   private getCategoryFilterByStyle(style: TravelStyle): string[] {

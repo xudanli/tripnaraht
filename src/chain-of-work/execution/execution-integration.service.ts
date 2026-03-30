@@ -18,7 +18,7 @@ export class ExecutionIntegrationService {
    */
   async executePlan(
     plan: ExecutionPlan,
-    request: TripPlanRequest,
+    _request: TripPlanRequest,
   ): Promise<ExecutionResult> {
     this.logger.log(`[ExecutionIntegration] 开始执行规划: execution_id=${plan.draft_id}`);
     

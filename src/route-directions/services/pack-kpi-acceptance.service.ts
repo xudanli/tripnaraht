@@ -306,7 +306,7 @@ export class PackKPIAcceptanceService {
    */
   private async calculateUserPreferenceDifferentiationKPI(
     countryCode: string,
-    routeDirections: any[]
+    _routeDirections: any[]
   ): Promise<UserPreferenceDifferentiationKPI> {
     // 定义测试场景
     const testScenarios = [

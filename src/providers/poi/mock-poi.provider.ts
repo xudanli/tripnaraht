@@ -19,7 +19,7 @@ export class MockPoiProvider implements PoiProvider {
     language?: string;
     types?: string[];
   }): Promise<PoiCandidate[]> {
-    const { query, lat, lng } = args;
+    const { query } = args;
     
     // 简单的关键词匹配，返回模拟数据
     const queryLower = query.toLowerCase();

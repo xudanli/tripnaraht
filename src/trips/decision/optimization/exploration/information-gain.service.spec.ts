@@ -52,6 +52,7 @@ describe('InformationGainService', () => {
   });
 
   it('应返回 [0,1] 范围内的信息增益', () => {
+    expect(worldModel).toBeDefined();
     const ctx = createMockWorldContext();
     const ig = service.computeInformationGain({ candidateId: 'c1', worldContext: ctx });
     expect(ig).toBeGreaterThanOrEqual(0);

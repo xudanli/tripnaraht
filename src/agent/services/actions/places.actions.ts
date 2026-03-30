@@ -358,7 +358,7 @@ export function createPlacesActions(
           // 转换为节点格式，并统计过滤情况
           // 注意：results 可能是 HybridSearchResult[] 或 Place[]
           let filteredCount = 0;
-          let mappingErrors: Array<{ index: number; error: string; placeId?: number }> = [];
+          const mappingErrors: Array<{ index: number; error: string; placeId?: number }> = [];
           
           // 先映射所有节点，然后过滤掉缺少坐标的
           const mappedNodes = results
@@ -510,7 +510,7 @@ export function createPlacesActions(
           facts: { type: 'object' },
         },
       },
-      execute: async (input: { poi_ids: number[] }, state: any) => {
+      execute: async (input: { poi_ids: number[] }, _state: any) => {
         try {
           // 批量获取 POI 信息
           const places = await placesService.findBatch(input.poi_ids);

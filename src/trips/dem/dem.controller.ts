@@ -219,7 +219,7 @@ export class DemController {
   })
   async getTripTerrain(
     @Param('tripId') tripId: string,
-    @Query('samples') samples?: string,
+    @Query('samples') _samples?: string,
   ) {
     try {
       // TODO: 从行程中提取路线点，然后生成地形数据

@@ -1,0 +1,11 @@
+{
+  "event_type": "roll_auto_rollback",
+  "client_payload": {
+    "current_model_version": "v-canary-20260326",
+    "previous_model_version": "v-stable-20260320",
+    "fallback_rate": 0.041,
+    "error_rate": 0.012,
+    "simulation_rate": 0.0,
+    "trigger_reason": "fallback spike detected by monitoring"
+  }
+}

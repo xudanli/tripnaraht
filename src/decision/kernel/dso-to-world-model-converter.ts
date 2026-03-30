@@ -10,7 +10,7 @@
 import type { DecisionState } from './decision-state.types';
 import type { WorldModelContext } from '../../trips/decision/shared/world-model.types';
 import type { PhysicalRealityModel } from '../../trips/decision/models/physical-reality.model';
-import type { HumanCapabilityModel } from '../../trips/decision/models/human-capability.model';
+import type { HumanCapabilityModel, PreferredPace } from '../../trips/decision/models/human-capability.model';
 import type { RouteDirectionWithPhilosophy } from '../../trips/decision/shared/world-model.types';
 
 /**
@@ -58,7 +58,13 @@ export function dsoToMinimalWorldModelContext(state: DecisionState): WorldModelC
   };
 
   const party = intent.party;
-  const fitnessLevel = (party as any)?.fitnessLevel ?? 'MEDIUM';
+  const rawFitness = String((party as any)?.fitnessLevel ?? 'MEDIUM').toUpperCase();
+  const preferredPace: PreferredPace =
+    rawFitness === 'LOW' || rawFitness === 'MEDIUM_LOW'
+      ? 'SLOW'
+      : rawFitness === 'HIGH' || rawFitness === 'MEDIUM_HIGH'
+        ? 'FAST'
+        : 'MEDIUM';
   const riskTolerance = (party as any)?.riskTolerance ?? 'MEDIUM';
 
   const human: HumanCapabilityModel = {
@@ -66,7 +72,7 @@ export function dsoToMinimalWorldModelContext(state: DecisionState): WorldModelC
     maxDailyAscentM: 800,
     rollingAscent3DaysM: 2000,
     maxSlopePct: 15,
-    preferredPace: 'MEDIUM',
+    preferredPace,
     riskTolerance: riskTolerance as 'LOW' | 'MEDIUM' | 'HIGH',
     highAltitudeExperience: 'BASIC',
     bufferDayBias: 'MEDIUM',

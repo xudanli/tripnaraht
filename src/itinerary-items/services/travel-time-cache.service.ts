@@ -45,7 +45,7 @@ export class TravelTimeCacheService {
       return undefined;
     }
 
-    const { cachedAt, ...data } = cached;
+    const { cachedAt: _cachedAt, ...data } = cached;
     return data;
   }
 

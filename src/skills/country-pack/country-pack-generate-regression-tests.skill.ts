@@ -130,7 +130,7 @@ export class CountryPackGenerateRegressionTestsSkill implements Skill<CountryPac
     ];
 
     // 为每个规则生成测试用例
-    pack.rules.forEach((rule, index) => {
+    pack.rules.forEach((rule, _index) => {
       tests.push({
         id: `test.rule.${rule.id}`,
         name: `Rule: ${rule.id}`,
@@ -221,7 +221,7 @@ export class CountryPackGenerateRegressionTestsSkill implements Skill<CountryPac
    */
   private generateRouteDirectionPackTests(
     pack: ImportCountryPackDto,
-    customScenarios?: Array<{ name: string; context: Partial<TripContext>; expectedOutcomes?: string[] }>
+    _customScenarios?: Array<{ name: string; context: Partial<TripContext>; expectedOutcomes?: string[] }>
   ): CountryPackGenerateRegressionTestsOutput {
     const tests: Array<{
       id: string;
@@ -234,7 +234,7 @@ export class CountryPackGenerateRegressionTestsSkill implements Skill<CountryPac
     }> = [];
 
     // 为每个 RouteDirection 生成测试用例
-    pack.routeDirections.forEach((rd, index) => {
+    pack.routeDirections.forEach((rd, _index) => {
       tests.push({
         id: `test.rd.${rd.name}`,
         name: `RouteDirection: ${rd.name}`,

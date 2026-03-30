@@ -21,7 +21,6 @@ export class EmailVerificationService {
     const smtpUser = this.configService?.get<string>('SMTP_USER');
     // 支持 SMTP_PASSWORD 和 SMTP_PASS 两种环境变量名
     const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || this.configService?.get<string>('SMTP_PASS');
-    const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
     // 支持 SMTP_SECURE 环境变量（true/false 字符串），企业微信邮箱 465 端口需要 SSL
     const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 

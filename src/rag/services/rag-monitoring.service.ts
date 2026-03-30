@@ -245,7 +245,6 @@ export class RAGMonitoringService {
     const embeddingLatency = this.calculatePercentiles(this.embeddingLatencies);
     
     // 计算吞吐量（最近1分钟）
-    const oneMinuteAgo = Date.now() - this.WINDOW_SIZE_MS;
     const recentRequests = this.retrievalLatencies.filter((_, index) => {
       // 简化：假设最近的请求在窗口内
       return index >= this.retrievalLatencies.length - Math.min(100, this.retrievalLatencies.length);

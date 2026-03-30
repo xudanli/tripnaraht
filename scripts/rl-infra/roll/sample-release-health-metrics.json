@@ -1,0 +1,9 @@
+{
+  "real_policy_rate": 0.962,
+  "fallback_rate": 0.008,
+  "simulation_rate": 0.0,
+  "p95_latency_ms": 1320,
+  "error_rate": 0.014,
+  "rollback_triggered": false,
+  "mttr_minutes": 8
+}

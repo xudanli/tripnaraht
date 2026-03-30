@@ -18,7 +18,7 @@ export class CurrencyMathUtil {
    * @param targetCurrency 本币名称，默认 "元"
    * @returns 速算口诀字符串，如 "直接除以 20"
    */
-  static generateRule(rate: number, targetCurrency: string = '元'): string {
+  static generateRule(rate: number, _targetCurrency: string = '元'): string {
     if (!rate || rate <= 0) {
       return '';
     }

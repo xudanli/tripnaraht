@@ -1,13 +1,13 @@
 // src/agent/dto/route-and-run.dto.ts
-import { IsString, IsOptional, IsObject, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
-import { LlmProvider } from '../../llm/dto/llm-request.dto';
-import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep } from '../interfaces/trip-plan.interface';
-import { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
+import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep, JepaPayload } from '../interfaces/trip-plan.interface';
 import { ErrorType } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
+import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import type { TravelActionType } from '../constants/action-execution.constants';
 
 export class ConversationContextDto {
   @ApiPropertyOptional({ 
@@ -134,6 +134,16 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   readonly_mode?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Action 执行模式（建议/半自动/自动）',
+    example: 'SEMI_AUTO',
+    enum: ['ADVICE_ONLY', 'SEMI_AUTO', 'AUTO'],
+    default: 'ADVICE_ONLY',
+  })
+  @IsOptional()
+  @IsEnum(['ADVICE_ONLY', 'SEMI_AUTO', 'AUTO'])
+  execution_mode?: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO';
 }
 
 export class RouteAndRunRequestDto {
@@ -250,6 +260,87 @@ export class RouteAndRunResponseDto {
         candidates: [],
         evidence: [],
         robustness: null,
+        jepa: {
+          version: '1.0',
+          latent_contract: {
+            z_env: {
+              terrain_risk: [null, null, null],
+              weather_state: [null, null, null],
+              accessibility: [null, null],
+              temporal_factor: [null, null],
+              missing_fields: [],
+              fill_strategy: 'NULL',
+            },
+            z_user: {
+              risk_tolerance: 0.5,
+              delay_sensitivity: null,
+              fatigue_limit: 0.6,
+              experience_level: null,
+              missing_fields: [],
+              fill_strategy: 'NULL',
+            },
+            z_state: {
+              continuity: 0.9,
+              risk_score: 0.5,
+              cost: 0.2,
+              fatigue: 0.3,
+              satisfaction_estimate: null,
+              missing_fields: [],
+              fill_strategy: 'NULL',
+            },
+          },
+          predictor_outputs: {
+            risk_head: { risk_increase_prob: 0.65 },
+            continuity_head: { continuity_break_prob: 0.1 },
+            fatigue_head: { fatigue_increase_prob: 0.3 },
+            cost_head: { cost_overrun_prob: 0.2 },
+          },
+          decision_trace: {
+            z_pred: {
+              continuity: 0.88,
+              risk_score: 0.65,
+              cost: 0.23,
+              fatigue: 0.33,
+              satisfaction_estimate: null,
+              missing_fields: [],
+              fill_strategy: 'NULL',
+            },
+            z_real: {
+              continuity: 0.9,
+              risk_score: 0.5,
+              cost: 0.2,
+              fatigue: 0.3,
+              satisfaction_estimate: null,
+              missing_fields: [],
+              fill_strategy: 'NULL',
+            },
+            delta: {
+              continuity: 0.02,
+              risk_score: -0.15,
+              cost: -0.03,
+              fatigue: -0.03,
+              satisfaction_estimate: null,
+            },
+            at: '2026-01-13T10:00:00.000Z',
+          },
+          prediction_errors: {
+            world_error: {
+              magnitude: 0.15,
+              details: ['pred_avg_risk=0.65', 'real_risk=0.50'],
+            },
+          },
+          trigger_reasons: ['WEATHER_SPIKE', 'CONSTRAINT_CONFLICT'],
+          arbitration: {
+            selected_candidate_id: 'cand_2',
+            rejected_count: 2,
+            conflict_detected: true,
+            fallback_used: false,
+          },
+          risk_trajectory: [
+            { at: '2026-01-13T10:00:00.000Z', risk_score: 0.5, reason: 'route_difficulty' },
+            { at: '2026-01-14T10:00:00.000Z', risk_score: 0.8, reason: 'weather' },
+          ],
+        },
         orchestrationResult: {
           state: {
             request_id: 'req-001',
@@ -286,12 +377,27 @@ export class RouteAndRunResponseDto {
       candidates: any[]; // TODO: 定义明确的 Candidate 类型
       evidence: EvidenceRef[];
       robustness: number | null;
+        jepa?: JepaPayload;
       orchestrationResult?: {
         state?: OrchestratorState;
         itinerary?: Itinerary;
         gate_result?: GateResult;
         decision_log?: DecisionLogEntry[];
       };
+      actionExecution?: {
+        mode: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO';
+        status: 'NOT_STARTED' | 'PENDING_CONFIRM' | 'EXECUTING' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK';
+        requires_confirmation_count?: number;
+        pendingActions?: Array<{
+          action_id: string;
+          action_type: TravelActionType;
+          target_type: 'FLIGHT' | 'HOTEL' | 'ACTIVITY' | 'TRANSPORT' | 'ITINERARY';
+          requires_confirmation: boolean;
+          risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+        }>;
+      };
+      /** DSO 旅行本体子状态投影（与 Kernel STATE_UPDATE 对齐；无 Kernel 时由编排 state 推导） */
+      travelOntologyState?: DecisionState['travelOntologyState'];
       // 重定向信息（仅在 REDIRECT_REQUIRED 时存在）
       redirectInfo?: {
         redirect_to: string;
@@ -376,6 +482,10 @@ export class RouteAndRunResponseDto {
     gate_block_rate?: number;
     /** P4: 本请求 Skills 成功率（0–1），可聚合为 skill_success_rate */
     skill_success_rate?: number;
+    /** AO-05：与编排 state 对齐，便于日志/网关按 request 关联 */
+    orchestration_request_id?: string;
+    /** AO-05：状态机当前步骤（OrchestratorState.current_step） */
+    current_step?: string;
     trace?: {
       orchestration: {
         // 实际执行的路径（强制，不可变）

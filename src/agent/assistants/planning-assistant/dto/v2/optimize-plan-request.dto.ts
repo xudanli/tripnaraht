@@ -1,7 +1,7 @@
 // src/agent/assistants/planning-assistant/dto/v2/optimize-plan-request.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, IsEnum, IsObject, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsArray, IsEnum, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**

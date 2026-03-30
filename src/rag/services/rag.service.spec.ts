@@ -4,7 +4,6 @@ import { RagService } from './rag.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
 import { RagRetrievalParams, DocumentIndexItem } from '../interfaces/rag.interface';
-import { Prisma } from '@prisma/client';
 
 describe('RagService', () => {
   let service: RagService;

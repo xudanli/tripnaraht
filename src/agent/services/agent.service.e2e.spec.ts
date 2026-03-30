@@ -15,7 +15,6 @@ import { signalsFromRequest } from '../utils/orchestration-signals.util';
 import { routePolicy } from '../utils/orchestration-policy.util';
 
 describe('AgentService E2E - Orchestration Routing', () => {
-  let agentService: AgentService;
   let module: TestingModule;
 
   beforeAll(async () => {
@@ -37,7 +36,6 @@ describe('AgentService E2E - Orchestration Routing', () => {
       ],
     }).compile();
 
-    agentService = module.get<AgentService>(AgentService);
   });
 
   afterAll(async () => {

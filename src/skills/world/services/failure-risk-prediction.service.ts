@@ -125,7 +125,7 @@ export class FailureRiskPredictionService {
 
     for (let day = 1; day <= days; day++) {
       // 1. 基础风险（基于FailureProfile）
-      let baseRisk = this.getBaseRiskFromFailureProfile(failureProfile, day);
+      const baseRisk = this.getBaseRiskFromFailureProfile(failureProfile, day);
 
       // 2. 天气风险（基于天气预测）
       const weatherRisk = this.getWeatherRisk(weatherPredictions, day);

@@ -1,7 +1,7 @@
 // src/trips/utils/pacing-calculator.util.ts
 
 import { MobilityTag } from '../dto/create-trip.dto';
-import { PacingConfig, MobilityProfile } from '../interfaces/pacing-config.interface';
+import { PacingConfig } from '../interfaces/pacing-config.interface';
 
 /**
  * 木桶效应计算器
@@ -189,7 +189,6 @@ export class PacingCalculator {
     // 分析团队构成
     const profiles = travelers.map(t => t.mobilityTag);
     const hasCityPotato = profiles.includes(MobilityTag.CITY_POTATO);
-    const hasActiveSenior = profiles.includes(MobilityTag.ACTIVE_SENIOR);
     const hasLimited = profiles.includes(MobilityTag.LIMITED);
 
     // 体力短板分析

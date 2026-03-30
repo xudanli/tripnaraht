@@ -5,7 +5,6 @@ import { OptimizeRouteDto } from './dto/optimize-route.dto';
 import {
   PlaceNode,
   OptimizationConfig,
-  RouteSolution,
 } from './interfaces/route-optimization.interface';
 import { RouteOptimizerService } from './services/route-optimizer.service';
 import { PlaceCategory } from '@prisma/client';

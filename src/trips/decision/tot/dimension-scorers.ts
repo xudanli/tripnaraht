@@ -7,23 +7,15 @@
  */
 
 import { TripWorldState } from '../world-model';
-import { TripPlan, PlanSlot } from '../plan-model';
-import { OptimizationResult, DropReasonCode } from '../../../itinerary-optimization/interfaces/plan-request.interface';
-import { ActivityCandidate, RiskLevel } from '../world-model';
-import { extractActivityCandidatesFromPlan, getAllActivityCandidates } from './candidate-helper';
+import { TripPlan } from '../plan-model';
+import { OptimizationResult } from '../../../itinerary-optimization/interfaces/plan-request.interface';
+import { extractActivityCandidatesFromPlan } from './candidate-helper';
 import { COST_CONSTANTS, RISK_CONSTANTS, PREF_CONSTANTS, TIME_CONSTANTS, REQ_CONSTANTS, HARD_GATE_CONSTANTS } from './scoring-constants';
 
 // clamp01 已移至 score-result.ts，这里保留以保持向后兼容
 // 实际应该从 score-result.ts 导入
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
-}
-
-/**
- * 工具函数：将值限制在 [min, max] 区间
- */
-function clamp(x: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, x));
 }
 
 /**
@@ -194,7 +186,7 @@ export function scoreRisk(
   const mult = userRiskTolerance === 'low' ? 1.25 :
     userRiskTolerance === 'high' ? 0.85 : 1.0;
 
-  let sRiskBase = clamp01(1 - mult * riskIndex);
+  const sRiskBase = clamp01(1 - mult * riskIndex);
   metrics.sRiskBase = sRiskBase;
 
   // (F) 鲁棒性加成
@@ -223,7 +215,7 @@ export function scorePref(
   plan: TripPlan,
   tagAffinity: Record<string, number> = {},
   diversityPenalty: number = 0.1,
-  mustSeeBoost: number = 1.5
+  _mustSeeBoost: number = 1.5
 ): { score: number; metrics: Record<string, number> } {
   const metrics: Record<string, number> = {};
 
@@ -241,9 +233,6 @@ export function scorePref(
     if (slot.type !== 'transport' && slot.type !== 'rest') {
       totalSlots++;
       const intentTags = candidate.intentTags ?? [];
-      const qualityScore = candidate.qualityScore;
-      const uniquenessScore = candidate.uniquenessScore;
-      const mustSee = candidate.mustSee;
 
       // 检查 dislike tags
       const hasDislike = intentTags.some(tag => dislikeTags.includes(tag));
@@ -367,8 +356,6 @@ export function scoreTime(
     // 如果没有优化结果，使用计划的预估值
     const travelMin = plan.metrics?.estTravelMinutes ?? 0;
     const activeMin = plan.metrics?.estActiveMinutes ?? 0;
-    const dayStart = world.policies?.dayStart ?? '08:00';
-    const dayEnd = world.policies?.dayEnd ?? '22:00';
 
     // 简化计算（使用常量）
     const dayMin = HARD_GATE_CONSTANTS.DEFAULT_DAY_DURATION_MIN;
@@ -440,7 +427,7 @@ export function scoreReq(
   plan: TripPlan,
   optimizationResult?: OptimizationResult,
   dropPenaltyWeight: number = 1.0,
-  rewardWeight: number = 1.0
+  _rewardWeight: number = 1.0
 ): { score: number; metrics: Record<string, number> } {
   const metrics: Record<string, number> = {};
 
@@ -490,10 +477,14 @@ export function scoreReq(
   metrics.hardCovered = hardCovered;
   metrics.visitedHard = visitedHard;
   metrics.totalHard = totalHard;
+  metrics.totalLocked = totalLocked;
+  metrics.visitedLocked = visitedLocked;
+  metrics.totalCore = totalCore;
+  metrics.visitedCore = visitedCore;
 
   // (B) 丢弃惩罚 & 奖励
   let loss = 0;
-  let gain = 0;
+  const gain = 0;
 
   if (optimizationResult) {
     const dropped = optimizationResult.dropped ?? [];

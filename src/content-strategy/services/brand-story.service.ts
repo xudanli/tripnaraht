@@ -392,15 +392,6 @@ ${coreStory.turningPoint}，${coreStory.result}`;
    * 选择相关故事
    */
   private selectRelevantStory(options: StoryGenerationOptions): UserStory {
-    // 根据上下文和用户画像选择合适的故事
-    const storyTypes: UserStoryType[] = [
-      'NEGATION_TO_ACCEPTANCE',
-      'RISK_TO_CAPABILITY',
-      'DOUBT_TO_CONFIDENCE',
-      'FEAR_TO_COURAGE',
-      'FAILURE_TO_LEARNING',
-    ];
-
     // 简化实现：根据上下文选择
     let selectedType: UserStoryType = 'NEGATION_TO_ACCEPTANCE';
     if (options.context === 'encouragement') {

@@ -21,8 +21,11 @@ import { RollTracingService, SpanContext } from './roll-tracing.service';
 export class RollClientService {
   private readonly logger = new Logger(RollClientService.name);
   private enabled: boolean;
+  private readonly strictMode: boolean;
+  private readonly allowSimulation: boolean;
   private readonly rayAddress: string;
   private readonly rayNamespace: string;
+  private readonly bridgeTimeoutMs: number;
   private rayClient: any; // Ray Client (需要安装 @ray-project/ray)
 
   constructor(
@@ -35,15 +38,26 @@ export class RollClientService {
   ) {
     this.enabled =
       this.configService.get<boolean>('ROLL_ENABLED') !== false;
+    this.strictMode = this.getEnvFlag('ROLL_STRICT_MODE', false);
+    this.allowSimulation = this.getEnvFlag('ROLL_ALLOW_SIMULATION', true);
     this.rayAddress =
       this.configService.get<string>('RAY_ADDRESS') || 'ray://localhost:10001';
     this.rayNamespace =
       this.configService.get<string>('RAY_NAMESPACE') || 'tripnara-rl';
+    this.bridgeTimeoutMs = Number(
+      this.configService.get<string>('ROLL_BRIDGE_TIMEOUT_MS') || '10000',
+    );
 
     if (this.enabled) {
       this.initializeRayClient();
     } else {
-      this.logger.warn('[RollClient] ROLL 未启用，使用本地模拟模式');
+      if (this.isSimulationAllowed()) {
+        this.logger.warn('[RollClient] ROLL 未启用，使用本地模拟模式');
+      } else {
+        this.logger.error(
+          '[RollClient] ROLL 未启用且已禁止模拟（ROLL_ALLOW_SIMULATION=false 或 ROLL_STRICT_MODE=true）',
+        );
+      }
     }
   }
 
@@ -89,7 +103,13 @@ export class RollClientService {
     error?: string;
   }> {
     if (!this.enabled) {
-      // 本地模拟模式
+      if (!this.isSimulationAllowed()) {
+        this.logger.error('[roll_event] event=simulation_blocked service=actor_worker reason="strict_mode_or_no_simulation"');
+        return {
+          success: false,
+          error: 'ROLL disabled and simulation is forbidden by strict mode',
+        };
+      }
       return this.simulateActorWorker(request);
     }
 
@@ -121,13 +141,14 @@ export class RollClientService {
         error: response.error,
       };
     } catch (error: any) {
+      const code = this.classifyBridgeError(error);
       this.logger.error(
-        `[RollClient] Actor-Worker 调用失败: ${error.message}`,
+        `[RollClient] Actor-Worker 调用失败: ${error.message}, code=${code}`,
         error.stack,
       );
       return {
         success: false,
-        error: error.message,
+        error: `${code}:${error.message}`,
       };
     }
   }
@@ -146,7 +167,13 @@ export class RollClientService {
     error?: string;
   }> {
     if (!this.enabled) {
-      // 本地模拟模式
+      if (!this.isSimulationAllowed()) {
+        this.logger.error('[roll_event] event=simulation_blocked service=reward_worker reason="strict_mode_or_no_simulation"');
+        return {
+          success: false,
+          error: 'ROLL disabled and simulation is forbidden by strict mode',
+        };
+      }
       return this.simulateRewardWorker(trajectoryRef);
     }
 
@@ -167,13 +194,14 @@ export class RollClientService {
         error: response.error,
       };
     } catch (error: any) {
+      const code = this.classifyBridgeError(error);
       this.logger.error(
-        `[RollClient] Reward-Worker 调用失败: ${error.message}`,
+        `[RollClient] Reward-Worker 调用失败: ${error.message}, code=${code}`,
         error.stack,
       );
       return {
         success: false,
-        error: error.message,
+        error: `${code}:${error.message}`,
       };
     }
   }
@@ -196,7 +224,13 @@ export class RollClientService {
     error?: string;
   }> {
     if (!this.enabled) {
-      // 本地模拟模式
+      if (!this.isSimulationAllowed()) {
+        this.logger.error('[roll_event] event=simulation_blocked service=policy_worker reason="strict_mode_or_no_simulation"');
+        return {
+          success: false,
+          error: 'ROLL disabled and simulation is forbidden by strict mode',
+        };
+      }
       return this.simulatePolicyWorker(state);
     }
 
@@ -213,13 +247,14 @@ export class RollClientService {
         error: response.error,
       };
     } catch (error: any) {
+      const code = this.classifyBridgeError(error);
       this.logger.error(
-        `[RollClient] Policy-Worker 调用失败: ${error.message}`,
+        `[RollClient] Policy-Worker 调用失败: ${error.message}, code=${code}`,
         error.stack,
       );
       return {
         success: false,
-        error: error.message,
+        error: `${code}:${error.message}`,
       };
     }
   }
@@ -241,7 +276,13 @@ export class RollClientService {
     error?: string;
   }> {
     if (!this.enabled) {
-      // 本地模拟模式
+      if (!this.isSimulationAllowed()) {
+        this.logger.error('[roll_event] event=simulation_blocked service=training reason="strict_mode_or_no_simulation"');
+        return {
+          success: false,
+          error: 'ROLL disabled and simulation is forbidden by strict mode',
+        };
+      }
       return this.simulateTraining(config);
     }
 
@@ -263,13 +304,14 @@ export class RollClientService {
         error: response.error,
       };
     } catch (error: any) {
+      const code = this.classifyBridgeError(error);
       this.logger.error(
-        `[RollClient] 训练任务启动失败: ${error.message}`,
+        `[RollClient] 训练任务启动失败: ${error.message}, code=${code}`,
         error.stack,
       );
       return {
         success: false,
-        error: error.message,
+        error: `${code}:${error.message}`,
       };
     }
   }
@@ -378,6 +420,7 @@ export class RollClientService {
         })
       : undefined;
 
+    const startAt = Date.now();
     try {
       // 检查缓存（仅 GET 请求）
       if (useCache && method === 'GET' && this.cache) {
@@ -410,7 +453,7 @@ export class RollClientService {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
-          signal: AbortSignal.timeout(10000), // 10秒超时
+          signal: AbortSignal.timeout(this.bridgeTimeoutMs),
         };
 
       // 如果使用 Node.js 的 http/https，可以设置 agent
@@ -471,8 +514,17 @@ export class RollClientService {
         });
       }
 
+      const elapsed = Date.now() - startAt;
+      this.logger.debug(
+        `[roll_event] event=bridge_call_success endpoint=${endpoint} method=${method} latency_ms=${elapsed}`,
+      );
       return result;
     } catch (error: any) {
+      const elapsed = Date.now() - startAt;
+      const code = this.classifyBridgeError(error);
+      this.logger.warn(
+        `[roll_event] event=bridge_call_failure endpoint=${endpoint} method=${method} code=${code} latency_ms=${elapsed} error="${error?.message ?? 'unknown'}"`,
+      );
       // 结束追踪 Span（错误）
       if (spanContext) {
         this.tracing!.endSpan(
@@ -501,18 +553,21 @@ export class RollClientService {
     // Bridge Service 会处理 Ray Worker 调用
     
     // 根据 actorName 和 methodName 路由到对应的 Bridge API
+    let response: any;
     if (actorName === 'ActorWorker' && methodName === 'generate_trajectory') {
-      return this.callBridgeService('/api/actor/generate-trajectory', 'POST', args[0]);
+      response = await this.callBridgeService('/api/actor/generate-trajectory', 'POST', args[0]);
     } else if (actorName === 'RewardWorker' && methodName === 'compute_reward') {
-      return this.callBridgeService('/api/reward/compute', 'POST', {
+      response = await this.callBridgeService('/api/reward/compute', 'POST', {
         trajectory: args[0],
         reward_config: args[1],
       });
     } else if (actorName === 'PolicyWorker' && methodName === 'predict') {
-      return this.callBridgeService('/api/policy/predict', 'POST', args[0]);
+      response = await this.callBridgeService('/api/policy/predict', 'POST', args[0]);
+    } else {
+      throw new Error(`Unknown actor/method: ${actorName}.${methodName}`);
     }
-    
-    throw new Error(`Unknown actor/method: ${actorName}.${methodName}`);
+    this.validateActorResponse(actorName, methodName, response);
+    return response;
   }
 
   /**
@@ -541,7 +596,7 @@ export class RollClientService {
   /**
    * 本地模拟: Reward-Worker
    */
-  private simulateRewardWorker(trajectoryRef: any): any {
+  private simulateRewardWorker(_trajectoryRef: any): any {
     this.logger.debug('[RollClient] 使用本地模拟: Reward-Worker');
     return {
       success: true,
@@ -554,7 +609,7 @@ export class RollClientService {
   /**
    * 本地模拟: Policy-Worker
    */
-  private simulatePolicyWorker(state: any): any {
+  private simulatePolicyWorker(_state: any): any {
     this.logger.debug('[RollClient] 使用本地模拟: Policy-Worker');
     return {
       success: true,
@@ -620,5 +675,77 @@ export class RollClientService {
         workersAvailable: [],
       };
     }
+  }
+
+  private getEnvFlag(key: string, fallback: boolean): boolean {
+    const value = this.configService.get<string | boolean>(key);
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      if (v === 'true' || v === '1' || v === 'yes') return true;
+      if (v === 'false' || v === '0' || v === 'no') return false;
+    }
+    return fallback;
+  }
+
+  private isSimulationAllowed(): boolean {
+    // strictMode 优先级最高：开启后永远禁模拟
+    if (this.strictMode) return false;
+    return this.allowSimulation;
+  }
+
+  private classifyBridgeError(error: any): string {
+    if (String(error?.code || '').toUpperCase() === 'CONTRACT_VIOLATION') {
+      return 'CONTRACT_VIOLATION';
+    }
+    const status = Number(error?.status);
+    if (error?.name === 'TimeoutError' || String(error?.message || '').toLowerCase().includes('timeout')) {
+      return 'TIMEOUT';
+    }
+    if (Number.isFinite(status) && status >= 500) return 'HTTP_5XX';
+    if (Number.isFinite(status) && status >= 400) return 'HTTP_4XX';
+    if (String(error?.message || '').toLowerCase().includes('worker')) {
+      return 'WORKER_UNAVAILABLE';
+    }
+    return 'UNKNOWN';
+  }
+
+  private validateActorResponse(actorName: string, methodName: string, response: any): void {
+    const success = response?.success;
+    if (typeof success !== 'boolean') {
+      this.throwContractViolation(actorName, methodName, 'missing boolean success');
+    }
+    if (success !== true) return;
+
+    if (actorName === 'ActorWorker' && methodName === 'generate_trajectory') {
+      if (!response?.trajectory_id && !response?.trajectory) {
+        this.throwContractViolation(actorName, methodName, 'missing trajectory payload');
+      }
+      return;
+    }
+
+    if (actorName === 'RewardWorker' && methodName === 'compute_reward') {
+      if (typeof response?.reward !== 'number') {
+        this.throwContractViolation(actorName, methodName, 'missing numeric reward');
+      }
+      return;
+    }
+
+    if (actorName === 'PolicyWorker' && methodName === 'predict') {
+      if (!response?.action) {
+        this.throwContractViolation(actorName, methodName, 'missing action');
+      }
+    }
+  }
+
+  private throwContractViolation(actorName: string, methodName: string, detail: string): never {
+    this.logger.error(
+      `[roll_event] event=contract_violation actor=${actorName} method=${methodName} detail="${detail}"`,
+    );
+    const err: any = new Error(
+      `Contract violation for ${actorName}.${methodName}: ${detail}`,
+    );
+    err.code = 'CONTRACT_VIOLATION';
+    throw err;
   }
 }

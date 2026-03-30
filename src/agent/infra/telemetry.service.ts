@@ -487,7 +487,7 @@ export class TelemetryService {
   }
 
   private calculateTraceSummary(rootSpan: Span): TraceSummary {
-    const { totalDuration, totalTokens, totalTools, totalDb, errorCount } = 
+    const { totalTokens, totalTools, totalDb, errorCount } =
       this.aggregateMetrics(rootSpan);
 
     const startTime = new Date(rootSpan.startTime).getTime();
@@ -519,7 +519,7 @@ export class TelemetryService {
     totalDb: number;
     errorCount: number;
   } {
-    let totalDuration = span.metrics?.durationMs || 0;
+    const totalDuration = span.metrics?.durationMs || 0;
     let totalTokens = span.metrics?.llmTokens?.total || 0;
     let totalTools = span.metrics?.toolCalls || 0;
     let totalDb = span.metrics?.dbQueries || 0;

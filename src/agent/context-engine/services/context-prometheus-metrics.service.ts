@@ -9,7 +9,7 @@
  * - Block 统计（数量、类型分布）
  */
 
-import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 
 @Injectable()

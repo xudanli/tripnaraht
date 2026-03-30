@@ -289,7 +289,7 @@ export class ModelRouterService implements OnModuleInit {
   /**
    * vLLM 优先路由
    */
-  private async routeVllmFirst(request: RoutingRequest): Promise<RoutingDecision> {
+  private async routeVllmFirst(_request: RoutingRequest): Promise<RoutingDecision> {
     // 检查 vLLM 是否可用
     if (this.vllmAvailable) {
       return this.createDecision(LlmProvider.VLLM, 'vLLM first strategy', LlmProvider.DEEPSEEK);
@@ -302,7 +302,7 @@ export class ModelRouterService implements OnModuleInit {
   /**
    * API 优先路由
    */
-  private async routeApiFirst(request: RoutingRequest): Promise<RoutingDecision> {
+  private async routeApiFirst(_request: RoutingRequest): Promise<RoutingDecision> {
     // 按优先级尝试外部 API
     const providers = [
       LlmProvider.ANTHROPIC,

@@ -10,7 +10,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { RouteDirectionRecommendation } from '../services/route-direction-selector.service';
-import { TripPlan, PlanDay } from '../../trips/decision/plan-model';
+import { TripPlan } from '../../trips/decision/plan-model';
 import { TransportModeRequirement, RouteDirectionExtensions } from '../interfaces/route-direction-extensions.interface';
 
 export type TransportMode = 'ferry' | 'boat' | 'flight' | 'rail' | 'bus' | 'drive';
@@ -235,7 +235,7 @@ export class TransportPluginService {
     mode: TransportMode,
     requirement: TransportModeRequirement,
     countryCode: string,
-    itineraryDraft?: TripPlan
+    _itineraryDraft?: TripPlan
   ): TransportAlternativeStrategy[] {
     const strategies: TransportAlternativeStrategy[] = [];
 
@@ -300,7 +300,7 @@ export class TransportPluginService {
   private generateNeptuneActions(
     unavailableModes: TransportMode[],
     alternativeStrategies: TransportAlternativeStrategy[],
-    reminders: TransportBookingReminder[]
+    _reminders: TransportBookingReminder[]
   ): TransportChecklist['neptuneActions'] {
     const actions: TransportChecklist['neptuneActions'] = [];
 

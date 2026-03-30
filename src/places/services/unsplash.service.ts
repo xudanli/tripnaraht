@@ -323,7 +323,7 @@ export class UnsplashService implements OnModuleInit {
   /**
    * 执行实际的搜索请求
    */
-  private async trySearch(query: string, place: PlaceImageRequest): Promise<UnsplashPhoto | null> {
+  private async trySearch(query: string, _place: PlaceImageRequest): Promise<UnsplashPhoto | null> {
     this.logger.debug(`[Unsplash] 搜索: ${query}`);
     
     // 确保 httpClient 已初始化

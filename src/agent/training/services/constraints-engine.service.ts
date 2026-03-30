@@ -7,7 +7,6 @@ import {
   ConstraintCheckResult,
   ConstraintViolation,
   ConstraintWarning,
-  ConstraintType,
   SEVLevel,
 } from '../interfaces/safety-compliance.interface';
 import { Itinerary } from '../../interfaces/trip-plan.interface';
@@ -177,9 +176,9 @@ export class ConstraintsEngineService {
    * 检查地理约束
    */
   private async checkGeographicConstraint(
-    rule: ConstraintRule,
-    itinerary: Itinerary,
-    context: any,
+    _rule: ConstraintRule,
+    _itinerary: Itinerary,
+    _context: any,
   ): Promise<ConstraintViolation | null> {
     // TODO: 实际实现应该检查危险区域、禁区等
     // 这里先返回null（示例）
@@ -190,9 +189,9 @@ export class ConstraintsEngineService {
    * 检查时间约束
    */
   private async checkTemporalConstraint(
-    rule: ConstraintRule,
-    itinerary: Itinerary,
-    context: any,
+    _rule: ConstraintRule,
+    _itinerary: Itinerary,
+    _context: any,
   ): Promise<ConstraintViolation | null> {
     // TODO: 实际实现应该检查季节性风险、天气风险等
     return null;
@@ -202,9 +201,9 @@ export class ConstraintsEngineService {
    * 检查合规约束
    */
   private async checkComplianceConstraint(
-    rule: ConstraintRule,
-    itinerary: Itinerary,
-    context: any,
+    _rule: ConstraintRule,
+    _itinerary: Itinerary,
+    _context: any,
   ): Promise<ConstraintViolation | null> {
     // TODO: 实际实现应该检查签证、许可、法规要求等
     return null;
@@ -214,9 +213,9 @@ export class ConstraintsEngineService {
    * 检查用户偏好约束
    */
   private async checkUserPreferenceConstraint(
-    rule: ConstraintRule,
-    itinerary: Itinerary,
-    context: any,
+    _rule: ConstraintRule,
+    _itinerary: Itinerary,
+    _context: any,
   ): Promise<ConstraintViolation | null> {
     // TODO: 实际实现应该检查用户风险偏好、健康限制等
     return null;

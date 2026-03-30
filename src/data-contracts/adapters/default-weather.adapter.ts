@@ -111,7 +111,7 @@ export class DefaultWeatherAdapter extends BaseAdapter implements WeatherAdapter
    * OpenWeather 的免费 API 不包含警报信息
    * 这里返回空数组，实际可以使用 One Call API 3.0 获取警报
    */
-  private extractAlerts(data: any): WeatherAlert[] {
+  private extractAlerts(_data: any): WeatherAlert[] {
     // TODO: 如果使用 One Call API，可以从 data.alerts 提取
     return [];
   }

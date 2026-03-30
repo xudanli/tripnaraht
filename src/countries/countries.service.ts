@@ -6,7 +6,7 @@ import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack
 import { GetCountriesQueryDto } from './dto/get-countries-query.dto';
 import { CountryProfileDto } from './dto/country-profile.dto';
 import { CurrencyMathUtil } from '../common/utils/currency-math.util';
-import { getCountryPack, COUNTRY_PACKS, CountryPack } from '../trips/readiness/config/country-pack.config';
+import { getCountryPack, COUNTRY_PACKS } from '../trips/readiness/config/country-pack.config';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -103,7 +103,8 @@ export class CountriesService {
     // 如果没有指定limit，默认返回所有国家
     // 限制limit最大值，防止性能问题（国家数量通常不超过300个）
     const maxLimit = 1000;
-    let { q, limit, offset = 0 } = query;
+    const { q, offset = 0 } = query;
+    let limit = query.limit;
     
     // 如果没有指定limit，返回所有国家
     if (limit === undefined) {
@@ -301,7 +302,7 @@ export class CountriesService {
    */
   async createOrUpdateCountryPack(
     countryCode: string,
-    dto: CreateOrUpdateCountryPackDto,
+    _dto: CreateOrUpdateCountryPackDto,
   ): Promise<CountryPackDto> {
     // TODO: 实现持久化存储（数据库或配置文件写入）
     // 目前配置是硬编码在 country-pack.config.ts 中

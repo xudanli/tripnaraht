@@ -143,7 +143,7 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
    * 注意: geobio/mcp-server-airbnb 不支持此功能
    * 已禁用，因为该服务器只提供 airbnb_search 和 airbnb_listing_details 工具
    */
-  async getListingPhotos(listingId: string) {
+  async getListingPhotos(_listingId: string) {
     throw new Error('getListingPhotos is not supported by geobio/mcp-server-airbnb. Use airbnb_listing_details to get listing information including photos.');
   }
 
@@ -152,7 +152,7 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
    * 注意: geobio/mcp-server-airbnb 不支持此功能
    * 已禁用，因为该服务器只提供 airbnb_search 和 airbnb_listing_details 工具
    */
-  async analyzeListingPhotos(listingId: string) {
+  async analyzeListingPhotos(_listingId: string) {
     throw new Error('analyzeListingPhotos is not supported by geobio/mcp-server-airbnb. Use airbnb_listing_details to get listing information.');
   }
 
@@ -236,7 +236,6 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
       try {
         await tempClient.connect();
         // 如果连接成功，说明已经授权
-        const connectionId = tempClient.getConnectionId();
         throw new Error('Already authorized');
       } catch (error: any) {
         if (error.message?.includes('OAuth authorization required')) {

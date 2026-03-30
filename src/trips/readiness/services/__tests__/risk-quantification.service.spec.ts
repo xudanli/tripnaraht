@@ -1,7 +1,7 @@
 // src/trips/readiness/services/__tests__/risk-quantification.service.spec.ts
 
 import { RiskQuantificationService } from '../risk-quantification.service';
-import { HazardType, RuleSeverity } from '../../types/readiness-pack.types';
+import { HazardType } from '../../types/readiness-pack.types';
 
 describe('RiskQuantificationService', () => {
   let service: RiskQuantificationService;

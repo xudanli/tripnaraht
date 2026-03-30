@@ -8,9 +8,6 @@
  * - 错误与异常的话术
  */
 
-import { RouteDirectionData } from '../../route-directions/interfaces/route-direction.interface';
-import { UserContext } from './copy-standards.interface';
-
 /**
  * 场景类型
  */

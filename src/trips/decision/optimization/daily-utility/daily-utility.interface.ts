@@ -8,7 +8,6 @@
  */
 
 import { PlanDay } from '../../plan-model';
-import { TripWorldState } from '../../world-model';
 
 /** 日级 Utility 分项 */
 export interface DayUtilityBreakdown {

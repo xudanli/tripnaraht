@@ -1,4 +1,4 @@
-import { DecisionOSModule, DecisionOSModuleOptions } from './decision-os.module';
+import { DecisionOSModule } from './decision-os.module';
 import { DecisionOSConfigService } from './config';
 import { DecisionEventBus } from './events';
 import { CircuitBreakerService } from './resilience';

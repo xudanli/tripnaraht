@@ -9,7 +9,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
-import { WeightLearnerService, FeedbackRecord, WeightLearningResult, FeedbackType } from './weight-learner.service';
+import { WeightLearnerService, FeedbackRecord, FeedbackType } from './weight-learner.service';
 import { WeightPersistenceService } from './weight-persistence.service';
 import { RegretTrackerService } from '../theory/regret-tracker.service';
 import { DifferentiableDecisionService } from '../differentiable/differentiable-decision.service';

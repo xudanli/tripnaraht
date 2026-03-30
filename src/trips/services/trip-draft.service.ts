@@ -6,7 +6,6 @@ import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
-import { OpeningHoursUtil } from '../../common/utils/opening-hours.util';
 import { PlaceMetadata } from '../../places/interfaces/place-metadata.interface';
 import { PhysicalMetadata } from '../../places/interfaces/physical-metadata.interface';
 import {
@@ -35,9 +34,6 @@ import { ConstraintEngine } from './constraint.engine';
 import { RouteOptimizationEngine } from './route-optimization.engine';
 import { FatiguePredictionEngine } from './fatigue-prediction.engine';
 import { PacingEngine } from './pacing.engine';
-
-/** 候选地点信息（与 CandidateRetrievalEngine 导出类型兼容） */
-type CandidatePlaceType = CandidatePlace;
 
 /**
  * TripDraftService
@@ -773,7 +769,7 @@ ${candidatesJson}
       const isMealSlot = slot === TimeSlot.LUNCH || slot === TimeSlot.DINNER;
       
       // 过滤候选：排除已使用的，优先选择餐厅（如果是用餐时段）
-      let filteredCandidates = candidates.filter(c => {
+      const filteredCandidates = candidates.filter(c => {
         if (dayPlaceIds.has(c.id)) return false; // 排除已使用的
         
         // 用餐时段优先选择餐厅
@@ -899,7 +895,7 @@ ${candidatesJson}
 
     // 添加用户新增的项
     if (dto.userEdits?.addedItems) {
-      for (const addedItem of dto.userEdits.addedItems) {
+      for (const _addedItem of dto.userEdits.addedItems) {
         // 需要确定日期，这里简化处理
         // 实际应该从 addedItem 中获取或要求用户提供
       }
@@ -986,7 +982,7 @@ ${candidatesJson}
 
     // 添加用户新增的项
     if (userEdits?.addedItems) {
-      for (const addedItem of userEdits.addedItems) {
+      for (const _addedItem of userEdits.addedItems) {
         // 需要确定 tripDayId，这里简化处理
         // 实际应该从 addedItem 中获取日期或要求用户提供
       }
@@ -1070,7 +1066,7 @@ ${candidatesJson}
             orderBy: { order: 'desc' },
             select: { order: true },
           });
-          let baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+          const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
             ? maxOrderItem.order + 1 
             : 1;
 
@@ -1327,12 +1323,6 @@ ${candidatesJson}
     if (!trip) {
       throw new NotFoundException(`找不到指定的行程 (ID: ${tripId})`);
     }
-
-    // 标记锁定的 item
-    const lockedItemIds = new Set(dto.lockedItemIds || []);
-    const lockedItems = trip.TripDay.flatMap(day => 
-      day.ItineraryItem.filter(item => lockedItemIds.has(item.id))
-    );
 
     // 构建新的生成参数
     const days = trip.TripDay.length;

@@ -5,9 +5,9 @@
  * 行程详情页 API 接口
  */
 
-import { Controller, Get, Post, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { TripDetailAgentService, TripDetailAgentRequest, TripDetailAgentResponse } from './services/trip-detail-agent.service';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
+import { TripDetailAgentService, TripDetailAgentRequest } from './services/trip-detail-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 

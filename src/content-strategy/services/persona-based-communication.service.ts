@@ -10,7 +10,6 @@ import {
   CulturalAdaptation,
 } from '../interfaces/persona-communication.interface';
 import { CommunicationContext } from '../interfaces/brand-expression.interface';
-import { UserContext } from '../interfaces/copy-standards.interface';
 
 /**
  * 用户人群定制化沟通服务
@@ -125,7 +124,7 @@ export class PersonaBasedCommunicationService {
   /**
    * 城市用户适配
    */
-  adaptForCity(text: string, city: string, culture: Culture): string {
+  adaptForCity(text: string, city: string, _culture: Culture): string {
     // 根据城市特点调整表达
     const cityAdaptations: Record<string, string[]> = {
       '北京': ['更直接', '注重效率'],
@@ -149,7 +148,7 @@ export class PersonaBasedCommunicationService {
    * 理性探险者沟通策略
    */
   private generateRationalExplorerCommunication(
-    context: CommunicationContext,
+    _context: CommunicationContext,
   ): PersonaCommunication {
     return {
       style: {
@@ -174,7 +173,7 @@ export class PersonaBasedCommunicationService {
    * 体验追求者沟通策略
    */
   private generateExperienceSeekerCommunication(
-    context: CommunicationContext,
+    _context: CommunicationContext,
   ): PersonaCommunication {
     return {
       style: {
@@ -199,7 +198,7 @@ export class PersonaBasedCommunicationService {
    * 保守安全者沟通策略
    */
   private generateConservativeSafetyCommunication(
-    context: CommunicationContext,
+    _context: CommunicationContext,
   ): PersonaCommunication {
     return {
       style: {
@@ -223,7 +222,7 @@ export class PersonaBasedCommunicationService {
   /**
    * 默认沟通策略
    */
-  private generateDefaultCommunication(context: CommunicationContext): PersonaCommunication {
+  private generateDefaultCommunication(_context: CommunicationContext): PersonaCommunication {
     return {
       style: {
         tone: '友好、平衡',

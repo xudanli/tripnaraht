@@ -109,7 +109,7 @@ export class ContextAssemblerService {
   /**
    * 提取预算信息
    */
-  private extractBudget(state: any): ContextSummary['budget'] {
+  private extractBudget(_state: any): ContextSummary['budget'] {
     // 从 state 中提取预算信息（如果有）
     // 这里需要根据实际的数据结构来实现
     return undefined;

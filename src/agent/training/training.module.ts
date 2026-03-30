@@ -28,6 +28,7 @@ import { ReplayComparatorService } from './services/replay-comparator.service';
 import { TrajectoryETLService } from './services/trajectory-etl.service';
 import { DataQualityCheckerService } from './services/data-quality-checker.service';
 import { PIIAnonymizerService } from './services/pii-anonymizer.service';
+import { RLIntegrationService } from './services/rl-integration.service';
 
 // Controllers
 import { TrainingController } from './controllers/training.controller';
@@ -80,6 +81,8 @@ import { TrainingController } from './controllers/training.controller';
     TrajectoryETLService,
     IterativeDeploymentWorkflowService,
     ModelDeploymentService,
+    /** 编排层可选注入：`preDecision` 与对外 `verdict` 合并（仅依赖 ConfigService，其余 Optional） */
+    RLIntegrationService,
   ],
   exports: [
     FineTuneService,
@@ -94,6 +97,7 @@ import { TrainingController } from './controllers/training.controller';
     ModelRegistryService,
     IterativeDeploymentWorkflowService,
     ModelDeploymentService,
+    RLIntegrationService,
   ],
 })
 export class TrainingModule {}

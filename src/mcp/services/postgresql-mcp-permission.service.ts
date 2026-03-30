@@ -136,7 +136,6 @@ export class PostgreSQLMcpPermissionService {
    */
   private extractTables(query: string): string[] {
     const tables: string[] = [];
-    const upperQuery = query.toUpperCase();
 
     // 匹配 FROM 和 JOIN 后的表名
     const fromMatches = query.match(/\bFROM\s+["']?(\w+)["']?/gi);

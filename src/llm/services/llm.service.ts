@@ -519,9 +519,7 @@ export class LlmService {
       const hasTimeMatrix = prompt.includes('time_matrix:') && !prompt.includes('time_matrix: null');
       
       // 检查是否有违规信息
-      const hasDaysMismatch = prompt.includes('DAYS_COUNT_MISMATCH') || prompt.includes('天数不匹配');
       const hasTimeMissing = prompt.includes('ROBUST_TIME_MISSING') || prompt.includes('缺少时间矩阵');
-      const hasLunchMissing = prompt.includes('LUNCH_MISSING') || prompt.includes('缺少午餐');
       
       // 优先级规则：
       // 1. 如果 nodes=0，必须先解析实体（不能获取 facts）
@@ -1104,7 +1102,6 @@ ${JSON.stringify(schema, null, 2)}
     // 获取当前日期用于日期推算
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
     const currentDate = now.toISOString().split('T')[0];
 
     // 构建 Context Package 信息（如果有）
@@ -1269,7 +1266,7 @@ ${specializedSection ? `\n\n## 目的地特化提取规则（${destinationConfig
    */
   private buildDestinationSpecificPromptSection(
     config: any,
-    destinationCode?: string
+    _destinationCode?: string
   ): string {
     let section = '';
     
@@ -2079,7 +2076,7 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
   /**
    * 降级方案：生成简单的澄清回复
    */
-  private buildFallbackClarificationReply(parsed: any, inferredFields?: string[]): string {
+  private buildFallbackClarificationReply(parsed: any, _inferredFields?: string[]): string {
     const parts: string[] = [];
     
     if (parsed.destination) {
@@ -2102,7 +2099,7 @@ ${missingInfo.length > 0 ? `❓ 缺失: ${missingInfo.join('、')}` : ''}
   /**
    * 降级方案：生成简单的问题列表
    */
-  private generateFallbackQuestions(parsed: any, inferredFields?: string[]): string[] {
+  private generateFallbackQuestions(parsed: any, _inferredFields?: string[]): string[] {
     const questions: string[] = [];
 
     if (!parsed.destination) {

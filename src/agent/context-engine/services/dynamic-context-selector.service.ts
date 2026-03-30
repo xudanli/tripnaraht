@@ -148,7 +148,7 @@ export class DynamicContextSelectorService {
    * @param phase 规划阶段
    * @param agent 当前 Agent（可选，用于细化）
    */
-  select(userQuery: string, phase: string, agent?: string): DynamicContextSelectResult {
+  select(userQuery: string, phase: string, _agent?: string): DynamicContextSelectResult {
     const queryLower = userQuery?.trim().toLowerCase() || '';
     const phaseLower = phase?.toLowerCase() || '';
 

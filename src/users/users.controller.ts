@@ -1,11 +1,10 @@
 // src/users/users.controller.ts
 import { Controller, Get, Put, Delete, Body, BadRequestException, NotFoundException, Query, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateUserProfileDto, GetUserProfileResponseDto } from './dto/user-profile.dto';
-import { GetUsersQueryDto, UserListResponseDto, UserResponseDto, UpdateUserDto } from './dto/admin-user.dto';
-import { CurrentUserResponseDto, UpdateCurrentUserDto, DeleteAccountDto, DeleteAccountResponseDto } from './dto/current-user.dto';
-import { UserStatsResponseDto, UserDetailResponseDto } from './dto/user-stats.dto';
+import { UpdateUserProfileDto } from './dto/user-profile.dto';
+import { GetUsersQueryDto, UpdateUserDto } from './dto/admin-user.dto';
+import { UpdateCurrentUserDto, DeleteAccountDto } from './dto/current-user.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';

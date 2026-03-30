@@ -286,7 +286,7 @@ export class EvidenceCompletenessChecker {
    */
   private generateRecommendations(
     missingEvidence: EvidenceCompletenessResult['missingEvidence'],
-    places: Place[],
+    _places: Place[],
   ): EvidenceCompletenessResult['recommendations'] {
     const recommendations: EvidenceCompletenessResult['recommendations'] = [];
 

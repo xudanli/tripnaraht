@@ -1,0 +1,30 @@
+{
+  "_comment": "S-TD-01 样例2：多段衔接不可行（后段起飞早于前段到达）→ TIME_CONFLICT travel_ontology_flight_overlap",
+  "requestId": "td-sample-02",
+  "userIntent": {},
+  "tripState": {},
+  "environmentState": {},
+  "systemState": {
+    "requestId": "td-sample-02",
+    "version": 0
+  },
+  "travelOntologyState": {
+    "tripId": "trip-sample-02",
+    "nouns": {
+      "flights": [
+        {
+          "id": "leg-1",
+          "flightNo": "TD001",
+          "departureTime": "2026-08-01T08:00:00.000Z",
+          "arrivalTime": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "id": "leg-2",
+          "flightNo": "TD002",
+          "departureTime": "2026-08-01T11:00:00.000Z",
+          "arrivalTime": "2026-08-01T14:00:00.000Z"
+        }
+      ]
+    }
+  }
+}

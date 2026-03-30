@@ -109,7 +109,7 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
       // 尝试从 ReadinessPack 获取（需 Prisma）
       if (this.prisma) {
         try {
-          let readinessPack = await this.prisma.readinessPack.findFirst({
+          const readinessPack = await this.prisma.readinessPack.findFirst({
             where: { packId: input.packId, isActive: true },
           });
 

@@ -65,7 +65,7 @@ export class DataExpiryPolicyService {
    * 检查数据是否过期
    */
   isExpired(data: TimestampedData): boolean {
-    const { expiry_policy, timestamp } = data.metadata;
+    const { expiry_policy } = data.metadata;
     const ageSeconds = this.getDataAge(data);
 
     switch (expiry_policy.type) {

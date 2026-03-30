@@ -12,7 +12,6 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
-import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { ChunkRetrievalResult } from './chunk-retrieval.service';
 
 export interface RerankingParams {

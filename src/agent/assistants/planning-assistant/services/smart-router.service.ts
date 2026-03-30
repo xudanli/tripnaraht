@@ -142,12 +142,6 @@ export class SmartRouterService {
     const routingResult = await this.route(message, sessionState);
     
     // 2. 如果路由到具体服务，且工具融合功能可用，进行工具选择
-    const specificServiceTargets: RoutingTarget[] = [
-      'hotel', 'airbnb', 'accommodation', 'restaurant', 
-      'flight', 'rail', 'carRental', 'weather', 'search', 
-      'translate', 'currency', 'image'
-    ];
-    
     // 调试日志：检查工具选择条件（使用 log 级别确保可见）
     this.logger.log(`[工具选择] 检查: target=${routingResult.target}, hasRegistry=${!!this.toolRegistry}, hasSelector=${!!this.toolSelector}`);
     

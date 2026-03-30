@@ -34,7 +34,7 @@ import {
   RoutePlanDraft,
   RouteSegment,
 } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, DecisionStage } from '../shared/decision-result.types';
+import { DecisionResult, DecisionLogEntry } from '../shared/decision-result.types';
 import { DayProfile, PaceConstraints, RollingFatigueIssue } from '../interfaces/day-profile.interface';
 import { SplitOperation, BufferDayOperation, DrDreOperation } from '../interfaces/dr-dre-operation.interface';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
@@ -71,7 +71,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     this.logger.debug(`Dr.Dre 评估计划: ${plan.tripId}`);
 
     const pace = this.buildPaceConstraints(world);
-    let dayProfiles = this.buildDayProfiles(plan, pace);
+    const dayProfiles = this.buildDayProfiles(plan, pace);
 
     // 0️⃣.5 检查住宿位置对路线节奏的影响（Airbnb 集成）
     if (this.airbnbIntegration && plan.segments.length > 0) {
@@ -162,10 +162,6 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
               pickupLocation.lat && pickupLocation.lng &&
               dropoffLocation.lat && dropoffLocation.lng) {
             
-            // 估算日期和时间
-            const currentYear = new Date().getFullYear();
-            const month = world.physical.month;
-            const dayDate = new Date(currentYear, month - 1, dayIndex + 1);
             const pickupTime = '10:00';
             const dropoffTime = '18:00';
             const driverAge = (world.human as any)?.driverAge || 25;
@@ -642,7 +638,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     // 2. 处理要拆分的那一天
     const sameDaySegs = segs
       .filter(s => s.dayIndex === op.dayIndex)
-      .sort((a, b) => {
+      .sort(() => {
         // 保持原有顺序（如果有 segmentIndex 或其他顺序标识）
         return 0;
       });

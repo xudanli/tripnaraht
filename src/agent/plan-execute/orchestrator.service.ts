@@ -16,7 +16,7 @@ import { ReplannerService } from './replanner.service';
 import { ExecutorService } from './executor.service';
 import { ContextAssemblerService } from './context-assembler.service';
 import { AgentStateService } from '../services/agent-state.service';
-import { PlanTask, OrchestrationResult, ContextSummary, ExecutionResult } from './types';
+import { PlanTask, OrchestrationResult } from './types';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { LlmService } from '../../llm/services/llm.service';
 import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
@@ -692,7 +692,7 @@ export class DAGOrchestratorService {
    */
   private generateFinalSummary(
     tasks: PlanTask[],
-    memory: Record<string, any>,
+    _memory: Record<string, any>,
   ): string {
     const completed = tasks.filter(t => t.status === 'completed').length;
     const failed = tasks.filter(t => t.status === 'failed').length;

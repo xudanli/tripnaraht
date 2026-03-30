@@ -5,10 +5,8 @@ import {
   IsNumber,
   IsObject,
   IsOptional,
-  ValidateNested,
   IsEnum,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 /**
  * 一键复评请求 DTO

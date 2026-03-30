@@ -8,9 +8,9 @@
  * 输出：{ status, result, message }
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { ApprovalService } from '../../trips/decision/services/approval.service';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
@@ -106,7 +106,6 @@ export class DecisionCheckApprovalSkill implements Skill<DecisionCheckApprovalIn
     }
 
     const status = approval.status.toLowerCase() as DecisionCheckApprovalOutput['status'];
-    const metadata = approval.metadata as any || {};
     const result = approval.handledAt
       ? {
           approved: status === 'approved',

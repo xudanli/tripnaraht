@@ -190,10 +190,10 @@ export class PricePredictionService {
    * 从 Amadeus API 获取价格
    */
   private async getAmadeusPrice(
-    fromCity: string,
-    toCity: string,
-    date: string,
-    apiKey: string
+    _fromCity: string,
+    _toCity: string,
+    _date: string,
+    _apiKey: string
   ): Promise<number | null> {
     // TODO: 实现 Amadeus API 调用
     // 需要先获取 access token，然后调用 Flight Offers Search API
@@ -207,10 +207,10 @@ export class PricePredictionService {
    * 从 Skyscanner API 获取价格
    */
   private async getSkyscannerPrice(
-    fromCity: string,
-    toCity: string,
-    date: string,
-    apiKey: string
+    _fromCity: string,
+    _toCity: string,
+    _date: string,
+    _apiKey: string
   ): Promise<number | null> {
     // TODO: 实现 Skyscanner API 调用
     // 参考: https://developers.skyscanner.net/docs/flights/live-prices/overview

@@ -10,7 +10,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SkillMappingService } from '../skill-mapping.service';
 import { SkillsRegistryService } from '../../../../skills/services/skills-registry.service';
 import { TripNARAStepDraft } from '../../../interfaces/chain-of-work.interface';
-import { Skill } from '../../../../skills/interfaces/skill.interface';
 
 describe('SkillMappingService', () => {
   let service: SkillMappingService;

@@ -49,7 +49,7 @@ export function createTransportActions(
           time_matrix_robust: { type: 'array', items: { type: 'array', items: { type: 'number' } } },
         },
       },
-      execute: async (input: { nodes: Array<{ id: number; geo: { lat: number; lng: number } }> }, state: any) => {
+      execute: async (input: { nodes: Array<{ id: number; geo: { lat: number; lng: number } }> }, _state: any) => {
         try {
           const n = input.nodes.length;
           const timeMatrixApi: number[][] = [];

@@ -24,7 +24,7 @@ export class GooglePlacesService {
 
   constructor(@Optional() private configService?: ConfigService) {
     // 支持多种环境变量名
-    let rawKey = 
+    const rawKey = 
       this.configService?.get<string>('GOOGLE_PLACES_API_KEY') || 
       this.configService?.get<string>('GOOGLE_MAPS_API_KEY') || 
       '';

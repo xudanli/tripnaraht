@@ -1,6 +1,5 @@
 // src/itinerary-optimization/services/enhanced-vrptw-optimizer.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { DateTime } from 'luxon';
 import {
   PlanRequest,
   PlanNode,
@@ -14,7 +13,7 @@ import {
 import { RobustTimeMatrixService } from './robust-time-matrix.service';
 import { ExplanationService } from './explanation.service';
 import { DataExpiryPolicyService, TimestampedData } from './data-expiry-policy.service';
-import { ConservativeStrategyService, DataQualityCheckResult, ConservativeResult } from './conservative-strategy.service';
+import { ConservativeStrategyService } from './conservative-strategy.service';
 import { MetricsAggregatorService, ExecutionRecord } from './metrics-aggregator.service';
 
 /**
@@ -448,7 +447,7 @@ export class EnhancedVRPTWOptimizerService {
     request: PlanRequest,
     nodes: PlanNode[],
     timeMatrix: RobustTimeMatrix,
-    disjunctionGroups: Map<number, number[]>
+    _disjunctionGroups: Map<number, number[]>
   ): {
     route: number[];
     dropped: number[];
@@ -632,7 +631,7 @@ export class EnhancedVRPTWOptimizerService {
     dayEnd: number,
     timeMatrix: RobustTimeMatrix,
     route: number[],
-    nodes: PlanNode[]
+    _nodes: PlanNode[]
   ): boolean {
     // 计算到达时间
     const travelTime = route.length > 0
@@ -643,7 +642,6 @@ export class EnhancedVRPTWOptimizerService {
     // 检查时间窗
     if (node.time_windows && node.time_windows.length > 0) {
       const window = node.time_windows[0];
-      const windowStart = this.parseTimeToMinutes(window[0]);
       const windowEnd = this.parseTimeToMinutes(window[1]);
 
       if (arrivalTime > windowEnd) {
@@ -701,7 +699,7 @@ export class EnhancedVRPTWOptimizerService {
     currentTime: number,
     timeMatrix: RobustTimeMatrix,
     route: number[],
-    nodes: PlanNode[]
+    _nodes: PlanNode[]
   ): number {
     const travelTime = route.length > 0
       ? timeMatrix.matrix[route[route.length - 1]][node.id]
@@ -773,7 +771,6 @@ export class EnhancedVRPTWOptimizerService {
     timeMatrix: RobustTimeMatrix
   ): OptimizationResult {
     const nodeMap = new Map(expandedNodes.map((n) => [n.id, n]));
-    const dayStart = this.parseTimeToMinutes(request.day_boundary.start);
     const dayEnd = this.parseTimeToMinutes(request.day_boundary.end);
 
     // 1. 合并虚拟节点，生成 RouteNode 列表
@@ -920,7 +917,7 @@ export class EnhancedVRPTWOptimizerService {
   private generateTimeline(
     routeNodes: RouteNode[],
     request: PlanRequest,
-    solution: {
+    _solution: {
       route: number[];
       dropped: number[];
       waitTimes: number[];
@@ -929,12 +926,10 @@ export class EnhancedVRPTWOptimizerService {
     }
   ): TimelineEvent[] {
     const events: TimelineEvent[] = [];
-    const dayStart = this.parseTimeToMinutes(request.day_boundary.start);
 
     for (let i = 0; i < routeNodes.length; i++) {
       const node = routeNodes[i];
       const arrivalMinutes = this.parseTimeToMinutes(node.arrival);
-      const startServiceMinutes = this.parseTimeToMinutes(node.start_service);
       const endServiceMinutes = this.parseTimeToMinutes(node.end_service);
 
       // 添加节点事件
@@ -975,10 +970,6 @@ export class EnhancedVRPTWOptimizerService {
     // 检查是否有午餐事件
     const lunchBreak = request.lifestyle_policy?.lunch_break;
     if (lunchBreak?.enabled) {
-      const lunchWindowStart = this.parseTimeToMinutes(lunchBreak.window[0]);
-      const lunchWindowEnd = this.parseTimeToMinutes(lunchBreak.window[1]);
-      
-      // 查找午餐时间块
       for (const event of events) {
         if (event.type === 'NODE' && event.description === '午餐时间') {
           events.push({
@@ -1296,15 +1287,13 @@ export class EnhancedVRPTWOptimizerService {
   private generateDiagnostics(
     routeNodes: RouteNode[],
     request: PlanRequest,
-    nodes: PlanNode[],
+    _nodes: PlanNode[],
     nodeMap: Map<number, PlanNode>
   ): OptimizationResult['diagnostics'] {
     const criticalWindows: Array<{
       node_id: number;
       slack_to_close_min: number;
     }> = [];
-
-    const dayEnd = this.parseTimeToMinutes(request.day_boundary.end);
 
     for (const routeNode of routeNodes) {
       const node = nodeMap.get(routeNode.node_id);

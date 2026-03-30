@@ -12,7 +12,6 @@ import { CausalModelingService } from '../../../agent/reasoning/services/causal-
 import { CacheService } from '../../../common/cache/cache.service';
 import { WorldModelMonitoringService } from './world-model-monitoring.service';
 import {
-  CausalRelation,
   CausalChain,
   CausalReasoningResult,
   CausalReasoningOptions,
@@ -558,8 +557,8 @@ export class CausalReasoningService {
    */
   private async performCounterfactualReasoning(
     worldModel: UnifiedWorldModel,
-    causalReasoning: CausalReasoningResult | undefined,
-    graph: ReasoningGraph,
+    _causalReasoning: CausalReasoningResult | undefined,
+    _graph: ReasoningGraph,
   ): Promise<CounterfactualReasoningResult[]> {
     this.logger.log(`[CausalReasoning] 执行反事实推理`);
 

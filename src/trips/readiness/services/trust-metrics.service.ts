@@ -300,7 +300,7 @@ export class TrustMetricsService {
   /**
    * 评估地理特征数据质量
    */
-  private evaluateGeoFeaturesQuality(result: ReadinessCheckResult): number {
+  private evaluateGeoFeaturesQuality(_result: ReadinessCheckResult): number {
     // 如果有地理特征相关的规则，说明使用了地理特征数据
     // 这里简化处理，实际应该检查 context.geo 是否存在
     // 假设如果使用了地理特征，质量较高

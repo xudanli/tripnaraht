@@ -16,8 +16,6 @@ import { Place } from '@prisma/client';
 import {
   GraphNode,
   GraphRelation,
-  GraphNodeType,
-  GraphRelationType,
   PlaceNodeProperties,
   RouteSegmentNodeProperties,
   RouteDirectionNodeProperties,

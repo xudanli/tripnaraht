@@ -501,7 +501,7 @@ export class CoreGatewayService {
 
   // ========== 默认响应（降级） ==========
 
-  private getDefaultPlanningResponse(action: CoreAction): unknown {
+  private getDefaultPlanningResponse(_action: CoreAction): unknown {
     return {
       success: false,
       message: '规划服务暂时不可用',
@@ -509,7 +509,7 @@ export class CoreGatewayService {
     };
   }
 
-  private getDefaultExecutionResponse(action: CoreAction): unknown {
+  private getDefaultExecutionResponse(_action: CoreAction): unknown {
     return {
       success: false,
       message: '执行服务暂时不可用',

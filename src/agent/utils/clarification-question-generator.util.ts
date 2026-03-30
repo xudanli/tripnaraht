@@ -18,6 +18,19 @@ export interface IntakeGap {
   detail: string;
 }
 
+/** 目的地尚未解析为可用地点时，不得调用 transport.search 等依赖地理的技能 */
+export function isUnresolvedDestinationPlaceholder(destination: unknown): boolean {
+  if (destination === undefined || destination === null) return true;
+  if (typeof destination === 'object') return false;
+  const s = String(destination).trim();
+  return (
+    s === '' ||
+    s === '未指定' ||
+    s === '未知' ||
+    /^destination$/i.test(s)
+  );
+}
+
 /**
  * 识别缺口（降级模式）
  * 当 PlannerAgent 不可用时，使用简单规则识别缺口

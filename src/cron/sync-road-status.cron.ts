@@ -10,7 +10,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 
@@ -76,7 +76,7 @@ export class SyncRoadStatusCron {
         batch.map(roadId => this.queryRoadStatus(API_URL, roadId))
       );
 
-      results.forEach((result, index) => {
+      results.forEach((result) => {
         if (result.status === 'fulfilled' && result.value) {
           apiSuccess++;
           statuses.push(result.value);

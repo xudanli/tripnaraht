@@ -1,6 +1,6 @@
 // src/users/dto/current-user.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEmail, IsUrl } from 'class-validator';
+import { IsOptional, IsString, IsUrl } from 'class-validator';
 
 /**
  * 当前用户信息响应 DTO

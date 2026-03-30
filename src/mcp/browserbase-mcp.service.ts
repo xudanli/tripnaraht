@@ -4,7 +4,7 @@
  * NestJS 服务层，封装 Browserbase MCP 客户端
  */
 
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { BrowserbaseMcpClient } from './browserbase-mcp-client';
 
 @Injectable()

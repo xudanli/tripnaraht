@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Param, Query, Body, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { TripTemplatesService } from './trip-templates.service';
-import { GetTripTemplatesQueryDto, TripTemplateResponseDto, CreateTripFromTemplateDto } from './dto/trip-template.dto';
+import { GetTripTemplatesQueryDto, CreateTripFromTemplateDto } from './dto/trip-template.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';

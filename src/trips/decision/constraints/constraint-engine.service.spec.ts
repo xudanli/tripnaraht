@@ -13,7 +13,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConstraintEngineService } from './constraint-engine.service';
 import { ConstraintChecker } from './constraint-checker';
 import { TripWorldState } from '../world-model';
-import { TripPlan, PlanDay, PlanSlot } from '../plan-model';
+import { TripPlan } from '../plan-model';
 
 // === 测试数据工厂 ===
 
@@ -61,7 +61,6 @@ function createBasePlan(): TripPlan {
 
 describe('ConstraintEngineService', () => {
   let service: ConstraintEngineService;
-  let checker: ConstraintChecker;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -69,7 +68,6 @@ describe('ConstraintEngineService', () => {
     }).compile();
 
     service = module.get<ConstraintEngineService>(ConstraintEngineService);
-    checker = module.get<ConstraintChecker>(ConstraintChecker);
   });
 
   describe('无 ConstraintChecker 时', () => {

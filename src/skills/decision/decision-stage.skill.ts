@@ -8,8 +8,8 @@
  * 用于 E2E 回放、A/B 测试、错误聚类
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';
 import { DecisionStage, DecisionLogEntry, DecisionPersona, DecisionSource } from '../../trips/decision/shared/decision-result.types';

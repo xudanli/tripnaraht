@@ -256,7 +256,7 @@ export class PassSelectionEngineService {
     input: PassSelectionInput;
     travelDaySimulation?: any;
   }): string {
-    const { profile, input, travelDaySimulation } = args;
+    const { profile, travelDaySimulation } = args;
     const parts: string[] = [];
 
     parts.push(`推荐 ${profile.passFamily} ${profile.passType} Pass`);

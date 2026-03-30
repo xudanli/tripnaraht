@@ -9,7 +9,7 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { SpatialReplacementService } from '../../trips/decision/services/spatial-replacement.service';
 import { PrismaService } from '../../prisma/prisma.service';

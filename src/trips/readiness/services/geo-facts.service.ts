@@ -6,8 +6,8 @@
  * 整合河网、山脉、道路网络、海岸线、港口和航线数据，提供统一的地理特征查询接口
  */
 
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
-import { GeoFactsRiverService, RiverFeatures, Point, Route } from './geo-facts-river.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { GeoFactsRiverService, RiverFeatures, Route } from './geo-facts-river.service';
 import { GeoFactsMountainService, MountainFeatures } from './geo-facts-mountain.service';
 import { GeoFactsRoadService, RoadFeatures } from './geo-facts-road.service';
 import { GeoFactsCoastlineService, CoastlineFeatures } from './geo-facts-coastline.service';

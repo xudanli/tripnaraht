@@ -7,7 +7,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { TravelLeg, GeoPoint } from '../world-model';
+import { TravelLeg } from '../world-model';
 
 export interface ReliableTravelLeg extends TravelLeg {
   reliability: number;        // 0~1 置信度

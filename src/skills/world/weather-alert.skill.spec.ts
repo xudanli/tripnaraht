@@ -7,7 +7,6 @@ import { IcelandWeatherRealtimeService } from './services/iceland-weather-realti
 
 describe('WeatherAlertSkill', () => {
   let skill: WeatherAlertSkill;
-  let weatherService: IcelandWeatherRealtimeService;
 
   const mockWeatherService = {
     getWeatherByLocation: jest.fn(),
@@ -37,7 +36,6 @@ describe('WeatherAlertSkill', () => {
     }).compile();
 
     skill = module.get<WeatherAlertSkill>(WeatherAlertSkill);
-    weatherService = module.get<IcelandWeatherRealtimeService>(IcelandWeatherRealtimeService);
 
     jest.clearAllMocks();
   });

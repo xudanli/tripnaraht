@@ -6,7 +6,7 @@
  */
 
 import { Controller, Post, Get, Body, Param, Query, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Public } from '../../../../../auth/decorators/public.decorator';
 
 import { ObjectiveFunctionService } from '../../objective-function.service';
@@ -170,7 +170,7 @@ export class OptimizationAdminController {
     // 获取目标用户列表
     let userIds = dto.userIds;
     if (!userIds || userIds.length === 0) {
-      const stats = await this.weightPersistence.getStatistics();
+      await this.weightPersistence.getStatistics();
       // 假设有方法获取所有用户 ID
       userIds = []; // TODO: 从持久化服务获取
     }

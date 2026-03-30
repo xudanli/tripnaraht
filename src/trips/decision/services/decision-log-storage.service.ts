@@ -7,6 +7,10 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  analyzeDecisionLogTraceability,
+  type DecisionLogTraceabilityResult,
+} from '../contracts/decision-log-traceability.contract';
 import { DecisionLogEntry, DecisionStage } from '../shared/decision-result.types';
 
 @Injectable()
@@ -14,6 +18,40 @@ export class DecisionLogStorageService {
   private readonly logger = new Logger(DecisionLogStorageService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** 集成/预发：`DECISION_LOG_STRICT_WRITE=1` 时，traceability **errors** 将 **跳过** `create`/`createMany` */
+  private isDecisionLogStrictWrite(): boolean {
+    const v = process.env.DECISION_LOG_STRICT_WRITE;
+    return v === '1' || v === 'true';
+  }
+
+  /**
+   * TD-04：写入/读出时记录可追溯性结论；默认不阻断持久化（严格模式见 `isDecisionLogStrictWrite`）
+   */
+  private logTraceabilityAnalysis(
+    entries: DecisionLogEntry[],
+    phase: 'save' | 'read',
+    tripHint?: string,
+  ): DecisionLogTraceabilityResult {
+    const r = analyzeDecisionLogTraceability(entries);
+    if (r.errors.length === 0 && r.warnings.length === 0) {
+      return r;
+    }
+    const hint = tripHint ? ` context=${tripHint}` : '';
+    if (r.errors.length > 0) {
+      const sample = r.errors.slice(0, 5).join('; ');
+      this.logger.warn(
+        `[TD-04][${phase}]${hint} ${r.errors.length} traceability error(s): ${sample}${r.errors.length > 5 ? '…' : ''}`,
+      );
+    }
+    if (r.warnings.length > 0) {
+      const sample = r.warnings.slice(0, 3).join('; ');
+      this.logger.warn(
+        `[TD-04][${phase}]${hint} ${r.warnings.length} traceability warning(s): ${sample}${r.warnings.length > 3 ? '…' : ''}`,
+      );
+    }
+    return r;
+  }
 
   /**
    * 验证 UUID 格式
@@ -40,6 +78,14 @@ export class DecisionLogStorageService {
     }
   ): Promise<void> {
     try {
+      const tr = this.logTraceabilityAnalysis([entry], 'save', options?.tripId);
+      if (this.isDecisionLogStrictWrite() && tr.errors.length > 0) {
+        this.logger.error(
+          `[TD-04][save] DECISION_LOG_STRICT_WRITE: skip persist (${tr.errors.length} traceability error(s))`,
+        );
+        return;
+      }
+
       // 验证 tripId 是否为有效的 UUID，如果不是则设置为 null
       const validTripId = options?.tripId && this.isValidUUID(options.tripId) 
         ? options.tripId 
@@ -93,6 +139,14 @@ export class DecisionLogStorageService {
     }
 
     try {
+      const tr = this.logTraceabilityAnalysis(entries, 'save', options?.tripId);
+      if (this.isDecisionLogStrictWrite() && tr.errors.length > 0) {
+        this.logger.error(
+          `[TD-04][save] DECISION_LOG_STRICT_WRITE: skip batch persist (${tr.errors.length} traceability error(s))`,
+        );
+        return;
+      }
+
       // 验证 tripId 是否为有效的 UUID，如果不是则设置为 null
       const validTripId = options?.tripId && this.isValidUUID(options.tripId) 
         ? options.tripId 
@@ -193,7 +247,7 @@ export class DecisionLogStorageService {
       take: filters.limit || 1000,
     });
 
-    return logs.map(log => ({
+    const mapped = logs.map(log => ({
       persona: log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
       action: log.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
       explanation: log.explanation,
@@ -203,6 +257,10 @@ export class DecisionLogStorageService {
       decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
       decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
     }));
+
+    this.logTraceabilityAnalysis(mapped, 'read', filters.tripId);
+
+    return mapped;
   }
 
   /**
@@ -218,7 +276,7 @@ export class DecisionLogStorageService {
         return null;
       }
 
-      return {
+      const entry: DecisionLogEntry = {
         persona: log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
         action: log.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
         explanation: log.explanation,
@@ -228,6 +286,8 @@ export class DecisionLogStorageService {
         decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
         decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
       };
+      this.logTraceabilityAnalysis([entry], 'read', log.tripId ?? undefined);
+      return entry;
     } catch (error: any) {
       this.logger.error(`获取决策日志失败: ${error.message}`, error.stack);
       throw error;
@@ -265,7 +325,7 @@ export class DecisionLogStorageService {
         },
       });
 
-      return {
+      const entry: DecisionLogEntry = {
         persona: updatedLog.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
         action: updatedLog.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
         explanation: updatedLog.explanation,
@@ -275,6 +335,8 @@ export class DecisionLogStorageService {
         decisionSource: updatedLog.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
         decisionStage: ((updatedLog as any).decisionStage || 'FINALIZE') as DecisionStage,
       };
+      this.logTraceabilityAnalysis([entry], 'read', updatedLog.tripId ?? undefined);
+      return entry;
     } catch (error: any) {
       this.logger.error(`更新决策日志元数据失败: ${error.message}`, error.stack);
       throw error;

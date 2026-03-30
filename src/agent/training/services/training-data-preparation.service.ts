@@ -2,7 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { RewardSignal } from '../interfaces/trajectory.interface';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

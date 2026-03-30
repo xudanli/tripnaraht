@@ -130,7 +130,7 @@ export class PlanningWorkbenchAgentService {
 
     // === 创建或获取 TripRun 记录 ===
     let tripRunId: string | null = null;
-    let attemptNumber = 1;
+    const attemptNumber = 1;
     let attemptId: string | null = null;
     
     if (this.tripRunManager) {
@@ -190,7 +190,7 @@ export class PlanningWorkbenchAgentService {
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('构建上下文超时（10秒）')), 10000);
           });
-          const contextResult = await Promise.race([contextPromise, timeoutPromise]);
+          await Promise.race([contextPromise, timeoutPromise]);
           // world 可以从 contextPackage 中提取
           this.logger.debug('世界模型上下文构建完成');
           updateProgress?.(10, '世界模型上下文构建完成');
@@ -251,7 +251,7 @@ export class PlanningWorkbenchAgentService {
               
               if (recommendedOption && recommendedOption.dayThemes && recommendedOption.dayThemes.length > 0) {
                 // 将 dayThemes 转换为 RouteSegment，并包含POI信息
-                planState.itinerary.segments = recommendedOption.dayThemes.map((theme, idx) => {
+                planState.itinerary.segments = recommendedOption.dayThemes.map((theme) => {
                   // 查找当天的POI信息
                   const dayPoi = recommendedOption.pois?.find(p => p.day === theme.day);
                   
@@ -391,7 +391,7 @@ export class PlanningWorkbenchAgentService {
                 };
                 
                 // 将默认方案也转换为 segments
-                planState.itinerary.segments = defaultDayThemes.map((theme, idx) => ({
+                planState.itinerary.segments = defaultDayThemes.map((theme) => ({
                   segmentId: `day_${theme.day}_segment_1`,
                   dayIndex: theme.day - 1,
                   distanceKm: 0,
@@ -589,7 +589,7 @@ export class PlanningWorkbenchAgentService {
                     
                     // 5. 将选定的方案转换为 segments（如果还没有）
                     if (selectedOption.dayThemes && selectedOption.dayThemes.length > 0) {
-                      planState.itinerary.segments = selectedOption.dayThemes.map((theme: { day: number; theme: string; description?: string }, idx: number) => {
+                      planState.itinerary.segments = selectedOption.dayThemes.map((theme: { day: number; theme: string; description?: string }) => {
                         const dayPoi = selectedOption.pois?.find((p: { day: number }) => p.day === theme.day);
                         
                         return {
@@ -698,7 +698,7 @@ export class PlanningWorkbenchAgentService {
               
               if (recommendedOption && recommendedOption.dayThemes && recommendedOption.dayThemes.length > 0) {
                 // 将 dayThemes 转换为 RouteSegment，并包含POI信息
-                planState.itinerary.segments = recommendedOption.dayThemes.map((theme, idx) => {
+                planState.itinerary.segments = recommendedOption.dayThemes.map((theme) => {
                   // 查找当天的POI信息
                   const dayPoi = recommendedOption.pois?.find(p => p.day === theme.day);
                   
@@ -804,7 +804,7 @@ export class PlanningWorkbenchAgentService {
                 };
                 
                 // 将默认方案也转换为 segments
-                planState.itinerary.segments = defaultDayThemes.map((theme, idx) => ({
+                planState.itinerary.segments = defaultDayThemes.map((theme) => ({
                   segmentId: `day_${theme.day}_segment_1`,
                   dayIndex: theme.day - 1,
                   distanceKm: 0,
@@ -888,7 +888,7 @@ export class PlanningWorkbenchAgentService {
 
         // 冲突检测
         if (this.constraintsDetectConflicts) {
-          const conflictsResult = await this.constraintsDetectConflicts.execute({ planState });
+          await this.constraintsDetectConflicts.execute({ planState });
           // 如果有冲突，可以触发仲裁
         }
       }
@@ -2004,7 +2004,7 @@ export class PlanningWorkbenchAgentService {
         const planState = stored.data;
         
         // 尝试从 Trip metadata 获取 UIOutput 和其他信息
-        let tripId = planState.itinerary?.tripId || '';
+        const tripId = planState.itinerary?.tripId || '';
         let uiOutput: PlanningWorkbenchResponse['uiOutput'] = {};
         let createdAt = new Date().toISOString();
         let updatedAt = new Date().toISOString();
@@ -2050,7 +2050,7 @@ export class PlanningWorkbenchAgentService {
    */
   async comparePlans(
     planIds: string[],
-    compareFields?: string[],
+    _compareFields?: string[],
   ): Promise<{
     plans: Array<{
       planId: string;
@@ -2525,9 +2525,6 @@ export class PlanningWorkbenchAgentService {
 
     // 成本数据
     if (this.costAgent && context.destination && hasDates) {
-      const days = Math.ceil(
-        (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
-      ) + 1;
       promises.push(
         this.costAgent.estimateTripCost(
           context.destination.country || context.destination.city || '',

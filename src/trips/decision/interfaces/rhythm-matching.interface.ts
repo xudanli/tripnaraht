@@ -10,10 +10,6 @@
  * - 动态节奏调整
  */
 
-import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
-import { UserPersona } from '../../../agent/memory/interfaces/multi-persona.interface';
-import { PersonaChangeSignals } from '../../../agent/memory/interfaces/multi-persona.interface';
-
 /**
  * 节奏类型
  */

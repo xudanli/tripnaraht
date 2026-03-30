@@ -10,7 +10,6 @@
  */
 
 import { Injectable, Logger, Optional, OnModuleInit } from '@nestjs/common';
-import { McpToolDefinition } from './mcp-tool-registry.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AirbnbService } from '../../../../mcp/airbnb.service';
 import { WeatherDirectService } from '../../../../mcp/weather-direct.service';

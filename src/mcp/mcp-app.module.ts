@@ -27,11 +27,9 @@ const enableDecisionSkills = process.env.ENABLE_DECISION_SKILLS === 'true';
 const enableReadinessModule = process.env.ENABLE_READINESS_MODULE === 'true';
 // PlacesModule 在 MCP 模式下默认禁用（导致启动阻塞）
 // 如需 EmbeddingService，可以在 SkillsModule 中单独导入 PlacesLiteModule
-const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
-// ContextEngineModule 在 MCP 模式下默认启用（核心功能）
-const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE !== 'false';
-// TripsModule 在 MCP 模式下默认禁用（避免启动阻塞）
-const enableTripsModule = process.env.ENABLE_TRIPS_MODULE === 'true';
+void process.env.ENABLE_PLACES_MODULE;
+void process.env.ENABLE_CONTEXT_ENGINE_MODULE;
+void process.env.ENABLE_TRIPS_MODULE;
 // Google Maps Direct Module 默认启用，可通过 DISABLE_GOOGLE_SERVICES=true 禁用（用于测试环境）
 const enableGoogleMapsModule = process.env.DISABLE_GOOGLE_SERVICES !== 'true';
 

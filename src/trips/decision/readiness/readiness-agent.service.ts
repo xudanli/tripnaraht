@@ -16,7 +16,6 @@ import { TripPlan } from '../plan-model';
 import {
   TravelReadinessResult,
   TravelReadinessChecklistItem,
-  ReadinessChecklistItemType,
   ReadinessSeverity,
 } from './types/readiness-checklist.types';
 import { PhysicalRealityModel } from '../models/physical-reality.model';
@@ -376,7 +375,7 @@ export class ReadinessAgentService {
    */
   private deriveFromTripPlan(
     plan: TripPlan,
-    world: WorldModelContext
+    _world: WorldModelContext
   ): TravelReadinessChecklistItem[] {
     const items: TravelReadinessChecklistItem[] = [];
 
@@ -424,7 +423,7 @@ export class ReadinessAgentService {
       SHOULD: TravelReadinessChecklistItem[];
       OPTIONAL: TravelReadinessChecklistItem[];
     },
-    world: WorldModelContext
+    _world: WorldModelContext
   ): string {
     const mustCount = itemsBySeverity.MUST.length;
     const shouldCount = itemsBySeverity.SHOULD.length;

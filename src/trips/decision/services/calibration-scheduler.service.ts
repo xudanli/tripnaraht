@@ -249,7 +249,7 @@ export class CalibrationSchedulerService implements OnModuleInit {
     const completionRate = feedbacks.filter(f => f.completed_as_planned).length / feedbacks.length;
     const completionPenalty = completionRate < 0.8 ? (0.8 - completionRate) * 0.2 : 0;
 
-    let factor = 1.0 + ratingBias - completionPenalty;
+    const factor = 1.0 + ratingBias - completionPenalty;
     return Math.max(0.80, Math.min(1.20, factor)); // 限制 ±20%
   }
 

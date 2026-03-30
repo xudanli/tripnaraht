@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
 import { SafetravelQueryDto, SafetravelResponseDto, AlertType, AlertSeverity } from '../dto/safetravel.dto';
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 
 @Injectable()
 export class SafetravelService {

@@ -10,8 +10,7 @@
  * - 让 LangGraph 作为"调度员"而非"驾驶员"
  */
 
-import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
-import { DecisionResult } from '../shared/decision-result.types';
+import { RoutePlanDraft } from '../shared/world-model.types';
 
 /**
  * TripNARA Core Tool 输入参数

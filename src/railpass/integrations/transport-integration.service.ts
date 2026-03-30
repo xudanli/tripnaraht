@@ -149,7 +149,7 @@ export class TransportIntegrationService {
   filterOptionsByRailPassConstraints(
     options: TransportOption[],
     passProfile?: RailPassProfile,
-    constraints?: {
+    _constraints?: {
       avoidMandatoryReservations?: boolean;
       maxReservationFee?: number;
     }

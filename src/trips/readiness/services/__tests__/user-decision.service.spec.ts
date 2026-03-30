@@ -2,7 +2,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserDecisionService } from '../user-decision.service';
-import { Rule, Action, UserDecision, UserQuestion, DecisionBranch } from '../../types/readiness-pack.types';
+import { Rule, UserQuestion, DecisionBranch } from '../../types/readiness-pack.types';
 
 describe('UserDecisionService', () => {
   let service: UserDecisionService;

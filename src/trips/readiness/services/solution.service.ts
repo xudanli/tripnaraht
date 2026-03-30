@@ -44,7 +44,7 @@ export class SolutionService {
    */
   private generateSolutionsForBlocker(
     blockerId: string,
-    trip: any,
+    _trip: any,
   ): SolutionDto[] {
     const solutions: SolutionDto[] = [];
 

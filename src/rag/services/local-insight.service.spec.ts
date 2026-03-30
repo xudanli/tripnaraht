@@ -1,6 +1,6 @@
 // src/rag/services/local-insight.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { LocalInsightService, LocalInsight } from './local-insight.service';
+import { LocalInsightService } from './local-insight.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RagService } from './rag.service';
 import { LlmExtractionService } from './llm-extraction.service';

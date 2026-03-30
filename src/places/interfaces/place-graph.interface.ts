@@ -7,7 +7,7 @@
  */
 
 import { Place } from '@prisma/client';
-import { PlaceNodeProperties, GraphNode, GraphRelation } from '../../trips/decision/graph-db/graph-db.interface';
+import { PlaceNodeProperties } from '../../trips/decision/graph-db/graph-db.interface';
 
 /**
  * Place 图节点扩展

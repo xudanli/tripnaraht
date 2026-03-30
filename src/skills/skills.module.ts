@@ -5,7 +5,7 @@
  * 统一管理所有 Skills
  */
 
-import { Module, OnModuleInit, forwardRef, Logger, Optional } from '@nestjs/common';
+import { Module, forwardRef, Logger, Optional } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';

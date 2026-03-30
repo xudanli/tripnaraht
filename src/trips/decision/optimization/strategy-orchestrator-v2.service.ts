@@ -304,7 +304,7 @@ export class StrategyOrchestratorV2Service {
   private identifyUserJudgmentPoints(
     abuResult: AbuOptimizationResponse,
     dreResult: DreOptimizationResult,
-    finalEvaluation: ObjectiveEvaluationResult
+    _finalEvaluation: ObjectiveEvaluationResult
   ): StrategyOrchestrationResultV2['userJudgmentPoints'] {
     const points: StrategyOrchestrationResultV2['userJudgmentPoints'] = [];
 

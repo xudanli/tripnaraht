@@ -10,7 +10,6 @@ import { DiagnosticLabelSystemService } from './diagnostic-label-system.service'
 import { JudgePromptDesignerService } from './judge-prompt-designer.service';
 import { RollRewardAdapterService } from './roll-reward-adapter.service';
 import { LlmService } from '../../../llm/services/llm.service';
-import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 
 /**
  * QualityScorerService

@@ -9,8 +9,6 @@
  * - 匹配性判断（对这个用户合不合适）
  */
 
-import { RouteDirectionData } from './route-direction.interface';
-
 /**
  * 可行性等级
  */

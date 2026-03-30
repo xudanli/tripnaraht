@@ -121,7 +121,6 @@ export class DEMEffortMetadataService {
   ): Promise<EffortMetadata> {
     const {
       activityType = 'walking',
-      samplingInterval = 100,
       includeElevationProfile = false,
     } = options;
 

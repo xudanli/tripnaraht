@@ -6,7 +6,6 @@ import {
   ModelVersion,
   ModelRegistryEntry,
   TrainingMetrics,
-  TrainingConfig,
 } from '../interfaces/training-platform.interface';
 import { MLflowClientService } from './mlflow-client.service';
 

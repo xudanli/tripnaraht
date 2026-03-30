@@ -1,0 +1,87 @@
+name: AO Gate P0 Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/agent/execution/gate-eval-executor.service.ts"
+      - "src/agent/execution/gate-eval-executor.service.spec.ts"
+      - "src/agent/services/claude-orchestrator.service.ts"
+      - "src/agent/services/claude-orchestrator.gate-eval-step.spec.ts"
+      - "src/decision/kernel/decision-kernel.service.ts"
+      - "src/decision/kernel/decision-kernel.execute-gate-eval.spec.ts"
+      - "src/decision/kernel/orchestrator-state-mapper.ts"
+      - "src/decision/kernel/orchestrator-state-mapper.gate-migration.spec.ts"
+      - "src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts"
+      - "src/agent/services/claude-orchestrator.verify-repair-step.spec.ts"
+      - "src/agent/services/claude-orchestrator.verify-repair-phase-kernel.spec.ts"
+      - "src/agent/agent.controller.ts"
+      - "src/agent/agent.controller.ao-p0.contract.spec.ts"
+      - "src/agent/agent.controller.ao-p0.integration.spec.ts"
+      - "src/agent/services/agent.service.ts"
+      - "src/agent/services/agent.service.route-and-run-ao-p0.integration.spec.ts"
+      - "src/agent/agent.route-and-run.ao-p0.e2e.spec.ts"
+      - "src/agent/contracts/claude-exec-route-and-run.contract.ts"
+      - "src/agent/contracts/claude-exec-route-and-run.contract.spec.ts"
+      - "src/agent/contracts/route-and-run-k3-decision-log.contract.ts"
+      - "src/agent/contracts/route-and-run-k3-decision-log.contract.spec.ts"
+      - "src/agent/contracts/p1-route-and-run-validators.ts"
+      - "src/agent/contracts/p1-route-and-run-validators.spec.ts"
+      - "src/trips/decision/contracts/alternatives-min-contract.ts"
+      - "src/agent/utils/agent-metrics.util.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ao-gate-p0-tests.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/agent/execution/gate-eval-executor.service.ts"
+      - "src/agent/execution/gate-eval-executor.service.spec.ts"
+      - "src/agent/services/claude-orchestrator.service.ts"
+      - "src/agent/services/claude-orchestrator.gate-eval-step.spec.ts"
+      - "src/decision/kernel/decision-kernel.service.ts"
+      - "src/decision/kernel/decision-kernel.execute-gate-eval.spec.ts"
+      - "src/decision/kernel/orchestrator-state-mapper.ts"
+      - "src/decision/kernel/orchestrator-state-mapper.gate-migration.spec.ts"
+      - "src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts"
+      - "src/agent/services/claude-orchestrator.verify-repair-step.spec.ts"
+      - "src/agent/services/claude-orchestrator.verify-repair-phase-kernel.spec.ts"
+      - "src/agent/agent.controller.ts"
+      - "src/agent/agent.controller.ao-p0.contract.spec.ts"
+      - "src/agent/agent.controller.ao-p0.integration.spec.ts"
+      - "src/agent/services/agent.service.ts"
+      - "src/agent/services/agent.service.route-and-run-ao-p0.integration.spec.ts"
+      - "src/agent/agent.route-and-run.ao-p0.e2e.spec.ts"
+      - "src/agent/contracts/claude-exec-route-and-run.contract.ts"
+      - "src/agent/contracts/claude-exec-route-and-run.contract.spec.ts"
+      - "src/agent/contracts/route-and-run-k3-decision-log.contract.ts"
+      - "src/agent/contracts/route-and-run-k3-decision-log.contract.spec.ts"
+      - "src/agent/contracts/p1-route-and-run-validators.ts"
+      - "src/agent/contracts/p1-route-and-run-validators.spec.ts"
+      - "src/trips/decision/contracts/alternatives-min-contract.ts"
+      - "src/agent/utils/agent-metrics.util.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ao-gate-p0-tests.yml"
+
+jobs:
+  ao-gate-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run AO P0 full suite (Gate + Verify/Repair + API contract)
+        run: npm run test:ao-p0

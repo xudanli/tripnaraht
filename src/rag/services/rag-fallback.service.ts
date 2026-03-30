@@ -505,7 +505,7 @@ export class RagFallbackService {
   /**
    * 获取数据缺口统计（用于分析和改进）
    */
-  async getKnowledgeGapStats(params?: {
+  async getKnowledgeGapStats(_params?: {
     category?: QueryCategory;
     startDate?: Date;
     endDate?: Date;

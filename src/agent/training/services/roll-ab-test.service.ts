@@ -171,7 +171,7 @@ export class RollABTestService {
     variantId?: string;
     useRoll: boolean;
   }> {
-    const { useRoll, variantId, rollConfig } = await this.shouldUseRoll(
+    const { useRoll, variantId } = await this.shouldUseRoll(
       experimentId,
       requestId,
       userId,
@@ -210,7 +210,7 @@ export class RollABTestService {
     trajectory: any,
     requestId: string,
     userId?: string,
-    rewardConfig?: any,
+    _rewardConfig?: any,
   ): Promise<{
     reward: number;
     variantId?: string;
@@ -328,11 +328,7 @@ export class RollABTestService {
     };
     recommendation: string;
   }> {
-    // 分析 A/B 测试结果
-    const abTestResult = await this.abTestManager.analyzeResults(
-      experimentId,
-      variantMetrics,
-    );
+    await this.abTestManager.analyzeResults(experimentId, variantMetrics);
 
     // 分离 ROLL 和基线变体
     const rollVariant = variantMetrics.find((v) => v.roll_enabled === true);

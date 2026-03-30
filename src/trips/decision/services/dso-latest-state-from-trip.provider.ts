@@ -51,6 +51,7 @@ export class DsoLatestStateFromTripProvider implements IDsoLatestStateProvider {
       ...(raw.contextPackage !== undefined && { contextPackage: raw.contextPackage as DecisionState['contextPackage'] }),
       ...(raw.history !== undefined && { history: raw.history as DecisionState['history'] }),
       ...(raw.confidence !== undefined && { confidence: raw.confidence as number }),
+      ...(raw.travelOntologyState !== undefined && { travelOntologyState: raw.travelOntologyState as DecisionState['travelOntologyState'] }),
     };
   }
 }

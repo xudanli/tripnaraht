@@ -9,7 +9,7 @@ import {
   LlmProvider,
 } from './dto/llm-request.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
-import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
+import { ApiSuccessResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { TokenStatsService } from '../agent/services/token-stats.service';
 import { LlmCostService } from './services/llm-cost.service';

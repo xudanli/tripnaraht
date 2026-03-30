@@ -1,6 +1,6 @@
 // src/trips/decision/services/decision-logging.service.ts
 
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {

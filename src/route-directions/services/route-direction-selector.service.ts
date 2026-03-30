@@ -5,7 +5,7 @@
  * 根据用户意图、国家、月份选择 Top 3 路线方向，并提供推荐理由
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RouteDirectionsService } from '../route-directions.service';
 import { RouteDirectionObservabilityService } from './route-direction-observability.service';
 import { RouteDirectionCacheService } from './route-direction-cache.service';
@@ -203,7 +203,7 @@ export class RouteDirectionSelectorService {
     // 5. 构建 Top 3 推荐（带详细解释）
     const top3 = sorted.slice(0, 3).map(item => {
       // 提取 breakdown（去掉 totalScore，只保留 ScoreBreakdown）
-      const { totalScore, ...scoreBreakdown } = item.breakdown;
+      const { totalScore: _totalScore, ...scoreBreakdown } = item.breakdown;
       return {
         routeDirection: item.routeDirection,
         score: item.score,

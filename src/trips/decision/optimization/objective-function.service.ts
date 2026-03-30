@@ -17,11 +17,9 @@ import {
   ConstraintSatisfactionResult,
   CandidateComparisonResult,
   DEFAULT_OBJECTIVE_WEIGHTS,
-  HardConstraintType,
-  SoftConstraintType,
 } from './objective-function.interface';
 import { WorldModelContext, RoutePlanDraft, RouteSegment } from '../shared/world-model.types';
-import { FatigueCalculatorService, FatigueContext } from '../services/fatigue-calculator.service';
+import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
 import { DayProfile, PaceConstraints } from '../interfaces/day-profile.interface';
 
 @Injectable()
@@ -460,8 +458,6 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     // 2. 检查约束遵守情况
     const constraints = routeDirection?.constraints;
     if (constraints) {
-      // 硬约束遵守
-      const hardConstraints = constraints.hard || {};
       // 这里简化处理，实际需要检查每个硬约束
       score += 0.1;
     }
@@ -506,15 +502,11 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     const dayProfiles = this.buildDayProfiles(plan, world);
     
     let totalPenalty = 0;
-    let severeDays = 0;
-    let overloadedDays = 0;
 
     for (const day of dayProfiles) {
       if (day.fatigueIndex > 1.4) {
-        severeDays++;
         totalPenalty += 0.3;
       } else if (day.fatigueIndex > 1.1) {
-        overloadedDays++;
         totalPenalty += 0.15;
       }
     }
@@ -530,7 +522,7 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   /**
    * 计算天气风险惩罚
    */
-  private computeWeatherRiskPenalty(plan: RoutePlanDraft, world: WorldModelContext): number {
+  private computeWeatherRiskPenalty(_plan: RoutePlanDraft, world: WorldModelContext): number {
     const physical = world?.physical;
     if (!physical?.climateSeasonality) return 0.2;
     const accessibilityScore = Number(physical.climateSeasonality.accessibilityScore);
@@ -541,7 +533,7 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   /**
    * 计算预算超支惩罚
    */
-  private computeBudgetOverrunPenalty(plan: RoutePlanDraft, world: WorldModelContext): number {
+  private computeBudgetOverrunPenalty(_plan: RoutePlanDraft, _world: WorldModelContext): number {
     // Phase 1 简化：暂无预算数据
     return 0;
   }
@@ -754,8 +746,8 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
 
   private checkBudgetConstraint(
     constraint: Constraint,
-    plan: RoutePlanDraft,
-    world: WorldModelContext
+    _plan: RoutePlanDraft,
+    _world: WorldModelContext
   ): ConstraintSatisfactionResult {
     // Phase 1 简化：暂无预算数据
     return {

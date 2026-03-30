@@ -12,7 +12,6 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaClient } from '@prisma/client';
 import { POIPickupScorerService, PickupPoint } from './poi-pickup-scorer.service';
 import { POITrailheadService, TrailAccessPoint } from './poi-trailhead.service';
 import { DEMElevationService } from '../../dem/services/dem-elevation.service';

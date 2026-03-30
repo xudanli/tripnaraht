@@ -8,7 +8,7 @@
  * - 用户级/IP级/全局限制
  */
 
-import { Injectable, Logger, NestMiddleware, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware, HttpException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 // ========== 类型定义 ==========

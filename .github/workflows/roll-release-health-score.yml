@@ -1,0 +1,69 @@
+name: ROLL Release Health Score
+
+on:
+  workflow_dispatch:
+    inputs:
+      real_policy_rate:
+        description: "Observed real policy rate (0..1)"
+        required: true
+      fallback_rate:
+        description: "Observed fallback rate (0..1)"
+        required: true
+      simulation_rate:
+        description: "Observed simulation rate (0..1)"
+        required: true
+      p95_latency_ms:
+        description: "Observed p95 latency (ms)"
+        required: true
+      error_rate:
+        description: "Observed error rate (0..1)"
+        required: true
+      rollback_triggered:
+        description: "Was rollback triggered? true|false"
+        required: false
+        default: "false"
+      mttr_minutes:
+        description: "Observed MTTR minutes"
+        required: false
+        default: "10"
+
+jobs:
+  release-health-score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare script
+        run: chmod +x scripts/rl-infra/roll/generate-release-health-score.sh
+
+      - name: Build metrics input
+        run: |
+          cat > release-health-metrics.json <<EOF
+          {
+            "real_policy_rate": ${{ github.event.inputs.real_policy_rate }},
+            "fallback_rate": ${{ github.event.inputs.fallback_rate }},
+            "simulation_rate": ${{ github.event.inputs.simulation_rate }},
+            "p95_latency_ms": ${{ github.event.inputs.p95_latency_ms }},
+            "error_rate": ${{ github.event.inputs.error_rate }},
+            "rollback_triggered": ${{ github.event.inputs.rollback_triggered }},
+            "mttr_minutes": ${{ github.event.inputs.mttr_minutes }}
+          }
+          EOF
+
+      - name: Generate release health score
+        run: |
+          scripts/rl-infra/roll/generate-release-health-score.sh \
+            release-health-metrics.json \
+            release-health-score.json
+
+      - name: Show score
+        run: cat release-health-score.json
+
+      - name: Upload score artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-health-score
+          path: |
+            release-health-metrics.json
+            release-health-score.json

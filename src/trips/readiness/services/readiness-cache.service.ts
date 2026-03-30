@@ -12,7 +12,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '../../../redis/redis.service';
 import { ReadinessCheckResult } from '../types/readiness-findings.types';
-import { AIEnhancedReadinessResult, UserProfile } from '../types/ai-enhanced.types';
+import { UserProfile } from '../types/ai-enhanced.types';
 import * as crypto from 'crypto';
 
 interface CacheEntry<T> {

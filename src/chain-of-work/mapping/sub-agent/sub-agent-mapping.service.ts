@@ -53,7 +53,7 @@ export class SubAgentMappingService {
    */
   async mapStepToSubAgent(
     step: TripNARAStepDraft,
-    context?: OrchestratorState,
+    _context?: OrchestratorState,
   ): Promise<SubAgentMapping> {
     this.logger.debug(`[SubAgentMapping] 开始映射步骤到 Sub-Agent: step_id=${step.id}, step_type=${step.step_type}`);
     
@@ -72,7 +72,7 @@ export class SubAgentMappingService {
   /**
    * 获取提示词模板
    */
-  private getPromptTemplate(step: TripNARAStepDraft, subAgent: SubAgentType): string {
+  private getPromptTemplate(step: TripNARAStepDraft, _subAgent: SubAgentType): string {
     // TODO: 根据步骤类型和 Sub-Agent 类型生成提示词模板
     return `执行步骤: ${step.title}\n描述: ${step.description}`;
   }
@@ -80,7 +80,7 @@ export class SubAgentMappingService {
   /**
    * 获取输出 Schema
    */
-  private getOutputSchema(step: TripNARAStepDraft, subAgent: SubAgentType): any {
+  private getOutputSchema(_step: TripNARAStepDraft, _subAgent: SubAgentType): any {
     // TODO: 根据步骤类型和 Sub-Agent 类型生成输出 Schema
     return {};
   }
@@ -88,7 +88,7 @@ export class SubAgentMappingService {
   /**
    * 映射到三人格
    */
-  mapToGuardian(subAgent: SubAgentType, step: OrchestrationStep): GuardianType | null {
+  mapToGuardian(subAgent: SubAgentType, _step: OrchestrationStep): GuardianType | null {
     return this.subAgentToGuardianMap[subAgent] || null;
   }
 }

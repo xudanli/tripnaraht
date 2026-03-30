@@ -10,7 +10,7 @@
  * - 支持群体决策讨论
  */
 
-import { TravelerInfo, InterestProfile, MobilityProfile } from '../../interfaces/pacing-config.interface';
+import { TravelerInfo } from '../../interfaces/pacing-config.interface';
 import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
 import { UserPersona } from '../../../agent/memory/interfaces/multi-persona.interface';
 import { RhythmType } from './rhythm-matching.interface';

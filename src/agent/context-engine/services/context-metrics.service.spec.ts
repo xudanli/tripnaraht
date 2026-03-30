@@ -8,7 +8,6 @@ import { ContextPackage } from '../types/context-package.types';
 
 describe('ContextMetricsService', () => {
   let service: ContextMetricsService;
-  let prisma: jest.Mocked<PrismaService>;
   let skillsRegistry: jest.Mocked<SkillsRegistryService>;
 
   beforeEach(async () => {
@@ -36,7 +35,6 @@ describe('ContextMetricsService', () => {
     }).compile();
 
     service = module.get<ContextMetricsService>(ContextMetricsService);
-    prisma = module.get('PrismaService');
     skillsRegistry = module.get(SKILLS_REGISTRY_TOKEN);
   });
 

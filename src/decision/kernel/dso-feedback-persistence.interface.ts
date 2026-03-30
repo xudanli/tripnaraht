@@ -5,7 +5,7 @@
  * 当用户采纳/拒绝/评分时，需加载 DSO、commit feedback patch、持久化回存储
  */
 
-import type { DecisionState, DecisionStateFeedback } from './decision-state.types';
+import type { DecisionState } from './decision-state.types';
 
 export const DSO_FEEDBACK_PERSISTENCE = 'DSO_FEEDBACK_PERSISTENCE';
 
@@ -25,6 +25,13 @@ export interface IDsoFeedbackPersistence {
    * 将更新后的 DSO 持久化
    * @param tripRunIdOrTripId TripRun.id 或 Trip.id，由实现方解析
    * @param dso 更新后的完整 DSO
+   * @param options 可选并发控制参数（expectedVersion 用于乐观并发校验）
    */
-  persistDso(tripRunIdOrTripId: string, dso: DecisionState): Promise<void>;
+  persistDso(
+    tripRunIdOrTripId: string,
+    dso: DecisionState,
+    options?: {
+      expectedVersion?: number;
+    },
+  ): Promise<void>;
 }

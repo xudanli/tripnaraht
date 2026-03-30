@@ -267,7 +267,7 @@ export class ProductExplainableOutputBuilderService {
    */
   private extractKeyFeatures(
     result: OptimizationResult,
-    context: any
+    _context: any
   ): KeyFeature[] {
     const features: KeyFeature[] = [];
 
@@ -331,7 +331,7 @@ export class ProductExplainableOutputBuilderService {
   private buildEvidenceChain(
     ruleHits: RuleHit[],
     keyFeatures: KeyFeature[],
-    context: any
+    _context: any
   ): EvidenceChainItem[] {
     const chain: EvidenceChainItem[] = [];
 

@@ -44,7 +44,7 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
     ],
     extractors: {
       tripId: (context, request) => context.tripId || request.trip_id,
-      countryCode: (context, request) => {
+      countryCode: (_context, _request) => {
         // 从消息中提取 countryCode 的逻辑将在调用时注入
         return undefined;
       },
@@ -56,7 +56,7 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
       { param: 'countryCode' }, // 必需参数
     ],
     extractors: {
-      countryCode: (context, request) => {
+      countryCode: (_context, _request) => {
         // 从消息中提取 countryCode 的逻辑将在调用时注入
         return undefined;
       },
@@ -208,7 +208,7 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
       { param: 'countryCode' }, // 必需参数：string
     ],
     extractors: {
-      countryCode: (context, request) => {
+      countryCode: (_context, _request) => {
         // 从消息中提取 countryCode 的逻辑将在调用时注入
         return undefined;
       },

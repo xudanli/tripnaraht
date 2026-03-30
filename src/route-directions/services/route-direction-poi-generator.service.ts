@@ -521,7 +521,7 @@ export class RouteDirectionPoiGeneratorService {
    */
   private inferWeatherSensitivity(
     activityType: ActivityCandidate['type'],
-    metadata: any
+    _metadata: any
   ): 0 | 1 | 2 | 3 {
     if (activityType === 'nature') {
       return 3; // 高度敏感
@@ -537,7 +537,7 @@ export class RouteDirectionPoiGeneratorService {
    */
   private inferIndoorOutdoor(
     activityType: ActivityCandidate['type'],
-    metadata: any
+    _metadata: any
   ): ActivityCandidate['indoorOutdoor'] {
     if (activityType === 'museum' || activityType === 'food') {
       return 'indoor';
@@ -551,7 +551,7 @@ export class RouteDirectionPoiGeneratorService {
   /**
    * 提取意图标签
    */
-  private extractIntentTags(metadata: any, category: string): string[] {
+  private extractIntentTags(metadata: any, _category: string): string[] {
     const tags: string[] = [];
 
     if (metadata?.tags && Array.isArray(metadata.tags)) {

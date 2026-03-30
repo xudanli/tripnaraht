@@ -14,8 +14,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SpatialIssue, NeptuneInput } from '../interfaces/spatial-issue.interface';
 import { ReplacementCandidate, ReplacementOperation } from '../interfaces/replacement-candidate.interface';
-import { RoutePlanDraft, RouteSegment } from '../shared/world-model.types';
-
 @Injectable()
 export class SpatialReplacementService {
   private readonly logger = new Logger(SpatialReplacementService.name);
@@ -270,7 +268,7 @@ export class SpatialReplacementService {
     originalLocation: { lat: number; lng: number },
     routeDirection: NeptuneInput['routeDirection'],
     countryCode: string,
-    dayIndex: number
+    _dayIndex: number
   ): Promise<ReplacementCandidate[]> {
     if (!routeDirection.corridorGeom) {
       return [];

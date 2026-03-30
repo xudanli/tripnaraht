@@ -1,6 +1,6 @@
 // src/trips/decision/services/rhythm-matching.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   RhythmType,
   RouteRhythmProfile,
@@ -195,7 +195,6 @@ export class RhythmMatchingService {
   private extractRouteRhythmProfile(route: RouteDirectionData): RouteRhythmProfile {
     // 从路线数据中提取节奏特性
     const constraints = route.constraints || {};
-    const itinerarySkeleton = route.itinerarySkeleton || {};
     const metadata = route.metadata || {};
 
     // 估算物理强度（基于海拔、坡度等）
@@ -353,7 +352,7 @@ export class RhythmMatchingService {
   /**
    * 估算每日步数
    */
-  private estimateDailySteps(route: RouteDirectionData, duration: number): number {
+  private estimateDailySteps(route: RouteDirectionData, _duration: number): number {
     // 简化实现：基于路线类型和时长估算
     const tags = route.tags || [];
     const baseSteps = tags.includes('徒步') || tags.includes('登山') ? 15000 : 10000;
@@ -372,7 +371,7 @@ export class RhythmMatchingService {
   /**
    * 估算每日休息时间
    */
-  private estimateDailyRestTime(route: RouteDirectionData, duration: number): number {
+  private estimateDailyRestTime(route: RouteDirectionData, _duration: number): number {
     const physicalIntensity = this.calculatePhysicalIntensity(
       route.constraints?.hard?.maxElevationM || 0,
       route.constraints?.hard?.maxSlopePct || 0,

@@ -5,7 +5,6 @@ import { PlannerAgent } from '../../interfaces/sub-agent.interface';
 import { TripPlanRequest, OrchestratorState } from '../../interfaces/trip-plan.interface';
 import { PlannerAgentService as LangGraphPlannerAgentService } from '../../../trips/decision/orchestration/planner-agent.service';
 import { LlmService } from '../../../llm/services/llm.service';
-import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 
 /**
  * Planner Agent Service (Claude Orchestration)

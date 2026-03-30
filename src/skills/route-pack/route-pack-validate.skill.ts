@@ -7,7 +7,7 @@
  * 功能：验证 RoutePack 数据的完整性和正确性，输出结构化错误和警告
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { RoutePack } from './route-pack-new-skeleton.skill';
 

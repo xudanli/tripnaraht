@@ -15,8 +15,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DEMEffortMetadataService, RoutePoint } from '../../dem/services/dem-effort-metadata.service';
-import { GeoPoint } from '../world-model';
-import { PlanDay, PlanSlot } from '../plan-model';
+import { PlanDay } from '../plan-model';
 
 export interface DailyEnergyBudget {
   /** 每日最大体力消耗（0-100，归一化） */

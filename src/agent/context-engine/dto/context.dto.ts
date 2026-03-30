@@ -6,7 +6,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsArray, IsObject, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsArray, IsObject, Min, Max } from 'class-validator';
 import { ContextPackage, ContextBlock, ApiDocCategory } from '../types/context-package.types';
 import { StateProjection } from '../types/trip-state-projection.types';
 import { ContextMetricsSummary, ContextMetricsRecord } from '../services/context-metrics.service';

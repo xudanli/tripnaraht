@@ -93,7 +93,7 @@ export class ActionDependencyAnalyzerService {
   private analyzeActionDependency(
     action: { name: string; input: any },
     actionDef: Action,
-    state: AgentState
+    _state: AgentState
   ): ActionDependency {
     // 提取前置条件（已实现）
     const preconditions = actionDef.metadata.preconditions || [];

@@ -6,7 +6,6 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsArray, IsOptional, IsEnum, IsObject } from 'class-validator';
 
 export enum FitForType {
   PHOTOGRAPHY = 'photography', // 摄影

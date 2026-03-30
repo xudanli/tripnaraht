@@ -100,9 +100,6 @@ export class EvaluationService {
     constraintResult: ConstraintCheckResult
   ): PlanMetrics['executability'] {
     const { violations, summary } = constraintResult;
-    const totalSlots = violations.length > 0
-      ? violations.length
-      : 1; // 避免除零
 
     return {
       violationsCount: violations.length,

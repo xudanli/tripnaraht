@@ -298,7 +298,7 @@ export class MultimodalWorldPerceptionService {
   /**
    * 从数据库获取图像元数据
    */
-  private async getImageMetadata(imageUrl: string): Promise<{
+  private async getImageMetadata(_imageUrl: string): Promise<{
     location?: { lat: number; lng: number };
     timestamp?: Date;
   } | null> {
@@ -328,7 +328,7 @@ export class MultimodalWorldPerceptionService {
   /**
    * 获取POI相关的文本（评论、游记）
    */
-  private async getPoiTexts(poiId: string): Promise<string[]> {
+  private async getPoiTexts(_poiId: string): Promise<string[]> {
     // TODO: 从数据库查询POI相关的评论和游记
     // 可以从reviews表或user_feedback表中查询
     return [];
@@ -338,7 +338,7 @@ export class MultimodalWorldPerceptionService {
    * 获取RouteDirection相关的文本（游记、反馈）
    */
   private async getRouteDirectionTexts(
-    routeDirectionId: string,
+    _routeDirectionId: string,
   ): Promise<string[]> {
     // TODO: 从数据库查询RouteDirection相关的游记和反馈
     // 可以从user_feedback表中查询
@@ -456,8 +456,7 @@ export class MultimodalWorldPerceptionService {
    */
   private extractKeywords(text: string): string[] {
     const lowerText = text.toLowerCase();
-    const keywords: string[] = [];
-    
+
     // 扩展的旅游关键词库（分类）
     const keywordCategories: Record<string, string[]> = {
       // 自然景观

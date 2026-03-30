@@ -272,7 +272,7 @@ export class RailPassRuleEngineService {
     this.rules.push({
       id: 'CITY_TRANSPORT_NOT_COVERED',
       name: '市内交通不在 Pass 覆盖',
-      condition: (args) => {
+      condition: (_args) => {
         // 这个规则主要用于提示，不阻止执行
         // 实际应该在 Transport 层处理
         return false; // 不在此处触发，由 Transport 层处理
@@ -359,7 +359,7 @@ export class RailPassRuleEngineService {
   /**
    * 生成规则消息
    */
-  private generateRuleMessage(rule: RailPassRule, segment: RailSegment): string {
+  private generateRuleMessage(rule: RailPassRule, _segment: RailSegment): string {
     if (rule.effect.errorMessage) {
       return rule.effect.errorMessage;
     }

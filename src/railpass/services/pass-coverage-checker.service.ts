@@ -219,7 +219,7 @@ export class PassCoverageCheckerService {
    * 生成市内交通替代方案
    */
   private generateCityTransportAlternatives(
-    segment: RailSegment
+    _segment: RailSegment
   ): CoverageCheckResult['alternatives'] {
     return [
       {

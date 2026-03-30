@@ -9,9 +9,6 @@
  * - 不同城市用户的沟通适配
  */
 
-import { UserContext } from './copy-standards.interface';
-import { CommunicationContext } from './brand-expression.interface';
-
 /**
  * 用户人格类型
  */

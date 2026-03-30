@@ -125,7 +125,7 @@ export class EnhancedRestTimeService {
   private determineRestType(
     fatigueState: UserFatigueState,
     fatigueLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
-    config: RestTimeModelConfig
+    _config: RestTimeModelConfig
   ): 'SHORT_BREAK' | 'MEAL_BREAK' | 'LONG_REST' | 'OVERNIGHT' {
     // 如果距离上次休息超过4小时，建议用餐休息
     if (fatigueState.timeSinceLastRest > 240) {
@@ -230,7 +230,7 @@ export class EnhancedRestTimeService {
    */
   private calculateConfidence(
     fatigueState: UserFatigueState,
-    config: RestTimeModelConfig
+    _config: RestTimeModelConfig
   ): number {
     let confidence = 0.7; // 基础置信度
 

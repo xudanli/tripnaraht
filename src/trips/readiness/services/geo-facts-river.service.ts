@@ -250,7 +250,6 @@ export class GeoFactsRiverService {
       `;
 
       const totalLengthM = Number(result[0]?.total_length_m || 0);
-      const segmentCount = Number(result[0]?.segment_count || 0);
 
       // 归一化评分：
       // - 基于总长度：每公里河线 = 0.1 分，最大 1.0

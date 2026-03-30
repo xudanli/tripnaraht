@@ -205,7 +205,7 @@ describe('Decision OS E2E Tests', () => {
     });
 
     it('should track metrics across decisions', async () => {
-      const initialSummary = metricsService.getSummary();
+      expect(metricsService.getSummary()).toBeDefined();
 
       for (let i = 0; i < 3; i++) {
         const dso = createMockDSO({ requestId: `metrics-${decisionRequestId}-${i}` });

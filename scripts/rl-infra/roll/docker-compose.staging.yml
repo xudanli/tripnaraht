@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ray-head:
+    environment:
+      - RAY_ADDRESS=ray://localhost:10001
+      - RAY_NAMESPACE=${RAY_NAMESPACE:-tripnara-rl-staging}
+
+  bridge-service:
+    environment:
+      - RAY_ADDRESS=ray://ray-head:10001
+      - RAY_NAMESPACE=${RAY_NAMESPACE:-tripnara-rl-staging}
+      - ROLL_BRIDGE_PORT=8001
+      - ROLL_BRIDGE_HOST=0.0.0.0
+      - ROLL_BRIDGE_TIMEOUT_MS=${ROLL_BRIDGE_TIMEOUT_MS:-10000}
+      - ROLL_ACTOR_WORKER_NUM=${ROLL_ACTOR_WORKER_NUM:-2}
+      - ROLL_REWARD_WORKER_NUM=${ROLL_REWARD_WORKER_NUM:-2}
+      - ROLL_POLICY_WORKER_NUM=${ROLL_POLICY_WORKER_NUM:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # staging 要求真实链路，不允许静默模拟
+      - ROLL_ENABLED=${ROLL_ENABLED:-true}
+      - ROLL_POLICY_ENABLED=${ROLL_POLICY_ENABLED:-true}
+      - ROLL_STRICT_MODE=${ROLL_STRICT_MODE:-true}
+      - ROLL_ALLOW_SIMULATION=${ROLL_ALLOW_SIMULATION:-false}
+      - ROLL_ALLOW_FALLBACK=${ROLL_ALLOW_FALLBACK:-false}

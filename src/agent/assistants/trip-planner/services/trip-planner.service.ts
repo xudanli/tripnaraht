@@ -49,7 +49,6 @@ import {
   GUARDIAN_PRIORITY,
   Disclaimer,
   // 埋点事件
-  GuardianTrackingEventType,
   GuardianTrackingEventUnion,
   GuardianInvokedEvent,
   GuardianInsightShownEvent,
@@ -59,7 +58,6 @@ import {
 import {
   IntentUncertainty,
   DisambiguationResult,
-  ClarificationRequest,
   ItineraryGap,
 } from '../interfaces/intent-uncertainty.interface';
 import { ContextAnalyzerService } from './context-analyzer.service';
@@ -1398,7 +1396,7 @@ ${paceAnalysis.intensifySuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
   /**
    * 重新平衡各天
    */
-  private async handleRebalanceDays(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleRebalanceDays(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
     // 分析各天负载
@@ -1466,7 +1464,7 @@ ${dayLoads.map(d => `第${d.day}天：${d.items}个活动，约${Math.round(d.du
   /**
    * 安排餐厅
    */
-  private async handleArrangeMeals(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleArrangeMeals(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
     // 找出还没安排餐厅的餐点
@@ -1504,7 +1502,7 @@ ${missingMeals.map(m => `• 第${m.day}天 ${m.meal}`).join('\n')}
   /**
    * 规划交通
    */
-  private async handlePlanTransport(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handlePlanTransport(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
     // 分析交通需求
@@ -1537,7 +1535,7 @@ ${transportNeeds.passes.map(p => `• ${p.name}：¥${p.price}（${p.reason}）`
   /**
    * 填充空闲时间
    */
-  private async handleFillFreeTime(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleFillFreeTime(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
     // 找出空闲时间段
@@ -1571,26 +1569,22 @@ ${transportNeeds.passes.map(p => `• ${p.name}：¥${p.price}（${p.reason}）`
       const slotStartMinutes = this.parseTimeToMinutes(slot.start);
       
       // 判断时间段类型（早餐/午餐/晚餐/活动）
-      let recommendationType: 'RESTAURANT' | 'ATTRACTION' | 'SHOPPING' | 'ACTIVITY' = 'ACTIVITY';
       let suggestions: Array<{ name: string; type: string; reason: string }> = [];
 
       if (slotStartMinutes >= 7 * 60 && slotStartMinutes < 10 * 60) {
         // 早餐时间（7:00-10:00）
-        recommendationType = 'RESTAURANT';
         suggestions = [
           { name: '当地特色早餐店', type: 'RESTAURANT', reason: '体验当地早餐文化' },
           { name: '咖啡厅', type: 'RESTAURANT', reason: '悠闲的早晨时光' },
         ];
       } else if (slotStartMinutes >= 11 * 60 && slotStartMinutes < 14 * 60) {
         // 午餐时间（11:00-14:00）
-        recommendationType = 'RESTAURANT';
         suggestions = [
           { name: '当地特色餐厅', type: 'RESTAURANT', reason: '品尝地道美食' },
           { name: '网红餐厅', type: 'RESTAURANT', reason: '热门打卡地' },
         ];
       } else if (slotStartMinutes >= 17 * 60 && slotStartMinutes < 21 * 60) {
         // 晚餐时间（17:00-21:00）
-        recommendationType = 'RESTAURANT';
         suggestions = [
           { name: '特色餐厅', type: 'RESTAURANT', reason: '享受晚餐时光' },
           { name: '观景餐厅', type: 'RESTAURANT', reason: '边用餐边欣赏风景' },
@@ -1898,7 +1892,7 @@ ${transportNeeds.passes.map(p => `• ${p.name}：¥${p.price}（${p.reason}）`
     });
 
     // 🚀 Gap显示优化：智能过滤缺口，减少信息冗余
-    let filteredGaps = this.filterRelevantGaps(
+    const filteredGaps = this.filterRelevantGaps(
       gapAnalysis,
       'ASK_QUESTION',
       request.message
@@ -2008,11 +2002,9 @@ ${suggestions.map((s, i) => `${i + 1}. **${s.title}**\n   ${s.description}`).joi
   private async handleCheckFeasibility(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
-    let analysis: any;
-    
     // 使用简单分析（GatekeeperAgent 接口待扩展）
     // TODO: 集成 GatekeeperAgent.checkFeasibility 方法
-    analysis = await this.analyzeFeasibility(ctx, request.message);
+    const analysis = await this.analyzeFeasibility(ctx, request.message);
     
     // 格式化消息
     const message = this.formatFeasibilityMessage(analysis);
@@ -2093,7 +2085,7 @@ ${comparison.table}
   /**
    * 创建行前清单
    */
-  private async handleCreateChecklist(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleCreateChecklist(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const ctx = state.tripContext;
     
     // 生成个性化清单
@@ -2139,7 +2131,7 @@ ${checklist.finance.map(f => `☐ ${f}`).join('\n')}
   /**
    * 导出行程
    */
-  private async handleExportItinerary(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleExportItinerary(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     const message = `您想以什么格式导出行程？
 
 📄 **PDF** - 适合打印或离线查看
@@ -2164,7 +2156,7 @@ ${checklist.finance.map(f => `☐ ${f}`).join('\n')}
   /**
    * 撤销修改
    */
-  private async handleUndoChange(state: TripPlannerState, request: TripPlannerRequest): Promise<TripPlannerResponse> {
+  private async handleUndoChange(state: TripPlannerState, _request: TripPlannerRequest): Promise<TripPlannerResponse> {
     // 检查是否有可撤销的修改
     if (!state.pendingChanges || state.pendingChanges.length === 0) {
       return {
@@ -2554,7 +2546,6 @@ ${recommendations.map((r, i) => `${i + 1}. **${r.name}** ${r.rating ? `⭐${r.ra
   private async generateInfoResponse(ctx: TripContext, query: string): Promise<string> {
     // 识别查询类型
     const isMealQuery = /吃|餐|饭|美食|午餐|晚餐|早餐|拉面|寿司|烤肉|好吃/.test(query);
-    const isAttractionQuery = /景点|玩|去|看|逛/.test(query);
     const isTransportQuery = /怎么去|交通|地铁|公交|打车/.test(query);
 
     if (isMealQuery) {
@@ -2606,7 +2597,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
   private async generateRecommendations(
     ctx: TripContext,
     query: string,
-    targetDay: number,
+    _targetDay: number,
   ): Promise<Array<{ name: string; address?: string; rating?: number; duration?: number }>> {
     // TODO: 接入真实的 POI 搜索服务
     const isMealQuery = /吃|餐|饭|美食|午餐|晚餐|早餐|拉面|寿司|烤肉|好吃/.test(query);
@@ -2852,7 +2843,7 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
         address?: string;
       };
     },
-    userId: string,
+    _userId: string,
   ): Promise<{
     message: string;
     item?: {
@@ -3331,8 +3322,6 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     // 确保推荐时间 >= 06:00
     const finalStartTimeMinutes = Math.max(recommendedStartTimeMinutes, 6 * 60);
     
-    // 4. 计算时间差
-    const timeDiff = finalStartTimeMinutes - currentStartTimeMinutes;
     const newStartTime = this.formatMinutesToTime(finalStartTimeMinutes);
     
     // 5. 计算新的结束时间（保持原有时长）
@@ -3487,9 +3476,9 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
    * 应用优化路线建议
    */
   private async applyOptimizeRouteSuggestion(
-    dto: any,
-    tripContext: TripContext,
-    state: TripPlannerState,
+    _dto: any,
+    _tripContext: TripContext,
+    _state: TripPlannerState,
   ): Promise<any> {
     // TODO: 实现优化路线逻辑
     return {
@@ -4093,7 +4082,7 @@ ${ctx.days.map(d => `**第${d.dayNumber}天** (${d.date})${d.theme ? ` - ${d.the
   /**
    * 格式化路线优化结果（结构化证据）
    */
-  private formatRouteOptimizationResult(evidence: RouteOptimizationEvidence, ctx: TripContext): string {
+  private formatRouteOptimizationResult(evidence: RouteOptimizationEvidence, _ctx: TripContext): string {
     let result = `📍 **路线优化分析报告**\n\n`;
 
     // 1. 结论
@@ -4232,7 +4221,7 @@ ${ctx.days.map(d => `**第${d.dayNumber}天** (${d.date})${d.theme ? ` - ${d.the
   /**
    * 简化版路线优化（回退方案）
    */
-  private async generateRouteSuggestionSimple(ctx: TripContext, message: string): Promise<string> {
+  private async generateRouteSuggestionSimple(ctx: TripContext, _message: string): Promise<string> {
     const allSolutions: string[] = [];
     const allIssues: string[] = [];
     let totalTimeSaved = 0;
@@ -4446,7 +4435,7 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
     return name;
   }
 
-  private detectTimeConflicts(items: TripItemContext[], dayNumber: number): {
+  private detectTimeConflicts(items: TripItemContext[], _dayNumber: number): {
     issues: string[];
     solutions: string[];
   } {
@@ -4681,7 +4670,6 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
 
       // 找出距离超远的城市对
       const farCities = cityDistances.filter(d => d.distance > 200); // 超过200km
-      const veryFarCities = cityDistances.filter(d => d.distance > 500); // 超过500km
 
       if (!isAdjacent || farCities.length > 0) {
         // 生成城市详情（带距离）
@@ -4778,7 +4766,7 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   /**
    * 查找替代景点（简化版）
    */
-  private async findAlternativePois(ctx: TripContext, message: string): Promise<any[]> {
+  private async findAlternativePois(_ctx: TripContext, _message: string): Promise<any[]> {
     // 简化实现
     return [
       { id: '1', name: '替代景点A', reason: '同类型，评分更高', duration: 120, cost: 100 },
@@ -5198,7 +5186,7 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   /**
    * 分析可行性
    */
-  private async analyzeFeasibility(ctx: TripContext, message: string): Promise<any> {
+  private async analyzeFeasibility(_ctx: TripContext, _message: string): Promise<any> {
     return {
       feasible: true,
       summary: '整体安排可行，但有几点需要注意。',
@@ -5213,7 +5201,7 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   /**
    * 生成对比
    */
-  private async generateComparison(ctx: TripContext, message: string): Promise<any> {
+  private async generateComparison(_ctx: TripContext, _message: string): Promise<any> {
     return {
       table: '| 项目 | 选项A | 选项B |\n|------|------|------|\n| 价格 | ¥100 | ¥150 |\n| 时间 | 2小时 | 3小时 |\n| 评分 | 4.5 | 4.8 |',
       recommendation: '选项A性价比更高，适合时间有限的情况；选项B体验更完整。',
@@ -5227,9 +5215,7 @@ ${ctx.days.map(d => `- 第${d.dayNumber}天（${d.theme || d.city || d.date}）�
   /**
    * 生成行前清单
    */
-  private generateChecklist(ctx: TripContext): any {
-    const destination = ctx.destination;
-    
+  private generateChecklist(_ctx: TripContext): any {
     return {
       documents: [
         '护照（有效期6个月以上）',
@@ -5515,8 +5501,6 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     ctx: TripContext,
     originalQuery: string
   ): { answer: string; structuredResults: any } {
-    const destination = ctx.destinationName || ctx.destination;
-    
     if (results.length === 0) {
       const fallbackAnswer = this.generateFallbackMessage(ctx, originalQuery, true);
       return { answer: fallbackAnswer, structuredResults: null };
@@ -6012,7 +5996,7 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     
     // 🚀 Gap显示优化：收集并处理相关缺口（过滤+用户偏好+聚合）
     const allGaps = disambiguation.diagnostics?.relatedGaps || [];
-    let filteredGaps = this.filterRelevantGaps(
+    const filteredGaps = this.filterRelevantGaps(
       allGaps,
       disambiguation.originalIntent || 'ASK_QUESTION',
       '' // 澄清阶段没有用户消息，使用空字符串
@@ -6387,7 +6371,6 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
 
     const guardians: GuardianPersona[] = [];
     const ctx = state.tripContext;
-    const lowerMessage = message.toLowerCase();
 
     // 检查是否触发全员显现
     const { allGuardians } = this.GUARDIAN_CONFIG;
@@ -6424,7 +6407,7 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     intent: TripPlannerIntent,
     message: string,
   ): 'keyword' | 'threshold' | 'intent' | 'all_guardians' {
-    const { allGuardians, abu, drDre, neptune } = this.GUARDIAN_CONFIG;
+    const { allGuardians, neptune } = this.GUARDIAN_CONFIG;
     
     // 全员触发
     if (allGuardians.intents.includes(intent) || allGuardians.keywords.some(kw => message.includes(kw))) {
@@ -6457,8 +6440,6 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
    * 判断是否触发 Abu (安全守护者)
    */
   private shouldInvokeAbu(intent: TripPlannerIntent, message: string, ctx: TripContext): boolean {
-    const { abu } = this.GUARDIAN_CONFIG;
-    
     // 关键词检测（增加距离相关）
     const abuKeywords = ['安全', '危险', '能去吗', '开门吗', '营业时间', '关门', '休息日', '交通管制', '距离', '远', '公里', 'km', '太远', '跨城'];
     if (abuKeywords.some(kw => message.includes(kw))) {
@@ -6531,7 +6512,7 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
   /**
    * 判断是否触发 Neptune (空间魔法师)
    */
-  private shouldInvokeNeptune(intent: TripPlannerIntent, message: string, ctx: TripContext): boolean {
+  private shouldInvokeNeptune(intent: TripPlannerIntent, message: string, _ctx: TripContext): boolean {
     const { neptune } = this.GUARDIAN_CONFIG;
     
     // 关键词检测：替换相关
@@ -6638,7 +6619,7 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
   /**
    * Abu 评估：安全与可行性
    */
-  private async evaluateWithAbu(ctx: TripContext, message: string): Promise<{
+  private async evaluateWithAbu(ctx: TripContext, _message: string): Promise<{
     insights: PersonaInsight[];
     evaluation: GuardianEvaluation['abu'];
   }> {
@@ -6846,7 +6827,7 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
   /**
    * Dr.Dre 评估：节奏与体力
    */
-  private async evaluateWithDrDre(ctx: TripContext, message: string): Promise<{
+  private async evaluateWithDrDre(ctx: TripContext, _message: string): Promise<{
     insights: PersonaInsight[];
     evaluation: GuardianEvaluation['drDre'];
   }> {

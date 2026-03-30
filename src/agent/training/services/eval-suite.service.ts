@@ -352,7 +352,7 @@ export class EvalSuiteService {
    */
   async evaluateFullPipeline(
     modelVersion: string,
-    testCases?: TestCase[],
+    _testCases?: TestCase[],
   ): Promise<FullPipelineEvalResult> {
     this.logger.log(
       `[EvalSuite] 开始完整流程评测: modelVersion=${modelVersion}`,
@@ -519,7 +519,7 @@ export class EvalSuiteService {
   /**
    * 提取plan长度
    */
-  private extractPlanLength(response: any): number {
+  private extractPlanLength(_response: any): number {
     // TODO: 从response中提取实际的plan长度
     return 0;
   }
@@ -527,7 +527,7 @@ export class EvalSuiteService {
   /**
    * 计算复杂度
    */
-  private calculateComplexity(testCase: TestCase, response: any): number {
+  private calculateComplexity(testCase: TestCase, _response: any): number {
     // 简单实现：基于metadata的complexity
     const complexityMap: Record<string, number> = {
       LOW: 0.3,

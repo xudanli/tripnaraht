@@ -8,8 +8,8 @@
  * 安全控制：限制最大 radius、返回数量、记录查询日志
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Skill, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { PlacesService } from '../../places/places.service';
 import { PlaceWithDistance } from '../../places/dto/geo-result.dto';

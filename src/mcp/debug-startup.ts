@@ -56,7 +56,7 @@ async function debugStartup() {
 
     console.error('步骤 6: 创建 MCP Server...');
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    const server = new McpServer(
+    const _server = new McpServer(
       {
         name: 'tripnara-route-intel',
         version: '1.0.0',

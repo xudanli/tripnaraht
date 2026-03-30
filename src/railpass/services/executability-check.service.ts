@@ -253,7 +253,7 @@ export class ExecutabilityCheckService {
     passProfile: RailPassProfile;
     task?: ReservationTask;
   }): RiskLevel {
-    const { coverage, reservationRequirement, segment, passProfile, task } = args;
+    const { coverage, reservationRequirement, task } = args;
 
     // 不覆盖 → HIGH
     if (coverage === 'NOT_COVERED') {
@@ -289,7 +289,7 @@ export class ExecutabilityCheckService {
     travelDayInfo?: any;
   }): string[] {
     const suggestions: string[] = [];
-    const { segment, passProfile, reservationRequirement, task, travelDayInfo } = args;
+    const { segment, passProfile, reservationRequirement, task } = args;
 
     // Mobile Pass 建议
     if (passProfile.mobileOrPaper === 'MOBILE') {
@@ -315,7 +315,7 @@ export class ExecutabilityCheckService {
     reservationRequirement: any;
     travelDayInfo?: any;
   }): SegmentCardInfo['details'] {
-    const { segment, passProfile, reservationRequirement, travelDayInfo } = args;
+    const { passProfile, reservationRequirement, travelDayInfo } = args;
     const details: SegmentCardInfo['details'] = {};
 
     // Mobile Pass 提醒
@@ -347,7 +347,7 @@ export class ExecutabilityCheckService {
   /**
    * 生成订座建议
    */
-  private generateReservationSuggestions(requirement: any, segment: RailSegment): string[] {
+  private generateReservationSuggestions(requirement: any, _segment: RailSegment): string[] {
     const suggestions: string[] = [];
 
     if (requirement.required) {
@@ -389,7 +389,7 @@ export class ExecutabilityCheckService {
     missingInfo: string[];
   }): string[] {
     const suggestions: string[] = [];
-    const { passProfile, segmentCards, travelDayResult, missingInfo } = args;
+    const { segmentCards, travelDayResult, missingInfo } = args;
 
     if (missingInfo.length > 0) {
       suggestions.push('建议补全通票信息以获得更准确的检查结果');

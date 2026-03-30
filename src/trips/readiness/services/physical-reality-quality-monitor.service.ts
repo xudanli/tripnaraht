@@ -12,7 +12,6 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 import { PhysicalRealityRetrievalService } from './physical-reality-retrieval.service';
 
 export interface PhysicalRealityQualityMetrics {

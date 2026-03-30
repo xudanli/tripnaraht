@@ -17,6 +17,7 @@ import { SkillsRegistryService } from '../../skills/services/skills-registry.ser
 import { WorldModelCollectorService } from './shared/world-model-collector.service';
 import { PredictionCollectorService } from './shared/prediction-collector.service';
 import { getSkillFailureStrategy } from '../utils/skill-importance.util';
+import { isUnresolvedDestinationPlaceholder } from '../utils/clarification-question-generator.util';
 
 @Injectable()
 export class ResearchExecutorService implements IResearchExecutor {
@@ -91,7 +92,15 @@ export class ResearchExecutorService implements IResearchExecutor {
     researchData: Record<string, unknown>,
     evidenceRefs: string[],
   ): Promise<void> {
-    if (!this.skillsRegistry || !tripRequest || typeof tripRequest.origin !== 'string' || typeof tripRequest.destination !== 'string') return;
+    if (
+      !this.skillsRegistry ||
+      !tripRequest ||
+      typeof tripRequest.origin !== 'string' ||
+      typeof tripRequest.destination !== 'string' ||
+      isUnresolvedDestinationPlaceholder(tripRequest.destination)
+    ) {
+      return;
+    }
     try {
       const skill = this.skillsRegistry.getSkill('transport.search');
       if (!skill) return;

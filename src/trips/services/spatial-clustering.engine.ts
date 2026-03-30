@@ -23,7 +23,6 @@ export interface ClusteredPoint extends Point2D {
 }
 
 const MAX_ITERATIONS = 50;
-const EPSILON = 1e-6;
 
 @Injectable()
 export class SpatialClusteringEngine {

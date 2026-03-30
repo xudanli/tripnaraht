@@ -9,7 +9,6 @@ import {
   TimelinessMetric,
   TraceabilityMetric,
   DataSourceInfo,
-  AnnotatedData,
 } from '../interfaces/data-quality-dimensions.interface';
 
 /**

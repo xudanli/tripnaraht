@@ -57,7 +57,7 @@ export class AgentRunnerWithHitlExample {
     }
 
     // 3. Agent 执行循环
-    let maxIterations = 10; // 防止无限循环
+    const maxIterations = 10; // 防止无限循环
     let iteration = 0;
 
     while (iteration < maxIterations) {
@@ -162,7 +162,7 @@ export class AgentRunnerWithHitlExample {
   /**
    * 加载消息历史（示例方法）
    */
-  private async loadMessageHistory(threadId: string): Promise<any[] | null> {
+  private async loadMessageHistory(_threadId: string): Promise<any[] | null> {
     // TODO: 从数据库或缓存加载消息历史
     return null;
   }
@@ -172,7 +172,7 @@ export class AgentRunnerWithHitlExample {
    * 
    * 实际实现需要根据你使用的 LLM 框架（OpenAI、Anthropic 等）调整
    */
-  private async callLLM(messages: any[]): Promise<{
+  private async callLLM(_messages: any[]): Promise<{
     content: string;
     toolCalls?: Array<{
       id: string;
@@ -200,7 +200,7 @@ export class AgentRunnerWithHitlExample {
    * 
    * 实际实现需要根据你的工具注册机制调整
    */
-  private async executeTool(toolCall: {
+  private async executeTool(_toolCall: {
     id: string;
     function: {
       name: string;

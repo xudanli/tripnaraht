@@ -325,7 +325,7 @@ export class PIIAnonymizerService {
   /**
    * 脱敏坐标（精确坐标 → 城市级别）
    */
-  private anonymizeCoordinates(coords: {
+  private anonymizeCoordinates(_coords: {
     lat: number;
     lng: number;
   }): { country_code?: string; city_name?: string } {
@@ -347,7 +347,7 @@ export class PIIAnonymizerService {
   /**
    * 脱敏行程（脱敏其中的坐标）
    */
-  private anonymizeItinerary(itinerary: any, config: PIIAnonymizationConfig): any {
+  private anonymizeItinerary(itinerary: any, _config: PIIAnonymizationConfig): any {
     if (!itinerary || !itinerary.days) {
       return itinerary;
     }

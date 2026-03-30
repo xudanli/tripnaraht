@@ -4,17 +4,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   IndividualPreference,
   Conflict,
-  ConflictType,
   Consensus,
   CoordinationOption,
-  CoordinationStrategy,
   CoordinationResult,
   IndividualFitAnalysis,
   DiscussionTopic,
   RoutePlanDraft,
 } from '../interfaces/multi-person-coordination.interface';
 import { TravelerInfo, InterestProfile, MobilityProfile } from '../../interfaces/pacing-config.interface';
-import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
 import { UserPersona } from '../../../agent/memory/interfaces/multi-persona.interface';
 import { RhythmMatchingService } from './rhythm-matching.service';
 import { RhythmType } from '../interfaces/rhythm-matching.interface';
@@ -810,9 +807,9 @@ export class MultiPersonDecisionService {
    */
   private generateCoordinationOptions(
     conflicts: Conflict[],
-    consensus: Consensus[],
+    _consensus: Consensus[],
     preferences: IndividualPreference[],
-    itinerary: RoutePlanDraft,
+    _itinerary: RoutePlanDraft,
   ): CoordinationOption[] {
     const options: CoordinationOption[] = [];
 
@@ -857,7 +854,7 @@ export class MultiPersonDecisionService {
    */
   private generateSegmentedRhythmOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     const rhythmConflicts = conflicts.filter(c => c.type === 'RHYTHM_MISMATCH');
 
@@ -890,7 +887,7 @@ export class MultiPersonDecisionService {
    */
   private generateRelaxedWithUpgradeOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     return {
       id: 'relaxed-with-upgrade',
@@ -923,7 +920,7 @@ export class MultiPersonDecisionService {
    */
   private generateSplitActivitiesOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     return {
       id: 'split-activities',
@@ -955,7 +952,7 @@ export class MultiPersonDecisionService {
    */
   private generateCompromiseOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     return {
       id: 'compromise-middle',
@@ -986,7 +983,7 @@ export class MultiPersonDecisionService {
    */
   private generateRotatingPriorityOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     return {
       id: 'rotating-priority',
@@ -1017,7 +1014,7 @@ export class MultiPersonDecisionService {
    */
   private generateIndependentTimeOption(
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): CoordinationOption {
     return {
       id: 'independent-time',
@@ -1049,7 +1046,7 @@ export class MultiPersonDecisionService {
   private calculateSuitabilityScore(
     option: CoordinationOption,
     conflicts: Conflict[],
-    preferences: IndividualPreference[],
+    _preferences: IndividualPreference[],
   ): number {
     let score = 0.5; // 基础分
 

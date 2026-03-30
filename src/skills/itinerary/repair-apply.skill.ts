@@ -5,9 +5,10 @@
  * 应用修复方案到行程
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
-import { Itinerary, ItineraryDay, ItineraryItem, RequiredAdjustment } from '../../agent/interfaces/trip-plan.interface';
+import { Itinerary, RequiredAdjustment } from '../../agent/interfaces/trip-plan.interface';
+import { applyRiskTagsFromAdjustments } from '../../agent/utils/itinerary-risk-tags.util';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { DateTime } from 'luxon';
 
@@ -136,6 +137,9 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
           this.logger.warn(`应用调整 ${adjustment.action} 失败: ${error?.message}`);
         }
       }
+
+      // ADR-B1：REPAIR 阶段对已调整目标补充风险标签（渐进填值）
+      applyRiskTagsFromAdjustments(repairedItinerary, sortedAdjustments);
 
       return {
         repaired: appliedFixes.length > 0,
@@ -273,7 +277,7 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
    */
   private addBuffer(
     itinerary: Itinerary,
-    adjustment: RequiredAdjustment,
+    _adjustment: RequiredAdjustment,
   ): { applied: boolean; description: string } {
     const BUFFER_MINUTES = 30; // 默认缓冲 30 分钟
 

@@ -35,7 +35,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用，请使用ChunkRetrievalService
    */
-  async retrieve(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
+  async retrieve(_params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
     // document_index表已删除，直接返回空结果
     this.logger.warn(
       '⚠️  document_index表已删除，RagService.retrieve()不再可用。请使用ChunkRetrievalService（基于chunks表）'
@@ -185,7 +185,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用
    */
-  private async fallbackKeywordSearch(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
+  private async fallbackKeywordSearch(_params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
     // document_index表已删除，返回空结果
     this.logger.warn('document_index表已删除，降级策略不再可用');
     return [];
@@ -199,7 +199,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用
    */
-  async indexDocument(item: DocumentIndexItem): Promise<string> {
+  async indexDocument(_item: DocumentIndexItem): Promise<string> {
     this.logger.warn(
       '⚠️  document_index表已删除，RagService.indexDocument()不再可用。请使用新系统（KnowledgeFile + Chunks）'
     );
@@ -219,7 +219,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用
    */
-  async indexDocuments(items: DocumentIndexItem[]): Promise<string[]> {
+  async indexDocuments(_items: DocumentIndexItem[]): Promise<string[]> {
     this.logger.warn(
       '⚠️  document_index表已删除，RagService.indexDocuments()不再可用。请使用新系统（KnowledgeFile + Chunks）'
     );
@@ -233,7 +233,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用
    */
-  async deleteDocument(id: string): Promise<void> {
+  async deleteDocument(_id: string): Promise<void> {
     this.logger.warn(
       '⚠️  document_index表已删除，RagService.deleteDocument()不再可用'
     );
@@ -247,7 +247,7 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用
    */
-  async updateDocument(id: string, item: Partial<DocumentIndexItem>): Promise<void> {
+  async updateDocument(_id: string, _item: Partial<DocumentIndexItem>): Promise<void> {
     this.logger.warn(
       '⚠️  document_index表已删除，RagService.updateDocument()不再可用'
     );
@@ -287,7 +287,7 @@ export class RagService {
       totalPages: number;
     };
   }> {
-    const { collection, countryCode, tags, search, page = 1, pageSize = 20 } = params;
+    const { collection, search, page = 1, pageSize = 20 } = params;
     const skip = (page - 1) * pageSize;
 
     // 使用新系统：KnowledgeFile表

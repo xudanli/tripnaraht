@@ -1,7 +1,7 @@
 // src/trips/readiness/services/__tests__/user-decision-groups.spec.ts
 
 import { UserDecisionService } from '../user-decision.service';
-import { Rule, UserQuestion, QuestionGroup } from '../../types/readiness-pack.types';
+import { Rule } from '../../types/readiness-pack.types';
 
 describe('UserDecisionService - Question Groups', () => {
   let service: UserDecisionService;

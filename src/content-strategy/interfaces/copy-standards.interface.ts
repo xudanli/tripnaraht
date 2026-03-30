@@ -10,8 +10,6 @@
  * - 数据呈现话术
  */
 
-import { RouteDirectionData } from '../../route-directions/interfaces/route-direction.interface';
-
 /**
  * 用户上下文
  */

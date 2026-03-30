@@ -9,8 +9,8 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { TripWorldState, ActivityCandidate } from '../world-model';
-import { TripPlan, PlanDay, PlanSlot } from '../plan-model';
+import { TripWorldState } from '../world-model';
+import { TripPlan } from '../plan-model';
 import { DecisionParams } from '../../../agent/memory/interfaces/decision-params.interface';
 import { DEMDailyEnergyService } from './dem-daily-energy.service';
 import { DEMRiskScoringService } from './dem-risk-scoring.service';

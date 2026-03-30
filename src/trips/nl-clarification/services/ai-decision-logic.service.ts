@@ -231,7 +231,7 @@ export class AiDecisionLogicService {
     destinationCode: string,
     personaId: string,
     activityTypes: string | string[],
-    userAnswers: Record<string, any>
+    _userAnswers: Record<string, any>
   ): Promise<{
     shouldWarn: boolean;
     warningMessage?: string;
@@ -687,7 +687,7 @@ export class AiDecisionLogicService {
     return true;
   }
 
-  private generateAlternatives(persona: any, config: DestinationClarificationConfig): Array<{ label: string; description: string; action?: string }> {
+  private generateAlternatives(persona: any, _config: DestinationClarificationConfig): Array<{ label: string; description: string; action?: string }> {
     const alternatives: Array<{ label: string; description: string; action?: string }> = [];
 
     // 推荐该画像的推荐路线

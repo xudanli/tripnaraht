@@ -8,8 +8,6 @@
  */
 
 import {
-  TripPlanRequest,
-  OrchestratorState,
   OrchestrationStep,
   SubAgentType,
   GuardianType,

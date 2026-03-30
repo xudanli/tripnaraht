@@ -247,8 +247,8 @@ describe('ErrorHandlerChain', () => {
       const chain = new ErrorHandlerChain();
 
       const customHandler = {
-        canHandle: (e: unknown) => e instanceof ValidationError,
-        handle: (e: unknown) => new DecisionError('Custom handled', DecisionErrorCode.VALIDATION_FAILED, 400),
+        canHandle: (_e: unknown) => _e instanceof ValidationError,
+        handle: (_e: unknown) => new DecisionError('Custom handled', DecisionErrorCode.VALIDATION_FAILED, 400),
       };
 
       chain.addHandler(customHandler);

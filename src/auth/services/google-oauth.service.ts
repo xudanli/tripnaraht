@@ -1,5 +1,5 @@
 // src/auth/services/google-oauth.service.ts
-import { Injectable, Logger, BadRequestException, InternalServerErrorException, Optional } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { HttpsProxyAgent } from 'https-proxy-agent';

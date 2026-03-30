@@ -5,7 +5,7 @@
  * 提供铁路查询、时刻表、预订等功能
  */
 
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { RailMcpClient, getRailClient } from './rail-client';
 
 @Injectable()

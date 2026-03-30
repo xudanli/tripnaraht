@@ -21,7 +21,7 @@ describe('E2E Regression: Iceland World Model', () => {
       // Test ID: E2E-IS-001
       // Expected: ALLOW or NEED_USER_CONFIRM (depending on conditions)
 
-      const testCase = {
+      const _testCase = {
         request_id: 'e2e-is-001',
         origin: { lat: 64.1466, lng: -21.9426 }, // Reykjavík
         destination: { lat: 64.8577, lng: -19.0059 }, // Landmannalaugar
@@ -61,7 +61,7 @@ describe('E2E Regression: Iceland World Model', () => {
       // Test ID: E2E-IS-003
       // Expected: BLOCK with REACHABILITY violation
 
-      const testCase = {
+      const _testCase = {
         request_id: 'e2e-is-003',
         origin: 'Vík, Iceland',
         destination: 'Landmannalaugar, F208, Iceland',
@@ -100,7 +100,7 @@ describe('E2E Regression: Iceland World Model', () => {
       // Test ID: E2E-IS-005
       // Expected: ADJUST_REQUIRED or NEED_USER_CONFIRM with weather warnings
 
-      const testCase = {
+      const _testCase = {
         request_id: 'e2e-is-005',
         origin: { lat: 64.1466, lng: -21.9426 },
         destination: { lat: 64.75, lng: -18.0 },

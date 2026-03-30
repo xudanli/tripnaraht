@@ -2,10 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PolicyServiceManagerService } from './policy-service-manager.service';
-import {
-  PolicyInferenceRequest,
-  PolicyInferenceResponse,
-} from '../interfaces/training-platform.interface';
+import { PolicyInferenceResponse } from '../interfaces/training-platform.interface';
 import { GateResult } from '../../interfaces/trip-plan.interface';
 
 /**

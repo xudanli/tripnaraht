@@ -10,7 +10,7 @@
  * 运行方式: npx ts-node src/trips/decision/optimization/examples/decision-os-usage.example.ts
  */
 
-import { DecisionOSFacadeService, DecisionRequest, FeedbackRequest } from '../decision-os-facade.service';
+import { DecisionOSFacadeService, DecisionRequest } from '../decision-os-facade.service';
 import { PolicyNetworkService } from '../learning/policy-network.service';
 import { OnlineLearningLoopService } from '../learning/online-learning-loop.service';
 import { DSOSnapshotAuditService } from '../learning/dso-snapshot-audit.service';

@@ -202,7 +202,8 @@ export interface PolicyInferenceRequest {
 }
 
 /**
- * PolicyService推理响应
+ * PolicyService 推理响应。
+ * `action` 与编排 Gate（`GateResultStatus`）、对外 Verdict 的映射见 `docs/decision/VERDICT_GATE_POLICY_MAPPING.md`。
  */
 export interface PolicyInferenceResponse {
   action: 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY';

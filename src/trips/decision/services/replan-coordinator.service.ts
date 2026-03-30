@@ -8,7 +8,7 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DecisionKernelService } from '../../../decision/kernel/decision-kernel.service';
-import { REPLAN_TRIGGER, type IReplanTrigger } from '../../../decision/kernel/replan-trigger.interface';
+import { type IReplanTrigger } from '../../../decision/kernel/replan-trigger.interface';
 import { DSO_FEEDBACK_PERSISTENCE } from '../../../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../../../decision/kernel/dso-feedback-persistence.interface';
 import type { PhaseExecutorContext, GateResultLike } from '../../../decision/kernel/interfaces/phase-executor.interface';
@@ -77,12 +77,22 @@ export class ReplanCoordinatorService implements IReplanTrigger {
       dso = dsoAfterPlan;
       ctx.itinerary = itinerary;
 
-      // VERIFY
+      // VERIFY →（issues 非空时）REPAIR，与 Agent 编排 KERNEL_NATIVE 路径对齐（S-TD-02）
       this.logger.debug('[ReplanCoordinator] 执行 VERIFY');
-      const { newState: dsoFinal } = await this.decisionKernel.executeVerify(dso, ctx);
+      const { newState: dsoAfterVerify, issues } = await this.decisionKernel.executeVerify(dso, ctx);
+      dso = dsoAfterVerify;
 
-      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, dsoFinal);
-      this.logger.log(`[ReplanCoordinator] 重规划完成: ${tripRunIdOrTripId}, version=${dsoFinal.systemState?.version ?? 'N/A'}`);
+      if (issues?.length) {
+        this.logger.debug(`[ReplanCoordinator] VERIFY 发现问题 (${issues.length})，执行 REPAIR`);
+        const { newState: dsoAfterRepair, itinerary: repairedItinerary } = await this.decisionKernel.executeRepair(dso, ctx);
+        dso = dsoAfterRepair;
+        if (repairedItinerary) {
+          ctx.itinerary = repairedItinerary;
+        }
+      }
+
+      await this.feedbackPersistence.persistDso(tripRunIdOrTripId, dso);
+      this.logger.log(`[ReplanCoordinator] 重规划完成: ${tripRunIdOrTripId}, version=${dso.systemState?.version ?? 'N/A'}`);
     } catch (e: unknown) {
       this.logger.error(`[ReplanCoordinator] 重规划失败: ${(e as Error)?.message}`, (e as Error)?.stack);
       throw e;

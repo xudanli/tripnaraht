@@ -11,7 +11,6 @@ import { ValidationCacheService } from '../validation-cache.service';
 
 describe('KnowledgeValidationService', () => {
   let service: KnowledgeValidationService;
-  let prismaService: jest.Mocked<PrismaService>;
   let llmService: jest.Mocked<LlmService>;
   let cacheService: jest.Mocked<ValidationCacheService>;
 

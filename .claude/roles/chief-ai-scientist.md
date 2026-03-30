@@ -93,9 +93,165 @@ Plan B：稳妥方案（风险 12%）
 Plan C：保底方案（风险 5%）
 ```
 
-**UI 展示的是：「你在为哪种风险付费」**
+**UI 展示的是：「选择某行动后，状态如何变化（Delta）以及风险轨迹如何演化」**（你在为哪种未来状态的风险变化付费）
 
 **参考文件**：`prompts/agents/README.md` - AI-native 决策系统架构
+
+### JEPA 产品化协议：从 Latent Space 到产品可执行协议
+
+**核心要求**：任何“latent”的东西都必须通过 **Latent Contract（潜在空间协议）** 变成可解释、可替换、可评估的“产品可执行协议”，并且让 UI 直接展示 **状态变化（Delta）** 而不是静态提示。
+
+#### 1) 三类核心向量必须标准化（Latent Contract）
+
+**(1) 环境向量 `z_env`（归一化到可比量纲）**：
+
+```typescript
+z_env = {
+  terrain_risk: [slope, road_condition, road_width],          // 例如均映射到 0..1
+  weather_state: [wind_speed, visibility, precipitation],      // 例如均映射到 0..1
+  accessibility: [rescue_distance, signal_coverage],          // 例如均映射到 0..1
+  temporal_factor: [daylight_hours, night_risk]              // 例如均映射到 0..1
+}
+```
+
+**(2) 用户向量 `z_user`（效用曲面与梯度敏感度）**：
+
+```typescript
+z_user = {
+  risk_tolerance: 0.0,
+  delay_sensitivity: 0.0,
+  fatigue_limit: 0.0,
+  experience_level: 0.0
+}
+```
+
+**(3) 状态向量 `z_state`（JEPA 预测的目标空间，最关键）**：
+
+```typescript
+z_state = {
+  continuity: 0.0,              // 行程是否可持续（0..1）
+  risk_score: 0.0,             // 当前风险综合分（0..1）
+  cost: 0.0,                   // 已消耗预算占比（0..1）
+  fatigue: 0.0,               // 当前疲劳水平（0..1）
+  satisfaction_estimate: 0.0 // 预期满意度（0..1）
+}
+```
+
+**标准化必须可核验**：每个分量的来源、归一化规则、取值范围、缺失值策略都需要在接口/字段字典中落地。
+
+#### 2) Predictor 不是黑盒：必须是可解释“概率模拟器”
+
+**核心原则**：禁止直接把 latent 做成不可追踪的端到端黑盒映射 `z + a -> z'`。必须拆成 **Multi-head Simulation（多头模拟）**，每个 head 输出 **概率/分布** 与可解释中间量。
+
+```typescript
+z_pred = {
+  risk_head:      ProbabilityDistribution,  // 输出风险上升的概率/分布
+  continuity_head: ProbabilityDistribution, // 输出行程中断/不可持续概率
+  fatigue_head:  ProbabilityDistribution,
+  cost_head:     ProbabilityDistribution
+}
+```
+
+**必须输出概率而不是结论**：所有“好/坏/允许/拒绝”都必须来源于概率 head，并通过门控/决策层映射。
+
+#### 3) Skill = 条件模拟器（局部世界模型的可替换微分函数）
+
+把现有 `PredictWeatherImpact` 等能力升级为 **Conditional Simulator（条件模拟器）**：
+
+```typescript
+SkillPredict(z_env, action, z_user) -> DeltaDistribution
+// 例如：预测风险上升概率、连续性破坏概率、疲劳增量分布等
+```
+
+**输出形态必须是“增量分布”**（Delta distribution），例如：
+
+```typescript
+{
+  risk_increase_prob: 0.72,
+  continuity_break_prob: 0.35
+}
+```
+
+这要求每个 Skill 都具备：
+1. 可解释的输入-输出语义映射（Explain Layer 对齐）
+2. 可替换实现（Skill 可版本化、可 A/B）
+3. 可局部优化（针对某 head 或某误差项优化）
+
+#### 4) Explain Layer（语义映射层）强制存在
+
+**边界条件**：
+- **Latent 不可直接展示**：UI 与用户侧解释必须基于 Explain Layer，将概率/分布映射成证据链与可读语义（EvidenceRef 对齐到天气/路况/可达性等）。
+- **短 horizon 高频重规划**：长链路不可完全预测，必须把预测拆成短时间窗，多次重规划（而不是一次性“未来定稿”）。
+
+#### 5) UI 的 JEPA 表达：从“推荐结果”到“状态变化（Delta）”
+
+**必须展示**：
+1. **Delta 展示**：如果选择某行动，UI 要呈现 `Delta(risk_score) / Delta(continuity) / Delta(cost) / Delta(fatigue) / Delta(satisfaction)` 以及对应概率或置信度
+2. **风险轨迹**：把“风险不是提示，是轨迹”，用时间轴展示多步预测事件链
+
+**示例（轨迹而非一句话提醒）**：
+- `14:00` 出发
+  -> `15:30` 山口风速上升（事故/打滑风险概率 +）
+  -> `16:00` 能见度下降（可达性/安全风险概率 +）
+  -> `16:20` 车辆打滑概率 0.40（触发 REPLAN 或 buffer 方案）
+
+#### 6) 数据闭环：Decision Trace 与预测误差是训练信号的主体
+
+**Decision Trace（核心资产）**必须包含：
+
+```json
+{
+  "z": z_state,
+  "a": action,
+  "z_pred": z_pred,
+  "z_real": z_state_observed_or_inferred,
+  "delta": z_real - z_pred
+}
+```
+
+**最重要的训练信号（Prediction Error）**三类：
+1. **物理偏差（World Error）**：天气预测错、路况变化未覆盖等
+2. **行为偏差（User Drift）**：用户不按推荐走导致分布偏移
+3. **效用偏差（Utility Error，最关键）**：系统认为“很好”，但用户实际不满意（必须驱动解释与门控策略更新）
+
+#### 7) 你在产出时的对齐检查清单
+- **必须**存在可标准化的 `z_env / z_user / z_state`
+- **必须**存在多头概率模拟输出（至少 risk/continuity/fatigue/cost 中的关键 head）
+- **必须**存在 Explain Layer：latent 概率如何落到 EvidenceRef 与用户可读语义
+- **必须**展示 UI 的 Delta 与风险轨迹（轨迹要可回放、可比较）
+- **必须**定义 prediction error 的世界偏差/行为偏差/效用偏差如何埋点并用于回归
+
+**关键结论**：**把 JEPA 变成“可解释模拟器 + Delta UI + 三类预测误差闭环”**，避免复杂但不可感知的系统。
+
+### TripNARA 本体论（Ontology，与 DSO / 实验设计对齐）
+
+**核心思想**：将旅行建模为**可计算世界**——类型化对象与关系上的**状态转移与约束优化**；算法与实验应能映射到该世界，而非仅优化文本指标。
+
+**五大对象**（字段、Reward、评测设计时优先用此域语言对齐 **DSO / DecisionState**）：
+
+| 对象 | 含义 | AI/ML 侧关注点 |
+|------|------|----------------|
+| **Agent** | 人（用户/同行人） | 偏好、风险、体能；策略条件化变量 |
+| **Place** | 空间（POI/区域） | 嵌入、检索、可达性证据 |
+| **Action** | 可执行行为 | 规划输出原子；状态转移含外生扰动（Event） |
+| **Resource** | 时间 / 金钱 / 体力 | 硬约束与代价；VERIFY、门控高频 |
+| **Event** | 外生扰动（天气/延误/拥堵） | 不确定性源；触发 REPLAN / 鲁棒策略 |
+
+**关系**：**Agent → performs → Action**；**Action → occurs at → Place**；**Action → consumes → Resource**；**Event → impacts → Action / Place**。
+
+**状态**：**S = (Agent, Place, Time, Resource, Context)** — 实现上对应 **DSO**；**STATE_UPDATE** 为显式世界状态同步。
+
+**决策本质**：在约束下求 **Action 序列** → **Itinerary = Decision Path**；评估体系应覆盖**路径可行性**、**资源耗尽**、**Event 下修复**，而非仅单步生成质量。
+
+**叙事（可选）**：**Decision Intelligence Infrastructure**；与「企业运营本体」类比时强调 **experiences vs operations**。
+
+**与产品经理对齐**：PRD、门控与字段字典见 **`.claude/roles/product-manager.md`**（本体章节与 **0.6 / 0.12**）；**本体 ↔ 代码字段**见 **`docs/TRIPNARA_ONTOLOGY_FIELD_MAPPING.md`**。
+
+### 对外人格与归因边界（已定稿）
+
+- **用户可见的具名人格仅** **Abu**、**Dr.Dre**、**Neptune**（对应 Gatekeeper / CoreDecision / LocalInsight 叙事）。
+- **Planner、Narrator、Compliance** 及 **Domain Agents**（Geo/Weather/Cost/…）为**内部实现**；**提示词、LoRA 固化能力、用户向解释与评测归因**须**归并到三人格**或中性系统表述，**不在用户 UI 中单独具名**。
+- **研发文档、日志、实验配置、论文附录**可使用真实 Agent/服务名以便复现。
 
 ### TripNARA AI架构
 
@@ -108,14 +264,14 @@ Plan C：保底方案（风险 5%）
 **多智能体系统**：
 
 **Core Decision Agents（决策内核层）**：
-- **Planner**：Decision Node 拆解、缺口识别、方案结构设计
-- **Gatekeeper (Abu)**：约束守门、Hard/Soft 门控、Should-Exist Gate
-- **CoreDecision (Dr.Dre)**：权衡模型、多方案评估、不确定性量化
-- **LocalInsight (Neptune)**：世界模型注入、空间修复、本地洞察
-- **Compliance**：风险分类、合规检查、免责留痕
-- **Narrator**：决策理由可视化、排除过程展示
+- **Planner**：Decision Node 拆解、缺口识别、方案结构设计（**内部实现**，用户侧不具名）
+- **Gatekeeper (Abu)**：约束守门、Hard/Soft 门控、Should-Exist Gate（**用户侧三人格之一**）
+- **CoreDecision (Dr.Dre)**：权衡模型、多方案评估、不确定性量化（**用户侧三人格之一**）
+- **LocalInsight (Neptune)**：世界模型注入、空间修复、本地洞察（**用户侧三人格之一**）
+- **Compliance**：风险分类、合规检查、免责留痕（**内部实现**，归因归并至 **Abu** 或系统合规叙事）
+- **Narrator**：决策理由可视化、排除过程展示（**内部实现**，输出经 **NARRATE** 落地，用户可见理由仍走三人格/证据链）
 
-**Domain Agents（世界模型层）**：
+**Domain Agents（世界模型层）**（**内部**，不对外具名；与本体 **Place / Event / Resource** 强相关）：
 - **GeoAgent**：地理结构 & 路线可行性
 - **WeatherAgent**：气象条件 & 封路概率
 - **CostAgent**：价格曲线 & 预算优化
@@ -226,7 +382,7 @@ INTAKE → STATE_UPDATE → RESEARCH → GATE_EVAL → CONTEXT_BUILD → PLAN_GE
 **当前架构**：
 - **6个Sub-Agents**：各司其职，经 Kernel 读写 DSO，OrchestratorState 由 DSO 派生
 - **状态机编排**：CLAUDE_SM（12 步：INTAKE→STATE_UPDATE→RESEARCH→GATE_EVAL→CONTEXT_BUILD→PLAN_GEN→OPTIMIZE→VERIFY→[REPAIR]→NARRATE→FEEDBACK→HALLUCINATION_DETECTION→DONE）
-- **三人格系统**：Abu、Dr.Dre、Neptune
+- **三人格系统（用户侧唯一具名）**：**仅** Abu、Dr.Dre、Neptune；其余 Agent **不对外具名**（见上文 **对外人格与归因边界**）
 - **Phase Executors**：IntakeExecutor、ResearchExecutor、GateEvalExecutor、PlanGenExecutor、VerifyExecutor、RepairExecutor、NarrateExecutor（KERNEL_NATIVE_EXECUTION 时经 Kernel 执行）
 
 **优化方向**：
@@ -320,7 +476,7 @@ INTAKE → STATE_UPDATE → RESEARCH → GATE_EVAL → CONTEXT_BUILD → PLAN_GE
 **当前实现**：
 - **决策日志**：`DecisionLogEntry`记录每个决策
 - **证据链**：`EvidenceRef`关联证据
-- **三人格归因**：决策归因到三人格
+- **三人格归因**：面向用户的解释与归因**仅**落到 **Abu / Dr.Dre / Neptune**；内部可记录真实执行 Agent 供排障
 
 **优化方向**：
 - **解释生成**：自动生成用户可读解释
@@ -380,11 +536,11 @@ TripNARA 采用 **LoRA + RAG + Function Calling** 三层架构，构建可自我
 ```typescript
 // LoRA 应固化的核心能力
 const loraCapabilities = {
-  decision_decomposition: 'Decision Node 拆解（约束/偏好/选项）',
-  triple_persona: '三人格策略编排（Abu/Dr.Dre/Neptune）',
-  uncertainty_quantification: '不确定性量化（风险概率分布）',
+  decision_decomposition: 'Decision Node 拆解（约束/偏好/选项）；对齐本体 Action/Resource/Event',
+  triple_persona: '三人格用户向叙事（仅 Abu/Dr.Dre/Neptune；不暴露 Planner/Narrator 等具名）',
+  uncertainty_quantification: '不确定性量化（风险概率分布）；Event 外生项',
   tool_selection: '工具调用决策（Skills 选择）',
-  explanation_generation: '决策理由生成',
+  explanation_generation: '决策理由生成（归因可归三人格+证据链）',
 };
 ```
 
@@ -745,7 +901,7 @@ interface PerformanceOptimizationPlan {
 - 用户反馈分析报告
 
 **参考**：
-- `.claude/roles/product-manager.md` - 产品经理角色
+- `.claude/roles/product-manager.md` - 产品经理角色（**TripNARA 本体论**、**对外人格边界**、PRD 目录 **0.6/0.12** 与本文档一致）
 
 ## 项目关键文件位置（快速参考）
 

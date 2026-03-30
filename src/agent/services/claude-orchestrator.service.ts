@@ -7,8 +7,7 @@ import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { ActionRegistryService } from './action-registry.service';
-import { Skill } from '../../skills/interfaces/skill.interface';
-import { withTimeout, SimpleLruCache } from './orchestration-utils';
+import { SimpleLruCache } from './orchestration-utils';
 import { createDeadline } from './orchestration-stability.util';
 import {
   IntentAnalysis,
@@ -32,27 +31,16 @@ import {
   OrchestrationStep,
   GateResult,
   Itinerary,
-  DecisionLogEntry,
-  EvidenceRef,
-  PlanDiff,
   GuardianType,
   SubAgentType,
 } from '../interfaces/trip-plan.interface';
-import {
-  PlannerAgent,
-  GatekeeperAgent,
-  ComplianceAgent,
-  LocalInsightAgent,
-  CoreDecisionAgent,
-  NarratorAgent,
-} from '../interfaces/sub-agent.interface';
 import { ClaudePlannerAgentService } from './sub-agents/planner-agent.service';
 import { ClaudeGatekeeperAgentService } from './sub-agents/gatekeeper-agent.service';
 import { ClaudeComplianceAgentService } from './sub-agents/compliance-agent.service';
 import { ClaudeLocalInsightAgentService } from './sub-agents/local-insight-agent.service';
 import { ClaudeCoreDecisionAgentService } from './sub-agents/core-decision-agent.service';
 import { ClaudeNarratorAgentService } from './sub-agents/narrator-agent.service';
-import { getSkillFailureStrategy, isCriticalSkill } from '../utils/skill-importance.util';
+import { getSkillFailureStrategy } from '../utils/skill-importance.util';
 import { isInGrayBucket } from '../utils/gray-release.util';
 import { ErrorType, inferErrorType, getErrorHandlingStrategy } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
@@ -64,13 +52,11 @@ import { ReadinessService } from '../../trips/readiness/services/readiness.servi
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
-import { DecisionStep } from '../../decision-draft/interfaces/decision-draft.interface';
 // Domain Agents (World Model Layer)
 import { GeoAgentService } from './domain-agents/geo-agent.service';
 import { WeatherAgentService } from './domain-agents/weather-agent.service';
 import { CostAgentService } from './domain-agents/cost-agent.service';
 import { ExperienceAgentService } from './domain-agents/experience-agent.service';
-import { DecisionOutput, DecisionNode } from '../interfaces/decision-node.interface';
 import { TokenStatsService } from './token-stats.service';
 // Phase 2.1: Decision Kernel
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
@@ -81,7 +67,7 @@ import {
   decisionStateToOrchestratorState,
   buildPatchFromDSOPrimary,
 } from '../../decision/kernel/orchestrator-state-mapper';
-import { DecisionState, DecisionStatePatch } from '../../decision/kernel/decision-state.types';
+import { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { IDsoLatestStateProvider } from '../../decision/kernel/dso-latest-state-provider.interface';
 import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 // 护城河扩展：预测性世界模型
@@ -91,6 +77,7 @@ import { aggregateWeatherRisk } from '../utils/weather-risk-aggregator.util';
 import {
   generateClarificationQuestions,
   identifyGapsFromRequest,
+  isUnresolvedDestinationPlaceholder,
 } from '../utils/clarification-question-generator.util';
 /**
  * Claude Orchestrator Service
@@ -1052,7 +1039,6 @@ export class ClaudeOrchestratorService {
     // 降级到原有验证逻辑（向后兼容）
     const missingParams: string[] = [];
     const results: Record<string, any> = {};
-    const actualTripId = context.tripId || request.trip_id;
 
     for (const step of plan.steps) {
       if (step.type === 'skill' && step.skillName) {
@@ -2343,17 +2329,16 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 步骤 2: STATE_UPDATE - Phase 2.3 显式 DSO 同步
       decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
 
-      // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
-      decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
-
-      // 步骤 4: GATE_EVAL - 执行 Should-Exist Gate 决策（强制在 Plan 之前）
-      // 注意：如果有 HARD 缺口，应该在 INTAKE 阶段生成澄清问题，不继续执行后续步骤
-      const hasHardGaps = state.gaps && state.gaps.some(g => g.severity === 'HARD');
-      if (hasHardGaps && state.clarification_questions && state.clarification_questions.length > 0) {
-        // 如果有 HARD 缺口且已生成澄清问题，直接返回需要澄清的结果
-        this.logger.debug(`[Claude Orchestrator] 检测到 HARD 缺口，返回澄清问题，不继续执行后续步骤`);
+      // HARD 缺口 + 已生成澄清问题：必须在 RESEARCH 之前返回，避免 transport.search 等技能在「未指定」上失败
+      if (this.shouldReturnClarificationForHardGaps(state)) {
+        this.logger.debug(
+          `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
+        );
         return this.buildClarificationResult(state, startTime);
       }
+
+      // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
+      decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
 
       // 步骤 4: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
       decisionState = await this.executeGateEvalPhase(decisionState, state, request, context, llmProvider);
@@ -2443,18 +2428,53 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
   }
 
+  /** INTAKE 已标 HARD 缺口并生成澄清问题时，不得进入 RESEARCH（避免关键技能在占位目的地上报错） */
+  private shouldReturnClarificationForHardGaps(state: OrchestratorState): boolean {
+    const hasHardGaps = state.gaps?.some((g) => g.severity === 'HARD');
+    return !!(
+      hasHardGaps &&
+      state.clarification_questions &&
+      state.clarification_questions.length > 0
+    );
+  }
+
   /**
    * 将 RouteAndRunRequestDto 转换为 TripPlanRequest
    */
   private convertToTripPlanRequest(
     request: RouteAndRunRequestDto,
-    state: OrchestratorState,
+    _state: OrchestratorState,
   ): TripPlanRequest {
-    // 从 message 中提取信息（使用改进的规则匹配和 LLM 分析结果）
-    const message = request.message.toLowerCase();
-    
     // 提取目的地（扩展规则匹配）
     let destination: string | { lat: number; lng: number } | undefined;
+
+    // 国内常见城市（先于国家级关键词，便于「上海美食2天」等短句命中目的地）
+    const domesticCityPatterns: Array<{ pattern: RegExp; value: string }> = [
+      { pattern: /上海/, value: '上海' },
+      { pattern: /北京/, value: '北京' },
+      { pattern: /广州/, value: '广州' },
+      { pattern: /深圳/, value: '深圳' },
+      { pattern: /杭州/, value: '杭州' },
+      { pattern: /成都/, value: '成都' },
+      { pattern: /重庆/, value: '重庆' },
+      { pattern: /西安/, value: '西安' },
+      { pattern: /南京/, value: '南京' },
+      { pattern: /苏州/, value: '苏州' },
+      { pattern: /武汉/, value: '武汉' },
+      { pattern: /厦门/, value: '厦门' },
+      { pattern: /青岛/, value: '青岛' },
+      { pattern: /天津/, value: '天津' },
+      { pattern: /香港|hong\s*kong/i, value: '香港' },
+      { pattern: /澳门|macau/i, value: '澳门' },
+      { pattern: /台北|台湾|taiwan/i, value: '台北' },
+    ];
+    for (const { pattern, value } of domesticCityPatterns) {
+      if (pattern.test(request.message)) {
+        destination = value;
+        break;
+      }
+    }
+
     const destinationPatterns = [
       { pattern: /冰岛|iceland/i, value: '冰岛' },
       { pattern: /尼泊尔|nepal/i, value: '尼泊尔' },
@@ -2468,10 +2488,12 @@ ${JSON.stringify(routingDecision, null, 2)}
       { pattern: /菲律宾|philippines/i, value: '菲律宾' },
       { pattern: /越南|vietnam/i, value: '越南' },
     ];
-    for (const { pattern, value } of destinationPatterns) {
-      if (pattern.test(request.message)) {
-        destination = value;
-        break;
+    if (!destination) {
+      for (const { pattern, value } of destinationPatterns) {
+        if (pattern.test(request.message)) {
+          destination = value;
+          break;
+        }
       }
     }
 
@@ -2580,7 +2602,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'INTAKE';
     const stepStartTime = Date.now();
@@ -3050,7 +3072,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'RESEARCH';
     const stepStartTime = Date.now();
@@ -3068,7 +3090,12 @@ ${JSON.stringify(routingDecision, null, 2)}
         // 1. 交通搜索（transport.search）- CRITICAL
         try {
           const transportSkill = this.skillsRegistry.getSkill('transport.search');
-          if (transportSkill && typeof tripRequest.origin === 'string' && typeof tripRequest.destination === 'string') {
+          if (
+            transportSkill &&
+            typeof tripRequest.origin === 'string' &&
+            typeof tripRequest.destination === 'string' &&
+            !isUnresolvedDestinationPlaceholder(tripRequest.destination)
+          ) {
             const transportResult = await transportSkill.execute({
               origin: tripRequest.origin,
               destination: tripRequest.destination,
@@ -3256,7 +3283,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'GATE_EVAL';
     const stepStartTime = Date.now();
@@ -3419,15 +3446,13 @@ ${JSON.stringify(routingDecision, null, 2)}
           required_adjustments: [],
           confidence: 0.8,
           evidence_refs: [],
+          readiness_questions: rulesNeedingDecision.map((item: any) => ({
+            ruleId: item.id,
+            questions: item.userDecision.questions,
+            category: item.category,
+            severity: item.severity,
+          })),
         };
-
-        // 将用户决策问题添加到 state 中（前端可以访问）
-        (state.gate_result as any).readiness_questions = rulesNeedingDecision.map((item: any) => ({
-          ruleId: item.id,
-          questions: item.userDecision.questions,
-          category: item.category,
-          severity: item.severity,
-        }));
 
         // 生成准备度检查的决策日志条目（按三人格分类）
         if (readinessCheckResult) {
@@ -3778,7 +3803,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'PLAN_GEN';
     const stepStartTime = Date.now();
@@ -3917,7 +3942,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'VERIFY';
     const stepStartTime = Date.now();
@@ -3997,7 +4022,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'REPAIR';
     const stepStartTime = Date.now();
@@ -4089,7 +4114,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
-    provider: LlmProvider,
+    _provider: LlmProvider,
   ): Promise<void> {
     state.current_step = 'NARRATE';
     const stepStartTime = Date.now();

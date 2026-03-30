@@ -89,10 +89,10 @@ export class ScheduleConverterService {
     const date = DateTime.fromISO(dateISO);
     const stops: PlannedStop[] = [];
     let totalTravelMin = 0;
-    let totalWalkMin = 0;
-    let totalTransfers = 0;
-    let totalQueueMin = 0;
-    let overtimeMin = 0;
+    const totalWalkMin = 0;
+    const totalTransfers = 0;
+    const totalQueueMin = 0;
+    const overtimeMin = 0;
 
     for (const item of items) {
       const startTime = DateTime.fromJSDate(item.startTime!);

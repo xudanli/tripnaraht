@@ -1,7 +1,5 @@
 // src/data-fusion/interfaces/feature-quality.interface.ts
 
-import { DataSourceConfig } from './data-fusion.interface';
-
 /**
  * 特征质量等级
  */

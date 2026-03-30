@@ -170,11 +170,7 @@ function convertValidatorMetadataToZod(
     schema = z.boolean();
     
   } else if (propertyType === Array || Array.isArray(propertyType)) {
-    // 数组类型 - 需要递归处理 items
-    const arrayItemType = Array.isArray(propertyType) ? propertyType[0] : String;
-    const arrayMetadatas = metadatas.filter(m => m.type.startsWith('array'));
-    
-    // 简化处理：假设数组元素是字符串（可以扩展）
+    // 数组类型 - 简化处理：假设数组元素是字符串（可扩展为递归 items）
     schema = z.array(z.string());
     
     // 检查数组长度
@@ -280,7 +276,7 @@ export function convertDtoToZod(DtoClass: any): z.ZodObject<any> {
  * @param description 可选的描述
  * @returns Zod Schema 对象（可以直接用于 MCP）
  */
-export function convertDtoToMcpSchema(DtoClass: any, description?: string): Record<string, z.ZodTypeAny> {
+export function convertDtoToMcpSchema(DtoClass: any, _description?: string): Record<string, z.ZodTypeAny> {
   const zodSchema = convertDtoToZod(DtoClass);
   
   // 如果 MCP Schema 需要特定格式，可以在这里转换

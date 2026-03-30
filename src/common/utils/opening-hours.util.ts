@@ -169,10 +169,7 @@ export class OpeningHoursUtil {
     // 1. 将检查时间转换为店铺当地时区
     const checkDateTime = DateTime.fromJSDate(checkDate).setZone(timezone);
     
-    // 2. 获取星期几的键（mon, tue, wed...）
-    const dayKey = checkDateTime.toFormat('ccc').toLowerCase();
-    
-    // 3. 解析营业时间字符串
+    // 2. 解析营业时间字符串
     if (typeof hoursStr.split !== 'function') {
       return false; // 无法解析，返回 false
     }

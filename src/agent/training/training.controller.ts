@@ -57,19 +57,12 @@ import {
   ValidateTrajectoryResponseDto,
 } from './dto/trajectory.dto';
 import {
-  CreateTrainingJobDto,
   ClassifyRiskEventDto,
-  HandleRiskEventDto,
-  RecordAuditDto,
   TrackUserActionDto,
-  CreateABTestDto,
-  TrainRewardModelDto,
   GetClarificationPromptDto,
   GetRiskPromptDto,
-  GetSeasonalRisksDto,
   GetRedLineRulesDto,
   ListRedTeamTestCasesDto,
-  ExportTrajectoriesDto,
   CreateBatchTaskDto,
 } from './dto/training.dto';
 import { ApprovalStatus } from '@prisma/client';

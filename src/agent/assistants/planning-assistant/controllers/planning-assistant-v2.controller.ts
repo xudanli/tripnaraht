@@ -41,7 +41,6 @@ import { RefineTripRequestDto } from '../dto/v2/refine-trip-request.dto';
 import { TripSuggestionsResponseDto } from '../dto/v2/trip-suggestions-response.dto';
 import { ChatRequestDto } from '../dto/v2/chat-request.dto';
 import { ChatResponseDto } from '../dto/v2/chat-response.dto';
-import { ErrorResponseDto } from '../dto/v2/error-response.dto';
 
 @ApiTags('规划助手智能体 V2')
 @ApiBearerAuth() // Swagger 文档：需要 Bearer Token

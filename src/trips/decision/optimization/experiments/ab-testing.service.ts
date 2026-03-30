@@ -17,7 +17,6 @@ import {
   ExperimentAnalysis,
   VariantStatistics,
   StatisticalTestResult,
-  AllocationStrategy,
 } from './ab-testing.interface';
 
 @Injectable()

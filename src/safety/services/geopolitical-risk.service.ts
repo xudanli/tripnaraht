@@ -149,7 +149,7 @@ export class GeopoliticalRiskService {
   async assessTripSafetyImpact(
     tripId: string,
     destinations: string[],
-    travelDate?: Date,
+    _travelDate?: Date,
   ): Promise<TripSafetyImpactDto> {
     const uniqueDestinations = [...new Set(destinations.map(d => d.toUpperCase()))];
     

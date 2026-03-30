@@ -12,9 +12,6 @@ import { TripPlanRequest, OrchestratorState } from '../../interfaces/trip-plan.i
 
 describe('ClaudeGatekeeperAgentService', () => {
   let service: ClaudeGatekeeperAgentService;
-  let fRoadCheck: FRoadCheckSkill;
-  let weatherAlert: WeatherAlertSkill;
-  let avalancheRisk: AvalancheRiskAssessmentSkill;
 
   const mockFRoadCheck = {
     execute: jest.fn(),
@@ -67,9 +64,6 @@ describe('ClaudeGatekeeperAgentService', () => {
     }).compile();
 
     service = module.get<ClaudeGatekeeperAgentService>(ClaudeGatekeeperAgentService);
-    fRoadCheck = module.get<FRoadCheckSkill>(FRoadCheckSkill);
-    weatherAlert = module.get<WeatherAlertSkill>(WeatherAlertSkill);
-    avalancheRisk = module.get<AvalancheRiskAssessmentSkill>(AvalancheRiskAssessmentSkill);
 
     jest.clearAllMocks();
   });

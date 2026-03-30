@@ -9,7 +9,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../../interfaces/skill.interface';
-import { TransferSegment } from '../shared/plan-state.types';
 import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 

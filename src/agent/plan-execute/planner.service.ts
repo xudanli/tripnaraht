@@ -12,7 +12,7 @@ import { join } from 'path';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { ActionRegistryService } from '../services/action-registry.service';
-import { PlanTask, TaskStatus } from './types';
+import { PlanTask } from './types';
 
 /**
  * Logger 实例（用于错误日志）

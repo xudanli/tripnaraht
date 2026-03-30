@@ -268,7 +268,6 @@ export class HappinessScorerService {
   ): number {
     // 将时间分为上午和下午
     const startTime = DateTime.fromISO(config.startTime);
-    const endTime = DateTime.fromISO(config.endTime);
     const noon = startTime.set({ hour: 12, minute: 0 });
 
     const morningNodes: number[] = [];

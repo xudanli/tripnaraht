@@ -346,7 +346,7 @@ export class UncertaintyModelingService {
   /**
    * 计算风险贡献
    */
-  private calculateRiskContribution(uncertainty: UncertaintyModel, value: number): number {
+  private calculateRiskContribution(uncertainty: UncertaintyModel, _value: number): number {
     // 简化实现：根据不确定性等级和值的大小计算风险
     const levelMultiplier = {
       LOW: 0.3,

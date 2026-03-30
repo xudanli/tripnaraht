@@ -9,12 +9,10 @@
 import { Injectable, Optional } from '@nestjs/common';
 import {
   TripWorldState,
-  ActivityCandidate,
   ISODate,
   ISOTime,
-  GeoPoint,
 } from '../world-model';
-import { PlanSlot, PlanDay, TripPlan } from '../plan-model';
+import { PlanDay, TripPlan } from '../plan-model';
 import { ConstraintConflictResolver } from './constraint-conflict-resolver.service';
 import { ConstraintConflictResult } from './constraint-dsl.types';
 
@@ -147,7 +145,7 @@ export class ConstraintChecker {
    */
   explainInfeasibility(
     violations: CheckerViolation[],
-    state: TripWorldState
+    _state: TripWorldState
   ): InfeasibilityExplanation {
     const criticalViolations = violations.filter(v => v.severity === 'error');
 
@@ -202,10 +200,6 @@ export class ConstraintChecker {
 
     // 3. 预算超支
     if (violationsByType.BUDGET_GLOBAL_OVERRUN || violationsByType.BUDGET_DAILY_OVERRUN) {
-      const budgetViolations = [
-        ...(violationsByType.BUDGET_GLOBAL_OVERRUN || []),
-        ...(violationsByType.BUDGET_DAILY_OVERRUN || []),
-      ];
       const globalViolation = violationsByType.BUDGET_GLOBAL_OVERRUN?.[0];
       const overrunRatio = globalViolation?.details?.overrunRatio || 1.0;
       

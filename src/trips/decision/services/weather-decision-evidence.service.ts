@@ -271,7 +271,7 @@ export class WeatherDecisionEvidenceService {
   /**
    * 获取模拟天气数据（TODO: 替换为真实天气 API）
    */
-  private getMockWeather(date: string): any {
+  private getMockWeather(_date: string): any {
     // 模拟天气数据
     return {
       windSpeed: 8 + Math.random() * 10, // 8-18 m/s

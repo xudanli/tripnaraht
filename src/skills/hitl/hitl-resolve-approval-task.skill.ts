@@ -8,9 +8,9 @@
  * 提供统一的审批任务解决接口
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { ApprovalService } from '../../trips/decision/services/approval.service';
 import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';

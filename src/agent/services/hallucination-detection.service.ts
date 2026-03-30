@@ -1,6 +1,6 @@
 // src/agent/services/hallucination-detection.service.ts
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   FactualClaim,
   VerifiedClaim,
@@ -38,7 +38,7 @@ export class HallucinationDetectionService {
    */
   async detectHallucinations(
     output: any,
-    context?: any,
+    _context?: any,
   ): Promise<HallucinationDetectionResult> {
     this.logger.log('Starting hallucination detection (Step 8)');
 
@@ -90,7 +90,7 @@ export class HallucinationDetectionService {
     // 如果输出是字符串，提取事实性语句
     if (typeof output === 'string') {
       const sentences = this.splitIntoSentences(output);
-      sentences.forEach((sentence, index) => {
+      sentences.forEach((sentence, _index) => {
         const claimType = this.classifyClaimType(sentence);
         if (claimType === 'FACT') {
           claims.push({

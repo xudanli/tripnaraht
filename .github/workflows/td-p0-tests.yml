@@ -1,0 +1,41 @@
+name: Trips Decision P0 Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/trips/decision/**/*.ts"
+      - "src/trips/decision/fixtures/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/td-p0-tests.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/trips/decision/**/*.ts"
+      - "src/trips/decision/fixtures/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/td-p0-tests.yml"
+
+jobs:
+  td-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Trips Decision P0 (complex samples + replan VERIFY→REPAIR)
+        run: npm run test:td-p0

@@ -129,8 +129,6 @@ export class PersonaLanguageService {
     persona: PersonaType,
     context: PersonaContext,
   ): Promise<PersonaStatement> {
-    const personaInfo = this.personas[persona];
-    
     // 尝试使用 LLM 生成更自然的发言
     if (this.llmService) {
       try {

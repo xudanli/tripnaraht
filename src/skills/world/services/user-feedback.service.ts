@@ -136,7 +136,7 @@ export class UserFeedbackService {
   private assessFeedbackQuality(request: SubmitFeedbackRequest): UserFeedbackQuality {
     let completeness = 0;
     let consistency = 0;
-    let credibility = 1.0; // 默认可信度
+    const credibility = 1.0; // 默认可信度
 
     const { feedbackType, data } = request;
 

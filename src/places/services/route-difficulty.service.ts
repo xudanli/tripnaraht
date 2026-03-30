@@ -1,5 +1,5 @@
 // src/places/services/route-difficulty.service.ts
-import { Injectable, Logger, ServiceUnavailableException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { execFile } from 'child_process';

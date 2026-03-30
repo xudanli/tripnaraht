@@ -1,0 +1,5 @@
+{"event":"policy_decision","request_id":"r1","success":true,"latency_ms":420,"model_version":"v-canary-1"}
+{"event":"policy_decision","request_id":"r2","success":true,"latency_ms":510,"model_version":"v-canary-1"}
+{"event":"policy_fallback_used","request_id":"r3","model_version":"v-canary-1"}
+{"event":"policy_decision","request_id":"r4","success":true,"latency_ms":390,"model_version":"v-canary-1"}
+{"event":"policy_decision","request_id":"r5","success":false,"latency_ms":900,"model_version":"v-canary-1"}

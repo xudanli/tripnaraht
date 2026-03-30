@@ -90,7 +90,7 @@ export class AuthController {
       const idTokenPayload = await this.googleOAuthService.verifyIdToken(tokenResponse.id_token);
 
       // 5. Upsert user
-      const { user, isNewUser } = await this.authUserService.upsertUserFromGoogle(idTokenPayload);
+      const { user } = await this.authUserService.upsertUserFromGoogle(idTokenPayload);
 
       // 6. Issue TripNARA tokens
       const accessToken = await this.tokenService.issueAccessToken(user.id, user.email || undefined);

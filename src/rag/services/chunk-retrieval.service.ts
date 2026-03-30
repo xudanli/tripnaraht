@@ -1,6 +1,6 @@
 // src/rag/services/chunk-retrieval.service.ts
 
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
 import { RerankingService } from './reranking.service';
@@ -148,16 +148,11 @@ export class ChunkRetrievalService {
    */
   private async doRetrieve(
     params: ChunkRetrievalParams,
-    cacheKey: string,
+    _cacheKey: string,
   ): Promise<ChunkRetrievalResult[]> {
-    let {
-      query,
+    let query = params.query;
+    const {
       limit = 10,
-      credibilityMin = 0.5,
-      type,
-      category,
-      chunkCategory, // 可能被意图分类覆盖
-      fileId,
       useHybridSearch = true, // 默认启用混合检索（推荐，对中文查询更有效）
       // 优化: 提升Sparse权重以增强关键词匹配（中文查询效果更好）
       denseWeight = 0.6, // 从0.7降低，减少对Embedding语义的依赖
@@ -168,6 +163,7 @@ export class ChunkRetrievalService {
       maxQueryVariants = 3,
       useIntentClassification = false, // 是否启用意图分类
     } = params;
+    let chunkCategory = params.chunkCategory; // 可能被意图分类覆盖
 
     // 0. 意图分类（如果启用且未手动指定chunkCategory）
     let intentInfo: string | undefined;
@@ -468,13 +464,8 @@ export class ChunkRetrievalService {
    */
   private async hybridRetrieve(params: ChunkRetrievalParams & { denseWeight: number; sparseWeight: number }): Promise<ChunkRetrievalResult[]> {
     const {
-      query,
       limit = 10,
-      credibilityMin = 0.5,
-      type,
-      category,
       chunkCategory, // 重要：确保chunkCategory被正确传递
-      fileId,
       denseWeight,
       sparseWeight,
     } = params;
@@ -931,7 +922,7 @@ export class ChunkRetrievalService {
    * @deprecated 使用 retrieve() 方法，已支持 Hybrid Search
    */
   async hybridRetrieveLegacy(params: ChunkRetrievalParams & { useLegacy?: boolean }): Promise<ChunkRetrievalResult[]> {
-    const { useLegacy = false, ...chunkParams } = params;
+    const { useLegacy: _useLegacy = false, ...chunkParams } = params;
 
     // 优先使用 Chunk 表（新系统）
     const chunkResults = await this.retrieve(chunkParams);

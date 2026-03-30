@@ -12,7 +12,6 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
-import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { ChunkRetrievalResult } from './chunk-retrieval.service';
 
 export interface QueryExpansionParams {
@@ -229,7 +228,7 @@ export class QueryExpansionService {
 
     // 处理原始查询结果（权重1.0）
     const originalResults = resultsMap.get(originalQuery) || [];
-    originalResults.forEach((result, index) => {
+    originalResults.forEach((result) => {
       const existing = resultScores.get(result.id);
       const score = (result.hybridScore || result.similarity || 0) * 1.0;
       

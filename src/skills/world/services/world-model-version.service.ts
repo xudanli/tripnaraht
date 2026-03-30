@@ -815,7 +815,6 @@ export class WorldModelVersionService {
     model2: Partial<UnifiedWorldModel>,
   ): number {
     let similarity = 1.0;
-    let comparisons = 0;
 
     // 比较自适应参数
     if (
@@ -839,7 +838,6 @@ export class WorldModelVersionService {
       );
 
       similarity -= (diff1 + diff2 + diff3) / 3;
-      comparisons++;
     }
 
     return Math.max(0, Math.min(1, similarity));

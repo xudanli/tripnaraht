@@ -10,10 +10,10 @@ import {
   ModelConfig,
   HyperparameterSearchSpace,
   HyperparameterTuningResult,
-  TrainingMetrics,
 } from '../interfaces/training-platform.interface';
 import { TrainingDataPreparationService } from './training-data-preparation.service';
 import { DatasetVersionManagerService } from './dataset-version-manager.service';
+import { DataQualityCheckerService } from './data-quality-checker.service';
 
 /**
  * TrainingPipelineService
@@ -38,6 +38,7 @@ export class TrainingPipelineService {
     @Optional() private readonly configService: ConfigService,
     @Optional() private readonly dataPrepService: TrainingDataPreparationService,
     @Optional() private readonly versionManager: DatasetVersionManagerService,
+    @Optional() private readonly dataQualityChecker?: DataQualityCheckerService,
   ) {
     // 从环境变量获取Python训练服务URL
     this.trainingServiceUrl =
@@ -102,6 +103,9 @@ export class TrainingPipelineService {
     // 更新状态为RUNNING
     job.status = 'RUNNING';
     job.started_at = new Date().toISOString();
+
+    // 可选质量门禁：在训练启动前对候选轨迹做快速抽样质量检查
+    await this.runDataQualityGateIfEnabled(job);
 
     try {
       // 尝试调用Python训练服务
@@ -173,6 +177,57 @@ export class TrainingPipelineService {
       );
 
       return job;
+    }
+  }
+
+  private async runDataQualityGateIfEnabled(job: TrainingJob): Promise<void> {
+    const enabled =
+      (this.configService?.get<string>('TRAINING_DATA_QUALITY_GATE_ENABLED') || 'false').toLowerCase() === 'true';
+    if (!enabled || !this.dataQualityChecker || !this.prisma) {
+      return;
+    }
+
+    const sampleSize = Number(this.configService?.get<string>('TRAINING_DATA_QUALITY_SAMPLE_SIZE') || '100');
+    const minScore = Number(this.configService?.get<string>('TRAINING_DATA_QUALITY_MIN_SCORE') || '0.8');
+
+    const rows = await this.prisma.validatedTrajectory.findMany({
+      where: {
+        validationStatus: 'VALIDATED',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: sampleSize,
+    });
+
+    const trajectories = rows.map((r) => ({
+      trajectory_id: r.trajectoryId,
+      request_id: r.requestId,
+      steps: [],
+      metadata: {
+        model_version: r.modelVersion,
+        created_at: r.createdAt.toISOString(),
+        validation_status: r.validationStatus,
+      },
+      plan: r.plan as Record<string, unknown>,
+      decision_trace: r.decisionTrace as Record<string, unknown>,
+      research_data: r.researchData as Record<string, unknown>,
+      gate_result: r.gateResult as Record<string, unknown>,
+      compliance_result: r.complianceResult as Record<string, unknown>,
+      reward_signals: r.rewardSignals as Record<string, unknown>,
+    })) as unknown as import('../interfaces/trajectory.interface').RLTrajectory[];
+
+    if (trajectories.length === 0) {
+      this.logger.warn('[TrainingPipeline] 质量门禁：无可用轨迹样本，跳过');
+      return;
+    }
+
+    const result = await this.dataQualityChecker.validateDataset(trajectories);
+    this.logger.log(
+      `[roll_event] event=training_data_quality_gate job_id=${job.job_id} score=${result.score.toFixed(3)} valid=${result.isValid} sample=${trajectories.length}`,
+    );
+    if (!result.isValid || result.score < minScore) {
+      throw new Error(
+        `Training data quality gate failed: score=${result.score.toFixed(3)}, min=${minScore.toFixed(3)}`,
+      );
     }
   }
 

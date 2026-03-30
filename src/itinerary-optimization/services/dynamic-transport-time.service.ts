@@ -289,7 +289,7 @@ export class DynamicTransportTimeService {
     weatherCondition: 'CLEAR' | 'RAIN' | 'SNOW' | 'FOG' | 'STORM',
     roadCondition: 'NORMAL' | 'CONGESTED' | 'SEVERELY_CONGESTED',
     estimatedTime: number,
-    mode: TransportMode
+    _mode: TransportMode
   ): string[] {
     const recommendations: string[] = [];
 

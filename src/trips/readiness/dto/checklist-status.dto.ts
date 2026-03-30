@@ -1,6 +1,6 @@
 // src/trips/readiness/dto/checklist-status.dto.ts
-import { IsArray, IsString, IsOptional } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * 批量保存勾选状态请求 DTO

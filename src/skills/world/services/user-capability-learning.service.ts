@@ -27,7 +27,7 @@ export class UserCapabilityLearningService {
    */
   async learnUserCapability(
     userId: string,
-    feedback: {
+    _feedback: {
       type: string;
       data: UserFeedbackData;
     },
@@ -169,8 +169,8 @@ export class UserCapabilityLearningService {
    * 计算预测准确度
    */
   private async calculatePredictionAccuracy(
-    userId: string,
-    feedbacks: any[],
+    _userId: string,
+    _feedbacks: any[],
   ): Promise<LearnedUserCapability['predictionAccuracy']> {
     // TODO: 实现预测准确度计算
     // 需要对比预测值和实际值

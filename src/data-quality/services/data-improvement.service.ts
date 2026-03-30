@@ -173,7 +173,7 @@ export class DataImprovementService {
     const systemMetrics = await this.collectSystemMetrics();
 
     // 收集数据质量反馈
-    const dataQualityFeedback = await this.collectDataQualityFeedback();
+    await this.collectDataQualityFeedback();
 
     // 更新当前指标
     cycleState.currentMetrics = await this.measureImprovementMetrics();
@@ -555,7 +555,7 @@ export class DataImprovementService {
   /**
    * 计算频率
    */
-  private calculateFrequency(metricType: ImprovementMetricType): number {
+  private calculateFrequency(_metricType: ImprovementMetricType): number {
     // 简化实现：基于历史数据计算频率
     // 实际应该分析历史数据
     return 0.5;
@@ -593,7 +593,7 @@ export class DataImprovementService {
   /**
    * 获取实施记录
    */
-  private async getImplementation(implementationId: string): Promise<ImprovementImplementation | null> {
+  private async getImplementation(_implementationId: string): Promise<ImprovementImplementation | null> {
     // 简化实现：返回null
     // 实际应该从数据库查询
     return null;
@@ -603,7 +603,7 @@ export class DataImprovementService {
    * 获取改进前的指标
    */
   private async getMetricsBeforeImplementation(
-    implementationId: string,
+    _implementationId: string,
   ): Promise<Record<ImprovementMetricType, ImprovementMetric>> {
     // 简化实现：返回当前指标
     // 实际应该从历史记录中查询改进前的指标
@@ -775,7 +775,7 @@ export class DataImprovementService {
 
     parts.push(`# 数据持续改进循环报告（${cycleState.cycleId}）`);
     parts.push(`\n## 当前指标`);
-    for (const [type, metric] of Object.entries(cycleState.currentMetrics)) {
+    for (const [, metric] of Object.entries(cycleState.currentMetrics)) {
       parts.push(`- **${metric.name}**：${Math.round(metric.currentValue * 100)}%（目标：${Math.round(metric.targetValue * 100)}%）`);
       parts.push(`  - 趋势：${metric.trend === 'IMPROVING' ? '上升' : metric.trend === 'DECLINING' ? '下降' : '稳定'}`);
       parts.push(`  - 改进空间：${Math.round(metric.improvementPotential * 100)}%`);
@@ -871,8 +871,8 @@ export class DataImprovementService {
    * 获取指标历史
    */
   private async getMetricHistory(
-    metricType: ImprovementMetricType,
-    days: number,
+    _metricType: ImprovementMetricType,
+    _days: number,
   ): Promise<Array<{ timestamp: string; value: number }>> {
     // 简化实现：返回空数组
     // 实际应该从历史记录中查询
@@ -906,7 +906,7 @@ export class DataImprovementService {
   /**
    * 比较预期和实际结果
    */
-  private compareOutcomes(expected: any, actual: any): number {
+  private compareOutcomes(_expected: any, _actual: any): number {
     // 简化实现：返回0.8
     // 实际应该详细比较预期和实际结果
     return 0.8;
@@ -946,7 +946,7 @@ export class DataImprovementService {
   /**
    * 获取系统错误
    */
-  private async getSystemErrors(days: number): Promise<any[]> {
+  private async getSystemErrors(_days: number): Promise<any[]> {
     // 简化实现：返回空数组
     // 实际应该从错误日志中查询
     return [];
@@ -955,7 +955,7 @@ export class DataImprovementService {
   /**
    * 获取总请求数
    */
-  private async getTotalRequests(days: number): Promise<number> {
+  private async getTotalRequests(_days: number): Promise<number> {
     // 简化实现：返回1000
     // 实际应该从访问日志中统计
     return 1000;

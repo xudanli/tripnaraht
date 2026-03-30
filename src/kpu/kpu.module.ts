@@ -12,7 +12,7 @@
  * - 生成阶段验证：验证AI生成内容，失败时自动调整
  */
 
-import { Module, forwardRef, Optional } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagModule } from '../rag/rag.module';

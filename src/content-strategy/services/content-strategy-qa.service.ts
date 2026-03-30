@@ -2,7 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  ContentType,
   CheckStatus,
   RationalityCheckResult,
   WarmthCheckResult,
@@ -503,7 +502,7 @@ export class ContentStrategyQAService {
     const hasActionVerbs = /(执行|操作|点击|选择|输入|提交|确认|取消)/.test(context.content);
 
     // 检查是否有条件判断
-    const hasCondition = /(如果|当|若|假如|倘若)/.test(context.content);
+    const _hasCondition = /(如果|当|若|假如|倘若)/.test(context.content);
 
     const executionIssues: string[] = [];
     if (!hasActionVerbs && context.contentType === 'CONFIRMATION') {
@@ -627,7 +626,7 @@ export class ContentStrategyQAService {
     );
 
     // 检查是否有安全警告
-    const hasSafetyWarning = /(警告|注意|小心|危险|风险)/.test(context.content);
+    const _hasSafetyWarning = /(警告|注意|小心|危险|风险)/.test(context.content);
 
     const safetyConcerns: string[] = [];
     if (foundKeywords.length === 0 && context.contentType === 'WARNING') {

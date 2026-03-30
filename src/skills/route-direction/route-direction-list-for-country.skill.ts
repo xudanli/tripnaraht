@@ -155,7 +155,6 @@ export class RouteDirectionListForCountrySkill implements Skill<RouteDirectionLi
   private extractSuitableFor(rd: any, requestedDifficulty?: string): string[] {
     const suitableFor: string[] = [];
     const tags = rd.tags || [];
-    const metadata = rd.metadata as any;
 
     // 基于标签判断
     if (tags.includes('family-friendly') || tags.includes('easy')) {

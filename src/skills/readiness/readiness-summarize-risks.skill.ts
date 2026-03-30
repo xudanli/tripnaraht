@@ -65,7 +65,6 @@ export class ReadinessSummarizeRisksSkill implements Skill<ReadinessSummarizeRis
     try {
       // 1. 获取或构建 WorldModelContext
       let world: WorldModelContext;
-      let decisionResult: any = null;
 
       if (input.tripId) {
         const contextResult = await this.worldBuildContext.execute({

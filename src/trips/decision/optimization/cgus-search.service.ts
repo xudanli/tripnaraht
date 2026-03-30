@@ -366,7 +366,6 @@ export class CGUSSearchService {
     worldContext: WorldModelContext,
   ): Record<string, number> {
     const physical = worldContext.physical;
-    const human = worldContext.human;
 
     // 安全性：基于天气、道路状态、危险区域
     let safety = 0.9;

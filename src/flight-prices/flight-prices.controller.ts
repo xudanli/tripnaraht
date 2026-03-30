@@ -24,7 +24,6 @@ import { FlightPriceService } from '../trips/services/flight-price.service';
 import { FlightPriceDetailService } from '../trips/services/flight-price-detail.service';
 import { FlightPriceDetailEnhancedService } from '../trips/services/flight-price-detail-enhanced.service';
 import { PricePredictionService } from './services/price-prediction.service';
-import { EstimatePriceDto, EstimatePriceResponseDto } from './dto/estimate-price.dto';
 import { CreateFlightPriceDto } from './dto/create-flight-price.dto';
 import { UpdateFlightPriceDto } from './dto/update-flight-price.dto';
 import { FlightPricePredictionDto } from './dto/predict-price.dto';

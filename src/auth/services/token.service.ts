@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { TripNaraAccessTokenPayload } from '../interfaces/google-token-payload.interface';
 
 @Injectable()
 export class TokenService {

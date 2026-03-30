@@ -12,7 +12,6 @@
  */
 
 import { ProbabilisticWorldModelContext } from '../probabilistic/probabilistic-world-model.interface';
-import { Distribution } from '../probabilistic/distribution.interface';
 
 /**
  * 观测来源

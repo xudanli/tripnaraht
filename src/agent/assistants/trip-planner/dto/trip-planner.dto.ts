@@ -1,6 +1,6 @@
 // src/agent/assistants/trip-planner/dto/trip-planner.dto.ts
 
-import { IsString, IsOptional, IsNumber, IsObject, IsArray, IsBoolean, IsEnum, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsObject, IsArray, IsBoolean, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 

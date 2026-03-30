@@ -2,7 +2,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionNode, DecisionOutput, TradeoffDimension } from '../interfaces/decision-node.interface';
-import { DecisionLogEntry, OrchestratorState } from '../interfaces/trip-plan.interface';
+import { OrchestratorState } from '../interfaces/trip-plan.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**

@@ -7,7 +7,7 @@
  * 输出：最近医院/警局、紧急电话、通信弱提示、保险建议
  */
 
-import { EmergencyPackConfig, CapabilityCondition, CapabilityTrigger } from '../types/capability-pack.types';
+import { EmergencyPackConfig } from '../types/capability-pack.types';
 
 export const emergencyPack: EmergencyPackConfig = {
   type: 'emergency',

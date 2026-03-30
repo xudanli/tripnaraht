@@ -1,0 +1,27 @@
+{
+  "_comment": "S-TD-01 样例3：预算硬顶与本体计价（航班+酒店）超支 → BUDGET SOFT travel_ontology_budget",
+  "requestId": "td-sample-03",
+  "userIntent": {
+    "budget": 800
+  },
+  "tripState": {},
+  "environmentState": {},
+  "systemState": {
+    "requestId": "td-sample-03",
+    "version": 0
+  },
+  "travelOntologyState": {
+    "tripId": "trip-sample-03",
+    "nouns": {
+      "flights": [{ "id": "f-longhaul", "price": 500 }],
+      "hotels": [
+        {
+          "id": "h-mid",
+          "nightlyPrice": 150,
+          "checkIn": "2026-09-01",
+          "checkOut": "2026-09-04"
+        }
+      ]
+    }
+  }
+}

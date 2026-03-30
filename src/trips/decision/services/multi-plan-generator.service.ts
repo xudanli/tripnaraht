@@ -402,7 +402,7 @@ export class MultiPlanGenerator {
   private calculateCostScore(
     plan: TripPlan,
     constraints: ConstraintDSL,
-    state: TripWorldState
+    _state: TripWorldState
   ): number {
     if (!constraints.hard_constraints?.budget) {
       return 0.5; // 没有预算约束，返回中性分

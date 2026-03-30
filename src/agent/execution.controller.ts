@@ -11,7 +11,7 @@
 
 import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
-import { ExecutionAgentService, ExecutionAgentRequest, ExecutionAgentResponse } from './services/execution-agent.service';
+import { ExecutionAgentService, ExecutionAgentRequest } from './services/execution-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { ReorderRequestDto } from './dto/reorder.dto';

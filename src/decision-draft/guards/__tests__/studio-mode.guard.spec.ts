@@ -2,7 +2,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { StudioModeGuard, RequireStudio } from '../studio-mode.guard';
+import { StudioModeGuard } from '../studio-mode.guard';
 import { Reflector } from '@nestjs/core';
 
 describe('StudioModeGuard', () => {

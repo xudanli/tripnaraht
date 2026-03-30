@@ -17,7 +17,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PlanDay, TripPlan } from '../plan-model';
-import { RouteDirectionData, HardConstraints, SoftConstraints } from '../../../route-directions/interfaces/route-direction.interface';
+import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
 import { DEMRouteSegmentationService, RouteSegmentation } from './dem-route-segmentation.service';
 import { DEMDailyEnergyService } from './dem-daily-energy.service';
 import {
@@ -350,7 +350,6 @@ export class DemDecisionEvidenceService {
 
     const minElevation = Math.min(...elevations);
     const maxElevation = Math.max(...elevations);
-    const avgElevation = elevations.reduce((a, b) => a + b, 0) / elevations.length;
 
     // 计算平均坡度（简化）
     let totalSlope = 0;
@@ -382,7 +381,7 @@ export class DemDecisionEvidenceService {
    */
   private detectRollingFatigue(
     plan: TripPlan,
-    routeDirection?: RouteDirectionData,
+    _routeDirection?: RouteDirectionData,
   ): RollingFatigueDetection | undefined {
     const windowDays = 3;
     // 默认阈值：3天累计爬升超过2000米
@@ -439,7 +438,7 @@ export class DemDecisionEvidenceService {
    */
   private async scoreCorridorQuality(
     routeSegmentation: RouteSegmentation,
-    routeDirection?: RouteDirectionData,
+    _routeDirection?: RouteDirectionData,
   ): Promise<CorridorQualityScore> {
     const profile = routeSegmentation.elevationProfile;
 

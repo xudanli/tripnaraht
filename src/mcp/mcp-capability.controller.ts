@@ -35,7 +35,7 @@ import {
   QueryCapabilitiesDto,
   McpCapabilityStatus,
 } from './dto/mcp-capability.dto';
-import { StandardResponse, successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { StandardResponse, successResponse } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('mcp-capability')

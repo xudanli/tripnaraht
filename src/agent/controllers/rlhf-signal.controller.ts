@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Inject,
   UseGuards,
   Optional,
 } from '@nestjs/common';
@@ -24,6 +25,10 @@ import {
 } from '../services/rlhf-signal-collector.service';
 import { DecisionOutput } from '../interfaces/decision-node.interface';
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
+import type { IDsoFeedbackPersistence } from '../../decision/kernel/dso-feedback-persistence.interface';
+import { DSO_FEEDBACK_PERSISTENCE } from '../../decision/kernel/dso-feedback-persistence.interface';
+import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import { projectJepaZStateFromDecisionState } from '../services/jepa-z-state.projection';
 
 /**
  * RLHF Signal API Controller
@@ -41,6 +46,7 @@ export class RLHFSignalController {
   constructor(
     private readonly rlhfService: RLHFSignalCollectorService,
     @Optional() private readonly decisionKernel?: DecisionKernelService,
+    @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly dsoFeedbackPersistence?: IDsoFeedbackPersistence,
   ) {}
 
   // ============================================================================
@@ -153,9 +159,21 @@ export class RLHFSignalController {
       },
     },
   })
-  recordExecutionSignal(@Body() signal: Omit<ExecutionSignal, 'signal_id' | 'timestamp'>): ExecutionSignal {
+  async recordExecutionSignal(
+    @Body() signal: Omit<ExecutionSignal, 'signal_id' | 'timestamp'>,
+  ): Promise<ExecutionSignal> {
     this.logger.debug(`[RLHF] Recording execution: ${signal.signal_type}`);
-    return this.rlhfService.recordExecutionSignal(signal);
+    const saved = this.rlhfService.recordExecutionSignal(signal);
+
+    // world_error/user_drift 可训练闭环增强：把执行偏差信号回灌到 DSO
+    if (saved?.trip_run_id) {
+      await this.backfillExecutionObservationToDso(saved.trip_run_id, saved.signal_type, saved.context, {
+        requestId: saved.signal_id,
+        traceId: saved.signal_id,
+      });
+    }
+
+    return saved;
   }
 
   @Post('execution/deviation')
@@ -173,7 +191,7 @@ export class RLHFSignalController {
       },
     },
   })
-  recordDeviation(
+  async recordDeviation(
     @Body() body: {
       trip_run_id: string;
       planned_item_id: string;
@@ -182,6 +200,7 @@ export class RLHFSignalController {
       reason?: string;
     },
   ) {
+    // 先写入 RLHF DB（现有行为不变）
     this.rlhfService.recordDeviation(
       body.trip_run_id,
       body.planned_item_id,
@@ -189,7 +208,140 @@ export class RLHFSignalController {
       body.actual_time,
       body.reason,
     );
+
+    // 可训练闭环：把“执行偏差”回灌到 DSO，使得后续 JEPA world_error 有可变的真实风险口径
+    if (this.dsoFeedbackPersistence) {
+      const plannedMs = new Date(body.planned_time).getTime();
+      const actualMs = new Date(body.actual_time).getTime();
+      if (!Number.isNaN(plannedMs) && !Number.isNaN(actualMs)) {
+        const deviationMinutes = Math.round((actualMs - plannedMs) / 60000);
+        const absDev = Math.abs(deviationMinutes);
+
+        const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
+        const weatherRisk = clamp01(absDev / 120); // 120min 作为归一化上界假设
+
+        // failureRiskLevel 仅支持 LOW/MEDIUM/HIGH：用偏差强度映射
+        const failureRiskLevel: DecisionState['environmentState']['failureRiskLevel'] =
+          absDev < 10 ? 'LOW' : absDev < 30 ? 'MEDIUM' : 'HIGH';
+
+        const dso = await this.dsoFeedbackPersistence.getDso(body.trip_run_id);
+        if (dso) {
+          const now = new Date().toISOString();
+
+          dso.environmentState = {
+            ...(dso.environmentState ?? {}),
+            weatherRisk,
+            failureRiskLevel,
+          };
+
+          const zAfterExecutionObservation = projectJepaZStateFromDecisionState(dso);
+          dso.history = [
+            ...(dso.history ?? []),
+            {
+              type: 'jepa_z_state_after_execution_observation',
+              summary: `after execution deviation (deviation_minutes=${deviationMinutes})`,
+              at: now,
+              next: zAfterExecutionObservation,
+              meta: {
+                request_id: `deviation:${body.planned_item_id}`,
+                trace_id: `deviation:${body.trip_run_id}:${body.planned_item_id}`,
+                version: dso.systemState?.version,
+                signal_type: 'DEVIATION',
+              },
+            },
+          ];
+
+          await this.dsoFeedbackPersistence.persistDso(body.trip_run_id, dso);
+        }
+      }
+    }
     return { success: true, recorded: 'deviation' };
+  }
+
+  /**
+   * world_error 回灌口（同类 execution 信号）
+   * 将执行偏差信号映射为“更真实”的世界观测，写入 DSO.environmentState + history 快照。
+   */
+  private async backfillExecutionObservationToDso(
+    tripRunId: string,
+    signalType: ExecutionSignal['signal_type'],
+    context?: ExecutionSignal['context'],
+    audit?: { requestId?: string; traceId?: string },
+  ): Promise<void> {
+    if (!this.dsoFeedbackPersistence) return;
+
+    // START/DEVIATION：DEVIATION 走独立的 execution/deviation 精准接口，START 不构成“执行后观测”
+    if (signalType === 'START' || signalType === 'DEVIATION') return;
+
+    try {
+      const dso = await this.dsoFeedbackPersistence.getDso(tripRunId);
+      if (!dso) return;
+
+      const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
+
+      const plannedMs = typeof context?.planned_time === 'string' ? new Date(context.planned_time).getTime() : NaN;
+      const actualMs = typeof context?.actual_time === 'string' ? new Date(context.actual_time).getTime() : NaN;
+      const hasBothTimes = !Number.isNaN(plannedMs) && !Number.isNaN(actualMs);
+
+      const deviationMinutesFromContext: number | null =
+        typeof context?.deviation_minutes === 'number' && !Number.isNaN(context.deviation_minutes)
+          ? Math.round(context.deviation_minutes)
+          : hasBothTimes
+            ? Math.round((actualMs - plannedMs) / 60000)
+            : null;
+
+      const absDev = typeof deviationMinutesFromContext === 'number' ? Math.abs(deviationMinutesFromContext) : null;
+
+      // 默认映射：如果没有偏差分钟数，就用 signalType 级别给一个保守值
+      let weatherRisk = 0.2;
+      let failureRiskLevel: DecisionState['environmentState']['failureRiskLevel'] = 'LOW';
+
+      if (signalType === 'COMPLETE') {
+        weatherRisk = 0.15;
+        failureRiskLevel = 'LOW';
+      } else if (signalType === 'DELAY') {
+        weatherRisk = typeof absDev === 'number' ? clamp01(absDev / 120) : 0.45;
+        failureRiskLevel = typeof absDev === 'number' ? (absDev < 10 ? 'LOW' : absDev < 30 ? 'MEDIUM' : 'HIGH') : 'MEDIUM';
+      } else if (signalType === 'EARLY') {
+        weatherRisk = typeof absDev === 'number' ? clamp01(absDev / 120) : 0.35;
+        failureRiskLevel = typeof absDev === 'number' ? (absDev < 10 ? 'LOW' : absDev < 30 ? 'MEDIUM' : 'HIGH') : 'MEDIUM';
+      } else if (signalType === 'SKIP') {
+        // skip 通常意味着“执行偏离/可达性/用户意愿”混合：先用中高风险近似
+        weatherRisk = typeof absDev === 'number' ? clamp01(absDev / 90) : 0.6;
+        failureRiskLevel = typeof absDev === 'number' ? (absDev < 10 ? 'LOW' : absDev < 30 ? 'MEDIUM' : 'HIGH') : 'HIGH';
+      } else if (signalType === 'ABORT') {
+        weatherRisk = typeof absDev === 'number' ? clamp01(absDev / 60) : 0.8;
+        failureRiskLevel = 'HIGH';
+      }
+
+      const now = new Date().toISOString();
+      dso.environmentState = {
+        ...(dso.environmentState ?? {}),
+        weatherRisk,
+        failureRiskLevel,
+      };
+
+      const zAfterExecutionObservation = projectJepaZStateFromDecisionState(dso);
+      dso.history = [
+        ...(dso.history ?? []),
+        {
+          type: 'jepa_z_state_after_execution_observation',
+          summary: `after execution signal=${signalType}${typeof absDev === 'number' ? `, absDev=${absDev}m` : ''}`,
+          at: now,
+          next: zAfterExecutionObservation,
+          meta: {
+            request_id: audit?.requestId,
+            trace_id: audit?.traceId,
+            version: dso.systemState?.version,
+            signal_type: signalType,
+          },
+        },
+      ];
+
+      await this.dsoFeedbackPersistence.persistDso(tripRunId, dso);
+    } catch {
+      // 回灌失败不影响主链路；只是增强可训练性
+    }
   }
 
   @Post('execution/skip')

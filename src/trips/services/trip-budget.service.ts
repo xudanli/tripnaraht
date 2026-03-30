@@ -269,7 +269,7 @@ export class TripBudgetService {
    */
   async getBudgetOptimizationSuggestions(
     tripId: string,
-    category?: string
+    _category?: string
   ): Promise<Array<{
     type: 'REPLACE' | 'REMOVE' | 'RESCHEDULE';
     message: string;
@@ -1037,7 +1037,7 @@ export class TripBudgetService {
   private calculateRiskLevel(
     completionRate: number,
     overspendRate: number,
-    durationDays: number
+    _durationDays: number
   ): 'low' | 'medium' | 'high' {
     if (overspendRate > 0.1 || completionRate > 1.0) {
       return 'high';

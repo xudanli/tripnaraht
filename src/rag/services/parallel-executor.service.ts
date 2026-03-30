@@ -100,7 +100,7 @@ export class ParallelExecutorService {
       if (executing.length >= maxConcurrency) {
         await Promise.race(executing);
         // 清理已完成的任务
-        const stillExecuting = executing.filter((p) => {
+        const stillExecuting = executing.filter((_p) => {
           // 检查 Promise 是否已完成（这是一个技巧，利用 race 的特性）
           return true; // 实际上我们需要更好的方式追踪
         });

@@ -2,7 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { RagService } from './rag.service';
-import { RagRetrievalParams, RagRetrievalResult } from '../interfaces/rag.interface';
+import { RagRetrievalParams } from '../interfaces/rag.interface';
 import { ChunkRetrievalService, ChunkRetrievalParams } from './chunk-retrieval.service';
 
 /**
@@ -295,7 +295,7 @@ export class RAGEvaluationService {
   private calculateNDCGAtK(
     retrievedIds: string[],
     groundTruthIds: string[],
-    scores: number[],
+    _scores: number[],
     kValues: number[],
   ): Record<number, number> {
     const ndcgAtK: Record<number, number> = {};
@@ -305,7 +305,6 @@ export class RAGEvaluationService {
 
     for (const k of kValues) {
       const topKRelevance = relevance.slice(0, k);
-      const topKScores = scores.slice(0, k);
 
       // 计算 DCG@K
       let dcg = 0;

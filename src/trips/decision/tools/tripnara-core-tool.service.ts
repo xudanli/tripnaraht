@@ -430,7 +430,7 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
    */
   private identifyRegionFromCountryCode(
     countryCode: string,
-    routeDirection: RouteDirectionWithPhilosophy
+    _routeDirection: RouteDirectionWithPhilosophy
   ): string {
     // 国家代码到区域的映射
     const countryToRegion: Record<string, string> = {
@@ -455,7 +455,7 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
   /**
    * 从RouteDirection提取路线坐标
    */
-  private extractRouteCoordinates(routeDirection: RouteDirectionWithPhilosophy): { lat: number; lng: number } | null {
+  private extractRouteCoordinates(_routeDirection: RouteDirectionWithPhilosophy): { lat: number; lng: number } | null {
     // 简化实现，实际可以从routeDirection中提取起点坐标
     return null;
   }
@@ -576,7 +576,7 @@ export class TripNaraCoreToolService implements ITripNaraCoreTool {
   /**
    * 生成可读解释（用于 Narrator Agent）
    */
-  private generateExplanation(result: any, input: TripNaraCoreToolInput): string {
+  private generateExplanation(result: any, _input: TripNaraCoreToolInput): string {
     if (!result.allowed) {
       const rejectReason = result.logs.find((log: any) => log.action === 'REJECT');
       return rejectReason

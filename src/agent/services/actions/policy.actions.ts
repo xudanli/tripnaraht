@@ -7,7 +7,7 @@ import { PlanningPolicy } from '../../../planning-policy/interfaces/planning-pol
  * Policy Actions
  */
 export function createPolicyActions(
-  feasibilityService: FeasibilityService
+  _feasibilityService: FeasibilityService
 ): Action[] {
   return [
     {
@@ -66,7 +66,6 @@ export function createPolicyActions(
           }> = [];
 
           const timeline = input.timeline || [];
-          const policy = input.policy || (state.memory?.user_profile?.policy as PlanningPolicy);
 
           // 检查时间窗
           for (const event of timeline) {
@@ -167,7 +166,7 @@ export function createPolicyActions(
       },
       execute: async (
         input: { timeline: any[] },
-        state: any
+        _state: any
       ): Promise<{
         score: number;
         metrics: any;

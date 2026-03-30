@@ -12,7 +12,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DSOStabilityMonitorService } from '../../trips/decision/optimization/theory/dso-stability.service';
-import { DistributedLockService, LockHandle } from '../../redis/distributed-lock.service';
+import { DistributedLockService } from '../../redis/distributed-lock.service';
 import {
   DecisionState,
   DecisionStatePatch,
@@ -28,6 +28,7 @@ import {
   StateCommitConflictError,
   STAGE_PRIORITY,
 } from './decision-state.types';
+import { mergeTravelOntologyState } from './travel-ontology.mapper';
 
 /** 分布式提交配置 */
 export interface DistributedCommitConfig {
@@ -80,6 +81,12 @@ export class StateManagerService {
     if (patch.history !== undefined) updated.history = this.mergeHistory(current.history, patch.history);
     if (patch.confidence !== undefined) updated.confidence = patch.confidence;
     if (patch.feedback !== undefined) updated.feedback = { ...(current.feedback ?? {}), ...patch.feedback };
+    if (patch.travelOntologyState !== undefined) {
+      updated.travelOntologyState = mergeTravelOntologyState(
+        current.travelOntologyState,
+        patch.travelOntologyState,
+      );
+    }
 
     this.logger.debug(`[StateManager] Merged: requestId=${updated.requestId}, phase=${updated.systemState.currentPhase}`);
     return updated;

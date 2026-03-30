@@ -6,8 +6,6 @@
  * 可配置的阈值和权重，用于地形风险评估和决策
  */
 
-import { EffortLevel } from '../types/terrain-facts.types';
-
 export interface RiskThresholds {
   /** 高海拔阈值（米） */
   highAltitudeM: number;

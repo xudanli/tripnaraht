@@ -1,6 +1,6 @@
 // src/data-contracts/data-contracts.controller.ts
 
-import { Controller, Get, Query, BadRequestException, Optional } from '@nestjs/common';
+import { Controller, Get, Query, Optional } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DataSourceRouterService } from './services/data-source-router.service';
 import { RoadStatusQuery, ExtendedRoadStatus } from './interfaces/road-status.interface';

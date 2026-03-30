@@ -1,5 +1,5 @@
 // src/users/dto/user-profile.dto.ts
-import { IsString, IsOptional, IsObject, IsArray, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TravelMode } from '../../trips/dto/trip-intent.dto';
 

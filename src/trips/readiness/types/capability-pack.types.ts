@@ -7,8 +7,7 @@
  * 这些 Pack 可以应用到任何国家/地区，无需硬编码
  */
 
-import { Condition, Action, RuleSeverity, ReadinessCategory } from './readiness-pack.types';
-import { TripContext } from './trip-context.types';
+import { Action, RuleSeverity, ReadinessCategory } from './readiness-pack.types';
 
 /**
  * 能力包类型

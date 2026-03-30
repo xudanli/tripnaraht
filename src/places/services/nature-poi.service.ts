@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import {
   IcelandNaturePoi,
-  IcelandNaturePoiWithNara,
   DataSource,
   Coordinates,
 } from '../interfaces/nature-poi.interface';

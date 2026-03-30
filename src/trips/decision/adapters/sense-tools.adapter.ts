@@ -19,7 +19,7 @@ export class SenseToolsAdapter implements SenseTools {
    * 获取酒店位置（从 Trip 的 anchors 中获取，这里提供接口）
    * 实际实现可以从 TripService 中获取
    */
-  async getHotelPointForDate(date: string): Promise<GeoPoint | undefined> {
+  async getHotelPointForDate(_date: string): Promise<GeoPoint | undefined> {
     // TODO: 从 TripService 获取该日期的酒店位置
     // 这里先返回 undefined，由调用方提供
     return undefined;

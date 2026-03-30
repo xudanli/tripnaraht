@@ -11,7 +11,7 @@
  * 输出：WorldModelContext + missingPieces
  */
 
-import { Injectable, Logger, NotFoundException, Optional, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { WorldModelContext } from '../../trips/decision/shared/world-model.types';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -638,7 +638,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
     );
   }
 
-  private buildComplianceEvidence(routeDirection: any): any[] {
+  private buildComplianceEvidence(_routeDirection: any): any[] {
     // 简化实现，实际应该从 RouteDirection 中提取合规规则
     return [];
   }

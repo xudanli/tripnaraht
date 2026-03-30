@@ -6,7 +6,6 @@ import { TripPlanRequest, GateResult } from '../../agent/interfaces/trip-plan.in
 
 describe('ItineraryGenerateSkill', () => {
   let skill: ItineraryGenerateSkill;
-  let planningWorkbench: jest.Mocked<PlanningWorkbenchAgentService>;
 
   beforeEach(async () => {
     const mockPlanningWorkbench = {};
@@ -22,7 +21,6 @@ describe('ItineraryGenerateSkill', () => {
     }).compile();
 
     skill = module.get<ItineraryGenerateSkill>(ItineraryGenerateSkill);
-    planningWorkbench = module.get(PlanningWorkbenchAgentService);
   });
 
   it('应该被定义', () => {

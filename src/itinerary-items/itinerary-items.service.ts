@@ -649,10 +649,9 @@ export class ItineraryItemsService {
   /**
    * 🆕 为行程项添加跨天信息
    */
-  private addCrossDayInfo(item: any, tripDayDate: Date): any {
+  private addCrossDayInfo(item: any, _tripDayDate: Date): any {
     const startDate = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
     const endDate = DateTime.fromJSDate(item.endTime, { zone: 'utc' });
-    const tripDate = DateTime.fromJSDate(tripDayDate, { zone: 'utc' });
 
     // 计算跨天数
     const startDay = startDate.startOf('day');
@@ -2350,7 +2349,6 @@ export class ItineraryItemsService {
           const metadata = placeAny.metadata || placeAny.status || {};
           let openingHours: any = undefined;
           if (metadata.openingHours || metadata.opening_hours) {
-            const openingHoursData = metadata.openingHours || metadata.opening_hours;
             const timezone = metadata.timezone || 'UTC';
             const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
             

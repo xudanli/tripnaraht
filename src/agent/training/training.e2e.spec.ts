@@ -18,7 +18,6 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
 import { TrainingModule } from './training.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 
@@ -104,7 +103,7 @@ describe('Iterative Deployment E2E Tests', () => {
       // expect(response.body.data.trajectoryId).toBeDefined();
 
       // 当前只是示例，实际需要配置测试环境
-      expect(true).toBe(true); // 占位符
+      expect(collectDto.plan.days.length).toBeGreaterThan(0);
     });
   });
 
@@ -139,7 +138,8 @@ describe('Iterative Deployment E2E Tests', () => {
       // expect(response.body.data.isValid).toBe(true);
 
       // 当前只是示例，实际需要配置测试环境
-      expect(true).toBe(true); // 占位符
+      expect(trajectoryId).toContain('traj_e2e_');
+      expect(validateDto.userApproval).toBe('APPROVED');
     });
   });
 

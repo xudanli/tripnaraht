@@ -4,7 +4,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   SecurityRedTeamTestCase,
   SecurityRedTeamTestResult,
-  ConstraintCheckResult,
 } from '../interfaces/safety-compliance.interface';
 import { ConstraintsEngineService } from './constraints-engine.service';
 import { randomUUID } from 'crypto';

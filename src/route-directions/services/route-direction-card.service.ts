@@ -8,7 +8,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RouteDirectionCardDto, TerrainSignatureDto, RiskProfileDetailDto } from '../dto/route-direction-card.dto';
 import { RouteDirectionRecommendation } from './route-direction-selector.service';
-import { RouteDirectionData, Seasonality, RiskProfile, RouteConstraints } from '../interfaces/route-direction.interface';
+import { Seasonality, RiskProfile, RouteConstraints } from '../interfaces/route-direction.interface';
 import { ScoreBreakdown, MatchedSignals } from '../interfaces/route-direction-explanation.interface';
 import { RouteDirectionExplainerService } from './route-direction-explainer.service';
 
@@ -129,7 +129,7 @@ export class RouteDirectionCardService {
 
     // 3. 节奏匹配理由
     if (matchedSignals?.pace) {
-      const { userPace, routePace, compatibility } = matchedSignals.pace;
+      const { userPace, compatibility } = matchedSignals.pace;
       if (compatibility === 'high') {
         reasons.push(`路线节奏与您的偏好（${userPace}）高度匹配`);
       }
@@ -253,7 +253,7 @@ export class RouteDirectionCardService {
    */
   private generateTerrainSignature(
     constraints: RouteConstraints,
-    rd: any
+    _rd: any
   ): TerrainSignatureDto {
     const maxElevation = constraints.soft?.maxElevationM || constraints.maxElevationM || 0;
     const minElevation = maxElevation > 0 ? Math.max(0, maxElevation - 2000) : 0; // 简单估算

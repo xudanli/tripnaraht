@@ -14,7 +14,7 @@
  * - 风险最小化人格（Risk Minimizer Persona）
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DecisionPersonaStrategy } from '../strategies/decision-persona-strategy.interface';
 import { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
 import { DecisionResult, DecisionLogEntry } from '../shared/decision-result.types';
@@ -22,7 +22,6 @@ import { ObjectiveFunctionService } from './objective-function.service';
 import {
   ConstraintSatisfactionResult,
   ObjectiveEvaluationResult,
-  OptimizationResult,
 } from './objective-function.interface';
 
 /**
@@ -504,8 +503,8 @@ export class AbuOptimizerService implements DecisionPersonaStrategy {
    */
   private async attemptAutoRepair(
     plan: RoutePlanDraft,
-    world: WorldModelContext,
-    maxIterations: number
+    _world: WorldModelContext,
+    _maxIterations: number
   ): Promise<RoutePlanDraft | undefined> {
     this.logger.debug(`[Abu] 尝试自动修复计划: ${plan.tripId}`);
     

@@ -1,7 +1,6 @@
 // src/agent/assistants/trip-planner/services/context-analyzer.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import {
   TripContext,
   TripDayContext,
@@ -11,7 +10,6 @@ import {
 import {
   ItineraryGap,
   ItineraryGapType,
-  GapSeverity,
   GapAnalysisConfig,
   DEFAULT_GAP_ANALYSIS_CONFIG,
   KEYWORD_TO_GAP_TYPE,
@@ -195,7 +193,7 @@ export class ContextAnalyzerService {
   /**
    * 检测交通缺失
    */
-  private detectTransportGaps(day: TripDayContext, tripContext: TripContext): ItineraryGap[] {
+  private detectTransportGaps(day: TripDayContext, _tripContext: TripContext): ItineraryGap[] {
     const gaps: ItineraryGap[] = [];
 
     // 按时间排序的 POI/活动
@@ -376,7 +374,6 @@ export class ContextAnalyzerService {
    * 生成当天上下文摘要
    */
   generateDaySummary(day: TripDayContext): string {
-    const itemCount = day.items.length;
     const mealCount = day.items.filter(i => i.type === 'RESTAURANT').length;
     const poiCount = day.items.filter(i => i.type === 'POI' || i.type === 'ACTIVITY').length;
 

@@ -1,7 +1,7 @@
 // src/iceland-info/dto/vedur-weather.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, IsEnum } from 'class-validator';
+import { IsOptional, IsNumber, IsEnum } from 'class-validator';
 
 export enum HighlandRegion {
   CENTRAL_HIGHLANDS = 'centralhighlands',

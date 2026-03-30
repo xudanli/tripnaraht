@@ -406,7 +406,7 @@ export class NLConversationContextService {
   async getAllSessions(): Promise<Array<{ userId: string; sessionId: string }>> {
     const sessions: Array<{ userId: string; sessionId: string }> = [];
     
-    for (const [key, entry] of this.memoryCache.entries()) {
+    for (const [, entry] of this.memoryCache.entries()) {
       if (entry.expires > Date.now() && entry.context.userId) {
         sessions.push({
           userId: entry.context.userId,
@@ -440,7 +440,7 @@ export class NLConversationContextService {
     this.logger.debug(`清空所有会话，共 ${sessionsByUser.size} 个用户，${allSessions.length} 个会话`);
     
     // 2. 删除每个用户的所有会话
-    for (const [userId, sessionIds] of sessionsByUser.entries()) {
+    for (const [userId] of sessionsByUser.entries()) {
       const deleted = await this.deleteAllUserSessions(userId);
       deletedCount += deleted;
     }
@@ -462,7 +462,7 @@ export class NLConversationContextService {
     // 这里只返回内存缓存中的会话
     const sessions: Array<Omit<NLConversationContext, 'messages'> & { messages: ConversationMessage[] }> = [];
     
-    for (const [key, entry] of this.memoryCache.entries()) {
+    for (const [, entry] of this.memoryCache.entries()) {
       if (entry.expires > Date.now() && entry.context.userId === userId) {
         // 🆕 只返回最后一条消息用于预览
         const lastMessage = entry.context.messages.length > 0 

@@ -1,7 +1,7 @@
 // src/data-fusion/services/fusion-resilience.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
-import { FusionError, FusionErrorType, ErrorRecoveryStrategy, ErrorRecoveryConfig } from '../interfaces/fusion-error.interface';
+import { FusionError, ErrorRecoveryConfig } from '../interfaces/fusion-error.interface';
 
 /**
  * 数据融合弹性服务
@@ -93,7 +93,6 @@ export class FusionResilienceService {
    */
   private classifyError(error: any, operationName: string): FusionError {
     const errorMessage = error?.message || String(error);
-    const errorCode = error?.code || '';
 
     // 超时错误
     if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
@@ -203,7 +202,7 @@ export class FusionResilienceService {
   /**
    * 记录失败
    */
-  private onFailure(operationName: string, error: FusionError): void {
+  private onFailure(operationName: string, _error: FusionError): void {
     let breaker = this.circuitBreakers.get(operationName);
     if (!breaker) {
       breaker = {

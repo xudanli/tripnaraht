@@ -17,8 +17,8 @@ import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compil
 import type { CountryFacts } from '../compilers/facts-to-readiness.compiler';
 import { ReadinessToConstraintsCompiler } from '../compilers/readiness-to-constraints.compiler';
 import { PackStorageService } from '../storage/pack-storage.service';
-import { TripWorldState, ISODate } from '../../decision/world-model';
-import { GeoFactsService, GeoFeatures } from './geo-facts.service';
+import { TripWorldState } from '../../decision/world-model';
+import { GeoFactsService } from './geo-facts.service';
 
 // 辅助函数：日期计算
 function addDays(date: string, days: number): string {
@@ -51,8 +51,6 @@ export class ReadinessService {
       ? addDays(startDate, state.context.durationDays - 1)
       : undefined;
 
-    // 从 activities 中提取活动类型
-    const activities: string[] = [];
     const activitySet = new Set<string>();
     
     for (const date in state.candidatesByDate) {
@@ -137,7 +135,6 @@ export class ReadinessService {
     lang: 'en' | 'zh' = 'en'
   ): ReadinessDisclaimer {
     const dataSources: string[] = [];
-    const lastReviewedDates: string[] = [];
     const userActionRequired: string[] = [];
 
     // 收集数据来源和最后更新时间

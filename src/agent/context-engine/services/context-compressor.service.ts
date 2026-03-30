@@ -56,7 +56,7 @@ export class ContextCompressorService implements IContextCompressor {
       }
 
       // 3. 检查 Token 是否已满足预算
-      let currentTokens = estimateTokens(remainingBlocks);
+      const currentTokens = estimateTokens(remainingBlocks);
       if (currentTokens <= tokenBudget) {
         return { blocks: remainingBlocks, compressed: false };
       }

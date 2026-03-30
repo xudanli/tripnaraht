@@ -15,7 +15,6 @@ export class ContactNotificationService {
     const smtpUser = this.configService?.get<string>('SMTP_USER');
     const smtpPassword = this.configService?.get<string>('SMTP_PASSWORD') || 
                          this.configService?.get<string>('SMTP_PASS');
-    const smtpFrom = this.configService?.get<string>('SMTP_FROM') || smtpUser;
     const smtpSecure = this.configService?.get<string>('SMTP_SECURE') === 'true' || smtpPort === 465;
 
     // 客服邮箱，从环境变量读取，默认为 support@tripnara.com

@@ -164,7 +164,6 @@ export class PostgreSQLMcpMonitoringService {
 
       const executionTimes: number[] = [];
       let totalQueries = 0;
-      let successQueries = 0;
       let failedQueries = 0;
 
       // 从内存获取最近 N 天的数据
@@ -187,7 +186,6 @@ export class PostgreSQLMcpMonitoringService {
 
         if (dailyStats) {
           totalQueries += dailyStats.totalQueries;
-          successQueries += dailyStats.successQueries;
           failedQueries += dailyStats.failedQueries;
           executionTimes.push(...dailyStats.executionTimes);
         }

@@ -8,15 +8,12 @@
  * 输出：Context Package（分块、带优先级、带来源、可裁剪）+ 私有状态对象
  */
 
-import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ContextPackage,
   ContextPackageOptions,
   ContextBlock,
-  BlockType,
-  BlockProvenance,
-  ContextProjection,
   ApiDocCategory,
 } from '../types/context-package.types';
 import { StateProjection, ProjectionConfig } from '../types/trip-state-projection.types';
@@ -24,8 +21,6 @@ import { TripState } from '../../../trips/decision/shared/trip-state.types';
 import { LangGraphState } from '../../../trips/decision/orchestration/langgraph-orchestrator.interface';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../../skills/services/skills-registry.token';
-import { SKILL_COUNTRY_PACK_GET_BLOCKS, SKILL_PLAN_SELECT_SLICES } from '../../../skills/skills.tokens';
-import { Skill } from '../../../skills/interfaces/skill.interface';
 import { RedisService } from '../../../redis/redis.service';
 import { ContextMetricsService } from './context-metrics.service';
 import { ContextPrometheusMetricsService } from './context-prometheus-metrics.service';
@@ -145,11 +140,10 @@ export class ContextEngineerService {
     );
 
     // 0. Context Orchestrator: 动态上下文选择 + 60% Token 预算
-    let resolvedOptions = this.resolveOptionsWithDynamicContext(options);
+    const resolvedOptions = this.resolveOptionsWithDynamicContext(options);
 
     // 重置 skills 调用追踪
     this.skillsCalledInBuild = [];
-    let cacheHit = false;
     const cacheKey = this.buildCacheKey(resolvedOptions);
 
     // Phase 1 优化: In-Flight Request Deduplication
@@ -165,7 +159,6 @@ export class ContextEngineerService {
       const cached = await this.contextCache.get(cacheKey);
       if (cached.hit) {
         this.logger.debug(`✅ ${cached.level}缓存命中: ${cacheKey}`);
-        cacheHit = true;
         if (this.metricsService) {
           await this.metricsService.recordMetrics(cached.package, {
             tripId: resolvedOptions.tripId,
@@ -194,7 +187,6 @@ export class ContextEngineerService {
       const memoryCached = this.memoryCache.get(cacheKey);
       if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
         this.logger.debug(`✅ L1缓存命中(降级): ${cacheKey}`);
-        cacheHit = true;
         if (this.metricsService) {
           await this.metricsService.recordMetrics(memoryCached.package, {
             tripId: resolvedOptions.tripId,
@@ -224,7 +216,6 @@ export class ContextEngineerService {
           const cached = await this.redisService.get<ContextPackage>(redisKey);
           if (cached) {
             this.logger.debug(`✅ L2缓存命中(降级): ${cacheKey}`);
-            cacheHit = true;
             this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
             if (this.metricsService) {
               await this.metricsService.recordMetrics(cached, {
@@ -286,7 +277,7 @@ export class ContextEngineerService {
    */
   private async doBuild(
     options: ContextPackageOptions,
-    cacheKey: string,
+    _cacheKey: string,
   ): Promise<ContextPackage> {
     const buildStartTime = Date.now();
     const tokenBudget = options.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
@@ -296,9 +287,6 @@ export class ContextEngineerService {
       const { blocks: blocksToSort, skillsCalled, toolAllowlist } = await this.buildRawBlocks(options);
       this.skillsCalledInBuild = skillsCalled;
 
-      // 7. 计算 Token 并排序
-      const totalTokens = estimateTokens(blocksToSort);
-      
       // 8. Phase 2: ContextRanker 排序并裁剪到预算内
       const sortedBlocks = this.contextRanker
         ? this.contextRanker.rank({
@@ -342,8 +330,8 @@ export class ContextEngineerService {
         compressed = true;
       }
 
-      const buildTimeMs = Date.now() - buildStartTime;
       const packageId = `ctx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const buildTimeMs = Date.now() - buildStartTime;
 
       const contextPackage: ContextPackage = {
         id: packageId,
@@ -359,7 +347,7 @@ export class ContextEngineerService {
         metadata: {
           originalBlocksCount: blocksToSort.length,
           finalBlocksCount: finalBlocks.length,
-          buildTimeMs: Date.now() - buildStartTime,
+          buildTimeMs,
           skillsCalled: [...this.skillsCalledInBuild],
           toolAllowlist: toolAllowlist ?? [],
         },
@@ -379,7 +367,7 @@ export class ContextEngineerService {
           tripId: options.tripId,
           phase: options.phase,
           agent: options.agent,
-          buildTimeMs: Date.now() - buildStartTime,
+          buildTimeMs,
           cacheHit: false,
           cacheLevel: 'none',
           skillsCalled: [...this.skillsCalledInBuild],
@@ -389,7 +377,6 @@ export class ContextEngineerService {
 
       // Phase 1.4 优化: 记录 Prometheus 指标
       if (this.prometheusMetrics) {
-        const buildTimeMs = Date.now() - buildStartTime;
         this.prometheusMetrics.recordBuild(
           options.phase,
           options.agent,
@@ -1116,7 +1103,7 @@ export class ContextEngineerService {
    */
   private async buildDecisionLogBlocks(
     tripId: string,
-    phase: string,
+    _phase: string,
   ): Promise<ContextBlock[]> {
     const blocks: ContextBlock[] = [];
 
@@ -1295,7 +1282,7 @@ export class ContextEngineerService {
    */
   private async buildApiDocumentationBlocks(
     categories: ApiDocCategory[],
-    userQuery: string,
+    _userQuery: string,
   ): Promise<ContextBlock[]> {
     const blocks: ContextBlock[] = [];
     const includeAll = categories.includes('ALL');
@@ -1711,7 +1698,7 @@ Context 管理:
       }
 
       // 2. 检查 Token 是否已满足预算
-      let currentTokens = estimateTokens(remainingBlocks);
+      const currentTokens = estimateTokens(remainingBlocks);
       if (currentTokens <= tokenBudget) {
         return remainingBlocks;
       }
@@ -1723,10 +1710,10 @@ Context 管理:
           this.skillsCalledInBuild.push('context.compress');
           
           // Phase 3.3 优化: 优先压缩学习到的可压缩 Block
-          const blocksToCompress = strategy?.compress || remainingBlocks;
-          
+          const blocksToCompress = strategy?.compress?.length ? strategy.compress : remainingBlocks;
+
           const result = await contextCompressSkill.execute({
-            blocks: remainingBlocks,
+            blocks: blocksToCompress,
             tokenBudget,
             strategy: 'balanced',
             preserveKeys: strategy?.keep.map((b) => b.key) || [], // 保留必须保留的 Block

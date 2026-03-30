@@ -38,20 +38,6 @@ interface PlaceWithCoordinates {
   location?: any;
 }
 
-interface TripDayWithItems {
-  id: string;
-  date: Date;
-  tripId: string;
-  ItineraryItem: Array<{
-    id: string;
-    type: string;
-    placeId: number | null;
-    startTime: Date | null;
-    endTime: Date | null;
-    Place: PlaceWithCoordinates | null;
-  }>;
-}
-
 @Injectable()
 export class CoverageMapService {
   private readonly logger = new Logger(CoverageMapService.name);
@@ -373,7 +359,7 @@ export class CoverageMapService {
   /**
    * 判断是否需要预订证据
    */
-  private needsBookingEvidence(canonicalType: string, category: string): boolean {
+  private needsBookingEvidence(canonicalType: string, _category: string): boolean {
     const typesNeedingBooking = [
       'TOUR', 'ACTIVITY', 'GLACIER_WALK', 'ICE_CAVE', 'WHALE_WATCHING',
       'NORTHERN_LIGHTS_TOUR', 'SNOWMOBILE', 'HORSE_RIDING',
@@ -384,7 +370,7 @@ export class CoverageMapService {
   /**
    * 判断是否需要道路封闭证据
    */
-  private needsRoadClosureEvidence(canonicalType: string, category: string, isWinter: boolean): boolean {
+  private needsRoadClosureEvidence(canonicalType: string, _category: string, isWinter: boolean): boolean {
     const remoteTypes = [
       'HIGHLAND', 'F_ROAD', 'GLACIER', 'TRAILHEAD', 'CAMPING',
       'REMOTE', 'MOUNTAIN_PASS',
@@ -398,7 +384,7 @@ export class CoverageMapService {
   /**
    * 判断是否需要许可证证据
    */
-  private needsPermitEvidence(canonicalType: string, category: string): boolean {
+  private needsPermitEvidence(canonicalType: string, _category: string): boolean {
     const typesNeedingPermit = [
       'HIGHLAND', 'RESTRICTED_AREA', 'DRONE_ZONE', 'PROTECTED_AREA',
     ];
@@ -881,7 +867,7 @@ export class CoverageMapService {
     }
 
     // 扣分：每天 POI 过多（>5 个扣分）
-    for (const [day, count] of poisPerDay) {
+    for (const [, count] of poisPerDay) {
       if (count > 7) score -= 15;
       else if (count > 5) score -= 8;
     }
@@ -1481,8 +1467,8 @@ export class CoverageMapService {
    */
   private deduplicateAndSortWarnings(
     gaps: CoverageGap[],
-    pois: PoiCoverage[],
-    segments: SegmentCoverage[]
+    _pois: PoiCoverage[],
+    _segments: SegmentCoverage[]
   ): {
     deduplicatedWarnings: CoverageGap[];
     warningsBySeverity: {

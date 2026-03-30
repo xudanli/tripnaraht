@@ -11,12 +11,10 @@
  */
 
 import {
-  Distribution,
   GaussianDistribution,
   BetaDistribution,
   TruncatedNormalDistribution,
   CategoricalDistribution,
-  ConditionalDistribution,
 } from './distribution.interface';
 
 /**

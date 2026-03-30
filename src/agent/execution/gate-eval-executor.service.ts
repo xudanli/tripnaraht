@@ -13,6 +13,7 @@ import type {
   IGateEvalExecutor,
   PhaseExecutorContext,
   GateResultLike,
+  OrchestratorAlternativesLike,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { TripContextExtractorService } from './shared/trip-context-extractor.service';
 import { ClaudeGatekeeperAgentService } from '../services/sub-agents/gatekeeper-agent.service';
@@ -34,7 +35,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
   async execute(
     dso: DecisionState,
     ctx: PhaseExecutorContext,
-  ): Promise<{ constraints: ConstraintReport; gateResult: GateResultLike }> {
+  ): Promise<{ constraints: ConstraintReport; gateResult: GateResultLike; alternatives?: OrchestratorAlternativesLike }> {
     this.logger.debug(`[GateEvalExecutor] 执行 GATE_EVAL 阶段 requestId=${ctx.requestId}`);
 
     const tripRequest = ctx.tripPlanRequest;
@@ -105,9 +106,11 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         required_adjustments: [],
         confidence: 0.9,
       };
+      const hasFailureRisk = readinessBlockers.some((b: any) => b?.type === 'FAILURE_RISK');
       return {
         constraints: { feasible: false, violations: gateResult.violations },
         gateResult,
+        alternatives: this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness'),
       };
     }
 
@@ -158,14 +161,19 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         violations: (gateResult.violations || []).map((v) => ({ type: v.type, severity: v.severity, detail: v.detail })),
         feasibleActions: gateResult.required_adjustments?.map((a) => a.action),
       };
+      const gateResultLike: GateResultLike = {
+        gate_result: gateResult.gate_result,
+        violations: gateResult.violations || [],
+        required_adjustments: gateResult.required_adjustments || [],
+        confidence: gateResult.confidence ?? 0.8,
+      };
       return {
         constraints,
-        gateResult: {
-          gate_result: gateResult.gate_result,
-          violations: gateResult.violations || [],
-          required_adjustments: gateResult.required_adjustments || [],
-          confidence: gateResult.confidence ?? 0.8,
-        },
+        gateResult: gateResultLike,
+        alternatives:
+          gateResultLike.gate_result === 'BLOCK'
+            ? this.alternativesForBlockedGate(gateResultLike, 'gatekeeper')
+            : undefined,
       };
     }
 
@@ -182,6 +190,37 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     return {
       constraints: { feasible: gateResult.gate_result === 'ALLOW', violations: [], feasibleActions: [] },
       gateResult,
+    };
+  }
+
+  /**
+   * BLOCK 时带出与门控原因对齐的可读替代（TD-03 / claude_exec），供 Kernel 写入 DSO `tripState.orchestratorAlternatives`
+   */
+  private alternativesForBlockedGate(
+    gateResult: GateResultLike,
+    source: 'readiness' | 'failure_risk' | 'gatekeeper',
+  ): OrchestratorAlternativesLike {
+    const detail =
+      gateResult.violations
+        .map((v) => v.detail)
+        .filter((d) => typeof d === 'string' && d.trim().length > 0)
+        .slice(0, 3)
+        .join('；') || '当前门控不满足可执行行程条件';
+    const nameBySource: Record<typeof source, string> = {
+      readiness: '满足准备度要求后重新规划',
+      failure_risk: '调整高风险日或路线后重试',
+      gatekeeper: '按硬门控建议修改需求后重试',
+    };
+    return {
+      alternative_pois: [
+        {
+          poi_id: `gate-block-${source}`,
+          name: nameBySource[source],
+          reason: detail.slice(0, 280),
+          evidence_status: 'UNVERIFIED',
+        },
+      ],
+      alternative_routes: [],
     };
   }
 

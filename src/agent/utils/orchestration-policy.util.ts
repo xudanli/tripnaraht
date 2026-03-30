@@ -238,7 +238,7 @@ export function routePolicy(
       return null;
     };
 
-    let breakerAdjustedMode = checkBreaker(finalMode);
+    const breakerAdjustedMode = checkBreaker(finalMode);
     if (breakerAdjustedMode) {
       reason = `${reason} → ${breakerAdjustedMode} (Circuit Breaker: ${finalMode} 已熔断，自动降级)`;
       finalMode = breakerAdjustedMode;

@@ -255,7 +255,7 @@ export class EnhancedRiskAssessmentService {
    */
   private assessCancellationRisk(
     route: RouteDirectionData,
-    context?: { travelDate?: string },
+    _context?: { travelDate?: string },
   ): CostRiskFactors['cancellationRisk'] {
     // 基于路线类型和约束评估取消风险
     const constraints = route.constraints || {};
@@ -477,7 +477,7 @@ export class EnhancedRiskAssessmentService {
   /**
    * 生成成本风险建议
    */
-  private generateCostRiskRecommendations(factors: CostRiskFactors, level: RiskLevel): string[] {
+  private generateCostRiskRecommendations(factors: CostRiskFactors, _level: RiskLevel): string[] {
     const recommendations: string[] = [];
 
     if (factors.budgetOverrun && factors.budgetOverrun.probability > 0.5) {
@@ -514,7 +514,7 @@ export class EnhancedRiskAssessmentService {
     context?: { budget?: number; travelerCount?: number },
   ): { min: number; max: number; base: number } {
     const base = this.estimateRouteCost(route, context ? { travelerCount: context.travelerCount } : undefined);
-    let min = base;
+    const min = base;
     let max = base;
 
     // 考虑各种风险因素
@@ -614,7 +614,7 @@ export class EnhancedRiskAssessmentService {
    */
   private assessExpectationGapRisk(
     route: RouteDirectionData,
-    context?: { travelerPreferences?: string[] },
+    _context?: { travelerPreferences?: string[] },
   ): ExperienceRiskFactors['expectationGap'] {
     const potentialGaps: NonNullable<ExperienceRiskFactors['expectationGap']>['potentialGaps'] = [];
     const probability = 0.2; // 基础概率
@@ -701,10 +701,9 @@ export class EnhancedRiskAssessmentService {
    */
   private assessWeatherImpactRisk(
     route: RouteDirectionData,
-    context?: { travelDate?: string },
+    _context?: { travelDate?: string },
   ): ExperienceRiskFactors['weatherImpactRisk'] {
     const weatherWindow = route.riskProfile?.weatherWindow;
-    const weatherWindowMonths = route.riskProfile?.weatherWindowMonths;
 
     if (weatherWindow) {
       return {
@@ -799,7 +798,7 @@ export class EnhancedRiskAssessmentService {
   /**
    * 生成体验风险建议
    */
-  private generateExperienceRiskRecommendations(factors: ExperienceRiskFactors, level: RiskLevel): string[] {
+  private generateExperienceRiskRecommendations(factors: ExperienceRiskFactors, _level: RiskLevel): string[] {
     const recommendations: string[] = [];
 
     if (factors.crowdingRisk && factors.crowdingRisk.level === 'HIGH') {
@@ -894,7 +893,7 @@ export class EnhancedRiskAssessmentService {
   private generateMitigationMeasures(
     riskCategory: RiskCategory,
     riskLevel: RiskLevel,
-    riskDetails: any,
+    _riskDetails: any,
   ): RiskMitigationMeasure[] {
     const measures: RiskMitigationMeasure[] = [];
 

@@ -2,7 +2,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
-import { AssistantSuggestion, AssistantAction } from '../assist/dto/action.dto';
+import { AssistantSuggestion } from '../assist/dto/action.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { StandardResponse } from '../common/dto/standard-response.dto';
 import {
@@ -51,7 +51,7 @@ export class VoiceService {
   ): Promise<StandardResponse<{ suggestions: AssistantSuggestion[] }>> {
     try {
       const text = transcript.trim().toLowerCase();
-      let suggestions: AssistantSuggestion[] = [];
+      const suggestions: AssistantSuggestion[] = [];
 
       // 尝试使用 LLM 解析（如果启用）
       if (this.llmParser) {

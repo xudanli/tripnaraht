@@ -13,7 +13,6 @@ describe('TrajectoryCollectionService', () => {
   let service: TrajectoryCollectionService;
   let prismaService: jest.Mocked<PrismaService>;
   let validatorService: jest.Mocked<TrajectoryValidatorService>;
-  let rewardExtractorService: jest.Mocked<RewardSignalExtractorService>;
 
   const mockTrajectory = {
     id: 'test-id',
@@ -105,7 +104,6 @@ describe('TrajectoryCollectionService', () => {
     );
     prismaService = module.get(PrismaService);
     validatorService = module.get(TrajectoryValidatorService);
-    rewardExtractorService = module.get(RewardSignalExtractorService);
   });
 
   it('should be defined', () => {

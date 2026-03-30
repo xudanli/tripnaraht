@@ -237,7 +237,7 @@ export class RetryHelperService {
    */
   async retryApiCall<T>(
     operation: () => Promise<T>,
-    operationName: string
+    _operationName: string
   ): Promise<RetryResult<T>> {
     return this.executeWithRetry(operation, {
       maxRetries: 3,
@@ -265,7 +265,7 @@ export class RetryHelperService {
    */
   async retryDbQuery<T>(
     operation: () => Promise<T>,
-    queryName: string
+    _queryName: string
   ): Promise<RetryResult<T>> {
     return this.executeWithRetry(operation, {
       maxRetries: 2,

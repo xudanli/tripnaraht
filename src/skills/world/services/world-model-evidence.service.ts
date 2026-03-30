@@ -10,7 +10,7 @@
  * - 添加类型安全，减少 as any 使用
  */
 
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { WorldBuildContextSkill } from '../world-build-context.skill';
 import {

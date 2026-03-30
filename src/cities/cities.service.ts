@@ -25,7 +25,8 @@ export class CitiesService {
   }> {
     // 限制limit最大值，防止性能问题
     const maxLimit = 1000;
-    let { countryCode, q, limit = 50, offset = 0 } = query;
+    const { countryCode, q, offset = 0 } = query;
+    let { limit = 50 } = query;
     
     // 限制limit不超过最大值
     if (limit > maxLimit) {
@@ -50,8 +51,7 @@ export class CitiesService {
       // 如果有搜索关键词，使用 Prisma 查询以支持不区分大小写搜索
       if (q) {
         const searchTerm = q.trim();
-        const searchPattern = `%${searchTerm}%`;
-        
+
         // 构建 where 条件
         const whereCondition: Prisma.CityWhereInput = {
           OR: [

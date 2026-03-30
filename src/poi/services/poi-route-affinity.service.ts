@@ -407,7 +407,7 @@ export class POIRouteAffinityService {
   private generateMatchReasons(
     breakdown: AffinityScoreBreakdown,
     poi: POIInfo,
-    routeDirection: RouteDirectionData
+    _routeDirection: RouteDirectionData
   ): string[] {
     const reasons: string[] = [];
 
@@ -451,8 +451,8 @@ export class POIRouteAffinityService {
    */
   private generateMismatchReasons(
     breakdown: AffinityScoreBreakdown,
-    poi: POIInfo,
-    routeDirection: RouteDirectionData
+    _poi: POIInfo,
+    _routeDirection: RouteDirectionData
   ): string[] {
     const reasons: string[] = [];
 

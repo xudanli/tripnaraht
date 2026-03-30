@@ -640,7 +640,6 @@ export class DataConflictResolutionService {
     type: DataConflictType,
     values: Array<{ sourceId: string; sourceName: string; value: any; reliability: number }>
   ): DataConflict['resolutionStrategy'] {
-    const avgReliability = values.reduce((sum, v) => sum + v.reliability, 0) / values.length;
     const reliabilityGap = Math.max(...values.map(v => v.reliability)) - 
                            Math.min(...values.map(v => v.reliability));
 

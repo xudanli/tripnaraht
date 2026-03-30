@@ -42,7 +42,6 @@ async function bootWithImports(imports: any[], name: string) {
     console.log(`✅ Boot OK: ${name} in ${duration}ms`);
     await (app as any).close();
   } catch (error: any) {
-    const duration = Date.now() - start;
     console.log(`❌ Boot FAILED: ${name}: ${error.message}`);
   }
 }

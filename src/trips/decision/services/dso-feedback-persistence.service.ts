@@ -8,7 +8,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import type { DecisionState } from '../../../decision/kernel/decision-state.types';
+import { StateCommitConflictError, type DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { IDsoFeedbackPersistence } from '../../../decision/kernel/dso-feedback-persistence.interface';
 
 const METADATA_DSO_KEY = 'dso';
@@ -52,7 +52,11 @@ export class DsoFeedbackPersistenceService implements IDsoFeedbackPersistence {
     return undefined;
   }
 
-  async persistDso(tripRunIdOrTripId: string, dso: DecisionState): Promise<void> {
+  async persistDso(
+    tripRunIdOrTripId: string,
+    dso: DecisionState,
+    options?: { expectedVersion?: number },
+  ): Promise<void> {
     const resolved = await this.resolve(tripRunIdOrTripId);
     const payload = JSON.parse(JSON.stringify(dso));
 
@@ -61,6 +65,14 @@ export class DsoFeedbackPersistenceService implements IDsoFeedbackPersistence {
         where: { id: resolved.tripId },
         select: { metadata: true },
       }))?.metadata;
+      const actualVersion = this.extractDsoVersion(existing);
+      if (
+        typeof options?.expectedVersion === 'number' &&
+        typeof actualVersion === 'number' &&
+        actualVersion !== options.expectedVersion
+      ) {
+        throw new StateCommitConflictError(options.expectedVersion, actualVersion);
+      }
       const metadata = {
         ...(typeof existing === 'object' && existing ? (existing as Record<string, unknown>) : {}),
         [METADATA_DSO_KEY]: payload,
@@ -77,6 +89,14 @@ export class DsoFeedbackPersistenceService implements IDsoFeedbackPersistence {
         where: { id: resolved.tripRunId },
         select: { metadata: true },
       }))?.metadata;
+      const actualVersion = this.extractDsoVersion(existing);
+      if (
+        typeof options?.expectedVersion === 'number' &&
+        typeof actualVersion === 'number' &&
+        actualVersion !== options.expectedVersion
+      ) {
+        throw new StateCommitConflictError(options.expectedVersion, actualVersion);
+      }
       const metadata = {
         ...(typeof existing === 'object' && existing ? (existing as Record<string, unknown>) : {}),
         [METADATA_DSO_KEY]: payload,
@@ -107,6 +127,15 @@ export class DsoFeedbackPersistenceService implements IDsoFeedbackPersistence {
     return {};
   }
 
+  private extractDsoVersion(metadata: unknown): number | undefined {
+    if (!metadata || typeof metadata !== 'object') return undefined;
+    const dso = (metadata as Record<string, unknown>)[METADATA_DSO_KEY];
+    if (!dso || typeof dso !== 'object') return undefined;
+    const version = (dso as Record<string, unknown>)?.systemState as Record<string, unknown> | undefined;
+    const n = version?.version;
+    return typeof n === 'number' ? n : undefined;
+  }
+
   private normalizeDso(raw: Record<string, unknown>, requestId: string): DecisionState {
     return {
       userIntent: (raw.userIntent as DecisionState['userIntent']) ?? {},
@@ -122,6 +151,7 @@ export class DsoFeedbackPersistenceService implements IDsoFeedbackPersistence {
       ...(raw.history !== undefined && { history: raw.history as DecisionState['history'] }),
       ...(raw.confidence !== undefined && { confidence: raw.confidence as number }),
       ...(raw.feedback !== undefined && { feedback: raw.feedback as DecisionState['feedback'] }),
+      ...(raw.travelOntologyState !== undefined && { travelOntologyState: raw.travelOntologyState as DecisionState['travelOntologyState'] }),
     };
   }
 }

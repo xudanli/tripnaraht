@@ -2,7 +2,6 @@
 import { Action, ActionKind, ActionCost, ActionSideEffect } from '../../interfaces/action.interface';
 import { TripsService } from '../../../trips/trips.service';
 import { ItineraryItemsService } from '../../../itinerary-items/itinerary-items.service';
-import { ItemType } from '../../../itinerary-items/dto/create-itinerary-item.dto';
 import { DayScheduleResult } from '../../../planning-policy/interfaces/scheduler.interface';
 import { DateTime } from 'luxon';
 import { BadRequestException } from '@nestjs/common';
@@ -197,7 +196,7 @@ Please provide args.trip_id or ensure it is stored in agent state.`;
           success: { type: 'boolean' },
         },
       },
-      execute: async (input: { trip_id: string; edits: any[] }, state: any) => {
+      execute: async (input: { trip_id: string; edits: any[] }, _state: any) => {
         // 应用编辑逻辑
         if (!itineraryItemsService) {
           throw new Error('ItineraryItemsService is required for apply_user_edit action');
@@ -333,7 +332,7 @@ Please provide args.trip_id or ensure it is stored in agent state.`;
           success: { type: 'boolean' },
         },
       },
-      execute: async (input: { trip_id: string; timeline: any[] }, state: any) => {
+      execute: async (input: { trip_id: string; timeline: any[] }, _state: any) => {
         // 持久化规划结果
         const { trip_id, timeline } = input;
         

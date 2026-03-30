@@ -8,9 +8,8 @@
  * 参考 CountryPack 的结构，但专门针对 RouteDirection
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { RouteDirectionData } from '../../route-directions/interfaces/route-direction.interface';
 import { BlockEvidence, BlockDataSource } from '../../agent/context-engine/types/context-package.types';
 
 /**

@@ -20,7 +20,7 @@ import {
   TokenStatsFilters,
 } from '../interfaces/token-stats.interface';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
-import { SubAgentType, OrchestrationStep } from '../interfaces/trip-plan.interface';
+import { SubAgentType } from '../interfaces/trip-plan.interface';
 
 @Injectable()
 export class TokenStatsService {
@@ -172,7 +172,7 @@ export class TokenStatsService {
   /**
    * 更新任务类型统计
    */
-  private updateTaskTypeStats(data: LLMCallTokenData): void {
+  private updateTaskTypeStats(_data: LLMCallTokenData): void {
     // 实现类似Sub-Agent统计的逻辑
     // 为了简化，这里省略详细实现
     // 实际应该与updateSubAgentStats类似
@@ -181,7 +181,7 @@ export class TokenStatsService {
   /**
    * 更新提供商统计
    */
-  private updateProviderStats(data: LLMCallTokenData): void {
+  private updateProviderStats(_data: LLMCallTokenData): void {
     // 实现类似Sub-Agent统计的逻辑
     // 为了简化，这里省略详细实现
     // 实际应该与updateSubAgentStats类似
@@ -192,7 +192,7 @@ export class TokenStatsService {
    */
   async getSubAgentStats(
     subAgent: SubAgentType,
-    timeRange?: { start: Date; end: Date }
+    _timeRange?: { start: Date; end: Date }
   ): Promise<SubAgentTokenStats | null> {
     const stats = this.statsCache.subAgent.get(subAgent);
     
@@ -211,8 +211,8 @@ export class TokenStatsService {
    * 获取任务类型级别统计
    */
   async getTaskTypeStats(
-    taskType: string,
-    timeRange?: { start: Date; end: Date }
+    _taskType: string,
+    _timeRange?: { start: Date; end: Date }
   ): Promise<TaskTypeTokenStats | null> {
     // 实现类似getSubAgentStats的逻辑
     return null;
@@ -222,8 +222,8 @@ export class TokenStatsService {
    * 获取时间序列统计
    */
   async getTimeSeriesStats(
-    granularity: 'hour' | 'day' | 'week' | 'month',
-    timeRange: { start: Date; end: Date }
+    _granularity: 'hour' | 'day' | 'week' | 'month',
+    _timeRange: { start: Date; end: Date }
   ): Promise<TimeSeriesTokenStats[]> {
     // 实现时间序列统计逻辑
     // 为了简化，这里返回空数组
@@ -235,7 +235,7 @@ export class TokenStatsService {
    */
   async getProviderStats(
     provider: LlmProvider,
-    timeRange?: { start: Date; end: Date }
+    _timeRange?: { start: Date; end: Date }
   ): Promise<ProviderTokenStats | null> {
     const stats = this.statsCache.provider.get(provider);
     return stats || null;
@@ -245,8 +245,8 @@ export class TokenStatsService {
    * 导出统计数据
    */
   async exportStats(
-    format: 'json' | 'csv',
-    filters?: TokenStatsFilters
+    _format: 'json' | 'csv',
+    _filters?: TokenStatsFilters
   ): Promise<string> {
     // 实现数据导出逻辑
     // 为了简化，这里返回空字符串

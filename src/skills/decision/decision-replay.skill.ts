@@ -7,8 +7,8 @@
  * 给定 logs + inputs，回放并 diff，这是 E2E 与评测的生命线
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { E2EReplayService } from '../../trips/decision/evaluation/e2e-replay.service';
 import {

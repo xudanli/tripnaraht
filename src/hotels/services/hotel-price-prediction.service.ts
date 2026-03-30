@@ -181,10 +181,10 @@ export class HotelPricePredictionService {
    * 从 Amadeus Hotel API 获取价格
    */
   private async getAmadeusHotelPrice(
-    city: string,
-    starLevel: number,
-    date: string,
-    apiKey: string
+    _city: string,
+    _starLevel: number,
+    _date: string,
+    _apiKey: string
   ): Promise<number | null> {
     // TODO: 实现 Amadeus Hotel API 调用
     // 参考: https://developers.amadeus.com/self-service/category/hotel/api-doc/hotel-search
@@ -197,10 +197,10 @@ export class HotelPricePredictionService {
    * 从 Booking.com API 获取价格
    */
   private async getBookingHotelPrice(
-    city: string,
-    starLevel: number,
-    date: string,
-    apiKey: string
+    _city: string,
+    _starLevel: number,
+    _date: string,
+    _apiKey: string
   ): Promise<number | null> {
     // TODO: 实现 Booking.com API 调用
     // 注意：Booking.com API 需要合作伙伴权限

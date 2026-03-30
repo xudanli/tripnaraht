@@ -11,7 +11,6 @@ import {
   PersonaStateSnapshot,
 } from '../interfaces/persona-state-management.interface';
 import {
-  UserPersona,
   PersonaContext,
   MultiPersonaUserTravelProfile,
 } from '../interfaces/multi-persona.interface';

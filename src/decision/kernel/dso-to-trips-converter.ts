@@ -8,7 +8,7 @@
  */
 
 import type { DecisionState, UserIntent } from './decision-state.types';
-import type { Itinerary, ItineraryDay, ItineraryItem } from '../../agent/interfaces/trip-plan.interface';
+import type { Itinerary, ItineraryDay } from '../../agent/interfaces/trip-plan.interface';
 import type { TripPlan, PlanDay, PlanSlot } from '../../trips/decision/plan-model';
 import type { RoutePlanDraft, RouteSegment } from '../../trips/decision/shared/world-model.types';
 import type {
@@ -16,7 +16,6 @@ import type {
   TripContextState,
   UserPreferenceProfile,
   ExternalSignalsState,
-  ActivityCandidate,
 } from '../../trips/decision/world-model';
 
 const ITEM_TYPE_TO_ACTIVITY: Record<string, string> = {

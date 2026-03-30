@@ -1,7 +1,7 @@
 // src/agent/assistants/planning-assistant/dto/v2/refine-trip-request.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsBoolean, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsEnum } from 'class-validator';
 
 /**
  * 细化行程请求DTO

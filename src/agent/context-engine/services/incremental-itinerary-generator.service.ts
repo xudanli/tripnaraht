@@ -8,7 +8,7 @@
  * 参考：docs/CONTEXT_ORCHESTRATOR_IMPLEMENTATION_PLAN.md 7.3
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import type {
   TripPlanRequest,
@@ -68,7 +68,7 @@ export class IncrementalItineraryGeneratorService {
     daySummaries: DaySummary[];
     mode: 'incremental' | 'full';
   }> {
-    const { request, research_data, gate_result, environment_state, minDaysToTrigger = 3 } = input;
+    const { request, research_data, gate_result: _gate_result, environment_state, minDaysToTrigger = 3 } = input;
     const requestId = (request as any).request_id ?? 'unknown';
 
     const { days, startDate, pois } = this.extractParams(request, research_data);
@@ -93,7 +93,6 @@ export class IncrementalItineraryGeneratorService {
 
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
       const previousSummaries = this.compressPreviousDays(itineraryDays);
-      const currentDate = startDate.plus({ days: dayIndex });
 
       const dayContent = this.generateSingleDay({
         request,
@@ -189,7 +188,7 @@ export class IncrementalItineraryGeneratorService {
     previousSummaries: DaySummary[];
     environment_state?: IncrementalItineraryEnvironmentState;
   }): ItineraryDay {
-    const { request, dayIndex, days, startDate, pois, itemsPerDay, environment_state } = params;
+    const { request, dayIndex, days: _days, startDate, pois, itemsPerDay, environment_state } = params;
     const requestId = (request as any).request_id ?? 'unknown';
     const currentDate = startDate.plus({ days: dayIndex });
 

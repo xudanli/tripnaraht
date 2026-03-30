@@ -58,7 +58,7 @@ describe('TripConflictsService', () => {
         TripDay: [{ id: 'day-1' }],
       });
 
-      const conflicts = await service.getDayConflicts('trip-1', 'day-1');
+      await service.getDayConflicts('trip-1', 'day-1');
       const detectSpy = (service as any).detectDayConflicts;
       expect(detectSpy).toHaveBeenCalled();
     });

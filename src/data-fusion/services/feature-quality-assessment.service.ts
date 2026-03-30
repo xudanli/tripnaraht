@@ -254,7 +254,7 @@ export class FeatureQualityAssessmentService {
   private assessReliability(
     featureValue: any,
     sourceData: DataSourceConfig[],
-    config: Required<FeatureQualityAssessmentConfig>
+    _config: Required<FeatureQualityAssessmentConfig>
   ): number {
     if (sourceData.length === 0) {
       return 0;
@@ -283,7 +283,7 @@ export class FeatureQualityAssessmentService {
    */
   private assessCompleteness(
     sourceData: DataSourceConfig[],
-    config: Required<FeatureQualityAssessmentConfig>
+    _config: Required<FeatureQualityAssessmentConfig>
   ): number {
     if (sourceData.length === 0) {
       return 0;
@@ -367,7 +367,7 @@ export class FeatureQualityAssessmentService {
    */
   private assessTraceability(
     sourceData: DataSourceConfig[],
-    config: Required<FeatureQualityAssessmentConfig>
+    _config: Required<FeatureQualityAssessmentConfig>
   ): number {
     if (sourceData.length === 0) {
       return 0;
@@ -420,7 +420,7 @@ export class FeatureQualityAssessmentService {
    */
   private assessConsistency(
     sourceData: DataSourceConfig[],
-    config: Required<FeatureQualityAssessmentConfig>
+    _config: Required<FeatureQualityAssessmentConfig>
   ): number {
     if (sourceData.length <= 1) {
       return 1.0; // 单个数据源，一致性为满分
@@ -485,7 +485,7 @@ export class FeatureQualityAssessmentService {
    */
   private assessValueReasonableness(
     value: any,
-    sourceData: DataSourceConfig[]
+    _sourceData: DataSourceConfig[]
   ): number {
     if (value === null || value === undefined) {
       return 0.3; // 空值，给较低分数
@@ -707,7 +707,7 @@ export class FeatureQualityAssessmentService {
       consistency: number;
     },
     issues: FeatureQualityReport['issues'],
-    config: Required<FeatureQualityAssessmentConfig>
+    _config: Required<FeatureQualityAssessmentConfig>
   ): string[] {
     const recommendations: string[] = [];
 

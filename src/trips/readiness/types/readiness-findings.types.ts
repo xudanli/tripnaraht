@@ -7,7 +7,7 @@
  * 这些结果会被编译成决策层的约束
  */
 
-import { ActionLevel, ReadinessCategory, RuleSeverity, HazardType, Task, LocalizedString, UserQuestion } from './readiness-pack.types';
+import { ActionLevel, ReadinessCategory, RuleSeverity, HazardType, Task, LocalizedString } from './readiness-pack.types';
 
 /**
  * 前端兼容的用户问题格式

@@ -8,7 +8,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { ReadinessFinding, ReadinessCheckResult } from '../types/readiness-findings.types';
+import { ReadinessCheckResult } from '../types/readiness-findings.types';
 import { CheckerViolation } from '../../decision/constraints/constraint-checker';
 import { ConstraintViolation } from '../../decision/decision-log';
 import { ISODate } from '../../decision/world-model';

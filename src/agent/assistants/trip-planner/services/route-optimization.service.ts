@@ -27,44 +27,11 @@ import {
 } from '../interfaces/route-optimization.interface';
 import { TripContext, TripDayContext, TripItemContext } from '../interfaces/trip-planner.interface';
 import { ItineraryVerifySkill, ItineraryVerifyOutput } from '../../../../skills/itinerary/itinerary-verify.skill';
-import { TransportSearchSkill, TransportSearchOutput } from '../../../../skills/transport/transport-search.skill';
-import { OpeningHoursGetSkill, OpeningHoursGetOutput } from '../../../../skills/places/opening-hours-get.skill';
+import { TransportSearchSkill } from '../../../../skills/transport/transport-search.skill';
+import { OpeningHoursGetSkill } from '../../../../skills/places/opening-hours-get.skill';
 import { DemGetProfileSkill, DemGetProfileOutput } from '../../../../skills/dem/dem-get-profile.skill';
-import { GeoCheckHazardZonesSkill, GeoCheckHazardZonesOutput } from '../../../../skills/geo/geo-check-hazard-zones.skill';
-import { Itinerary, ItineraryDay, ItineraryItem } from '../../../interfaces/trip-plan.interface';
-
-/**
- * 交通验证结果
- */
-interface TransportVerificationResult {
-  origin: string;
-  destination: string;
-  isReachable: boolean;
-  bestOption?: {
-    mode: string;
-    duration_minutes: number;
-    distance_meters?: number;
-  };
-  allOptions: Array<{
-    mode: string;
-    duration_minutes: number;
-  }>;
-  error?: string;
-}
-
-/**
- * 开放时间验证结果
- */
-interface OpeningHoursVerificationResult {
-  poiId: string;
-  poiName: string;
-  hasOpeningHours: boolean;
-  openingHours?: string;
-  isOpenNow?: boolean;
-  plannedTime?: string;
-  isConflict: boolean;
-  conflictDetail?: string;
-}
+import { GeoCheckHazardZonesSkill } from '../../../../skills/geo/geo-check-hazard-zones.skill';
+import { Itinerary, ItineraryItem } from '../../../interfaces/trip-plan.interface';
 
 @Injectable()
 export class RouteOptimizationService {
@@ -1059,12 +1026,11 @@ export class RouteOptimizationService {
     hardGates: HardGateResult[]
   ): RouteOptimizationEvidence['key_features'] {
     const citiesInvolved = new Set<string>();
-    let maxDailyDistance = 0;
+    const maxDailyDistance = 0;
     let maxDailyActivityMinutes = 0;
     const crossCitySegments: RouteOptimizationEvidence['key_features']['cross_city_segments'] = [];
 
     for (const day of ctx.days) {
-      let dailyDistance = 0;
       let dailyActivityMinutes = 0;
       const dayCities = new Set<string>();
 

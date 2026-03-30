@@ -11,10 +11,6 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { IntegratedRAGKPUService } from '../integrated-rag-kpu.service';
-import { ChunkRetrievalService } from '../../../rag/services/chunk-retrieval.service';
-import { KnowledgeValidationService } from '../knowledge-validation.service';
-import { ValidationScoringService } from '../validation-scoring.service';
-import { LlmService } from '../../../llm/services/llm.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { RagModule } from '../../../rag/rag.module';
 import { LlmModule } from '../../../llm/llm.module';

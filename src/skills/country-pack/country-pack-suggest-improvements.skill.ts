@@ -130,7 +130,7 @@ export class CountryPackSuggestImprovementsSkill implements Skill<CountryPackSug
     return missingFields;
   }
 
-  private determineFieldImpact(path: string, packType: string): 'high' | 'medium' | 'low' {
+  private determineFieldImpact(path: string, _packType: string): 'high' | 'medium' | 'low' {
     // 高影响字段
     const highImpactFields = ['packId', 'countryCode', 'rules', 'routeDirections'];
     if (highImpactFields.some(field => path.includes(field))) {

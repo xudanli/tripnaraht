@@ -141,7 +141,7 @@ export class SystemService {
   /**
    * 获取性能指标（管理接口）
    */
-  async getAdminPerformance(options?: {
+  async getAdminPerformance(_options?: {
     startTime?: Date;
     endTime?: Date;
     granularity?: 'hour' | 'day';
@@ -160,7 +160,7 @@ export class SystemService {
   /**
    * 获取错误日志统计（管理接口）
    */
-  async getAdminErrors(options?: {
+  async getAdminErrors(_options?: {
     startTime?: Date;
     endTime?: Date;
     level?: 'error' | 'warn';
@@ -183,7 +183,7 @@ export class SystemService {
   /**
    * 获取请求统计（管理接口）
    */
-  async getAdminRequests(options?: {
+  async getAdminRequests(_options?: {
     startTime?: Date;
     endTime?: Date;
     granularity?: 'hour' | 'day';

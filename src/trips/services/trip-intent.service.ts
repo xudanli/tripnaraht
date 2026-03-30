@@ -2,7 +2,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from '../dto/trip-intent.dto';
-import { randomUUID } from 'crypto';
 
 @Injectable()
 export class TripIntentService {

@@ -561,7 +561,7 @@ export class AdvancedGeocodingService {
    */
   private async tryLandmarkRecognition(
     location: string,
-    context?: LocationContext
+    _context?: LocationContext
   ): Promise<GeocodingResult | null> {
     // 检查是否是已知地标
     if (this.landmarkMap.has(location)) {
@@ -683,7 +683,7 @@ export class AdvancedGeocodingService {
     context?: LocationContext
   ): Promise<GeocodingResult | null> {
     // 检查是否包含相对位置关键词
-    for (const [keyword, englishKeyword] of this.relativeLocationMap.entries()) {
+    for (const [keyword] of this.relativeLocationMap.entries()) {
       if (location.includes(keyword)) {
         // 提取国家或城市名称
         const baseLocation = location.replace(keyword, '').trim();
@@ -862,7 +862,6 @@ export class AdvancedGeocodingService {
 
       // 先检查地标映射（快速路径）
       if (this.landmarkMap.has(variation)) {
-        const landmark = this.landmarkMap.get(variation)!;
         const similarity = this.calculateSimilarity(location, variation);
         
         if (similarity > bestSimilarity) {

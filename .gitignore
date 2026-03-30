@@ -6,6 +6,7 @@ node_modules/
 # Testing
 coverage/
 *.log
+readiness-p1-report.json
 
 # Production
 dist/
@@ -72,6 +73,14 @@ data/geographic/dem/**/*
 .temp/
 data/backups/*.dump
 data/backups/*.sql
+
+# MODULE_STATUS_BOARD v2 — generated gate JSON (keep README, owner_assignment.json, *.example.json)
+artifacts/m1_close_report.json
+artifacts/c1_e2e_summary.json
+artifacts/c3_readiness_report.json
+artifacts/release_gate_report.json
+artifacts/readiness_report.json
+artifacts/e2e_run_log.json
 
 # Documentation (not pushed to git)
 docs/

@@ -19,7 +19,6 @@ import {
   DecisionStep,
   DecisionType,
   DecisionDraftGenerationConfig,
-  DecisionStepStatus,
 } from '../interfaces/decision-draft.interface';
 import {
   TripPlanRequest,
@@ -499,7 +498,7 @@ ${JSON.stringify(tripPlanRequest, null, 2)}
    */
   private inferDecisionTypes(
     userInput: string,
-    tripPlanRequest: TripPlanRequest,
+    _tripPlanRequest: TripPlanRequest,
   ): DecisionType[] {
     const types: DecisionType[] = [];
     const inputLower = userInput.toLowerCase();
@@ -676,7 +675,7 @@ ${JSON.stringify(tripPlanRequest, null, 2)}
    */
   private mapOrchestrationStepToDecisionType(
     step: OrchestrationStep,
-    subAgent?: SubAgentType,
+    _subAgent?: SubAgentType,
   ): DecisionType | null {
     // 根据状态机步骤和 Sub-Agent 映射到决策类型
     const mapping: Record<string, DecisionType | null> = {

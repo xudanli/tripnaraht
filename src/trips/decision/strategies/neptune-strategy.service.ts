@@ -35,9 +35,8 @@ import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import {
   WorldModelContext,
   RoutePlanDraft,
-  RouteSegment,
 } from '../shared/world-model.types';
-import { DecisionResult, DecisionAction, DecisionLogEntry, DecisionSource, DecisionStage } from '../shared/decision-result.types';
+import { DecisionResult, DecisionAction, DecisionLogEntry } from '../shared/decision-result.types';
 import { SpatialReplacementService } from '../services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from '../services/spatial-issue-detector.service';
 import { SpatialIssue } from '../interfaces/spatial-issue.interface';
@@ -463,7 +462,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
   private async searchExaAlternatives(
     issue: SpatialIssue,
     world: WorldModelContext,
-    routeDirection: any,
+    _routeDirection: any,
   ): Promise<ReplacementOperation | null> {
     if (!this.exaIntegration) {
       return null;
@@ -512,17 +511,13 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
   private async searchCarRentalAlternatives(
     issue: SpatialIssue,
     world: WorldModelContext,
-    plan: RoutePlanDraft,
+    _plan: RoutePlanDraft,
   ): Promise<ReplacementOperation | null> {
     if (!this.bookingComIntegration || !issue.originalLocation) {
       return null;
     }
 
     try {
-      // 估算日期和时间
-      const currentYear = new Date().getFullYear();
-      const month = world.physical.month;
-      const dayDate = new Date(currentYear, month - 1, 1);
       const pickupTime = '10:00';
       const dropoffTime = '18:00';
       const driverAge = (world.human as any)?.driverAge || 25;
@@ -566,7 +561,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
   private async searchAirbnbAlternatives(
     issue: SpatialIssue,
     world: WorldModelContext,
-    plan: RoutePlanDraft,
+    _plan: RoutePlanDraft,
   ): Promise<ReplacementOperation | null> {
     if (!this.airbnbIntegration || !issue.originalLocation) {
       return null;

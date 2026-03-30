@@ -14,7 +14,7 @@ import { ContextPerformanceAnalysisService } from './services/context-performanc
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
-import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../common/dto/api-response.dto';
+import { ApiErrorResponseDto } from '../../common/dto/api-response.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
   BuildContextPackageDto,

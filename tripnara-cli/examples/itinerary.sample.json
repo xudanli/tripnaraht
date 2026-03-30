@@ -1,0 +1,13 @@
+{
+  "query": "上海美食2天",
+  "days": 2,
+  "plan": [
+    { "day": 1, "activity": "City Walk" },
+    { "day": 2, "activity": "Food Tour" }
+  ],
+  "decision": {
+    "verdict": "ALLOW",
+    "riskScore": 0.32,
+    "reason": "Safe plan"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "trip-plan",
+  "steps": [
+    { "agent": "planner", "input": { "query": "上海2天" } },
+    { "agent": "policy" }
+  ]
+}

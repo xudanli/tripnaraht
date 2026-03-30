@@ -203,7 +203,7 @@ export class ChainOfWorkAdminController {
   @ApiResponse({ status: 404, description: '草案不存在' })
   async executeDraft(
     @Param('draftId') draftId: string,
-    @Body() body: { options?: { timeout_ms?: number; cost_budget_usd?: number } },
+    @Body() _body: { options?: { timeout_ms?: number; cost_budget_usd?: number } },
   ): Promise<{
     execution_id: string;
     draft_id: string;

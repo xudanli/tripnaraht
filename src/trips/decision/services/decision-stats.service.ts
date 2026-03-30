@@ -394,7 +394,7 @@ export class DecisionStatsService {
     }
 
     // 查询每个热点对应的总决策数
-    for (const [key, hotspot] of hotspotMap.entries()) {
+    for (const [, hotspot] of hotspotMap.entries()) {
       const where: any = {};
       if (hotspot.countryCode) {
         where.countryCode = hotspot.countryCode;

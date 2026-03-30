@@ -10,7 +10,6 @@
 import { Injectable } from '@nestjs/common';
 import { ReadinessFinding, ReadinessFindingItem } from '../types/readiness-findings.types';
 import { TripContext } from '../types/trip-context.types';
-import { ActionLevel, ReadinessCategory, RuleSeverity } from '../types/readiness-pack.types';
 
 // CountryFacts 接口定义
 export interface CountryFacts {
@@ -222,7 +221,7 @@ export class FactsToReadinessCompiler {
    */
   private compileSafety(
     facts: CountryFacts,
-    context: TripContext
+    _context: TripContext
   ): ReadinessFindingItem[] {
     const items: ReadinessFindingItem[] = [];
 

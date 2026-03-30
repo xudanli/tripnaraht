@@ -228,10 +228,6 @@ export class BudgetEvaluationService {
       throw new NotFoundException(`未找到方案 ${planId} 的预算评估结果`);
     }
 
-    // 重新评估（或从日志中恢复）
-    const budgetConstraint = latestLog.budgetConstraint;
-    const estimatedCost = latestLog.estimatedCost;
-
     // 简化：从日志中恢复评估结果
     const budgetEvaluation: BudgetEvaluationResponse = {
       verdict: latestLog.verdict,

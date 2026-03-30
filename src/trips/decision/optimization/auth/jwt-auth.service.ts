@@ -377,7 +377,7 @@ export class DecisionAuthGuard implements CanActivate {
         return true;
       }
 
-      const [resource, action] = perm.split(':');
+      const [resource] = perm.split(':');
       return user.permissions.includes(`${resource}:*`);
     });
   }

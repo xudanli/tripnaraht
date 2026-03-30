@@ -7,10 +7,7 @@ import { ConstraintsEngineService } from './constraints-engine.service';
 import { TrajectoryCollectionService } from './trajectory-collection.service';
 import { QualityScorerService } from './quality-scorer.service';
 import { ObservabilityService } from './observability.service';
-import {
-  PolicyInferenceRequest,
-  PolicyInferenceResponse,
-} from '../interfaces/training-platform.interface';
+import { PolicyInferenceRequest } from '../interfaces/training-platform.interface';
 
 /**
  * RL Integration Service
@@ -74,7 +71,7 @@ export class RLIntegrationService {
     );
 
     const warnings: string[] = [];
-    let adjustedParams = context.params;
+    const adjustedParams = context.params;
 
     // 1. 约束检查
     if (this.constraintsEngine) {
@@ -220,7 +217,7 @@ export class RLIntegrationService {
       `[RLIntegration] 执行后处理: requestId=${context.requestId}, action=${context.action}, success=${context.success}`,
     );
 
-    let trajectoryId: string | undefined;
+    const trajectoryId = context.requestId;
     let qualityScore: number | undefined;
 
     // 1. 记录步骤（轨迹收集在更高层级处理）
@@ -228,7 +225,6 @@ export class RLIntegrationService {
     this.logger.debug(
       `[RLIntegration] 步骤执行: requestId=${context.requestId}, action=${context.action}, success=${context.success}, duration=${context.duration_ms}ms`,
     );
-    trajectoryId = context.requestId;
 
     // 2. 计算质量评分（仅对完成的计划）
     if (

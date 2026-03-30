@@ -107,10 +107,6 @@ export class ToTEvaluatorService implements ThoughtEvaluator {
     timeMetrics: Record<string, number>;
     reqMetrics: Record<string, number>;
   } {
-    // 获取配置参数
-    const pace = world.context.preferences.pace;
-    const policyProfile = getPolicyProfile(pace);
-    
     // 从 PlanningPolicy 获取参数（如果提供）
     const valueOfTimePerMin = planningPolicy?.weights?.valueOfTimePerMin ?? 0;
     const tagAffinity = planningPolicy?.weights?.tagAffinity ?? {};

@@ -178,27 +178,12 @@ Return ONLY a JSON array of PlanStep objects:
     const recentContext = currentPlan
       .filter(s => s.status === 'completed' || s.status === 'failed')
       .map(s => {
-        const memoryData = memory[s.id];
         const result = s.status === 'completed' 
           ? `✅ ${s.result || '完成'}` 
           : `❌ ${s.error || s.result || '失败'}`;
         return `Step [${s.id}] (${s.status}): ${s.description}\n  Result: ${result}`;
       })
       .join('\n\n');
-
-    // 2. 构建重规划提示
-    const userPrompt = JSON.stringify({
-      userGoal,
-      currentPlan: currentPlan.map(s => ({
-        id: s.id,
-        description: s.description,
-        status: s.status,
-        dependencies: s.dependencies,
-        result: s.result,
-        error: s.error,
-      })),
-      executionSummary: recentContext || 'No completed steps yet.',
-    }, null, 2);
 
     try {
       // 从文档中加载 Prompt（带缓存）

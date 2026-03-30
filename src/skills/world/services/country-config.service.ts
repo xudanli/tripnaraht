@@ -568,9 +568,6 @@ export class CountryConfigService {
     fromCountryCode: string,
     toCountryCode: string,
   ): { migrated: boolean; message: string } {
-    const fromConfig = this.getCountryConfig(fromCountryCode);
-    const toConfig = this.getCountryConfig(toCountryCode);
-
     // 检查目标国家是否有数据文件
     const hasData =
       this.hasRoadStatusData(toCountryCode) ||

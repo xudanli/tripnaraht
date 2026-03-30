@@ -1,0 +1,98 @@
+name: ROLL Staging Strict Gate
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'scripts/rl-infra/roll/**'
+      - 'src/agent/training/services/roll-client.service.ts'
+      - 'src/agent/training/services/roll-policy-adapter.service.ts'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'scripts/rl-infra/roll/**'
+      - 'src/agent/training/services/roll-client.service.ts'
+      - 'src/agent/training/services/roll-policy-adapter.service.ts'
+  workflow_dispatch:
+
+concurrency:
+  group: roll-staging-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-fast-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate staging env strict flags
+        run: |
+          test -f scripts/rl-infra/roll/.env.staging
+          rg -n "^ROLL_BRIDGE_TIMEOUT_MS=[0-9]+$" scripts/rl-infra/roll/.env.staging
+          rg -n "^ROLL_STRICT_MODE=true$" scripts/rl-infra/roll/.env.staging
+          rg -n "^ROLL_ALLOW_SIMULATION=false$" scripts/rl-infra/roll/.env.staging
+          rg -n "^ROLL_ALLOW_FALLBACK=false$" scripts/rl-infra/roll/.env.staging
+
+      - name: Validate required roll files
+        run: |
+          test -f scripts/rl-infra/roll/docker-compose.yml
+          test -f scripts/rl-infra/roll/docker-compose.staging.yml
+          test -f scripts/rl-infra/roll/verify-staging-no-simulation.sh
+
+      - name: Verify script has simulation guard
+        run: |
+          rg -n "模拟策略推理" scripts/rl-infra/roll/verify-staging-no-simulation.sh
+
+  staging-strict-gate:
+    needs: staging-fast-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure verify script executable
+        run: chmod +x scripts/rl-infra/roll/verify-staging-no-simulation.sh
+
+      - name: Start staging stack
+        working-directory: scripts/rl-infra/roll
+        run: |
+          docker compose --env-file .env.staging \
+            -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+
+      - name: Wait for bridge health
+        run: |
+          for i in {1..20}; do
+            if curl -fsS http://localhost:8001/health >/dev/null; then
+              echo "Bridge is healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Bridge health check timed out"
+          exit 1
+
+      - name: Verify strict no-simulation gate
+        working-directory: scripts/rl-infra/roll
+        env:
+          ROLL_BRIDGE_URL: http://localhost:8001
+        run: ./verify-staging-no-simulation.sh
+
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: scripts/rl-infra/roll
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml logs --no-color
+
+      - name: Teardown staging stack
+        if: always()
+        working-directory: scripts/rl-infra/roll
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v || true

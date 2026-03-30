@@ -470,7 +470,7 @@ export class PhysicalRealityRetrievalService {
     return null;
   }
 
-  private extractRoadStatus(content: string, metadata: any): 'OPEN' | 'CLOSED' | 'SEASONAL' | 'RESTRICTED' {
+  private extractRoadStatus(content: string, _metadata: any): 'OPEN' | 'CLOSED' | 'SEASONAL' | 'RESTRICTED' {
     const statusLower = content.toLowerCase();
     
     // 检查当前状态
@@ -553,7 +553,7 @@ export class PhysicalRealityRetrievalService {
     return seasonMonths?.to || metadata.seasonOpenTo;
   }
 
-  private extractRequires4x4(content: string, metadata: any): boolean {
+  private extractRequires4x4(content: string, _metadata: any): boolean {
     const contentLower = content.toLowerCase();
     return (
       contentLower.includes('4x4') ||
@@ -690,7 +690,7 @@ export class PhysicalRealityRetrievalService {
     };
   }
 
-  private extractFerryStatus(content: string, metadata: any): 'RUNNING' | 'CANCELLED' | 'SEASONAL' {
+  private extractFerryStatus(content: string, _metadata: any): 'RUNNING' | 'CANCELLED' | 'SEASONAL' {
     const contentLower = content.toLowerCase();
     
     if (contentLower.includes('cancelled') || contentLower.includes('取消') || contentLower.includes('停运')) {

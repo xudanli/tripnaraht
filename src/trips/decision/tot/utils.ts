@@ -4,7 +4,7 @@
  * ToT 评分器工具函数
  */
 
-import { TripPlan, PlanDay } from '../plan-model';
+import { TripPlan } from '../plan-model';
 import { ISOTime } from '../world-model';
 
 /**

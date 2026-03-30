@@ -216,7 +216,7 @@ export class TripExtendedService {
         orderBy: { order: 'desc' },
         select: { order: true },
       });
-      let baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+      const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
         ? maxOrderItem.order + 1 
         : 1;
 
@@ -585,7 +585,7 @@ export class TripExtendedService {
   /**
    * 同步离线修改
    */
-  async syncOfflineChanges(tripId: string, offlineData: any) {
+  async syncOfflineChanges(tripId: string, _offlineData: any) {
     // 验证行程存在
     const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
     if (!trip) {

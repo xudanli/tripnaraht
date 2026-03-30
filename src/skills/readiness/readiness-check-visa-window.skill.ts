@@ -74,7 +74,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
     );
 
     try {
-      const { departureCountryCode, destinationCountryCode, departureDate, returnDate, nationality = 'CN' } = input.tripMeta;
+      const { destinationCountryCode, departureDate, returnDate, nationality = 'CN' } = input.tripMeta;
 
       // 1. 计算停留天数
       const departure = new Date(departureDate);
@@ -104,8 +104,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
         try {
           const year = new Date(departure).getFullYear();
           const month = departure.getMonth() + 1;
-          const query = `${destinationCountryCode} ${nationality}护照 ${year}年 签证政策 入境要求`;
-          
+
           const searchResult = await this.exaIntegration.searchRealTimeRisks(
             destinationCountryCode,
             `签证政策查询`,
@@ -174,8 +173,8 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
   private determineVisaStatus(
     destinationCountryCode: string,
     nationality: string,
-    stayDays: number,
-    visaInfo: any
+    _stayDays: number,
+    _visaInfo: any
   ): ReadinessCheckVisaWindowOutput['visaStatus'] {
     // 如果是中国护照
     if (nationality === 'CN' || nationality === 'CHN') {
@@ -239,7 +238,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
   private assessRiskLevel(
     visaStatus: ReadinessCheckVisaWindowOutput['visaStatus'],
     departureDate: Date,
-    stayDays: number
+    _stayDays: number
   ): 'none' | 'low' | 'medium' | 'high' {
     if (!visaStatus?.required) {
       return 'none';
@@ -337,7 +336,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
     return rules;
   }
 
-  private extractVisaInfoFromRules(rules: any[], nationality: string): any {
+  private extractVisaInfoFromRules(rules: any[], _nationality: string): any {
     // 从规则中提取签证相关信息
     // 简化处理，实际应该解析规则的 when/then 条件
     for (const rule of rules) {

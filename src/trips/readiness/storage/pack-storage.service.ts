@@ -13,7 +13,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { PackingChecklistTemplate, PackingGuide } from '../types/packing-template.types';
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 @Injectable()

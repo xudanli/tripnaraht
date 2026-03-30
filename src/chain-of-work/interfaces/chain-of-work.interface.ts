@@ -15,7 +15,6 @@ import {
   GateResult,
   DecisionLogEntry,
 } from '../../agent/interfaces/trip-plan.interface';
-import { Skill } from '../../skills/interfaces/skill.interface';
 
 /**
  * 步骤草案

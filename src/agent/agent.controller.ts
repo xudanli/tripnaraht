@@ -1,9 +1,9 @@
 // src/agent/agent.controller.ts
-import { Controller, Post, Body, HttpCode, HttpStatus, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
-import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { buildTravelOntologyStateFromOrchestrator } from '../decision/kernel/travel-ontology.mapper';
 import { Public } from '../auth/decorators/public.decorator';
 
 /**
@@ -110,7 +110,58 @@ export class AgentController {
   async routeAndRun(
     @Body() request: RouteAndRunRequestDto
   ): Promise<RouteAndRunResponseDto> {
-    return this.agentService.routeAndRun(request);
+    const response = await this.agentService.routeAndRun(request);
+    const actionPlan =
+      response.result?.payload?.orchestrationResult?.itinerary?.action_plan || [];
+
+    // Action 闭环默认输出：在统一出口补齐，避免侵入 AgentService 的多分支返回逻辑。
+    if (!response.result?.payload?.actionExecution) {
+      const pendingActions = actionPlan.map((action: any) => ({
+        action_id: action.action_id,
+        action_type: action.action_type,
+        target_type: action.target_type,
+        requires_confirmation: action.requires_confirmation,
+        risk_level: action.risk_level,
+      }));
+      response.result.payload.actionExecution = {
+        mode: request.options?.execution_mode || 'ADVICE_ONLY',
+        status: request.options?.execution_mode && request.options.execution_mode !== 'ADVICE_ONLY'
+          ? 'PENDING_CONFIRM'
+          : 'NOT_STARTED',
+        requires_confirmation_count: pendingActions.filter((a) => a.requires_confirmation).length,
+        pendingActions,
+      };
+    } else if (
+      response.result.payload.actionExecution.pendingActions &&
+      response.result.payload.actionExecution.pendingActions.length === 0 &&
+      actionPlan.length > 0
+    ) {
+      response.result.payload.actionExecution.pendingActions = actionPlan.map((action: any) => ({
+        action_id: action.action_id,
+        action_type: action.action_type,
+        target_type: action.target_type,
+        requires_confirmation: action.requires_confirmation,
+        risk_level: action.risk_level,
+      }));
+    }
+    const pendingActions = response.result.payload.actionExecution.pendingActions || [];
+    response.result.payload.actionExecution.requires_confirmation_count = pendingActions.filter(
+      (a) => a.requires_confirmation,
+    ).length;
+
+    if (
+      !response.result.payload.travelOntologyState &&
+      response.result.payload.orchestrationResult?.state
+    ) {
+      const derived = buildTravelOntologyStateFromOrchestrator(
+        response.result.payload.orchestrationResult.state,
+      );
+      if (derived) {
+        response.result.payload.travelOntologyState = derived;
+      }
+    }
+
+    return response;
   }
 }
 

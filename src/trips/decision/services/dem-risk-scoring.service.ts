@@ -15,7 +15,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ActivityCandidate } from '../world-model';
-import { PlanDay, TripPlan } from '../plan-model';
+import { TripPlan } from '../plan-model';
 import { DEMElevationService } from '../../dem/services/dem-elevation.service';
 
 export interface ActivityRiskScore {

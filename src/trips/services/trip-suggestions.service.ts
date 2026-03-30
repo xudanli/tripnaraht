@@ -1,5 +1,5 @@
 // src/trips/services/trip-suggestions.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { 
   SuggestionDto, 
@@ -21,7 +21,6 @@ import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.ser
 import { PersonaAlertDto, PersonaType, AlertSeverity } from '../dto/persona-alerts.dto';
 import { ConflictDto, ConflictSeverity } from '../dto/trip-conflicts.dto';
 import { DateTime } from 'luxon';
-import { randomUUID } from 'crypto';
 import { ImpactMetricsDto } from '../dto/suggestions.dto';
 
 @Injectable()
@@ -400,7 +399,7 @@ export class TripSuggestionsService {
    */
   private estimateImpactBySuggestionType(
     suggestions: SuggestionDto[],
-    currentMetrics: { fatigue: number; buffer: number; cost: number }
+    _currentMetrics: { fatigue: number; buffer: number; cost: number }
   ): ImpactMetricsDto {
     let fatigueDelta = 0;
     let bufferDelta = 0;
@@ -785,8 +784,8 @@ export class TripSuggestionsService {
    */
   private convertPersonaAlertToSuggestion(
     alert: PersonaAlertDto,
-    tripId: string,
-    trip: any
+    _tripId: string,
+    _trip: any
   ): SuggestionDto {
     // 映射人格
     const personaMap: Record<PersonaType, SuggestionPersona> = {

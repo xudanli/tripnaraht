@@ -1,5 +1,5 @@
 // src/places/places.controller.ts
-import { Controller, Get, Post, Put, Delete, Body, Query, ParseFloatPipe, Param, ParseIntPipe, GatewayTimeoutException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, ParseFloatPipe, Param, ParseIntPipe, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { PlacesService } from './places.service';
 import { HotelRecommendationService } from './services/hotel-recommendation.service';
@@ -12,10 +12,10 @@ import { CreatePlaceDto } from './dto/create-place.dto';
 import { UpdatePlaceDto } from './dto/update-place.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
-import { GetPlacesAdminQueryDto, PlaceListAdminResponseDto } from './dto/admin-place.dto';
-import { PlaceListQueryDto, PlaceListResponseDto } from './dto/place-list-query.dto';
+import { GetPlacesAdminQueryDto } from './dto/admin-place.dto';
+import { PlaceListQueryDto } from './dto/place-list-query.dto';
 import { BatchPlaceImageRequestDto, BatchPlaceImageResponseDto, CATEGORY_MAP, SavePlaceImageRequestDto, SavePlaceImageResponseDto } from './dto/place-image.dto';
-import { BatchPlaceRequestDto, BatchPlaceResponseDto } from './dto/batch-place.dto';
+import { BatchPlaceRequestDto } from './dto/batch-place.dto';
 import { PlaceCategory } from '@prisma/client';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
@@ -77,7 +77,6 @@ export class PlacesController {
       // 构建营业时间
       let businessHours: any = undefined;
       if (metadata.openingHours || metadata.opening_hours) {
-        const openingHours = metadata.openingHours || metadata.opening_hours;
         const timezone = metadata.timezone || 'Asia/Tokyo';
         const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
         
@@ -1120,8 +1119,8 @@ export class PlacesController {
     type: ApiErrorResponseDto,
   })
   async getRecommendations(
-    @Query('tripId') tripId?: string,
-    @Query('limit') limit?: string,
+    @Query('tripId') _tripId?: string,
+    @Query('limit') _limit?: string,
   ) {
     return errorResponse(
       ErrorCode.UNSUPPORTED_ACTION,

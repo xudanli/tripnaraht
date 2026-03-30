@@ -1,5 +1,9 @@
 // src/agent/utils/agent-metrics.util.ts
 
+function skipMetricsConsole(): boolean {
+  return process.env.JEST_WORKER_ID !== undefined || process.env.NODE_ENV === 'test';
+}
+
 /**
  * Agent API Metrics 定义
  * 
@@ -190,8 +194,10 @@ export class MetricsRecorder {
     // prometheus.recordCounter(AgentMetrics.entryPointDistribution.name, {
     //   entry_point: entryPoint,
     // });
-    
-    console.log(`[Metrics] ${AgentMetrics.entryPointDistribution.name}: ${entryPoint}`);
+
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.entryPointDistribution.name}: ${entryPoint}`);
+    }
   }
 
   /**
@@ -200,8 +206,10 @@ export class MetricsRecorder {
   static recordReadonlyMode(readonlyMode: boolean) {
     // TODO: 接入实际的 Metrics 系统
     // prometheus.recordGauge(AgentMetrics.readonlyModeUsage.name, readonlyMode ? 1 : 0);
-    
-    console.log(`[Metrics] ${AgentMetrics.readonlyModeUsage.name}: ${readonlyMode}`);
+
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.readonlyModeUsage.name}: ${readonlyMode}`);
+    }
   }
 
   /**
@@ -213,8 +221,12 @@ export class MetricsRecorder {
     //   redirect_reason: redirectReason,
     //   entry_point: entryPoint || 'unknown',
     // });
-    
-    console.log(`[Metrics] ${AgentMetrics.redirectTriggerRate.name}: ${redirectReason} (entry_point: ${entryPoint})`);
+
+    if (!skipMetricsConsole()) {
+      console.log(
+        `[Metrics] ${AgentMetrics.redirectTriggerRate.name}: ${redirectReason} (entry_point: ${entryPoint})`,
+      );
+    }
   }
 
   /**
@@ -226,7 +238,9 @@ export class MetricsRecorder {
     //   error_type: errorType,
     // });
     
-    console.log(`[Metrics] ${AgentMetrics.clarificationTriggerRate.name}: ${errorType}`);
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.clarificationTriggerRate.name}: ${errorType}`);
+    }
   }
 
   /**
@@ -236,7 +250,9 @@ export class MetricsRecorder {
     // TODO: 接入实际的 Metrics 系统
     // prometheus.recordGauge(AgentMetrics.decisionLogCompleteness.name, completeness);
     
-    console.log(`[Metrics] ${AgentMetrics.decisionLogCompleteness.name}: ${completeness}`);
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.decisionLogCompleteness.name}: ${completeness}`);
+    }
   }
 
   /**
@@ -248,7 +264,9 @@ export class MetricsRecorder {
     //   mode: mode,
     // });
     
-    console.log(`[Metrics] ${AgentMetrics.orchestrationModeDistribution.name}: ${mode}`);
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.orchestrationModeDistribution.name}: ${mode}`);
+    }
   }
 
   /**
@@ -260,6 +278,8 @@ export class MetricsRecorder {
     //   risk: risk,
     // });
     
-    console.log(`[Metrics] ${AgentMetrics.riskDistribution.name}: ${risk}`);
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.riskDistribution.name}: ${risk}`);
+    }
   }
 }

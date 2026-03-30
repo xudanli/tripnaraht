@@ -4,9 +4,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   DecisionState,
-  DecisionStage,
   DecisionSteps,
-  FeaturesDisabled,
   DecisionStateUpdateRequest,
 } from '../interfaces/decision-state.interface';
 
@@ -66,7 +64,7 @@ export class DecisionStateManagerService {
     update: DecisionStateUpdateRequest,
   ): Promise<DecisionState> {
     const currentState = await this.getDecisionState(tripId);
-    let newState: DecisionState = { ...currentState };
+    const newState: DecisionState = { ...currentState };
 
     // 更新步骤
     if (update.step) {
@@ -301,7 +299,7 @@ export class DecisionStateManagerService {
   /**
    * 从Trip ID提取User ID（简化实现）
    */
-  private extractUserIdFromTripId(tripId: string): string | null {
+  private extractUserIdFromTripId(_tripId: string): string | null {
     // 实际实现应该从Trip表查询userId
     // 这里简化处理
     return null;

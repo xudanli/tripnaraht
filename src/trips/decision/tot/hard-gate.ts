@@ -125,7 +125,7 @@ export function checkHardGate(
     
     // 检查轮椅可达
     if (constraints.requireWheelchairAccess) {
-      for (const { candidate, slot } of activityMap.values()) {
+      for (const _ of activityMap.values()) {
         // 从候选的 metadata 中检查（如果 ActivityCandidate 有相关字段）
         // 注意：ActivityCandidate 可能没有直接的 wheelchairAccess 字段
         // 这里简化处理：如果候选存在但无法确认，给出警告而非直接拒绝
@@ -138,7 +138,7 @@ export function checkHardGate(
     if (constraints.forbidStairs) {
       // 从 travelLegFromPrev 中检查（如果有地形信息）
       for (const day of plan.days) {
-        for (const slot of day.timeSlots) {
+        for (const _slot of day.timeSlots) {
           // 检查 terrainFacts 中的风险标志
           if (day.terrainFacts?.riskFlags) {
             for (const flag of day.terrainFacts.riskFlags) {
@@ -155,7 +155,7 @@ export function checkHardGate(
     // 检查最大换乘次数（从 travelLegFromPrev 统计）
     let maxTransfersInDay = 0;
     for (const day of plan.days) {
-      let dayTransfers = 0;
+      const dayTransfers = 0;
       for (const slot of day.timeSlots) {
         if (slot.travelLegFromPrev) {
           // 如果 travelLeg 的 mode 发生变化，可能涉及换乘

@@ -92,8 +92,6 @@ export class GoogleMapsDirectService implements OnModuleInit, OnModuleDestroy {
     try {
       // 使用Google Maps Roads API获取道路信息
       // 注意：Google Maps没有直接的Traffic Status API，我们使用Roads API + Directions API组合
-      const radius = params.radius || 5000;
-
       // 方法1: 使用Directions API获取路线状态
       try {
         const directionsResponse = await this.axiosInstance.get('/directions/json', {

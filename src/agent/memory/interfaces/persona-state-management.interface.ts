@@ -1,6 +1,6 @@
 // src/agent/memory/interfaces/persona-state-management.interface.ts
 
-import { UserPersona, PersonaContext } from './multi-persona.interface';
+import { PersonaContext } from './multi-persona.interface';
 
 /**
  * Persona状态

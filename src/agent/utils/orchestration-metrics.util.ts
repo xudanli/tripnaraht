@@ -71,28 +71,27 @@ export class InMemoryOrchestrationMetrics implements OrchestrationMetrics {
     actualMode: OrchestrationMode;
   }> = [];
 
-  recordMode(mode: OrchestrationMode, requestId: string): void {
+  recordMode(mode: OrchestrationMode, _requestId: string): void {
     this.modeCounts.set(mode, (this.modeCounts.get(mode) || 0) + 1);
   }
 
-  recordRisk(risk: RiskLevel, requestId: string): void {
+  recordRisk(risk: RiskLevel, _requestId: string): void {
     this.riskCounts.set(risk, (this.riskCounts.get(risk) || 0) + 1);
   }
 
-  recordConsent(triggered: boolean, requestId: string, reason?: string): void {
+  recordConsent(triggered: boolean, _requestId: string, _reason?: string): void {
     this.consentTriggers.push(triggered);
   }
 
   recordRecommendationVsExecution(
     recommendedSM: boolean,
     actualMode: OrchestrationMode,
-    requestId: string,
+    _requestId: string,
   ): void {
     this.recommendationVsExecution.push({ recommendedSM, actualMode });
   }
 
   getMetricsSummary() {
-    const total = Array.from(this.modeCounts.values()).reduce((a, b) => a + b, 0);
     const modeDistribution: Record<OrchestrationMode, number> = {
       LEGACY: this.modeCounts.get('LEGACY') || 0,
       CLAUDE_DYNAMIC: this.modeCounts.get('CLAUDE_DYNAMIC') || 0,

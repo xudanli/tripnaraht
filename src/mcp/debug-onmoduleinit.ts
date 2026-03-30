@@ -14,9 +14,6 @@ process.env.ALLOW_NO_DATABASE = 'true';
 // 启用详细日志
 process.env.LOG_LEVEL = 'error,warn,log,debug,verbose';
 
-// 拦截所有 OnModuleInit 调用
-const originalOnModuleInit = Symbol('originalOnModuleInit');
-
 async function debugOnModuleInit() {
   console.error('🔍 开始调试 OnModuleInit 钩子...\n');
 
@@ -89,7 +86,7 @@ async function debugOnModuleInit() {
     });
     
     try {
-      const app = await Promise.race([createContextPromise, timeoutPromise]);
+      const _app = await Promise.race([createContextPromise, timeoutPromise]);
       clearInterval(progressInterval);
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       console.error(`✅ 应用上下文创建成功（耗时: ${elapsed}秒）\n`);

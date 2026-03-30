@@ -13,7 +13,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
 import { ProbabilisticWorldModelService } from '../probabilistic/probabilistic-world-model.service';
 import { ProbabilisticWorldModelContext, ProbabilisticWeather } from '../probabilistic/probabilistic-world-model.interface';
-import { GaussianDistribution, BetaDistribution, createGaussian, createBeta } from '../probabilistic/distribution.interface';
+import { GaussianDistribution, createGaussian } from '../probabilistic/distribution.interface';
 import {
   IRealtimeWorldStateService,
   WorldObservation,
@@ -81,7 +81,7 @@ export class RealtimeWorldStateService implements IRealtimeWorldStateService, On
 
   onModuleDestroy(): void {
     // 清理所有订阅
-    for (const [id, subscription] of this.subscriptions) {
+    for (const [, subscription] of this.subscriptions) {
       if (subscription.intervalId) {
         clearInterval(subscription.intervalId);
       }
@@ -537,7 +537,7 @@ export class RealtimeWorldStateService implements IRealtimeWorldStateService, On
   private updateHazardsWithObservations(
     hazards: ProbabilisticWorldModelContext['physical']['hazards'],
     observations: HazardObservation[],
-    config: BayesianUpdateConfig,
+    _config: BayesianUpdateConfig,
   ): void {
     for (const obs of observations) {
       const hazard = hazards.find(h => h.type === obs.data.hazardType);

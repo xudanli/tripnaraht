@@ -6,8 +6,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ContextLearnSkill, ContextLearnInput } from './context-learn.skill';
 import { ContextLearningService } from '../../agent/context-engine/services/context-learning.service';
-import { ContextPackage } from '../../agent/context-engine/types/context-package.types';
-
 describe('ContextLearnSkill', () => {
   let skill: ContextLearnSkill;
   let contextLearningService: jest.Mocked<ContextLearningService>;
@@ -116,7 +114,7 @@ describe('ContextLearnSkill', () => {
         agent: 'PlanningWorkbench',
       };
 
-      const result = await skill.execute(input);
+      await skill.execute(input);
 
       expect(contextLearningService.learn).toHaveBeenCalled();
       const learnCall = contextLearningService.learn.mock.calls[0][0];
@@ -147,7 +145,7 @@ describe('ContextLearnSkill', () => {
         agent: 'PlanningWorkbench',
       };
 
-      const result = await skill.execute(input);
+      await skill.execute(input);
 
       expect(contextLearningService.learn).toHaveBeenCalled();
       const learnCall = contextLearningService.learn.mock.calls[0][0];
@@ -180,7 +178,7 @@ describe('ContextLearnSkill', () => {
         agent: 'PlanningWorkbench',
       };
 
-      const result = await skill.execute(input);
+      await skill.execute(input);
 
       expect(contextLearningService.learn).toHaveBeenCalled();
       const learnCall = contextLearningService.learn.mock.calls[0][0];

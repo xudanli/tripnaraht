@@ -7,8 +7,7 @@
 
 import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest, PlanningWorkbenchResponse } from './services/planning-workbench-agent.service';
-import { PlanContext } from '../skills/plan/shared/plan-state.types';
+import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest } from './services/planning-workbench-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -20,9 +19,8 @@ import { DataSourceRouterService } from '../data-contracts/services/data-source-
 import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
 import { RoadStatusQuery } from '../data-contracts/interfaces/road-status.interface';
 import { PlacesService } from '../places/places.service';
-import { Prisma } from '@prisma/client';
-import { EvidenceFetchTaskService, EvidenceFetchTaskStatus } from '../trips/services/evidence-fetch-task.service';
-import { PlanningWorkbenchTaskService, PlanningWorkbenchTaskStatus } from './services/planning-workbench-task.service';
+import { EvidenceFetchTaskService } from '../trips/services/evidence-fetch-task.service';
+import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
 import { TripSuggestionsService } from '../trips/services/trip-suggestions.service';
 
 @ApiTags('planning-workbench')
@@ -1688,15 +1686,15 @@ export class PlanningWorkbenchController {
    */
   private async executeFetchEvidenceAsync(
     taskId: string,
-    tripId: string,
-    placeMap: Map<number, any>,
-    targetPlaceIds: number[] | null,
-    requestedTypes: string[],
-    shouldFetchWeather: boolean,
-    shouldFetchRoadClosure: boolean,
-    shouldFetchOpeningHours: boolean,
-    shouldForceRefresh: boolean,
-    locationMap: Map<number, { lat: number; lng: number }>,
+    _tripId: string,
+    _placeMap: Map<number, any>,
+    _targetPlaceIds: number[] | null,
+    _requestedTypes: string[],
+    _shouldFetchWeather: boolean,
+    _shouldFetchRoadClosure: boolean,
+    _shouldFetchOpeningHours: boolean,
+    _shouldForceRefresh: boolean,
+    _locationMap: Map<number, { lat: number; lng: number }>,
   ): Promise<void> {
     // 注意：由于代码结构限制，这里只是占位符
     // 完整的异步实现需要将fetchEvidenceForTrip的处理逻辑提取为独立方法

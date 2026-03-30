@@ -89,7 +89,7 @@ export class TripFeedbackService {
     // 3. 分析最累/最闲的天
     if (feedback.mostTiredDay) {
       // 检查该天的决策日志
-      const dayLogs = decisionLogs.filter(log => {
+      const dayLogs = decisionLogs.filter(_log => {
         // TODO: 从日志中提取 dayIndex
         return true; // 简化处理
       });
@@ -211,7 +211,7 @@ export class TripFeedbackService {
   /**
    * 检测高疲劳天数
    */
-  private detectHighFatigueDays(decisionLogs: DecisionLogEntry[]): number[] {
+  private detectHighFatigueDays(_decisionLogs: DecisionLogEntry[]): number[] {
     // TODO: 从决策日志中提取疲劳指数
     // 简化处理：返回空数组
     return [];

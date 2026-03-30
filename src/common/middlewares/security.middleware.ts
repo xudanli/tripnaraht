@@ -1,5 +1,5 @@
 // src/common/middlewares/security.middleware.ts
-import { Injectable, NestMiddleware, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger, HttpStatus } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 interface SecurityEvent {

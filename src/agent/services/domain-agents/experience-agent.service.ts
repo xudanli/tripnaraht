@@ -106,10 +106,11 @@ export class ExperienceAgentService implements ExperienceAgent {
   }> {
     const evidence: EvidenceRef[] = [];
     const opts: Array<{ type: 'ADD_BUFFER' | 'REMOVE_ITEM' | 'REORDER' | 'SPLIT_DAY' | 'ADD_REST'; target: string; reason: string; impact: { pace_improvement: string; experience_impact: string; tradeoff: string } }> = [];
-    let itemCount = 0, days = itinerary.days?.length || 1, driveKm = 0;
+    let itemCount = 0, driveKm = 0;
+    const days = itinerary.days?.length || 1;
     if (itinerary.days) for (const d of itinerary.days) { itemCount += d.items?.length || 0; driveKm += this.calculateDayDriveDistance(d); }
     const avgItems = itemCount / days, avgDrive = driveKm / days;
-    let pace: 'TOO_SLOW' | 'RELAXED' | 'BALANCED' | 'BRISK' | 'TOO_FAST' = avgItems > 6 || avgDrive > 300 ? 'TOO_FAST' : avgItems > 4 || avgDrive > 200 ? 'BRISK' : avgItems >= 2 && avgDrive >= 50 ? 'BALANCED' : avgItems >= 1 ? 'RELAXED' : 'TOO_SLOW';
+    const pace: 'TOO_SLOW' | 'RELAXED' | 'BALANCED' | 'BRISK' | 'TOO_FAST' = avgItems > 6 || avgDrive > 300 ? 'TOO_FAST' : avgItems > 4 || avgDrive > 200 ? 'BRISK' : avgItems >= 2 && avgDrive >= 50 ? 'BALANCED' : avgItems >= 1 ? 'RELAXED' : 'TOO_SLOW';
     if (pace === 'TOO_FAST' && preferences.pace_priority !== 'FAST') opts.push({ type: 'ADD_REST', target: 'Day 2-3', reason: 'High density', impact: { pace_improvement: 'BRISK to BALANCED', experience_impact: 'More time per spot', tradeoff: 'Skip 1-2 items' } });
     evidence.push({ evidence_id: 'pace_' + Date.now(), source: 'ExperienceAgent.optimizePace', timestamp: new Date().toISOString(), data: { itemCount, days, pace } });
     return { current_pace: pace, optimizations: opts, optimal_pace_template: { morning: preferences.pace_priority === 'FAST' ? 'FAST' : 'MODERATE', afternoon: preferences.pace_priority === 'SLOW' ? 'SLOW' : 'MODERATE', evening: 'SLOW', rest_periods: ['12:00-13:00 Lunch', '15:00-15:30 Break'] }, evidence, data_quality: this.createDataQuality({ sourceType: 'ESTIMATED', confidence: 0.7, coverage: 1.0 }) };

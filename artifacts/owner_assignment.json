@@ -1,0 +1,39 @@
+{
+  "schema": "owner-assignment/v1",
+  "boardId": "MODULE_STATUS_BOARD_V2",
+  "timestamp": "2026-04-04T00:00:00Z",
+  "verdict": "PASS",
+  "policy": "ORG_DEBT_OWNER_ASSIGNMENT — owner field must not be PENDING; role-based ASSIGNED is acceptable until PM records legal names in MODULE_STATUS_BOARD.md",
+  "modules": [
+    {
+      "id": "agent_orchestrator",
+      "role": "BE（主）",
+      "accountableOwner": "BE（主责）",
+      "status": "ASSIGNED"
+    },
+    {
+      "id": "decision_kernel",
+      "role": "Decision Kernel Owner（主）",
+      "accountableOwner": "DK（主责）",
+      "status": "ASSIGNED"
+    },
+    {
+      "id": "trips_decision",
+      "role": "Trips Decision Owner（主）",
+      "accountableOwner": "TD（主责）",
+      "status": "ASSIGNED"
+    },
+    {
+      "id": "eval",
+      "role": "EVAL（协）",
+      "accountableOwner": "EVAL（协责）",
+      "status": "ASSIGNED"
+    },
+    {
+      "id": "sre",
+      "role": "SRE（主/协）",
+      "accountableOwner": "SRE（主责）",
+      "status": "ASSIGNED"
+    }
+  ]
+}

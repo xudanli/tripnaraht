@@ -780,7 +780,7 @@ ${userPrompt}`;
     }
 
     // 1. 如果提供了 tripId，优先从当前行程获取POI
-    let tripPoisByDay: Map<number, {
+    const tripPoisByDay: Map<number, {
       accommodation?: SkeletonPoi;
       restaurants: Array<{ meal: 'breakfast' | 'lunch' | 'dinner'; poi: SkeletonPoi }>;
       attractions: SkeletonPoi[];

@@ -184,8 +184,6 @@ function formatConditionForDisplay(condition: Condition | undefined, lang: 'zh' 
     return lang === 'zh' ? '无条件（总是触发）' : 'No condition (always trigger)';
   }
 
-  const parts: string[] = [];
-
   // 处理 all 条件
   if (condition.all && condition.all.length > 0) {
     const allParts = condition.all.map(c => formatConditionForDisplay(c, lang));

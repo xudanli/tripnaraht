@@ -3,22 +3,15 @@
 import {
   ModelType,
   BaseModel,
-  TrainingStatus,
   TrainingType,
   SEVLevel,
   RiskCategory,
   RiskHandleAction,
-  ConstraintType,
-  ConstraintSeverity,
   UserActionType,
   DecisionType,
   EvidenceType,
   Language,
-  Season,
-  Executability,
-  RiskType,
 } from '../interfaces/enums.interface';
-import { ModelConfig, TrainingConfig } from '../interfaces/training-platform.interface';
 
 /**
  * 创建训练任务请求 DTO

@@ -431,7 +431,7 @@ export class ChainOfWorkStorageService {
   async batchOperation(
     action: string,
     draftIds: string[],
-    params?: any,
+    _params?: any,
   ): Promise<{
     success_count: number;
     failed_count: number;

@@ -3,8 +3,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CollaborationMode,
-  ConflictType,
-  ConflictSeverity,
   Conflict,
   DifferenceExplanation,
   System1CollaborationResult,
@@ -116,7 +114,7 @@ export class SystemCollaborationService {
 
     // 启动System 2（后台计算）
     const system2StartTime = Date.now();
-    const system2Promise = this.executeSystem2(request, config)
+    void this.executeSystem2(request, config)
       .then(result => {
         system2Result = result;
         this.logger.debug(`System 2 completed in ${result.executionTime}ms`);
@@ -350,7 +348,6 @@ export class SystemCollaborationService {
 
     try {
       let system2State: AgentState | undefined;
-      let system2Result: any;
 
       // 优先使用DAG Orchestrator（Plan-and-Execute Agent）
       // 使用类属性访问
@@ -464,7 +461,7 @@ export class SystemCollaborationService {
   private async detectConflicts(
     system1Result: System1CollaborationResult,
     system2Result: System2CollaborationResult,
-    config: CollaborationConfig
+    _config: CollaborationConfig
   ): Promise<{ conflicts: Conflict[]; differences: DifferenceExplanation[] }> {
     const conflicts: Conflict[] = [];
     const differences: DifferenceExplanation[] = [];
@@ -537,7 +534,7 @@ export class SystemCollaborationService {
     system1Result: System1CollaborationResult | undefined,
     system2Result: System2CollaborationResult | undefined,
     conflicts: Conflict[],
-    config: CollaborationConfig
+    _config: CollaborationConfig
   ): CollaborationResult['finalRecommendation'] {
     const criticalConflicts = conflicts.filter(c => c.severity === 'CRITICAL' || c.severity === 'HIGH');
 

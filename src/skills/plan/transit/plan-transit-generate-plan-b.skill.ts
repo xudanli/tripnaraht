@@ -116,7 +116,7 @@ ${userPrompt}`;
     }
   }
 
-  private buildPrompt(segment: TransferSegment, context?: any): string {
+  private buildPrompt(segment: TransferSegment, _context?: any): string {
     const parts: string[] = [];
     
     parts.push(`## 高风险段信息`);

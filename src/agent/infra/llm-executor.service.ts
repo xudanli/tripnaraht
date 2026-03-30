@@ -17,7 +17,6 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { TokenStatsService } from '../services/token-stats.service';
-import { extractTokenUsage } from '../../llm/utils/token-extractor.util';
 import { SubAgentType, OrchestrationStep } from '../interfaces/trip-plan.interface';
 
 // ============== 类型定义 ==============

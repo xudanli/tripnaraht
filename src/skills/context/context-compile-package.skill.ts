@@ -8,8 +8,8 @@
  * 内部协调调用：context-build / compress / evaluate / tools-select / plan-select-slices
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Skill, SkillOutput } from '../interfaces/skill.interface';
 import { BaseSkillInput } from '../interfaces/base-skill-input.interface';
 import { ContextBuildSkill } from './context-build.skill';
 import { ContextCompressSkill } from './context-compress.skill';

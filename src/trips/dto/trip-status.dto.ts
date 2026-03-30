@@ -1,6 +1,4 @@
 // src/trips/dto/trip-status.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-
 /**
  * 行程状态枚举
  * 

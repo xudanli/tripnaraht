@@ -12,7 +12,6 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ContextEngineerService } from '../services/context-engineer.service';
-import { ContextMetricsService } from '../services/context-metrics.service';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../../skills/services/skills-registry.token';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -21,7 +20,6 @@ import { ContextPackageOptions, ContextBlock } from '../types/context-package.ty
 
 describe('Context Engineer 验收测试', () => {
   let contextEngineer: ContextEngineerService;
-  let metricsService: ContextMetricsService;
   let module: TestingModule;
   let mockSkillsRegistry: jest.Mocked<SkillsRegistryService>;
   let mockPrisma: jest.Mocked<PrismaService>;
@@ -159,7 +157,6 @@ describe('Context Engineer 验收测试', () => {
     module = await Test.createTestingModule({
       providers: [
         ContextEngineerService,
-        ContextMetricsService,
         {
           provide: 'PrismaService',
           useValue: mockPrisma,
@@ -179,7 +176,6 @@ describe('Context Engineer 验收测试', () => {
     }).compile();
 
     contextEngineer = module.get<ContextEngineerService>(ContextEngineerService);
-    metricsService = module.get<ContextMetricsService>(ContextMetricsService);
   });
 
   afterAll(async () => {

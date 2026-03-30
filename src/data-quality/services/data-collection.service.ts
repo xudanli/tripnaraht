@@ -205,7 +205,7 @@ export class DataCollectionService {
   /**
    * 获取数据源适配器
    */
-  private getAdapter(source: string): DataSourceAdapter {
+  private getAdapter(_source: string): DataSourceAdapter {
     // 简化版：返回基础适配器
     // 实际应该根据source类型返回不同的适配器
     return new PhysicalRealityFileAdapter(this.prisma);
@@ -282,7 +282,7 @@ interface DataSourceAdapter {
 class PhysicalRealityFileAdapter implements DataSourceAdapter {
   constructor(private readonly prisma: PrismaService) {}
 
-  async collect(dataSource: string, dataType: string, config: CollectionConfig): Promise<any> {
+  async collect(dataSource: string, dataType: string, _config: CollectionConfig): Promise<any> {
     // 简化版：从文件系统读取数据
     // 实际应该从实际的数据源（API、文件等）读取
     const fs = require('fs');

@@ -17,12 +17,11 @@ import {
   HttpStatus,
   Logger,
   NotFoundException,
-  Optional,
   Delete,
   Put,
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { IsOptional, IsString, IsObject, ValidateNested, IsArray, IsNumber, IsBoolean, Allow } from 'class-validator';
+import { IsOptional, IsString, ValidateNested, IsArray, IsNumber, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   ApiTags,
@@ -60,27 +59,15 @@ import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags
 import { CapabilityPackChecklistService, AddFromCapabilityPackRequest } from './services/capability-pack-checklist.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
 import { CoverageMapService } from './services/coverage-map.service';
-import {
-  UpdateChecklistStatusDto,
-  ChecklistStatusResponseDto,
-  GetChecklistStatusResponseDto,
-} from './dto/checklist-status.dto';
+import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
 import {
   MarkNotApplicableDto,
-  MarkNotApplicableResponseDto,
   AddToLaterDto,
-  AddToLaterResponseDto,
-  GetNotApplicableResponseDto,
-  GetLaterResponseDto,
 } from './dto/finding-mark.dto';
 import {
   GeneratePackingListDto,
-  GeneratePackingListResponseDto,
-  GetPackingListResponseDto,
   UpdatePackingListItemDto,
-  UpdatePackingListItemResponseDto,
 } from './dto/packing-list.dto';
-import { GetSolutionsResponseDto } from './dto/solution.dto';
 import { Param as ParamDecorator } from '@nestjs/common';
 import { TripConflictsService } from '../services/trip-conflicts.service';
 import { ConflictType } from '../dto/trip-conflicts.dto';
@@ -3002,40 +2989,7 @@ export class ReadinessController {
         this.logger.log(`行程 ${tripId} 回答规则 ${ruleId} 的问题: ${JSON.stringify(body.answers)}`);
       }
 
-      // 6. 重新评估准备度（使用更新后的规则）
-      // 注意：这里我们需要构建一个临时的规则，使用更新后的 Action
-      const updatedRule: typeof rule = {
-        ...rule,
-        then: decisionResult.updatedAction,
-      };
-
-      // 构建 TripContext（简化版，实际应该从 trip 数据构建）
-      const tripContext: TripContext = {
-        traveler: {
-          nationality: undefined,
-          residencyCountry: undefined,
-          tags: [],
-        },
-        trip: {
-          startDate: undefined,
-          endDate: undefined,
-        },
-        itinerary: {
-          countries: [],
-          activities: [],
-          season: undefined,
-        },
-      };
-
-      // 重新加载 pack 并替换规则
-      const packWithUpdatedRule = {
-        ...pack,
-        rules: pack.rules.map(r => (r.id === ruleId ? updatedRule : r)),
-      };
-
-      // 使用 ReadinessChecker 重新评估（这里简化处理，实际应该调用完整的检查流程）
-      // 注意：这里我们只返回更新后的 finding，不重新执行完整的检查
-      // 完整的重新检查应该在 GATE_EVAL 阶段进行
+      // 6. 完整重新评估准备在 GATE_EVAL 阶段进行；此处仅返回更新后的 finding
 
       // 7. 将 Action 转换为 ReadinessFindingItem
       const findingItem: ReadinessFindingItem = {

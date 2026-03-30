@@ -146,7 +146,7 @@ export class AgentStateService {
   /**
    * 清理过期状态（可选，用于内存管理）
    */
-  cleanup(maxAge: number = 3600000): void {
+  cleanup(_maxAge: number = 3600000): void {
     // 实现清理逻辑（如果需要）
     // 这里可以添加基于时间戳的清理
   }

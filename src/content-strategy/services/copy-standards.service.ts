@@ -243,7 +243,7 @@ export class CopyStandardsService {
    */
   private generateAlternatives(
     route: RouteDirectionData,
-    userContext: UserContext,
+    _userContext: UserContext,
   ): string[] {
     // 简化实现：基于路线特征生成替代建议
     const alternatives: string[] = [];
@@ -285,7 +285,7 @@ export class CopyStandardsService {
    */
   private identifyPotentialChallenges(
     route: RouteDirectionData,
-    userContext: UserContext,
+    _userContext: UserContext,
   ): string[] {
     const challenges: string[] = [];
 
@@ -445,7 +445,7 @@ export class CopyStandardsService {
   private inferMeaning(
     title: string,
     value: string | number,
-    confidence: 'HIGH' | 'MEDIUM' | 'LOW',
+    _confidence: 'HIGH' | 'MEDIUM' | 'LOW',
   ): string {
     // 简化实现：基于标题和值推断含义
     if (typeof value === 'number') {

@@ -22,7 +22,7 @@ export interface ParallelConfig {
   enableLoadBalancing: boolean;
 }
 
-export interface SamplingTask<TInput, TOutput> {
+export interface SamplingTask<TInput, _TOutput> {
   id: string;
   input: TInput;
   priority?: number;

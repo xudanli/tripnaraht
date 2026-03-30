@@ -191,7 +191,7 @@ ${userPrompt}`;
   /**
    * 获取默认预算拆分（当 LLM 调用失败时使用）
    */
-  private getDefaultBudgetBreakdown(planState: PlanState, destination: any): PlanBudgetEstimateBaselineOutput {
+  private getDefaultBudgetBreakdown(planState: PlanState, _destination: any): PlanBudgetEstimateBaselineOutput {
     const days = planState.constraints.time.days;
     const totalBudget = planState.constraints.budget?.total || 20000; // 默认 2 万
     

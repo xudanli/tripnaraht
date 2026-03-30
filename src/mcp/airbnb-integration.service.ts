@@ -628,7 +628,7 @@ export class AirbnbIntegrationService {
   async validateAccommodationInCorridor(
     accommodationLocation: { lat: number; lng: number },
     routeCorridorGeom: any,
-    bufferMeters: number = 5000,
+    _bufferMeters: number = 5000,
   ): Promise<{
     valid: boolean;
     distanceToCorridor?: number;

@@ -178,7 +178,6 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
   private async mapToRoadStatus(data: any, query: RoadStatusQuery): Promise<RoadStatus> {
     let isOpen = true;
     let riskLevel: 0 | 1 | 2 | 3 = 0;
-    let reason: string | undefined;
     const reasons: string[] = [];
     const extendedStatus: ExtendedRoadStatus = {
       isOpen: true,
@@ -305,7 +304,7 @@ export class IcelandRoadStatusAdapter extends BaseAdapter implements RoadStatusA
   /**
    * 获取河流渡口信息
    */
-  private async getRiverCrossingInfo(query: RoadStatusQuery): Promise<RiverCrossingInfo | null> {
+  private async getRiverCrossingInfo(_query: RoadStatusQuery): Promise<RiverCrossingInfo | null> {
     // 结合 DEM 高程和 OSM 水系图层
     // 这里简化实现，实际应该查询数据库或调用地理服务
     
