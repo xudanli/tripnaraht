@@ -68,8 +68,8 @@ jobs:
       - name: Check scan result
         if: env.SCAN_FAILED == 'true'
         run: |
-          echo "❌ Security scan failed: High or critical vulnerabilities detected"
-          echo "Please review the security report and fix the vulnerabilities"
+          echo "❌ Security scan failed: High or critical vulnerabilities detected (see scripts/security-scan.sh)"
+          echo "Please review the security report artifact and fix the vulnerabilities"
           exit 1
 
       - name: Comment PR with security results

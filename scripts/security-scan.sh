@@ -14,9 +14,9 @@
 # - npm run security:scan
 # - chmod +x scripts/security-scan.sh && ./scripts/security-scan.sh
 #
-# 退出码：
-# - 0: 无高危/严重漏洞
-# - 1: 发现高危/严重漏洞
+# 退出码（本地始终 0；CI 且 CI=true 时）：
+# - 0: 无 high/critical（moderate/low 不失败）
+# - 1: 存在 high 或 critical
 
 set -e
 
@@ -77,21 +77,26 @@ TOTAL=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.total // 0')
 # 输出摘要到终端
 cat "$SUMMARY_FILE"
 
-# 仅对严重漏洞失败；高危漏洞（如 xlsx、ip 等）暂无修复版本，仅警告
-if [ "$CRITICAL" -gt 0 ]; then
+# CI：存在 high 或 critical 即失败；本地：仅警告并以 0 退出（不阻断开发）
+if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
   echo ""
-  echo "⚠️  发现严重漏洞!"
+  if [ "$CRITICAL" -gt 0 ] && [ "$HIGH" -gt 0 ]; then
+    echo "⚠️  发现严重漏洞 ($CRITICAL) 与高危漏洞 ($HIGH)"
+  elif [ "$CRITICAL" -gt 0 ]; then
+    echo "⚠️  发现严重漏洞 ($CRITICAL)"
+  else
+    echo "⚠️  发现高危漏洞 ($HIGH)"
+  fi
   echo ""
   echo "详细信息:"
   echo "----------------------------------------"
 
-  # 提取高危和严重漏洞
   cat "$REPORT_FILE" | jq -r '
     .vulnerabilities |
     to_entries[] |
     select(.value.severity == "high" or .value.severity == "critical") |
     "\(.key) (\(.value.severity)): \(.value.via | if type == "array" then map(if type == "string" then . else .title end) | join(", ") else . end)"
-  ' | head -20
+  ' | head -40
 
   echo "----------------------------------------"
   echo ""
@@ -102,37 +107,37 @@ if [ "$CRITICAL" -gt 0 ]; then
   echo "  4. 查看详细报告: cat $REPORT_FILE"
   echo ""
 
-  # 添加到摘要
+  if [ "$CI" = "true" ]; then
+    {
+      echo ""
+      echo "🚨 状态: FAILED - CI 要求清零 high/critical"
+      echo ""
+      echo "修复建议:"
+      echo "  npm audit fix"
+    } >> "$SUMMARY_FILE"
+    echo -e "${RED}❌ 安全扫描失败 (CI): Critical=$CRITICAL High=$HIGH${NC}"
+    echo ""
+    echo "详细报告已保存:"
+    echo "  - JSON 报告: $REPORT_FILE"
+    echo "  - 摘要报告: $SUMMARY_FILE"
+    echo ""
+    echo "CI=true detected, exiting with error code 1"
+    exit 1
+  fi
+
   {
     echo ""
-    echo "🚨 状态: FAILED - 发现高危或严重漏洞"
+    echo "⚠️  状态: WARNING - 存在高危或严重漏洞（本地不阻断）"
     echo ""
-    echo "修复建议:"
-    echo "  npm audit fix"
+    echo "修复建议: npm audit fix"
   } >> "$SUMMARY_FILE"
-
-  echo -e "${RED}❌ 安全扫描失败: 发现 $CRITICAL 个严重漏洞${NC}"
+  echo -e "${YELLOW}⚠️  警告: 本地不阻止继续；推送到 CI 时 high/critical 会导致流水线失败${NC}"
   echo ""
   echo "详细报告已保存:"
   echo "  - JSON 报告: $REPORT_FILE"
   echo "  - 摘要报告: $SUMMARY_FILE"
   echo ""
-
-  # 在 CI 环境中失败
-  if [ "$CI" = "true" ]; then
-    echo "CI=true detected, exiting with error code 1"
-    exit 1
-  else
-    echo "⚠️  警告: 本地开发环境允许继续 (在 CI 中会失败)"
-    exit 0
-  fi
-fi
-
-# 如果有高危漏洞，警告但不失败（部分包如 xlsx、ip 暂无修复版本）
-if [ "$HIGH" -gt 0 ]; then
-  echo ""
-  echo -e "${YELLOW}⚠️  发现 $HIGH 个高危漏洞 (不阻止部署，建议后续修复)${NC}"
-  echo ""
+  exit 0
 fi
 
 # 如果有中危或低危漏洞,警告但不失败
