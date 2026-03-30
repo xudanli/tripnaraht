@@ -266,6 +266,7 @@
     "typescript": "^5"
   },
   "overrides": {
+    "handlebars": "^4.7.9",
     "fast-xml-parser": "^5.3.7",
     "brace-expansion": "^2.0.2",
     "@isaacs/brace-expansion": "^2.0.2",
