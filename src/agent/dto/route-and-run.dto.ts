@@ -117,6 +117,80 @@ export class AgentOptionsDto {
   @IsBoolean()
   use_state_machine_orchestration?: boolean;
 
+  @ApiPropertyOptional({
+    description: 'Fallback 策略提示（POI 缺失时优先使用）',
+    example: 'CLASSIC',
+    enum: ['CITY_WALK', 'CLASSIC', 'HOT_SPOTS', 'BALANCED'],
+  })
+  @IsOptional()
+  @IsEnum(['CITY_WALK', 'CLASSIC', 'HOT_SPOTS', 'BALANCED'])
+  fallback_strategy?: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED';
+
+  @ApiPropertyOptional({
+    description: '是否返回 fallback 的候选打分明细（调试用途）',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  show_debug_scores?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否返回 fallback 通勤矩阵（调试用途）',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  show_commute_matrix?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否强制要求命中 POI 数据（true 时 POI 为空直接澄清，不走 fallback）',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  require_poi_data?: boolean;
+
+  @ApiPropertyOptional({
+    description: '允许带缺口继续执行（先出草案，再补澄清）',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  allow_partial?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'POI 策略：strict=必须命中，fallback=可降级，explore=自动探索',
+    example: 'fallback',
+    enum: ['strict', 'fallback', 'explore'],
+    default: 'fallback',
+  })
+  @IsOptional()
+  @IsEnum(['strict', 'fallback', 'explore'])
+  poi_policy?: 'strict' | 'fallback' | 'explore';
+
+  @ApiPropertyOptional({
+    description: 'POI 数据来源偏好',
+    example: 'vector',
+    enum: ['vector', 'google', 'foursquare', 'auto'],
+    default: 'auto',
+  })
+  @IsOptional()
+  @IsEnum(['vector', 'google', 'foursquare', 'auto'])
+  poi_source?: 'vector' | 'google' | 'foursquare' | 'auto';
+
+  @ApiPropertyOptional({
+    description: '是否在结果中返回 POI trace 调试信息',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  show_poi_trace?: boolean;
+
   @ApiPropertyOptional({ 
     description: '入口来源标识（用于权限控制和操作限制）',
     example: 'trip_detail_page',
@@ -415,6 +489,94 @@ export class RouteAndRunResponseDto {
       missingServices?: string[];
       solutions?: string[];
       errorType?: ErrorType;
+      fallbackPlan?: {
+        type?: string;
+        strategy?: string;
+        name?: string;
+        timeline?: Array<{
+          time?: string;
+          action?: string;
+          type?: string;
+        }>;
+        confidence?: number;
+        selected_pois?: string[];
+        plan_score?: number;
+        source_confidence?: number;
+        pacing_mode?: 'normal' | 'conservative';
+        buffer_minutes?: number;
+        debug_scores?: Array<{
+          slot: string;
+          desiredType: string;
+          poiName: string;
+          typeScore: number;
+          timeScore: number;
+          ratingScore: number;
+          affordabilityScore: number;
+          nameHintScore: number;
+          commuteDistanceKm?: number;
+          commuteMinutes?: number;
+          commutePenalty?: number;
+          timeWindowPenalty?: number;
+          totalScore: number;
+        }>;
+        commute_matrix?: {
+          mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+          from_start?: boolean;
+          nodes?: string[];
+          minutes?: number[][];
+        };
+      };
+      fallbackExplain?: {
+        summary?: string;
+        reasoning?: string[];
+        objective?: string;
+        planScore?: number;
+        dataSource?: string;
+        sourceConfidence?: number;
+        pacingMode?: 'normal' | 'conservative';
+      };
+      fallbackPlans?: Array<{
+        type?: string;
+        strategy?: string;
+        name?: string;
+        timeline?: Array<{
+          time?: string;
+          action?: string;
+          type?: string;
+        }>;
+        confidence?: number;
+      }>;
+      fallbackSelectedStrategy?: string;
+      fallbackTemplateVersion?: string;
+      fallbackPacingMode?: 'normal' | 'conservative';
+      poiTrace?: {
+        policy?: 'strict' | 'fallback' | 'explore';
+        sourceHint?: string;
+        provider?: string;
+        inputCount?: number;
+        selectedCount?: number;
+        debug_scores?: Array<{
+          slot?: string;
+          desiredType?: string;
+          poiName?: string;
+          typeScore?: number;
+          timeScore?: number;
+          ratingScore?: number;
+          affordabilityScore?: number;
+          nameHintScore?: number;
+          commuteDistanceKm?: number;
+          commuteMinutes?: number;
+          commutePenalty?: number;
+          timeWindowPenalty?: number;
+          totalScore?: number;
+        }>;
+        commute_matrix?: {
+          mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+          from_start?: boolean;
+          nodes?: string[];
+          minutes?: number[][];
+        };
+      };
     };
   };
 
@@ -476,6 +638,10 @@ export class RouteAndRunResponseDto {
     tokens_est: number;
     cost_est_usd: number;
     fallback_used: boolean;
+    fallback_template_version?: string;
+    fallback_data_source?: string;
+    fallback_source_confidence?: number;
+    fallback_pacing_mode?: 'normal' | 'conservative';
     /** P4: 每步骤耗时（step → ms），便于聚合分析 */
     step_latency_ms?: Record<string, number>;
     /** P4: 本请求 Gate 是否 BLOCK（0=未阻止，1=阻止），可聚合为 gate_block_rate */

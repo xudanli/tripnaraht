@@ -131,7 +131,20 @@ export class ResearchExecutorService implements IResearchExecutor {
     try {
       const skill = this.skillsRegistry.getSkill('poi.search');
       if (!skill) return;
-      const destQuery = typeof tripRequest.destination === 'string' ? tripRequest.destination : 'destination';
+      const destRaw = typeof tripRequest.destination === 'string' ? tripRequest.destination : 'destination';
+      const normalized = destRaw.trim().toLowerCase();
+      const ambiguousCityCountryMap: Record<string, string> = {
+        '东京': '日本',
+        tokyo: 'Japan',
+        '大阪': '日本',
+        osaka: 'Japan',
+        '京都': '日本',
+        kyoto: 'Japan',
+        '首尔': '韩国',
+        seoul: 'Korea',
+      };
+      const countryHint = ambiguousCityCountryMap[normalized];
+      const destQuery = countryHint ? `${destRaw} ${countryHint}` : destRaw;
       const result = await skill.execute({
         query: destQuery,
         limit: 10,

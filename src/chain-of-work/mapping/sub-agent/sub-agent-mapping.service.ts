@@ -21,6 +21,7 @@ export class SubAgentMappingService {
     'INTAKE': 'Planner',
     'STATE_UPDATE': 'Orchestrator',
     'RESEARCH': 'Planner', // RESEARCH 步骤通过 Domain Agents 调用 Skills
+    'POI_SELECTION': 'Planner',
     'GATE_EVAL': 'Gatekeeper',
     'CONTEXT_BUILD': 'Orchestrator',
     'PLAN_GEN': 'Planner',

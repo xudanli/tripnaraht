@@ -1,0 +1,25 @@
+{
+  "version": "v1.0.0",
+  "scheduling": {
+    "conservative_threshold": 0.7,
+    "buffer_minutes": 90
+  },
+  "cityOverrides": {
+    "tokyo": {
+      "CITY_WALK": {
+        "exploreAction": "步行探索东京核心街区（银座/浅草）"
+      },
+      "CLASSIC": {
+        "poiAction": "优先安排东京塔/浅草寺等代表性地标"
+      }
+    },
+    "东京": {
+      "CITY_WALK": {
+        "exploreAction": "步行探索东京核心街区（银座/浅草）"
+      },
+      "CLASSIC": {
+        "poiAction": "优先安排东京塔/浅草寺等代表性地标"
+      }
+    }
+  }
+}

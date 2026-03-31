@@ -81,6 +81,14 @@ export class VectorSearchService {
     return this.embeddingService?.getEmbeddingDimension() || 1536;
   }
 
+  private inferCountryCodeFromQuery(query: string): string | undefined {
+    const q = query.toLowerCase();
+    if (/日本|japan/.test(q)) return 'JP';
+    if (/韩国|korea|seoul/.test(q)) return 'KR';
+    if (/中国|china/.test(q)) return 'CN';
+    return undefined;
+  }
+
   /**
    * 检测数据库中 embedding 的实际维度
    * 用于确保查询向量维度与存储向量维度匹配
@@ -155,6 +163,7 @@ export class VectorSearchService {
     countryCode?: string
   ): Promise<HybridSearchResult[]> {
     this.logger.debug(`混合搜索: ${query}, limit: ${limit}`);
+    const effectiveCountryCode = countryCode || this.inferCountryCodeFromQuery(query);
 
     // 诊断信息：打印查询参数
     const { city, keywords } = this.extractKeywords(query);
@@ -189,7 +198,7 @@ export class VectorSearchService {
     
     if (embeddingCount === 0) {
       this.logger.warn('[hybridSearch] 数据库中没有 embedding 数据，直接使用关键词搜索');
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, countryCode);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, effectiveCountryCode);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
@@ -211,7 +220,7 @@ export class VectorSearchService {
     if (!this.embeddingService) {
       this.logger.warn('EmbeddingService 不可用，降级到纯关键词搜索');
       // 降级到关键词搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, countryCode);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, effectiveCountryCode);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -249,7 +258,7 @@ export class VectorSearchService {
         : `维度不匹配（查询=${queryEmbedding.length}维，数据库=${await this.detectDbEmbeddingDimension()}维）`;
       this.logger.warn(`${reason}，降级到纯关键词搜索`);
       // 直接使用关键词搜索，跳过向量搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, effectiveCity, limit, effectiveCountryCode);
       this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
       return keywordResults.map(r => ({
         id: r.id,
@@ -276,7 +285,8 @@ export class VectorSearchService {
       radius,
       category,
       effectiveCity, // 单城市时使用 city，多城市时为 null
-      limit * 2 // 召回更多结果用于混合
+      limit * 2, // 召回更多结果用于混合
+      effectiveCountryCode,
     );
     this.logger.debug(`[hybridSearch] 向量搜索结果数: ${vectorResults.length}`);
 
@@ -289,7 +299,8 @@ export class VectorSearchService {
       radius,
       category,
       effectiveCity, // 单城市时使用 city，多城市时为 null
-      limit * 2
+      limit * 2,
+      effectiveCountryCode,
     );
     this.logger.debug(`[hybridSearch] 关键词搜索结果数: ${keywordResults.length}`);
 
@@ -384,13 +395,15 @@ export class VectorSearchService {
     radius?: number,
     category?: string,
     city?: string | null,
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string,
   ): Promise<VectorSearchResult[]> {
     // 诊断信息：打印过滤条件
     const filterInfo = {
       locationFilter: lat && lng && radius ? `ST_DWithin(${lat}, ${lng}, ${radius}m)` : 'none',
       categoryFilter: category || 'none',
       cityFilter: city || 'none',
+      countryCodeFilter: countryCode || 'none',
       embeddingDimension: queryEmbedding.length,
       limit,
     };
@@ -406,6 +419,13 @@ export class VectorSearchService {
 
     const categoryFilter = category
       ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+      : Prisma.sql``;
+
+    const countryFilter = countryCode
+      ? Prisma.sql`AND (
+          "cityId" IN (SELECT id FROM "City" WHERE "countryCode" = ${countryCode})
+          OR metadata->>'countryCode' = ${countryCode}
+        )`
       : Prisma.sql``;
     
     // 城市过滤：如果 query 明确提到城市，先查询 City 表获取 cityId，然后用 cityId 过滤
@@ -494,6 +514,7 @@ export class VectorSearchService {
       FROM "Place"
       WHERE embedding IS NOT NULL
         ${categoryFilter}
+        ${countryFilter}
         ${cityFilter}
         ${districtFilter}
         ${locationFilter}
@@ -811,7 +832,10 @@ export class VectorSearchService {
 
     // 国家代码过滤
     const countryFilter = countryCode
-      ? Prisma.sql`AND metadata->>'countryCode' = ${countryCode}`
+      ? Prisma.sql`AND (
+          "cityId" IN (SELECT id FROM "City" WHERE "countryCode" = ${countryCode})
+          OR metadata->>'countryCode' = ${countryCode}
+        )`
       : Prisma.sql``;
 
     const distanceSelect = lat && lng

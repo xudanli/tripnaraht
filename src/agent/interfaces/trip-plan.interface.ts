@@ -302,6 +302,7 @@ export type OrchestrationStep =
   | 'INTAKE'           // 解析用户需求 (Planner)
   | 'STATE_UPDATE'     // Phase 2.3: Kernel 状态同步 (DSO 更新)
   | 'RESEARCH'         // 收集硬数据 (Domain Agents)
+  | 'POI_SELECTION'    // POI 选择与排序 (Planner)
   | 'GATE_EVAL'        // Should-Exist Gate (Gatekeeper/Abu)，含 CONSTRAINT_CHECK
   | 'CONTEXT_BUILD'    // Phase 2.3: 构建 Context Package (Kernel)
   | 'PLAN_GEN'         // 生成多方案 (Planner)
@@ -436,7 +437,7 @@ export interface OrchestratorState {
    * 对外四字结论（与 `GateResult` / Policy 的归约见 `docs/decision/VERDICT_GATE_POLICY_MAPPING.md`）。
    * 由 `deriveExternalVerdict`（`src/agent/utils/external-verdict.util.ts`）在 `route_and_run` 组装层写入。
    */
-  verdict?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY';
+  verdict?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY' | 'ALLOW_WITH_FALLBACK';
   
   // === 版本化字段（P0 改进：支持版本追踪和回滚）===
   plan_id?: string; // 计划 ID（用于版本管理）

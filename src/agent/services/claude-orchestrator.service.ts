@@ -79,6 +79,13 @@ import {
   identifyGapsFromRequest,
   isUnresolvedDestinationPlaceholder,
 } from '../utils/clarification-question-generator.util';
+import {
+  buildFallbackPlan,
+  buildFallbackPlans,
+  chooseFallbackStrategy,
+  fallbackPlanToItinerary,
+  getFallbackTemplateVersion,
+} from '../../decision/planner/fallback-planner';
 /**
  * Claude Orchestrator Service
  * 
@@ -2310,6 +2317,14 @@ ${JSON.stringify(routingDecision, null, 2)}
         // Context Orchestrator：打通 userId/tripId 供 buildContextForNode / UserTravelProfile 使用
         userId: request.user_id ?? undefined,
         tripId: request.trip_id ?? undefined,
+        fallback_strategy_hint: request.options?.fallback_strategy,
+        fallback_debug_scores: request.options?.show_debug_scores,
+        show_commute_matrix: request.options?.show_commute_matrix === true,
+        require_poi_data: request.options?.require_poi_data === true,
+        allow_partial: request.options?.allow_partial === true,
+        poi_policy: request.options?.poi_policy,
+        poi_source_hint: request.options?.poi_source,
+        show_poi_trace: request.options?.show_poi_trace === true,
       },
     };
 
@@ -2340,42 +2355,60 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
       decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
 
-      // 步骤 4: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
+      // 步骤 4: POI_SELECTION - 明确执行 POI 选择/排序，不直接从 RESEARCH 跳到 PLAN_GEN
+      const poiSelectionResult = await this.executePoiSelectionStep(state);
+      if (poiSelectionResult.allowWithFallback) {
+        this.logger.debug('[Claude Orchestrator] POI_SELECTION 无数据，触发 FALLBACK');
+        this.applyFallbackPlan(state);
+        state.current_step = 'DONE';
+        state.metadata.last_updated_at = new Date().toISOString();
+        state.metadata.total_duration_ms = Date.now() - startTime;
+        return this.buildSuccessResult(state, startTime, decisionState);
+      }
+      if (poiSelectionResult.needsClarification) {
+        this.logger.debug(
+          `[Claude Orchestrator] POI_SELECTION 无同国家候选，返回 NEED_MORE_INFO`,
+        );
+        return this.buildClarificationResult(state, startTime);
+      }
+
+      // 步骤 5: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
       decisionState = await this.executeGateEvalPhase(decisionState, state, request, context, llmProvider);
+      this.relaxGateForPartialIfEligible(state);
 
       // 如果 Gate 结果为 BLOCK，直接返回
       if (state.gate_result?.gate_result === 'BLOCK') {
         return this.buildBlockedResult(state, startTime, decisionState);
       }
 
-      // 步骤 5: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
+      // 步骤 6: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
       decisionState = await this.executeContextBuildStep(request, context, state, decisionState);
 
-      // 步骤 6: PLAN_GEN - KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
+      // 步骤 7: PLAN_GEN - KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
       decisionState = await this.executePlanGenPhase(decisionState, state, request, context, llmProvider);
 
-      // 步骤 7: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
+      // 步骤 8: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
       decisionState = await this.executeOptimizeStep(state, decisionState);
 
-      // 步骤 8: VERIFY - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
+      // 步骤 9: VERIFY - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
       decisionState = await this.executeVerifyPhase(decisionState, state, request, context, llmProvider);
       decisionState = this.syncConfidenceAfterVerify(state, decisionState) ?? decisionState;
 
-      // 步骤 9: REPAIR - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair（条件执行）
+      // 步骤 10: REPAIR - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair（条件执行）
       if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
         decisionState = await this.executeRepairPhase(decisionState, state, request, context, llmProvider) ?? decisionState;
       }
 
-      // 步骤 10: NARRATE - 产出用户可读解释（不得改硬字段）
+      // 步骤 11: NARRATE - 产出用户可读解释（不得改硬字段）
       await this.executeNarrateStep(request, context, state, llmProvider);
 
-      // 步骤 10.5: FEEDBACK - 专利反馈学习模块，记录决策日志（异步，不阻塞）
+      // 步骤 11.5: FEEDBACK - 专利反馈学习模块，记录决策日志（异步，不阻塞）
       decisionState = await this.executeFeedbackStep(state, decisionState) ?? decisionState;
 
-      // 步骤 11: HALLUCINATION_DETECTION - 防幻觉检测
+      // 步骤 12: HALLUCINATION_DETECTION - 防幻觉检测
       await this.executeHallucinationDetectionStep(request, context, state);
 
-      // 步骤 12: DONE
+      // 步骤 13: DONE
       state.current_step = 'DONE';
       state.metadata.last_updated_at = new Date().toISOString();
       state.metadata.total_duration_ms = Date.now() - startTime;
@@ -2430,6 +2463,17 @@ ${JSON.stringify(routingDecision, null, 2)}
 
   /** INTAKE 已标 HARD 缺口并生成澄清问题时，不得进入 RESEARCH（避免关键技能在占位目的地上报错） */
   private shouldReturnClarificationForHardGaps(state: OrchestratorState): boolean {
+    const allowPartial = state.metadata?.allow_partial === true;
+    if (allowPartial) {
+      const hasHardDestinationGap =
+        state.gaps?.some((g) => g.severity === 'HARD' && g.type === 'MISSING_DESTINATION') ??
+        false;
+      return !!(
+        hasHardDestinationGap &&
+        state.clarification_questions &&
+        state.clarification_questions.length > 0
+      );
+    }
     const hasHardGaps = state.gaps?.some((g) => g.severity === 'HARD');
     return !!(
       hasHardGaps &&
@@ -2467,6 +2511,10 @@ ${JSON.stringify(routingDecision, null, 2)}
       { pattern: /香港|hong\s*kong/i, value: '香港' },
       { pattern: /澳门|macau/i, value: '澳门' },
       { pattern: /台北|台湾|taiwan/i, value: '台北' },
+      { pattern: /东京|tokyo/i, value: '东京' },
+      { pattern: /大阪|osaka/i, value: '大阪' },
+      { pattern: /京都|kyoto/i, value: '京都' },
+      { pattern: /首尔|seoul/i, value: '首尔' },
     ];
     for (const { pattern, value } of domesticCityPatterns) {
       if (pattern.test(request.message)) {
@@ -2520,6 +2568,24 @@ ${JSON.stringify(routingDecision, null, 2)}
       }
     }
 
+    // 相对日期兜底（今天/明天/后天）
+    if (!start_date) {
+      const now = new Date();
+      const relativeDays =
+        /后天/.test(request.message)
+          ? 2
+          : /明天/.test(request.message)
+            ? 1
+            : /今天|今日/.test(request.message)
+              ? 0
+              : undefined;
+      if (relativeDays !== undefined) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + relativeDays);
+        start_date = d.toISOString().slice(0, 10);
+      }
+    }
+
     // 提取天数（改进的规则：匹配 "N天"、"N日"、"N晚" 等）
     const daysPatterns = [
       /(\d+)\s*天/,
@@ -2536,6 +2602,23 @@ ${JSON.stringify(routingDecision, null, 2)}
           days = extractedDays;
           break;
         }
+      }
+    }
+
+    // 中文天数兜底（如：一日/两日/三天）
+    if (!days) {
+      const zhDayPatterns: Array<{ pattern: RegExp; value: number }> = [
+        { pattern: /一日|一天/, value: 1 },
+        { pattern: /两日|两天|二日|二天/, value: 2 },
+        { pattern: /三日|三天/, value: 3 },
+        { pattern: /四日|四天/, value: 4 },
+        { pattern: /五日|五天/, value: 5 },
+        { pattern: /六日|六天/, value: 6 },
+        { pattern: /七日|七天/, value: 7 },
+      ];
+      const matched = zhDayPatterns.find((x) => x.pattern.test(request.message));
+      if (matched) {
+        days = matched.value;
       }
     }
 
@@ -2736,6 +2819,744 @@ ${JSON.stringify(routingDecision, null, 2)}
     return this.executePhaseViaKernel(decisionState, state, 'RESEARCH', () =>
       this.executeResearchStep(request, context, state, llmProvider),
     );
+  }
+
+  /**
+   * POI_SELECTION 阶段：对 RESEARCH 产出的 POI 进行显式筛选和排序。
+   * 目标：避免 RESEARCH 结果被直接原样送入 PLAN_GEN。
+   */
+  private async executePoiSelectionStep(
+    state: OrchestratorState,
+  ): Promise<{ needsClarification: boolean; allowWithFallback: boolean }> {
+    const stepStartTime = Date.now();
+    state.current_step = 'POI_SELECTION';
+
+    const rawPoiEvidence = state.research_data?.poi_evidence;
+    const asArray = Array.isArray(rawPoiEvidence)
+      ? rawPoiEvidence
+      : Array.isArray((rawPoiEvidence as any)?.pois)
+        ? (rawPoiEvidence as any).pois
+        : [];
+
+    const destinationRaw =
+      typeof state.trip_plan_request?.destination === 'string'
+        ? state.trip_plan_request.destination
+        : '';
+    const poiPolicy = this.resolvePoiPolicy(
+      state.metadata?.poi_policy,
+      state.metadata?.require_poi_data === true,
+    );
+    const requirePoiData = poiPolicy === 'strict';
+    const destinationCountry = this.inferCountryFromDestination(destinationRaw);
+    const destinationCity = this.normalizeText(destinationRaw);
+
+    const deduped = this.dedupePois(asArray);
+    const scoredRows = deduped
+      .filter((poi: any) =>
+        this.passesHardPoiGuards(poi, destinationCountry, destinationRaw),
+      )
+      .map((poi: any, idx: number) => {
+        const riskLevel = poi?.metadata?.risk_level;
+        const riskPenalty =
+          riskLevel === 'HIGH' ? 2 : riskLevel === 'MEDIUM' ? 1 : 0;
+        const hasOpeningHours = !!poi?.opening_hours;
+        const openingHoursBonus = hasOpeningHours ? 1 : 0;
+        const localityScore = this.poiLocalityScore(
+          poi,
+          destinationCountry,
+          destinationCity,
+        );
+        const dataCompletenessBonus =
+          poi?.address && poi?.name ? 0.5 : 0;
+        return {
+          poi,
+          idx,
+          localityScore,
+          openingHoursBonus,
+          dataCompletenessBonus,
+          riskPenalty,
+          score:
+            localityScore +
+            openingHoursBonus +
+            dataCompletenessBonus -
+            riskPenalty -
+            idx * 0.01,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    const startCoordinates = this.tryExtractStartCoordinates(
+      state.trip_plan_request?.origin,
+    );
+    const scored = this.selectClusteredPois(
+      scoredRows.map((x) => x.poi),
+      8,
+      startCoordinates,
+      destinationRaw,
+    );
+
+    if (state.metadata?.show_poi_trace) {
+      const selectedForTrace = scored
+        .slice(0, 4)
+        .map((x) => this.toPoiTraceNode(x));
+      state.metadata.poi_trace = {
+        policy: poiPolicy,
+        sourceHint: state.metadata?.poi_source_hint,
+        inputCount: asArray.length,
+        selectedCount: scored.length,
+        debug_scores: scoredRows.slice(0, 12).map((x: any) => ({
+          slot: `RANK_${x.idx + 1}`,
+          desiredType: String(x.poi?.category ?? x.poi?.type ?? 'poi'),
+          poiName: String(x.poi?.name ?? ''),
+          typeScore: 0,
+          timeScore: x.openingHoursBonus,
+          ratingScore: 0,
+          affordabilityScore: x.dataCompletenessBonus,
+          nameHintScore: 0,
+          commuteDistanceKm: undefined,
+          commuteMinutes: undefined,
+          commutePenalty: x.riskPenalty,
+          timeWindowPenalty: 0,
+          totalScore: Number((x.score ?? 0).toFixed(2)),
+        })),
+        commute_matrix:
+          state.metadata?.show_commute_matrix === true
+            ? this.buildPoiTraceCommuteMatrix(
+                selectedForTrace,
+                state.trip_plan_request?.mode as any,
+                startCoordinates,
+              )
+            : undefined,
+      };
+    }
+
+    const commuteBudgetMinutes = 240;
+    const estimatedCommuteMinutes = this.estimateNearestTotalCommuteMinutes(
+      scored.map((x) => this.toPoiTraceNode(x)),
+      state.trip_plan_request?.mode as any,
+      startCoordinates,
+    );
+    if (estimatedCommuteMinutes > commuteBudgetMinutes) {
+      const destinationExample = destinationRaw || '雷克雅未克';
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `估算单日通勤约 ${estimatedCommuteMinutes} 分钟，超过预算 ${commuteBudgetMinutes} 分钟，请补充更具体的城市/区域（例如：${destinationExample} 市区）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        {
+          id: 'destination_scope_refine',
+          question:
+            '当前目的地范围过大，单日通勤过长。请选择更聚焦的区域继续规划：',
+          type: 'single_choice',
+          options: [
+            `${destinationExample} 市区`,
+            `${destinationExample} 南部`,
+            `${destinationExample} 西部`,
+            '我来手动输入具体城市/区域',
+          ],
+          required: true,
+        } as any,
+      ];
+      if (state.metadata?.show_poi_trace) {
+        state.metadata.poi_trace = {
+          ...(state.metadata.poi_trace || {}),
+          commute_budget_minutes: commuteBudgetMinutes,
+          estimated_commute_minutes: estimatedCommuteMinutes,
+          over_budget: true,
+        };
+      }
+      return {
+        needsClarification: true,
+        allowWithFallback: false,
+      };
+    }
+
+    const minPoiRequired = 2;
+    if (scored.length > 0 && scored.length < minPoiRequired) {
+      const destinationExample = destinationRaw || '雷克雅未克';
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `当前可执行 POI 仅 ${scored.length} 个（至少需要 ${minPoiRequired} 个），请补充更具体的城市/区域（例如：${destinationExample} 市区）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        {
+          id: 'destination_scope_too_sparse',
+          question:
+            '当前目的地范围过大或过散，候选点不足以生成可执行单日行程。请选择更聚焦区域：',
+          type: 'single_choice',
+          options: [
+            `${destinationExample} 市区`,
+            `${destinationExample} 近郊`,
+            `${destinationExample} 南部`,
+            '我来手动输入具体城市/区域',
+          ],
+          required: true,
+        } as any,
+      ];
+      if (state.metadata?.show_poi_trace) {
+        state.metadata.poi_trace = {
+          ...(state.metadata.poi_trace || {}),
+          min_poi_required: minPoiRequired,
+          selected_too_sparse: true,
+        };
+      }
+      return {
+        needsClarification: true,
+        allowWithFallback: false,
+      };
+    }
+
+    if (destinationCountry && scored.length === 0) {
+      const destinationExample = destinationRaw ? `${destinationRaw} ${this.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
+      const fallbackDecision = {
+        verdict: 'ALLOW_WITH_FALLBACK',
+        reason: 'NO_POI_DATA',
+      };
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `未找到与目的地国家(${destinationCountry})一致的 POI，请明确国家/城市（例如：${destinationExample}）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        this.buildPoiCountryClarificationQuestion(destinationRaw, destinationCountry) as any,
+      ];
+      state.metadata.fallback_decision = fallbackDecision;
+      state.metadata.fallback_explain = {
+        summary: '由于缺少POI数据，系统采用城市探索策略',
+        reasoning: [
+          `目的地明确（${destinationRaw || '未提供'}）`,
+          '未获取到可用POI数据',
+          '触发Fallback机制',
+        ],
+      };
+      if (requirePoiData) {
+        state.gaps = [
+          ...(state.gaps || []),
+          {
+            type: 'MISSING_DESTINATION',
+            severity: 'HARD',
+            detail: '已启用 require_poi_data：POI 数据为空，需补充目的地或扩展检索范围',
+          } as any,
+        ];
+        return {
+          needsClarification: true,
+          allowWithFallback: false,
+        };
+      }
+    }
+
+    if (state.research_data && rawPoiEvidence) {
+      if (Array.isArray(rawPoiEvidence)) {
+        state.research_data.poi_evidence = scored;
+      } else {
+        state.research_data.poi_evidence = {
+          ...(rawPoiEvidence as Record<string, unknown>),
+          pois: scored,
+        };
+      }
+    }
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'POI_SELECTION',
+      actor: 'Planner',
+      inputs_summary: `候选POI数量: ${asArray.length}`,
+      outputs_summary: `已选择POI数量: ${scored.length}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        duration_ms: Date.now() - stepStartTime,
+        destination: destinationRaw || undefined,
+        destination_country: destinationCountry || undefined,
+        input_count: asArray.length,
+        deduped_count: deduped.length,
+        selected_count: scored.length,
+      },
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+    await this.generateDecisionStepForStep(state, 'POI_SELECTION', 'Planner');
+    const allowWithFallback = poiPolicy !== 'strict' && !!(destinationRaw && scored.length === 0);
+    return {
+      needsClarification: false,
+      allowWithFallback,
+    };
+  }
+
+  private resolvePoiPolicy(
+    explicitPolicy: unknown,
+    requirePoiData: boolean,
+  ): 'strict' | 'fallback' | 'explore' {
+    if (typeof explicitPolicy === 'string') {
+      const p = explicitPolicy.trim().toLowerCase();
+      if (p === 'strict' || p === 'fallback' || p === 'explore') return p;
+    }
+    if (requirePoiData) return 'strict';
+    return 'fallback';
+  }
+
+  private relaxGateForPartialIfEligible(state: OrchestratorState): void {
+    if (state.metadata?.allow_partial !== true) return;
+    if (state.gate_result?.gate_result !== 'BLOCK') return;
+    const violations = state.gate_result?.violations || [];
+    if (!this.isDateOnlyDataMissingViolation(violations)) return;
+
+    state.gate_result = {
+      ...state.gate_result,
+      gate_result: 'ADJUST_REQUIRED',
+      required_adjustments: [
+        ...(state.gate_result?.required_adjustments || []),
+        {
+          action: 'CHANGE_DATES',
+          why: 'allow_partial=true：缺少日期时先生成草案，再补充日期确认',
+        } as any,
+      ],
+    };
+    state.metadata.gate_relaxed_for_partial = true;
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'GATE_EVAL',
+      actor: 'Gatekeeper',
+      inputs_summary: 'allow_partial 下日期缺口门控降级',
+      outputs_summary: 'Gate 从 BLOCK 降级为 ADJUST_REQUIRED，继续生成草案',
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: { duration_ms: 0, downgraded: true },
+    });
+  }
+
+  private isDateOnlyDataMissingViolation(
+    violations: Array<{ type?: string; detail?: string; severity?: string }>,
+  ): boolean {
+    if (!violations.length) return false;
+    return violations.every((v) => {
+      if (String(v?.type) !== 'DATA_MISSING') return false;
+      const d = String(v?.detail || '');
+      return /日期|date_range|start_date/i.test(d);
+    });
+  }
+
+  private applyFallbackPlan(state: OrchestratorState): void {
+    const destination =
+      typeof state.trip_plan_request?.destination === 'string'
+        ? state.trip_plan_request.destination
+        : '目的地';
+    const query = state.decision_log.find((log) => log.step === 'INTAKE')?.inputs_summary || '';
+    const strategyHint = this.normalizeFallbackStrategyHint(
+      state.metadata?.fallback_strategy_hint,
+    );
+    const strategy = strategyHint ?? chooseFallbackStrategy(query);
+    const researchPoiEvidence = state.research_data?.poi_evidence;
+    const includeDebugScores = state.metadata?.fallback_debug_scores === true;
+    const includeCommuteMatrix = state.metadata?.show_commute_matrix === true;
+    const fallbackPlan = buildFallbackPlan(destination, strategy, {
+      researchPoiEvidence,
+      includeDebugScores,
+      includeCommuteMatrix,
+      tripPlanRequest: state.trip_plan_request,
+    });
+    const fallbackPlans = buildFallbackPlans(destination, {
+      researchPoiEvidence,
+      tripPlanRequest: state.trip_plan_request,
+    });
+    const mergedFallbackPlans = [
+      fallbackPlan,
+      ...fallbackPlans.filter((p) => p.strategy !== fallbackPlan.strategy),
+    ];
+    const fallbackItinerary = fallbackPlanToItinerary(
+      state.request_id,
+      state.trip_plan_request,
+      fallbackPlan,
+    );
+
+    state.itinerary = fallbackItinerary;
+    state.clarification_questions = [];
+    state.gaps = [];
+    state.metadata.fallback_used = true;
+    state.metadata.fallback_template_version = getFallbackTemplateVersion();
+    state.metadata.fallback_data_source = fallbackPlan.data_source;
+    state.metadata.fallback_source_confidence = fallbackPlan.source_confidence;
+    state.metadata.fallback_pacing_mode = fallbackPlan.pacing_mode;
+    state.metadata.fallback_plan = fallbackPlan;
+    state.metadata.fallback_plans = mergedFallbackPlans;
+    state.metadata.fallback_selected_strategy = fallbackPlan.strategy;
+    state.metadata.fallback_explain = {
+      summary:
+        fallbackPlan.explain?.summary || '由于缺少POI数据，系统采用城市探索策略',
+      reasoning: [
+        `目的地明确（${destination}）`,
+        '未获取到可用POI数据',
+        '触发Fallback机制',
+        ...(fallbackPlan.explain?.reasoning || []),
+      ],
+      objective: fallbackPlan.explain?.objective || '最大体验密度 + 节奏合理',
+      planScore: fallbackPlan.plan_score,
+      dataSource: fallbackPlan.data_source,
+      sourceConfidence: fallbackPlan.source_confidence,
+      pacingMode: fallbackPlan.pacing_mode,
+      policy: this.resolvePoiPolicy(
+        state.metadata?.poi_policy,
+        state.metadata?.require_poi_data === true,
+      ),
+    };
+    if (state.metadata?.show_poi_trace) {
+      state.metadata.poi_trace = {
+        ...(state.metadata.poi_trace || {}),
+        provider: fallbackPlan.data_source,
+      };
+    }
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'PLAN_GEN',
+      actor: 'Planner',
+      inputs_summary: 'POI 数据缺失，触发 fallback plan',
+      outputs_summary: `生成 fallback 行程，策略=${fallbackPlan.strategy}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        duration_ms: 0,
+        fallback: true,
+        strategy: fallbackPlan.strategy,
+      },
+    });
+  }
+
+  private normalizeFallbackStrategyHint(input: unknown):
+    | 'CITY_WALK'
+    | 'CLASSIC'
+    | 'HOT_SPOTS'
+    | 'BALANCED'
+    | undefined {
+    if (typeof input !== 'string') return undefined;
+    const value = input.trim().toUpperCase();
+    if (value === 'CITY_WALK' || value === 'CLASSIC' || value === 'HOT_SPOTS' || value === 'BALANCED') {
+      return value;
+    }
+    return undefined;
+  }
+
+  private normalizeText(v: string): string {
+    return v.trim().toLowerCase();
+  }
+
+  private inferCountryFromDestination(destination: string): string | undefined {
+    const d = this.normalizeText(destination);
+    if (!d) return undefined;
+    if (/东京|大阪|京都|日本|tokyo|osaka|kyoto|japan/.test(d)) return 'JP';
+    if (/首尔|韩国|seoul|korea/.test(d)) return 'KR';
+    if (/上海|北京|广州|深圳|杭州|成都|重庆|中国|china/.test(d)) return 'CN';
+    return undefined;
+  }
+
+  private buildPoiCountryClarificationQuestion(destination: string, destinationCountry: string): Record<string, unknown> {
+    const normalizedDestination = destination?.trim() || '该目的地';
+    const countryLabel = this.countryDisplayName(destinationCountry);
+    const quickOptionLabel = `${normalizedDestination} ${countryLabel}`;
+    const quickOptionValue = this.toStableOptionValue(normalizedDestination, destinationCountry);
+
+    return {
+      id: 'question-poi-country',
+      question: '请确认目的地国家/城市',
+      type: 'single_choice',
+      options: [
+        { value: quickOptionValue, label: quickOptionLabel },
+        { value: 'manual', label: '其他（手动输入）' },
+      ],
+      required: true,
+      hint: '用于限制 POI 检索范围，避免匹配到同名异地',
+      conditionalInputs: [
+        {
+          triggerValue: 'manual',
+          inputType: 'text',
+          label: '请输入目的地国家/城市',
+          placeholder: `例如：${normalizedDestination}, ${countryLabel}`,
+          required: true,
+          hint: '建议格式：城市 + 国家',
+          paramKey: 'destination_disambiguation',
+        },
+      ],
+    };
+  }
+
+  private countryDisplayName(countryCode?: string): string {
+    const code = String(countryCode || '').toUpperCase();
+    if (!code) return '国家/地区';
+    const map: Record<string, string> = {
+      JP: '日本',
+      KR: '韩国',
+      CN: '中国',
+      US: '美国',
+      GB: '英国',
+      FR: '法国',
+      DE: '德国',
+      IT: '意大利',
+      ES: '西班牙',
+    };
+    return map[code] ?? code;
+  }
+
+  private toStableOptionValue(destination: string, countryCode: string): string {
+    const normalized = this.normalizeText(destination)
+      .replace(/\s+/g, '_')
+      .replace(/[^\w\u4e00-\u9fa5]/g, '');
+    return `${normalized || 'destination'}_${countryCode.toLowerCase()}`;
+  }
+
+  private dedupePois(pois: any[]): any[] {
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const poi of pois) {
+      const key = [
+        String(poi?.place_id ?? poi?.id ?? ''),
+        String(poi?.name ?? poi?.nameCN ?? '').trim().toLowerCase(),
+        String(poi?.address ?? '').trim().toLowerCase(),
+      ].join('|');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(poi);
+    }
+    return out;
+  }
+
+  private passesHardPoiGuards(
+    poi: any,
+    destinationCountry?: string,
+    destinationRaw?: string,
+  ): boolean {
+    const riskLevel = String(poi?.metadata?.risk_level ?? '').toUpperCase();
+    if (riskLevel === 'HIGH') return false;
+    if (!poi?.name) return false;
+    if (!poi?.address && !poi?.coordinates) return false;
+    const category = String(poi?.category ?? poi?.type ?? '').toUpperCase();
+    if (
+      /(HOSPITAL|TRANSIT_HUB|GAS_STATION|CLINIC|AIRPORT_SERVICE|HOTEL|LODGING|ACCOMMODATION)/.test(
+        category,
+      )
+    ) {
+      return false;
+    }
+    if (!this.isPoiWithinDestinationBounds(poi, destinationRaw)) return false;
+    if (!destinationCountry) return true;
+    const poiCountry = String(
+      poi?.countryCode ??
+        poi?.country_code ??
+        poi?.metadata?.countryCode ??
+        '',
+    ).toUpperCase();
+    if (poiCountry && poiCountry !== destinationCountry) return false;
+    return true;
+  }
+
+  private selectClusteredPois(
+    candidates: any[],
+    limit: number,
+    startCoordinates?: { lat: number; lng: number },
+    destinationRaw?: string,
+  ): any[] {
+    if (!Array.isArray(candidates) || candidates.length <= 1) {
+      return Array.isArray(candidates) ? candidates.slice(0, limit) : [];
+    }
+    const maxLegKm = /冰岛|iceland/i.test(String(destinationRaw ?? '')) ? 60 : 35;
+    const selected: any[] = [];
+    const anchors: Array<{ lat: number; lng: number }> = [];
+    if (startCoordinates) anchors.push(startCoordinates);
+    for (const poi of candidates) {
+      if (selected.length >= limit) break;
+      const lat = Number(poi?.coordinates?.lat ?? poi?.lat ?? NaN);
+      const lng = Number(poi?.coordinates?.lng ?? poi?.lng ?? NaN);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        selected.push(poi);
+        continue;
+      }
+      if (anchors.length === 0) {
+        selected.push(poi);
+        anchors.push({ lat, lng });
+        continue;
+      }
+      const nearest = Math.min(
+        ...anchors.map((a) => this.haversineKm(a, { lat, lng })),
+      );
+      if (nearest <= maxLegKm) {
+        selected.push(poi);
+        anchors.push({ lat, lng });
+      }
+    }
+    if (selected.length === 0) return candidates.slice(0, limit);
+    return selected.slice(0, limit);
+  }
+
+  private toPoiTraceNode(
+    poi: any,
+  ): { name: string; coordinates?: { lat: number; lng: number } } {
+    const lat = Number(poi?.coordinates?.lat ?? poi?.lat ?? NaN);
+    const lng = Number(poi?.coordinates?.lng ?? poi?.lng ?? NaN);
+    return {
+      name: String(poi?.name ?? ''),
+      coordinates:
+        Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : undefined,
+    };
+  }
+
+  private tryExtractStartCoordinates(
+    origin: unknown,
+  ): { lat: number; lng: number } | undefined {
+    if (!origin || typeof origin !== 'object') return undefined;
+    const lat = Number((origin as any)?.lat ?? NaN);
+    const lng = Number((origin as any)?.lng ?? NaN);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+    return { lat, lng };
+  }
+
+  private haversineKm(
+    a: { lat: number; lng: number },
+    b: { lat: number; lng: number },
+  ): number {
+    const toRadians = (v: number): number => (v * Math.PI) / 180;
+    const earthRadius = 6371;
+    const dLat = toRadians(b.lat - a.lat);
+    const dLng = toRadians(b.lng - a.lng);
+    const x =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRadians(a.lat)) *
+        Math.cos(toRadians(b.lat)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    return earthRadius * (2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)));
+  }
+
+  private estimateCommuteMinutesFromMode(
+    km: number,
+    mode?: 'walk' | 'drive' | 'transit' | 'mixed',
+  ): number {
+    const kmh =
+      mode === 'walk' ? 4.5 : mode === 'drive' ? 24 : mode === 'transit' ? 16 : 10;
+    return Math.max(5, Math.round((km / Math.max(1, kmh)) * 60));
+  }
+
+  private buildPoiTraceCommuteMatrix(
+    selected: Array<{ name: string; coordinates?: { lat: number; lng: number } }>,
+    mode?: 'walk' | 'drive' | 'transit' | 'mixed',
+    startCoordinates?: { lat: number; lng: number },
+  ): {
+    mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+    from_start?: boolean;
+    nodes?: string[];
+    minutes?: number[][];
+  } | undefined {
+    const valid = selected.filter((x) => !!x.coordinates);
+    if (valid.length === 0) return undefined;
+    const n = valid.length;
+    const rows: number[][] = Array.from({ length: n }, () =>
+      Array.from({ length: n }, () => 0),
+    );
+    for (let i = 0; i < n; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        if (i === j) continue;
+        const km = this.haversineKm(valid[i].coordinates!, valid[j].coordinates!);
+        rows[i][j] = this.estimateCommuteMinutesFromMode(km, mode);
+      }
+    }
+    const nodes = valid.map((x) => x.name);
+    if (!startCoordinates) {
+      return { mode, from_start: false, nodes, minutes: rows };
+    }
+    const startRow = valid.map((x) => {
+      const km = this.haversineKm(startCoordinates, x.coordinates!);
+      return this.estimateCommuteMinutesFromMode(km, mode);
+    });
+    return {
+      mode,
+      from_start: true,
+      nodes: ['START', ...nodes],
+      minutes: [startRow, ...rows],
+    };
+  }
+
+  private estimateNearestTotalCommuteMinutes(
+    selected: Array<{ name: string; coordinates?: { lat: number; lng: number } }>,
+    mode?: 'walk' | 'drive' | 'transit' | 'mixed',
+    startCoordinates?: { lat: number; lng: number },
+  ): number {
+    const valid = selected.filter((x) => !!x.coordinates);
+    if (valid.length <= 1) return 0;
+    const remaining = valid.map((x) => x.coordinates!) as Array<{
+      lat: number;
+      lng: number;
+    }>;
+    let current = startCoordinates ?? remaining[0];
+    let total = 0;
+    const visited = new Set<number>();
+    while (visited.size < remaining.length) {
+      let bestIdx = -1;
+      let bestMinutes = Infinity;
+      for (let i = 0; i < remaining.length; i += 1) {
+        if (visited.has(i)) continue;
+        const km = this.haversineKm(current, remaining[i]);
+        const m = this.estimateCommuteMinutesFromMode(km, mode);
+        if (m < bestMinutes) {
+          bestMinutes = m;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx < 0 || !Number.isFinite(bestMinutes)) break;
+      total += bestMinutes;
+      current = remaining[bestIdx];
+      visited.add(bestIdx);
+    }
+    return total;
+  }
+
+  private isPoiWithinDestinationBounds(poi: any, destinationRaw?: string): boolean {
+    const d = this.normalizeText(String(destinationRaw ?? ''));
+    if (!d) return true;
+    const lat = Number(poi?.coordinates?.lat ?? poi?.lat ?? NaN);
+    const lng = Number(poi?.coordinates?.lng ?? poi?.lng ?? NaN);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+
+    // Iceland
+    if (/冰岛|iceland/.test(d)) {
+      return lat >= 63 && lat <= 67.8 && lng >= -25.5 && lng <= -13.0;
+    }
+    // Tokyo
+    if (/东京|tokyo/.test(d)) {
+      return lat >= 35.4 && lat <= 35.9 && lng >= 139.4 && lng <= 140.1;
+    }
+    return true;
+  }
+
+  private poiLocalityScore(
+    poi: any,
+    destinationCountry?: string,
+    destinationCity?: string,
+  ): number {
+    let score = 0;
+    const address = this.normalizeText(String(poi?.address ?? ''));
+    const name = this.normalizeText(String(poi?.name ?? ''));
+    const poiCountry = String(
+      poi?.countryCode ??
+        poi?.country_code ??
+        poi?.metadata?.countryCode ??
+        '',
+    ).toUpperCase();
+
+    if (destinationCountry && poiCountry) {
+      score += poiCountry === destinationCountry ? 2 : -3;
+    }
+
+    if (destinationCity) {
+      if (name.includes(destinationCity)) score += 2;
+      if (address.includes(destinationCity)) score += 1.5;
+    }
+    return score;
   }
 
   /**
@@ -3134,9 +3955,24 @@ ${JSON.stringify(routingDecision, null, 2)}
         try {
           const poiSkill = this.skillsRegistry.getSkill('poi.search');
           if (poiSkill) {
-            const destinationQuery = typeof tripRequest.destination === 'string' 
-              ? tripRequest.destination 
+            const destinationRaw = typeof tripRequest.destination === 'string'
+              ? tripRequest.destination
               : 'destination'; // 如果是坐标，使用默认查询
+            const normalizedDestination = destinationRaw.trim().toLowerCase();
+            const ambiguousCityCountryMap: Record<string, string> = {
+              '东京': '日本',
+              tokyo: 'Japan',
+              '大阪': '日本',
+              osaka: 'Japan',
+              '京都': '日本',
+              kyoto: 'Japan',
+              '首尔': '韩国',
+              seoul: 'Korea',
+            };
+            const countryHint = ambiguousCityCountryMap[normalizedDestination];
+            const destinationQuery = countryHint
+              ? `${destinationRaw} ${countryHint}`
+              : destinationRaw;
             const poiResult = await poiSkill.execute({
               query: destinationQuery,
               limit: 10,
@@ -4337,7 +5173,10 @@ ${JSON.stringify(routingDecision, null, 2)}
         messages.push(`   ${q.hint}`);
       }
       if (q.options && q.options.length > 0) {
-        messages.push(`   选项：${q.options.join('、')}`);
+        const optionLabels = q.options.map((opt: any) =>
+          typeof opt === 'string' ? opt : opt?.label || opt?.value || String(opt),
+        );
+        messages.push(`   选项：${optionLabels.join('、')}`);
       }
       messages.push('');
     });

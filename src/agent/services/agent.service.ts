@@ -97,6 +97,7 @@ export class AgentService {
       INTAKE: 8.0,
       STATE_UPDATE: 10.0,
       RESEARCH: 18.0,
+      POI_SELECTION: 24.0,
       GATE_EVAL: 28.0,
       CONTEXT_BUILD: 32.0,
       PLAN_GEN: 42.0,
@@ -116,6 +117,7 @@ export class AgentService {
       INTAKE: '正在解析请求...',
       STATE_UPDATE: '正在更新决策状态...',
       RESEARCH: '正在收集数据...',
+      POI_SELECTION: '正在筛选候选地点...',
       GATE_EVAL: '正在评估行程可行性...',
       CONTEXT_BUILD: '正在构建上下文...',
       PLAN_GEN: '正在生成行程安排...',
@@ -136,6 +138,7 @@ export class AgentService {
       INTAKE: 2000,      // 2秒
       STATE_UPDATE: 100, // 0.1秒（Kernel 同步）
       RESEARCH: 8000,    // 8秒
+      POI_SELECTION: 1500, // 1.5秒
       GATE_EVAL: 5000,   // 5秒
       CONTEXT_BUILD: 3000, // 3秒
       PLAN_GEN: 10000,   // 10秒
@@ -156,6 +159,7 @@ export class AgentService {
       INTAKE: '分析您的需求，提取关键信息（目的地、日期、预算等）',
       STATE_UPDATE: '同步 OrchestratorState 到 Decision Kernel',
       RESEARCH: '查询交通、POI、开放时间、DEM地形等数据',
+      POI_SELECTION: '对候选 POI 做排序与裁剪，为 PLAN_GEN 提供输入',
       GATE_EVAL: '评估路线安全性、可达性和可行性（三人格评审）',
       CONTEXT_BUILD: '构建 Context Package 供 PLAN 使用',
       PLAN_GEN: '生成详细的行程安排，包括时间、地点、交通方式',
@@ -177,6 +181,7 @@ export class AgentService {
     switch (step) {
       case 'INTAKE':
       case 'RESEARCH':
+      case 'POI_SELECTION':
       case 'PLAN_GEN':
       case 'NARRATE':
       case 'FEEDBACK':
@@ -1887,8 +1892,10 @@ export class AgentService {
         orchestrationSuccess: orchestrationResult.success,
         needsUserConfirmation,
       });
+      const finalVerdict =
+        rawState?.metadata?.fallback_used === true ? 'ALLOW_WITH_FALLBACK' : verdict;
       const stateWithVerdict =
-        rawState !== undefined ? { ...rawState, verdict } : undefined;
+        rawState !== undefined ? { ...rawState, verdict: finalVerdict } : undefined;
 
       const k3DecisionLog = this.resolveCanonicalDecisionLogForK3(orchestrationResult);
       
@@ -1955,6 +1962,16 @@ export class AgentService {
               orchestrationResult.result?.decisionState,
               stateWithVerdict,
             ),
+            fallbackPlan: orchestrationResult.result?.state?.metadata?.fallback_plan,
+            fallbackExplain: orchestrationResult.result?.state?.metadata?.fallback_explain,
+            fallbackPlans: orchestrationResult.result?.state?.metadata?.fallback_plans,
+            fallbackSelectedStrategy:
+              orchestrationResult.result?.state?.metadata?.fallback_selected_strategy,
+            fallbackTemplateVersion:
+              orchestrationResult.result?.state?.metadata?.fallback_template_version,
+            fallbackPacingMode:
+              orchestrationResult.result?.state?.metadata?.fallback_pacing_mode,
+            poiTrace: orchestrationResult.result?.state?.metadata?.poi_trace,
             // 超时错误字段
             ...(isTimeout ? {
               errorType: ErrorType.TIMEOUT_ERROR,
@@ -1993,7 +2010,15 @@ export class AgentService {
         browser_steps: 0,
         tokens_est: 0, // TODO: 计算 token
         cost_est_usd: orchestrationResult.totalCost || 0,
-        fallback_used: false,
+        fallback_used: orchestrationResult.result?.state?.metadata?.fallback_used === true,
+        fallback_template_version:
+          orchestrationResult.result?.state?.metadata?.fallback_template_version,
+        fallback_data_source:
+          orchestrationResult.result?.state?.metadata?.fallback_data_source,
+        fallback_source_confidence:
+          orchestrationResult.result?.state?.metadata?.fallback_source_confidence,
+        fallback_pacing_mode:
+          orchestrationResult.result?.state?.metadata?.fallback_pacing_mode,
         orchestration_request_id: request.request_id,
         current_step: orchestrationResult.result?.state?.current_step,
         // Trace 信息（用于观测和回放）

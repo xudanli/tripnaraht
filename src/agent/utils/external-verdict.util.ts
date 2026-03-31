@@ -6,9 +6,9 @@
 
 import type { GateResult, GateResultStatus, OrchestratorState } from '../interfaces/trip-plan.interface';
 
-export type ExternalVerdict = 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY';
+export type ExternalVerdict = 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY' | 'ALLOW_WITH_FALLBACK';
 
-export type PolicyAction = 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY';
+export type PolicyAction = 'ALLOW' | 'REJECT' | 'ADJUST' | 'CLARIFY' | 'ALLOW_WITH_FALLBACK';
 
 export interface DeriveExternalVerdictInput {
   gateResult?: GateResult | null;
@@ -62,6 +62,9 @@ function mergeGateWithPolicy(
     }
     if (policy === 'ADJUST') {
       return 'ADJUST';
+    }
+    if (policy === 'ALLOW_WITH_FALLBACK') {
+      return 'ALLOW_WITH_FALLBACK';
     }
     return 'ALLOW';
   }

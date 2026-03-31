@@ -24,6 +24,92 @@ export interface RouteAndRunApiResult {
     plan_generation?: number;
   };
   policy_path?: string[];
+  fallback_plan?: {
+    type?: string;
+    strategy?: string;
+    name?: string;
+    timeline?: Array<{ time?: string; action?: string; type?: string }>;
+    confidence?: number;
+    selected_pois?: string[];
+    plan_score?: number;
+    pacing_mode?: "normal" | "conservative";
+    debug_scores?: Array<{
+      slot: string;
+      desiredType: string;
+      poiName: string;
+      typeScore: number;
+      timeScore: number;
+      ratingScore: number;
+      affordabilityScore: number;
+      nameHintScore: number;
+      commuteDistanceKm?: number;
+      commuteMinutes?: number;
+      commutePenalty?: number;
+      timeWindowPenalty?: number;
+      totalScore: number;
+    }>;
+    commute_matrix?: {
+      mode?: "walk" | "drive" | "transit" | "mixed";
+      from_start?: boolean;
+      nodes?: string[];
+      minutes?: number[][];
+    };
+  };
+  fallback_explain?: {
+    summary?: string;
+    reasoning?: string[];
+    objective?: string;
+    planScore?: number;
+    pacingMode?: "normal" | "conservative";
+  };
+  fallback_plans?: Array<{
+    type?: string;
+    strategy?: string;
+    name?: string;
+    timeline?: Array<{ time?: string; action?: string; type?: string }>;
+    confidence?: number;
+  }>;
+  fallback_selected_strategy?: string;
+  fallback_template_version?: string;
+  fallback_pacing_mode?: "normal" | "conservative";
+  clarification_questions?: Array<{
+    id?: string;
+    question?: string;
+    type?: string;
+    options?: string[];
+    required?: boolean;
+  }>;
+  poi_trace?: {
+    policy?: "strict" | "fallback" | "explore";
+    sourceHint?: string;
+    provider?: string;
+    inputCount?: number;
+    selectedCount?: number;
+    commute_budget_minutes?: number;
+    estimated_commute_minutes?: number;
+    over_budget?: boolean;
+    debug_scores?: Array<{
+      slot?: string;
+      desiredType?: string;
+      poiName?: string;
+      typeScore?: number;
+      timeScore?: number;
+      ratingScore?: number;
+      affordabilityScore?: number;
+      nameHintScore?: number;
+      commuteDistanceKm?: number;
+      commuteMinutes?: number;
+      commutePenalty?: number;
+      timeWindowPenalty?: number;
+      totalScore?: number;
+    }>;
+    commute_matrix?: {
+      mode?: "walk" | "drive" | "transit" | "mixed";
+      from_start?: boolean;
+      nodes?: string[];
+      minutes?: number[][];
+    };
+  };
   raw: unknown;
 }
 
@@ -170,6 +256,16 @@ export async function callRouteAndRun(
   }
   if (resultStatus) policyPath.push(`result:${resultStatus}`);
 
+  const fallbackPlan = asRecord(payloadObj?.fallbackPlan);
+  const fallbackExplain = asRecord(payloadObj?.fallbackExplain);
+  const fallbackPlans = Array.isArray(payloadObj?.fallbackPlans)
+    ? (payloadObj?.fallbackPlans as Array<Record<string, unknown>>)
+    : [];
+  const poiTrace = asRecord(payloadObj?.poiTrace);
+  const clarificationQuestions = Array.isArray(payloadObj?.clarificationQuestions)
+    ? (payloadObj.clarificationQuestions as Array<Record<string, unknown>>)
+    : [];
+
   return {
     verdict,
     result_status: resultStatus,
@@ -181,6 +277,225 @@ export async function callRouteAndRun(
     orchestration_errors: orchestrationErrors.length > 0 ? orchestrationErrors : undefined,
     confidence,
     policy_path: policyPath.length > 0 ? policyPath : undefined,
+    fallback_plan: fallbackPlan
+      ? {
+          type: typeof fallbackPlan.type === "string" ? fallbackPlan.type : undefined,
+          strategy:
+            typeof fallbackPlan.strategy === "string" ? fallbackPlan.strategy : undefined,
+          name: typeof fallbackPlan.name === "string" ? fallbackPlan.name : undefined,
+          timeline: Array.isArray(fallbackPlan.timeline)
+            ? (fallbackPlan.timeline as Array<{ time?: string; action?: string; type?: string }>)
+            : undefined,
+          confidence:
+            typeof fallbackPlan.confidence === "number"
+              ? fallbackPlan.confidence
+              : undefined,
+          selected_pois: Array.isArray(fallbackPlan.selected_pois)
+            ? (fallbackPlan.selected_pois.filter((x) => typeof x === "string") as string[])
+            : undefined,
+          plan_score:
+            typeof fallbackPlan.plan_score === "number"
+              ? fallbackPlan.plan_score
+              : undefined,
+          pacing_mode:
+            fallbackPlan.pacing_mode === "normal" ||
+            fallbackPlan.pacing_mode === "conservative"
+              ? fallbackPlan.pacing_mode
+              : undefined,
+          debug_scores: Array.isArray(fallbackPlan.debug_scores)
+            ? (fallbackPlan.debug_scores as Array<{
+                slot: string;
+                desiredType: string;
+                poiName: string;
+                typeScore: number;
+                timeScore: number;
+                ratingScore: number;
+                affordabilityScore: number;
+                nameHintScore: number;
+                commuteDistanceKm?: number;
+                commuteMinutes?: number;
+                commutePenalty?: number;
+                timeWindowPenalty?: number;
+                totalScore: number;
+              }>)
+            : undefined,
+          commute_matrix: asRecord(fallbackPlan.commute_matrix)
+            ? {
+                mode:
+                  asRecord(fallbackPlan.commute_matrix)?.mode === "walk" ||
+                  asRecord(fallbackPlan.commute_matrix)?.mode === "drive" ||
+                  asRecord(fallbackPlan.commute_matrix)?.mode === "transit" ||
+                  asRecord(fallbackPlan.commute_matrix)?.mode === "mixed"
+                    ? (asRecord(fallbackPlan.commute_matrix)?.mode as
+                        | "walk"
+                        | "drive"
+                        | "transit"
+                        | "mixed")
+                    : undefined,
+                from_start:
+                  typeof asRecord(fallbackPlan.commute_matrix)?.from_start === "boolean"
+                    ? (asRecord(fallbackPlan.commute_matrix)?.from_start as boolean)
+                    : undefined,
+                nodes: Array.isArray(asRecord(fallbackPlan.commute_matrix)?.nodes)
+                  ? (asRecord(fallbackPlan.commute_matrix)?.nodes as unknown[]).filter(
+                      (x): x is string => typeof x === "string",
+                    )
+                  : undefined,
+                minutes: Array.isArray(asRecord(fallbackPlan.commute_matrix)?.minutes)
+                  ? (asRecord(fallbackPlan.commute_matrix)?.minutes as unknown[])
+                      .map((row) =>
+                        Array.isArray(row)
+                          ? row.map((v) => (typeof v === "number" ? v : Number(v) || 0))
+                          : [],
+                      )
+                      .filter((row) => Array.isArray(row))
+                  : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
+    fallback_explain: fallbackExplain
+      ? {
+          summary:
+            typeof fallbackExplain.summary === "string"
+              ? fallbackExplain.summary
+              : undefined,
+          reasoning: Array.isArray(fallbackExplain.reasoning)
+            ? (fallbackExplain.reasoning.filter((x) => typeof x === "string") as string[])
+            : undefined,
+          objective:
+            typeof fallbackExplain.objective === "string"
+              ? fallbackExplain.objective
+              : undefined,
+          planScore:
+            typeof fallbackExplain.planScore === "number"
+              ? fallbackExplain.planScore
+              : undefined,
+          pacingMode:
+            fallbackExplain.pacingMode === "normal" ||
+            fallbackExplain.pacingMode === "conservative"
+              ? fallbackExplain.pacingMode
+              : undefined,
+        }
+      : undefined,
+    fallback_plans:
+      fallbackPlans.length > 0
+        ? fallbackPlans.map((p) => ({
+            type: typeof p.type === "string" ? p.type : undefined,
+            strategy: typeof p.strategy === "string" ? p.strategy : undefined,
+            name: typeof p.name === "string" ? p.name : undefined,
+            timeline: Array.isArray(p.timeline)
+              ? (p.timeline as Array<{ time?: string; action?: string; type?: string }>)
+              : undefined,
+            confidence: typeof p.confidence === "number" ? p.confidence : undefined,
+          }))
+        : undefined,
+    fallback_selected_strategy:
+      typeof payloadObj?.fallbackSelectedStrategy === "string"
+        ? payloadObj.fallbackSelectedStrategy
+        : undefined,
+    fallback_template_version:
+      typeof payloadObj?.fallbackTemplateVersion === "string"
+        ? payloadObj.fallbackTemplateVersion
+        : undefined,
+    fallback_pacing_mode:
+      payloadObj?.fallbackPacingMode === "normal" ||
+      payloadObj?.fallbackPacingMode === "conservative"
+        ? payloadObj.fallbackPacingMode
+        : undefined,
+    clarification_questions:
+      clarificationQuestions.length > 0
+        ? clarificationQuestions.map((q) => ({
+            id: typeof q.id === "string" ? q.id : undefined,
+            question: typeof q.question === "string" ? q.question : undefined,
+            type: typeof q.type === "string" ? q.type : undefined,
+            options: Array.isArray(q.options)
+              ? (q.options.filter((x) => typeof x === "string") as string[])
+              : undefined,
+            required: typeof q.required === "boolean" ? q.required : undefined,
+          }))
+        : undefined,
+    poi_trace: poiTrace
+      ? {
+          policy:
+            poiTrace.policy === "strict" ||
+            poiTrace.policy === "fallback" ||
+            poiTrace.policy === "explore"
+              ? poiTrace.policy
+              : undefined,
+          sourceHint:
+            typeof poiTrace.sourceHint === "string" ? poiTrace.sourceHint : undefined,
+          provider: typeof poiTrace.provider === "string" ? poiTrace.provider : undefined,
+          inputCount:
+            typeof poiTrace.inputCount === "number" ? poiTrace.inputCount : undefined,
+          selectedCount:
+            typeof poiTrace.selectedCount === "number"
+              ? poiTrace.selectedCount
+              : undefined,
+          commute_budget_minutes:
+            typeof poiTrace.commute_budget_minutes === "number"
+              ? poiTrace.commute_budget_minutes
+              : undefined,
+          estimated_commute_minutes:
+            typeof poiTrace.estimated_commute_minutes === "number"
+              ? poiTrace.estimated_commute_minutes
+              : undefined,
+          over_budget:
+            typeof poiTrace.over_budget === "boolean"
+              ? poiTrace.over_budget
+              : undefined,
+          debug_scores: Array.isArray(poiTrace.debug_scores)
+            ? (poiTrace.debug_scores as Array<{
+                slot?: string;
+                desiredType?: string;
+                poiName?: string;
+                typeScore?: number;
+                timeScore?: number;
+                ratingScore?: number;
+                affordabilityScore?: number;
+                nameHintScore?: number;
+                commuteDistanceKm?: number;
+                commuteMinutes?: number;
+                commutePenalty?: number;
+                timeWindowPenalty?: number;
+                totalScore?: number;
+              }>)
+            : undefined,
+          commute_matrix: asRecord(poiTrace.commute_matrix)
+            ? {
+                mode:
+                  asRecord(poiTrace.commute_matrix)?.mode === "walk" ||
+                  asRecord(poiTrace.commute_matrix)?.mode === "drive" ||
+                  asRecord(poiTrace.commute_matrix)?.mode === "transit" ||
+                  asRecord(poiTrace.commute_matrix)?.mode === "mixed"
+                    ? (asRecord(poiTrace.commute_matrix)?.mode as
+                        | "walk"
+                        | "drive"
+                        | "transit"
+                        | "mixed")
+                    : undefined,
+                from_start:
+                  typeof asRecord(poiTrace.commute_matrix)?.from_start === "boolean"
+                    ? (asRecord(poiTrace.commute_matrix)?.from_start as boolean)
+                    : undefined,
+                nodes: Array.isArray(asRecord(poiTrace.commute_matrix)?.nodes)
+                  ? (asRecord(poiTrace.commute_matrix)?.nodes as unknown[]).filter(
+                      (x): x is string => typeof x === "string",
+                    )
+                  : undefined,
+                minutes: Array.isArray(asRecord(poiTrace.commute_matrix)?.minutes)
+                  ? (asRecord(poiTrace.commute_matrix)?.minutes as unknown[])
+                      .map((row) =>
+                        Array.isArray(row)
+                          ? row.map((v) => (typeof v === "number" ? v : Number(v) || 0))
+                          : [],
+                      )
+                      .filter((row) => Array.isArray(row))
+                  : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
     raw: json,
   };
 }
