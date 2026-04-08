@@ -3025,6 +3025,26 @@ export class AgentService {
     ) {
       (resp.observability as any).received_route_direction_id = receivedRouteDirectionId;
     }
+    // 与 CLI `--show-poi-trace` 对齐：把稳定化层证据同步进 payload.poiTrace
+    const omf =
+      (resp.observability as any).orchestration_mode_final ?? obs?.mode_final;
+    const rid =
+      (resp.observability as any).received_route_direction_id ??
+      receivedRouteDirectionId;
+    const payloadAny = resp.result?.payload as Record<string, unknown> | undefined;
+    const pt = payloadAny?.poiTrace;
+    if (pt && typeof pt === 'object' && !Array.isArray(pt)) {
+      payloadAny.poiTrace = {
+        ...(pt as Record<string, unknown>),
+        ...(omf ? { orchestration_mode_final: omf } : {}),
+        ...(rid
+          ? {
+              received_route_direction_id: rid,
+              requestRouteDirectionId: rid,
+            }
+          : {}),
+      };
+    }
     return resp;
   }
 

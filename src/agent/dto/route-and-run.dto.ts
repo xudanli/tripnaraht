@@ -555,6 +555,24 @@ export class RouteAndRunResponseDto {
         provider?: string;
         inputCount?: number;
         selectedCount?: number;
+        /** 与 observability 对齐（CLI --show-poi-trace） */
+        orchestration_mode_final?: string;
+        received_route_direction_id?: string;
+        requestRouteDirectionId?: string;
+        selected_region?: string;
+        destination_country?: string | null;
+        recall_raw_research?: number;
+        recall_after_route_augment?: number;
+        after_dedupe?: number;
+        after_hard_guards?: number;
+        selected_after_rank?: number;
+        country_filter_applied?: boolean;
+        route_direction_id?: string;
+        route_signature_pois_added?: number;
+        route_corridor_pois_added?: number;
+        commute_budget_minutes?: number;
+        estimated_commute_minutes?: number;
+        over_budget?: boolean;
         debug_scores?: Array<{
           slot?: string;
           desiredType?: string;

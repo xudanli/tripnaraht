@@ -2899,10 +2899,19 @@ ${JSON.stringify(routingDecision, null, 2)}
         .slice(0, 4)
         .map((x) => this.toPoiTraceNode(x));
       state.metadata.poi_trace = {
+        ...(state.metadata.poi_trace || {}),
         policy: poiPolicy,
         sourceHint: state.metadata?.poi_source_hint,
         inputCount: asArray.length,
         selectedCount: scored.length,
+        selected_region: destinationRaw || undefined,
+        destination_country: destinationCountry,
+        recall_raw_research: asArray.length,
+        recall_after_route_augment: asArray.length,
+        after_dedupe: deduped.length,
+        after_hard_guards: scoredRows.length,
+        selected_after_rank: scored.length,
+        country_filter_applied: Boolean(destinationCountry),
         debug_scores: scoredRows.slice(0, 12).map((x: any) => ({
           slot: `RANK_${x.idx + 1}`,
           desiredType: String(x.poi?.category ?? x.poi?.type ?? 'poi'),

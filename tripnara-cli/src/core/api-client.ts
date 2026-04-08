@@ -122,9 +122,17 @@ export interface RouteAndRunApiResult {
     spatial_filter_applied?: boolean;
     poi_query_scope?: string;
     recall_before_filter?: number;
+    recall_raw_research?: number;
+    recall_after_route_augment?: number;
+    after_dedupe?: number;
+    after_hard_guards?: number;
     after_country_filter?: number;
     after_region_filter?: number;
     selected_after_rank?: number;
+    destination_country?: string | null;
+    route_direction_id?: string;
+    route_signature_pois_added?: number;
+    route_corridor_pois_added?: number;
   };
   raw: unknown;
 }
@@ -519,6 +527,40 @@ export async function callRouteAndRun(
           recall_before_filter:
             typeof (poiTrace as Record<string, unknown>).recall_before_filter === "number"
               ? ((poiTrace as Record<string, unknown>).recall_before_filter as number)
+              : undefined,
+          recall_raw_research:
+            typeof (poiTrace as Record<string, unknown>).recall_raw_research === "number"
+              ? ((poiTrace as Record<string, unknown>).recall_raw_research as number)
+              : undefined,
+          recall_after_route_augment:
+            typeof (poiTrace as Record<string, unknown>).recall_after_route_augment === "number"
+              ? ((poiTrace as Record<string, unknown>).recall_after_route_augment as number)
+              : undefined,
+          after_dedupe:
+            typeof (poiTrace as Record<string, unknown>).after_dedupe === "number"
+              ? ((poiTrace as Record<string, unknown>).after_dedupe as number)
+              : undefined,
+          after_hard_guards:
+            typeof (poiTrace as Record<string, unknown>).after_hard_guards === "number"
+              ? ((poiTrace as Record<string, unknown>).after_hard_guards as number)
+              : undefined,
+          destination_country: (() => {
+            const v = (poiTrace as Record<string, unknown>).destination_country;
+            if (typeof v === "string") return v;
+            if (v === null) return null;
+            return undefined;
+          })(),
+          route_direction_id:
+            typeof (poiTrace as Record<string, unknown>).route_direction_id === "string"
+              ? ((poiTrace as Record<string, unknown>).route_direction_id as string)
+              : undefined,
+          route_signature_pois_added:
+            typeof (poiTrace as Record<string, unknown>).route_signature_pois_added === "number"
+              ? ((poiTrace as Record<string, unknown>).route_signature_pois_added as number)
+              : undefined,
+          route_corridor_pois_added:
+            typeof (poiTrace as Record<string, unknown>).route_corridor_pois_added === "number"
+              ? ((poiTrace as Record<string, unknown>).route_corridor_pois_added as number)
               : undefined,
           after_country_filter:
             typeof (poiTrace as Record<string, unknown>).after_country_filter === "number"
