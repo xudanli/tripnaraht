@@ -124,7 +124,7 @@ export class AgentOptionsDto {
   })
   @IsOptional()
   @IsEnum(['CITY_WALK', 'CLASSIC', 'HOT_SPOTS', 'BALANCED'])
-  fallback_strategy?: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED';
+  fallback_strategy?: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED' | 'ROAD_TRIP';
 
   @ApiPropertyOptional({
     description: '是否返回 fallback 的候选打分明细（调试用途）',
@@ -652,6 +652,9 @@ export class RouteAndRunResponseDto {
     orchestration_request_id?: string;
     /** AO-05：状态机当前步骤（OrchestratorState.current_step） */
     current_step?: string;
+    orchestration_mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
+    received_route_direction_id?: string;
+    mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
     trace?: {
       orchestration: {
         // 实际执行的路径（强制，不可变）

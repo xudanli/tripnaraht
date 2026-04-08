@@ -72,11 +72,14 @@ export interface RouteAndRunApiResult {
   fallback_selected_strategy?: string;
   fallback_template_version?: string;
   fallback_pacing_mode?: "normal" | "conservative";
+  orchestration_mode_final?: string;
+  received_route_direction_id?: string;
+  mode_final?: string;
   clarification_questions?: Array<{
     id?: string;
     question?: string;
     type?: string;
-    options?: string[];
+    options?: Array<string | { value: string; label: string }>;
     required?: boolean;
   }>;
   poi_trace?: {
@@ -109,6 +112,19 @@ export interface RouteAndRunApiResult {
       nodes?: string[];
       minutes?: number[][];
     };
+    orchestration_mode_final?: string;
+    received_route_direction_id?: string;
+    requestRouteDirectionId?: string;
+    selected_region?: string;
+    region_written_to_dso?: boolean;
+    region_geometry_loaded?: boolean;
+    country_filter_applied?: boolean;
+    spatial_filter_applied?: boolean;
+    poi_query_scope?: string;
+    recall_before_filter?: number;
+    after_country_filter?: number;
+    after_region_filter?: number;
+    selected_after_rank?: number;
   };
   raw: unknown;
 }
@@ -188,6 +204,10 @@ export async function callRouteAndRun(
   }
   const result = asRecord(root?.result);
   const payloadObj = asRecord(result?.payload);
+  const obs =
+    asRecord(root?.observability) ??
+    asRecord(result?.observability) ??
+    asRecord(payloadObj?.observability);
   const orchestration = asRecord(payloadObj?.orchestrationResult);
   const state = asRecord(orchestration?.state);
   const gateOnState = asRecord(state?.gate_result);
@@ -261,7 +281,10 @@ export async function callRouteAndRun(
   const fallbackPlans = Array.isArray(payloadObj?.fallbackPlans)
     ? (payloadObj?.fallbackPlans as Array<Record<string, unknown>>)
     : [];
-  const poiTrace = asRecord(payloadObj?.poiTrace);
+  const poiTrace =
+    asRecord(payloadObj?.poiTrace) ??
+    asRecord((payloadObj as Record<string, unknown> | undefined)?.poi_trace) ??
+    asRecord((payloadObj as Record<string, unknown> | undefined)?.poiTraceV2);
   const clarificationQuestions = Array.isArray(payloadObj?.clarificationQuestions)
     ? (payloadObj.clarificationQuestions as Array<Record<string, unknown>>)
     : [];
@@ -403,6 +426,15 @@ export async function callRouteAndRun(
       payloadObj?.fallbackPacingMode === "conservative"
         ? payloadObj.fallbackPacingMode
         : undefined,
+    orchestration_mode_final:
+      typeof obs?.orchestration_mode_final === "string"
+        ? obs.orchestration_mode_final
+        : undefined,
+    received_route_direction_id:
+      typeof obs?.received_route_direction_id === "string"
+        ? obs.received_route_direction_id
+        : undefined,
+    mode_final: typeof obs?.mode_final === "string" ? obs.mode_final : undefined,
     clarification_questions:
       clarificationQuestions.length > 0
         ? clarificationQuestions.map((q) => ({
@@ -410,7 +442,21 @@ export async function callRouteAndRun(
             question: typeof q.question === "string" ? q.question : undefined,
             type: typeof q.type === "string" ? q.type : undefined,
             options: Array.isArray(q.options)
-              ? (q.options.filter((x) => typeof x === "string") as string[])
+              ? (q.options
+                  .map((x) => {
+                    if (typeof x === "string") return x;
+                    if (x && typeof x === "object" && "value" in x && "label" in x) {
+                      const v = (x as any).value;
+                      const l = (x as any).label;
+                      if (typeof v === "string" && typeof l === "string") {
+                        return { value: v, label: l };
+                      }
+                    }
+                    return undefined;
+                  })
+                  .filter(
+                    (x): x is string | { value: string; label: string } => x !== undefined,
+                  ))
               : undefined,
             required: typeof q.required === "boolean" ? q.required : undefined,
           }))
@@ -431,6 +477,60 @@ export async function callRouteAndRun(
           selectedCount:
             typeof poiTrace.selectedCount === "number"
               ? poiTrace.selectedCount
+              : undefined,
+          orchestration_mode_final:
+            typeof (poiTrace as Record<string, unknown>).orchestration_mode_final === "string"
+              ? ((poiTrace as Record<string, unknown>).orchestration_mode_final as string)
+              : undefined,
+          received_route_direction_id:
+            typeof (poiTrace as Record<string, unknown>).received_route_direction_id === "string"
+              ? ((poiTrace as Record<string, unknown>).received_route_direction_id as string)
+              : undefined,
+          requestRouteDirectionId:
+            typeof (poiTrace as Record<string, unknown>).requestRouteDirectionId === "string"
+              ? ((poiTrace as Record<string, unknown>).requestRouteDirectionId as string)
+              : typeof (poiTrace as Record<string, unknown>).request_route_direction_id === "string"
+                ? ((poiTrace as Record<string, unknown>).request_route_direction_id as string)
+                : undefined,
+          selected_region:
+            typeof (poiTrace as Record<string, unknown>).selected_region === "string"
+              ? ((poiTrace as Record<string, unknown>).selected_region as string)
+              : undefined,
+          region_written_to_dso:
+            typeof (poiTrace as Record<string, unknown>).region_written_to_dso === "boolean"
+              ? ((poiTrace as Record<string, unknown>).region_written_to_dso as boolean)
+              : undefined,
+          region_geometry_loaded:
+            typeof (poiTrace as Record<string, unknown>).region_geometry_loaded === "boolean"
+              ? ((poiTrace as Record<string, unknown>).region_geometry_loaded as boolean)
+              : undefined,
+          country_filter_applied:
+            typeof (poiTrace as Record<string, unknown>).country_filter_applied === "boolean"
+              ? ((poiTrace as Record<string, unknown>).country_filter_applied as boolean)
+              : undefined,
+          spatial_filter_applied:
+            typeof (poiTrace as Record<string, unknown>).spatial_filter_applied === "boolean"
+              ? ((poiTrace as Record<string, unknown>).spatial_filter_applied as boolean)
+              : undefined,
+          poi_query_scope:
+            typeof (poiTrace as Record<string, unknown>).poi_query_scope === "string"
+              ? ((poiTrace as Record<string, unknown>).poi_query_scope as string)
+              : undefined,
+          recall_before_filter:
+            typeof (poiTrace as Record<string, unknown>).recall_before_filter === "number"
+              ? ((poiTrace as Record<string, unknown>).recall_before_filter as number)
+              : undefined,
+          after_country_filter:
+            typeof (poiTrace as Record<string, unknown>).after_country_filter === "number"
+              ? ((poiTrace as Record<string, unknown>).after_country_filter as number)
+              : undefined,
+          after_region_filter:
+            typeof (poiTrace as Record<string, unknown>).after_region_filter === "number"
+              ? ((poiTrace as Record<string, unknown>).after_region_filter as number)
+              : undefined,
+          selected_after_rank:
+            typeof (poiTrace as Record<string, unknown>).selected_after_rank === "number"
+              ? ((poiTrace as Record<string, unknown>).selected_after_rank as number)
               : undefined,
           commute_budget_minutes:
             typeof poiTrace.commute_budget_minutes === "number"

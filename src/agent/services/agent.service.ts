@@ -1013,7 +1013,9 @@ export class AgentService {
 
     // === 稳定化层：统一 Deadline ===
     const maxSeconds = Number(request?.options?.max_seconds ?? 12);
-    const deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 20_000))); // 默认12s，最大20s
+    // 规划类请求在本地/CLI 场景下经常需要 >20s（含 DB + LLM + 多阶段编排）。
+    // 这里不再硬上限 20s，而是允许到 120s（仍保留 clamp 防止极端值）。
+    const deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 120_000))); // 默认12s，最大120s
 
     const requestHash = this.hashRequest(request);
     const stabilityCtx: StabilityContext = {
@@ -1041,12 +1043,16 @@ export class AgentService {
             },
           };
           this.logger.debug(`Request deduplication: reusing cached result for request ${request.request_id}`);
-          return this.attachObservability(dedupedResponse, {
-            mode_final: 'DEDUP',
-            fallback_used: false,
-            deadline_ms: deadline.totalMs,
-            time_remaining_ms: deadline.remainingMs(),
-          });
+          return this.attachObservability(
+            dedupedResponse,
+            {
+              mode_final: 'DEDUP',
+              fallback_used: false,
+              deadline_ms: deadline.totalMs,
+              time_remaining_ms: deadline.remainingMs(),
+            },
+            request,
+          );
         }
       }
       // 0. 检查是否是规划请求（需要拦截，重定向到规划工作台）
@@ -1272,17 +1278,21 @@ export class AgentService {
           }
         }
         
-        return this.attachObservability(res, {
-          mode_final: decision.mode,
-          fallback_used: false,
-          deadline_ms: deadline.totalMs,
-          time_remaining_ms: deadline.remainingMs(),
-          breakers: {
-            sm: this.breakerSM.snapshot(),
-            dyn: this.breakerDyn.snapshot(),
-            legacy: this.breakerLegacy.snapshot(),
+        return this.attachObservability(
+          res,
+          {
+            mode_final: decision.mode,
+            fallback_used: false,
+            deadline_ms: deadline.totalMs,
+            time_remaining_ms: deadline.remainingMs(),
+            breakers: {
+              sm: this.breakerSM.snapshot(),
+              dyn: this.breakerDyn.snapshot(),
+              legacy: this.breakerLegacy.snapshot(),
+            },
           },
-        });
+          request,
+        );
       } catch (e: any) {
         // 标记 Circuit Breaker 失败
         if (decision.mode === 'CLAUDE_SM') this.breakerSM.onFailure(e);
@@ -1347,17 +1357,21 @@ export class AgentService {
               }
             }
             
-            return this.attachObservability(res, {
-              mode_final: nextMode,
-              fallback_used: true,
-              deadline_ms: deadline.totalMs,
-              time_remaining_ms: deadline.remainingMs(),
-              breakers: {
-                sm: this.breakerSM.snapshot(),
-                dyn: this.breakerDyn.snapshot(),
-                legacy: this.breakerLegacy.snapshot(),
+            return this.attachObservability(
+              res,
+              {
+                mode_final: nextMode,
+                fallback_used: true,
+                deadline_ms: deadline.totalMs,
+                time_remaining_ms: deadline.remainingMs(),
+                breakers: {
+                  sm: this.breakerSM.snapshot(),
+                  dyn: this.breakerDyn.snapshot(),
+                  legacy: this.breakerLegacy.snapshot(),
+                },
               },
-            });
+              request,
+            );
           } catch (e2: any) {
             // 标记 Circuit Breaker 失败
             if (nextMode === 'CLAUDE_SM') this.breakerSM.onFailure(e2);
@@ -2909,6 +2923,7 @@ export class AgentService {
     obs: any,
     partialDecisionLog?: DecisionLogEntry[], // 🆕 部分决策日志（超时等情况）
   ): RouteAndRunResponseDto {
+    const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
     return {
       request_id: request.request_id,
         route: {
@@ -2956,6 +2971,8 @@ export class AgentService {
         tokens_est: 0,
         cost_est_usd: 0,
         fallback_used: Boolean(obs.fallback_used),
+        orchestration_mode_final: obs?.mode_final,
+        received_route_direction_id: receivedRouteDirectionId,
         trace: {
           orchestration: {
             resolved: {
@@ -2974,15 +2991,40 @@ export class AgentService {
     };
   }
 
-  /**
-   * 附加可观测性信息
-   */
-  private attachObservability(resp: RouteAndRunResponseDto, obs: any): RouteAndRunResponseDto {
+  private resolveRequestRouteDirectionId(
+    request?: RouteAndRunRequestDto,
+  ): string | undefined {
+    if (!request) return undefined;
+    const snake = (request as any)?.route_direction_id;
+    const camel = (request as any)?.routeDirectionId;
+    const v =
+      (typeof snake === 'string' ? snake : undefined) ??
+      (typeof camel === 'string' ? camel : undefined);
+    const trimmed = typeof v === 'string' ? v.trim() : '';
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private attachObservability(
+    resp: RouteAndRunResponseDto,
+    obs: any,
+    request?: RouteAndRunRequestDto,
+  ): RouteAndRunResponseDto {
     if (!resp) return resp;
+    const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
     resp.observability = {
       ...(resp.observability ?? {}),
       ...obs,
     };
+    if (resp.observability && obs?.mode_final && !('orchestration_mode_final' in resp.observability)) {
+      (resp.observability as any).orchestration_mode_final = obs.mode_final;
+    }
+    if (
+      resp.observability &&
+      receivedRouteDirectionId &&
+      !('received_route_direction_id' in resp.observability)
+    ) {
+      (resp.observability as any).received_route_direction_id = receivedRouteDirectionId;
+    }
     return resp;
   }
 

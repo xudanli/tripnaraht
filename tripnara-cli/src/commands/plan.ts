@@ -1,11 +1,40 @@
 import { Command } from "commander";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { callRouteAndRun } from "../core/api-client";
+import { callRouteAndRun, type RouteAndRunApiResult } from "../core/api-client";
 import { Planner } from "../core/planner";
 import { getConfig } from "../infra/config";
 import { toCliError } from "../infra/errors";
 import { logger } from "../infra/logger";
+
+const PLAN_CLI_OBSERVABILITY_REV = "20260408-obs";
+
+function poiTraceForDisplay(t: RouteAndRunApiResult["poi_trace"]): Record<string, unknown> {
+  if (!t) return {};
+  return {
+    policy: t.policy,
+    source_hint: t.sourceHint,
+    provider: t.provider,
+    input: t.inputCount,
+    selected: t.selectedCount,
+    orchestration_mode_final: t.orchestration_mode_final,
+    received_route_direction_id: t.received_route_direction_id,
+    request_route_direction_id: t.requestRouteDirectionId,
+    selected_region: t.selected_region,
+    region_written_to_dso: t.region_written_to_dso,
+    region_geometry_loaded: t.region_geometry_loaded,
+    country_filter_applied: t.country_filter_applied,
+    spatial_filter_applied: t.spatial_filter_applied,
+    poi_query_scope: t.poi_query_scope,
+    recall_before_filter: t.recall_before_filter,
+    after_country_filter: t.after_country_filter,
+    after_region_filter: t.after_region_filter,
+    selected_after_rank: t.selected_after_rank,
+    commute_budget_minutes: t.commute_budget_minutes,
+    estimated_commute_minutes: t.estimated_commute_minutes,
+    over_budget: t.over_budget,
+  };
+}
 
 function renderTimeline(plan: {
   type?: string;
@@ -139,21 +168,184 @@ function renderGroupedTimeline(days: Array<{ date?: string; items: Array<{ time:
 
 async function askInteractiveClarification(
   result: Awaited<ReturnType<typeof callRouteAndRun>>,
+  currentQuery: string,
+  forceKeywordInput = false,
+  suppressQuestionText = false,
 ): Promise<string | undefined> {
   const q = result.clarification_questions?.[0];
   const options = Array.isArray(q?.options) ? q.options : [];
-  if (!q?.question || options.length === 0) return undefined;
-  console.log(`\n需要补充信息：${q.question}`);
-  options.forEach((opt, i) => console.log(`${i + 1}) ${opt}`));
+  const askRoutePreference = async (
+    rl: readline.Interface,
+  ): Promise<{ label: string; hint: string }> => {
+    const prefs = [
+      { label: "自然风光", hint: "nature scenery viewpoint" },
+      { label: "人文历史", hint: "culture history museum" },
+      { label: "轻松自驾", hint: "self drive easy pace" },
+      { label: "徒步探索", hint: "hiking trail outdoor" },
+      { label: "亲子友好", hint: "family friendly easy access" },
+    ];
+    console.log("\n请选择路线偏好：");
+    prefs.forEach((p, i) => console.log(`${i + 1}) ${p.label}`));
+    const ans = (await rl.question("偏好序号（回车默认 自然风光）: ")).trim();
+    const idx = Number(ans);
+    if (!Number.isFinite(idx) || idx < 1 || idx > prefs.length) return prefs[0];
+    return prefs[idx - 1];
+  };
+  const isInvalidManual = (v: string): boolean =>
+    /^(无|没有|不知道|不清楚|随便|whatever|none|null|n\/a)$/i.test(v.trim());
+  if (!q?.question) return undefined;
+  if (!suppressQuestionText) {
+    console.log(`\n需要补充信息：${q.question}`);
+  }
+  if (q?.type === "text") {
+    const rl = readline.createInterface({ input, output });
+    try {
+      const manual = await rl.question("请输入内容（直接回车取消）: ");
+      const value = manual.trim();
+      if (!value || isInvalidManual(value)) return undefined;
+      return value;
+    } finally {
+      rl.close();
+    }
+  }
+  if (forceKeywordInput) {
+    const rl = readline.createInterface({ input, output });
+    try {
+      const manual = await rl.question("请输入具体景点关键词（英文地标名更稳，例如：Hallgrimskirkja）: ");
+      const value = manual.trim();
+      if (!value || isInvalidManual(value)) return undefined;
+      return `__KEYWORD__:${value}`;
+    } finally {
+      rl.close();
+    }
+  }
+  if (options.length === 0) return undefined;
+  // 对于“目的地范围过大/过散”的问题：先让用户选偏好，再用偏好重发一次请求，
+  // 让后端按偏好重新过滤/排序路线方向选项，避免“先选方向后问偏好”的体验。
+  if (q?.id === "destination_scope_too_sparse" && !/用户偏好[:：]/.test(currentQuery)) {
+    // 这里不重复打印“需要补充信息”，避免用户看到同一问题两遍
+    if (!suppressQuestionText) {
+      console.log("\n（先选偏好，用于筛选更合适的路线方向）");
+    }
+    const rl = readline.createInterface({ input, output });
+    try {
+      const pref = await askRoutePreference(rl);
+      return `__PREF__:${pref.label}|${pref.hint}`;
+    } finally {
+      rl.close();
+    }
+  }
+  const displayOptions = options.map((opt) => {
+    if (typeof opt === "string") return { label: opt, value: opt };
+    if (opt && typeof opt === "object" && "label" in opt && "value" in opt) {
+      const label = (opt as any).label;
+      const value = (opt as any).value;
+      if (typeof label === "string" && typeof value === "string") return { label, value };
+    }
+    return { label: String(opt), value: String(opt) };
+  });
+  displayOptions.forEach((opt, i) => console.log(`${i + 1}) ${opt.label}`));
   const rl = readline.createInterface({ input, output });
   try {
     const answer = await rl.question("请选择序号（直接回车取消）: ");
-    const idx = Number(answer.trim());
+    const raw = answer.trim();
+    if (!raw) return undefined;
+    if (!/^\d+$/.test(raw)) {
+      // 允许直接输入目的地文本（例如 "Reykjavik, Iceland"）
+      return raw;
+    }
+    const idx = Number(raw);
     if (!Number.isFinite(idx) || idx < 1 || idx > options.length) return undefined;
-    return options[idx - 1];
+    const selected = displayOptions[idx - 1];
+    if (q?.id === "destination_scope_too_sparse" && !selected.label.includes("手动输入")) {
+      const routeHintMap: Record<string, string> = {
+        "市区": "downtown city center landmarks",
+        "近郊": "suburb nearby attractions",
+        "南部": "south coast attractions",
+        "北部": "north area attractions",
+        "东部": "east area attractions",
+        "西部": "west area attractions",
+      };
+      const suffix = Object.keys(routeHintMap).find((k) => selected.label.includes(k));
+      if (suffix) {
+        return `__ROUTE__:${selected.label}|${routeHintMap[suffix]}`;
+      }
+      // DB 方向：用 value（uuid）回传，避免当作可 geocode 地址
+      if (/^[0-9a-fA-F-]{16,}$/.test(selected.value)) {
+        return `__ROUTE_DIR__:${selected.value}`;
+      }
+      // 兜底：仍把纯文本当作路线方向（老数据/未升级后端）
+      return `__ROUTE__:${selected.label}|${selected.label}`;
+    }
+    if (q?.id === "destination_poi_intent_refine" && !selected.label.includes("手动输入")) {
+      const scenicHintMap: Record<string, string> = {
+        "地标景点": "landmark attractions sightseeing",
+        "博物馆区": "museum art gallery culture",
+        "自然风光": "nature park viewpoint waterfall",
+      };
+      const suffix = Object.keys(scenicHintMap).find((k) => selected.label.includes(k));
+      if (suffix) {
+        return `__KEYWORD__:${scenicHintMap[suffix]}`;
+      }
+    }
+    if (
+      selected.label.includes("手动输入") ||
+      /(市区|近郊|南部|北部|东部|西部)$/.test(selected.label.replace(/\s+/g, ""))
+    ) {
+      const manual = await rl.question("请输入更具体的城市/区域（例如：雷克雅未克市区）: ");
+      const value = manual.trim();
+      if (!value || isInvalidManual(value)) return undefined;
+      return value;
+    }
+    return selected.value;
   } finally {
     rl.close();
   }
+}
+
+function normalizeDestinationSelection(selection: string): string {
+  return selection.replace(/\s+/g, "").replace(/(市区|近郊|南部|北部|东部|西部)$/, "$1");
+}
+
+function buildFollowupQuery(currentQuery: string, selection: string): string {
+  if (selection.startsWith("__PREF__:")) {
+    const payload = selection.replace("__PREF__:", "");
+    const [prefLabel, prefHint] = payload.split("|");
+    return `${currentQuery}，用户偏好：${prefLabel ?? ""} ${prefHint ?? ""}`.trim();
+  }
+  if (selection.startsWith("__ROUTE_DIR__:")) {
+    // 方向 ID 通过 request.route_direction_id 传递，不污染 query 文本
+    return currentQuery;
+  }
+  if (selection.startsWith("__ROUTE__:")) {
+    const payload = selection.replace("__ROUTE__:", "");
+    const [routeLabel, routeHint] = payload.split("|");
+    const normalizedRoute = normalizeDestinationSelection(routeLabel || "");
+    if (/在.+的.*行程/.test(currentQuery)) {
+      const replaced = currentQuery.replace(/在(.+?)的(.*行程)/, `在${normalizedRoute}的$2`);
+      return `${replaced}，路线方向偏好：${routeHint ?? ""}`.trim();
+    }
+    return `${currentQuery}。路线方向改为：${normalizedRoute}，并优先检索：${routeHint ?? ""}`.trim();
+  }
+  if (selection.startsWith("__KEYWORD__:")) {
+    const keyword = selection.replace("__KEYWORD__:", "").trim();
+    if (!keyword) return currentQuery;
+    return `${currentQuery}，请优先包含这些景点关键词：${keyword}`;
+  }
+  const raw = selection.trim();
+  const scenicSuffixMatch = raw.match(/(地标景点|博物馆区|自然风光)$/);
+  const scenicSuffix = scenicSuffixMatch?.[1];
+  const destinationPart = scenicSuffix
+    ? raw.slice(0, raw.length - scenicSuffix.length).trim()
+    : raw;
+  const normalized = normalizeDestinationSelection(destinationPart || raw);
+  const preferenceHint = scenicSuffix ? `，偏好${scenicSuffix}` : "";
+  // 优先替换“在X的一日行程”里的 X，避免不断追加导致 NLU 噪声
+  if (/在.+的.*行程/.test(currentQuery)) {
+    const replaced = currentQuery.replace(/在(.+?)的(.*行程)/, `在${normalized}的$2`);
+    return `${replaced}${preferenceHint}`;
+  }
+  return `${currentQuery}。目的地改为：${normalized}${preferenceHint}`;
 }
 
 export function registerPlanCommand(program: Command): void {
@@ -217,6 +409,7 @@ export function registerPlanCommand(program: Command): void {
             Math.min(120, Math.floor(Number(options.maxSeconds) || 60)),
           );
           let currentQuery = query;
+          let routeDirectionId: string | undefined = undefined;
           let apiResult = await callRouteAndRun(
             apiBase,
             options.token ?? config.apiToken,
@@ -224,6 +417,7 @@ export function registerPlanCommand(program: Command): void {
               request_id: `plan-${Date.now()}`,
               user_id: options.userId,
               trip_id: options.tripId,
+              route_direction_id: routeDirectionId,
               message: currentQuery,
               options: {
                 dry_run: true,
@@ -248,11 +442,28 @@ export function registerPlanCommand(program: Command): void {
             },
           );
           if (options.interactive) {
-            for (let i = 0; i < 2; i += 1) {
+            const clarificationSeenCount = new Map<string, number>();
+            for (let i = 0; i < 3; i += 1) {
               if (apiResult.result_status !== "NEED_MORE_INFO") break;
-              const picked = await askInteractiveClarification(apiResult);
+              const qid = apiResult.clarification_questions?.[0]?.id ?? "";
+              const seen = clarificationSeenCount.get(qid) ?? 0;
+              clarificationSeenCount.set(qid, seen + 1);
+              const forceKeywordInput =
+                qid === "destination_poi_intent_refine" && seen >= 1;
+              const suppressQuestionText =
+                qid === "destination_scope_too_sparse" && seen >= 1;
+              const picked = await askInteractiveClarification(
+                apiResult,
+                currentQuery,
+                forceKeywordInput,
+                suppressQuestionText,
+              );
               if (!picked) break;
-              currentQuery = `${currentQuery}。我选择：${picked}`;
+              if (picked.startsWith("__ROUTE_DIR__:")) {
+                routeDirectionId = picked.replace("__ROUTE_DIR__:", "").trim() || routeDirectionId;
+              } else {
+                currentQuery = buildFollowupQuery(currentQuery, picked);
+              }
               apiResult = await callRouteAndRun(
                 apiBase,
                 options.token ?? config.apiToken,
@@ -260,6 +471,7 @@ export function registerPlanCommand(program: Command): void {
                   request_id: `plan-${Date.now()}-r${i + 1}`,
                   user_id: options.userId,
                   trip_id: options.tripId,
+                  route_direction_id: routeDirectionId,
                   message: currentQuery,
                   options: {
                     dry_run: true,
@@ -286,6 +498,10 @@ export function registerPlanCommand(program: Command): void {
             }
           }
           logger.info("Planning done (api)");
+          process.stderr.write(`\n[CLI] plan observability rev=${PLAN_CLI_OBSERVABILITY_REV}\n`);
+          process.stderr.write(
+            `Orchestration trace: mode_final=${apiResult.mode_final ?? "n/a"} orchestration_mode_final=${apiResult.orchestration_mode_final ?? "n/a"} received_route_direction_id=${apiResult.received_route_direction_id ?? "n/a"}\n`,
+          );
           const hasFallbackTimeline = !!apiResult.fallback_plan?.timeline?.length;
           if (hasFallbackTimeline) {
             const fallbackPlan = apiResult.fallback_plan;
@@ -323,22 +539,9 @@ export function registerPlanCommand(program: Command): void {
             }
             if (options.showPoiTrace && apiResult.poi_trace) {
               console.log("\nPOI Trace:");
-              console.log(
-                JSON.stringify(
-                  {
-                    policy: apiResult.poi_trace.policy,
-                    source_hint: apiResult.poi_trace.sourceHint,
-                    provider: apiResult.poi_trace.provider,
-                    input: apiResult.poi_trace.inputCount,
-                    selected: apiResult.poi_trace.selectedCount,
-                    commute_budget_minutes: apiResult.poi_trace.commute_budget_minutes,
-                    estimated_commute_minutes: apiResult.poi_trace.estimated_commute_minutes,
-                    over_budget: apiResult.poi_trace.over_budget,
-                  },
-                  null,
-                  2,
-                ),
-              );
+              console.log(JSON.stringify(poiTraceForDisplay(apiResult.poi_trace), null, 2));
+            } else if (options.showPoiTrace) {
+              console.log("\n[Debug] 当前结果没有 poi trace（后端未返回）。");
             }
             if (options.showDebugScores && apiResult.fallback_plan?.debug_scores?.length) {
               renderDebugScores(
@@ -372,22 +575,7 @@ export function registerPlanCommand(program: Command): void {
               renderGroupedTimeline(timeline);
               if (options.showPoiTrace && apiResult.poi_trace) {
                 console.log("\nPOI Trace:");
-                console.log(
-                  JSON.stringify(
-                    {
-                      policy: apiResult.poi_trace.policy,
-                      source_hint: apiResult.poi_trace.sourceHint,
-                      provider: apiResult.poi_trace.provider,
-                      input: apiResult.poi_trace.inputCount,
-                      selected: apiResult.poi_trace.selectedCount,
-                      commute_budget_minutes: apiResult.poi_trace.commute_budget_minutes,
-                      estimated_commute_minutes: apiResult.poi_trace.estimated_commute_minutes,
-                      over_budget: apiResult.poi_trace.over_budget,
-                    },
-                    null,
-                    2,
-                  ),
-                );
+                console.log(JSON.stringify(poiTraceForDisplay(apiResult.poi_trace), null, 2));
               } else if (options.showPoiTrace) {
                 console.log("\n[Debug] 当前结果没有 poi trace（后端未返回）。");
               }
