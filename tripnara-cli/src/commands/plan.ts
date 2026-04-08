@@ -179,6 +179,7 @@ async function askInteractiveClarification(
   currentQuery: string,
   forceKeywordInput = false,
   suppressQuestionText = false,
+  forceFreeTextDestination = false,
 ): Promise<string | undefined> {
   const q = result.clarification_questions?.[0];
   const options = Array.isArray(q?.options) ? q.options : [];
@@ -227,6 +228,20 @@ async function askInteractiveClarification(
       rl.close();
     }
   }
+  if (forceFreeTextDestination) {
+    const rl = readline.createInterface({ input, output });
+    try {
+      console.log(
+        "\n（同一问题已出现多次：仅选菜单可能无法让服务端收敛。请直接输入更具体的城市或区域；英文地名通常更稳，例如 Reykjavik）",
+      );
+      const manual = await rl.question("请输入城市/区域（直接回车取消）: ");
+      const value = manual.trim();
+      if (!value || isInvalidManual(value)) return undefined;
+      return value;
+    } finally {
+      rl.close();
+    }
+  }
   if (options.length === 0) return undefined;
   // 对于“目的地范围过大/过散”的问题：先让用户选偏好，再用偏好重发一次请求，
   // 让后端按偏好重新过滤/排序路线方向选项，避免“先选方向后问偏好”的体验。
@@ -265,7 +280,9 @@ async function askInteractiveClarification(
     const idx = Number(raw);
     if (!Number.isFinite(idx) || idx < 1 || idx > options.length) return undefined;
     const selected = displayOptions[idx - 1];
-    if (q?.id === "destination_scope_too_sparse" && !selected.label.includes("手动输入")) {
+    const isDestinationScopeQuestion =
+      q?.id === "destination_scope_too_sparse" || q?.id === "destination_scope_refine";
+    if (isDestinationScopeQuestion && !selected.label.includes("手动输入")) {
       const routeHintMap: Record<string, string> = {
         "市区": "downtown city center landmarks",
         "近郊": "suburb nearby attractions",
@@ -459,12 +476,17 @@ export function registerPlanCommand(program: Command): void {
               const forceKeywordInput =
                 qid === "destination_poi_intent_refine" && seen >= 1;
               const suppressQuestionText =
-                qid === "destination_scope_too_sparse" && seen >= 1;
+                (qid === "destination_scope_too_sparse" || qid === "destination_scope_refine") &&
+                seen >= 1;
+              const forceFreeTextDestination =
+                (qid === "destination_scope_too_sparse" || qid === "destination_scope_refine") &&
+                seen >= 2;
               const picked = await askInteractiveClarification(
                 apiResult,
                 currentQuery,
                 forceKeywordInput,
                 suppressQuestionText,
+                forceFreeTextDestination,
               );
               if (!picked) break;
               if (picked.startsWith("__ROUTE_DIR__:")) {
