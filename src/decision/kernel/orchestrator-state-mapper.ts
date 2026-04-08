@@ -29,6 +29,41 @@ import {
   mergeTravelOntologyState,
 } from './travel-ontology.mapper';
 
+function isPlaceholderDestination(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'object') return false;
+  const s = String(value).trim();
+  if (!s) return true;
+  if (s === '未指定') return true;
+  return /未指定|待定|unknown|unspecified|tbd/i.test(s);
+}
+
+/**
+ * STATE_UPDATE：合并 O→D 的 userIntent，避免 DSO 仅含 gaps 等片段时整份替换丢掉编排器刚解析的 destination。
+ */
+export function mergeUserIntentForDsoPrimaryPatch(
+  fromOrchestrator: UserIntent | undefined,
+  fromDso: UserIntent | undefined,
+): UserIntent | undefined {
+  const o = fromOrchestrator ?? {};
+  const d = fromDso ?? {};
+  const merged: UserIntent = { ...o, ...d };
+  if (isPlaceholderDestination(merged.destination) && !isPlaceholderDestination(o.destination)) {
+    merged.destination = o.destination;
+  }
+  if (
+    (merged.origin === undefined ||
+      merged.origin === '' ||
+      merged.origin === '起点') &&
+    o.origin !== undefined &&
+    o.origin !== '' &&
+    o.origin !== '起点'
+  ) {
+    merged.origin = o.origin;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 /**
  * 从 OrchestratorState 投影为 DecisionStatePatch（增量更新用）
  */
@@ -97,9 +132,8 @@ export function buildPatchFromDSOPrimary(
     requestId: dso.systemState?.requestId ?? dso.requestId ?? os.request_id,
   };
 
-  // 优先 DSO，仅当 DSO 无数据时用 O；gaps 来自 INTAKE，O 有则用 O
-  patch.userIntent =
-    dso.userIntent && Object.keys(dso.userIntent).length > 0 ? dso.userIntent : fromO.userIntent;
+  // 字段级合并：DSO 片段（如仅 gaps）不得覆盖 O 中已解析的 destination / origin
+  patch.userIntent = mergeUserIntentForDsoPrimaryPatch(fromO.userIntent, dso.userIntent);
   if (patch.userIntent && (os.gaps?.length || patch.userIntent.gaps?.length)) {
     patch.userIntent = { ...patch.userIntent, gaps: os.gaps ?? patch.userIntent.gaps };
   }
@@ -213,6 +247,14 @@ function extractEnvironmentFromResearchData(
   }
   if (researchData.route_direction_id || researchData.routeDirectionId) {
     env.routeDirectionId = researchData.route_direction_id ?? researchData.routeDirectionId;
+  }
+  const rcw = researchData.routeCorridorWorld ?? researchData.route_corridor_world;
+  if (rcw && typeof rcw === 'object' && !Array.isArray(rcw)) {
+    env.routeCorridorWorld = rcw as EnvironmentState['routeCorridorWorld'];
+    const rid = (rcw as { routeDirectionId?: string }).routeDirectionId;
+    if (!env.routeDirectionId && typeof rid === 'string' && rid.trim()) {
+      env.routeDirectionId = rid.trim();
+    }
   }
   if (researchData.month !== undefined) {
     env.month = typeof researchData.month === 'number' ? researchData.month : parseInt(String(researchData.month), 10);
@@ -374,6 +416,7 @@ function environmentStateToResearchData(env: EnvironmentState): Record<string, u
   const data: Record<string, unknown> = {};
   if (env.countryCode) data.countryCode = env.countryCode;
   if (env.routeDirectionId) data.route_direction_id = env.routeDirectionId;
+  if (env.routeCorridorWorld) data.routeCorridorWorld = env.routeCorridorWorld;
   if (env.month !== undefined) data.month = env.month;
   if (env.roadConditions) data.road_conditions = env.roadConditions;
   if (env.weatherRisk !== undefined) data.weather_risk = env.weatherRisk;

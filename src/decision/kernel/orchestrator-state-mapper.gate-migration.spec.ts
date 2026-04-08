@@ -8,6 +8,7 @@ import type { GateResult, OrchestratorState } from '../../agent/interfaces/trip-
 import {
   buildPatchFromDSOPrimary,
   decisionStateToOrchestratorState,
+  mergeUserIntentForDsoPrimaryPatch,
   orchestratorStateToDecisionStatePatch,
 } from './orchestrator-state-mapper';
 
@@ -26,6 +27,19 @@ function baseOrchestrator(overrides: Partial<OrchestratorState> = {}): Orchestra
 }
 
 describe('orchestrator-state-mapper gate migration (S-DK-02)', () => {
+  describe('mergeUserIntentForDsoPrimaryPatch (DSO 片段不得覆盖 O 的 destination)', () => {
+    it('preserves orchestrator destination when DSO userIntent only has gaps', () => {
+      const fromO = { destination: 'Reykjavik', mode: 'mixed' as const };
+      const fromDso = {
+        gaps: [{ type: 'MISSING_DESTINATION', severity: 'HARD' as const, detail: 'x' }],
+      };
+      const m = mergeUserIntentForDsoPrimaryPatch(fromO, fromDso);
+      expect(m?.destination).toBe('Reykjavik');
+      expect(m?.gaps).toHaveLength(1);
+      expect(m?.mode).toBe('mixed');
+    });
+  });
+
   describe('OrchestratorState → DecisionStatePatch (pre/post GATE)', () => {
     it('maps current_step GATE_EVAL to systemState.currentPhase', () => {
       const os = baseOrchestrator({

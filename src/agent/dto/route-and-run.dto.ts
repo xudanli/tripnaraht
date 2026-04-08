@@ -220,6 +220,25 @@ export class AgentOptionsDto {
   execution_mode?: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO';
 }
 
+/** 与 NL message 并行：澄清/前端显式提交，避免仅靠关键词表丢失 Reykjavik 等城市 */
+export class StructuredTravelInputDto {
+  @ApiPropertyOptional({
+    description: '结构化目的地（写入 trip_plan_request / DSO userIntent.destination）',
+    example: 'Reykjavik',
+  })
+  @IsOptional()
+  @IsString()
+  destination?: string;
+
+  @ApiPropertyOptional({
+    description: '结构化起点（可选）',
+    example: 'Keflavík Airport',
+  })
+  @IsOptional()
+  @IsString()
+  origin?: string;
+}
+
 export class RouteAndRunRequestDto {
   @ApiProperty({ 
     description: '请求唯一标识符',
@@ -261,6 +280,15 @@ export class RouteAndRunRequestDto {
   })
   @IsString()
   message!: string;
+
+  @ApiPropertyOptional({
+    description: '结构化旅行字段（澄清回合与 message 一并提交，保证 STATE_UPDATE 可收敛 destination）',
+    type: StructuredTravelInputDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StructuredTravelInputDto)
+  structured_travel_input?: StructuredTravelInputDto;
 
   @ApiPropertyOptional({ 
     description: '对话上下文',

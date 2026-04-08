@@ -2492,6 +2492,12 @@ ${JSON.stringify(routingDecision, null, 2)}
     // 提取目的地（扩展规则匹配）
     let destination: string | { lat: number; lng: number } | undefined;
 
+    const structIn = request.structured_travel_input;
+    const structDest =
+      typeof structIn?.destination === 'string' ? structIn.destination.trim() : '';
+    const structOrigin =
+      typeof structIn?.origin === 'string' ? structIn.origin.trim() : '';
+
     // 国内常见城市（先于国家级关键词，便于「上海美食2天」等短句命中目的地）
     const domesticCityPatterns: Array<{ pattern: RegExp; value: string }> = [
       { pattern: /上海/, value: '上海' },
@@ -2663,9 +2669,32 @@ ${JSON.stringify(routingDecision, null, 2)}
       mode = 'transit';
     }
 
+    // 未命中关键词表时：从「在X的…行程」抽取 X（覆盖 Reykjavik、雷克雅未克市区等）
+    if (
+      !destination ||
+      (typeof destination === 'string' && (destination === '未指定' || !destination.trim()))
+    ) {
+      const geo = request.message.match(/在\s*([^，。！？\n]{1,60}?)\s*的/);
+      if (geo) {
+        const raw = geo[1].trim().replace(/\s+/g, ' ');
+        if (
+          raw.length >= 2 &&
+          raw.length <= 56 &&
+          !/^(这里|那里|这边|那边|本地)$/u.test(raw)
+        ) {
+          destination = raw;
+        }
+      }
+    }
+
+    // 结构化输入最后覆盖 NL，保证澄清回合显式目的地生效
+    if (structDest.length >= 2) {
+      destination = structDest;
+    }
+
     return {
       request_id: request.request_id,
-      origin: '起点', // 默认值，实际应该从 message 或上下文提取
+      origin: structOrigin.length >= 1 ? structOrigin : '起点', // 默认值，实际应该从 message 或上下文提取
       destination: destination || '未指定',
       date_range,
       start_date,
@@ -3883,10 +3912,19 @@ ${JSON.stringify(routingDecision, null, 2)}
       step: 'STATE_UPDATE' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
       inputs_summary: 'OrchestratorState 投影为 DSO patch，原子提交',
-      outputs_summary: `已更新: userIntent=${!!patch.userIntent}, constraints=${!!patch.constraints}, environmentState=${!!patch.environmentState}, version=${updated.systemState?.version}`,
+      outputs_summary: `已更新: userIntent=${!!patch.userIntent}, constraints=${!!patch.constraints}, environmentState=${!!patch.environmentState}, version=${updated.systemState?.version}; userIntent.destination before→after: ${JSON.stringify({
+        before: decisionState.userIntent?.destination ?? null,
+        after: patch.userIntent?.destination ?? updated.userIntent?.destination ?? null,
+      })}`,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
-      metadata: { duration_ms: Date.now() - stepStartTime },
+      metadata: {
+        duration_ms: Date.now() - stepStartTime,
+        state_update_user_intent_destination: {
+          before: decisionState.userIntent?.destination ?? null,
+          after: patch.userIntent?.destination ?? updated.userIntent?.destination ?? null,
+        },
+      },
     });
     state.metadata.last_updated_at = new Date().toISOString();
 

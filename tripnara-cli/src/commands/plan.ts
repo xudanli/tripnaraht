@@ -332,6 +332,14 @@ function normalizeDestinationSelection(selection: string): string {
   return selection.replace(/\s+/g, "").replace(/(市区|近郊|南部|北部|东部|西部)$/, "$1");
 }
 
+/** 澄清回合用户键入的纯文本（如 Reykjavik）→ 结构化字段，避免仅靠 NL 关键词表 */
+function structuredTravelFromClarificationPick(picked: string): { destination: string } | undefined {
+  const t = picked.trim();
+  if (!t || picked.startsWith("__")) return undefined;
+  if (t.length > 80 || /[。！？;；]/.test(t)) return undefined;
+  return { destination: t };
+}
+
 function buildFollowupQuery(currentQuery: string, selection: string): string {
   if (selection.startsWith("__PREF__:")) {
     const payload = selection.replace("__PREF__:", "");
@@ -435,6 +443,7 @@ export function registerPlanCommand(program: Command): void {
           );
           let currentQuery = query;
           let routeDirectionId: string | undefined = undefined;
+          let structuredTravelInput: { destination?: string } | undefined;
           let apiResult = await callRouteAndRun(
             apiBase,
             options.token ?? config.apiToken,
@@ -444,6 +453,7 @@ export function registerPlanCommand(program: Command): void {
               trip_id: options.tripId,
               route_direction_id: routeDirectionId,
               message: currentQuery,
+              ...(structuredTravelInput ? { structured_travel_input: structuredTravelInput } : {}),
               options: {
                 dry_run: true,
                 max_steps: 8,
@@ -494,6 +504,10 @@ export function registerPlanCommand(program: Command): void {
               } else {
                 currentQuery = buildFollowupQuery(currentQuery, picked);
               }
+              if (!picked.startsWith("__")) {
+                const st = structuredTravelFromClarificationPick(picked);
+                if (st) structuredTravelInput = st;
+              }
               apiResult = await callRouteAndRun(
                 apiBase,
                 options.token ?? config.apiToken,
@@ -503,6 +517,7 @@ export function registerPlanCommand(program: Command): void {
                   trip_id: options.tripId,
                   route_direction_id: routeDirectionId,
                   message: currentQuery,
+                  ...(structuredTravelInput ? { structured_travel_input: structuredTravelInput } : {}),
                   options: {
                     dry_run: true,
                     max_steps: 8,
