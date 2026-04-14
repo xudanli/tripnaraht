@@ -482,6 +482,22 @@ export class AgentService {
     return orchestrationResult.decisionLog ?? [];
   }
 
+  private buildOptimizationExplain(decisionState?: DecisionState): RouteAndRunResponseDto['explain']['optimization'] {
+    const hints = decisionState?.optimizationHints;
+    if (!hints) return undefined;
+    return {
+      method: hints.method,
+      recommended_alternative_id: hints.recommendedAlternativeId,
+      alternatives: hints.alternatives?.map((a) => ({
+        id: a.id,
+        score: a.score,
+        expected_utility: a.expectedUtility,
+        feasibility_probability: a.feasibilityProbability,
+        confidence_interval: a.confidenceInterval,
+      })),
+    };
+  }
+
   /**
    * JEPA：把现有 DSO（DecisionState）的“当前可观测世界状态”投影为 z_env / z_user / z_state。
    * predictor 输出与 delta / prediction_errors 先保持可选（未在核心链路实现时避免误导）。
@@ -2015,6 +2031,7 @@ export class AgentService {
             orchestrationResult.result?.gate_result,
             stateWithVerdict
           ),
+          optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
         },
         observability: {
           latency_ms: latency,
@@ -2142,6 +2159,7 @@ export class AgentService {
               orchestrationResult.result?.gate_result,
               orchestrationResult.result?.state
             ),
+            optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
           },
           observability: {
             latency_ms: latency,

@@ -652,6 +652,22 @@ export class RouteAndRunResponseDto {
     decision_log: DecisionLogEntry[];
     simplified_explanation?: SimplifiedExplanation; // 🆕 简化版解释（减少认知负荷）
     ai_capability_display?: AICapabilityDisplay; // 🆕 AI能力展示（信任建立机制）
+    /** OPTIMIZE/CGUS 输出（用于直接展示备选方案与推荐理由） */
+    optimization?: {
+      method?: 'CGUS' | 'MONTE_CARLO' | 'HEURISTIC';
+      recommended_alternative_id?: string;
+      alternatives?: Array<{
+        id: string;
+        score: number;
+        expected_utility?: number;
+        feasibility_probability?: number;
+        confidence_interval?: {
+          lower: number;
+          upper: number;
+          level: number;
+        };
+      }>;
+    };
   };
 
   @ApiProperty({ 
