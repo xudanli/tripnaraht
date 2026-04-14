@@ -47,6 +47,14 @@ export interface WorldStateRouteSummary {
   routePhilosophy?: string;
   /** 硬约束规则列表 */
   hardRules?: string[];
+  /** 走廊区域主标签（如半岛/国家公园名称） */
+  regionLabel?: string;
+  /** 走廊几何 WKT（可审计/工具用） */
+  corridorWkt?: string | null;
+  /** POI 类型/意图提示 */
+  poiHints?: string[];
+  /** nature | city | mixed — 影响 fallback 与节奏 */
+  regionType?: string;
 }
 
 /** world.buildContext 输出结构（用于 worldModelContextToWorldStateSummary 入参） */
@@ -143,13 +151,29 @@ export function buildWorldStateSummaryFromDso(
     };
   }
 
-  // Route: 从 environmentState.routeDirectionId 映射
+  // Route: 从 environmentState.routeDirectionId + routeCorridorWorld 映射
   const routeDirectionId = env.routeDirectionId as string | undefined;
-  if (routeDirectionId) {
+  const rcw = env.routeCorridorWorld as
+    | {
+        routeDirectionId?: string;
+        regionLabel?: string;
+        corridorWkt?: string | null;
+        poiHints?: string[];
+        regionType?: string;
+        constraints?: Record<string, unknown>;
+      }
+    | undefined;
+  const effectiveRdId = routeDirectionId ?? rcw?.routeDirectionId;
+  if (effectiveRdId || rcw) {
+    const hints = rcw?.poiHints;
     summary.route = {
-      routeDirectionId,
-      routePhilosophy: undefined,
-      hardRules: [],
+      routeDirectionId: effectiveRdId,
+      routePhilosophy: rcw?.regionLabel,
+      hardRules: Array.isArray(hints) ? hints.map((h) => String(h)) : [],
+      regionLabel: rcw?.regionLabel,
+      corridorWkt: rcw?.corridorWkt,
+      poiHints: Array.isArray(hints) ? hints.map((h) => String(h)) : undefined,
+      regionType: rcw?.regionType,
     };
   }
 

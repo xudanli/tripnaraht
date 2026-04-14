@@ -68,6 +68,24 @@ export interface EnvironmentFlight {
   price?: number;
 }
 
+/** 路线走廊注入 DSO 的可计算世界切片（RouteDirection → 空间约束摘要） */
+export type RouteRegionType = 'nature' | 'city' | 'mixed';
+
+export interface RouteCorridorWorldModel {
+  routeDirectionId: string;
+  regionLabel?: string;
+  regionLabels?: string[];
+  /** ST_AsText(corridorGeom)；无走廊几何时为 undefined */
+  corridorWkt?: string | null;
+  constraints?: {
+    maxDailyDriveHours?: number;
+    terrain?: string;
+    [key: string]: unknown;
+  };
+  poiHints?: string[];
+  regionType?: RouteRegionType;
+}
+
 /** 环境状态（世界模型输出） */
 export interface EnvironmentState {
   countryCode?: string;
@@ -75,6 +93,8 @@ export interface EnvironmentState {
   roadConditions?: Record<string, unknown>;
   weatherRisk?: number;
   routeDirectionId?: string;
+  /** RouteDirection 解析后的走廊/区域语义，供检索、fallback、世界摘要共用 */
+  routeCorridorWorld?: RouteCorridorWorldModel;
   /** 失败风险评估（FailureRiskPredictionService 输出） */
   failureRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   /** 拥挤程度 (0-1)，用于避流维度 */

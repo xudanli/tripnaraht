@@ -37,12 +37,15 @@ const STRATEGY_TYPE_SEQUENCE: Record<FallbackStrategy, PoiType[]> = {
   CITY_WALK: ['city', 'food', 'city', 'landmark'],
   BALANCED: ['culture', 'food', 'relax', 'landmark'],
   HOT_SPOTS: ['city', 'food', 'relax', 'landmark'],
+  ROAD_TRIP: ['landmark', 'food', 'landmark', 'landmark'],
 };
 
 const STRATEGY_NAME_HINTS: Partial<Record<FallbackStrategy, string[]>> = {
   BALANCED: ['浅草寺', '银座', '明治神宫', '东京塔'],
   CLASSIC: ['浅草寺', '皇居', '银座', '东京塔'],
   CITY_WALK: ['涩谷', '原宿', '表参道', '咖啡'],
+  /** 自然线不绑定具体城市名词，避免错误地名 boost */
+  ROAD_TRIP: [],
 };
 
 const TIME_SLOTS = ['09:00', '11:30', '14:00', '19:00'];

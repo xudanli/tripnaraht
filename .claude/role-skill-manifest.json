@@ -1,0 +1,143 @@
+{
+  "version": "1.0.0",
+  "description": "TripNARA：开发期「角色 Skill 包」机器可读清单。用于编排默认读盘范围、验收项与协作 Consult。运行时 Skill 源码在 src/skills/；本文件不替代 prompts/agents。",
+  "reference_docs": [
+    ".claude/claude.md",
+    ".claude/roles/muti_agent_collaboration.md",
+    "scripts/rl-infra/roll/RACI_WEEK1_3.md"
+  ],
+  "tiers": {
+    "release_train": "claude.md §13.1 发布主链核心常驻",
+    "core_product": "TripNARA 产品研发主链（非发布 RACI 仍建议参与）",
+    "on_demand": "claude.md §13.2 或专项触发再 Consult"
+  },
+  "roles": [
+    {
+      "id": "architect",
+      "title": { "zh": "技术负责人/架构师", "en": "Tech Lead / Architect" },
+      "prompt": ".claude/roles/architect.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        "docs/ARCHITECTURE.md",
+        ".claude/claude_exec.md",
+        ".claude/roles/architect.md",
+        "src/**/*.ts"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "模块边界与依赖方向符合 ARCHITECTURE / claude_exec",
+        "新能力有明确归属模块与调用方",
+        "发布与观测路径不破坏 Gate-first"
+      ],
+      "consult_roles": ["ai_reasoning_system_architect", "skills_engineer", "devops_engineer"]
+    },
+    {
+      "id": "skills_engineer",
+      "title": { "zh": "智能体工程师", "en": "Skills Engineer" },
+      "prompt": ".claude/roles/skills-engineer.md",
+      "tier": "core_product",
+      "default_paths": ["src/skills/", "src/**/skills.module.ts"],
+      "runtime_skill_directories": ["src/skills/"],
+      "checklist": [
+        "Skill 实现符合 Skill 接口与注册位置",
+        "输入输出 schema、错误与降级语义明确",
+        "与编排/状态机调用点一致"
+      ],
+      "consult_roles": ["architect", "ai_reasoning_system_architect", "test_engineer"]
+    },
+    {
+      "id": "chief_product_architect",
+      "title": { "zh": "首席产品架构师", "en": "Chief Product Architect" },
+      "prompt": ".claude/roles/chief-product-architect.md",
+      "tier": "core_product",
+      "default_paths": ["docs/", "src/", ".claude/roles/chief-product-architect.md"],
+      "runtime_skill_directories": ["src/skills/plan/architect/", "src/skills/detail/"],
+      "checklist": [
+        "范围与非目标清晰；是否触碰 Gate-first / 安全承诺边界",
+        "成功指标与用户可见语义变更已点名关联角色"
+      ],
+      "consult_roles": ["architect", "decision_safety_compliance_officer", "decision_ux_architect"]
+    },
+    {
+      "id": "ai_reasoning_system_architect",
+      "title": { "zh": "AI 推理系统架构师", "en": "AI Reasoning System Architect" },
+      "prompt": ".claude/roles/ai-reasoning-system-architect.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/claude_exec.md",
+        "src/agent/",
+        "src/skills/decision/",
+        "src/skills/itinerary/",
+        "src/skills/plan/"
+      ],
+      "runtime_skill_directories": [
+        "src/skills/decision/",
+        "src/skills/itinerary/",
+        "src/skills/plan/gate/",
+        "src/skills/plan/log/"
+      ],
+      "checklist": [
+        "Gate → Plan → Verify → Repair 顺序与 claude_exec 一致",
+        "决策日志与降级策略字段完整"
+      ],
+      "consult_roles": ["architect", "skills_engineer", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "decision_safety_compliance_officer",
+      "title": { "zh": "决策安全与责任官", "en": "Decision Safety & Compliance Officer" },
+      "prompt": ".claude/roles/decision-safety-compliance-officer.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/decision-safety-compliance-officer.md", "src/skills/plan/gate/"],
+      "runtime_skill_directories": ["src/skills/plan/gate/", "src/skills/decision/"],
+      "checklist": ["Gate 语义、披露与免责声明变更已记录", "审计字段满足责任追溯"],
+      "consult_roles": ["ai_reasoning_system_architect", "chief_product_architect", "decision_ux_architect"]
+    },
+    {
+      "id": "decision_ux_architect",
+      "title": { "zh": "决策体验设计师", "en": "Decision UX Architect" },
+      "prompt": ".claude/roles/decision-ux-architect.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/decision-ux-architect.md", "src/skills/detail/", "src/skills/hitl/"],
+      "runtime_skill_directories": ["src/skills/detail/", "src/skills/hitl/"],
+      "checklist": ["Delta / 三人格映射与字段对齐", "解释与审批不增加认知负担"],
+      "consult_roles": ["frontend_engineer", "content_strategy_brand_lead", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "decision_evaluation_evolution_lead",
+      "title": { "zh": "决策评估与进化负责人", "en": "Decision Evaluation & Evolution Lead" },
+      "prompt": ".claude/roles/decision-evaluation-evolution-lead.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/decision-evaluation-evolution-lead.md", "src/skills/context/", "src/skills/decision/"],
+      "runtime_skill_directories": ["src/skills/context/", "src/skills/decision/"],
+      "checklist": ["指标/Reward 语义有版本与文档", "回归与版本对比协议可执行"],
+      "consult_roles": ["rl_evaluation_engineer", "chief_data_engineer", "chief_ai_scientist"]
+    },
+    {
+      "id": "chief_data_engineer",
+      "title": { "zh": "首席数据工程师/数据平台", "en": "Chief Data Engineer" },
+      "prompt": ".claude/roles/chief-data-engineer.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": ["prisma/", "scripts/", "src/trips/", ".claude/roles/chief-data-engineer.md"],
+      "runtime_skill_directories": ["src/skills/world/", "src/skills/places/", "src/skills/plan/evidence/"],
+      "checklist": ["迁移可回滚；索引策略明确", "血缘与审计字段满足回放与训练"],
+      "consult_roles": ["architect", "decision_evaluation_evolution_lead", "devops_engineer"]
+    },
+    {
+      "id": "devops_engineer",
+      "title": { "zh": "DevOps 工程师", "en": "DevOps Engineer" },
+      "prompt": ".claude/roles/devops-engineer.md",
+      "tier": "core_product",
+      "default_paths": ["docker-compose*.yml", "Dockerfile*", ".github/", "scripts/"],
+      "runtime_skill_directories": [],
+      "checklist": ["灰度/回滚/告警齐备", "关键链路 SLO 可观测"],
+      "consult_roles": ["architect", "security_engineer"]
+    }
+  ]
+}
+

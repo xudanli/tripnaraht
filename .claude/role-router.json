@@ -1,0 +1,83 @@
+{
+  "version": "1.0.0",
+  "description": "TripNARA role-router：把任务/变更点路由到应拉取的 roles（开发期协作），并给出必须检查项。角色定义见 .claude/role-skill-manifest.json。",
+  "inputs": {
+    "task_tags": [
+      "feature",
+      "bugfix",
+      "refactor",
+      "performance",
+      "security",
+      "compliance",
+      "ux_copy",
+      "eval_reward",
+      "data_migration",
+      "geo_routing",
+      "rag_quality",
+      "release_ops"
+    ],
+    "change_areas": [
+      "claude_exec_or_state_machine",
+      "gate_policy_or_risk_disclosure",
+      "decision_log_or_replay",
+      "skill_contract_or_new_skill",
+      "db_schema_or_postgis",
+      "trajectory_reward_or_metrics",
+      "frontend_approval_or_explainability_ui",
+      "rag_index_or_chunking",
+      "deployment_or_observability"
+    ]
+  },
+  "routing_rules": [
+    {
+      "when": { "any_change_areas": ["claude_exec_or_state_machine"] },
+      "include_roles": ["architect", "ai_reasoning_system_architect", "skills_engineer"],
+      "must_check": ["claude_exec 顺序一致性", "降级语义与 decision_log 字段完整性", "技能注册与调用点一致"]
+    },
+    {
+      "when": { "any_change_areas": ["gate_policy_or_risk_disclosure"] },
+      "include_roles": ["decision_safety_compliance_officer", "ai_reasoning_system_architect", "chief_product_architect"],
+      "must_check": ["ALLOW/ADJUST/BLOCK 语义与触发条件", "披露/免责声明", "审计与可追溯字段"]
+    },
+    {
+      "when": { "any_change_areas": ["decision_log_or_replay"] },
+      "include_roles": ["ai_reasoning_system_architect", "decision_evaluation_evolution_lead", "chief_data_engineer"],
+      "must_check": ["日志写入与 evidenceRefs", "Decision Replay 可重放", "字段血缘与存储策略"]
+    },
+    {
+      "when": { "any_change_areas": ["skill_contract_or_new_skill"] },
+      "include_roles": ["skills_engineer", "architect"],
+      "must_check": ["I/O schema", "错误码与降级策略", "最小测试/回归条目"]
+    },
+    {
+      "when": { "any_change_areas": ["db_schema_or_postgis"] },
+      "include_roles": ["chief_data_engineer", "architect"],
+      "must_check": ["迁移可回滚与索引策略", "血缘/审计字段", "回填与质量门禁"]
+    },
+    {
+      "when": { "any_change_areas": ["trajectory_reward_or_metrics"] },
+      "include_roles": ["decision_evaluation_evolution_lead", "chief_data_engineer"],
+      "must_check": ["指标/Reward 语义与版本协议", "数据映射与筛选规则", "回归与对比协议"]
+    },
+    {
+      "when": { "any_change_areas": ["frontend_approval_or_explainability_ui"] },
+      "include_roles": ["decision_ux_architect", "frontend_engineer"],
+      "must_check": ["字段对齐（HITL/detail/log）", "解释卡片与 Delta 展示", "文案口径一致"]
+    },
+    {
+      "when": { "any_change_areas": ["rag_index_or_chunking"] },
+      "include_roles": ["rag_engineer", "rag_content_manager"],
+      "must_check": ["chunk/索引与新鲜度策略", "失败降级不伪造事实", "延迟/成本观测"]
+    },
+    {
+      "when": { "any_change_areas": ["deployment_or_observability"] },
+      "include_roles": ["devops_engineer", "architect"],
+      "must_check": ["灰度/回滚/告警", "SLO 观测", "配置与密钥管理"]
+    }
+  ],
+  "global_policies": {
+    "release_train_roles_are_R_A_only": true,
+    "on_demand_roles_default_to_informed": true
+  }
+}
+

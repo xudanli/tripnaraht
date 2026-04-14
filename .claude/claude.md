@@ -55,6 +55,8 @@
 ## D) 专家角色提示词编排（精简版，按项目实际）
 
 本仓库的专家角色提示词位于：`.claude/roles/` 与 `.claude/roles/rl-infra/`。  
+**机器可读编排**（角色 id、默认读盘路径、`checklist`、建议 `consult_roles`、运行时 Skill 目录）：`.claude/role-skill-manifest.json`。  
+**角色路由（role-router）**（任务标签/变更点 → 应拉的 roles 与 must_check）：`.claude/role-router.json` 与 `.claude/role-router.md`。  
 为避免“角色过多导致协作噪音”，默认采用 **核心常驻 + 按需介入** 模式。
 
 ### 13.1 核心常驻（默认必须参与）

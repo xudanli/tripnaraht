@@ -20,7 +20,7 @@ export interface FallbackTimelineItem {
 
 export interface FallbackPlan {
   type: 'fallback';
-  strategy: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED';
+  strategy: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED' | 'ROAD_TRIP';
   name?: string;
   timeline: FallbackTimelineItem[];
   confidence: number;
@@ -136,6 +136,14 @@ function buildCommuteMatrix(
   return { mode, from_start: true, nodes: ['START', ...nodes], minutes: [startRow, ...minutes] };
 }
 
+function restStopLabel(destination: string, regionType?: 'nature' | 'city' | 'mixed'): string {
+  const d = destination.trim() || '目的地';
+  if (regionType === 'nature') {
+    return `${d}沿途观景/休息`;
+  }
+  return `${d}咖啡/茶歇`;
+}
+
 function resolvePacingMode(sourceConfidence?: number): 'normal' | 'conservative' {
   const conservativeThreshold = getConservativeThreshold();
   return (sourceConfidence ?? 1) < conservativeThreshold ? 'conservative' : 'normal';
@@ -151,6 +159,8 @@ function schedulePOI(
     travelMode?: 'walk' | 'drive' | 'transit' | 'mixed';
     dayWindow?: { start: string; end: string };
     pace?: 'relaxed' | 'moderate' | 'intense';
+    /** 自然走廊 vs 城市，影响兜底 rest 文案 */
+    regionType?: 'nature' | 'city' | 'mixed';
   },
 ): FallbackTimelineItem[] {
   const pacingMode = resolvePacingMode(sourceConfidence);
@@ -162,7 +172,17 @@ function schedulePOI(
     dayWindow: plannerContext?.dayWindow,
     pace: plannerContext?.pace,
   });
+  const regionType = plannerContext?.regionType;
   if (scheduled.length === 0) {
+    if (regionType === 'nature' || strategy === 'ROAD_TRIP') {
+      return [
+        { time: '09:00', action: `从${destination}沿线出发（景观公路）`, type: 'start' },
+        { time: '10:30', action: `${destination}自然观景点 A`, type: 'explore' },
+        { time: '12:30', action: `${destination}简餐/野餐点`, type: 'food' },
+        { time: '15:00', action: `${destination}自然观景点 B`, type: 'poi' },
+        { time: '19:00', action: `${destination}入住/休整`, type: 'end' },
+      ];
+    }
     return [
       { time: '09:00', action: `到达${destination}市中心`, type: 'start' },
       { time: '10:00', action: `探索${destination}核心街区`, type: 'explore' },
@@ -187,7 +207,7 @@ function schedulePOI(
     { time: scheduled[0]?.time || '09:00', action: scheduled[0]?.poi.name || `${destination}地标`, type: 'poi' },
     { time: scheduled[1]?.time || '11:30', action: scheduled[1]?.poi.name || '午餐（本地热门餐厅）', type: 'food' },
     { time: scheduled[2]?.time || '14:00', action: scheduled[2]?.poi.name || '选择一个地标景点参观', type: 'poi' },
-    { time: '17:00', action: '涩谷咖啡', type: 'rest' },
+    { time: '17:00', action: restStopLabel(destination, regionType), type: 'rest' },
     { time: scheduled[3]?.time || '19:00', action: scheduled[3]?.poi.name || '晚餐 + 夜景', type: 'end' },
   ];
 }
@@ -216,11 +236,21 @@ export function chooseFallbackStrategy(userInput: string): FallbackPlan['strateg
     CLASSIC: 0.2,
     HOT_SPOTS: 0.2,
     BALANCED: 0.3,
+    ROAD_TRIP: 0.15,
   };
   if (text.includes('第一次')) score.CLASSIC += 0.8;
   if (text.includes('随便') || text.includes('轻松')) score.CITY_WALK += 0.8;
   if (text.includes('打卡') || text.includes('网红') || text.includes('热门')) score.HOT_SPOTS += 0.9;
   if (text.includes('平衡') || text.includes('都想要')) score.BALANCED += 0.7;
+  if (
+    text.includes('自驾') ||
+    text.includes('公路') ||
+    text.includes('半岛') ||
+    text.includes('国家公园') ||
+    /(ring\s*road|road\s*trip|nature|waterfall|glacier|fjord)/.test(text)
+  ) {
+    score.ROAD_TRIP += 1.0;
+  }
 
   let selected: FallbackStrategy = 'BALANCED';
   let best = -Infinity;
@@ -233,6 +263,17 @@ export function chooseFallbackStrategy(userInput: string): FallbackPlan['strateg
   return selected;
 }
 
+/** 结合 DSO/走廊 regionType 选择兜底策略（自然线优先 ROAD_TRIP） */
+export function resolveFallbackStrategy(input: {
+  userInput: string;
+  regionType?: 'nature' | 'city' | 'mixed';
+  strategyHint?: FallbackPlan['strategy'] | null;
+}): FallbackPlan['strategy'] {
+  if (input.strategyHint) return input.strategyHint;
+  if (input.regionType === 'nature') return 'ROAD_TRIP';
+  return chooseFallbackStrategy(input.userInput);
+}
+
 export function buildFallbackPlan(
   destination: string,
   strategy: FallbackPlan['strategy'] = 'CITY_WALK',
@@ -241,6 +282,7 @@ export function buildFallbackPlan(
     includeDebugScores?: boolean;
     includeCommuteMatrix?: boolean;
     tripPlanRequest?: TripPlanRequest;
+    regionType?: 'nature' | 'city' | 'mixed';
   },
 ): FallbackPlan {
   const tpl = resolveTemplate(strategy, destination);
@@ -269,6 +311,7 @@ export function buildFallbackPlan(
           : tripPlanRequest?.mode === 'drive'
             ? 'intense'
             : 'moderate',
+      regionType: options?.regionType,
     },
   );
   const planScore = computePlanScore(scheduledTimeline, sourceData.confidence);
@@ -301,12 +344,21 @@ export function buildFallbackPlan(
     selected_pois: selectedPois,
     plan_score: planScore,
     explain: {
-      summary: `系统选择 ${strategy} 策略，生成具象城市探索路线。`,
+      summary:
+        strategy === 'ROAD_TRIP'
+          ? `系统选择 ${strategy} 策略，按自然/公路旅行节奏生成路线草案。`
+          : `系统选择 ${strategy} 策略，生成具象城市探索路线。`,
       reasoning: [
-        `覆盖文化体验（${selectedPois[0] || '文化节点'}）`,
-        `覆盖城市活力（${selectedPois[1] || '城市节点'}）`,
+        strategy === 'ROAD_TRIP'
+          ? `串联户外观景点（${selectedPois[0] || '观景点'}）`
+          : `覆盖文化体验（${selectedPois[0] || '文化节点'}）`,
+        strategy === 'ROAD_TRIP'
+          ? `途中补给（${selectedPois[1] || '餐食节点'}）`
+          : `覆盖城市活力（${selectedPois[1] || '城市节点'}）`,
         `提供节奏恢复节点（${selectedPois[2] || '恢复节点'}）`,
-        `夜间地标收尾（${selectedPois[selectedPois.length - 1] || '夜景节点'}）`,
+        strategy === 'ROAD_TRIP'
+          ? `晚间休整（${selectedPois[selectedPois.length - 1] || '住宿/休整'}）`
+          : `夜间地标收尾（${selectedPois[selectedPois.length - 1] || '夜景节点'}）`,
         ...(pacingMode === 'conservative'
           ? ['数据置信度较低，已启用保守节奏以降低跨区跳点风险']
           : []),
@@ -328,9 +380,13 @@ export function buildFallbackPlans(
     includeDebugScores?: boolean;
     includeCommuteMatrix?: boolean;
     tripPlanRequest?: TripPlanRequest;
+    regionType?: 'nature' | 'city' | 'mixed';
   },
 ): FallbackPlan[] {
-  const ordered: Array<FallbackPlan['strategy']> = ['CLASSIC', 'CITY_WALK', 'BALANCED'];
+  const ordered: Array<FallbackPlan['strategy']> =
+    options?.regionType === 'nature'
+      ? ['ROAD_TRIP', 'CLASSIC', 'BALANCED']
+      : ['CLASSIC', 'CITY_WALK', 'BALANCED'];
   return ordered.map((strategy, idx) => {
     const plan = buildFallbackPlan(destination, strategy, options);
     return { ...plan, confidence: Math.max(0.45, plan.confidence - idx * 0.05) };

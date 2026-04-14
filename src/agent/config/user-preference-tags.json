@@ -1,0 +1,27 @@
+[
+  {
+    "id": "NATURE",
+    "keywords": ["自然", "nature", "scenery", "viewpoint", "outdoor"],
+    "tags": ["自然风光", "摄影", "户外"]
+  },
+  {
+    "id": "CULTURE",
+    "keywords": ["人文", "历史", "culture", "history", "museum"],
+    "tags": ["人文历史", "博物馆", "城市"]
+  },
+  {
+    "id": "DRIVE",
+    "keywords": ["自驾", "drive", "roadtrip", "easy"],
+    "tags": ["自驾", "公路"]
+  },
+  {
+    "id": "HIKING",
+    "keywords": ["徒步", "hiking", "trail", "trek"],
+    "tags": ["徒步", "户外"]
+  },
+  {
+    "id": "FAMILY",
+    "keywords": ["亲子", "family", "kid"],
+    "tags": ["亲子", "轻松"]
+  }
+]

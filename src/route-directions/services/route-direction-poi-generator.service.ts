@@ -228,6 +228,63 @@ export class RouteDirectionPoiGeneratorService {
       }
     }
 
+    // 5. 走廊内扩桶：类型/regionKey 数据不足时，用「国家 + ST_DWithin」兜底拉候选
+    if (corridorGeom && candidates.length < 20) {
+      const countryCode = recommendation.routeDirection.countryCode;
+      if (countryCode) {
+        let bucketCorridorFilter = Prisma.sql``;
+        const isWktString =
+          typeof corridorGeom === 'string' &&
+          (corridorGeom.startsWith('LINESTRING') ||
+            corridorGeom.startsWith('MULTILINESTRING') ||
+            corridorGeom.startsWith('POLYGON'));
+        if (isWktString) {
+          bucketCorridorFilter = Prisma.sql`
+            AND ST_DWithin(
+              p.location::geography,
+              ST_GeomFromText(${corridorGeom as string}, 4326)::geography,
+              ${bufferMeters}
+            )
+          `;
+        } else {
+          bucketCorridorFilter = Prisma.sql`
+            AND ST_DWithin(
+              p.location::geography,
+              ${corridorGeom}::geography,
+              ${bufferMeters}
+            )
+          `;
+        }
+        const bucketPlaces = await this.prisma.$queryRaw<any[]>`
+          SELECT 
+            p.*,
+            c."countryCode" as "city_countryCode"
+          FROM "Place" p
+          LEFT JOIN "City" c ON p."cityId" = c.id
+          WHERE 
+            p.location IS NOT NULL
+            AND c."countryCode" = ${countryCode}
+            ${bucketCorridorFilter}
+          ORDER BY COALESCE(p.rating, 0) DESC NULLS LAST
+          LIMIT 100
+        `;
+        let usableBucket = bucketPlaces;
+        if (this.poiLayerService && bucketPlaces.length > 0) {
+          const uuids = bucketPlaces.map((p) => p.uuid);
+          const usableUuids = await this.poiLayerService.filterUsablePOIs(uuids);
+          usableBucket = bucketPlaces.filter((p) => usableUuids.includes(p.uuid));
+        }
+        for (const place of usableBucket) {
+          if (!candidates.find((c) => c.id === place.uuid)) {
+            candidates.push(this.placeToActivityCandidate(place, 'optional'));
+          }
+        }
+        this.logger.log(
+          `走廊扩桶（国家=${countryCode}）追加后候选数=${candidates.length}`
+        );
+      }
+    }
+
     // 4. 如果走廊约束生效，记录过滤效果
     if (corridorGeom) {
       this.logger.log(

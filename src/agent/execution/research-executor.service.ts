@@ -144,21 +144,65 @@ export class ResearchExecutorService implements IResearchExecutor {
         seoul: 'Korea',
       };
       const countryHint = ambiguousCityCountryMap[normalized];
-      const destQuery = countryHint ? `${destRaw} ${countryHint}` : destRaw;
-      const result = await skill.execute({
-        query: destQuery,
-        limit: 10,
-        lat: typeof tripRequest.destination === 'object' ? tripRequest.destination?.lat : undefined,
-        lng: typeof tripRequest.destination === 'object' ? tripRequest.destination?.lng : undefined,
+      const baseQuery = countryHint ? `${destRaw} ${countryHint}` : destRaw;
+      const scenicQuery = `${baseQuery} attractions landmark museum sightseeing`;
+      const lat =
+        typeof tripRequest.destination === 'object' ? tripRequest.destination?.lat : undefined;
+      const lng =
+        typeof tripRequest.destination === 'object' ? tripRequest.destination?.lng : undefined;
+
+      const scenicResult = await skill.execute({
+        query: scenicQuery,
+        limit: 12,
+        lat,
+        lng,
+        category: 'ATTRACTION',
+      } as any);
+      const generalResult = await skill.execute({
+        query: baseQuery,
+        limit: 12,
+        lat,
+        lng,
       });
-      researchData.poi_evidence = result?.pois ?? result;
-      if (result?.pois && Array.isArray(result.pois)) {
-        result.pois.forEach((p: any) => p.evidence_id && evidenceRefs.push(p.evidence_id));
-      }
+
+      const scenicPois = Array.isArray(scenicResult?.pois)
+        ? scenicResult.pois
+        : Array.isArray(scenicResult)
+          ? scenicResult
+          : [];
+      const generalPois = Array.isArray(generalResult?.pois)
+        ? generalResult.pois
+        : Array.isArray(generalResult)
+          ? generalResult
+          : [];
+      const merged = this.mergePoiCandidatesWithPriority(scenicPois, generalPois, 16);
+      researchData.poi_evidence = merged;
+      merged.forEach((p: any) => p?.evidence_id && evidenceRefs.push(p.evidence_id));
     } catch (e: any) {
       const strategy = getSkillFailureStrategy('poi.search', e);
       if (strategy.shouldMarkMissing) researchData.poi_evidence = { missing: true, error: e?.message };
     }
+  }
+
+  private mergePoiCandidatesWithPriority(
+    primary: any[],
+    secondary: any[],
+    limit: number,
+  ): any[] {
+    const out: any[] = [];
+    const seen = new Set<string>();
+    const add = (items: any[]) => {
+      for (const poi of items) {
+        if (out.length >= limit) break;
+        const key = `${poi?.poi_id ?? poi?.id ?? ''}|${String(poi?.name ?? '').toLowerCase()}`;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(poi);
+      }
+    };
+    add(primary);
+    add(secondary);
+    return out;
   }
 
   private async runOpeningHours(
@@ -231,6 +275,14 @@ export class ResearchExecutorService implements IResearchExecutor {
     }
     if (researchData.route_direction_id || researchData.routeDirectionId) {
       env.routeDirectionId = (researchData.route_direction_id ?? researchData.routeDirectionId) as string;
+    }
+    const rcw = researchData.routeCorridorWorld ?? researchData.route_corridor_world;
+    if (rcw && typeof rcw === 'object' && !Array.isArray(rcw)) {
+      env.routeCorridorWorld = rcw as EnvironmentState['routeCorridorWorld'];
+      const rid = (rcw as { routeDirectionId?: string }).routeDirectionId;
+      if (!env.routeDirectionId && typeof rid === 'string' && rid.trim()) {
+        env.routeDirectionId = rid.trim();
+      }
     }
     if (researchData.month !== undefined) {
       env.month = typeof researchData.month === 'number' ? researchData.month : parseInt(String(researchData.month), 10);

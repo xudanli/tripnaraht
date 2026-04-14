@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type FallbackStrategy = 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED';
+export type FallbackStrategy = 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED' | 'ROAD_TRIP';
 
 export interface FallbackTemplateConfig {
   name: string;
@@ -34,6 +34,12 @@ export const DEFAULT_TEMPLATE_CONFIG: Record<FallbackStrategy, FallbackTemplateC
     exploreAction: '均衡游览（地标+街区+休息）',
     poiAction: '安排一个地标与一个轻松体验点',
     nightAction: '晚餐 + 自由活动',
+  },
+  ROAD_TRIP: {
+    name: 'Road Trip / Nature',
+    exploreAction: '沿景观公路移动，串联自然观景点',
+    poiAction: '安排海岸/火山/瀑布等户外节点（视天气调整）',
+    nightAction: '入住沿线小镇或营地，轻量晚间活动',
   },
 };
 
@@ -80,7 +86,10 @@ function getTemplateJsonPath(): string {
 
 function isValidOverrides(
   input: unknown,
-): input is Record<string, Partial<Record<FallbackStrategy, Partial<FallbackTemplateConfig>>>> {
+): input is Record<
+  string,
+  Partial<Record<FallbackStrategy, Partial<FallbackTemplateConfig>>>
+> {
   return !!input && typeof input === 'object' && !Array.isArray(input);
 }
 

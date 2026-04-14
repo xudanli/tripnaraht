@@ -1,0 +1,22 @@
+[
+  {
+    "countryCode": "JP",
+    "displayName": "日本",
+    "keywords": ["东京", "大阪", "京都", "日本", "tokyo", "osaka", "kyoto", "japan"]
+  },
+  {
+    "countryCode": "KR",
+    "displayName": "韩国",
+    "keywords": ["首尔", "韩国", "seoul", "korea"]
+  },
+  {
+    "countryCode": "CN",
+    "displayName": "中国",
+    "keywords": ["上海", "北京", "广州", "深圳", "杭州", "成都", "重庆", "中国", "china"]
+  },
+  {
+    "countryCode": "IS",
+    "displayName": "冰岛",
+    "keywords": ["冰岛", "iceland", "reykjavik", "雷克雅未克", "vik"]
+  }
+]
