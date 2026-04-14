@@ -25,6 +25,30 @@ echo "TripNARA 依赖安全扫描"
 echo "========================================"
 echo ""
 
+# jq 不是所有环境都保证存在：提供 Node.js 解析降级
+has_jq() {
+  command -v jq >/dev/null 2>&1
+}
+
+json_get() {
+  local file="$1"
+  local path="$2"
+  if has_jq; then
+    cat "$file" | jq -r "$path"
+  else
+    node -e "
+      const fs=require('fs');
+      const obj=JSON.parse(fs.readFileSync('${file}','utf8'));
+      const expr='${path}'.split('||')[0].trim(); // only support simple '... // 0'
+      const p=expr.replace(/^\\./,'').split('.').filter(Boolean);
+      let cur=obj;
+      for (const k of p) cur = (cur && Object.prototype.hasOwnProperty.call(cur,k)) ? cur[k] : undefined;
+      if (cur === undefined || cur === null) process.stdout.write('0');
+      else process.stdout.write(String(cur));
+    "
+  fi
+}
+
 # 颜色输出
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -46,12 +70,12 @@ echo ""
 npm audit --json > "$REPORT_FILE" 2>&1 || true
 
 # 解析漏洞统计
-INFO=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.info // 0')
-LOW=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.low // 0')
-MODERATE=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.moderate // 0')
-HIGH=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.high // 0')
-CRITICAL=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.critical // 0')
-TOTAL=$(cat "$REPORT_FILE" | jq -r '.metadata.vulnerabilities.total // 0')
+INFO=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.info // 0')
+LOW=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.low // 0')
+MODERATE=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.moderate // 0')
+HIGH=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.high // 0')
+CRITICAL=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.critical // 0')
+TOTAL=$(json_get "$REPORT_FILE" '.metadata.vulnerabilities.total // 0')
 
 # 生成摘要报告
 {
@@ -91,12 +115,28 @@ if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
   echo "详细信息:"
   echo "----------------------------------------"
 
-  cat "$REPORT_FILE" | jq -r '
-    .vulnerabilities |
-    to_entries[] |
-    select(.value.severity == "high" or .value.severity == "critical") |
-    "\(.key) (\(.value.severity)): \(.value.via | if type == "array" then map(if type == "string" then . else .title end) | join(", ") else . end)"
-  ' | head -40
+  if has_jq; then
+    cat "$REPORT_FILE" | jq -r '
+      .vulnerabilities |
+      to_entries[] |
+      select(.value.severity == "high" or .value.severity == "critical") |
+      "\(.key) (\(.value.severity)): \(.value.via | if type == "array" then map(if type == "string" then . else .title end) | join(", ") else . end)"
+    ' | head -40
+  else
+    REPORT_FILE="$REPORT_FILE" node - <<'NODE'
+const fs = require('fs');
+const reportPath = process.env.REPORT_FILE;
+const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+const vulns = r.vulnerabilities || {};
+const entries = Object.entries(vulns).filter(([, v]) => v && (v.severity === 'high' || v.severity === 'critical'));
+for (const [name, v] of entries.slice(0, 40)) {
+  const via = (Array.isArray(v.via) ? v.via : v.via ? [v.via] : [])
+    .map((x) => (typeof x === 'string' ? x : x.title || x.source || x.name || 'advisory'))
+    .join(', ');
+  console.log(`${name} (${v.severity}): ${via}`);
+}
+NODE
+  fi
 
   echo "----------------------------------------"
   echo ""
