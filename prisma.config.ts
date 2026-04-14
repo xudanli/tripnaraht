@@ -11,6 +11,9 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL"),
+    // NOTE: `prisma generate` doesn't need a live database connection, but
+    // Prisma config `env()` enforces presence at install-time (CI often has no DATABASE_URL).
+    // Fall back to a dummy localhost URL so type generation can run.
+    url: process.env.DATABASE_URL ?? "postgresql://user:pass@localhost:5432/db?schema=public",
   },
 });
