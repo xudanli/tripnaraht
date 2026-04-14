@@ -195,6 +195,8 @@ export interface OptimizationHints {
   fatigueTrend?: 'LOW' | 'MEDIUM' | 'HIGH';
   weightSummary?: Record<string, number>;
   strategyDirection?: string;
+  /** 生成 Hints 的方法，用于解释与诊断 */
+  method?: 'CGUS' | 'MONTE_CARLO' | 'HEURISTIC';
   /** 未来：多目标优化标量输出 */
   expectedUtility?: number;
   /** 未来：目标权重 w1..w6（Safety/Experience/TimeSlack/Cost/Fatigue/Risk） */
@@ -207,6 +209,20 @@ export interface OptimizationHints {
   feasibilityProbability?: number;
   /** Phase 2：不确定性概要，用于信念状态判断 */
   uncertaintyProfile?: UncertaintyProfile;
+  /**
+   * CGUS / OPTIMIZE 解释用的候选摘要（Top-N）
+   * 用于向用户展示“我比较了哪些备选、为什么推荐这个”
+   */
+  alternatives?: Array<{
+    id: string;
+    /** 排序分数（通常为 expectedUtility；缺失时退化为 utility） */
+    score: number;
+    expectedUtility?: number;
+    feasibilityProbability?: number;
+    confidenceInterval?: MonteCarloConfidenceInterval;
+  }>;
+  /** 推荐候选 id（若已计算） */
+  recommendedAlternativeId?: string;
 }
 
 /** 决策模式（Decision Meta - 系统稳定性关键） */

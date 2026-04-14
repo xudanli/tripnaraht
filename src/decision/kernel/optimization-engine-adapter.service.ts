@@ -64,6 +64,8 @@ export class OptimizationEngineAdapterService {
       hints.safetyTrend = hints.safetyTrend ?? (state.riskLevel === 'CRITICAL' ? 'HIGH' : state.riskLevel);
     }
 
+    hints.method = 'HEURISTIC';
+
     // 填充各维度实际得分（解决「疲劳/天气/预算/避流始终为0」）
     hints.dimensionBreakdown = this.buildDimensionBreakdown(state);
 
@@ -163,6 +165,7 @@ export class OptimizationEngineAdapterService {
 
       const hints: OptimizationHints = {
         ...baseHints,
+        method: 'MONTE_CARLO',
         expectedUtility: result.expectedUtility,
         expectedUtilityWeights: {
           safety: DEFAULT_OBJECTIVE_WEIGHTS.safety,
@@ -300,7 +303,18 @@ export class OptimizationEngineAdapterService {
     const ci = top?.confidenceInterval;
     return {
       ...baseHints,
+      method: 'CGUS',
       strategyDirection: `CGUS(${candidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
+      recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
+      alternatives: result.rankedCandidates.slice(0, 3).map((r) => ({
+        id: r.candidate.id,
+        score: r.expectedUtility ?? r.utility,
+        expectedUtility: r.expectedUtility,
+        feasibilityProbability: r.feasibilityProbability,
+        confidenceInterval: r.confidenceInterval
+          ? { lower: r.confidenceInterval.lower, upper: r.confidenceInterval.upper, level: 0.95 }
+          : undefined,
+      })),
       ...(eu !== undefined && { expectedUtility: eu }),
       ...(fp !== undefined && { feasibilityProbability: fp }),
       ...(ci && {

@@ -2420,7 +2420,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 🆕 检查是否是超时错误
       const isTimeout = error?.message?.startsWith('TIMEOUT:') || 
                         error?.code === 'ECONNABORTED' ||
-                        deadline?.remainingMs() <= 0;
+                        (deadline?.remainingMs?.() ?? Number.POSITIVE_INFINITY) <= 0;
       
       if (isTimeout) {
         this.logger.warn(`[Claude Orchestrator] 状态机执行超时，当前步骤: ${state.current_step}, 已执行步骤数: ${state.decision_log.length}`);
@@ -2822,7 +2822,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       const stepStartTime = Date.now();
       const ctx = {
         requestId: state.request_id,
-        routeDirectionId: request.route_direction_id,
+        routeDirectionId: request.route_direction_id ?? undefined,
         userId: request.user_id,
         tripPlanRequest: state.trip_plan_request,
       };
@@ -3616,7 +3616,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       const stepStartTime = Date.now();
       const ctx = {
         requestId: state.request_id,
-        routeDirectionId: request.route_direction_id,
+        routeDirectionId: request.route_direction_id ?? undefined,
         userId: request.user_id,
         tripPlanRequest: state.trip_plan_request,
         researchData: state.research_data,
@@ -4295,11 +4295,13 @@ ${JSON.stringify(routingDecision, null, 2)}
         };
 
         // 生成准备度检查的决策日志条目（按三人格分类）
-        const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
-          readinessCheckResult,
-          state.request_id
-        );
-        state.decision_log.push(...readinessDecisionLogs);
+        if (this.readinessService) {
+          const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
+            readinessCheckResult,
+            state.request_id
+          );
+          state.decision_log.push(...readinessDecisionLogs);
+        }
 
         // 添加汇总日志
         state.decision_log.push({
@@ -4339,11 +4341,13 @@ ${JSON.stringify(routingDecision, null, 2)}
 
         // 生成准备度检查的决策日志条目（按三人格分类）
         if (readinessCheckResult) {
-          const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
-            readinessCheckResult,
-            state.request_id
-          );
-          state.decision_log.push(...readinessDecisionLogs);
+          if (this.readinessService) {
+            const readinessDecisionLogs = this.readinessService.generateDecisionLogEntries(
+              readinessCheckResult,
+              state.request_id
+            );
+            state.decision_log.push(...readinessDecisionLogs);
+          }
         }
 
         // 添加用户决策汇总日志
@@ -4663,15 +4667,42 @@ ${JSON.stringify(routingDecision, null, 2)}
       fatigue,
     });
 
+    const summarizeOptimizeOutputs = (): string => {
+      if (!hints) return '无 Hints';
+      const eu = hints.expectedUtility;
+      const fp = hints.feasibilityProbability;
+      const ci = hints.confidenceInterval;
+      const rec = hints.recommendedAlternativeId ?? 'N/A';
+      const altN = hints.alternatives?.length ?? 0;
+      return [
+        `method=${hints.method ?? 'N/A'}`,
+        `recommended=${rec}`,
+        `alts=${altN}`,
+        eu !== undefined ? `E[U]=${eu.toFixed(3)}` : undefined,
+        fp !== undefined ? `P(feasible)=${fp.toFixed(2)}` : undefined,
+        ci ? `CI95=[${ci.lower.toFixed(2)},${ci.upper.toFixed(2)}]` : undefined,
+        hints.strategyDirection ? `dir=${hints.strategyDirection}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' | ');
+    };
+
     state.decision_log.push({
       request_id: state.request_id,
       step: 'OPTIMIZE' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
       inputs_summary: 'DSO (environmentState, tripState)',
-      outputs_summary: hints ? `Hints: ${JSON.stringify(hints)}` : '无 Hints',
+      outputs_summary: summarizeOptimizeOutputs(),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
-      metadata: { duration_ms: Date.now() - stepStartTime },
+      metadata: {
+        duration_ms: Date.now() - stepStartTime,
+        guardian: 'DR_DRE',
+        alternatives_considered: hints?.alternatives?.length ?? undefined,
+        expected_utility: hints?.expectedUtility,
+        feasibility_probability: hints?.feasibilityProbability,
+        optimization_method: hints?.method,
+      },
     });
     state.metadata.last_updated_at = new Date().toISOString();
     return newState;
