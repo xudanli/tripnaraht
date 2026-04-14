@@ -169,7 +169,7 @@
     "baseline:export-token": "npx tsx scripts/export-token-baseline.ts",
     "test:planning-assistant-mcp": "npx tsx scripts/test-planning-assistant-mcp-natural-language.ts",
     "test:world-model-api-interfaces": "npx tsx scripts/test-world-model-api-interfaces-simple.ts",
-    "postinstall": "node scripts/patch-zod-bg-locale.js"
+    "postinstall": "node scripts/patch-zod-bg-locale.js && prisma generate"
   },
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",
