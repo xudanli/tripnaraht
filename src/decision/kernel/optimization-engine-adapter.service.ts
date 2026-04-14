@@ -92,6 +92,13 @@ export class OptimizationEngineAdapterService {
     const planDraft = state.tripState?.planDraft as Itinerary | undefined;
     const worldContext = dsoToMinimalWorldModelContext(state);
 
+    const cgusDiagnostics = {
+      cgusInjected: !!this.cgusSearch,
+      hasPlanDraft: !!planDraft?.days?.length,
+      hasWorldContext: !!worldContext,
+      canMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel,
+    };
+
     if (this.cgusSearch && planDraft?.days?.length && worldContext) {
       try {
         const cgusHints = await this.getHintsViaCGUS(state, planDraft, worldContext, baseHints);
@@ -99,6 +106,11 @@ export class OptimizationEngineAdapterService {
       } catch (e: unknown) {
         this.logger.warn(`[OptimizationAdapter] CGUS 路径失败，降级: ${(e as Error)?.message}`);
       }
+    } else {
+      // 诊断：为何未走 CGUS（常见是 planDraft/worldContext 缺失或 cgusSearch 未注入）
+      this.logger.debug(
+        `[OptimizationAdapter] CGUS skipped: ${JSON.stringify(cgusDiagnostics)}`,
+      );
     }
 
     const env = state.environmentState ?? {};
@@ -199,17 +211,82 @@ export class OptimizationEngineAdapterService {
       degree: v.degree ?? (v.severity === 'HARD' ? 1 : 0.5),
     }));
 
-    const candidate: CGUSCandidate = {
-      id: 'plan-1',
-      plan,
-      constraintViolations: violations,
-      feasible: state.constraints?.feasible ?? true,
+    const buildCandidates = (): CGUSCandidate[] => {
+      const hard = violations.filter((v) => v.severity === 'HARD');
+      const baseFeasible = (state.constraints?.feasible ?? hard.length === 0) && hard.length === 0;
+
+      const base: CGUSCandidate = {
+        id: 'plan-base',
+        plan,
+        constraintViolations: violations,
+        feasible: baseFeasible,
+      };
+
+      // 轻量 Top-K 变体：用 segments 密度 + 约束类型来制造可区分候选
+      const relaxed: CGUSCandidate = {
+        id: 'plan-relaxed-pace',
+        plan: {
+          ...plan,
+          segments: plan.segments.filter((s, idx) => idx % 2 === 0),
+        },
+        constraintViolations: violations.filter((v) => !v.type.includes('TIME')),
+        feasible: baseFeasible,
+      };
+
+      const dense: CGUSCandidate = {
+        id: 'plan-high-density',
+        plan: {
+          ...plan,
+          segments: [...plan.segments, ...plan.segments.slice(0, Math.min(2, plan.segments.length))].map(
+            (s, i) => ({ ...s, segmentId: `${s.segmentId}-dup-${i}` }),
+          ),
+        },
+        constraintViolations: [
+          ...violations,
+          { type: 'TIME_SLACK_SOFT', severity: 'SOFT' as const, degree: 0.6 },
+        ],
+        feasible: baseFeasible,
+      };
+
+      const philosophyAligned: CGUSCandidate = {
+        id: 'plan-philosophy-aligned',
+        plan,
+        constraintViolations: violations.filter((v) => !v.type.includes('PHILOSOPHY')),
+        feasible: baseFeasible,
+      };
+
+      const budgetSafe: CGUSCandidate = {
+        id: 'plan-budget-safe',
+        plan: {
+          ...plan,
+          segments: plan.segments.slice(0, Math.max(1, Math.floor(plan.segments.length * 0.8))),
+        },
+        constraintViolations: [
+          ...violations.filter((v) => !v.type.includes('TIME')),
+          { type: 'BUDGET_SOFT', severity: 'SOFT' as const, degree: 0.7 },
+        ],
+        feasible: baseFeasible,
+      };
+
+      // 去重：避免 segments 为空或重复过多导致不稳定排序
+      const candidates = [base, relaxed, dense, philosophyAligned, budgetSafe].filter(
+        (c) => c.plan.segments.length > 0,
+      );
+
+      return candidates;
     };
 
+    const candidates = buildCandidates();
+
     const result: CGUSSearchResult = await this.cgusSearch.search(
-      [candidate],
+      candidates,
       worldContext,
-      { useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel, sampleSize: 100 },
+      {
+        useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel,
+        sampleSize: 200,
+        useUtilityPrior: true,
+        useUtilityWeightedSampling: true,
+      },
     );
 
     const top = result.rankedCandidates[0];
@@ -223,6 +300,7 @@ export class OptimizationEngineAdapterService {
     const ci = top?.confidenceInterval;
     return {
       ...baseHints,
+      strategyDirection: `CGUS(${candidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
       ...(eu !== undefined && { expectedUtility: eu }),
       ...(fp !== undefined && { feasibilityProbability: fp }),
       ...(ci && {
