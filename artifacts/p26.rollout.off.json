@@ -1,0 +1,5067 @@
+{
+  "generatedAt": "2026-04-17T12:05:39.396Z",
+  "mode": "lite",
+  "n": 120,
+  "totalMs": 5039,
+  "avgMs": 41.99166666666667,
+  "cgusCount": 120,
+  "emptyCount": 0,
+  "configSnapshot": {
+    "mode": "lite",
+    "suiteProfile": "stress_rollout_amplifier",
+    "cgusMaxCandidates": 8,
+    "cgusRolloutTopK": 3,
+    "monteCarloSamples": 200,
+    "cgusPilotSamples": 20
+  },
+  "gate": {
+    "passed": true,
+    "failures": [],
+    "thresholds": {
+      "cgusRateMin": 0.95,
+      "emptyRateMax": 0.05,
+      "altP50Min": 3,
+      "uniqueDivP50Min": 2
+    }
+  },
+  "aggregates": {
+    "cgusRate": 1,
+    "emptyRate": 0,
+    "top1Score": {
+      "n": 120,
+      "min": 0.42414285714285715,
+      "max": 0.5619054054054056,
+      "quantiles": {
+        "0.1": 0.45214285714285696,
+        "0.5": 0.4999999999999999,
+        "0.9": 0.541738095238095
+      }
+    },
+    "top1FinalScore": {
+      "n": 120,
+      "min": 0.4166068571428572,
+      "max": 0.5424090909090907,
+      "quantiles": {
+        "0.1": 0.4318612903225806,
+        "0.5": 0.48463492063492064,
+        "0.9": 0.5374047619047617
+      }
+    },
+    "alternativesCount": {
+      "quantiles": {
+        "0.1": 3,
+        "0.5": 3,
+        "0.9": 3
+      },
+      "histogram": {
+        "3": 120
+      }
+    },
+    "uniqueDiversityCount": {
+      "quantiles": {
+        "0.1": 3,
+        "0.5": 3,
+        "0.9": 3
+      },
+      "histogram": {
+        "3": 120
+      }
+    },
+    "topViolationTypes": [
+      {
+        "key": "TIME_EFFICIENCY_LOW",
+        "count": 40
+      },
+      {
+        "key": "PHILOSOPHY_WEAK",
+        "count": 40
+      },
+      {
+        "key": "EXPERIENCE_DENSITY_LOW",
+        "count": 40
+      }
+    ],
+    "rankFlipSensitivity": {
+      "detTopGap": {
+        "quantiles": {
+          "0.1": 0,
+          "0.5": 0.008571428571428674,
+          "0.9": 0.018571428571428683
+        }
+      },
+      "mcTopGap": {
+        "quantiles": {
+          "0.1": 0.0001484848484847312,
+          "0.5": 0.0073303571428570136,
+          "0.9": 0.01955175983436852
+        }
+      },
+      "postRolloutTopGap": {
+        "quantiles": {
+          "0.1": 0.00013885714285721829,
+          "0.5": 0.0007857142857143895,
+          "0.9": 0.007830889540566988
+        }
+      },
+      "rolloutDeltaTop1": {
+        "quantiles": {
+          "0.1": -0.07351458625525892,
+          "0.5": -0.02015734265734237,
+          "0.9": -0.01787301587301593
+        }
+      },
+      "rolloutDeltaTop2": {
+        "quantiles": {
+          "0.1": -0.07459499999999986,
+          "0.5": -0.019164285714286078,
+          "0.9": -0.0015000000000000568
+        }
+      }
+    },
+    "rankAuthority": {
+      "deterministicVsMcDisagreementRate": 0.09166666666666666,
+      "mcEligibleRate": 1,
+      "winnerChangedRate": 0,
+      "eligibleButUnchangedRate": 0,
+      "winnerChangedAndLowMarginRate": 0,
+      "winnerChangedAndWideCiRate": 0,
+      "counts": {
+        "total": 120,
+        "disagreements": 11,
+        "eligible": 120,
+        "winnerChanged": 0,
+        "eligibleButUnchanged": 0,
+        "winnerChangedAndLowMargin": 0,
+        "winnerChangedAndWideCi": 0
+      }
+    }
+  },
+  "env": {
+    "ALLOW_NO_DATABASE": "true",
+    "CGUS_SUITE_MODE": "lite",
+    "CGUS_SUITE_PROFILE": "stress_rollout_amplifier",
+    "KERNEL_CGUS_MC_RERANK_ENABLED": "false"
+  },
+  "results": [
+    {
+      "id": "cgus-stress-1",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.05 days=2 ipd=2 start=07:30 dur=150 gap=20 wr=0.05 fat=0.05",
+      "elapsedMs": 105,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5424090909090907,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5424090909090907,
+          "finalScore": 0.5424090909090907,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01026173913043471,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-2",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.15 days=3 ipd=3 start=09:15 dur=120 gap=35 wr=0.14 fat=0.16",
+      "elapsedMs": 170,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5375476190476188,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5375476190476188,
+          "finalScore": 0.5375476190476188,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.012800322061191305,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-3",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.25 days=4 ipd=4 start=10:45 dur=90 gap=20 wr=0.23 fat=0.27",
+      "elapsedMs": 93,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5332380952380955,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5332380952380955,
+          "finalScore": 0.5332380952380955,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01605094905094917,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-4",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.35 days=5 ipd=5 start=07:30 dur=60 gap=35 wr=0.32 fat=0.38",
+      "elapsedMs": 57,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48507834101382474,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-5",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-5",
+          "score": 0.48507834101382474,
+          "finalScore": 0.48507834101382474,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-5-loweff5-0|1:seg-1-6-loweff5-1|1:seg-1-7-loweff5-2|1:seg-1-8-loweff5-3|1:seg-1-9-loweff5-4|2:seg-2-10-loweff5-5|2:seg-2-11-loweff5-6|2:seg-2-12-loweff5-7|2:seg-2-13-loweff5-8|2:seg-2-14-loweff5-9|3:seg-3-15-loweff5-10|3:seg-3-16-loweff5-11|3:seg-3-17-loweff5-12|3:seg-3-18-loweff5-13|3:seg-3-19-loweff5-14|4:seg-4-20-loweff5-15|4:seg-4-21-loweff5-16|4:seg-4-22-loweff5-17|4:seg-4-23-loweff5-18|4:seg-4-24-loweff5-19"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008166666666666766,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-5",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.45 days=6 ipd=6 start=09:15 dur=45 gap=20 wr=0.41 fat=0.49",
+      "elapsedMs": 142,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5435833333333332,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5435833333333332,
+          "finalScore": 0.46614999999999995,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0005711382113821051,
+        "topCiWidth": 0.006000000000000005
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-6",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.55 days=7 ipd=2 start=10:45 dur=150 gap=35 wr=0.50 fat=0.60",
+      "elapsedMs": 53,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5151428571428571,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5151428571428571,
+          "finalScore": 0.5151428571428571,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1|2:seg-2-4-pacedown2-2|3:seg-3-6-pacedown2-3|4:seg-4-8-pacedown2-4|5:seg-5-10-pacedown2-5|6:seg-6-12-pacedown2-6"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00257936507936507,
+        "topCiWidth": 0.01649999999999996
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-7",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.65 days=2 ipd=3 start=07:30 dur=120 gap=20 wr=0.59 fat=0.71",
+      "elapsedMs": 77,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5002142857142854,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5002142857142854,
+          "finalScore": 0.5002142857142854,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.006676421404682387,
+        "topCiWidth": 0.02550000000000019
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-8",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.75 days=3 ipd=4 start=09:15 dur=90 gap=35 wr=0.68 fat=0.82",
+      "elapsedMs": 37,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4839285714285715,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4839285714285715,
+          "finalScore": 0.4839285714285715,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0193704906204909,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-9",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.85 days=4 ipd=5 start=10:45 dur=60 gap=20 wr=0.77 fat=0.93",
+      "elapsedMs": 56,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.44383928571428544,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.44383928571428544,
+          "finalScore": 0.44383928571428544,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|1:seg-1-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|2:seg-2-10-loweff4-6|2:seg-2-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|3:seg-3-15-loweff4-11|3:seg-3-16-loweff4-12|3:seg-3-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008562499999999695,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-10",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.95 days=5 ipd=6 start=07:30 dur=45 gap=35 wr=0.86 fat=0.05",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4729714285714287,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4729714285714287,
+          "finalScore": 0.4237828571428573,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11|4:seg-4-24-pacedown2-12|4:seg-4-26-pacedown2-13|4:seg-4-28-pacedown2-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00023142857142877116,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-11",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.05 days=6 ipd=2 start=09:15 dur=150 gap=20 wr=0.95 fat=0.16",
+      "elapsedMs": 61,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.45074476190476187,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.45074476190476187,
+          "finalScore": 0.45074476190476187,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|0:seg-0-0-paceup2-12|0:seg-0-1-paceup2-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0009307692307694015,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-12",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.15 days=7 ipd=3 start=10:45 dur=120 gap=35 wr=0.05 fat=0.27",
+      "elapsedMs": 67,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5418809523809522,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5418809523809522,
+          "finalScore": 0.5418809523809522,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5|4:seg-4-12-pacedown2-6|4:seg-4-14-pacedown2-7|5:seg-5-16-pacedown2-8|6:seg-6-18-pacedown2-9|6:seg-6-20-pacedown2-10"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.014142857142857013,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-13",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.25 days=2 ipd=4 start=07:30 dur=90 gap=20 wr=0.14 fat=0.38",
+      "elapsedMs": 32,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.537238095238095,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.537238095238095,
+          "finalScore": 0.537238095238095,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.020348861283644326,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-14",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.35 days=3 ipd=5 start=09:15 dur=60 gap=35 wr=0.23 fat=0.49",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5094704433497536,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-3",
+          "score": 0.5094704433497536,
+          "finalScore": 0.5094704433497536,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-3-loweff3-0|0:seg-0-4-loweff3-1|1:seg-1-5-loweff3-2|1:seg-1-6-loweff3-3|1:seg-1-7-loweff3-4|1:seg-1-8-loweff3-5|1:seg-1-9-loweff3-6|2:seg-2-10-loweff3-7|2:seg-2-11-loweff3-8|2:seg-2-12-loweff3-9|2:seg-2-13-loweff3-10|2:seg-2-14-loweff3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.006962121212121142,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-15",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.45 days=4 ipd=6 start=10:45 dur=45 gap=20 wr=0.32 fat=0.60",
+      "elapsedMs": 47,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4732611607142855,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.4732611607142855,
+          "finalScore": 0.4732611607142855,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|0:seg-0-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|1:seg-1-10-loweff4-6|1:seg-1-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|2:seg-2-15-loweff4-11|2:seg-2-16-loweff4-12|2:seg-2-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15|3:seg-3-20-loweff4-16|3:seg-3-21-loweff4-17|3:seg-3-22-loweff4-18|3:seg-3-23-loweff4-19"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0003975757575754857,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-16",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.55 days=5 ipd=2 start=07:30 dur=150 gap=35 wr=0.41 fat=0.71",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5237714285714286,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.5237714285714286,
+          "finalScore": 0.5237714285714286,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|0:seg-0-0-paceup2-10|0:seg-0-1-paceup2-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00018384615384614555,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-17",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.65 days=6 ipd=3 start=09:15 dur=120 gap=20 wr=0.50 fat=0.82",
+      "elapsedMs": 49,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5142142857142856,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5142142857142856,
+          "finalScore": 0.5142142857142856,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5|4:seg-4-12-pacedown2-6|4:seg-4-14-pacedown2-7|5:seg-5-16-pacedown2-8"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0012509578544059874,
+        "topCiWidth": 0.01949999999999985
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-18",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.75 days=7 ipd=4 start=10:45 dur=90 gap=35 wr=0.59 fat=0.93",
+      "elapsedMs": 44,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.500642857142857,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.500642857142857,
+          "finalScore": 0.500642857142857,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6|5:seg-5-21-pacedown3-7|6:seg-6-24-pacedown3-8|6:seg-6-27-pacedown3-9"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.017378881987577754,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-19",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.85 days=2 ipd=5 start=07:30 dur=60 gap=20 wr=0.68 fat=0.05",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4569532019704431,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.4569532019704431,
+          "finalScore": 0.4569532019704431,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|1:seg-1-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-3",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010187500000000016,
+        "topCiWidth": 0.025499999999999967
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-20",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.95 days=3 ipd=6 start=09:15 dur=45 gap=35 wr=0.77 fat=0.16",
+      "elapsedMs": 47,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48873913043478245,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.48873913043478245,
+          "finalScore": 0.4332434782608696,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00178913043478246,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-21",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.05 days=4 ipd=2 start=10:45 dur=150 gap=20 wr=0.86 fat=0.27",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4534285714285712,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.4534285714285712,
+          "finalScore": 0.4534285714285712,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|3:seg-3-6-pacedown3-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00804444444444452,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-22",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.15 days=5 ipd=3 start=07:30 dur=120 gap=35 wr=0.95 fat=0.38",
+      "elapsedMs": 55,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4479999999999998,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.4479999999999998,
+          "finalScore": 0.4479999999999998,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|2:seg-2-6-pacedown3-2|3:seg-3-9-pacedown3-3|4:seg-4-12-pacedown3-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0005634920634921547,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-23",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.25 days=6 ipd=4 start=09:15 dur=90 gap=20 wr=0.05 fat=0.49",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5422380952380952,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5422380952380952,
+          "finalScore": 0.5422380952380952,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4|5:seg-5-20-pacedown4-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01967099567099584,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-24",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.35 days=7 ipd=5 start=10:45 dur=60 gap=35 wr=0.14 fat=0.60",
+      "elapsedMs": 63,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5010853858784894,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-7",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-7",
+          "score": 0.5010853858784894,
+          "finalScore": 0.5010853858784894,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-7-loweff7-0|1:seg-1-8-loweff7-1|1:seg-1-9-loweff7-2|2:seg-2-10-loweff7-3|2:seg-2-11-loweff7-4|2:seg-2-12-loweff7-5|2:seg-2-13-loweff7-6|2:seg-2-14-loweff7-7|3:seg-3-15-loweff7-8|3:seg-3-16-loweff7-9|3:seg-3-17-loweff7-10|3:seg-3-18-loweff7-11|3:seg-3-19-loweff7-12|4:seg-4-20-loweff7-13|4:seg-4-21-loweff7-14|4:seg-4-22-loweff7-15|4:seg-4-23-loweff7-16|4:seg-4-24-loweff7-17|5:seg-5-25-loweff7-18|5:seg-5-26-loweff7-19|5:seg-5-27-loweff7-20|5:seg-5-28-loweff7-21|5:seg-5-29-loweff7-22|6:seg-6-30-loweff7-23|6:seg-6-31-loweff7-24|6:seg-6-32-loweff7-25|6:seg-6-33-loweff7-26|6:seg-6-34-loweff7-27"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008028985507246733,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-25",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.45 days=2 ipd=6 start=07:30 dur=45 gap=20 wr=0.23 fat=0.71",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4782294372294371,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.4782294372294371,
+          "finalScore": 0.4782294372294371,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|0:seg-0-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7|1:seg-1-10-loweff2-8|1:seg-1-11-loweff2-9"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000008333333333165882,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-26",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.55 days=3 ipd=2 start=09:15 dur=150 gap=35 wr=0.32 fat=0.82",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5283181818181819,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5283181818181819,
+          "finalScore": 0.5283181818181819,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.006265925925925897,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-27",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.65 days=4 ipd=3 start=10:45 dur=120 gap=20 wr=0.41 fat=0.93",
+      "elapsedMs": 46,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5237857142857144,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5237857142857144,
+          "finalScore": 0.5237857142857144,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.009636904761904597,
+        "topCiWidth": 0.010500000000000065
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-28",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.75 days=5 ipd=4 start=07:30 dur=90 gap=35 wr=0.50 fat=0.05",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5148571428571428,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5148571428571428,
+          "finalScore": 0.5148571428571428,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01764285714285685,
+        "topCiWidth": 0.019499999999999962
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-29",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.85 days=6 ipd=5 start=09:15 dur=60 gap=20 wr=0.59 fat=0.16",
+      "elapsedMs": 56,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.45680414746543785,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-6",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-6",
+          "score": 0.45680414746543785,
+          "finalScore": 0.45680414746543785,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-6-loweff6-0|1:seg-1-7-loweff6-1|1:seg-1-8-loweff6-2|1:seg-1-9-loweff6-3|2:seg-2-10-loweff6-4|2:seg-2-11-loweff6-5|2:seg-2-12-loweff6-6|2:seg-2-13-loweff6-7|2:seg-2-14-loweff6-8|3:seg-3-15-loweff6-9|3:seg-3-16-loweff6-10|3:seg-3-17-loweff6-11|3:seg-3-18-loweff6-12|3:seg-3-19-loweff6-13|4:seg-4-20-loweff6-14|4:seg-4-21-loweff6-15|4:seg-4-22-loweff6-16|4:seg-4-23-loweff6-17|4:seg-4-24-loweff6-18|5:seg-5-25-loweff6-19|5:seg-5-26-loweff6-20|5:seg-5-27-loweff6-21|5:seg-5-28-loweff6-22|5:seg-5-29-loweff6-23"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.011089285714285912,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-30",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.95 days=7 ipd=6 start=10:45 dur=45 gap=35 wr=0.68 fat=0.27",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5034,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5034,
+          "finalScore": 0.44204,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11|6:seg-6-36-pacedown3-12|6:seg-6-39-pacedown3-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.001971428571428735,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-31",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.05 days=2 ipd=2 start=07:30 dur=150 gap=20 wr=0.77 fat=0.38",
+      "elapsedMs": 50,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4668181818181818,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4668181818181818,
+          "finalScore": 0.4668181818181818,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01191999999999993,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-32",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.15 days=3 ipd=3 start=09:15 dur=120 gap=35 wr=0.86 fat=0.49",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4554285714285712,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4554285714285712,
+          "finalScore": 0.4554285714285712,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.014493271221532211,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-33",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.25 days=4 ipd=4 start=10:45 dur=90 gap=20 wr=0.95 fat=0.60",
+      "elapsedMs": 45,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.44757142857142834,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.44757142857142834,
+          "finalScore": 0.44757142857142834,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.016689440993788662,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-34",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.35 days=5 ipd=5 start=07:30 dur=60 gap=35 wr=0.05 fat=0.71",
+      "elapsedMs": 44,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49912561576354697,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.49912561576354697,
+          "finalScore": 0.49912561576354697,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|0:seg-0-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|1:seg-1-8|1:seg-1-9|2:seg-2-10|2:seg-2-11|2:seg-2-12|2:seg-2-13|2:seg-2-14|3:seg-3-15|3:seg-3-16|3:seg-3-17|3:seg-3-18|3:seg-3-19|4:seg-4-20|4:seg-4-21|4:seg-4-22|4:seg-4-23|4:seg-4-24"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0077432712215322885,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-35",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.45 days=6 ipd=6 start=09:15 dur=45 gap=20 wr=0.14 fat=0.82",
+      "elapsedMs": 42,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.55764,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.55764,
+          "finalScore": 0.474584,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0005370588235292795,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-36",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.55 days=7 ipd=2 start=10:45 dur=150 gap=35 wr=0.23 fat=0.93",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5352275132275133,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.5352275132275133,
+          "finalScore": 0.5352275132275133,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|6:seg-6-12-paceup2-12|6:seg-6-13-paceup2-13|0:seg-0-0-paceup2-14|0:seg-0-1-paceup2-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000053846153846182077,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-37",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.65 days=2 ipd=3 start=07:30 dur=120 gap=20 wr=0.32 fat=0.05",
+      "elapsedMs": 32,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5283571428571429,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5283571428571429,
+          "finalScore": 0.5283571428571429,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010087792642140325,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-38",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.75 days=3 ipd=4 start=09:15 dur=90 gap=35 wr=0.41 fat=0.16",
+      "elapsedMs": 44,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5232619047619048,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5232619047619048,
+          "finalScore": 0.5232619047619048,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01789231601731589,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-39",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.85 days=4 ipd=5 start=10:45 dur=60 gap=20 wr=0.50 fat=0.27",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48725396825396805,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.48725396825396805,
+          "finalScore": 0.48725396825396805,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|1:seg-1-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|2:seg-2-10-loweff4-6|2:seg-2-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|3:seg-3-15-loweff4-11|3:seg-3-16-loweff4-12|3:seg-3-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010295031055900461,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-40",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.95 days=5 ipd=6 start=07:30 dur=45 gap=35 wr=0.59 fat=0.38",
+      "elapsedMs": 37,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5181891891891889,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5181891891891889,
+          "finalScore": 0.4509135135135135,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11|4:seg-4-24-pacedown2-12|4:seg-4-26-pacedown2-13|4:seg-4-28-pacedown2-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0011891891891890882,
+        "topCiWidth": 0.022500000000000187
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-41",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.05 days=6 ipd=2 start=09:15 dur=150 gap=20 wr=0.68 fat=0.49",
+      "elapsedMs": 37,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48271428571428576,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.48271428571428576,
+          "finalScore": 0.48271428571428576,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1|2:seg-2-4-pacedown2-2|3:seg-3-6-pacedown2-3|4:seg-4-8-pacedown2-4|5:seg-5-10-pacedown2-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000039682539682561746,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-42",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.15 days=7 ipd=3 start=10:45 dur=120 gap=35 wr=0.77 fat=0.60",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.46664285714285714,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.46664285714285714,
+          "finalScore": 0.46664285714285714,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|4:seg-4-12-pacedown4-3|5:seg-5-16-pacedown4-4|6:seg-6-20-pacedown4-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.012802380952381065,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-43",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.25 days=2 ipd=4 start=07:30 dur=90 gap=20 wr=0.86 fat=0.71",
+      "elapsedMs": 29,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4525714285714283,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.4525714285714283,
+          "finalScore": 0.4525714285714283,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.020542207792207945,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-44",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.35 days=3 ipd=5 start=09:15 dur=60 gap=35 wr=0.95 fat=0.82",
+      "elapsedMs": 32,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.42414285714285715,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-3",
+          "score": 0.42414285714285715,
+          "finalScore": 0.42414285714285715,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-3-loweff3-0|0:seg-0-4-loweff3-1|1:seg-1-5-loweff3-2|1:seg-1-6-loweff3-3|1:seg-1-7-loweff3-4|1:seg-1-8-loweff3-5|1:seg-1-9-loweff3-6|2:seg-2-10-loweff3-7|2:seg-2-11-loweff3-8|2:seg-2-12-loweff3-9|2:seg-2-13-loweff3-10|2:seg-2-14-loweff3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008666666666666989,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-45",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.45 days=4 ipd=6 start=10:45 dur=45 gap=20 wr=0.05 fat=0.93",
+      "elapsedMs": 34,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48781722689075635,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.48781722689075635,
+          "finalScore": 0.48781722689075635,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|0:seg-0-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|1:seg-1-10-loweff4-6|1:seg-1-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|2:seg-2-15-loweff4-11|2:seg-2-16-loweff4-12|2:seg-2-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15|3:seg-3-20-loweff4-16|3:seg-3-21-loweff4-17|3:seg-3-22-loweff4-18|3:seg-3-23-loweff4-19"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000260168302945063,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-46",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.55 days=5 ipd=2 start=07:30 dur=150 gap=35 wr=0.14 fat=0.05",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5380892857142859,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.5380892857142859,
+          "finalScore": 0.5380892857142859,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|0:seg-0-0-paceup2-10|0:seg-0-1-paceup2-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00020857142857144684,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-47",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.65 days=6 ipd=3 start=09:15 dur=120 gap=20 wr=0.23 fat=0.16",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5326428571428573,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5326428571428573,
+          "finalScore": 0.5326428571428573,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|4:seg-4-12-pacedown4-3|5:seg-5-16-pacedown4-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00011111111111106187,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-48",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.75 days=7 ipd=4 start=10:45 dur=90 gap=35 wr=0.32 fat=0.27",
+      "elapsedMs": 37,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5282857142857142,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5282857142857142,
+          "finalScore": 0.5282857142857142,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6|5:seg-5-21-pacedown3-7|6:seg-6-24-pacedown3-8|6:seg-6-27-pacedown3-9"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.019714285714285795,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-49",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.85 days=2 ipd=5 start=07:30 dur=60 gap=20 wr=0.41 fat=0.38",
+      "elapsedMs": 28,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49964285714285717,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.49964285714285717,
+          "finalScore": 0.49964285714285717,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|1:seg-1-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-3",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.009472332015810214,
+        "topCiWidth": 0.006000000000000005
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-50",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.95 days=3 ipd=6 start=09:15 dur=45 gap=35 wr=0.50 fat=0.49",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5337391304347824,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5337391304347824,
+          "finalScore": 0.4602434782608696,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0024391304347828324,
+        "topCiWidth": 0.01649999999999996
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-51",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.05 days=4 ipd=2 start=10:45 dur=150 gap=20 wr=0.59 fat=0.60",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4980714285714283,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4980714285714283,
+          "finalScore": 0.4980714285714283,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1|2:seg-2-4-pacedown2-2|3:seg-3-6-pacedown2-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.004329433497537005,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-52",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.15 days=5 ipd=3 start=07:30 dur=120 gap=35 wr=0.68 fat=0.71",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4832857142857142,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4832857142857142,
+          "finalScore": 0.4832857142857142,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5|4:seg-4-12-pacedown2-6|4:seg-4-14-pacedown2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-3",
+        "mcTopId": "plan-op-reduce-effort-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0018611111111112022,
+        "topCiWidth": 0.025499999999999856
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-53",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.25 days=6 ipd=4 start=09:15 dur=90 gap=20 wr=0.77 fat=0.82",
+      "elapsedMs": 45,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4665,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4665,
+          "finalScore": 0.4665,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4|5:seg-5-20-pacedown4-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.018136363636363506,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-54",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.35 days=7 ipd=5 start=10:45 dur=60 gap=35 wr=0.86 fat=0.93",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4610114285714285,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4610114285714285,
+          "finalScore": 0.4166068571428572,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|2:seg-2-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|3:seg-3-16-pacedown2-8|3:seg-3-18-pacedown2-9|4:seg-4-20-pacedown2-10|4:seg-4-22-pacedown2-11|4:seg-4-24-pacedown2-12|5:seg-5-26-pacedown2-13|5:seg-5-28-pacedown2-14|6:seg-6-30-pacedown2-15|6:seg-6-32-pacedown2-16|6:seg-6-34-pacedown2-17"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008154285714285892,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-55",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.45 days=2 ipd=6 start=07:30 dur=45 gap=20 wr=0.95 fat=0.05",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.467357142857143,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.467357142857143,
+          "finalScore": 0.4204142857142859,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0010371428571430696,
+        "topCiWidth": 0.009000000000000008
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-56",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.55 days=3 ipd=2 start=09:15 dur=150 gap=35 wr=0.05 fat=0.16",
+      "elapsedMs": 34,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5420681818181817,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-1",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-1",
+          "score": 0.5420681818181817,
+          "finalScore": 0.5420681818181817,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-1-loweff1-0|1:seg-1-2-loweff1-1|1:seg-1-3-loweff1-2|2:seg-2-4-loweff1-3|2:seg-2-5-loweff1-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.006381410256410147,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-57",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.65 days=4 ipd=3 start=10:45 dur=120 gap=20 wr=0.14 fat=0.27",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5374047619047617,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5374047619047617,
+          "finalScore": 0.5374047619047617,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010764617691154332,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-58",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.75 days=5 ipd=4 start=07:30 dur=90 gap=35 wr=0.23 fat=0.38",
+      "elapsedMs": 32,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5323333333333335,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5323333333333335,
+          "finalScore": 0.5323333333333335,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.02010144927536217,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-59",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.85 days=6 ipd=5 start=09:15 dur=60 gap=20 wr=0.32 fat=0.49",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4892261904761903,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-6",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-6",
+          "score": 0.4892261904761903,
+          "finalScore": 0.4892261904761903,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-6-loweff6-0|1:seg-1-7-loweff6-1|1:seg-1-8-loweff6-2|1:seg-1-9-loweff6-3|2:seg-2-10-loweff6-4|2:seg-2-11-loweff6-5|2:seg-2-12-loweff6-6|2:seg-2-13-loweff6-7|2:seg-2-14-loweff6-8|3:seg-3-15-loweff6-9|3:seg-3-16-loweff6-10|3:seg-3-17-loweff6-11|3:seg-3-18-loweff6-12|3:seg-3-19-loweff6-13|4:seg-4-20-loweff6-14|4:seg-4-21-loweff6-15|4:seg-4-22-loweff6-16|4:seg-4-23-loweff6-17|4:seg-4-24-loweff6-18|5:seg-5-25-loweff6-19|5:seg-5-26-loweff6-20|5:seg-5-27-loweff6-21|5:seg-5-28-loweff6-22|5:seg-5-29-loweff6-23"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00950946969696953,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-60",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.95 days=7 ipd=6 start=10:45 dur=45 gap=35 wr=0.41 fat=0.60",
+      "elapsedMs": 41,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5430833333333333,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5430833333333333,
+          "finalScore": 0.4658500000000001,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11|6:seg-6-36-pacedown3-12|6:seg-6-39-pacedown3-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000019230769230937916,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-61",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.05 days=2 ipd=2 start=07:30 dur=150 gap=20 wr=0.50 fat=0.71",
+      "elapsedMs": 37,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5134545454545454,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5134545454545454,
+          "finalScore": 0.5134545454545454,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010312500000000058,
+        "topCiWidth": 0.01649999999999996
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-62",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.15 days=3 ipd=3 start=09:15 dur=120 gap=35 wr=0.59 fat=0.82",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4984285714285712,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4984285714285712,
+          "finalScore": 0.4984285714285712,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.016126436781609188,
+        "topCiWidth": 0.022500000000000187
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-63",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.25 days=4 ipd=4 start=10:45 dur=90 gap=20 wr=0.68 fat=0.93",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48285714285714265,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.48285714285714265,
+          "finalScore": 0.48285714285714265,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01830844155844169,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-64",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.35 days=5 ipd=5 start=07:30 dur=60 gap=35 wr=0.77 fat=0.05",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4256928571428572,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-5",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-5",
+          "score": 0.4256928571428572,
+          "finalScore": 0.4256928571428572,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-5-loweff5-0|1:seg-1-6-loweff5-1|1:seg-1-7-loweff5-2|1:seg-1-8-loweff5-3|1:seg-1-9-loweff5-4|2:seg-2-10-loweff5-5|2:seg-2-11-loweff5-6|2:seg-2-12-loweff5-7|2:seg-2-13-loweff5-8|2:seg-2-14-loweff5-9|3:seg-3-15-loweff5-10|3:seg-3-16-loweff5-11|3:seg-3-17-loweff5-12|3:seg-3-18-loweff5-13|3:seg-3-19-loweff5-14|4:seg-4-20-loweff5-15|4:seg-4-21-loweff5-16|4:seg-4-22-loweff5-17|4:seg-4-23-loweff5-18|4:seg-4-24-loweff5-19"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0050124223602483475,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-65",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.45 days=6 ipd=6 start=09:15 dur=45 gap=20 wr=0.86 fat=0.16",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4751739130434782,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.4751739130434782,
+          "finalScore": 0.425104347826087,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0034453416149066163,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-66",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.55 days=7 ipd=2 start=10:45 dur=150 gap=35 wr=0.95 fat=0.27",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4496157635467981,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.4496157635467981,
+          "finalScore": 0.4496157635467981,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|6:seg-6-12-paceup2-12|6:seg-6-13-paceup2-13|0:seg-0-0-paceup2-14|0:seg-0-1-paceup2-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0019055555555554937,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-67",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.65 days=2 ipd=3 start=07:30 dur=120 gap=20 wr=0.05 fat=0.38",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.541738095238095,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.541738095238095,
+          "finalScore": 0.541738095238095,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010001449275362173,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-68",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.75 days=3 ipd=4 start=09:15 dur=90 gap=35 wr=0.14 fat=0.49",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5374761904761902,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5374761904761902,
+          "finalScore": 0.5374761904761902,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.018039682539682578,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-69",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.85 days=4 ipd=5 start=10:45 dur=60 gap=20 wr=0.23 fat=0.60",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5094307359307358,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.5094307359307358,
+          "finalScore": 0.5094307359307358,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|1:seg-1-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|2:seg-2-10-loweff4-6|2:seg-2-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|3:seg-3-15-loweff4-11|3:seg-3-16-loweff4-12|3:seg-3-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00995021645021632,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-70",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.95 days=5 ipd=6 start=07:30 dur=45 gap=35 wr=0.32 fat=0.71",
+      "elapsedMs": 45,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5478421052631578,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5478421052631578,
+          "finalScore": 0.4687052631578948,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11|4:seg-4-24-pacedown2-12|4:seg-4-26-pacedown2-13|4:seg-4-28-pacedown2-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00013377192982466646,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-71",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.05 days=6 ipd=2 start=09:15 dur=150 gap=20 wr=0.41 fat=0.82",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5244940476190475,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.5244940476190475,
+          "finalScore": 0.5244940476190475,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|0:seg-0-0-paceup2-12|0:seg-0-1-paceup2-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000326923076922947,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-72",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.15 days=7 ipd=3 start=10:45 dur=120 gap=35 wr=0.50 fat=0.93",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5148571428571428,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5148571428571428,
+          "finalScore": 0.5148571428571428,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|2:seg-2-6-pacedown3-2|3:seg-3-9-pacedown3-3|4:seg-4-12-pacedown3-4|5:seg-5-15-pacedown3-5|6:seg-6-18-pacedown3-6"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.013349206349206,
+        "topCiWidth": 0.025499999999999856
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-73",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.25 days=2 ipd=4 start=07:30 dur=90 gap=20 wr=0.59 fat=0.05",
+      "elapsedMs": 40,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4974285714285711,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.4974285714285711,
+          "finalScore": 0.4974285714285711,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.019662337662337825,
+        "topCiWidth": 0.022500000000000075
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-74",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.35 days=3 ipd=5 start=09:15 dur=60 gap=35 wr=0.68 fat=0.16",
+      "elapsedMs": 29,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4597880184331796,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-3",
+          "score": 0.4597880184331796,
+          "finalScore": 0.4597880184331796,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-3-loweff3-0|0:seg-0-4-loweff3-1|1:seg-1-5-loweff3-2|1:seg-1-6-loweff3-3|1:seg-1-7-loweff3-4|1:seg-1-8-loweff3-5|1:seg-1-9-loweff3-6|2:seg-2-10-loweff3-7|2:seg-2-11-loweff3-8|2:seg-2-12-loweff3-9|2:seg-2-13-loweff3-10|2:seg-2-14-loweff3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.004693452380952423,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-75",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.45 days=4 ipd=6 start=10:45 dur=45 gap=20 wr=0.77 fat=0.27",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4864354838709676,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4864354838709676,
+          "finalScore": 0.4318612903225806,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0011229838709678752,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-76",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.55 days=5 ipd=2 start=07:30 dur=150 gap=35 wr=0.86 fat=0.38",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.45321428571428546,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.45321428571428546,
+          "finalScore": 0.45321428571428546,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|2:seg-2-4-pacedown4-1|4:seg-4-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.001071428571428501,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-77",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.65 days=6 ipd=3 start=09:15 dur=120 gap=20 wr=0.95 fat=0.49",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.448142857142857,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.448142857142857,
+          "finalScore": 0.448142857142857,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|4:seg-4-12-pacedown4-3|5:seg-5-16-pacedown4-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-3",
+        "mcTopId": "plan-op-reduce-effort-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0004018567639256787,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-78",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.75 days=7 ipd=4 start=10:45 dur=90 gap=35 wr=0.05 fat=0.60",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5422380952380951,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5422380952380951,
+          "finalScore": 0.5422380952380951,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6|5:seg-5-21-pacedown3-7|6:seg-6-24-pacedown3-8|6:seg-6-27-pacedown3-9"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01952277432712235,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-79",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.85 days=2 ipd=5 start=07:30 dur=60 gap=20 wr=0.14 fat=0.71",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5148095238095238,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.5148095238095238,
+          "finalScore": 0.5148095238095238,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|1:seg-1-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-3",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.009667499999999829,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-80",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.95 days=3 ipd=6 start=09:15 dur=45 gap=35 wr=0.23 fat=0.82",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.47818398268398243,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-3",
+          "score": 0.47818398268398243,
+          "finalScore": 0.47818398268398243,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-3-loweff3-0|0:seg-0-4-loweff3-1|0:seg-0-5-loweff3-2|1:seg-1-6-loweff3-3|1:seg-1-7-loweff3-4|1:seg-1-8-loweff3-5|1:seg-1-9-loweff3-6|1:seg-1-10-loweff3-7|1:seg-1-11-loweff3-8|2:seg-2-12-loweff3-9|2:seg-2-13-loweff3-10|2:seg-2-14-loweff3-11|2:seg-2-15-loweff3-12|2:seg-2-16-loweff3-13|2:seg-2-17-loweff3-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000056653491435798564,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-81",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.05 days=4 ipd=2 start=10:45 dur=150 gap=20 wr=0.32 fat=0.93",
+      "elapsedMs": 28,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5280952380952381,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5280952380952381,
+          "finalScore": 0.5280952380952381,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1|2:seg-2-4-pacedown2-2|3:seg-3-6-pacedown2-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00496356033452805,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-82",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.15 days=5 ipd=3 start=07:30 dur=120 gap=35 wr=0.41 fat=0.05",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5234761904761904,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5234761904761904,
+          "finalScore": 0.5234761904761904,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|4:seg-4-12-pacedown4-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.000050000000000105516,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-83",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.25 days=6 ipd=4 start=09:15 dur=90 gap=20 wr=0.50 fat=0.16",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5145000000000001,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5145000000000001,
+          "finalScore": 0.5145000000000001,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6|5:seg-5-21-pacedown3-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.017045454545454253,
+        "topCiWidth": 0.025499999999999967
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-84",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.35 days=7 ipd=5 start=10:45 dur=60 gap=35 wr=0.59 fat=0.27",
+      "elapsedMs": 44,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4625192012288787,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-7",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-7",
+          "score": 0.4625192012288787,
+          "finalScore": 0.4625192012288787,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-7-loweff7-0|1:seg-1-8-loweff7-1|1:seg-1-9-loweff7-2|2:seg-2-10-loweff7-3|2:seg-2-11-loweff7-4|2:seg-2-12-loweff7-5|2:seg-2-13-loweff7-6|2:seg-2-14-loweff7-7|3:seg-3-15-loweff7-8|3:seg-3-16-loweff7-9|3:seg-3-17-loweff7-10|3:seg-3-18-loweff7-11|3:seg-3-19-loweff7-12|4:seg-4-20-loweff7-13|4:seg-4-21-loweff7-14|4:seg-4-22-loweff7-15|4:seg-4-23-loweff7-16|4:seg-4-24-loweff7-17|5:seg-5-25-loweff7-18|5:seg-5-26-loweff7-19|5:seg-5-27-loweff7-20|5:seg-5-28-loweff7-21|5:seg-5-29-loweff7-22|6:seg-6-30-loweff7-23|6:seg-6-31-loweff7-24|6:seg-6-32-loweff7-25|6:seg-6-33-loweff7-26|6:seg-6-34-loweff7-27"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010027950310559253,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-85",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.45 days=2 ipd=6 start=07:30 dur=45 gap=20 wr=0.68 fat=0.38",
+      "elapsedMs": 31,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5043260869565218,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5043260869565218,
+          "finalScore": 0.4425956521739132,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00018092566619931638,
+        "topCiWidth": 0.025499999999999967
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-86",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.55 days=3 ipd=2 start=09:15 dur=150 gap=35 wr=0.77 fat=0.49",
+      "elapsedMs": 28,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4672272727272727,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4672272727272727,
+          "finalScore": 0.4672272727272727,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|2:seg-2-4-pacedown4-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.002858974358974198,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-87",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.65 days=4 ipd=3 start=10:45 dur=120 gap=20 wr=0.86 fat=0.60",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.45428571428571407,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.45428571428571407,
+          "finalScore": 0.45428571428571407,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01417391304347837,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-88",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.75 days=5 ipd=4 start=07:30 dur=90 gap=35 wr=0.95 fat=0.71",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.44842857142857123,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.44842857142857123,
+          "finalScore": 0.44842857142857123,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|2:seg-2-9-pacedown3-3|3:seg-3-12-pacedown3-4|3:seg-3-15-pacedown3-5|4:seg-4-18-pacedown3-6"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.020116883116883255,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-89",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.85 days=6 ipd=5 start=09:15 dur=60 gap=20 wr=0.05 fat=0.82",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5029261904761905,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-6",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-6",
+          "score": 0.5029261904761905,
+          "finalScore": 0.5029261904761905,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-6-loweff6-0|1:seg-1-7-loweff6-1|1:seg-1-8-loweff6-2|1:seg-1-9-loweff6-3|2:seg-2-10-loweff6-4|2:seg-2-11-loweff6-5|2:seg-2-12-loweff6-6|2:seg-2-13-loweff6-7|2:seg-2-14-loweff6-8|3:seg-3-15-loweff6-9|3:seg-3-16-loweff6-10|3:seg-3-17-loweff6-11|3:seg-3-18-loweff6-12|3:seg-3-19-loweff6-13|4:seg-4-20-loweff6-14|4:seg-4-21-loweff6-15|4:seg-4-22-loweff6-16|4:seg-4-23-loweff6-17|4:seg-4-24-loweff6-18|5:seg-5-25-loweff6-19|5:seg-5-26-loweff6-20|5:seg-5-27-loweff6-21|5:seg-5-28-loweff6-22|5:seg-5-29-loweff6-23"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.009270833333333672,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-90",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.95 days=7 ipd=6 start=10:45 dur=45 gap=35 wr=0.14 fat=0.93",
+      "elapsedMs": 47,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5575416666666667,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5575416666666667,
+          "finalScore": 0.47452500000000014,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11|6:seg-6-36-pacedown3-12|6:seg-6-39-pacedown3-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00018872549019621765,
+        "topCiWidth": 0.0034999999999999476
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-91",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.05 days=2 ipd=2 start=07:30 dur=150 gap=20 wr=0.23 fat=0.05",
+      "elapsedMs": 26,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5327272727272729,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5327272727272729,
+          "finalScore": 0.5327272727272729,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|1:seg-1-2-pacedown2-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.010664855072463841,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-92",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.15 days=3 ipd=3 start=09:15 dur=120 gap=35 wr=0.32 fat=0.16",
+      "elapsedMs": 28,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5281428571428572,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5281428571428572,
+          "finalScore": 0.5281428571428572,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|2:seg-2-6-pacedown3-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.013656421789105089,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-93",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.25 days=4 ipd=4 start=10:45 dur=90 gap=20 wr=0.41 fat=0.27",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.523857142857143,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.523857142857143,
+          "finalScore": 0.523857142857143,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.015641433747412004,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-94",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.35 days=5 ipd=5 start=07:30 dur=60 gap=35 wr=0.50 fat=0.38",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4699241071428568,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.4699241071428568,
+          "finalScore": 0.4699241071428568,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|0:seg-0-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|1:seg-1-8|1:seg-1-9|2:seg-2-10|2:seg-2-11|2:seg-2-12|2:seg-2-13|2:seg-2-14|3:seg-3-15|3:seg-3-16|3:seg-3-17|3:seg-3-18|3:seg-3-19|4:seg-4-20|4:seg-4-21|4:seg-4-22|4:seg-4-23|4:seg-4-24"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0083749999999998,
+        "topCiWidth": 0.01649999999999996
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-95",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.45 days=6 ipd=6 start=09:15 dur=45 gap=20 wr=0.59 fat=0.49",
+      "elapsedMs": 40,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.51775,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.51775,
+          "finalScore": 0.45065000000000016,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5|3:seg-3-18-pacedown3-6|3:seg-3-21-pacedown3-7|4:seg-4-24-pacedown3-8|4:seg-4-27-pacedown3-9|5:seg-5-30-pacedown3-10|5:seg-5-33-pacedown3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0002500000000001945,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-96",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.55 days=7 ipd=2 start=10:45 dur=150 gap=35 wr=0.68 fat=0.60",
+      "elapsedMs": 42,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48463492063492064,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.48463492063492064,
+          "finalScore": 0.48463492063492064,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|6:seg-6-12-paceup2-12|6:seg-6-13-paceup2-13|0:seg-0-0-paceup2-14|0:seg-0-1-paceup2-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0003750000000000142,
+        "topCiWidth": 0.022499999999999964
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-97",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.65 days=2 ipd=3 start=07:30 dur=120 gap=20 wr=0.77 fat=0.71",
+      "elapsedMs": 30,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.46607142857142847,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.46607142857142847,
+          "finalScore": 0.46607142857142847,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.011722638680659703,
+        "topCiWidth": 0.025500000000000078
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-98",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.75 days=3 ipd=4 start=09:15 dur=90 gap=35 wr=0.86 fat=0.82",
+      "elapsedMs": 39,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.45214285714285696,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.45214285714285696,
+          "finalScore": 0.45214285714285696,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.017014818514818453,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-99",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.85 days=4 ipd=5 start=10:45 dur=60 gap=20 wr=0.95 fat=0.93",
+      "elapsedMs": 41,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.42514285714285727,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-4",
+          "score": 0.42514285714285727,
+          "finalScore": 0.42514285714285727,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-4-loweff4-0|1:seg-1-5-loweff4-1|1:seg-1-6-loweff4-2|1:seg-1-7-loweff4-3|1:seg-1-8-loweff4-4|1:seg-1-9-loweff4-5|2:seg-2-10-loweff4-6|2:seg-2-11-loweff4-7|2:seg-2-12-loweff4-8|2:seg-2-13-loweff4-9|2:seg-2-14-loweff4-10|3:seg-3-15-loweff4-11|3:seg-3-16-loweff4-12|3:seg-3-17-loweff4-13|3:seg-3-18-loweff4-14|3:seg-3-19-loweff4-15"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.008541501976284671,
+        "topCiWidth": 0.009000000000000008
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-100",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.95 days=5 ipd=6 start=07:30 dur=45 gap=35 wr=0.05 fat=0.05",
+      "elapsedMs": 40,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5619054054054056,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5619054054054056,
+          "finalScore": 0.4771432432432435,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11|4:seg-4-24-pacedown2-12|4:seg-4-26-pacedown2-13|4:seg-4-28-pacedown2-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00025957207207205624,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-101",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.05 days=6 ipd=2 start=09:15 dur=150 gap=20 wr=0.14 fat=0.16",
+      "elapsedMs": 48,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5396269841269843,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.5396269841269843,
+          "finalScore": 0.5396269841269843,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|5:seg-5-10-paceup2-10|5:seg-5-11-paceup2-11|0:seg-0-0-paceup2-12|0:seg-0-1-paceup2-13"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0006666666666664822,
+        "topCiWidth": 0.0020000000000000018
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-102",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.15 days=7 ipd=3 start=10:45 dur=120 gap=35 wr=0.23 fat=0.27",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5325714285714288,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5325714285714288,
+          "finalScore": 0.5325714285714288,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|4:seg-4-12-pacedown4-3|5:seg-5-16-pacedown4-4|6:seg-6-20-pacedown4-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.01409925196132078,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-103",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.25 days=2 ipd=4 start=07:30 dur=90 gap=20 wr=0.32 fat=0.38",
+      "elapsedMs": 36,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5281666666666667,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5281666666666667,
+          "finalScore": 0.5281666666666667,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.019333333333333313,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-104",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.35 days=3 ipd=5 start=09:15 dur=60 gap=35 wr=0.41 fat=0.49",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5001428571428571,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-3",
+          "score": 0.5001428571428571,
+          "finalScore": 0.5001428571428571,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-3-loweff3-0|0:seg-0-4-loweff3-1|1:seg-1-5-loweff3-2|1:seg-1-6-loweff3-3|1:seg-1-7-loweff3-4|1:seg-1-8-loweff3-5|1:seg-1-9-loweff3-6|2:seg-2-10-loweff3-7|2:seg-2-11-loweff3-8|2:seg-2-12-loweff3-9|2:seg-2-13-loweff3-10|2:seg-2-14-loweff3-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.006325091575091535,
+        "topCiWidth": 0.007500000000000062
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-105",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.45 days=4 ipd=6 start=10:45 dur=45 gap=20 wr=0.50 fat=0.60",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5331724137931032,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.5331724137931032,
+          "finalScore": 0.45990344827586194,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0033124137931035413,
+        "topCiWidth": 0.025499999999999856
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-106",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.55 days=5 ipd=2 start=07:30 dur=150 gap=35 wr=0.59 fat=0.71",
+      "elapsedMs": 40,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4999999999999999,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-up-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-up-2",
+          "score": 0.4999999999999999,
+          "finalScore": 0.4999999999999999,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-paceup2-0|0:seg-0-1-paceup2-1|1:seg-1-2-paceup2-2|1:seg-1-3-paceup2-3|2:seg-2-4-paceup2-4|2:seg-2-5-paceup2-5|3:seg-3-6-paceup2-6|3:seg-3-7-paceup2-7|4:seg-4-8-paceup2-8|4:seg-4-9-paceup2-9|0:seg-0-0-paceup2-10|0:seg-0-1-paceup2-11"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-2",
+        "mcTopId": "plan-op-reduce-effort-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0006495726495727716,
+        "topCiWidth": 0.01650000000000007
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-107",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.65 days=6 ipd=3 start=09:15 dur=120 gap=20 wr=0.68 fat=0.82",
+      "elapsedMs": 42,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48278571428571426,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.48278571428571426,
+          "finalScore": 0.48278571428571426,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5|4:seg-4-12-pacedown2-6|4:seg-4-14-pacedown2-7|5:seg-5-16-pacedown2-8"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0008392857142858201,
+        "topCiWidth": 0.022499999999999853
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-108",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.75 days=7 ipd=4 start=10:45 dur=90 gap=35 wr=0.77 fat=0.93",
+      "elapsedMs": 53,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.46871428571428564,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.46871428571428564,
+          "finalScore": 0.46871428571428564,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4|5:seg-5-20-pacedown4-5|6:seg-6-24-pacedown4-6"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.017285714285714127,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-109",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.85 days=2 ipd=5 start=07:30 dur=60 gap=20 wr=0.86 fat=0.05",
+      "elapsedMs": 42,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.42914285714285716,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.42914285714285716,
+          "finalScore": 0.42914285714285716,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|1:seg-1-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-3",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.011057065217391249,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-110",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.95 days=3 ipd=6 start=09:15 dur=45 gap=35 wr=0.95 fat=0.16",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.468125,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.468125,
+          "finalScore": 0.4208750000000001,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|0:seg-0-3-pacedown3-1|1:seg-1-6-pacedown3-2|1:seg-1-9-pacedown3-3|2:seg-2-12-pacedown3-4|2:seg-2-15-pacedown3-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0004062499999999414,
+        "topCiWidth": 0.015000000000000013
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-111",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.05 days=4 ipd=2 start=10:45 dur=150 gap=20 wr=0.05 fat=0.27",
+      "elapsedMs": 38,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5422380952380951,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5422380952380951,
+          "finalScore": 0.5422380952380951,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|3:seg-3-6-pacedown3-2"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.004702508960573337,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.05
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-112",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.15 days=5 ipd=3 start=07:30 dur=120 gap=35 wr=0.14 fat=0.38",
+      "elapsedMs": 33,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.537738095238095,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.537738095238095,
+          "finalScore": 0.537738095238095,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|1:seg-1-4-pacedown2-2|2:seg-2-6-pacedown2-3|2:seg-2-8-pacedown2-4|3:seg-3-10-pacedown2-5|4:seg-4-12-pacedown2-6|4:seg-4-14-pacedown2-7"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-reduce-effort-3",
+        "mcTopId": "plan-op-reduce-effort-3",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00009401709401712921,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.15000000000000002
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-113",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.25 days=6 ipd=4 start=09:15 dur=90 gap=20 wr=0.23 fat=0.49",
+      "elapsedMs": 40,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5326428571428572,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.5326428571428572,
+          "finalScore": 0.5326428571428572,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4|5:seg-5-20-pacedown4-5"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.019487577639751508,
+        "topCiWidth": 0.00550000000000006
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.25
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-114",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.35 days=7 ipd=5 start=10:45 dur=60 gap=35 wr=0.32 fat=0.60",
+      "elapsedMs": 42,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.491863095238095,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-7",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-7",
+          "score": 0.491863095238095,
+          "finalScore": 0.491863095238095,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|1:seg-1-7-loweff7-0|1:seg-1-8-loweff7-1|1:seg-1-9-loweff7-2|2:seg-2-10-loweff7-3|2:seg-2-11-loweff7-4|2:seg-2-12-loweff7-5|2:seg-2-13-loweff7-6|2:seg-2-14-loweff7-7|3:seg-3-15-loweff7-8|3:seg-3-16-loweff7-9|3:seg-3-17-loweff7-10|3:seg-3-18-loweff7-11|3:seg-3-19-loweff7-12|4:seg-4-20-loweff7-13|4:seg-4-21-loweff7-14|4:seg-4-22-loweff7-15|4:seg-4-23-loweff7-16|4:seg-4-24-loweff7-17|5:seg-5-25-loweff7-18|5:seg-5-26-loweff7-19|5:seg-5-27-loweff7-20|5:seg-5-28-loweff7-21|5:seg-5-29-loweff7-22|6:seg-6-30-loweff7-23|6:seg-6-31-loweff7-24|6:seg-6-32-loweff7-25|6:seg-6-33-loweff7-26|6:seg-6-34-loweff7-27"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.009482401656314865,
+        "topCiWidth": 0.005499999999999949
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.35000000000000003
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-115",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.45 days=2 ipd=6 start=07:30 dur=45 gap=20 wr=0.41 fat=0.71",
+      "elapsedMs": 28,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4688004926108372,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-reduce-effort-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-reduce-effort-2",
+          "score": 0.4688004926108372,
+          "finalScore": 0.4688004926108372,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-2-loweff2-0|0:seg-0-3-loweff2-1|0:seg-0-4-loweff2-2|0:seg-0-5-loweff2-3|1:seg-1-6-loweff2-4|1:seg-1-7-loweff2-5|1:seg-1-8-loweff2-6|1:seg-1-9-loweff2-7|1:seg-1-10-loweff2-8|1:seg-1-11-loweff2-9"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.0010923248053392731,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-116",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.55 days=3 ipd=2 start=09:15 dur=150 gap=35 wr=0.50 fat=0.82",
+      "elapsedMs": 34,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5135909090909091,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.5135909090909091,
+          "finalScore": 0.5135909090909091,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.004762820512820398,
+        "topCiWidth": 0.01649999999999996
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.55
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-117",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.65 days=4 ipd=3 start=10:45 dur=120 gap=20 wr=0.59 fat=0.93",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49678571428571394,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-3",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-3",
+          "score": 0.49678571428571394,
+          "finalScore": 0.49678571428571394,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown3-0|1:seg-1-3-pacedown3-1|2:seg-2-6-pacedown3-2|3:seg-3-9-pacedown3-3"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.011969063545150593,
+        "topCiWidth": 0.02550000000000019
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.6500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-118",
+      "title": "stress profile=TIME_EFFICIENCY_LOW deg=0.75 days=5 ipd=4 start=07:30 dur=90 gap=35 wr=0.68 fat=0.05",
+      "elapsedMs": 35,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4818571428571429,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-4",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-4",
+          "score": 0.4818571428571429,
+          "finalScore": 0.4818571428571429,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown4-0|1:seg-1-4-pacedown4-1|2:seg-2-8-pacedown4-2|3:seg-3-12-pacedown4-3|4:seg-4-16-pacedown4-4"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.017708074534161566,
+        "topCiWidth": 0.03300000000000003
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_EFFICIENCY_LOW",
+          "severity": "SOFT",
+          "degree": 0.7500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-119",
+      "title": "stress profile=PHILOSOPHY_WEAK deg=0.85 days=6 ipd=5 start=09:15 dur=60 gap=20 wr=0.77 fat=0.16",
+      "elapsedMs": 43,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.48010869565217373,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.48010869565217373,
+          "finalScore": 0.42806521739130426,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|2:seg-2-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|3:seg-3-16-pacedown2-8|3:seg-3-18-pacedown2-9|4:seg-4-20-pacedown2-10|4:seg-4-22-pacedown2-11|4:seg-4-24-pacedown2-12|5:seg-5-26-pacedown2-13|5:seg-5-28-pacedown2-14"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.012251552795030873,
+        "topCiWidth": 0.019500000000000073
+      },
+      "violationsTop3": [
+        {
+          "type": "PHILOSOPHY_WEAK",
+          "severity": "SOFT",
+          "degree": 0.8500000000000001
+        }
+      ]
+    },
+    {
+      "id": "cgus-stress-120",
+      "title": "stress profile=EXPERIENCE_DENSITY_LOW deg=0.95 days=7 ipd=6 start=10:45 dur=45 gap=35 wr=0.86 fat=0.27",
+      "elapsedMs": 50,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4739558823529415,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-op-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-op-pace-down-2",
+          "score": 0.4739558823529415,
+          "finalScore": 0.4243735294117649,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0|0:seg-0-2-pacedown2-1|0:seg-0-4-pacedown2-2|1:seg-1-6-pacedown2-3|1:seg-1-8-pacedown2-4|1:seg-1-10-pacedown2-5|2:seg-2-12-pacedown2-6|2:seg-2-14-pacedown2-7|2:seg-2-16-pacedown2-8|3:seg-3-18-pacedown2-9|3:seg-3-20-pacedown2-10|3:seg-3-22-pacedown2-11|4:seg-4-24-pacedown2-12|4:seg-4-26-pacedown2-13|4:seg-4-28-pacedown2-14|5:seg-5-30-pacedown2-15|5:seg-5-32-pacedown2-16|5:seg-5-34-pacedown2-17|6:seg-6-36-pacedown2-18|6:seg-6-38-pacedown2-19|6:seg-6-40-pacedown2-20"
+        }
+      },
+      "rankAuthority": {
+        "deterministicTopId": "plan-op-pace-down-2",
+        "mcTopId": "plan-op-pace-down-2",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": true,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": false,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": false,
+        "topMargin": 0.00019588235294165646,
+        "topCiWidth": 0.02100000000000002
+      },
+      "violationsTop3": [
+        {
+          "type": "EXPERIENCE_DENSITY_LOW",
+          "severity": "SOFT",
+          "degree": 0.9500000000000001
+        }
+      ]
+    }
+  ]
+}

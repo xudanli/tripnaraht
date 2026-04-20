@@ -8,7 +8,7 @@
  * - 进度追踪
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
 // ========== 类型定义 ==========
 
@@ -205,7 +205,15 @@ export class BatchExecutor<T, R> {
 export class BatchDecisionService {
   private readonly logger = new Logger(BatchDecisionService.name);
 
+  /**
+   * Optional DI token to override how each batch request is processed.
+   * If not provided, a safe default mock processor is used.
+   */
+  static readonly PROCESSOR_TOKEN = 'BATCH_DECISION_PROCESSOR';
+
   constructor(
+    @Optional()
+    @Inject(BatchDecisionService.PROCESSOR_TOKEN)
     private readonly decisionProcessor?: (req: BatchDecisionRequest) => Promise<BatchDecisionResult>,
   ) {
     if (!this.decisionProcessor) {
@@ -260,7 +268,15 @@ export class BatchDecisionService {
 export class BatchFeedbackService {
   private readonly logger = new Logger(BatchFeedbackService.name);
 
+  /**
+   * Optional DI token to override how each feedback request is processed.
+   * If not provided, a safe default processor is used.
+   */
+  static readonly PROCESSOR_TOKEN = 'BATCH_FEEDBACK_PROCESSOR';
+
   constructor(
+    @Optional()
+    @Inject(BatchFeedbackService.PROCESSOR_TOKEN)
     private readonly feedbackProcessor?: (req: BatchFeedbackRequest) => Promise<BatchFeedbackResult>,
   ) {
     if (!this.feedbackProcessor) {

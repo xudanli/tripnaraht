@@ -32,6 +32,17 @@ export interface OpeningHours {
   timezone?: string;
 }
 
+/** POI 在区域骨架中的角色（区域意图驱动规划） */
+export type PoiRoleType = 'anchor' | 'optional' | 'passby';
+
+/** 更适访时段偏好 */
+export type VisitTimePreference =
+  | 'morning'
+  | 'midday'
+  | 'afternoon'
+  | 'evening'
+  | 'any';
+
 /**
  * POI（兴趣点）接口
  * 
@@ -42,6 +53,8 @@ export interface Poi {
   id: string;
   /** POI 名称 */
   name: string;
+  /** 别名（检索 / 意图对齐） */
+  aliases?: string[];
   /** 纬度 */
   lat: number;
   /** 经度 */
@@ -49,11 +62,27 @@ export interface Poi {
   /** 标签（标准化：museum/nature/playground/indoor/interactive...） */
   tags: string[];
 
+  /** 所属区域 slug，如 golden_circle（多标签允许跨区引用） */
+  regionTags?: string[];
+  /** 经典线路/产品标签，如 iceland_classic_day_route */
+  routeTags?: string[];
+
+  /** 在区域骨架中的角色；未设置时由检索/规则推断 */
+  roleType?: PoiRoleType;
+  /** 区域内核心度 0–1 */
+  importanceInRegion?: number;
+
   // 开放时间（建议用结构化，而不是字符串）
   openingHours?: OpeningHours;
 
   /** 平均游玩时长（分钟） */
   avgVisitMin: number;
+  /** 最小停留（分钟），调度下界 */
+  minDwellMinutes?: number;
+  /** 推荐停留（分钟）；缺省时可用 {@link getEffectiveRecommendedDwellMinutes} */
+  recommendedDwellMinutes?: number;
+  /** 最大停留（分钟），调度上界 */
+  maxDwellMinutes?: number;
   /** 游玩时长标准差（分钟，蒙特卡洛用） */
   visitMinStd?: number;
 
@@ -79,4 +108,29 @@ export interface Poi {
   // 热度/拥挤预测 key（可先填空，后续接实时）
   /** 拥挤度预测键（用于接入实时/预测服务） */
   crowdKey?: string;
+
+  /** 更适访时段 */
+  visitTimePreference?: VisitTimePreference;
+
+  /** 偏航代价（越大越不应为单点绕路），0–1 归一或工程尺度均可 */
+  detourPenalty?: number;
+
+  /** 围绕的主锚点 POI id（optional/pass-by 与骨架关系） */
+  connectedAnchorPoiIds?: string[];
+
+  /** 父级区域 slug */
+  parentRegion?: string;
+}
+
+/**
+ * 推荐停留：优先 recommendedDwellMinutes，否则回退 avgVisitMin
+ */
+export function getEffectiveRecommendedDwellMinutes(poi: Poi): number {
+  if (
+    poi.recommendedDwellMinutes !== undefined &&
+    poi.recommendedDwellMinutes > 0
+  ) {
+    return poi.recommendedDwellMinutes;
+  }
+  return poi.avgVisitMin;
 }

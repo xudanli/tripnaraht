@@ -1,0 +1,14 @@
+{
+  "fixtureVersion": "engine-dso-v1",
+  "generatedAt": "2026-04-17T15:15:35.505Z",
+  "outputs": [
+    {
+      "id": "golden-iceland-ring-road-2026q3-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/golden-iceland-ring-road-2026q3-001.engine-dso.json"
+    },
+    {
+      "id": "golden-iceland-highlands-2026q3-002",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/golden-iceland-highlands-2026q3-002.engine-dso.json"
+    }
+  ]
+}

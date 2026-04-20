@@ -16,6 +16,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 export interface DecisionOSConfig {
   general: GeneralConfig;
   decision: DecisionConfig;
+  /** RAG → evidence → CGUS 侧链配置（默认关闭） */
+  ragEvidence: RagEvidenceConfig;
   learning: LearningConfig;
   cache: CacheConfig;
   database: DatabaseConfig;
@@ -42,6 +44,32 @@ export interface DecisionConfig {
   confidenceThreshold: number;
   cgusMaxIterations: number;
   cgusConvergenceThreshold: number;
+  /** CGUS candidate pool size */
+  cgusMaxCandidates: number;
+  /** CGUS rollout top-k */
+  cgusRolloutTopK: number;
+  /** Candidate search repair iterations */
+  cgusRepairMaxIters: number;
+  /** Max repairs per candidate per iter */
+  cgusRepairTopKPerCandidate: number;
+  /** Per-iteration new candidates cap */
+  cgusMaxNewCandidatesPerIter: number;
+  /** Pool hard cap */
+  cgusMaxPoolSize: number;
+  /** Pilot samples per candidate for variance allocation */
+  cgusPilotSamples: number;
+}
+
+export interface RagEvidenceConfig {
+  /**
+   * 全局 RAG 证据链开关（默认 false，避免 OPTIMIZE 路径每次打库检索）。
+   * 建议与环境变量门闸并存：config 为主，env 作为最低层 fallback。
+   */
+  enabled: boolean;
+  /** 触发检索的最小字符数（query 拼接后的 base 长度）。 */
+  minQueryLength: number;
+  /** 传入 RetrievalEvidenceMapper 的 scoreThreshold（隔离噪声）。 */
+  confidenceThreshold: number;
 }
 
 export interface LearningConfig {
@@ -140,6 +168,7 @@ export class ConfigValidator {
 
     this.validateGeneral(config.general);
     this.validateDecision(config.decision);
+    this.validateRagEvidence(config.ragEvidence);
     this.validateLearning(config.learning);
     this.validateCache(config.cache);
     this.validateSecurity(config.security);
@@ -169,6 +198,23 @@ export class ConfigValidator {
     }
     if (config.monteCarloSamples < 10) {
       this.addWarning('decision.monteCarloSamples is very low, may affect accuracy');
+    }
+  }
+
+  private validateRagEvidence(config: RagEvidenceConfig): void {
+    if (!Number.isFinite(config.minQueryLength) || config.minQueryLength < 0) {
+      this.addError('ragEvidence.minQueryLength', 'Must be a non-negative number', config.minQueryLength);
+    }
+    if (
+      !Number.isFinite(config.confidenceThreshold) ||
+      config.confidenceThreshold < 0 ||
+      config.confidenceThreshold > 1
+    ) {
+      this.addError(
+        'ragEvidence.confidenceThreshold',
+        'Must be between 0 and 1',
+        config.confidenceThreshold,
+      );
     }
   }
 
@@ -340,7 +386,20 @@ export class DecisionOSConfigService implements OnModuleInit {
         confidenceThreshold: parseFloat(process.env.CONFIDENCE_THRESHOLD ?? '0.8'),
         cgusMaxIterations: parseInt(process.env.CGUS_MAX_ITERATIONS ?? '100', 10),
         cgusConvergenceThreshold: parseFloat(process.env.CGUS_CONVERGENCE ?? '0.001'),
+        cgusMaxCandidates: parseInt(process.env.CGUS_MAX_CANDIDATES ?? '8', 10),
+        cgusRolloutTopK: parseInt(process.env.CGUS_ROLLOUT_TOPK ?? '3', 10),
+        cgusRepairMaxIters: parseInt(process.env.CGUS_REPAIR_MAX_ITERS ?? '2', 10),
+        cgusRepairTopKPerCandidate: parseInt(process.env.CGUS_REPAIR_TOPK_PER_CANDIDATE ?? '2', 10),
+        cgusMaxNewCandidatesPerIter: parseInt(process.env.CGUS_MAX_NEW_CANDIDATES_PER_ITER ?? '30', 10),
+        cgusMaxPoolSize: parseInt(process.env.CGUS_MAX_POOL_SIZE ?? '200', 10),
+        cgusPilotSamples: parseInt(process.env.CGUS_PILOT_SAMPLES ?? '20', 10),
         ...overrides?.decision,
+      },
+      ragEvidence: {
+        enabled: (process.env.DECISION_OS_RAG_EVIDENCE_ENABLED ?? 'false').toLowerCase() === 'true',
+        minQueryLength: parseInt(process.env.DECISION_OS_RAG_EVIDENCE_MIN_QUERY_LEN ?? '1', 10),
+        confidenceThreshold: parseFloat(process.env.DECISION_OS_RAG_EVIDENCE_CONFIDENCE_THRESHOLD ?? '0.25'),
+        ...overrides?.ragEvidence,
       },
       learning: {
         enabled: process.env.LEARNING_ENABLED !== 'false',

@@ -7,6 +7,17 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { DecisionState } from '../../decision/kernel/decision-state.types';
+
+/** TripRun.metadata 中 DSO 断点快照的键名（v1.0 Durable） */
+export const TRIP_RUN_DSO_CHECKPOINT_META_KEY = 'dso_checkpoint';
+
+/** 写入 TripRun.metadata 的可序列化检查点 */
+export interface TripRunDsoCheckpointPayload {
+  decision_state: DecisionState;
+  cursor_step?: string;
+  saved_at: string;
+}
 
 export interface CreateTripRunParams {
   tripId?: string | null;
@@ -325,6 +336,60 @@ export class TripRunManagerService {
       completedAt: new Date(),
       metadata,
     });
+  }
+
+  /**
+   * v1.0：将 DSO 快照写入 TripRun.metadata（与 `completeTripRun` 等元数据合并）。
+   */
+  async saveDsoCheckpoint(tripRunId: string, checkpoint: TripRunDsoCheckpointPayload): Promise<boolean> {
+    if (!this.isValidUUID(tripRunId)) {
+      this.logger.warn(`saveDsoCheckpoint: invalid tripRunId ${tripRunId}`);
+      return false;
+    }
+    const ok = await this.updateTripRun({
+      runId: tripRunId,
+      metadata: {
+        [TRIP_RUN_DSO_CHECKPOINT_META_KEY]: {
+          decision_state: checkpoint.decision_state,
+          cursor_step: checkpoint.cursor_step,
+          saved_at: checkpoint.saved_at,
+        },
+      },
+    });
+    if (ok) {
+      this.logger.debug(`[TripRunManager] DSO checkpoint saved for TripRun ${tripRunId}`);
+    }
+    return ok;
+  }
+
+  /**
+   * v1.0：读取上次持久化的 DSO 检查点（供断点续跑编排接入；当前仅 API 层加载与可观测性）。
+   */
+  async loadDsoCheckpoint(tripRunId: string): Promise<TripRunDsoCheckpointPayload | null> {
+    if (!this.prisma) {
+      return null;
+    }
+    if (!this.isValidUUID(tripRunId)) {
+      return null;
+    }
+    try {
+      const row = await this.prisma.tripRun.findUnique({
+        where: { id: tripRunId },
+        select: { metadata: true },
+      });
+      const raw = (row?.metadata as Record<string, unknown>)?.[TRIP_RUN_DSO_CHECKPOINT_META_KEY];
+      if (!raw || typeof raw !== 'object') return null;
+      const o = raw as Record<string, unknown>;
+      if (!o.decision_state || typeof o.decision_state !== 'object') return null;
+      return {
+        decision_state: o.decision_state as DecisionState,
+        cursor_step: typeof o.cursor_step === 'string' ? o.cursor_step : undefined,
+        saved_at: typeof o.saved_at === 'string' ? o.saved_at : new Date().toISOString(),
+      };
+    } catch (error: any) {
+      this.logger.warn(`loadDsoCheckpoint failed: ${error.message}`);
+      return null;
+    }
   }
 
   /**

@@ -1,0 +1,1003 @@
+{
+  "id": "iceland-ring-road-pace-adjust-001",
+  "name": "冰岛环岛路线 - 节奏压力升高",
+  "description": "测试在沿海基线下，当用户节奏更激进且行程更紧时需要节奏调整",
+  "input": {
+    "userProfile": {
+      "pacePreference": "FAST",
+      "altitudeTolerance": "LOW",
+      "riskTolerance": "MEDIUM",
+      "travelPhilosophy": "comfort",
+      "preferredRouteTypes": [
+        "ring-road",
+        "coastal"
+      ]
+    },
+    "season": 8,
+    "countryCode": "IS",
+    "userQuery": "我想8月快速环岛，但每天车程和活动都压得更紧"
+  },
+  "expected": {
+    "abuExpected": {
+      "action": "ALLOW"
+    },
+    "drdreExpected": {
+      "mustAdjust": true,
+      "adjustmentTypes": [
+        "BUFFER_DAY"
+      ]
+    },
+    "neptuneExpected": {
+      "mustRepair": false
+    },
+    "finalState": {
+      "allowed": true,
+      "planDays": 9
+    },
+    "traceSummary": {
+      "schemaVersion": "trace/v1",
+      "metaDecisionAudit": "fixture-meta-budget entropy=0.51 cand=14 repair=2",
+      "candidateSearchBudget": {
+        "maxCandidates": 14,
+        "repairMaxIters": 2,
+        "repairTopKPerCandidate": 3,
+        "maxNewCandidatesPerIter": 12,
+        "maxPoolSize": 28,
+        "stopWhenFeasibleCount": 7
+      },
+      "candidateSearchAudit": {
+        "budget": {
+          "maxCandidates": 14,
+          "repairMaxIters": 2,
+          "repairTopKPerCandidate": 3,
+          "maxNewCandidatesPerIter": 12,
+          "maxPoolSize": 28,
+          "stopWhenFeasibleCount": 7
+        },
+        "initialVariantCount": 5,
+        "iterations": [
+          {
+            "iter": 0,
+            "poolSizeBeforeProjection": 6,
+            "feasibleCountAfterProjection": 3,
+            "infeasibleCountAfterProjection": 3,
+            "repairsGenerated": 4,
+            "repairsAccepted": 2,
+            "poolSizeAfterDedup": 7
+          },
+          {
+            "iter": 1,
+            "poolSizeBeforeProjection": 7,
+            "feasibleCountAfterProjection": 6,
+            "infeasibleCountAfterProjection": 1,
+            "repairsGenerated": 2,
+            "repairsAccepted": 1,
+            "poolSizeAfterDedup": 8
+          }
+        ],
+        "finalCandidateCount": 8,
+        "finalFeasibleCount": 6,
+        "stopReason": "COMPLETED"
+      }
+    },
+    "scientificExpected": {
+      "optimization": {
+        "mustEmitTrace": true,
+        "minCandidateSearchIterations": 2,
+        "minFinalFeasibleCount": 6,
+        "allowedStopReasons": [
+          "COMPLETED"
+        ],
+        "metaDecisionAuditIncludes": [
+          "cand=14",
+          "repair=2"
+        ]
+      }
+    },
+    "timelineExpected": {
+      "requiredStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "PACE_ADJUST"
+      ],
+      "forbiddenStages": [
+        "SPATIAL_REPAIR"
+      ],
+      "orderedStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "PACE_ADJUST"
+      ]
+    }
+  },
+  "metadata": {
+    "tags": [
+      "iceland",
+      "ring-road",
+      "pace-adjust"
+    ],
+    "priority": "P1",
+    "source": "iceland-ring-road",
+    "fixtureKind": "synthetic",
+    "counterfactualGroup": "iceland-ring-road-core",
+    "baselineCaseId": "iceland-ring-road-001",
+    "counterfactualExpectation": {
+      "expectedOutcomeShift": "ADD_ADJUST",
+      "minCandidateBudgetDelta": 6,
+      "minRepairMaxItersDelta": 1,
+      "requiredAdditionalStages": [
+        "PACE_ADJUST"
+      ]
+    },
+    "cgusDsoSnapshot": {
+      "requestId": "synthetic-capture-iceland-ring-road-pace-adjust-001-1776438653400",
+      "systemState": {
+        "requestId": "synthetic-capture-iceland-ring-road-pace-adjust-001-1776438653400"
+      },
+      "environmentState": {
+        "countryCode": "IS",
+        "month": 8,
+        "routeDirectionId": "unknown"
+      },
+      "tripState": {
+        "planDraft": {
+          "days": [
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-01_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-0-5",
+                    "name": "候选 0-5",
+                    "coordinates": {
+                      "lat": 64.005,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-01_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-0-4",
+                    "name": "候选 0-4",
+                    "coordinates": {
+                      "lat": 64.004,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-01_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-0-3",
+                    "name": "候选 0-3",
+                    "coordinates": {
+                      "lat": 64.003,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-01_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-0-2",
+                    "name": "候选 0-2",
+                    "coordinates": {
+                      "lat": 64.002,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-02_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-1-5",
+                    "name": "候选 1-5",
+                    "coordinates": {
+                      "lat": 64.02499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-02_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-1-4",
+                    "name": "候选 1-4",
+                    "coordinates": {
+                      "lat": 64.024,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-02_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-1-3",
+                    "name": "候选 1-3",
+                    "coordinates": {
+                      "lat": 64.023,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-02_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-1-2",
+                    "name": "候选 1-2",
+                    "coordinates": {
+                      "lat": 64.02199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-03_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-2-5",
+                    "name": "候选 2-5",
+                    "coordinates": {
+                      "lat": 64.045,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-03_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-2-4",
+                    "name": "候选 2-4",
+                    "coordinates": {
+                      "lat": 64.04400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-03_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-2-3",
+                    "name": "候选 2-3",
+                    "coordinates": {
+                      "lat": 64.043,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-03_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-2-2",
+                    "name": "候选 2-2",
+                    "coordinates": {
+                      "lat": 64.042,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-04_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-3-5",
+                    "name": "候选 3-5",
+                    "coordinates": {
+                      "lat": 64.065,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-04_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-3-4",
+                    "name": "候选 3-4",
+                    "coordinates": {
+                      "lat": 64.06400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-04_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-3-3",
+                    "name": "候选 3-3",
+                    "coordinates": {
+                      "lat": 64.063,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-04_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-3-2",
+                    "name": "候选 3-2",
+                    "coordinates": {
+                      "lat": 64.062,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-05_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-4-5",
+                    "name": "候选 4-5",
+                    "coordinates": {
+                      "lat": 64.085,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-05_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-4-4",
+                    "name": "候选 4-4",
+                    "coordinates": {
+                      "lat": 64.084,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-05_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-4-3",
+                    "name": "候选 4-3",
+                    "coordinates": {
+                      "lat": 64.083,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-05_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-4-2",
+                    "name": "候选 4-2",
+                    "coordinates": {
+                      "lat": 64.082,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-06_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-5-5",
+                    "name": "候选 5-5",
+                    "coordinates": {
+                      "lat": 64.10499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-06_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-5-4",
+                    "name": "候选 5-4",
+                    "coordinates": {
+                      "lat": 64.104,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-06_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-5-3",
+                    "name": "候选 5-3",
+                    "coordinates": {
+                      "lat": 64.103,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-06_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-5-2",
+                    "name": "候选 5-2",
+                    "coordinates": {
+                      "lat": 64.10199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-07_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-6-5",
+                    "name": "候选 6-5",
+                    "coordinates": {
+                      "lat": 64.125,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-07_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-6-4",
+                    "name": "候选 6-4",
+                    "coordinates": {
+                      "lat": 64.12400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-07_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-6-3",
+                    "name": "候选 6-3",
+                    "coordinates": {
+                      "lat": 64.123,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-07_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-6-2",
+                    "name": "候选 6-2",
+                    "coordinates": {
+                      "lat": 64.122,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-08_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-7-5",
+                    "name": "候选 7-5",
+                    "coordinates": {
+                      "lat": 64.145,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-08_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-7-4",
+                    "name": "候选 7-4",
+                    "coordinates": {
+                      "lat": 64.144,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-08_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-7-3",
+                    "name": "候选 7-3",
+                    "coordinates": {
+                      "lat": 64.143,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-08_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-7-2",
+                    "name": "候选 7-2",
+                    "coordinates": {
+                      "lat": 64.142,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-08-09_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-8-5",
+                    "name": "候选 8-5",
+                    "coordinates": {
+                      "lat": 64.16499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-08-09_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-8-4",
+                    "name": "候选 8-4",
+                    "coordinates": {
+                      "lat": 64.164,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-09_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-8-3",
+                    "name": "候选 8-3",
+                    "coordinates": {
+                      "lat": 64.163,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-08-09_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-ring-road-pace-adjust-001-8-2",
+                    "name": "候选 8-2",
+                    "coordinates": {
+                      "lat": 64.16199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constraints": {
+        "violations": []
+      }
+    },
+    "cgusDsoSnapshotNote": "fallback snapshot from TripPlan (no planConverter/orchestrator); env + planDraft(days/items) only",
+    "cgusDsoFixtureVersion": "engine-dso-v1",
+    "cgusDsoGeneratedAt": "2026-04-17T15:10:53.370Z",
+    "cgusDsoSourceCaseId": "iceland-ring-road-pace-adjust-001"
+  }
+}

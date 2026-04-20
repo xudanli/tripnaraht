@@ -70,6 +70,54 @@ describe('E2EReplayService', () => {
         timestamp: new Date().toISOString(),
         decisionSource: 'PHYSICAL',
         decisionStage: 'ABU_GATE',
+        metadata: {},
+      },
+      {
+        persona: 'EXPECTED_UTILITY',
+        action: 'EVALUATE',
+        explanation: 'search audited',
+        reasonCodes: [],
+        evidenceRefs: [],
+        timestamp: new Date().toISOString(),
+        decisionSource: 'UTILITY',
+        decisionStage: 'PLAN_SCORE',
+        metadata: {
+          schemaVersion: 'trace/v1',
+          metaDecisionAudit: 'fixture-meta-budget entropy=0.42 cand=12 repair=2',
+          candidateSearchBudget: {
+            maxCandidates: 12,
+            repairMaxIters: 2,
+            repairTopKPerCandidate: 3,
+            maxNewCandidatesPerIter: 12,
+            maxPoolSize: 24,
+            stopWhenFeasibleCount: 6,
+          },
+          candidateSearchAudit: {
+            budget: {
+              maxCandidates: 12,
+              repairMaxIters: 2,
+              repairTopKPerCandidate: 3,
+              maxNewCandidatesPerIter: 12,
+              maxPoolSize: 24,
+              stopWhenFeasibleCount: 6,
+            },
+            initialVariantCount: 4,
+            iterations: [
+              {
+                iter: 0,
+                poolSizeBeforeProjection: 5,
+                feasibleCountAfterProjection: 5,
+                infeasibleCountAfterProjection: 0,
+                repairsGenerated: 0,
+                repairsAccepted: 0,
+                poolSizeAfterDedup: 5,
+              },
+            ],
+            finalCandidateCount: 5,
+            finalFeasibleCount: 5,
+            stopReason: 'COMPLETED',
+          },
+        },
       },
     ] as any);
 
@@ -78,7 +126,84 @@ describe('E2EReplayService', () => {
     expect(result).toBeDefined();
     expect(result.case.id).toBe(icelandHighlandsCase.id);
     expect(result.actual.logs.length).toBeGreaterThan(0);
+    expect((result.actual.logs[1] as any).metadata?.candidateSearchAudit?.initialVariantCount).toBe(4);
+    expect((result.actual.traceSummary as any)?.candidateSearchAudit?.initialVariantCount).toBe(4);
+    expect(logStorage.queryLogs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: `e2e-${icelandHighlandsCase.id}`,
+      }),
+    );
     expect(result.executionTime).toBeDefined();
+  });
+
+  it('should diff expected trace summary from replay metadata', async () => {
+    decisionEngine.generatePlan.mockResolvedValue({
+      plan: {
+        days: Array(2).fill({}),
+      },
+      log: {
+        tripId: 'trace-trip-id',
+        finalStatus: 'ALLOWED',
+      },
+    } as any);
+
+    logStorage.queryLogs.mockResolvedValue([
+      {
+        persona: 'EXPECTED_UTILITY',
+        action: 'ALLOW',
+        explanation: 'search audited',
+        reasonCodes: [],
+        evidenceRefs: [],
+        timestamp: new Date().toISOString(),
+        decisionSource: 'UTILITY',
+        decisionStage: 'PLAN_SCORE',
+        metadata: {
+          schemaVersion: 'trace/v1',
+          metaDecisionAudit: 'entropy=0.75;cand=18',
+          candidateSearchBudget: {
+            maxCandidates: 18,
+            repairMaxIters: 3,
+            repairTopKPerCandidate: 3,
+            maxNewCandidatesPerIter: 12,
+            maxPoolSize: 36,
+          },
+          candidateSearchAudit: { initialVariantCount: 3, stopReason: 'COMPLETED' },
+        },
+      },
+    ] as any);
+
+    const result = await service.replay({
+      ...icelandHighlandsCase,
+      expected: {
+        ...icelandHighlandsCase.expected,
+        traceSummary: {
+          schemaVersion: 'trace/v1',
+          metaDecisionAudit: 'entropy=0.75;cand=12',
+          candidateSearchBudget: {
+            maxCandidates: 12,
+            repairMaxIters: 2,
+            repairTopKPerCandidate: 2,
+            maxNewCandidatesPerIter: 8,
+            maxPoolSize: 24,
+          },
+        },
+      },
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.diff.hasDiff).toBe(true);
+    expect(result.diff.traceDiff).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'metaDecisionAudit',
+          message: expect.stringContaining('trace.metaDecisionAudit'),
+        }),
+        expect.objectContaining({
+          key: 'candidateSearchBudget',
+          message: expect.stringContaining('trace.candidateSearchBudget'),
+        }),
+      ]),
+    );
   });
 
   it('应该能够批量回放多个 E2E Cases', async () => {

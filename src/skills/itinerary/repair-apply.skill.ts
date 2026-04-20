@@ -112,8 +112,9 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
           'CHANGE_TRANSPORT': 3,
           'ADD_BUFFER': 4,
           'SHORTEN_DAY': 5,
-          'CHANGE_MODE': 6,
-          'CHANGE_DATES': 7,
+          'REDUCE_SCOPE_OR_ADD_EVIDENCE': 6,
+          'CHANGE_MODE': 7,
+          'CHANGE_DATES': 8,
         };
         return (priorityOrder[a.action] || 99) - (priorityOrder[b.action] || 99);
       });
@@ -182,10 +183,33 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
       case 'CHANGE_DATES':
         return this.changeDates(itinerary, adjustment);
 
+      case 'REDUCE_SCOPE_OR_ADD_EVIDENCE':
+        return this.reduceScopeOrAddEvidence(itinerary, adjustment);
+
       default:
         this.logger.warn(`未知的调整类型: ${adjustment.action}`);
         return { applied: false, description: `未知的调整类型: ${adjustment.action}` };
     }
+  }
+
+  private reduceScopeOrAddEvidence(
+    itinerary: Itinerary,
+    _adjustment: RequiredAdjustment,
+  ): { applied: boolean; description: string } {
+    // 确定性低预算修复：优先缩减“过满”的一天（删除最后一个 item）
+    // 注意：这是纯结构修复，不引入新的 POI/route（避免额外检索成本）
+    let changed = false;
+    for (const day of itinerary.days) {
+      if (Array.isArray(day.items) && day.items.length > 1) {
+        day.items = day.items.slice(0, -1);
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) {
+      return { applied: false, description: '行程已足够精简，无需缩减范围' };
+    }
+    return { applied: true, description: '低预算修复：已缩减一天行程以降低复杂度（建议补充证据后再优化）' };
   }
 
   /**

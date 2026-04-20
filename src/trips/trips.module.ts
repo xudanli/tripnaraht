@@ -51,9 +51,10 @@ import { DecisionKernelModule } from '../decision/decision-kernel.module';
 import { TransportModule } from '../transport/transport.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { DsoFeedbackPersistenceModule } from './decision/dso-feedback-persistence.module';
+import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController],
   providers: [
     TripsService, 

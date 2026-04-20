@@ -7,6 +7,8 @@ node_modules/
 coverage/
 *.log
 readiness-p1-report.json
+security-reports/
+test_models_*/
 
 # Production
 dist/

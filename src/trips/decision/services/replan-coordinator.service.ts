@@ -93,8 +93,10 @@ export class ReplanCoordinatorService implements IReplanTrigger {
 
       await this.feedbackPersistence.persistDso(tripRunIdOrTripId, dso);
       this.logger.log(`[ReplanCoordinator] 重规划完成: ${tripRunIdOrTripId}, version=${dso.systemState?.version ?? 'N/A'}`);
+      this.decisionKernel.finalizeHarnessTraceIfRecorded(dso, 'DONE');
     } catch (e: unknown) {
       this.logger.error(`[ReplanCoordinator] 重规划失败: ${(e as Error)?.message}`, (e as Error)?.stack);
+      this.decisionKernel.finalizeHarnessTraceIfRecorded(dso, 'FAILED');
       throw e;
     }
   }

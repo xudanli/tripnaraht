@@ -19,26 +19,26 @@ import { ObjectiveFunctionWeights } from '../../objective-function.interface';
 @Index(['userId'], { unique: true })
 export class UserDecisionWeightsEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'user_id', type: 'varchar', length: 255 })
-  userId: string;
+  userId!: string;
 
   @Column({ type: 'jsonb' })
-  weights: ObjectiveFunctionWeights;
+  weights!: ObjectiveFunctionWeights;
 
   @Column({ type: 'int', default: 1 })
-  version: number;
+  version!: number;
 
   @Column({ name: 'learning_confidence', type: 'float', default: 0.5 })
-  learningConfidence: number;
+  learningConfidence!: number;
 
   @Column({ name: 'total_feedback', type: 'int', default: 0 })
-  totalFeedback: number;
+  totalFeedback!: number;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

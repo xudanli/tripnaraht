@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "TripNARA 目录依赖守卫（目标架构；与现有 src/ 布局渐进对齐）",
+  "version": "1.0.0",
+  "allowedEdges": [
+    { "from": "interaction/", "to": "decision/api/", "note": "交互层仅调用 Decision API 壳" },
+    { "from": "decision/api/", "to": "decision/kernel/", "note": "API 层调内核" },
+    { "from": "decision/kernel/", "to": "decision/stages/", "note": "内核调度阶段" },
+    { "from": "decision/stages/", "to": "adapters/", "note": "阶段调适配器与 skills" },
+    { "from": "decision/kernel/", "to": "observability/", "note": "观测与 explain 组装" },
+    { "from": "src/agent/", "to": "src/decision/kernel/", "note": "过渡期：编排可调用 kernel，但不应直写 DSO" }
+  ],
+  "forbiddenEdges": [
+    { "from": "interaction/", "to": "decision/kernel/internal", "severity": "P0" },
+    { "from": "interaction/", "to": "dso repository internals", "severity": "P0" },
+    { "from": "stages/", "to": "controller", "severity": "P0" },
+    { "from": "stages/", "to": "http context", "severity": "P0" },
+    { "from": "stages/", "to": "persistence commit", "severity": "P0" },
+    { "from": "narrative/", "to": "state manager commit", "severity": "P0" }
+  ],
+  "currentRepoAnchors": {
+    "note": "落地前以 src/decision/kernel、src/agent/execution 为实际路径；重构后迁移到 decision/stages 等",
+    "stateManagerGlob": "**/state-manager.service.ts",
+    "kernelGlob": "**/decision-kernel.service.ts",
+    "stageExecutorsGlob": "**/execution/*-executor.service.ts"
+  }
+}

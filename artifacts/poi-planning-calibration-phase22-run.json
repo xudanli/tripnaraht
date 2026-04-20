@@ -1,0 +1,202 @@
+[
+  {
+    "label": "1_gc_normal_600",
+    "request_id": "cal-p22-1776576085778-1_gc_normal_600",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "2_gc_relaxed_600",
+    "request_id": "cal-p22-1776576089456-2_gc_relaxed_600",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "3_gc_tight_360",
+    "request_id": "cal-p22-1776576092931-3_gc_tight_360",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "4_gc_must_secret_lagoon",
+    "request_id": "cal-p22-1776576095646-4_gc_must_secret_lagoon",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "5_gc_exclude_kerid",
+    "request_id": "cal-p22-1776576097951-5_gc_exclude_kerid",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "6_gc_region_keyword",
+    "request_id": "cal-p22-1776576100103-6_gc_region_keyword",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "7_no_gc_reykjavik",
+    "request_id": "cal-p22-1776576102400-7_no_gc_reykjavik",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  },
+  {
+    "label": "8_repeat_like_1",
+    "request_id": "cal-p22-1776576107137-8_repeat_like_1",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    }
+  }
+]

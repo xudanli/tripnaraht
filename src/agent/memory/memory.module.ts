@@ -4,6 +4,8 @@ import { Module } from '@nestjs/common';
 import { MemoryService } from './services/memory.service';
 import { UserProfileMapperService } from './services/user-profile-mapper.service';
 import { DecisionParamsInjectorService } from './services/decision-params-injector.service';
+import { DecisionParamsMappingV2Service } from './services/decision-params-mapping-v2.service';
+import { ShadowModeDiffService } from './services/shadow-mode-diff.service';
 import { PersonaIdentificationService } from './services/persona-identification.service';
 import { PersonaStateManagerService } from './services/persona-state-manager.service';
 import { MultiPersonaManagerService } from './services/multi-persona-manager.service';
@@ -24,6 +26,8 @@ import { FlywheelModule } from '../../trips/decision/flywheel/flywheel.module';
   providers: [
     MemoryService,
     UserProfileMapperService,
+    DecisionParamsMappingV2Service,
+    ShadowModeDiffService,
     DecisionParamsInjectorService,
     PersonaIdentificationService,
     MultiPersonaManagerService,

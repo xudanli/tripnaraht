@@ -34,10 +34,33 @@ import type { OptimizationHints } from '../src/decision/kernel/decision-state.ty
 
 const logger = new Logger('OptimizeCGUS-Test');
 
-const TRIP_ID = '1c077df7-18ae-45b8-a58e-e71865d224f5';
+function resolveTripId(): string {
+  const fromArgv = process.argv.slice(2).find((a) => typeof a === 'string' && a.trim().length > 0);
+  const fromEnv = process.env.TRIP_ID;
+  return (fromArgv ?? fromEnv ?? '1c077df7-18ae-45b8-a58e-e71865d224f5').trim();
+}
+
+const TRIP_ID = resolveTripId();
 const ICELAND_COORDS_FALLBACK = { lat: 64.1466, lng: -21.9426 };
 
 async function loadTripData(prisma: PrismaService) {
+  // Local/dev convenience: allow running without a seeded DB.
+  // When enabled, we skip Prisma lookup and use a small mock trip window.
+  if (process.env.USE_MOCK_TRIP === '1') {
+    const start = process.env.MOCK_TRIP_START ?? '2026-06-01';
+    const end = process.env.MOCK_TRIP_END ?? '2026-06-06';
+    const days =
+      parseInt(process.env.MOCK_TRIP_DAYS ?? '', 10) ||
+      Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) ||
+      6;
+    return {
+      destination: process.env.MOCK_TRIP_DESTINATION ?? 'Iceland',
+      coords: [ICELAND_COORDS_FALLBACK],
+      dateRange: { start, end },
+      days,
+    };
+  }
+
   const trip = await prisma.trip.findUnique({
     where: { id: TRIP_ID },
     include: {
@@ -52,7 +75,9 @@ async function loadTripData(prisma: PrismaService) {
       },
     },
   });
-  if (!trip) throw new Error(`行程不存在: ${TRIP_ID}`);
+  if (!trip) {
+    throw new Error(`行程不存在: ${TRIP_ID}（可用 USE_MOCK_TRIP=1 跳过 DB 读取）`);
+  }
 
   const startStr = trip.startDate.toISOString().split('T')[0];
   const endStr = trip.endDate.toISOString().split('T')[0];
@@ -93,7 +118,8 @@ async function main(): Promise<void> {
   let app: INestApplication;
 
   try {
-    app = await NestFactory.create(AppModule, { logger: ['error', 'warn'] });
+    // Enable debug logs for kernel/optimizer gate checks (CGUS injected? planDraft? worldContext?).
+    app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log', 'debug'] });
     await app.init();
     logger.log('✅ 应用初始化完成\n');
   } catch (error: any) {

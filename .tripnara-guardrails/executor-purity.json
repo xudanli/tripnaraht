@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Stage Executor 纯度：禁止持久化与 HTTP 上下文渗入",
+  "executorPathGlobs": [
+    "src/**/execution/*-executor.service.ts",
+    "src/decision/stages/**/*.ts"
+  ],
+  "forbiddenImportPatterns": [
+    "@nestjs/common.*Req\\b",
+    "express\\.",
+    "fastify\\.",
+    ".*Repository\\.save",
+    "PrismaService.*\\$transaction",
+    "persistDso",
+    "feedbackPersistence.*persist"
+  ],
+  "allowedExceptions": [
+    "src/decision/kernel/decision-kernel.service.ts",
+    "src/decision/kernel/state-manager.service.ts"
+  ],
+  "notes": [
+    "ResearchExecutor 等可调用 skills/registry，但不应成为「唯一权威 DSO 持久化」入口",
+    "具体禁止列表随 Phase B ESLint 收紧"
+  ]
+}

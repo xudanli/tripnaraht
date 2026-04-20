@@ -6,6 +6,7 @@
  */
 
 import { RoutePlanDraft } from './world-model.types';
+import type { JepaDecisionTraceV1 } from './decision-trace-jepa.types';
 
 /**
  * 决策动作
@@ -64,6 +65,17 @@ export interface DecisionLogEntry {
   decisionSource: DecisionSource;
   /** 决策阶段（流水线位置追踪） */
   decisionStage: DecisionStage;
+  /**
+   * Optional structured metadata for replay / audit.
+   * Stored in DB `decision_log.metadata` (JSON). When both entry.metadata and saveLogEntries(options.metadata) exist,
+   * they are merged (entry overrides options).
+   */
+  metadata?: Record<string, unknown>;
+  /**
+   * Optional JEPA / decision-trace payload (OKR 2). Never encodes Gate verdict;
+   * use `action` / upstream gate fields for allow/block semantics.
+   */
+  jepaTrace?: JepaDecisionTraceV1;
 }
 
 /**

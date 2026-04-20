@@ -69,6 +69,10 @@ export class NegotiateContextLoaderService {
       throw new BadRequestException(`无法根据 tripId 加载行程：行程 ${tripId} 不存在`);
     }
 
+    // 与 TripsService 详情接口对齐：DB 中坐标常在 PostGIS `location`，而 JSON metadata 未必含 coordinates。
+    // `computeSegmentMetrics` 依赖 metadata.coordinates，因此在构建 plan 前补齐，避免 distanceKm 恒为 0。
+    await this.enrichPlaceCoordinatesFromPostgis(trip);
+
     const metadata = (trip.metadata ?? {}) as Record<string, unknown>;
     const routeDirectionId =
       typeof metadata.routeDirectionId === 'string'
@@ -89,6 +93,80 @@ export class NegotiateContextLoaderService {
       `[NegotiateContextLoader] 已为 tripId=${tripId} 构建 plan(segments=${plan.segments.length}, totalKm=${totalKm.toFixed(1)}) + world`,
     );
     return { plan, world };
+  }
+
+  /**
+   * 为缺少 `metadata.coordinates` 的 Place 从 PostGIS geography 批量注入坐标（仅内存，不写回 DB）。
+   */
+  private async enrichPlaceCoordinatesFromPostgis(trip: {
+    TripDay?: Array<{
+      ItineraryItem?: Array<{
+        Place?: { id?: number; metadata?: unknown } | null;
+      } | null>;
+    }>;
+  }): Promise<void> {
+    const missingIds = new Set<number>();
+    for (const day of trip.TripDay ?? []) {
+      for (const item of day.ItineraryItem ?? []) {
+        const p = item?.Place;
+        const pid = p?.id;
+        if (typeof pid !== 'number' || !Number.isFinite(pid)) continue;
+        const meta = ((p.metadata as Record<string, unknown> | null | undefined) ?? {}) as Record<string, unknown>;
+        const c = meta.coordinates as { lat?: unknown; lng?: unknown } | undefined;
+        const ok =
+          c &&
+          typeof c.lat === 'number' &&
+          typeof c.lng === 'number' &&
+          Number.isFinite(c.lat) &&
+          Number.isFinite(c.lng);
+        if (!ok) missingIds.add(pid);
+      }
+    }
+    const ids = [...missingIds].filter((n) => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) return;
+
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ id: number; lat: unknown; lng: unknown }>>`
+        SELECT
+          id,
+          ST_Y(location::geometry) as lat,
+          ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ANY(${ids}::int[]) AND location IS NOT NULL
+      `;
+      const coordMap = new Map<number, { lat: number; lng: number }>();
+      for (const r of rows ?? []) {
+        if (typeof r?.id !== 'number') continue;
+        const lat = Number((r as { lat: unknown }).lat);
+        const lng = Number((r as { lng: unknown }).lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          coordMap.set(r.id, { lat, lng });
+        }
+      }
+      for (const day of trip.TripDay ?? []) {
+        for (const item of day.ItineraryItem ?? []) {
+          const p = item?.Place as { id?: number; metadata?: unknown } | null | undefined;
+          if (!p || typeof p.id !== 'number') continue;
+          const coords = coordMap.get(p.id);
+          if (!coords) continue;
+          const meta = ((p.metadata as Record<string, unknown> | null | undefined) ?? {}) as Record<string, unknown>;
+          const c = meta.coordinates as { lat?: number; lng?: number } | undefined;
+          if (
+            c &&
+            typeof c.lat === 'number' &&
+            typeof c.lng === 'number' &&
+            Number.isFinite(c.lat) &&
+            Number.isFinite(c.lng)
+          ) {
+            continue;
+          }
+          (p as { metadata?: unknown }).metadata = { ...meta, coordinates: coords };
+        }
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.debug(`[NegotiateContextLoader] PostGIS 坐标补齐失败: ${msg}`);
+    }
   }
 
   private buildPlanFromTrip(

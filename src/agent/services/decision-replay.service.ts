@@ -37,6 +37,20 @@ export interface DecisionTimeline {
 }
 
 /**
+ * RiskTrajectory
+ *
+ * 产品化输出：随时间的风险概率曲线（用于 Decision Replay / What-if 可视化）
+ */
+export interface RiskTrajectory {
+  /** seconds since first snapshot */
+  time: number;
+  /** 0..1 */
+  risk_probability: number;
+  /** human readable event label */
+  event: string;
+}
+
+/**
  * What-If 模拟输入
  */
 export interface WhatIfInput {
@@ -110,10 +124,25 @@ export class DecisionReplayService {
   private timelinesCache: Map<string, DecisionTimeline> = new Map();
   private styleModelsCache: Map<string, DecisionStyleModel> = new Map();
 
+  /**
+   * Snapshot id generator.
+   *
+   * Rationale: replay/CI needs deterministic ids to avoid noisy diffs.
+   */
+  private snapshotIdFactory: () => string = () =>
+    `snap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
   constructor(
     @Optional() private readonly prisma?: PrismaService,
   ) {
     this.logger.log('[DecisionReplay] Initialized' + (prisma ? ' with Prisma persistence' : ' (memory only)'));
+  }
+
+  /**
+   * Override snapshot id generation (useful for tests/replay).
+   */
+  setSnapshotIdFactory(factory: () => string): void {
+    this.snapshotIdFactory = factory;
   }
 
   // ============================================================================
@@ -130,7 +159,7 @@ export class DecisionReplayService {
     decisionOutput?: DecisionOutput,
   ): DecisionSnapshot {
     const snapshot: DecisionSnapshot = {
-      snapshot_id: `snap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      snapshot_id: this.snapshotIdFactory(),
       timestamp: new Date().toISOString(),
       state: this.cloneState(state),
       decision_node: decisionNode,
@@ -175,6 +204,38 @@ export class DecisionReplayService {
    */
   getTimeline(tripRunId: string): DecisionTimeline | undefined {
     return this.timelinesCache.get(tripRunId);
+  }
+
+  /**
+   * 生成风险轨迹（time/risk_probability/event）
+   *
+   * 说明：
+   * - 风险概率当前来自 top plan 的 tradeoffs.RISK.value（0..100）归一化
+   * - 若缺失，则回退为 0.5，并在 event 中标记“缺少风险信号”
+   * - 输出可直接用于 UI 曲线与“失败路径”定位
+   */
+  buildRiskTrajectory(tripRunId: string): RiskTrajectory[] | undefined {
+    const timeline = this.timelinesCache.get(tripRunId);
+    if (!timeline || timeline.snapshots.length === 0) return undefined;
+
+    const firstTs = new Date(timeline.snapshots[0].timestamp).getTime();
+    const trajectory: RiskTrajectory[] = [];
+
+    for (const snap of timeline.snapshots) {
+      const ts = new Date(snap.timestamp).getTime();
+      const timeSec = Math.max(0, Math.round((ts - firstTs) / 1000));
+
+      const riskProb = this.deriveRiskProbabilityFromSnapshot(snap);
+      const event = this.deriveRiskEventLabel(snap, riskProb);
+
+      trajectory.push({
+        time: timeSec,
+        risk_probability: riskProb,
+        event,
+      });
+    }
+
+    return this.annotateFailurePath(trajectory);
   }
 
   /**
@@ -703,4 +764,69 @@ export class DecisionReplayService {
       model.inferred_preferences.pace = 'SLOW';
     }
   }
+
+  private deriveRiskProbabilityFromSnapshot(snap: DecisionSnapshot): number {
+    const top = snap.decision_output?.ranked_plans?.[0];
+    const v = top?.tradeoffs?.RISK?.value;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      return clamp01(v / 100);
+    }
+    return 0.5;
+  }
+
+  private deriveRiskEventLabel(snap: DecisionSnapshot, riskProb: number): string {
+    const step = snap.metadata.step;
+    const trigger = snap.metadata.trigger;
+
+    // Heuristic: flag missing risk signal
+    const hasRiskSignal =
+      typeof snap.decision_output?.ranked_plans?.[0]?.tradeoffs?.RISK?.value === 'number';
+    const base = `${step} (${trigger})`;
+    if (!hasRiskSignal) return `${base}: risk_signal_missing`;
+
+    // Heuristic: highlight very risky points
+    if (riskProb >= 0.8) return `${base}: high_risk`;
+    if (riskProb >= 0.6) return `${base}: elevated_risk`;
+    return base;
+  }
+
+  /**
+   * 失败路径识别（简化版）：
+   * - 标注风险突增点（Δrisk >= 0.2）
+   * - 标注高风险区间起点（risk >= 0.8）
+   */
+  private annotateFailurePath(traj: RiskTrajectory[]): RiskTrajectory[] {
+    if (traj.length <= 1) return traj;
+
+    const out: RiskTrajectory[] = [];
+    let inHighRisk = false;
+
+    for (let i = 0; i < traj.length; i++) {
+      const cur = traj[i];
+      const prev = traj[i - 1];
+      const delta = prev ? cur.risk_probability - prev.risk_probability : 0;
+
+      let event = cur.event;
+      if (prev && delta >= 0.2) {
+        event = `${event}: spike(+${delta.toFixed(2)})`;
+      }
+
+      if (!inHighRisk && cur.risk_probability >= 0.8) {
+        inHighRisk = true;
+        event = `${event}: failure_path_enter`;
+      } else if (inHighRisk && cur.risk_probability < 0.75) {
+        inHighRisk = false;
+        event = `${event}: failure_path_exit`;
+      }
+
+      out.push({ ...cur, event });
+    }
+
+    return out;
+  }
+}
+
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
 }

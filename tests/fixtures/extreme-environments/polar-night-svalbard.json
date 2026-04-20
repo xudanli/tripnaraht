@@ -1,0 +1,79 @@
+{
+  "scenario": "polar_night_stub",
+  "description": "极短日照窗口 + 锚点户外冰川：用于 solveDayTimeline 日落 LIMIT 与跨日 MIGRATION_REQUEST 压测",
+  "requestId": "fixture-polar-1",
+  "dayDate": "2026-12-15",
+  "environmentState": {
+    "countryCode": "SJ",
+    "month": 12,
+    "daylightByDate": {
+      "2026-12-15": {
+        "sunrise": "2026-12-15T10:00:00.000Z",
+        "sunset": "2026-12-15T10:30:00.000Z",
+        "civil_dusk": "2026-12-15T11:00:00.000Z"
+      }
+    }
+  },
+  "poiPlanning": {
+    "poiPlan": {
+      "requiredAnchorPoiIds": ["anchor-glacier"]
+    }
+  },
+  "itinerary": {
+    "request_id": "fixture-polar-1",
+    "days": [
+      {
+        "date": "2026-12-15",
+        "items": [
+          {
+            "id": "warmup-museum",
+            "type": "POI",
+            "start_window": "2026-12-15T10:00:00.000Z",
+            "end_window": "2026-12-15T10:35:00.000Z",
+            "metadata": { "duration_minutes": 35, "category": "museum" },
+            "location_ref": {
+              "name": "Longyearbyen museum",
+              "place_id": "museum-ly",
+              "coordinates": { "lat": 78.223, "lng": 15.6267 }
+            },
+            "evidence_refs": ["e1"],
+            "verified": false
+          },
+          {
+            "id": "anchor-b",
+            "type": "POI",
+            "start_window": "2026-12-15T10:40:00.000Z",
+            "end_window": "2026-12-15T20:00:00.000Z",
+            "metadata": { "duration_minutes": 120, "category": "glacier", "tags": ["outdoor", "nature"] },
+            "location_ref": {
+              "name": "Nordenskiöldbreen",
+              "place_id": "anchor-glacier",
+              "coordinates": { "lat": 78.25, "lng": 15.65 }
+            },
+            "evidence_refs": [],
+            "verified": false
+          }
+        ]
+      },
+      {
+        "date": "2026-12-16",
+        "items": [
+          {
+            "id": "day2-indoor",
+            "type": "POI",
+            "start_window": "2026-12-16T10:00:00.000Z",
+            "end_window": "2026-12-16T12:00:00.000Z",
+            "metadata": { "duration_minutes": 90, "category": "museum" },
+            "location_ref": {
+              "name": "Gallery day 2",
+              "place_id": "gallery-2",
+              "coordinates": { "lat": 78.22, "lng": 15.64 }
+            },
+            "evidence_refs": [],
+            "verified": false
+          }
+        ]
+      }
+    ]
+  }
+}

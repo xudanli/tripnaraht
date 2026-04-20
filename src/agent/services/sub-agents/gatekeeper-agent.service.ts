@@ -76,10 +76,13 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
               why: alt,
             })),
             confidence: 0.9,
-            evidence_refs: fRoadResult.evidence_refs.map(ref => ({
+            evidence_refs: (fRoadResult.evidence_refs ?? []).map((ref: any) => ({
               evidence_id: ref.evidence_id,
               source: ref.source,
-              last_verified_at: ref.last_verified_at.toISOString(),
+              last_verified_at:
+                ref?.last_verified_at instanceof Date
+                  ? ref.last_verified_at.toISOString()
+                  : new Date(ref?.last_verified_at ?? Date.now()).toISOString(),
               confidence: ref.confidence,
             } as any)),
           };

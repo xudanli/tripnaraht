@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tripnara.local/schemas/engine-dso-fixture-minimal.json",
+  "title": "Engine-captured DSO fixture — minimal contract",
+  "description": "Shallow structural checks only. Intentionally does not mirror full DSO or engine types.",
+  "type": "object",
+  "required": ["metadata"],
+  "properties": {
+    "metadata": {
+      "$ref": "#/definitions/FixtureMetadata"
+    }
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "FixtureMetadata": {
+      "type": "object",
+      "required": [
+        "cgusDsoFixtureVersion",
+        "cgusDsoGeneratedAt",
+        "cgusDsoSourceCaseId",
+        "cgusDsoSnapshot"
+      ],
+      "properties": {
+        "cgusDsoFixtureVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cgusDsoGeneratedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        },
+        "cgusDsoSourceCaseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cgusDsoSnapshot": {
+          "$ref": "#/definitions/MinimalCgusDsoSnapshot"
+        }
+      },
+      "additionalProperties": true
+    },
+    "MinimalCgusDsoSnapshot": {
+      "type": "object",
+      "required": ["environmentState", "tripState"],
+      "properties": {
+        "environmentState": {
+          "type": "object"
+        },
+        "tripState": {
+          "type": "object",
+          "required": ["planDraft"],
+          "properties": {
+            "planDraft": {
+              "type": "object",
+              "required": ["days"],
+              "properties": {
+                "days": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/PlanDraftDay"
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "PlanDraftDay": {
+      "type": "object",
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

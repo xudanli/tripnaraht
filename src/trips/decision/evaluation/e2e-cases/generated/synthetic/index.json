@@ -1,0 +1,38 @@
+{
+  "fixtureVersion": "engine-dso-v1",
+  "generatedAt": "2026-04-17T15:10:53.370Z",
+  "outputs": [
+    {
+      "id": "iceland-highlands-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-highlands-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-highlands-dem-missing-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-highlands-dem-missing-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-highlands-pace-adjust-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-highlands-pace-adjust-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-highlands-spatial-repair-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-highlands-spatial-repair-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-highlands-compound-stress-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-highlands-compound-stress-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-ring-road-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-ring-road-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-ring-road-pace-adjust-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-ring-road-pace-adjust-001.engine-dso.json"
+    },
+    {
+      "id": "iceland-ring-road-spatial-repair-001",
+      "file": "/home/devbox/project/src/trips/decision/evaluation/e2e-cases/generated/synthetic/iceland-ring-road-spatial-repair-001.engine-dso.json"
+    }
+  ]
+}

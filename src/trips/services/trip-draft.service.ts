@@ -34,6 +34,9 @@ import { ConstraintEngine } from './constraint.engine';
 import { RouteOptimizationEngine } from './route-optimization.engine';
 import { FatiguePredictionEngine } from './fatigue-prediction.engine';
 import { PacingEngine } from './pacing.engine';
+import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
+import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
+import type { PoiPlanningDecisionSlice } from '../../decision/kernel/decision-state.types';
 
 /**
  * TripDraftService
@@ -64,6 +67,7 @@ export class TripDraftService {
     private routeEngine: RouteOptimizationEngine,
     private fatigueEngine: FatiguePredictionEngine,
     private pacingEngine: PacingEngine,
+    private readonly regionAnchorPlanning: RegionAnchorPlanningService,
   ) {}
 
   /**
@@ -99,7 +103,24 @@ export class TripDraftService {
 
     // Step 1: 候选检索（TripNara 多阶段检索引擎）
     this.logger.log(`开始检索候选地点（国家: ${countryCode}, 风格: ${dto.style || 'balanced'}）`);
-    const candidates = await this.candidateEngine.retrieve(dto);
+    let poiPlanningOpts: { poiPlanning?: PoiPlanningDecisionSlice } = {};
+    if (dto.region_id || dto.userInput) {
+      const userRoute: Partial<UserRouteIntent> = {
+        regionId: dto.region_id,
+        mustIncludePoiIds: dto.must_include_poi_ids,
+        excludePoiIds: dto.exclude_poi_ids,
+        totalBudgetMinutes: dto.total_budget_minutes,
+        pace: dto.pace,
+      };
+      const slice = this.regionAnchorPlanning.resolveAndBuildSlice(userRoute, dto.userInput);
+      if (slice) {
+        poiPlanningOpts = { poiPlanning: slice };
+      }
+    }
+    const candidates = await this.candidateEngine.retrieve(dto, {
+      routeDirectionId: dto.routeDirectionId,
+      ...poiPlanningOpts,
+    });
     
     if (candidates.length < 20) {
       throw new BadRequestException(

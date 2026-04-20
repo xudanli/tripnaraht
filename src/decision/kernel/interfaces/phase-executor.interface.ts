@@ -5,7 +5,14 @@
  * 参考：docs/KERNEL_BUSINESS_LOGIC_MIGRATION_PLAN.md
  */
 
-import type { DecisionState, ConstraintReport, EnvironmentState } from '../decision-state.types';
+import type {
+  DecisionState,
+  ConstraintReport,
+  EnvironmentState,
+  PendingMigrationRequest,
+  RepairEscalationPlan,
+  VerificationIssue,
+} from '../decision-state.types';
 
 /** 阶段执行上下文 */
 export interface PhaseExecutorContext {
@@ -95,7 +102,7 @@ export interface IVerifyExecutor {
     dso: DecisionState,
     ctx: PhaseExecutorContext,
   ): Promise<{
-    issues: string[];
+    issues: VerificationIssue[];
     confidenceDelta: number;
   }>;
 }
@@ -108,6 +115,14 @@ export interface IRepairExecutor {
   ): Promise<{
     itinerary?: ItineraryLike;
     repairApplied: boolean;
+    /** 物理极限等：写入 DSO.verification.escalationPlan（由 Kernel merge） */
+    escalationPlan?: RepairEscalationPlan;
+    /** 如营业时间弱证据：追加 ADVISORY issue 并下调 confidence */
+    postRepairAdvisories?: VerificationIssue[];
+    /** 跨天迁移建议：由 Kernel 合并入 DSO.systemState.pendingMigrations */
+    pendingMigrations?: PendingMigrationRequest[];
+    /** 绝境可恢复 / 需用户介入：合并入 DSO.systemState.recoverySignal */
+    recoverySignal?: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION';
   }>;
 }
 

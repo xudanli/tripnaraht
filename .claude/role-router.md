@@ -16,6 +16,10 @@
 - `task_tags`：任务标签（可多选）
 - `change_areas`：这次实际动了哪里（可多选）
 
+其中 `change_areas` 可选值见 `.claude/role-router.json`，例如：
+
+- `optimization_or_cgus_candidates`：Top-K 候选生成、约束/松弛口径、多样性策略、CGUS alternatives/explain 结构等
+
 示例：
 
 ```json

@@ -18,6 +18,11 @@ import { WorldModelCollectorService } from './shared/world-model-collector.servi
 import { PredictionCollectorService } from './shared/prediction-collector.service';
 import { getSkillFailureStrategy } from '../utils/skill-importance.util';
 import { isUnresolvedDestinationPlaceholder } from '../utils/clarification-question-generator.util';
+import {
+  buildCandidateRetrievalQueryPlan,
+  mergeResearchPoiLists,
+} from '../../planning-policy/utils/build-candidate-retrieval-query-plan.util';
+import { GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
 
 @Injectable()
 export class ResearchExecutorService implements IResearchExecutor {
@@ -28,6 +33,116 @@ export class ResearchExecutorService implements IResearchExecutor {
     private readonly predictionCollector: PredictionCollectorService,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
+
+  private finiteNumber(v: unknown): number | undefined {
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  }
+
+  private setWindSpeedMeta(
+    researchData: Record<string, unknown>,
+    meta: {
+      source: 'failure_risk_prediction' | 'weather_predictions' | 'weather_forecast';
+      aggregation: 'mean' | 'max' | 'p90';
+      sampleCount: number;
+      /** 当 aggregation=p90 时记录分位数算法定义，避免口径争议 */
+      quantileMethod?: 'ceil-index';
+      /** 可追溯证据引用（用于 external/internal 判定与回放） */
+      evidence?: { ids: string[]; sources?: string[] };
+    },
+  ): void {
+    (researchData as any).windSpeedMs_meta = meta;
+  }
+
+  private windAggregation(): 'mean' | 'max' | 'p90' {
+    const v = String(process.env.DECISION_OS_WIND_AGG ?? 'mean').toLowerCase();
+    return v === 'max' ? 'max' : v === 'p90' ? 'p90' : 'mean';
+  }
+
+  private aggregateWind(values: number[], agg: 'mean' | 'max' | 'p90'): number | undefined {
+    if (!values.length) return undefined;
+    if (agg === 'max') return Math.max(...values);
+    if (agg === 'p90') {
+      const sorted = [...values].sort((a, b) => a - b);
+      const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(0.9 * sorted.length) - 1));
+      return sorted[idx];
+    }
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  /**
+   * 从 RESEARCH 输出中抽取「独立通道」的观测风速（m/s），并写入 researchData.windSpeedMs。
+   * 优先级（按更“独立/更原始”优先）：
+   * - failure_risk_prediction.predictions[].windSpeed (m/s) 取均值
+   * - weather_predictions[].windSpeed (m/s) 取均值
+   * - weather_forecast.forecasts[].wind.speed_kmh (km/h -> m/s) 取均值
+   */
+  private deriveWindSpeedMs(researchData: Record<string, unknown>): number | undefined {
+    const aggregation = this.windAggregation();
+    const frp = researchData.failure_risk_prediction as any;
+    const preds = Array.isArray(frp?.predictions) ? frp.predictions : undefined;
+    if (preds?.length) {
+      const ws = preds.map((p: any) => this.finiteNumber(p?.windSpeed)).filter((n: any) => n !== undefined) as number[];
+      if (ws.length > 0) {
+        const frpEvidenceId = (researchData as any).failure_risk_prediction_evidence_id;
+        const frpEvidenceSource = (researchData as any).failure_risk_prediction_evidence_source;
+        this.setWindSpeedMeta(researchData, {
+          source: 'failure_risk_prediction',
+          aggregation,
+          sampleCount: ws.length,
+          quantileMethod: aggregation === 'p90' ? 'ceil-index' : undefined,
+          evidence:
+            typeof frpEvidenceId === 'string' && frpEvidenceId.trim()
+              ? { ids: [frpEvidenceId], sources: typeof frpEvidenceSource === 'string' ? [frpEvidenceSource] : undefined }
+              : undefined,
+        });
+        return this.aggregateWind(ws, aggregation);
+      }
+    }
+
+    const wp = researchData.weather_predictions as any;
+    if (Array.isArray(wp) && wp.length > 0) {
+      const ws = wp.map((p: any) => this.finiteNumber(p?.windSpeed)).filter((n: any) => n !== undefined) as number[];
+      if (ws.length > 0) {
+        const wpEvidenceId = (researchData as any).weather_predictions_evidence_id;
+        const wpEvidenceSource = (researchData as any).weather_predictions_evidence_source;
+        this.setWindSpeedMeta(researchData, {
+          source: 'weather_predictions',
+          aggregation,
+          sampleCount: ws.length,
+          quantileMethod: aggregation === 'p90' ? 'ceil-index' : undefined,
+          evidence:
+            typeof wpEvidenceId === 'string' && wpEvidenceId.trim()
+              ? { ids: [wpEvidenceId], sources: typeof wpEvidenceSource === 'string' ? [wpEvidenceSource] : undefined }
+              : undefined,
+        });
+        return this.aggregateWind(ws, aggregation);
+      }
+    }
+
+    const wf = researchData.weather_forecast as any;
+    const fs = Array.isArray(wf?.forecasts) ? wf.forecasts : undefined;
+    if (fs?.length) {
+      const kmhs = fs
+        .map((f: any) => this.finiteNumber(f?.wind?.speed_kmh))
+        .filter((n: any) => n !== undefined) as number[];
+      if (kmhs.length > 0) {
+        const ms = kmhs.map((k) => k / 3.6);
+        const ev = Array.isArray(wf?.evidence) ? wf.evidence : [];
+        const evidenceIds = ev.map((e: any) => e?.evidence_id).filter(Boolean);
+        const evidenceSources = ev.map((e: any) => e?.source).filter(Boolean);
+        this.setWindSpeedMeta(researchData, {
+          source: 'weather_forecast',
+          aggregation,
+          sampleCount: ms.length,
+          quantileMethod: aggregation === 'p90' ? 'ceil-index' : undefined,
+          evidence: evidenceIds.length > 0 ? { ids: evidenceIds, sources: evidenceSources } : undefined,
+        });
+        return this.aggregateWind(ms, aggregation);
+      }
+    }
+
+    return undefined;
+  }
 
   async execute(
     dso: DecisionState,
@@ -47,7 +162,7 @@ export class ResearchExecutorService implements IResearchExecutor {
       await this.runTransportSearch(tripRequest, researchData, evidenceRefs);
 
       // 2. poi.search
-      await this.runPoiSearch(tripRequest, researchData, evidenceRefs);
+      await this.runPoiSearch(dso, tripRequest, researchData, evidenceRefs);
 
       // 3. opening_hours.get
       await this.runOpeningHours(researchData, evidenceRefs);
@@ -79,6 +194,12 @@ export class ResearchExecutorService implements IResearchExecutor {
         evidenceRefs,
         { route_direction_id: ctx.routeDirectionId, user_id: ctx.userId },
       );
+    }
+
+    // 科学严谨性增强：补齐 windSpeedMs 独立观测通道（供 POMDP 似然更新使用）
+    const windSpeedMs = this.deriveWindSpeedMs(researchData);
+    if (windSpeedMs !== undefined) {
+      researchData.windSpeedMs = windSpeedMs;
     }
 
     // 从 researchData 提取 environmentPatch
@@ -123,6 +244,7 @@ export class ResearchExecutorService implements IResearchExecutor {
   }
 
   private async runPoiSearch(
+    dso: DecisionState,
     tripRequest: PhaseExecutorContext['tripPlanRequest'],
     researchData: Record<string, unknown>,
     evidenceRefs: string[],
@@ -145,7 +267,14 @@ export class ResearchExecutorService implements IResearchExecutor {
       };
       const countryHint = ambiguousCityCountryMap[normalized];
       const baseQuery = countryHint ? `${destRaw} ${countryHint}` : destRaw;
-      const scenicQuery = `${baseQuery} attractions landmark museum sightseeing`;
+      const plan = buildCandidateRetrievalQueryPlan('', baseQuery, dso.poiPlanning);
+      const boost =
+        plan.boostedTerms.length > 0 ? ` ${plan.boostedTerms.slice(0, 12).join(' ')}` : '';
+      const scenicQuery = `${baseQuery} attractions landmark museum sightseeing${boost}`;
+      const generalQuery =
+        plan.boostedTerms.length > 0
+          ? `${baseQuery} ${plan.boostedTerms.slice(0, 8).join(' ')}`
+          : baseQuery;
       const lat =
         typeof tripRequest.destination === 'object' ? tripRequest.destination?.lat : undefined;
       const lng =
@@ -159,7 +288,7 @@ export class ResearchExecutorService implements IResearchExecutor {
         category: 'ATTRACTION',
       } as any);
       const generalResult = await skill.execute({
-        query: baseQuery,
+        query: generalQuery,
         limit: 12,
         lat,
         lng,
@@ -175,34 +304,44 @@ export class ResearchExecutorService implements IResearchExecutor {
         : Array.isArray(generalResult)
           ? generalResult
           : [];
-      const merged = this.mergePoiCandidatesWithPriority(scenicPois, generalPois, 16);
+      let merged = mergeResearchPoiLists(scenicPois, generalPois, 16);
+      if (plan.regionTags.includes('golden_circle') && plan.boostedTerms.length > 0) {
+        const anchorQuery = `Iceland Golden Circle ${plan.boostedTerms.slice(0, 10).join(' ')}`;
+        const anchorResult = await skill.execute({
+          query: anchorQuery,
+          limit: 12,
+          lat,
+          lng,
+          category: 'ATTRACTION',
+        } as any);
+        const anchorPois = Array.isArray(anchorResult?.pois)
+          ? anchorResult.pois
+          : Array.isArray(anchorResult)
+            ? anchorResult
+            : [];
+        merged = mergeResearchPoiLists(anchorPois, merged, 22);
+      }
+      if (plan.regionTags.includes('golden_circle')) {
+        const pairResult = await skill.execute({
+          query: GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
+          limit: 14,
+          lat,
+          lng,
+          category: 'ATTRACTION',
+        } as any);
+        const pairPois = Array.isArray(pairResult?.pois)
+          ? pairResult.pois
+          : Array.isArray(pairResult)
+            ? pairResult
+            : [];
+        merged = mergeResearchPoiLists(pairPois, merged, 30);
+      }
       researchData.poi_evidence = merged;
       merged.forEach((p: any) => p?.evidence_id && evidenceRefs.push(p.evidence_id));
     } catch (e: any) {
       const strategy = getSkillFailureStrategy('poi.search', e);
       if (strategy.shouldMarkMissing) researchData.poi_evidence = { missing: true, error: e?.message };
     }
-  }
-
-  private mergePoiCandidatesWithPriority(
-    primary: any[],
-    secondary: any[],
-    limit: number,
-  ): any[] {
-    const out: any[] = [];
-    const seen = new Set<string>();
-    const add = (items: any[]) => {
-      for (const poi of items) {
-        if (out.length >= limit) break;
-        const key = `${poi?.poi_id ?? poi?.id ?? ''}|${String(poi?.name ?? '').toLowerCase()}`;
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        out.push(poi);
-      }
-    };
-    add(primary);
-    add(secondary);
-    return out;
   }
 
   private async runOpeningHours(
@@ -297,6 +436,10 @@ export class ResearchExecutorService implements IResearchExecutor {
     if (researchData.weather_risk !== undefined || researchData.weatherRisk !== undefined) {
       env.weatherRisk = (researchData.weather_risk ?? researchData.weatherRisk) as number;
     }
+    if (researchData.windSpeedMs !== undefined || (researchData as any).wind_speed_ms !== undefined) {
+      const v = (researchData.windSpeedMs ?? (researchData as any).wind_speed_ms) as unknown;
+      env.windSpeedMs = typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+    }
     if ((researchData.failure_risk_prediction as any)?.predictions?.length) {
       const preds = (researchData.failure_risk_prediction as any).predictions;
       const hasHigh = preds.some((p: any) => p.riskLevel === 'HIGH');
@@ -305,6 +448,14 @@ export class ResearchExecutorService implements IResearchExecutor {
     if (researchData.crowd_level !== undefined || researchData.crowdLevel !== undefined) {
       const c = researchData.crowd_level ?? researchData.crowdLevel;
       env.crowdLevel = typeof c === 'number' ? Math.min(1, Math.max(0, c)) : undefined;
+    }
+    const daylights =
+      researchData.daylight_by_date ??
+      researchData.daylightByDate ??
+      (researchData.weather_forecast as any)?.daylight_by_date ??
+      (researchData.weather_forecast as any)?.daylightByDate;
+    if (daylights && typeof daylights === 'object' && !Array.isArray(daylights)) {
+      env.daylightByDate = daylights as EnvironmentState['daylightByDate'];
     }
     return env;
   }

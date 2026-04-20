@@ -61,7 +61,7 @@ export interface ProbabilisticRoadStatus {
   roadName?: string;
   
   /** 状态分布 */
-  status: CategoricalDistribution; // OPEN/CONDITIONAL/CLOSED
+  status: CategoricalDistribution; // OPEN/RESTRICTED/CLOSED
   
   /** 如果关闭，预计开放时间分布（小时） */
   expectedReopenTime?: GaussianDistribution;
@@ -245,7 +245,7 @@ export interface WorldStateSample {
   /** 采样的道路状态 */
   roadStatuses: Array<{
     roadId: string;
-    status: 'OPEN' | 'CONDITIONAL' | 'CLOSED';
+    status: 'OPEN' | 'RESTRICTED' | 'CLOSED';
   }>;
   
   /** 采样的人体能力 */

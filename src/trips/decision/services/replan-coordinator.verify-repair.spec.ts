@@ -37,12 +37,11 @@ describe('ReplanCoordinatorService VERIFY → REPAIR (S-TD-02)', () => {
       tripRun: { findUnique: jest.fn() },
     } as unknown as PrismaService;
 
-    return new ReplanCoordinatorService(
-      deps.kernel as unknown as DecisionKernelService,
-      prisma,
-      deps.persistence as IDsoFeedbackPersistence,
-      undefined,
-    );
+    const kernel = {
+      finalizeHarnessTraceIfRecorded: jest.fn(),
+      ...deps.kernel,
+    } as unknown as DecisionKernelService;
+    return new ReplanCoordinatorService(kernel, prisma, deps.persistence as IDsoFeedbackPersistence, undefined);
   }
 
   it('VERIFY 返回 issues 时应调用 executeRepair 并将最终 DSO 持久化', async () => {
@@ -61,6 +60,7 @@ describe('ReplanCoordinatorService VERIFY → REPAIR (S-TD-02)', () => {
       tripState: { planDraft: fixedItinerary },
     } as DecisionState;
 
+    const finalizeHarnessTraceIfRecorded = jest.fn();
     const executeResearch = jest.fn().mockResolvedValue({ newState: dso0, researchData: {} });
     const executeGateEval = jest.fn().mockImplementation(async () => ({
       newState: dso0,
@@ -94,6 +94,7 @@ describe('ReplanCoordinatorService VERIFY → REPAIR (S-TD-02)', () => {
 
     const coordinator = makeCoordinator({
       kernel: {
+        finalizeHarnessTraceIfRecorded,
         executeResearch,
         executeGateEval,
         getContextPackage,
@@ -110,6 +111,8 @@ describe('ReplanCoordinatorService VERIFY → REPAIR (S-TD-02)', () => {
     expect(executeVerify).toHaveBeenCalledTimes(1);
     expect(executeRepair).toHaveBeenCalledTimes(1);
     expect(persistDso).toHaveBeenCalledWith(tripId, dsoAfterRepair);
+    expect(finalizeHarnessTraceIfRecorded).toHaveBeenCalledTimes(1);
+    expect(finalizeHarnessTraceIfRecorded).toHaveBeenCalledWith(dsoAfterRepair, 'DONE');
   });
 
   it('VERIFY 无 issues 时不应调用 executeRepair', async () => {
@@ -165,5 +168,27 @@ describe('ReplanCoordinatorService VERIFY → REPAIR (S-TD-02)', () => {
 
     expect(executeRepair).not.toHaveBeenCalled();
     expect(persistDso).toHaveBeenCalledWith(tripId, dsoAfterVerify);
+  });
+
+  it('重规划中途失败时应 finalizeHarnessTraceIfRecorded(FAILED)', async () => {
+    const dso0 = baseDso();
+    const executeResearch = jest.fn().mockResolvedValue({ newState: dso0, researchData: {} });
+    const finalizeHarnessTraceIfRecorded = jest.fn();
+    const executeGateEval = jest.fn().mockRejectedValue(new Error('gate boom'));
+
+    const persistDso = jest.fn();
+    const getDso = jest.fn().mockResolvedValue(dso0);
+
+    const coordinator = makeCoordinator({
+      kernel: {
+        finalizeHarnessTraceIfRecorded,
+        executeResearch,
+        executeGateEval,
+      },
+      persistence: { getDso, persistDso },
+    });
+
+    await expect(coordinator.triggerReplan(tripId, 'test_fail_mid')).rejects.toThrow('gate boom');
+    expect(finalizeHarnessTraceIfRecorded).toHaveBeenCalledWith(dso0, 'FAILED');
   });
 });

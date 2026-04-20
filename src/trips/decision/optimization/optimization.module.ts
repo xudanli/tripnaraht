@@ -47,6 +47,9 @@ import { ComplexityAnalysisService } from './theory/complexity-analysis.service'
 import { DSOStabilityMonitorService } from './theory/dso-stability.service';
 import { RegretTrackerService } from './theory/regret-tracker.service';
 import { UCBVisitTrackerService } from './theory/ucb-visit-tracker.service';
+import { PlanFeaturesService } from './plan-features/plan-features.service';
+import { ExposureMapService } from './plan-features/exposure-map.service';
+import { ExposureAnnotationService } from './plan-features/exposure-annotation.service';
 
 // Phase 3：POMDP 信念更新
 import { BeliefUpdateService } from './probabilistic/belief-update.service';
@@ -102,9 +105,23 @@ import { MetricsAdminController } from './controllers/admin/metrics-admin.contro
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
 import { TdfpmCalculatorService } from '../services/tdfpm-calculator.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
+import { DecisionOSModule } from './decision-os.module';
+import { NoopCandidateScorerService } from './scoring/noop-candidate-scorer.service';
+import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    PrismaModule,
+    // Provide typed config (DecisionOSConfigService) to optimization stack.
+    DecisionOSModule.forFeature({
+      enableAuth: false,
+      enableCache: false,
+      enableTracing: false,
+      enableMetrics: false,
+      enableWebSocket: false,
+      enableEventSourcing: false,
+    }),
+  ],
   controllers: [
     // 公开邀请（/api/v2/team/invites）
     TeamInvitePublicController,
@@ -131,11 +148,16 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     
     // Phase 2
     ProbabilisticWorldModelService,
+    PlanFeaturesService,
+    ExposureMapService,
+    ExposureAnnotationService,
     ExpectedUtilityService,
 
     // 专利升级：统一决策公式 + CGUS 搜索
     UnifiedDecisionFormulaService,
     CGUSSearchService,
+    NoopCandidateScorerService,
+    { provide: CANDIDATE_SCORER, useExisting: NoopCandidateScorerService },
 
     // 顶级强化方向：多步规划 + 可微决策 + 信息增益 + 元决策
     MultiStepPlanningService,
@@ -200,11 +222,16 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     
     // Phase 2
     ProbabilisticWorldModelService,
+    PlanFeaturesService,
+    ExposureMapService,
+    ExposureAnnotationService,
     ExpectedUtilityService,
 
     // 专利升级
     UnifiedDecisionFormulaService,
     CGUSSearchService,
+    NoopCandidateScorerService,
+    CANDIDATE_SCORER,
     MultiStepPlanningService,
     DifferentiableDecisionService,
     InformationGainService,

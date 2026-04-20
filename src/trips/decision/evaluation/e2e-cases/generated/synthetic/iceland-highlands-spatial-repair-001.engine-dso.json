@@ -1,0 +1,654 @@
+{
+  "id": "iceland-highlands-spatial-repair-001",
+  "name": "冰岛高地路线 - 需要空间修复",
+  "description": "测试当空间约束恶化时，Neptune 必须执行替换/修复，并提升搜索预算",
+  "input": {
+    "userProfile": {
+      "pacePreference": "MEDIUM",
+      "altitudeTolerance": "MEDIUM",
+      "riskTolerance": "LOW",
+      "travelPhilosophy": "scenic",
+      "preferredRouteTypes": [
+        "highlands",
+        "nature"
+      ]
+    },
+    "season": 7,
+    "countryCode": "IS",
+    "userQuery": "我想在7月去冰岛高地，但希望避开封闭路段和高风险空间点位"
+  },
+  "expected": {
+    "abuExpected": {
+      "action": "ALLOW"
+    },
+    "drdreExpected": {
+      "mustAdjust": false
+    },
+    "neptuneExpected": {
+      "mustRepair": true,
+      "replacementTypes": [
+        "SEGMENT"
+      ]
+    },
+    "finalState": {
+      "allowed": true,
+      "planDays": 7
+    },
+    "traceSummary": {
+      "schemaVersion": "trace/v1",
+      "metaDecisionAudit": "fixture-meta-budget entropy=0.66 cand=18 repair=3",
+      "candidateSearchBudget": {
+        "maxCandidates": 18,
+        "repairMaxIters": 3,
+        "repairTopKPerCandidate": 4,
+        "maxNewCandidatesPerIter": 16,
+        "maxPoolSize": 40,
+        "stopWhenFeasibleCount": 8
+      },
+      "candidateSearchAudit": {
+        "budget": {
+          "maxCandidates": 18,
+          "repairMaxIters": 3,
+          "repairTopKPerCandidate": 4,
+          "maxNewCandidatesPerIter": 16,
+          "maxPoolSize": 40,
+          "stopWhenFeasibleCount": 8
+        },
+        "initialVariantCount": 6,
+        "iterations": [
+          {
+            "iter": 0,
+            "poolSizeBeforeProjection": 7,
+            "feasibleCountAfterProjection": 2,
+            "infeasibleCountAfterProjection": 5,
+            "repairsGenerated": 6,
+            "repairsAccepted": 3,
+            "poolSizeAfterDedup": 9
+          },
+          {
+            "iter": 1,
+            "poolSizeBeforeProjection": 9,
+            "feasibleCountAfterProjection": 6,
+            "infeasibleCountAfterProjection": 3,
+            "repairsGenerated": 4,
+            "repairsAccepted": 2,
+            "poolSizeAfterDedup": 10
+          }
+        ],
+        "finalCandidateCount": 10,
+        "finalFeasibleCount": 6,
+        "stopReason": "COMPLETED"
+      }
+    },
+    "scientificExpected": {
+      "optimization": {
+        "mustEmitTrace": true,
+        "minCandidateSearchIterations": 2,
+        "minFinalFeasibleCount": 6,
+        "allowedStopReasons": [
+          "COMPLETED"
+        ],
+        "metaDecisionAuditIncludes": [
+          "cand=18",
+          "repair=3"
+        ]
+      }
+    },
+    "timelineExpected": {
+      "requiredStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "SPATIAL_REPAIR"
+      ],
+      "forbiddenStages": [
+        "PACE_ADJUST"
+      ],
+      "orderedStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "SPATIAL_REPAIR"
+      ]
+    }
+  },
+  "metadata": {
+    "tags": [
+      "iceland",
+      "highlands",
+      "spatial-repair"
+    ],
+    "priority": "P1",
+    "source": "iceland-highlands",
+    "fixtureKind": "synthetic",
+    "counterfactualGroup": "iceland-highlands-core",
+    "baselineCaseId": "iceland-highlands-001",
+    "counterfactualExpectation": {
+      "expectedOutcomeShift": "ADD_REPAIR",
+      "minCandidateBudgetDelta": 6,
+      "minRepairMaxItersDelta": 1,
+      "requiredAdditionalStages": [
+        "SPATIAL_REPAIR"
+      ]
+    },
+    "cgusDsoSnapshot": {
+      "requestId": "synthetic-capture-iceland-highlands-spatial-repair-001-1776438653396",
+      "systemState": {
+        "requestId": "synthetic-capture-iceland-highlands-spatial-repair-001-1776438653396"
+      },
+      "environmentState": {
+        "countryCode": "IS",
+        "month": 7,
+        "routeDirectionId": "unknown"
+      },
+      "tripState": {
+        "planDraft": {
+          "days": [
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-01_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-0-5",
+                    "name": "候选 0-5",
+                    "coordinates": {
+                      "lat": 64.005,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-01_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-0-4",
+                    "name": "候选 0-4",
+                    "coordinates": {
+                      "lat": 64.004,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-01_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-0-1",
+                    "name": "候选 0-1",
+                    "coordinates": {
+                      "lat": 64.001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-02_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-1-5",
+                    "name": "候选 1-5",
+                    "coordinates": {
+                      "lat": 64.02499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-02_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-1-4",
+                    "name": "候选 1-4",
+                    "coordinates": {
+                      "lat": 64.024,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-02_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-1-1",
+                    "name": "候选 1-1",
+                    "coordinates": {
+                      "lat": 64.021,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-03_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-2-5",
+                    "name": "候选 2-5",
+                    "coordinates": {
+                      "lat": 64.045,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-03_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-2-4",
+                    "name": "候选 2-4",
+                    "coordinates": {
+                      "lat": 64.04400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-03_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-2-1",
+                    "name": "候选 2-1",
+                    "coordinates": {
+                      "lat": 64.04100000000001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-04_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-3-5",
+                    "name": "候选 3-5",
+                    "coordinates": {
+                      "lat": 64.065,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-04_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-3-4",
+                    "name": "候选 3-4",
+                    "coordinates": {
+                      "lat": 64.06400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-04_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-3-1",
+                    "name": "候选 3-1",
+                    "coordinates": {
+                      "lat": 64.061,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-05_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-4-5",
+                    "name": "候选 4-5",
+                    "coordinates": {
+                      "lat": 64.085,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-05_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-4-4",
+                    "name": "候选 4-4",
+                    "coordinates": {
+                      "lat": 64.084,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-05_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-4-1",
+                    "name": "候选 4-1",
+                    "coordinates": {
+                      "lat": 64.081,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-06_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-5-5",
+                    "name": "候选 5-5",
+                    "coordinates": {
+                      "lat": 64.10499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-06_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-5-4",
+                    "name": "候选 5-4",
+                    "coordinates": {
+                      "lat": 64.104,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-06_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-5-1",
+                    "name": "候选 5-1",
+                    "coordinates": {
+                      "lat": 64.101,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-07_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-6-5",
+                    "name": "候选 6-5",
+                    "coordinates": {
+                      "lat": 64.125,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-07_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-6-4",
+                    "name": "候选 6-4",
+                    "coordinates": {
+                      "lat": 64.12400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-07_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-spatial-repair-001-6-1",
+                    "name": "候选 6-1",
+                    "coordinates": {
+                      "lat": 64.12100000000001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constraints": {
+        "violations": []
+      }
+    },
+    "cgusDsoSnapshotNote": "fallback snapshot from TripPlan (no planConverter/orchestrator); env + planDraft(days/items) only",
+    "cgusDsoFixtureVersion": "engine-dso-v1",
+    "cgusDsoGeneratedAt": "2026-04-17T15:10:53.370Z",
+    "cgusDsoSourceCaseId": "iceland-highlands-spatial-repair-001"
+  }
+}

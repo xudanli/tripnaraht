@@ -134,6 +134,7 @@ export class IcelandWeatherRealtimeService {
   private readonly OPEN_METEO_API = 'https://api.open-meteo.com/v1/forecast';
   private readonly CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 小时
   private readonly REQUEST_TIMEOUT_MS = 10000; // 10 秒超时
+  private readonly REQUEST_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 500;
   private readonly httpClient: AxiosInstance;
   private readonly prisma: PrismaService | PrismaClient;
 
@@ -216,7 +217,7 @@ export class IcelandWeatherRealtimeService {
           forecasts.set(key, forecast);
         }
         // 延迟避免频繁请求
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, this.REQUEST_DELAY_MS));
       } catch (error) {
         this.logger.error(`获取 ${key} 天气失败:`, error);
       }

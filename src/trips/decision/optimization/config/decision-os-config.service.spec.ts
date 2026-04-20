@@ -26,6 +26,18 @@ describe('ConfigValidator', () => {
       confidenceThreshold: 0.8,
       cgusMaxIterations: 100,
       cgusConvergenceThreshold: 0.001,
+      cgusMaxCandidates: 8,
+      cgusRolloutTopK: 3,
+      cgusRepairMaxIters: 2,
+      cgusRepairTopKPerCandidate: 2,
+      cgusMaxNewCandidatesPerIter: 30,
+      cgusMaxPoolSize: 200,
+      cgusPilotSamples: 20,
+    },
+    ragEvidence: {
+      enabled: false,
+      minQueryLength: 1,
+      confidenceThreshold: 0.25,
     },
     learning: {
       enabled: true,

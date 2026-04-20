@@ -6,6 +6,11 @@
  */
 
 import { DecisionLogEntry } from '../shared/decision-result.types';
+import type {
+  CandidateSearchAudit,
+  CandidateSearchBudget,
+} from '../../../decision/kernel/decision-state.types';
+import type { DecisionStage } from '../shared/decision-result.types';
 
 /**
  * 用户画像（简化版）
@@ -61,6 +66,44 @@ export interface FinalStateExpected {
   planDays?: number; // 预期天数
 }
 
+export type DecisionTraceSchemaVersion = 'trace/v1';
+
+export interface DecisionTraceSummary {
+  schemaVersion: DecisionTraceSchemaVersion;
+  metaDecisionAudit?: string;
+  candidateSearchBudget?: CandidateSearchBudget;
+  candidateSearchAudit?: CandidateSearchAudit;
+}
+
+export type ExpectedDecisionTraceSummary = {
+  schemaVersion: DecisionTraceSchemaVersion;
+} & Partial<Omit<DecisionTraceSummary, 'schemaVersion'>>;
+
+export interface StructuredDiffItem<TKey = string> {
+  key: TKey;
+  expected: unknown;
+  actual: unknown;
+  message: string;
+}
+
+export interface ScientificOptimizationExpected {
+  mustEmitTrace?: boolean;
+  minCandidateSearchIterations?: number;
+  minFinalFeasibleCount?: number;
+  allowedStopReasons?: CandidateSearchAudit['stopReason'][];
+  metaDecisionAuditIncludes?: string[];
+}
+
+export interface ScientificReplayExpected {
+  optimization?: ScientificOptimizationExpected;
+}
+
+export interface ReplayTimelineExpected {
+  requiredStages?: DecisionStage[];
+  forbiddenStages?: DecisionStage[];
+  orderedStages?: DecisionStage[];
+}
+
 /**
  * E2E Case 预期行为
  */
@@ -71,6 +114,9 @@ export interface E2ECaseExpected {
   drdreExpected?: DrDreExpected;
   neptuneExpected?: NeptuneExpected;
   finalState: FinalStateExpected;
+  traceSummary?: ExpectedDecisionTraceSummary;
+  scientificExpected?: ScientificReplayExpected;
+  timelineExpected?: ReplayTimelineExpected;
 }
 
 /**
@@ -81,6 +127,33 @@ export interface E2ECaseMetadata {
   priority?: 'P0' | 'P1' | 'P2';
   source?: string; // 来源（如 'iceland-highlands'）
   description?: string;
+  fixtureKind?: 'synthetic' | 'golden';
+  /**
+   * Optional minimal DSO snapshot captured for CGUS/optimization offline analysis.
+   *
+   * Intended use:
+   * - allow "real fixture" CGUS replay without booting the full agent pipeline
+   * - keep winner-protected MC rerank metrics comparable across suites
+   *
+   * Shape: DecisionState-like object (at minimum environmentState + tripState.planDraft + constraints.violations).
+   */
+  cgusDsoSnapshot?: unknown;
+  /** Human-readable note about how the snapshot was produced (captured vs derived). */
+  cgusDsoSnapshotNote?: string;
+  /** Generated fixture format version for engine-captured snapshots. */
+  cgusDsoFixtureVersion?: 'engine-dso-v1';
+  /** When the engine snapshot fixture was generated. */
+  cgusDsoGeneratedAt?: string;
+  /** Which base case produced this generated fixture. */
+  cgusDsoSourceCaseId?: string;
+  counterfactualGroup?: string;
+  baselineCaseId?: string;
+  counterfactualExpectation?: {
+    expectedOutcomeShift?: 'ADD_ADJUST' | 'ADD_REPAIR' | 'ADD_ADJUST_AND_REPAIR' | 'REJECT';
+    minCandidateBudgetDelta?: number;
+    minRepairMaxItersDelta?: number;
+    requiredAdditionalStages?: DecisionStage[];
+  };
 }
 
 /**
@@ -101,10 +174,13 @@ export interface E2ECase {
 export interface E2EActualResult {
   routeDirectionId?: string;
   logs: DecisionLogEntry[];
+  /** Decision engine run log (includes optional CGUS DSO snapshot). */
+  decisionRunLog?: unknown;
   finalPlan?: {
     days: number;
     allowed: boolean;
   };
+  traceSummary?: DecisionTraceSummary;
 }
 
 /**
@@ -116,6 +192,9 @@ export interface E2EDiff {
   neptuneDiff?: string[]; // Neptune 行为差异
   routeDirectionDiff?: string; // RouteDirection 选择差异
   finalStateDiff?: string; // 最终状态差异
+  traceDiff?: Array<StructuredDiffItem<keyof DecisionTraceSummary>>; // 关键 trace / metadata 差异
+  scientificDiff?: string[];
+  timelineDiff?: string[];
   hasDiff: boolean; // 是否有差异
 }
 

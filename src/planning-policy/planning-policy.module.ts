@@ -11,6 +11,8 @@ import { RobustnessEvaluatorService } from './services/robustness-evaluator.serv
 import { RankingService } from './services/ranking.service';
 import { PlaceToPoiService } from './services/place-to-poi.service';
 import { PlaceToPoiHelperService } from './services/place-to-poi-helper.service';
+import { RegionIntentResolverService } from './services/region-intent-resolver.service';
+import { RegionAnchorPlanningService } from './services/region-anchor-planning.service';
 
 /**
  * 规划策略模块
@@ -33,6 +35,8 @@ import { PlaceToPoiHelperService } from './services/place-to-poi-helper.service'
     RankingService,
     PlaceToPoiService,
     PlaceToPoiHelperService,
+    RegionIntentResolverService,
+    RegionAnchorPlanningService,
   ],
   exports: [
     PolicyCompilerService,
@@ -45,6 +49,8 @@ import { PlaceToPoiHelperService } from './services/place-to-poi-helper.service'
     RankingService,
     PlaceToPoiService,
     PlaceToPoiHelperService,
+    RegionIntentResolverService,
+    RegionAnchorPlanningService,
   ],
 })
 export class PlanningPolicyModule {}

@@ -10,6 +10,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DecisionParams } from '../interfaces/decision-params.interface';
 import { MemoryService } from './memory.service';
 import { UserProfileMapperService } from './user-profile-mapper.service';
+import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.service';
+import { ShadowModeDiffService } from './shadow-mode-diff.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 
@@ -20,6 +22,8 @@ export class DecisionParamsInjectorService {
   constructor(
     private readonly memoryService: MemoryService,
     private readonly profileMapper: UserProfileMapperService,
+    private readonly mappingV2: DecisionParamsMappingV2Service,
+    private readonly shadowDiff: ShadowModeDiffService,
   ) {}
 
   /**
@@ -29,16 +33,35 @@ export class DecisionParamsInjectorService {
     // 读取用户画像（如果不存在会返回默认值）
     const profile = await this.memoryService.getUserTravelProfile(userId);
     
+    const useLegacy = process.env.DECISION_PARAMS_MAPPING_LEGACY === '1';
+    const shadowMode = process.env.DECISION_PARAMS_SHADOW_MODE === '1';
+
     if (!profile) {
       // 如果仍然为 null，创建默认值
       const defaultProfile = createDefaultUserTravelProfile(userId);
-      const params = this.profileMapper.mapUserProfileToDecisionParams(defaultProfile);
+      const legacy = this.profileMapper.mapUserProfileToDecisionParams(defaultProfile);
+      const v2 = this.mappingV2.map(defaultProfile).params;
+      if (shadowMode) {
+        const diff = this.shadowDiff.diff(legacy, v2);
+        this.logger.debug(
+          `[DecisionParamsInjector] SHADOW_MODE diff: user=${userId} changedKeys=${diff.changedKeys.length}`,
+        );
+      }
+      const params = useLegacy ? legacy : v2;
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return params;
     }
     
     // 映射为决策参数
-    const params = this.profileMapper.mapUserProfileToDecisionParams(profile);
+    const legacy = this.profileMapper.mapUserProfileToDecisionParams(profile);
+    const v2 = this.mappingV2.map(profile).params;
+    if (shadowMode) {
+      const diff = this.shadowDiff.diff(legacy, v2);
+      this.logger.debug(
+        `[DecisionParamsInjector] SHADOW_MODE diff: user=${userId} changedKeys=${diff.changedKeys.length}`,
+      );
+    }
+    const params = useLegacy ? legacy : v2;
     
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +

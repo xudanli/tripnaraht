@@ -1,0 +1,238 @@
+[
+  {
+    "label": "1_gc_normal_600",
+    "request_id": "cal-p22-1776576618625-1_gc_normal_600",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "2_gc_relaxed_600",
+    "request_id": "cal-p22-1776576632928-2_gc_relaxed_600",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "3_gc_tight_360",
+    "request_id": "cal-p22-1776576640308-3_gc_tight_360",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "4_gc_must_secret_lagoon",
+    "request_id": "cal-p22-1776576643202-4_gc_must_secret_lagoon",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "5_gc_exclude_kerid",
+    "request_id": "cal-p22-1776576647716-5_gc_exclude_kerid",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "6_gc_region_keyword",
+    "request_id": "cal-p22-1776576653646-6_gc_region_keyword",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  },
+  {
+    "label": "7_no_gc_reykjavik",
+    "request_id": "cal-p22-1776576658341-7_no_gc_reykjavik",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": true,
+    "regionId": null,
+    "matchedBy": null,
+    "feasibility": null,
+    "coverage": 1,
+    "required_anchors": [],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": null,
+    "unresolvedAnchorReasons": null,
+    "phase24_decision": "healthy"
+  },
+  {
+    "label": "8_repeat_like_1",
+    "request_id": "cal-p22-1776576661129-8_repeat_like_1",
+    "result_status": "NEED_MORE_INFO",
+    "current_step": "POI_SELECTION",
+    "noPoiPlanning": false,
+    "regionId": "golden_circle",
+    "matchedBy": "message_text",
+    "feasibility": "ok",
+    "coverage": 0,
+    "required_anchors": [
+      "thingvellir",
+      "geysir",
+      "gullfoss"
+    ],
+    "overflow": false,
+    "leakage_n": 0,
+    "budget_gate_ok": true,
+    "fallbackRate": 0,
+    "topAnchorRanks": {
+      "thingvellir": null,
+      "geysir": null,
+      "gullfoss": null
+    },
+    "unresolvedAnchorReasons": {
+      "thingvellir": "not_in_topn",
+      "geysir": "not_in_topn",
+      "gullfoss": "not_in_topn"
+    },
+    "phase24_decision": "retrieval"
+  }
+]

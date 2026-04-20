@@ -1,0 +1,48 @@
+{
+  "scenario": "iceland_ring_road_closure_stub",
+  "description": "环岛多点坐标夹具；极端 ETA 由测试中 mock transport.search 注入（全境不可达语义）",
+  "requestId": "fixture-iceland-road-1",
+  "environmentState": {
+    "countryCode": "IS",
+    "month": 1,
+    "_fixtureNote": "无 daylightByDate：压测纯路况/ETA 物理窗，避免与日落 LIMIT 混淆"
+  },
+  "itinerary": {
+    "request_id": "fixture-iceland-road-1",
+    "days": [
+      {
+        "date": "2026-01-10",
+        "items": [
+          {
+            "id": "hotel-a",
+            "type": "POI",
+            "start_window": "2026-01-10T09:00:00.000Z",
+            "end_window": "2026-01-10T10:00:00.000Z",
+            "metadata": { "duration_minutes": 60, "category": "hotel" },
+            "location_ref": {
+              "name": "Reykjavik base",
+              "place_id": "hotel-rvk",
+              "coordinates": { "lat": 64.1466, "lng": -21.9426 }
+            },
+            "evidence_refs": [],
+            "verified": false
+          },
+          {
+            "id": "far-east",
+            "type": "POI",
+            "start_window": "2026-01-10T11:00:00.000Z",
+            "end_window": "2026-01-10T18:00:00.000Z",
+            "metadata": { "duration_minutes": 120, "category": "waterfall" },
+            "location_ref": {
+              "name": "East fjord target",
+              "place_id": "fjord-east",
+              "coordinates": { "lat": 65.2, "lng": -13.5 }
+            },
+            "evidence_refs": [],
+            "verified": false
+          }
+        ]
+      }
+    ]
+  }
+}

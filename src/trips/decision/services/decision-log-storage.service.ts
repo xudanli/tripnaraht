@@ -6,18 +6,61 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   analyzeDecisionLogTraceability,
   type DecisionLogTraceabilityResult,
 } from '../contracts/decision-log-traceability.contract';
-import { DecisionLogEntry, DecisionStage } from '../shared/decision-result.types';
+import {
+  DecisionLogEntry,
+  DecisionPersona,
+  DecisionSource,
+  DecisionStage,
+  DecisionAction,
+} from '../shared/decision-result.types';
+import {
+  extractJepaTraceFromMetadata,
+  mergeMetadataWithJepaTrace,
+} from '../shared/decision-trace-jepa.types';
 
 @Injectable()
 export class DecisionLogStorageService {
   private readonly logger = new Logger(DecisionLogStorageService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Map Prisma row → `DecisionLogEntry` (includes `metadata.jepaTrace` when present). */
+  private mapRowToDecisionLogEntry(log: {
+    persona: string;
+    action: string;
+    explanation: string;
+    reasonCodes: string[];
+    evidenceRefs: string[];
+    timestamp: Date;
+    decisionSource: string;
+    decisionStage?: string | null;
+    metadata?: unknown;
+  }): DecisionLogEntry {
+    const entry: DecisionLogEntry = {
+      persona: log.persona as DecisionPersona,
+      action: log.action as DecisionAction,
+      explanation: log.explanation,
+      reasonCodes: log.reasonCodes,
+      evidenceRefs: log.evidenceRefs,
+      timestamp: log.timestamp.toISOString(),
+      decisionSource: log.decisionSource as DecisionSource,
+      decisionStage: ((log as { decisionStage?: string }).decisionStage || 'FINALIZE') as DecisionStage,
+    };
+    if (log.metadata && typeof log.metadata === 'object') {
+      entry.metadata = log.metadata as Record<string, unknown>;
+    }
+    const jt = extractJepaTraceFromMetadata(log.metadata);
+    if (jt) {
+      entry.jepaTrace = jt;
+    }
+    return entry;
+  }
 
   /** 集成/预发：`DECISION_LOG_STRICT_WRITE=1` 时，traceability **errors** 将 **跳过** `create`/`createMany` */
   private isDecisionLogStrictWrite(): boolean {
@@ -112,7 +155,13 @@ export class DecisionLogStorageService {
           reasonCodes: entry.reasonCodes,
           evidenceRefs: entry.evidenceRefs || [],
           timestamp: new Date(entry.timestamp),
-          metadata: options?.metadata || {},
+          metadata: mergeMetadataWithJepaTrace(
+            {
+              ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
+              ...((entry.metadata ?? {}) as Record<string, unknown>),
+            },
+            entry.jepaTrace,
+          ) as Prisma.InputJsonValue,
         },
       });
       this.logger.debug(`Saved decision log: ${entry.persona} ${entry.action} (${entry.decisionSource})${validTripId ? ` for tripId: ${validTripId}` : ''}`);
@@ -161,7 +210,7 @@ export class DecisionLogStorageService {
       }
 
       await this.prisma.decisionLog.createMany({
-        data: entries.map(entry => ({
+        data: entries.map((entry) => ({
           tripId: validTripId,
           countryCode: options?.countryCode,
           routeDirectionId: options?.routeDirectionId,
@@ -173,7 +222,13 @@ export class DecisionLogStorageService {
           reasonCodes: entry.reasonCodes,
           evidenceRefs: entry.evidenceRefs || [],
           timestamp: new Date(entry.timestamp),
-          metadata: options?.metadata || {},
+          metadata: mergeMetadataWithJepaTrace(
+            {
+              ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
+              ...((entry.metadata ?? {}) as Record<string, unknown>),
+            },
+            entry.jepaTrace,
+          ) as Prisma.InputJsonValue,
         })),
       });
       this.logger.debug(`Saved ${entries.length} decision logs${validTripId ? ` for tripId: ${validTripId}` : ' (no tripId)'}`);
@@ -188,6 +243,7 @@ export class DecisionLogStorageService {
    */
   async queryLogs(filters: {
     tripId?: string;
+    requestId?: string;
     countryCode?: string;
     routeDirectionId?: string;
     persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
@@ -205,13 +261,21 @@ export class DecisionLogStorageService {
       if (this.isValidUUID(filters.tripId)) {
         where.tripId = filters.tripId;
       } else {
-        // 如果 tripId 不是有效的 UUID，记录警告并返回空结果
+        // Replay / request-bound reads may use requestId instead of a persisted trip UUID.
         this.logger.warn(
           `queryLogs: tripId "${filters.tripId}" 不是有效的 UUID 格式，将跳过该查询条件。` +
-          `有效的 UUID 格式应为：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+            `有效的 UUID 格式应为：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
         );
-        return [];
+        if (!filters.requestId) {
+          return [];
+        }
       }
+    }
+    if (filters.requestId) {
+      where.metadata = {
+        path: ['requestId'],
+        equals: filters.requestId,
+      };
     }
     if (filters.countryCode) {
       where.countryCode = filters.countryCode;
@@ -247,18 +311,9 @@ export class DecisionLogStorageService {
       take: filters.limit || 1000,
     });
 
-    const mapped = logs.map(log => ({
-      persona: log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
-      action: log.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
-      explanation: log.explanation,
-      reasonCodes: log.reasonCodes,
-      evidenceRefs: log.evidenceRefs,
-      timestamp: log.timestamp.toISOString(),
-      decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
-      decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
-    }));
+    const mapped = logs.map((log) => this.mapRowToDecisionLogEntry(log));
 
-    this.logTraceabilityAnalysis(mapped, 'read', filters.tripId);
+    this.logTraceabilityAnalysis(mapped, 'read', filters.tripId ?? filters.requestId);
 
     return mapped;
   }
@@ -276,16 +331,7 @@ export class DecisionLogStorageService {
         return null;
       }
 
-      const entry: DecisionLogEntry = {
-        persona: log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
-        action: log.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
-        explanation: log.explanation,
-        reasonCodes: log.reasonCodes,
-        evidenceRefs: log.evidenceRefs,
-        timestamp: log.timestamp.toISOString(),
-        decisionSource: log.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
-        decisionStage: ((log as any).decisionStage || 'FINALIZE') as DecisionStage,
-      };
+      const entry = this.mapRowToDecisionLogEntry(log);
       this.logTraceabilityAnalysis([entry], 'read', log.tripId ?? undefined);
       return entry;
     } catch (error: any) {
@@ -325,16 +371,7 @@ export class DecisionLogStorageService {
         },
       });
 
-      const entry: DecisionLogEntry = {
-        persona: updatedLog.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE',
-        action: updatedLog.action as 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE',
-        explanation: updatedLog.explanation,
-        reasonCodes: updatedLog.reasonCodes,
-        evidenceRefs: updatedLog.evidenceRefs,
-        timestamp: updatedLog.timestamp.toISOString(),
-        decisionSource: updatedLog.decisionSource as 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC',
-        decisionStage: ((updatedLog as any).decisionStage || 'FINALIZE') as DecisionStage,
-      };
+      const entry = this.mapRowToDecisionLogEntry(updatedLog);
       this.logTraceabilityAnalysis([entry], 'read', updatedLog.tripId ?? undefined);
       return entry;
     } catch (error: any) {

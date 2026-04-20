@@ -1,0 +1,1089 @@
+{
+  "id": "iceland-highlands-pace-adjust-001",
+  "name": "冰岛高地路线 - 需要节奏调整",
+  "description": "测试高强度用户在连续高爬升场景下，Dr.Dre 必须插入缓冲日",
+  "input": {
+    "userProfile": {
+      "pacePreference": "FAST",
+      "altitudeTolerance": "HIGH",
+      "riskTolerance": "HIGH"
+    },
+    "season": 7,
+    "countryCode": "IS",
+    "userQuery": "我想在7月去冰岛高地，高强度，10天行程"
+  },
+  "expected": {
+    "abuExpected": {
+      "action": "ALLOW"
+    },
+    "drdreExpected": {
+      "mustAdjust": true,
+      "adjustmentTypes": [
+        "BUFFER_DAY"
+      ]
+    },
+    "finalState": {
+      "allowed": true,
+      "planDays": 10
+    },
+    "traceSummary": {
+      "schemaVersion": "trace/v1",
+      "metaDecisionAudit": "fixture-meta-budget entropy=0.78 cand=24 repair=4",
+      "candidateSearchBudget": {
+        "maxCandidates": 24,
+        "repairMaxIters": 4,
+        "repairTopKPerCandidate": 4,
+        "maxNewCandidatesPerIter": 20,
+        "maxPoolSize": 60,
+        "stopWhenFeasibleCount": 10
+      },
+      "candidateSearchAudit": {
+        "budget": {
+          "maxCandidates": 24,
+          "repairMaxIters": 4,
+          "repairTopKPerCandidate": 4,
+          "maxNewCandidatesPerIter": 20,
+          "maxPoolSize": 60,
+          "stopWhenFeasibleCount": 10
+        },
+        "initialVariantCount": 8,
+        "iterations": [
+          {
+            "iter": 0,
+            "poolSizeBeforeProjection": 9,
+            "feasibleCountAfterProjection": 3,
+            "infeasibleCountAfterProjection": 6,
+            "repairsGenerated": 8,
+            "repairsAccepted": 4,
+            "poolSizeAfterDedup": 11
+          },
+          {
+            "iter": 1,
+            "poolSizeBeforeProjection": 11,
+            "feasibleCountAfterProjection": 8,
+            "infeasibleCountAfterProjection": 3,
+            "repairsGenerated": 6,
+            "repairsAccepted": 2,
+            "poolSizeAfterDedup": 12
+          }
+        ],
+        "finalCandidateCount": 12,
+        "finalFeasibleCount": 8,
+        "stopReason": "COMPLETED"
+      }
+    },
+    "scientificExpected": {
+      "optimization": {
+        "mustEmitTrace": true,
+        "minCandidateSearchIterations": 2,
+        "minFinalFeasibleCount": 8,
+        "allowedStopReasons": [
+          "COMPLETED"
+        ],
+        "metaDecisionAuditIncludes": [
+          "cand=24",
+          "repair=4"
+        ]
+      }
+    },
+    "timelineExpected": {
+      "requiredStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "PACE_ADJUST"
+      ],
+      "forbiddenStages": [
+        "SPATIAL_REPAIR"
+      ],
+      "orderedStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "PACE_ADJUST"
+      ]
+    }
+  },
+  "metadata": {
+    "tags": [
+      "iceland",
+      "highlands",
+      "pace-adjust"
+    ],
+    "priority": "P1",
+    "source": "iceland-highlands",
+    "fixtureKind": "synthetic",
+    "counterfactualGroup": "iceland-highlands-core",
+    "baselineCaseId": "iceland-highlands-001",
+    "counterfactualExpectation": {
+      "expectedOutcomeShift": "ADD_ADJUST",
+      "minCandidateBudgetDelta": 12,
+      "minRepairMaxItersDelta": 2,
+      "requiredAdditionalStages": [
+        "PACE_ADJUST"
+      ]
+    },
+    "cgusDsoSnapshot": {
+      "requestId": "synthetic-capture-iceland-highlands-pace-adjust-001-1776438653395",
+      "systemState": {
+        "requestId": "synthetic-capture-iceland-highlands-pace-adjust-001-1776438653395"
+      },
+      "environmentState": {
+        "countryCode": "IS",
+        "month": 7,
+        "routeDirectionId": "unknown"
+      },
+      "tripState": {
+        "planDraft": {
+          "days": [
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-01_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-0-5",
+                    "name": "候选 0-5",
+                    "coordinates": {
+                      "lat": 64.005,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-01_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-0-4",
+                    "name": "候选 0-4",
+                    "coordinates": {
+                      "lat": 64.004,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-01_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-0-3",
+                    "name": "候选 0-3",
+                    "coordinates": {
+                      "lat": 64.003,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-01_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-0-2",
+                    "name": "候选 0-2",
+                    "coordinates": {
+                      "lat": 64.002,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-02_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-1-5",
+                    "name": "候选 1-5",
+                    "coordinates": {
+                      "lat": 64.02499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-02_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-1-4",
+                    "name": "候选 1-4",
+                    "coordinates": {
+                      "lat": 64.024,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-02_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-1-3",
+                    "name": "候选 1-3",
+                    "coordinates": {
+                      "lat": 64.023,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-02_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-1-2",
+                    "name": "候选 1-2",
+                    "coordinates": {
+                      "lat": 64.02199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-03_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-2-5",
+                    "name": "候选 2-5",
+                    "coordinates": {
+                      "lat": 64.045,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-03_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-2-4",
+                    "name": "候选 2-4",
+                    "coordinates": {
+                      "lat": 64.04400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-03_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-2-3",
+                    "name": "候选 2-3",
+                    "coordinates": {
+                      "lat": 64.043,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-03_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-2-2",
+                    "name": "候选 2-2",
+                    "coordinates": {
+                      "lat": 64.042,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-04_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-3-5",
+                    "name": "候选 3-5",
+                    "coordinates": {
+                      "lat": 64.065,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-04_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-3-4",
+                    "name": "候选 3-4",
+                    "coordinates": {
+                      "lat": 64.06400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-04_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-3-3",
+                    "name": "候选 3-3",
+                    "coordinates": {
+                      "lat": 64.063,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-04_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-3-2",
+                    "name": "候选 3-2",
+                    "coordinates": {
+                      "lat": 64.062,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-05_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-4-5",
+                    "name": "候选 4-5",
+                    "coordinates": {
+                      "lat": 64.085,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-05_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-4-4",
+                    "name": "候选 4-4",
+                    "coordinates": {
+                      "lat": 64.084,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-05_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-4-3",
+                    "name": "候选 4-3",
+                    "coordinates": {
+                      "lat": 64.083,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-05_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-4-2",
+                    "name": "候选 4-2",
+                    "coordinates": {
+                      "lat": 64.082,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-06_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-5-5",
+                    "name": "候选 5-5",
+                    "coordinates": {
+                      "lat": 64.10499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-06_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-5-4",
+                    "name": "候选 5-4",
+                    "coordinates": {
+                      "lat": 64.104,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-06_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-5-3",
+                    "name": "候选 5-3",
+                    "coordinates": {
+                      "lat": 64.103,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-06_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-5-2",
+                    "name": "候选 5-2",
+                    "coordinates": {
+                      "lat": 64.10199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-07_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-6-5",
+                    "name": "候选 6-5",
+                    "coordinates": {
+                      "lat": 64.125,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-07_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-6-4",
+                    "name": "候选 6-4",
+                    "coordinates": {
+                      "lat": 64.12400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-07_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-6-3",
+                    "name": "候选 6-3",
+                    "coordinates": {
+                      "lat": 64.123,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-07_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-6-2",
+                    "name": "候选 6-2",
+                    "coordinates": {
+                      "lat": 64.122,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-08_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-7-5",
+                    "name": "候选 7-5",
+                    "coordinates": {
+                      "lat": 64.145,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-08_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-7-4",
+                    "name": "候选 7-4",
+                    "coordinates": {
+                      "lat": 64.144,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-08_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-7-3",
+                    "name": "候选 7-3",
+                    "coordinates": {
+                      "lat": 64.143,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-08_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-7-2",
+                    "name": "候选 7-2",
+                    "coordinates": {
+                      "lat": 64.142,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-09_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-8-5",
+                    "name": "候选 8-5",
+                    "coordinates": {
+                      "lat": 64.16499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-09_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-8-4",
+                    "name": "候选 8-4",
+                    "coordinates": {
+                      "lat": 64.164,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-09_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-8-3",
+                    "name": "候选 8-3",
+                    "coordinates": {
+                      "lat": 64.163,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-09_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-8-2",
+                    "name": "候选 8-2",
+                    "coordinates": {
+                      "lat": 64.16199999999999,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-10_427",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "07:07",
+                    "end": "07:07"
+                  },
+                  "end_window": {
+                    "start": "09:22",
+                    "end": "09:22"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-9-5",
+                    "name": "候选 9-5",
+                    "coordinates": {
+                      "lat": 64.185,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-10_574",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "09:34",
+                    "end": "09:34"
+                  },
+                  "end_window": {
+                    "start": "11:34",
+                    "end": "11:34"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-9-4",
+                    "name": "候选 9-4",
+                    "coordinates": {
+                      "lat": 64.18400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-10_706",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:46",
+                    "end": "11:46"
+                  },
+                  "end_window": {
+                    "start": "13:31",
+                    "end": "13:31"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-9-3",
+                    "name": "候选 9-3",
+                    "coordinates": {
+                      "lat": 64.183,
+                      "lng": -21.06
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-10_823",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:43",
+                    "end": "13:43"
+                  },
+                  "end_window": {
+                    "start": "15:13",
+                    "end": "15:13"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-iceland-highlands-pace-adjust-001-9-2",
+                    "name": "候选 9-2",
+                    "coordinates": {
+                      "lat": 64.182,
+                      "lng": -21.04
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constraints": {
+        "violations": []
+      }
+    },
+    "cgusDsoSnapshotNote": "fallback snapshot from TripPlan (no planConverter/orchestrator); env + planDraft(days/items) only",
+    "cgusDsoFixtureVersion": "engine-dso-v1",
+    "cgusDsoGeneratedAt": "2026-04-17T15:10:53.370Z",
+    "cgusDsoSourceCaseId": "iceland-highlands-pace-adjust-001"
+  }
+}

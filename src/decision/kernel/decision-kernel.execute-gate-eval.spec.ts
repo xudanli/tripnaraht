@@ -196,5 +196,57 @@ describe('DecisionKernelService.executeGateEval', () => {
     expect(result.newState.systemState?.currentPhase).toBe('GATE_EVAL');
     expect(result.newState.tripState?.orchestratorAlternatives).toBeUndefined();
   });
+
+  it('当执行器返回 ALLOW 但 DSO.optimizationHints 指示 fail-safe BLOCK 时应降级 gateResult', async () => {
+    const constraints: ConstraintReport = { feasible: true, violations: [] };
+    const gateResult: GateResultLike = {
+      gate_result: 'ALLOW',
+      violations: [],
+      required_adjustments: [],
+      confidence: 0.92,
+    };
+    const gateEvalExecutor = {
+      execute: jest.fn().mockResolvedValue({ constraints, gateResult }),
+    };
+    const kernel = makeKernel(gateEvalExecutor);
+    const dso = {
+      ...makeState('req-fs-block'),
+      optimizationHints: { failSafeAction: 'BLOCK', failSafeReason: 'META_BUDGET_EXHAUSTED' } as any,
+    } as DecisionState;
+    const ctx = makeContext('req-fs-block');
+
+    const result = await kernel.executeGateEval(dso, ctx);
+
+    expect(result.gateResult.gate_result).toBe('BLOCK');
+    expect(result.constraints.feasible).toBe(false);
+    expect(result.constraints.gateOutcome).toBe('BLOCK');
+    expect(result.gateResult.violations.some((v) => v.type === 'META_BUDGET')).toBe(true);
+  });
+
+  it('当执行器返回 ALLOW 但 DSO.optimizationHints 指示 fail-safe ADJUST_REQUIRED 时应降级并追加 required_adjustments', async () => {
+    const constraints: ConstraintReport = { feasible: true, violations: [] };
+    const gateResult: GateResultLike = {
+      gate_result: 'ALLOW',
+      violations: [],
+      required_adjustments: [],
+      confidence: 0.92,
+    };
+    const gateEvalExecutor = {
+      execute: jest.fn().mockResolvedValue({ constraints, gateResult }),
+    };
+    const kernel = makeKernel(gateEvalExecutor);
+    const dso = {
+      ...makeState('req-fs-adjust'),
+      optimizationHints: { failSafeAction: 'ADJUST_REQUIRED', failSafeReason: 'META_BUDGET_BELOW_MIN(sample<=40)' } as any,
+    } as DecisionState;
+    const ctx = makeContext('req-fs-adjust');
+
+    const result = await kernel.executeGateEval(dso, ctx);
+
+    expect(result.gateResult.gate_result).toBe('ADJUST_REQUIRED');
+    expect(result.constraints.feasible).toBe(false);
+    expect(result.constraints.gateOutcome).toBe('ADJUST_REQUIRED');
+    expect(result.gateResult.required_adjustments.some((a) => a.action === 'REDUCE_SCOPE_OR_ADD_EVIDENCE')).toBe(true);
+  });
 });
 

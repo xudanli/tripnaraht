@@ -24,8 +24,12 @@ import {
   ProbabilisticWorldModelContext,
   WorldStateSample,
 } from './probabilistic-world-model.interface';
-import { RoutePlanDraft } from '../../shared/world-model.types';
-import { ObjectiveFunctionWeights } from '../objective-function.interface';
+import { RoutePlanDraft, WorldModelContext } from '../../shared/world-model.types';
+import type { RoadState, HazardZoneState } from '../../models/physical-reality.model';
+import { ObjectiveFunctionService } from '../objective-function.service';
+import { ObjectiveFunctionWeights, type ObjectiveEvaluationResult } from '../objective-function.interface';
+import { PlanFeaturesService, type PlanFeatures } from '../plan-features/plan-features.service';
+import { ExposureMapService, type ExposureMap } from '../plan-features/exposure-map.service';
 
 /**
  * Monte Carlo 配置
@@ -48,6 +52,13 @@ export interface MonteCarloConfig {
   
   /** 置信区间宽度（例如 0.95 表示 95% 置信区间） */
   confidenceLevel?: number;
+
+  /**
+   * 若提供，则每个样本在「该确定性世界 + 样本扰动」下调用
+   * `ObjectiveFunctionService.evaluate`，维度与 `POST .../evaluate` / risk-assessment 的确定性口径一致；
+   * 总效用仍用本方法入参 `weights` 做加权（避免与 `ObjectiveFunctionService` 内部可变权重漂移）。
+   */
+  deterministicWorld?: WorldModelContext;
 }
 
 /**
@@ -72,6 +83,8 @@ export interface AdaptiveSamplingConfig {
   convergenceThreshold: number;
   checkInterval: number;
   earlyStopPatience: number;
+  /** 与 `MonteCarloConfig.deterministicWorld` 相同语义（自适应 MC 对齐确定性目标函数） */
+  deterministicWorld?: WorldModelContext;
 }
 
 export const DEFAULT_ADAPTIVE_CONFIG: AdaptiveSamplingConfig = {
@@ -232,6 +245,11 @@ export class ExpectedUtilityService {
   
   // 简单的线性同余随机数生成器（用于可重复性）
   private rng: () => number = Math.random;
+  constructor(
+    private readonly planFeatures: PlanFeaturesService,
+    private readonly exposureMap: ExposureMapService,
+    private readonly objectiveFunction: ObjectiveFunctionService,
+  ) {}
 
   /**
    * 计算期望效用 E_s∼b[R(s,a)]
@@ -246,6 +264,9 @@ export class ExpectedUtilityService {
     config: MonteCarloConfig = DEFAULT_MONTE_CARLO_CONFIG
   ): ExpectedUtilityResult {
     this.logger.debug(`[ExpectedUtility] 开始 Monte Carlo 计算，样本数: ${config.sampleSize}`);
+
+    const features = this.planFeatures.extract(plan);
+    const exposure = this.exposureMap.extract(plan);
     
     // 初始化随机数生成器
     if (config.seed !== undefined) {
@@ -271,18 +292,25 @@ export class ExpectedUtilityService {
     let feasibleCount = 0;
     
     for (const sample of worldSamples) {
-      const evaluation = this.evaluatePlanWithSample(plan, sample, weights);
+      const evaluation = this.evaluateOneSample(
+        plan,
+        features,
+        exposure,
+        sample,
+        weights,
+        config.deterministicWorld,
+      );
       utilities.push(evaluation.utility);
-      
+
       // 记录各维度
       for (const dim of Object.keys(dimensionSamples)) {
         dimensionSamples[dim].push(evaluation.dimensions[dim] || 0);
       }
-      
+
       if (evaluation.isFeasible) {
         feasibleCount++;
       }
-      
+
       // 早停检查
       if (
         config.convergenceThreshold &&
@@ -347,6 +375,9 @@ export class ExpectedUtilityService {
     const config = { ...DEFAULT_ADAPTIVE_CONFIG, ...adaptiveConfig };
     this.logger.debug(`[ExpectedUtility] 启用自适应采样，范围: ${config.minSamples}-${config.maxSamples}`);
 
+    const features = this.planFeatures.extract(plan);
+    const exposure = this.exposureMap.extract(plan);
+
     const utilities: number[] = [];
     const varianceHistory: number[] = [];
     const dimensionSamples: Record<string, number[]> = {
@@ -363,7 +394,14 @@ export class ExpectedUtilityService {
       const worldSamples = this.sampleWorldStates(probabilisticContext, batchSize);
 
       for (const sample of worldSamples) {
-        const evaluation = this.evaluatePlanWithSample(plan, sample, weights);
+        const evaluation = this.evaluateOneSample(
+          plan,
+          features,
+          exposure,
+          sample,
+          weights,
+          config.deterministicWorld,
+        );
         utilities.push(evaluation.utility);
 
         for (const dim of Object.keys(dimensionSamples)) {
@@ -467,12 +505,22 @@ export class ExpectedUtilityService {
     weights: ObjectiveFunctionWeights,
     targetCoefOfVariation: number = 0.05,
     pilotSampleSize: number = 100,
+    deterministicWorld?: WorldModelContext,
   ): { estimatedSize: number; pilotMean: number; pilotStd: number; confidence: number } {
     const worldSamples = this.sampleWorldStates(probabilisticContext, pilotSampleSize);
     const utilities: number[] = [];
+    const features = this.planFeatures.extract(plan);
+    const exposure = this.exposureMap.extract(plan);
 
     for (const sample of worldSamples) {
-      const evaluation = this.evaluatePlanWithSample(plan, sample, weights);
+      const evaluation = this.evaluateOneSample(
+        plan,
+        features,
+        exposure,
+        sample,
+        weights,
+        deterministicWorld,
+      );
       utilities.push(evaluation.utility);
     }
 
@@ -610,15 +658,36 @@ export class ExpectedUtilityService {
     recommendation: 'A' | 'B' | 'EQUAL';
     confidenceInRecommendation: number;
   } {
+    if (config.seed !== undefined) {
+      this.initializeRNG(config.seed);
+    }
     // 使用配对采样（同一世界状态下比较）
     const worldSamples = this.sampleWorldStates(probabilisticContext, config.sampleSize);
+    const featuresA = this.planFeatures.extract(planA);
+    const exposureA = this.exposureMap.extract(planA);
+    const featuresB = this.planFeatures.extract(planB);
+    const exposureB = this.exposureMap.extract(planB);
     
     const differences: number[] = [];
     let aWins = 0;
     
     for (const sample of worldSamples) {
-      const utilityA = this.evaluatePlanWithSample(planA, sample, weights).utility;
-      const utilityB = this.evaluatePlanWithSample(planB, sample, weights).utility;
+      const utilityA = this.evaluateOneSample(
+        planA,
+        featuresA,
+        exposureA,
+        sample,
+        weights,
+        config.deterministicWorld,
+      ).utility;
+      const utilityB = this.evaluateOneSample(
+        planB,
+        featuresB,
+        exposureB,
+        sample,
+        weights,
+        config.deterministicWorld,
+      ).utility;
       
       differences.push(utilityA - utilityB);
       if (utilityA > utilityB) aWins++;
@@ -674,7 +743,7 @@ export class ExpectedUtilityService {
         },
         roadStatuses: context.physical.roadStatuses.map(road => ({
           roadId: road.roadId,
-          status: this.sampleCategorical(road.status) as 'OPEN' | 'CONDITIONAL' | 'CLOSED',
+          status: this.sampleCategorical(road.status) as 'OPEN' | 'RESTRICTED' | 'CLOSED',
         })),
         humanCapability: {
           maxDailyAscentM: this.sampleGaussian(context.human.maxDailyAscent),
@@ -697,10 +766,151 @@ export class ExpectedUtilityService {
   }
 
   /**
+   * 单样本效用：可选与确定性 `ObjectiveFunctionService` 对齐（同 breakdown 语义 + 调用方 weights）。
+   */
+  private evaluateOneSample(
+    plan: RoutePlanDraft,
+    features: PlanFeatures,
+    exposure: ExposureMap,
+    sample: WorldStateSample,
+    weights: ObjectiveFunctionWeights,
+    deterministicWorld?: WorldModelContext,
+  ): {
+    utility: number;
+    dimensions: Record<string, number>;
+    isFeasible: boolean;
+  } {
+    if (deterministicWorld) {
+      try {
+        const world = this.materializeDeterministicWorld(deterministicWorld, sample);
+        const res = this.objectiveFunction.evaluate(plan, world);
+        const utility = this.totalUtilityFromBreakdown(res.breakdown, weights);
+        const dimensions = this.breakdownToDimensionMap(res.breakdown);
+        return { utility, dimensions, isFeasible: res.isFeasible };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[ExpectedUtility] 确定性目标评估失败，回退启发式 MC: ${msg}`);
+      }
+    }
+    return this.evaluatePlanWithSample(plan, features, exposure, sample, weights);
+  }
+
+  private totalUtilityFromBreakdown(
+    breakdown: ObjectiveEvaluationResult['breakdown'],
+    weights: ObjectiveFunctionWeights,
+  ): number {
+    const positive =
+      weights.safety * breakdown.safetyScore +
+      weights.experienceDensity * breakdown.experienceScore +
+      weights.philosophyAlignment * breakdown.philosophyScore +
+      weights.timeSlack * breakdown.timeSlackScore;
+    const negative =
+      weights.fatigueRisk * breakdown.fatigueRiskPenalty +
+      weights.weatherRisk * breakdown.weatherRiskPenalty +
+      weights.budgetOverrun * breakdown.budgetOverrunPenalty +
+      weights.pacingVariance * breakdown.pacingVariancePenalty;
+    let u = positive - negative;
+    if (Number.isNaN(u)) u = 0;
+    return Math.max(0, Math.min(1, u));
+  }
+
+  private breakdownToDimensionMap(breakdown: ObjectiveEvaluationResult['breakdown']): Record<string, number> {
+    return {
+      safety: breakdown.safetyScore,
+      experience: breakdown.experienceScore,
+      philosophy: breakdown.philosophyScore,
+      timeSlack: breakdown.timeSlackScore,
+      fatigueRisk: breakdown.fatigueRiskPenalty,
+      weatherRisk: breakdown.weatherRiskPenalty,
+      budgetOverrun: breakdown.budgetOverrunPenalty,
+      pacingVariance: breakdown.pacingVariancePenalty,
+    };
+  }
+
+  private materializeDeterministicWorld(base: WorldModelContext, sample: WorldStateSample): WorldModelContext {
+    const world = structuredClone(base) as WorldModelContext;
+
+    for (const rs of sample.roadStatuses) {
+      const idx = world.physical.roadStates.findIndex(r => r.roadId === rs.roadId);
+      if (idx < 0) continue;
+      const prev = world.physical.roadStates[idx] as RoadState;
+      let status: RoadState['status'] = 'OPEN';
+      if (rs.status === 'CLOSED') status = 'CLOSED';
+      else if (rs.status === 'RESTRICTED') status = 'RESTRICTED';
+      world.physical.roadStates[idx] = { ...prev, status };
+    }
+
+    for (const h of sample.hazardLevels) {
+      const idx = world.physical.hazardZones.findIndex(
+        z => String(z.type).toUpperCase() === String(h.type).toUpperCase(),
+      );
+      if (idx < 0) continue;
+      const prev = world.physical.hazardZones[idx] as HazardZoneState;
+      if (!h.occurred) {
+        world.physical.hazardZones[idx] = { ...prev, level: 'NONE' };
+        continue;
+      }
+      const level: HazardZoneState['level'] =
+        h.level === 'HIGH' ? 'HIGH' : h.level === 'MEDIUM' ? 'MEDIUM' : 'LOW';
+      const month = world.physical.month;
+      if (level === 'HIGH' && !(prev.seasonality?.highRiskMonths?.includes(month) ?? false)) {
+        world.physical.hazardZones[idx] = {
+          ...prev,
+          level,
+          seasonality: {
+            highRiskMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            lowRiskMonths: prev.seasonality?.lowRiskMonths ?? [],
+          },
+        };
+      } else {
+        world.physical.hazardZones[idx] = { ...prev, level };
+      }
+    }
+
+    const asc = sample.humanCapability.maxDailyAscentM;
+    world.human = {
+      ...world.human,
+      maxDailyAscentM: typeof asc === 'number' && !Number.isNaN(asc) ? Math.max(1, asc) : world.human.maxDailyAscentM,
+    };
+
+    this.applySampleWeatherToClimate(world, sample);
+
+    return world;
+  }
+
+  private applySampleWeatherToClimate(world: WorldModelContext, sample: WorldStateSample): void {
+    const cs = world.physical.climateSeasonality;
+    if (!cs) return;
+    const baseAccRaw = Number(cs.accessibilityScore);
+    const baseAcc = Number.isFinite(baseAccRaw) ? baseAccRaw : 0.7;
+    let adj = baseAcc;
+    if (sample.weather.windSpeedMs > 18) adj -= 0.06;
+    if (sample.weather.windSpeedMs > 25) adj -= 0.05;
+    if (sample.weather.precipitationMm > 8) adj -= 0.07;
+    if (sample.weather.precipitationMm > 20) adj -= 0.05;
+    if (sample.weather.visibilityM < 600) adj -= 0.06;
+    if (sample.weather.condition === 'rain' || sample.weather.condition === 'snow') adj -= 0.04;
+
+    world.physical.climateSeasonality = {
+      ...cs,
+      accessibilityScore: Math.max(0, Math.min(1, adj)),
+      typicalWeather: {
+        ...(cs.typicalWeather ?? {}),
+        windSpeedMps: sample.weather.windSpeedMs,
+        precipitationMmPerHour: Math.min(50, sample.weather.precipitationMm / 12),
+        visibilityMeters: sample.weather.visibilityM,
+        temperatureCelsius: sample.weather.temperatureC,
+      },
+    };
+  }
+
+  /**
    * 使用采样的世界状态评估计划
    */
   private evaluatePlanWithSample(
     plan: RoutePlanDraft,
+    features: PlanFeatures,
+    exposure: ExposureMap,
     sample: WorldStateSample,
     weights: ObjectiveFunctionWeights
   ): {
@@ -722,23 +932,31 @@ export class ExpectedUtilityService {
     dimensions['safety'] = Math.max(0, safetyScore);
     
     // 体验密度：受天气影响
-    let experienceScore = 0.8;
+    let experienceScore = 0.78;
     if (sample.weather.condition === 'rain' || sample.weather.condition === 'snow') {
       experienceScore -= 0.2;
     }
+    // plan-conditioned: too dense reduces experience (rush), moderate density helps.
+    const density = features.avgSegmentsPerDay;
+    const densityBoost = density >= 3 && density <= 5 ? 0.12 : density >= 2 && density <= 6 ? 0.06 : -0.02;
+    experienceScore += densityBoost;
     dimensions['experience'] = experienceScore;
     
     // 哲学匹配：相对稳定
     dimensions['philosophy'] = 0.85;
     
     // 时间余量：受延误影响
-    let timeSlackScore = 0.7;
-    const conditionalRoads = sample.roadStatuses.filter(r => r.status === 'CONDITIONAL').length;
-    timeSlackScore -= conditionalRoads * 0.1;
+    let timeSlackScore = 0.78;
+    const restrictedRoads = sample.roadStatuses.filter(r => r.status === 'RESTRICTED').length;
+    timeSlackScore -= restrictedRoads * 0.1;
+    // plan-conditioned: tighter schedules have less slack.
+    timeSlackScore -= 0.35 * features.slackTightness01;
     dimensions['timeSlack'] = Math.max(0, timeSlackScore);
     
     // 疲劳风险：受人体能力波动影响
-    const fatigueRisk = Math.max(0, 1 - sample.humanCapability.fatigueThreshold / 1.5);
+    const fatigueRiskBase = Math.max(0, 1 - sample.humanCapability.fatigueThreshold / 1.5);
+    // plan-conditioned: effort increases fatigue risk.
+    const fatigueRisk = Math.min(1, fatigueRiskBase + 0.55 * features.effort01 + 0.25 * features.slackTightness01);
     dimensions['fatigueRisk'] = fatigueRisk;
     
     // 天气风险
@@ -751,7 +969,8 @@ export class ExpectedUtilityService {
     dimensions['budgetOverrun'] = 0.1;
     
     // 节奏方差（简化）
-    dimensions['pacingVariance'] = 0.15;
+    // plan-conditioned: tighter schedules tend to have higher pacing variance.
+    dimensions['pacingVariance'] = Math.min(1, 0.08 + 0.35 * features.slackTightness01);
     
     // 计算加权效用
     const positiveUtility = 
@@ -769,9 +988,15 @@ export class ExpectedUtilityService {
     const utility = Math.max(0, Math.min(1, positiveUtility - negativeUtility));
     
     // 可行性检查
-    const isFeasible = closedRoads === 0 && 
-                       hazardOccurred === 0 && 
-                       dimensions['safety'] > 0.3;
+    // plan-conditioned feasibility: dense/tight plans are more likely to fail under bad samples.
+    const structuralFragility = Math.min(1, 0.55 * features.slackTightness01 + 0.45 * features.effort01);
+    const safetyFloor = 0.35 + 0.25 * structuralFragility; // more fragile needs higher safety margin
+    // Exposure-aware: if plan touches specific roads/hazards, bad samples matter more.
+    const touchesRoad = (exposure.roadIdsTouched?.length ?? 0) > 0;
+    const touchesHazard = (exposure.hazardTypesTouched?.length ?? 0) > 0;
+    const feasibleUnderRoads = closedRoads === 0 || (!touchesRoad && structuralFragility < 0.25);
+    const feasibleUnderHazard = hazardOccurred === 0 || (!touchesHazard && structuralFragility < 0.2);
+    const isFeasible = feasibleUnderRoads && feasibleUnderHazard && dimensions['safety'] > safetyFloor;
     
     return { utility, dimensions, isFeasible };
   }
@@ -1086,6 +1311,8 @@ export class ExpectedUtilityService {
     config: ImportanceSamplingConfig,
   ): ExpectedUtilityResult & { importanceSampling: ImportanceSamplingResult } {
     this.logger.debug(`[ExpectedUtility] 使用重要性采样，提议类型: ${config.proposalType}`);
+    const features = this.planFeatures.extract(plan);
+    const exposure = this.exposureMap.extract(plan);
 
     // 初始化随机数生成器
     if (config.seed !== undefined) {
@@ -1127,7 +1354,14 @@ export class ExpectedUtilityService {
     let feasibleCount = 0;
 
     for (let i = 0; i < samples.length; i++) {
-      const evaluation = this.evaluatePlanWithSample(plan, samples[i], weights);
+      const evaluation = this.evaluateOneSample(
+        plan,
+        features,
+        exposure,
+        samples[i],
+        weights,
+        config.deterministicWorld,
+      );
       utilities.push(evaluation.utility);
       weightedUtilities.push(evaluation.utility * normalizedWeights[i] * samples.length);
 

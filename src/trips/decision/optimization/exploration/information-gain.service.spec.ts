@@ -6,6 +6,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InformationGainService } from './information-gain.service';
 import { ProbabilisticWorldModelService } from '../probabilistic/probabilistic-world-model.service';
+import { ExposureMapService } from '../plan-features/exposure-map.service';
 import type { WorldModelContext } from '../../shared/world-model.types';
 
 function createMockWorldContext(): WorldModelContext {
@@ -44,7 +45,14 @@ describe('InformationGainService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [InformationGainService, ProbabilisticWorldModelService],
+      providers: [
+        InformationGainService,
+        ProbabilisticWorldModelService,
+        {
+          provide: ExposureMapService,
+          useValue: { extract: jest.fn().mockReturnValue({ roadIdsTouched: [], hazardTypesTouched: [] }) },
+        },
+      ],
     }).compile();
 
     service = module.get(InformationGainService);

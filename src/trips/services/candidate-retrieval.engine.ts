@@ -19,6 +19,10 @@ import { CreateTripDraftDto } from '../dto/trip-draft.dto';
 import { TravelStyle } from '../dto/trip-draft.dto';
 import { SpatialClusteringEngine } from './spatial-clustering.engine';
 import { ExperienceVectorService } from '../../places/services/experience-vector.service';
+import type { PoiPlanningDecisionSlice } from '../../decision/kernel/decision-state.types';
+import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
+import { getAnchorRetrievalProfile } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import { POI_PLANNING_SCORE_REASON } from '../../planning-policy/constants/poi-planning-score-reasons';
 
 /** 候选地点（与 TripDraftService 兼容） */
 export interface CandidatePlace {
@@ -50,6 +54,10 @@ export interface CandidatePlace {
   cityId?: number | null;
   /** 城市名称（用于 dayAllocation 按天过滤） */
   cityName?: string | null;
+  /** Phase 1.5：打分来源标签（可观测） */
+  poiPlanningScoreReasons?: string[];
+  /** Phase 2.5：必选锚点 — diversity 采样不得丢弃 */
+  poiPlanningAdmissionProtected?: boolean;
 }
 
 /** 类别分桶配置（TripNara 规范） */
@@ -83,7 +91,14 @@ export class CandidateRetrievalEngine {
    */
   async retrieve(
     dto: CreateTripDraftDto,
-    options?: { centerLat?: number; centerLng?: number; radiusKm?: number; routeDirectionId?: string | number },
+    options?: {
+      centerLat?: number;
+      centerLng?: number;
+      radiusKm?: number;
+      routeDirectionId?: string | number;
+      /** DSO poiPlanning：锚点注入、排除、optional 加权 */
+      poiPlanning?: PoiPlanningDecisionSlice;
+    },
   ): Promise<CandidatePlace[]> {
     const countryCode = dto.destination.toUpperCase().trim();
     if (!/^[A-Z]{2}$/.test(countryCode)) {
@@ -123,6 +138,14 @@ export class CandidateRetrievalEngine {
         bucketed = this.mergeSignaturePlaces(bucketed, signaturePlaces);
         this.logger.log(`RouteDirection 偏好: 合并 ${signaturePlaces.length} 个 signature Place`);
       }
+    }
+
+    // Step 2c: 区域意图 POI 规划（Phase 1）— 锚点必入池、排除、optional 加权
+    if (options?.poiPlanning?.poiPlan && countryCode === 'IS') {
+      bucketed = await this.applyPoiPlanningToBucket(countryCode, bucketed, options.poiPlanning);
+      this.logger.log(
+        `[POI Planning] region=${options.poiPlanning.routeIntent?.regionId ?? 'n/a'} anchors=${options.poiPlanning.poiPlan.requiredAnchorPoiIds?.length ?? 0}`,
+      );
     }
 
     // Step 3 & 4: 评分 + 多样性采样
@@ -272,11 +295,105 @@ export class CandidateRetrievalEngine {
       const existing = byId.get(s.id);
       if (existing) {
         existing.compositeScore = Math.max(existing.compositeScore, s.compositeScore);
+        if (s.poiPlanningAdmissionProtected) {
+          existing.poiPlanningAdmissionProtected = true;
+        }
+        const merged = [
+          ...(existing.poiPlanningScoreReasons ?? []),
+          ...(s.poiPlanningScoreReasons ?? []),
+        ];
+        if (merged.length) {
+          existing.poiPlanningScoreReasons = [...new Set(merged)];
+        }
       } else {
         byId.set(s.id, { ...s });
       }
     }
     return [...byId.values()];
+  }
+
+  /**
+   * Phase 1：按 DSO poiPlanning 注入锚点、过滤排除、提升 optional 召回优先级（冰岛数据）
+   */
+  private async applyPoiPlanningToBucket(
+    countryCode: string,
+    bucketed: Array<CandidatePlace & { compositeScore: number }>,
+    slice: PoiPlanningDecisionSlice,
+  ): Promise<Array<CandidatePlace & { compositeScore: number }>> {
+    const plan = slice.poiPlan;
+    if (!plan) return bucketed;
+
+    const slugMap = ICELAND_POI_SLUG_KEYWORDS;
+    const anchorKeywords = new Set<string>();
+    for (const slug of plan.requiredAnchorPoiIds ?? []) {
+      for (const k of slugMap[slug] ?? []) {
+        anchorKeywords.add(k);
+      }
+    }
+    const prof = getAnchorRetrievalProfile(slice.routeIntent?.regionId);
+    if (prof) {
+      for (const a of prof.requiredAnchors) {
+        for (const al of a.aliases) {
+          anchorKeywords.add(al);
+        }
+      }
+    }
+    if (anchorKeywords.size > 0) {
+      const anchorPlaces = await this.fetchMustHavePois(countryCode, [...anchorKeywords]);
+      if (anchorPlaces.length > 0) {
+        for (const ap of anchorPlaces) {
+          ap.poiPlanningAdmissionProtected = true;
+          ap.poiPlanningScoreReasons = [
+            ...(ap.poiPlanningScoreReasons ?? []),
+            POI_PLANNING_SCORE_REASON.REQUIRED_ANCHOR,
+          ];
+        }
+        bucketed = this.mergeSignaturePlaces(bucketed, anchorPlaces);
+      }
+    }
+
+    for (const slug of plan.excludedPoiIds ?? []) {
+      const kws = slugMap[slug];
+      if (!kws?.length) continue;
+      const bad = await this.fetchMustHavePois(countryCode, kws);
+      const badIds = new Set(bad.map((p) => p.id));
+      if (badIds.size > 0) {
+        bucketed = bucketed.filter((p) => {
+          if (badIds.has(p.id)) {
+            return false;
+          }
+          return true;
+        });
+      }
+    }
+
+    const optional = plan.optionalCandidatePoiIds ?? [];
+    if (optional.length === 0) {
+      return bucketed;
+    }
+    const boost = 2.5;
+    for (const p of bucketed) {
+      const hay = `${p.nameCN} ${p.nameEN ?? ''}`;
+      for (const slug of optional) {
+        const kws = slugMap[slug];
+        if (!kws?.length) continue;
+        if (
+          kws.some(
+            (k) =>
+              hay.includes(k) ||
+              hay.toLowerCase().includes(k.toLowerCase()),
+          )
+        ) {
+          p.compositeScore += boost;
+          p.poiPlanningScoreReasons = [
+            ...(p.poiPlanningScoreReasons ?? []),
+            POI_PLANNING_SCORE_REASON.OPTIONAL_BOOST,
+          ];
+          break;
+        }
+      }
+    }
+    return bucketed;
   }
 
   /**
@@ -476,6 +593,11 @@ export class CandidateRetrievalEngine {
     const randomCount = Math.ceil(n * DIVERSITY_RATIOS.random);
 
     const selectedIds = new Set<number>();
+    for (const p of sorted) {
+      if (p.poiPlanningAdmissionProtected) {
+        selectedIds.add(p.id);
+      }
+    }
 
     // Top 40%: 最高分
     for (let i = 0; i < Math.min(topRatedCount, sorted.length); i++) {

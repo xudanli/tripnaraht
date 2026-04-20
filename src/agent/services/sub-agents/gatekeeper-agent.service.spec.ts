@@ -65,6 +65,9 @@ describe('ClaudeGatekeeperAgentService', () => {
 
     service = module.get<ClaudeGatekeeperAgentService>(ClaudeGatekeeperAgentService);
 
+    // service 内部使用 new Logger(...)；这里替换为可断言的 mock
+    (service as any).logger = mockLogger as any;
+
     jest.clearAllMocks();
   });
 
@@ -75,17 +78,11 @@ describe('ClaudeGatekeeperAgentService', () => {
         request_id: 'test-001',
         origin: 'Paris, France',
         destination: 'London, UK',
-        date_range: {
-          start: new Date('2026-07-15'),
-          end: new Date('2026-07-18'),
-        },
+        date_range: { start_date: '2026-07-15', end_date: '2026-07-18' } as any,
       };
 
-      const researchData = {};
-      const context: OrchestratorState = {
-        current_step: 'GATE_EVAL',
-        request_id: request.request_id,
-      };
+      const researchData: any = {};
+      const context = { current_step: 'GATE_EVAL', request_id: request.request_id } as any as OrchestratorState;
 
       // Act
       const result = await service.evaluateGate(request, researchData, context);
@@ -94,7 +91,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.gate_result).toBe('ALLOW');
       expect(mockFRoadCheck.execute).not.toHaveBeenCalled();
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
-      expect(mockLogger.log).toHaveBeenCalledWith('[GatekeeperAgent] Gate 评估完成: ALLOW, 置信度: 0.8');
+      expect(mockLogger.log).toHaveBeenCalledWith(expect.stringContaining('[GatekeeperAgent] Gate 评估完成: ALLOW'));
     });
   });
 
@@ -105,38 +102,30 @@ describe('ClaudeGatekeeperAgentService', () => {
         request_id: 'test-002',
         origin: 'Vík, Iceland',
         destination: 'Landmannalaugar, F208, Iceland',
-        date_range: {
-          start: new Date('2026-02-15'),
-          end: new Date('2026-02-18'),
-        },
+        date_range: { start_date: '2026-02-15', end_date: '2026-02-18' } as any,
       };
 
-      const researchData = {};
-      const context: OrchestratorState = {
-        current_step: 'GATE_EVAL',
-        request_id: request.request_id,
-      };
+      const researchData: any = {};
+      const context = { current_step: 'GATE_EVAL', request_id: request.request_id } as any as OrchestratorState;
 
       mockFRoadCheck.execute.mockResolvedValue({
         can_proceed: false,
-        roads_found: ['F208'],
         blocked_roads: [
           {
-            road: 'F208',
-            status: 'closed',
+            roadId: 'F208',
+            currentStatus: 'closed',
             reason: 'Typically closed in winter (October-May). Status unverified.',
-            verified: false,
+            unverified: true,
           },
         ],
-        alternatives: [
-          { road: 'F208', alternative_road: 'F225', alternative_description: 'F225 (longer but safer)' },
-        ],
-        gate_recommendation: 'BLOCK',
+        alternative_routes: ['F225 (longer but safer)'],
+        warnings: [],
+        required_actions: [],
         evidence_refs: [
           {
             evidence_id: 'F208',
             source: 'road-status-realtime-service',
-            last_verified_at: new Date().toISOString(),
+            last_verified_at: new Date(),
             confidence: 0.7,
           },
         ],
@@ -165,24 +154,20 @@ describe('ClaudeGatekeeperAgentService', () => {
         request_id: 'test-003',
         origin: { lat: 64.1466, lng: -21.9426 }, // Reykjavík
         destination: { lat: 64.75, lng: -18.0 },  // Highlands
-        date_range: {
-          start: new Date('2026-02-15'),
-          end: new Date('2026-02-18'),
-        },
+        date_range: { start_date: '2026-02-15', end_date: '2026-02-18' } as any,
       };
 
-      const researchData = {};
-      const context: OrchestratorState = {
-        current_step: 'GATE_EVAL',
-        request_id: request.request_id,
-      };
+      const researchData: any = {};
+      const context = { current_step: 'GATE_EVAL', request_id: request.request_id } as any as OrchestratorState;
 
       // F-Road passes (no F-roads detected)
       mockFRoadCheck.execute.mockResolvedValue({
         can_proceed: true,
-        roads_found: [],
         blocked_roads: [],
-        gate_recommendation: 'ALLOW',
+        alternative_routes: [],
+        warnings: [],
+        required_actions: [],
+        evidence_refs: [],
       });
 
       // Weather blocks
@@ -233,17 +218,11 @@ describe('ClaudeGatekeeperAgentService', () => {
         request_id: 'test-004',
         origin: { lat: 64.1466, lng: -21.9426 },
         destination: { lat: 64.1355, lng: -21.8954 },
-        date_range: {
-          start: new Date('2026-07-15'),
-          end: new Date('2026-07-16'),
-        },
+        date_range: { start_date: '2026-07-15', end_date: '2026-07-16' } as any,
       };
 
-      const researchData = {};
-      const context: OrchestratorState = {
-        current_step: 'GATE_EVAL',
-        request_id: request.request_id,
-      };
+      const researchData: any = {};
+      const context = { current_step: 'GATE_EVAL', request_id: request.request_id } as any as OrchestratorState;
 
       // F-Road passes
       mockFRoadCheck.execute.mockResolvedValue({

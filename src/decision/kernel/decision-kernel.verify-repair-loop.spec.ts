@@ -91,7 +91,7 @@ describe('DecisionKernelService VERIFY -> REPAIR loop', () => {
   it('VERIFY 返回 issues 后，REPAIR 应可应用修复并更新 planDraft', async () => {
     const verifyExecutor = {
       execute: jest.fn().mockResolvedValue({
-        issues: ['slot overlap'],
+        issues: [{ code: 'TIME_WINDOW_OVERLAP', class: 'CONFLICT', message: 'slot overlap' }],
         confidenceDelta: -0.2,
       }),
     };
@@ -110,8 +110,13 @@ describe('DecisionKernelService VERIFY -> REPAIR loop', () => {
     const ctx = makeCtx();
 
     const verifyResult = await kernel.executeVerify(dso, ctx);
-    expect(verifyExecutor.execute).toHaveBeenCalledWith(dso, ctx);
-    expect(verifyResult.issues).toEqual(['slot overlap']);
+    expect(verifyExecutor.execute).toHaveBeenCalledWith(expect.objectContaining({
+      ...dso,
+      systemState: expect.objectContaining({
+        stageLock: expect.objectContaining({ locked: true, owner: 'VERIFY_REPAIR' }),
+      }),
+    }), ctx);
+    expect(verifyResult.issues).toEqual([{ code: 'TIME_WINDOW_OVERLAP', class: 'CONFLICT', message: 'slot overlap' }]);
     expect(verifyResult.confidenceDelta).toBe(-0.2);
     expect(verifyResult.newState.confidence).toBeCloseTo(0.7); // 0.9 + (-0.2)
     expect(verifyResult.newState.systemState?.currentPhase).toBe('VERIFY');
@@ -140,6 +145,74 @@ describe('DecisionKernelService VERIFY -> REPAIR loop', () => {
     const repairResult = await kernel.executeRepair(dso, ctx);
     expect(repairResult.repairApplied).toBe(false);
     expect(repairResult.newState).toBe(dso);
+  });
+
+  it('当 DSO.optimizationHints 指示 fail-safe 时 VERIFY 应短路并不调用 verifyExecutor', async () => {
+    const verifyExecutor = {
+      execute: jest.fn().mockResolvedValue({
+        issues: ['should-not-run'],
+        confidenceDelta: -0.5,
+      }),
+    };
+    const kernel = makeKernel({ verifyExecutor });
+    const dso = {
+      ...makeState('req-vr-fs'),
+      optimizationHints: { failSafeAction: 'BLOCK', failSafeReason: 'META_BUDGET_EXHAUSTED' } as any,
+    } as DecisionState;
+    const ctx = makeCtx('req-vr-fs');
+
+    const verifyResult = await kernel.executeVerify(dso, ctx);
+
+    expect(verifyExecutor.execute).not.toHaveBeenCalled();
+    expect(verifyResult.issues.length).toBe(1);
+    expect(verifyResult.issues[0]?.message).toContain('META_BUDGET_FAIL_SAFE(BLOCK)');
+    expect(verifyResult.confidenceDelta).toBeLessThan(0);
+    expect(verifyResult.newState.systemState?.currentPhase).toBe('VERIFY');
+  });
+
+  it('当 DSO.optimizationHints 指示 fail-safe BLOCK 时 REPAIR 应短路并不调用 repairExecutor', async () => {
+    const repairExecutor = {
+      execute: jest.fn().mockResolvedValue({
+        itinerary: { request_id: 'req-vr-fs-repair', days: [] },
+        repairApplied: true,
+      }),
+    };
+    const kernel = makeKernel({ repairExecutor });
+    const dso = {
+      ...makeState('req-vr-fs-repair'),
+      optimizationHints: { failSafeAction: 'BLOCK', failSafeReason: 'META_BUDGET_EXHAUSTED' } as any,
+    } as DecisionState;
+    const ctx = makeCtx('req-vr-fs-repair');
+
+    const repairResult = await kernel.executeRepair(dso, ctx);
+
+    expect(repairExecutor.execute).not.toHaveBeenCalled();
+    expect(repairResult.repairApplied).toBe(false);
+    expect(repairResult.newState.systemState?.currentPhase).toBe('REPAIR');
+  });
+
+  it('当 DSO.optimizationHints 指示 fail-safe ADJUST_REQUIRED 时 REPAIR 应把指令注入 ctx.gateResult.required_adjustments', async () => {
+    const repairExecutor = {
+      execute: jest.fn().mockResolvedValue({
+        itinerary: { request_id: 'req-vr-fs-adjust-repair', days: [] },
+        repairApplied: true,
+      }),
+    };
+    const kernel = makeKernel({ repairExecutor });
+    const dso = {
+      ...makeState('req-vr-fs-adjust-repair'),
+      optimizationHints: { failSafeAction: 'ADJUST_REQUIRED', failSafeReason: 'META_BUDGET_BELOW_MIN(sample<=40)' } as any,
+    } as DecisionState;
+    const ctx = makeCtx('req-vr-fs-adjust-repair');
+
+    await kernel.executeRepair(dso, ctx);
+
+    const call = repairExecutor.execute.mock.calls[0];
+    expect(call).toBeTruthy();
+    const passedCtx = call[1] as PhaseExecutorContext;
+    expect(passedCtx.gateResult?.required_adjustments?.some((a) => a.action === 'REDUCE_SCOPE_OR_ADD_EVIDENCE')).toBe(
+      true,
+    );
   });
 });
 

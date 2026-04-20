@@ -1,0 +1,460 @@
+{
+  "generatedAt": "2026-04-17T15:44:30.587Z",
+  "mode": "fixtures",
+  "n": 10,
+  "totalMs": 229,
+  "observability": {
+    "schemaVersion": "cgus-replay-observability/v1",
+    "generatedAt": "2026-04-17T15:44:30.587Z",
+    "runTimestamp": "2026-04-17T15:44:30.587Z",
+    "corpus": "td-replay-fixtures",
+    "caseCount": 10,
+    "fixtureVersion": "engine-dso-v1",
+    "rankAuthorityRates": {
+      "mcEligibleRate": 1,
+      "winnerChangedRate": 0,
+      "winnerLockedButTopNChangedRate": 1,
+      "marginBlockedFlipRate": 0.9
+    },
+    "counts": {
+      "total": 10,
+      "eligible": 10,
+      "winnerChanged": 0,
+      "winnerLockedButTopNChanged": 10,
+      "marginBlockedFlip": 9
+    }
+  },
+  "mcRankAuthority": {
+    "rerankEnabled": true,
+    "minSamplesPerCandidate": 20,
+    "minTopMargin": 0.05,
+    "compareTopN": 5
+  },
+  "aggregates": {
+    "rankAuthority": {
+      "deterministicVsMcDisagreementRate": 0.9,
+      "mcEligibleRate": 1,
+      "winnerChangedRate": 0,
+      "eligibleButUnchangedRate": 1,
+      "winnerLockedButTopNChangedRate": 1,
+      "marginBlockedFlipRate": 0.9,
+      "mcAddsRankingValueWithoutWinnerInstability": true,
+      "counts": {
+        "total": 10,
+        "disagreements": 9,
+        "eligible": 10,
+        "winnerChanged": 0,
+        "eligibleButUnchanged": 10,
+        "winnerLockedButTopNChanged": 10,
+        "marginBlockedFlip": 9
+      }
+    }
+  },
+  "env": {
+    "MONTE_CARLO_SAMPLES": "200",
+    "KERNEL_CGUS_MC_RERANK_ENABLED": "true",
+    "KERNEL_CGUS_MC_RERANK_MIN_TOP_MARGIN": "0.05"
+  },
+  "results": [
+    {
+      "id": "iceland-highlands-001",
+      "title": "冰岛高地路线 - 中等强度用户",
+      "elapsedMs": 51,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.00012499999999993072,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-10"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-7",
+          "plan-op-reduce-effort-10",
+          "plan-op-reduce-effort-4"
+        ]
+      }
+    },
+    {
+      "id": "iceland-highlands-dem-missing-001",
+      "title": "冰岛高地路线 - DEM 缺失场景",
+      "elapsedMs": 32,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-2",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.00027500000000013625,
+        "topCiWidth": 0.0020000000000000018
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-10"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-7",
+          "plan-op-reduce-effort-4",
+          "plan-op-reduce-effort-10"
+        ]
+      }
+    },
+    {
+      "id": "iceland-highlands-pace-adjust-001",
+      "title": "冰岛高地路线 - 需要节奏调整",
+      "elapsedMs": 22,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-reduce-effort-14",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 1.1102230246251565e-16,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-14"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-reduce-effort-14",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-8",
+          "plan-op-reduce-effort-20"
+        ]
+      }
+    },
+    {
+      "id": "iceland-highlands-spatial-repair-001",
+      "title": "冰岛高地路线 - 需要空间修复",
+      "elapsedMs": 18,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.0002749999999999142,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-10"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-7",
+          "plan-op-reduce-effort-10",
+          "plan-op-reduce-effort-4"
+        ]
+      }
+    },
+    {
+      "id": "iceland-highlands-compound-stress-001",
+      "title": "冰岛高地路线 - 复合压力场景",
+      "elapsedMs": 26,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-1",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.00009999999999987796,
+        "topCiWidth": 0.0020000000000000018
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-14"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-8",
+          "plan-op-reduce-effort-14",
+          "plan-op-reduce-effort-20"
+        ]
+      }
+    },
+    {
+      "id": "iceland-ring-road-001",
+      "title": "冰岛环岛路线 - 保守基线",
+      "elapsedMs": 18,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-2",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.0001500000000000945,
+        "topCiWidth": 0.0020000000000000018
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12",
+          "plan-op-reduce-effort-4",
+          "plan-op-reduce-effort-8"
+        ]
+      }
+    },
+    {
+      "id": "iceland-ring-road-pace-adjust-001",
+      "title": "冰岛环岛路线 - 节奏压力升高",
+      "elapsedMs": 16,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-1",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.000200000000000089,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-reduce-effort-7",
+          "plan-op-reduce-effort-18",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12"
+        ]
+      }
+    },
+    {
+      "id": "iceland-ring-road-spatial-repair-001",
+      "title": "冰岛环岛路线 - 空间约束恶化",
+      "elapsedMs": 16,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-3",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.000200000000000089,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12",
+          "plan-op-reduce-effort-4",
+          "plan-op-reduce-effort-8"
+        ]
+      }
+    },
+    {
+      "id": "golden-iceland-ring-road-2026q3-001",
+      "title": "Golden Iceland Ring Road Capture",
+      "elapsedMs": 14,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-base",
+        "sameWinner": true,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": false,
+        "topMargin": 0.00009999999999998899,
+        "topCiWidth": 0.0020000000000000018
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-12"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-reduce-effort-12",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-8",
+          "plan-op-reduce-effort-4"
+        ]
+      }
+    },
+    {
+      "id": "golden-iceland-highlands-2026q3-002",
+      "title": "Golden Iceland Highlands Repair Capture",
+      "elapsedMs": 15,
+      "rankAuthority": {
+        "deterministicTopId": "plan-base",
+        "mcTopId": "plan-op-pace-up-1",
+        "sameWinner": false,
+        "sampleOk": true,
+        "confidenceOk": true,
+        "marginOk": false,
+        "mcEligibleForRerank": true,
+        "rerankEnabled": true,
+        "winnerSource": "deterministic",
+        "winnerChanged": false,
+        "eligibleButUnchanged": true,
+        "winnerLockedButTopNChanged": true,
+        "marginBlockedFlip": true,
+        "topMargin": 0.0007000000000000339,
+        "topCiWidth": 0.0035000000000000586
+      },
+      "rankReplaySnapshot": {
+        "schemaVersion": "cgus-replay-rank-snapshot/v1",
+        "compareTopN": 5,
+        "deterministicTopN": [
+          "plan-base",
+          "plan-op-pace-up-1",
+          "plan-op-pace-up-2",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-10"
+        ],
+        "finalTopN": [
+          "plan-base",
+          "plan-op-pace-up-3",
+          "plan-op-reduce-effort-4",
+          "plan-op-reduce-effort-10",
+          "plan-op-reduce-effort-7"
+        ]
+      }
+    }
+  ]
+}

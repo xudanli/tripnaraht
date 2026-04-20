@@ -52,6 +52,7 @@ import { ReadinessService } from '../../trips/readiness/services/readiness.servi
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
+import { DecisionReplayService } from './decision-replay.service';
 // Domain Agents (World Model Layer)
 import { GeoAgentService } from './domain-agents/geo-agent.service';
 import { WeatherAgentService } from './domain-agents/weather-agent.service';
@@ -60,6 +61,8 @@ import { ExperienceAgentService } from './domain-agents/experience-agent.service
 import { TokenStatsService } from './token-stats.service';
 // Phase 2.1: Decision Kernel
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
+import type { HarnessTraceFinalStatus } from '../../harness/tracing/harness-trace.types';
+import { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import { TdfpmCalculatorService } from '../../trips/decision/services/tdfpm-calculator.service';
 import type { TdfpmDayContext } from '../../trips/decision/services/tdfpm-calculator.service';
 import {
@@ -67,7 +70,40 @@ import {
   decisionStateToOrchestratorState,
   buildPatchFromDSOPrimary,
 } from '../../decision/kernel/orchestrator-state-mapper';
-import { DecisionState } from '../../decision/kernel/decision-state.types';
+import {
+  DecisionState,
+  type DecisionStatePatch,
+  type PoiPlanningDecisionSlice,
+} from '../../decision/kernel/decision-state.types';
+import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
+import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
+import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
+import { GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import { POI_PLANNING_SCORE_REASON } from '../../planning-policy/constants/poi-planning-score-reasons';
+import {
+  buildPoiPlanningOutcomePhaseReport,
+  type PoiPlanningAdmissionDiagnosticsInput,
+} from '../../planning-policy/utils/poi-planning-outcome-metrics.util';
+import {
+  buildPoiPlanningAdmissionDiagnostics,
+  enforceRequiredAnchorsTopN,
+  poiPlanningRowIdentityKey,
+} from '../../planning-policy/utils/poi-planning-anchor-admission.util';
+import {
+  goldenCircleEntityStrongMatch,
+  keywordMatchResearchPoiToSlug,
+  researchPoiHasStableId,
+} from '../../planning-policy/utils/anchor-entity-match.util';
+import {
+  buildCandidateRetrievalQueryPlan,
+  mergeResearchPoiLists,
+} from '../../planning-policy/utils/build-candidate-retrieval-query-plan.util';
+import {
+  countPoiPlanningFallbackInPois,
+  extractPlanningSlugsFromItinerary,
+  extractPlanningSlugsFromPois,
+  type MinimalItineraryItem,
+} from '../../planning-policy/utils/poi-planning-slug-resolve.util';
 import type { IDsoLatestStateProvider } from '../../decision/kernel/dso-latest-state-provider.interface';
 import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 // 护城河扩展：预测性世界模型
@@ -132,6 +168,10 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly tdfpmCalculator?: TdfpmCalculatorService,
     // 多代理并发：提交前从 store 读取最新 DSO，冲突时重试
     @Optional() @Inject(DSO_LATEST_STATE_PROVIDER) private readonly dsoLatestStateProvider?: IDsoLatestStateProvider,
+    // Decision Replay snapshots (optional)
+    @Optional() private readonly decisionReplay?: DecisionReplayService,
+    /** Phase 1：区域锚点 → DSO.poiPlanning */
+    @Optional() private readonly regionAnchorPlanning?: RegionAnchorPlanningService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -143,6 +183,24 @@ export class ClaudeOrchestratorService {
       this.logger.log(`[ClaudeOrchestratorService] 可用 Skills 数量: ${skillsCount}`);
     } else {
       this.logger.warn(`[ClaudeOrchestratorService] ⚠️ SkillsRegistry 未注入！`);
+    }
+  }
+
+  private isDecisionReplayAutoSnapshotEnabled(): boolean {
+    const v =
+      this.configService?.get<string>('DECISION_REPLAY_AUTO_SNAPSHOT') ??
+      process.env.DECISION_REPLAY_AUTO_SNAPSHOT ??
+      'false';
+    return v === 'true' || v === '1';
+  }
+
+  private maybeSnapshot(state: OrchestratorState, trigger: 'AUTO' | 'USER_ACTION' | 'CHECKPOINT'): void {
+    if (!this.decisionReplay) return;
+    if (!this.isDecisionReplayAutoSnapshotEnabled()) return;
+    try {
+      this.decisionReplay.createSnapshot(state, trigger);
+    } catch (e: any) {
+      this.logger.warn(`[Claude Orchestrator] DecisionReplay snapshot failed: ${e?.message}`);
     }
   }
 
@@ -173,6 +231,40 @@ export class ClaudeOrchestratorService {
     for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
     const bucket = h % 100;
     return bucket < percent;
+  }
+
+  /**
+   * 编排返回前闭合内存 Harness trace（`HARNESS_RECORD_TRACE=1`）：写入 `endedAt` / 业务终态。
+   * 若 harness 已失败收口（`endedAt` 已存在），则不变更。
+   */
+  private finalizeHarnessTraceFromOrchestration(
+    decisionState: DecisionState | undefined,
+    finalStatus: HarnessTraceFinalStatus,
+  ): void {
+    if (!this.decisionKernel || !decisionState) return;
+    this.decisionKernel.finalizeHarnessTraceIfRecorded(decisionState, finalStatus);
+  }
+
+  /**
+   * Durable 恢复：由 `lastStep` 推导下一 Harness 硬阶段，并对 INTAKE 完成态跳过重复 INTAKE（直接进入 RESEARCH 准入）。
+   */
+  private computeResumeHarnessEntryFromLast(last?: string): HarnessStepName {
+    if (!last) return HarnessStepName.INTAKE;
+    if (last === HarnessStepName.INTAKE || last === 'INTAKE') {
+      return HarnessStepName.RESEARCH;
+    }
+    const order: HarnessStepName[] = [
+      HarnessStepName.INTAKE,
+      HarnessStepName.RESEARCH,
+      HarnessStepName.GATE_EVAL,
+      HarnessStepName.PLAN_GEN,
+      HarnessStepName.VERIFY,
+      HarnessStepName.REPAIR,
+      HarnessStepName.NARRATE,
+    ];
+    const idx = order.indexOf(last as HarnessStepName);
+    if (idx < 0) return HarnessStepName.INTAKE;
+    return order[Math.min(idx + 1, order.length - 1)]!;
   }
 
   /**
@@ -318,7 +410,11 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 智能编排主入口
+   * 智能编排主入口（CLAUDE_DYNAMIC 等）。
+   *
+   * **Harness 内存 trace**：本方法内大量 early `return` 与 `executePlan` 出口**不**经过 `buildSuccessResult` / `buildErrorResult`，
+   * 因而**不**调用 `finalizeHarnessTraceFromOrchestration`。通常此路径也未初始化 DSO，无 `HARNESS_RECORD_TRACE` 下可闭合的 trace；
+   * 新建行程且能解析 `countryCode` 时会委派 **`orchestrateWithStateMachine`**，其出口经 `build*` 并收口（见 `docs/Harness Runtime.md` §10.1）。
    */
   async orchestrate(
     request: RouteAndRunRequestDto,
@@ -353,7 +449,7 @@ export class ClaudeOrchestratorService {
         if (countryCode) {
           this.logger.log(`[Claude Orchestrator] 新建行程规划，countryCode=${countryCode}，走专利状态机流程`);
           const smDeadline = deadline ?? createDeadline(60_000);
-          const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline);
+          const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline, undefined);
           smResult.totalDuration = Date.now() - startTime;
           return smResult;
         } else {
@@ -2291,6 +2387,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     context: AgentContext,
     deadline?: { remainingMs: () => number; clamp: (ms: number, minMs?: number) => number },
+    resume?: { decision_state: DecisionState; checkpoint_loaded?: boolean },
   ): Promise<OrchestrationResult> {
     const startTime = Date.now();
     this.logger.log(`[Claude Orchestrator] 开始状态机编排: request_id=${request.request_id}`);
@@ -2332,86 +2429,244 @@ ${JSON.stringify(routingDecision, null, 2)}
     // Phase 2.4: DECISION_KERNEL_ENABLED=false 可回滚到无 Kernel 路径
     // P1: DECISION_KERNEL_AB_PERCENT 设置时按 hash 分流（如 10 表示 10% 实验组）
     let decisionState: DecisionState | undefined;
-    if (this.decisionKernel && this.isKernelEnabledForRequest(request)) {
-      decisionState = this.decisionKernel.createInitialState(request.request_id);
+    let resumeSkipIntake = false;
+    if (resume?.decision_state && this.decisionKernel && this.isKernelEnabledForRequest(request)) {
+      decisionState = resume.decision_state;
+      const requestId = request.request_id;
+      const nextHarness = this.computeResumeHarnessEntryFromLast(decisionState.systemState?.lastStep);
+      let step = nextHarness;
+      let admission = await this.decisionKernel.validateStepAdmission(decisionState, step, { requestId });
+      let depth = 0;
+      while (!admission.passed && admission.suggested_fallback_step && depth < 8) {
+        depth += 1;
+        step = admission.suggested_fallback_step;
+        admission = await this.decisionKernel.validateStepAdmission(decisionState, step, { requestId });
+      }
+      if (!admission.passed) {
+        this.logger.warn(
+          `[Claude Orchestrator] Durable resume: 准入失败，回退全新 DSO。末次尝试 step=${String(step)} codes=${admission.validation_results
+            .filter((r) => !r.passed)
+            .map((r) => r.code)
+            .join(',') ?? 'n/a'}`,
+        );
+        decisionState = this.decisionKernel.createInitialState(requestId, {
+          evaluationRunId: request.meta?.run_id,
+        });
+        resumeSkipIntake = false;
+      } else {
+        const ls = decisionState.systemState?.lastStep;
+        resumeSkipIntake = ls === HarnessStepName.INTAKE || ls === 'INTAKE';
+        decisionState = this.decisionKernel.updateState(decisionState, {
+          harnessRuntime: {
+            ...(decisionState.harnessRuntime ?? {}),
+            resume_admission_step: step,
+            resume_admission_passed: true,
+          },
+        });
+        this.logger.debug(
+          `[Claude Orchestrator] Durable resume: DSO 已加载 admission_step=${String(step)} skip_intake=${resumeSkipIntake}`,
+        );
+      }
+    } else if (this.decisionKernel && this.isKernelEnabledForRequest(request)) {
+      decisionState = this.decisionKernel.createInitialState(request.request_id, {
+        evaluationRunId: request.meta?.run_id,
+      });
       this.logger.debug(`[Claude Orchestrator] DSO 已初始化: requestId=${request.request_id}`);
     }
 
     try {
-      // 步骤 1: INTAKE - 解析请求 & 缺口识别
-      await this.executeIntakeStep(request, context, state, llmProvider);
+      // 步骤 1: INTAKE - 解析请求 & 缺口识别（Durable：lastStep=INTAKE 时跳过重复 INTAKE）
+      if (!resumeSkipIntake) {
+        await this.executeIntakeStep(request, context, state, llmProvider);
+      } else {
+        this.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
+        state.current_step = 'STATE_UPDATE';
+        state.metadata.last_updated_at = new Date().toISOString();
+      }
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 2: STATE_UPDATE - Phase 2.3 显式 DSO 同步
       decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
+      this.maybeSnapshot(state, 'AUTO');
 
       // HARD 缺口 + 已生成澄清问题：必须在 RESEARCH 之前返回，避免 transport.search 等技能在「未指定」上失败
       if (this.shouldReturnClarificationForHardGaps(state)) {
         this.logger.debug(
           `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
         );
-        return this.buildClarificationResult(state, startTime);
+        return this.buildClarificationResult(state, startTime, decisionState);
       }
 
       // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
       decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 4: POI_SELECTION - 明确执行 POI 选择/排序，不直接从 RESEARCH 跳到 PLAN_GEN
-      const poiSelectionResult = await this.executePoiSelectionStep(state);
+      const poiSelectionResult = await this.executePoiSelectionStep(state, decisionState);
+      this.maybeSnapshot(state, 'AUTO');
       if (poiSelectionResult.allowWithFallback) {
         this.logger.debug('[Claude Orchestrator] POI_SELECTION 无数据，触发 FALLBACK');
         this.applyFallbackPlan(state);
+        this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
         state.current_step = 'DONE';
         state.metadata.last_updated_at = new Date().toISOString();
         state.metadata.total_duration_ms = Date.now() - startTime;
+        this.maybeSnapshot(state, 'CHECKPOINT');
         return this.buildSuccessResult(state, startTime, decisionState);
       }
       if (poiSelectionResult.needsClarification) {
         this.logger.debug(
           `[Claude Orchestrator] POI_SELECTION 无同国家候选，返回 NEED_MORE_INFO`,
         );
-        return this.buildClarificationResult(state, startTime);
+        this.maybeSnapshot(state, 'CHECKPOINT');
+        return this.buildClarificationResult(state, startTime, decisionState);
       }
 
       // 步骤 5: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
       decisionState = await this.executeGateEvalPhase(decisionState, state, request, context, llmProvider);
       this.relaxGateForPartialIfEligible(state);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 如果 Gate 结果为 BLOCK，直接返回
       if (state.gate_result?.gate_result === 'BLOCK') {
+        this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
+        this.maybeSnapshot(state, 'CHECKPOINT');
         return this.buildBlockedResult(state, startTime, decisionState);
       }
 
       // 步骤 6: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
       decisionState = await this.executeContextBuildStep(request, context, state, decisionState);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 7: PLAN_GEN - KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
       decisionState = await this.executePlanGenPhase(decisionState, state, request, context, llmProvider);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 8: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
       decisionState = await this.executeOptimizeStep(state, decisionState);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 9: VERIFY - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
       decisionState = await this.executeVerifyPhase(decisionState, state, request, context, llmProvider);
       decisionState = this.syncConfidenceAfterVerify(state, decisionState) ?? decisionState;
+      this.maybeSnapshot(state, 'AUTO');
+
+      // FATAL 不可修复：跳过 REPAIR/NARRATE，直接 FAILED
+      if (decisionState?.verification?.hasFatal) {
+        const msg =
+          decisionState.verification.issues.find((i) => i.class === 'FATAL')?.message ??
+          'FATAL_VERIFICATION_ISSUE';
+        state.current_step = 'FAILED';
+        state.errors.push({
+          step: 'VERIFY',
+          error_code: 'VERIFICATION_FATAL',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        this.maybeSnapshot(state, 'CHECKPOINT');
+        return this.buildErrorResult(state, new Error(msg), startTime, decisionState);
+      }
 
       // 步骤 10: REPAIR - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair（条件执行）
       if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
+        const euBefore = decisionState?.optimizationHints?.expectedUtility;
         decisionState = await this.executeRepairPhase(decisionState, state, request, context, llmProvider) ?? decisionState;
+        this.maybeSnapshot(state, 'AUTO');
+
+        // Utility Decay：修复后重新 OPTIMIZE（轻量）并检测 E[U] 连续下降
+        if (this.decisionKernel && decisionState) {
+          try {
+            // 重用 OPTIMIZE 的 fatigue 计算逻辑（与 executeOptimizeStep 一致）
+            let fatigue: number | undefined;
+            const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
+            if (planDraft?.days?.length && this.tdfpmCalculator) {
+              const contexts = this.itineraryToTdfpmDayContexts(planDraft);
+              const scores = contexts.map((c) => this.tdfpmCalculator!.computeFatigueScore(c).fatigueScore);
+              const maxScore = Math.max(...scores, 0);
+              fatigue = Math.min(1, maxScore / 100);
+            }
+            const { newState: afterOpt, optimizationHints } = await this.decisionKernel.executeOptimize(decisionState, {
+              fatigue,
+            });
+            decisionState = afterOpt;
+            const euAfter = optimizationHints?.expectedUtility;
+            const prevEu = euBefore ?? decisionState.systemState?.lastExpectedUtility;
+            const prevDeclines = decisionState.systemState?.consecutiveUtilityDeclines ?? 0;
+            const decline = typeof prevEu === 'number' && typeof euAfter === 'number' && euAfter < prevEu;
+            const nextDeclines = decline ? prevDeclines + 1 : 0;
+            decisionState = this.decisionKernel.updateState(decisionState, {
+              systemState: {
+                requestId: state.request_id,
+                lastExpectedUtility: typeof euAfter === 'number' ? euAfter : prevEu,
+                consecutiveUtilityDeclines: nextDeclines,
+              },
+            });
+
+            const maxDeclines = parseInt(process.env.DECISION_REPAIR_UTILITY_DECAY_MAX ?? '2', 10);
+            if (maxDeclines > 0 && nextDeclines >= maxDeclines) {
+              state.clarification_questions = [
+                {
+                  id: 'utility_decay_halt_confirmation',
+                  question:
+                    `自动修复后期望效用已连续 ${nextDeclines} 次下降（E[U] ${String(prevEu)} → ${String(euAfter)}）。是否缩小范围/放宽约束，或由您确认继续？`,
+                  type: 'NEED_CONFIRMATION',
+                  required: true,
+                  options: [
+                    { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+                    { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+                    { id: 'continue_auto_repair', label: '继续自动修复' },
+                  ],
+                } as any,
+              ];
+              this.maybeSnapshot(state, 'CHECKPOINT');
+              return this.buildClarificationResult(state, startTime, decisionState);
+            }
+          } catch (e: any) {
+            this.logger.debug(`[Claude Orchestrator] Utility decay check skipped: ${e?.message}`);
+          }
+        }
+      }
+
+      // 修复收敛保护：repairCount 超过阈值后转为 NEED_CONFIRMATION（避免 VERIFY↔REPAIR 横跳）
+      const repairCount = decisionState?.systemState?.repairCount ?? 0;
+      const maxRepairs = parseInt(process.env.DECISION_MAX_REPAIR_COUNT ?? '3', 10);
+      if (repairCount >= maxRepairs && maxRepairs > 0) {
+        state.clarification_questions = [
+          {
+            id: 'repair_halt_confirmation',
+            question: `系统已自动修复尝试 ${repairCount} 次，仍未收敛。是否需要缩小范围/放宽约束/或由您确认继续自动修复？`,
+            type: 'NEED_CONFIRMATION',
+            required: true,
+            options: [
+              { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+              { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+              { id: 'continue_auto_repair', label: '继续自动修复' },
+            ],
+            hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
+          } as any,
+        ];
+        this.maybeSnapshot(state, 'CHECKPOINT');
+        return this.buildClarificationResult(state, startTime, decisionState);
       }
 
       // 步骤 11: NARRATE - 产出用户可读解释（不得改硬字段）
+      this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
       await this.executeNarrateStep(request, context, state, llmProvider);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 11.5: FEEDBACK - 专利反馈学习模块，记录决策日志（异步，不阻塞）
       decisionState = await this.executeFeedbackStep(state, decisionState) ?? decisionState;
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 12: HALLUCINATION_DETECTION - 防幻觉检测
       await this.executeHallucinationDetectionStep(request, context, state);
+      this.maybeSnapshot(state, 'AUTO');
 
       // 步骤 13: DONE
       state.current_step = 'DONE';
       state.metadata.last_updated_at = new Date().toISOString();
       state.metadata.total_duration_ms = Date.now() - startTime;
+      this.maybeSnapshot(state, 'CHECKPOINT');
 
       return this.buildSuccessResult(state, startTime, decisionState);
     } catch (error: any) {
@@ -2447,6 +2702,7 @@ ${JSON.stringify(routingDecision, null, 2)}
             executed_steps: state.decision_log.map(log => log.step),
           },
         });
+        this.maybeSnapshot(state, 'CHECKPOINT');
       } else {
         state.current_step = 'FAILED';
         state.errors.push({
@@ -2455,6 +2711,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           message: error?.message || '未知错误',
           timestamp: new Date().toISOString(),
         });
+        this.maybeSnapshot(state, 'CHECKPOINT');
       }
 
       return this.buildErrorResult(state, error, startTime, decisionState);
@@ -2724,6 +2981,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     try {
       const tripPlanRequest = this.convertToTripPlanRequest(request, state);
       state.trip_plan_request = tripPlanRequest;
+      state.metadata.intake_user_message = request.message;
 
       if (this.decisionKernel) {
         const intakeCtx: import('../../decision/kernel/interfaces/phase-executor.interface').IntakeExecutorContext = {
@@ -2732,7 +2990,9 @@ ${JSON.stringify(routingDecision, null, 2)}
           tripPlanRequest: tripPlanRequest as any,
           orchestratorState: state,
         };
-        const dso = this.decisionKernel.createInitialState(state.request_id);
+        const dso = this.decisionKernel.createInitialState(state.request_id, {
+          evaluationRunId: request.meta?.run_id,
+        });
         const result = await this.decisionKernel.executeIntake(dso, intakeCtx);
 
         state.gaps = result.gaps as OrchestratorState['gaps'];
@@ -2846,16 +3106,122 @@ ${JSON.stringify(routingDecision, null, 2)}
       return newState;
     }
     return this.executePhaseViaKernel(decisionState, state, 'RESEARCH', () =>
-      this.executeResearchStep(request, context, state, llmProvider),
+      this.executeResearchStep(request, context, state, llmProvider, decisionState),
     );
   }
 
   /**
-   * POI_SELECTION 阶段：对 RESEARCH 产出的 POI 进行显式筛选和排序。
-   * 目标：避免 RESEARCH 结果被直接原样送入 PLAN_GEN。
+   * RESEARCH 产出的 POI 列表上应用 DSO.poiPlanning：先按 slug 匹配已有 POI，再排除，最后必要时 fallback 占位（冰岛）
+   */
+  private applyPoiPlanningToResearchPois(
+    pois: any[],
+    decisionState: DecisionState | undefined,
+    destinationCountry: string | undefined,
+  ): { pois: any[]; excludedFilteredCount: number } {
+    const slice = decisionState?.poiPlanning;
+    if (!slice?.poiPlan || destinationCountry !== 'IS') {
+      return { pois, excludedFilteredCount: 0 };
+    }
+    let out = [...pois];
+    let excludedFilteredCount = 0;
+    for (const slug of slice.poiPlan.excludedPoiIds ?? []) {
+      const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+      if (!kws?.length) continue;
+      out = out.filter((p) => {
+        const n = `${p?.name ?? ''} ${p?.nameCN ?? ''}`.toLowerCase();
+        const drop = kws.some((k) => n.includes(k.toLowerCase()));
+        if (drop) excludedFilteredCount++;
+        return !drop;
+      });
+    }
+    const matchedSlugs = new Set<string>();
+    const usedPoiKeys = new Set<string>();
+    const regionId = slice.routeIntent?.regionId;
+    for (const slug of slice.poiPlan.requiredAnchorPoiIds ?? []) {
+      const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+      if (!kws?.length) continue;
+      const pool = out.filter((p) => {
+        const k = poiPlanningRowIdentityKey(p);
+        return k && !usedPoiKeys.has(k);
+      });
+      let found: any =
+        pool.find(
+          (p) =>
+            researchPoiHasStableId(p) &&
+            regionId === 'golden_circle' &&
+            goldenCircleEntityStrongMatch(p, slug),
+        ) ?? pool.find((p) => keywordMatchResearchPoiToSlug(p, slug));
+      if (found) {
+        const isRetrieved =
+          researchPoiHasStableId(found) &&
+          regionId === 'golden_circle' &&
+          goldenCircleEntityStrongMatch(found, slug);
+        found.poi_planning_anchor_slug = slug;
+        found.poi_planning_anchor_source = isRetrieved ? 'retrieved' : 'matched_existing';
+        found.source = found.source ?? 'poi_planning_matched_existing';
+        found.poi_planning_admission_protected = true;
+        found.poi_planning_score_reasons = [
+          ...(found.poi_planning_score_reasons ?? []),
+          POI_PLANNING_SCORE_REASON.ANCHOR_MATCHED_EXISTING,
+          POI_PLANNING_SCORE_REASON.REQUIRED_ANCHOR,
+        ];
+        matchedSlugs.add(slug);
+        const pk = poiPlanningRowIdentityKey(found);
+        if (pk) usedPoiKeys.add(pk);
+      }
+    }
+    const signatures = new Set(
+      out.map((p) => `${p?.name ?? ''} ${p?.nameCN ?? ''}`.toLowerCase()),
+    );
+    for (const slug of slice.poiPlan.requiredAnchorPoiIds ?? []) {
+      if (matchedSlugs.has(slug)) continue;
+      const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+      if (!kws?.length) continue;
+      const primary = kws[0];
+      const stub = {
+        name: primary,
+        nameCN: primary,
+        category: 'ATTRACTION',
+        poi_planning_anchor_slug: slug,
+        source: 'poi_planning_fallback',
+        poi_planning_anchor_source: 'fallback',
+        poi_planning_admission_protected: true,
+        poi_planning_score_reasons: [
+          POI_PLANNING_SCORE_REASON.ANCHOR_FALLBACK_PLACEHOLDER,
+          POI_PLANNING_SCORE_REASON.REQUIRED_ANCHOR,
+        ],
+      };
+      out.unshift(stub);
+      signatures.add(primary.toLowerCase());
+    }
+    return { pois: out, excludedFilteredCount };
+  }
+
+  /** Phase 2.6：enforce 阶段与 merge 占位符同形，保证 passesHardPoiGuards（IS） */
+  private buildPoiPlanningAnchorFallbackStub(slug: string): Record<string, unknown> {
+    const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+    const primary = kws?.[0] ?? slug;
+    return {
+      name: primary,
+      nameCN: primary,
+      category: 'ATTRACTION',
+      poi_planning_anchor_slug: slug,
+      source: 'poi_planning_fallback',
+      poi_planning_anchor_source: 'fallback',
+      poi_planning_admission_protected: true,
+      poi_planning_score_reasons: [
+        POI_PLANNING_SCORE_REASON.ANCHOR_FALLBACK_PLACEHOLDER,
+        POI_PLANNING_SCORE_REASON.REQUIRED_ANCHOR,
+      ],
+    };
+  }
+
+  /**
+   * POI_SELECTION：对 RESEARCH 产出的 POI 筛选排序；消费 DSO.poiPlanning 与 score_reason。
    */
   private async executePoiSelectionStep(
     state: OrchestratorState,
+    decisionState?: DecisionState,
   ): Promise<{ needsClarification: boolean; allowWithFallback: boolean }> {
     const stepStartTime = Date.now();
     state.current_step = 'POI_SELECTION';
@@ -2880,7 +3246,25 @@ ${JSON.stringify(routingDecision, null, 2)}
     const destinationCity = this.normalizeText(destinationRaw);
 
     const deduped = this.dedupePois(asArray);
-    const scoredRows = deduped
+    const planningAug = this.applyPoiPlanningToResearchPois(
+      deduped,
+      decisionState,
+      destinationCountry,
+    );
+    const withPlanning = planningAug.pois;
+    if (planningAug.excludedFilteredCount > 0) {
+      (state.metadata as Record<string, unknown>).poiPlanningExcludedFilteredCount =
+        planningAug.excludedFilteredCount;
+    }
+    const sliceMeta = decisionState?.poiPlanning;
+    if (sliceMeta?.budgetGateApplied) {
+      (state.metadata as Record<string, unknown>).poiPlanningBudgetGateApplied = true;
+      (state.metadata as Record<string, unknown>).poiPlanningFeasibility =
+        sliceMeta.schedulePlan?.feasibility;
+      (state.metadata as Record<string, unknown>).poiPlanningEnrichmentDisabled = true;
+    }
+    const poiPlanSlice = decisionState?.poiPlanning;
+    const scoredRows = withPlanning
       .filter((poi: any) =>
         this.passesHardPoiGuards(poi, destinationCountry, destinationRaw),
       )
@@ -2897,6 +3281,33 @@ ${JSON.stringify(routingDecision, null, 2)}
         );
         const dataCompletenessBonus =
           poi?.address && poi?.name ? 0.5 : 0;
+        let optionalBoost = 0;
+        if (
+          !poiPlanSlice?.budgetGateApplied &&
+          poiPlanSlice?.poiPlan?.optionalCandidatePoiIds?.length &&
+          destinationCountry === 'IS'
+        ) {
+          const hay = `${poi?.name ?? ''} ${poi?.nameCN ?? poi?.name ?? ''}`;
+          for (const slug of poiPlanSlice.poiPlan.optionalCandidatePoiIds) {
+            const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+            if (!kws?.length) continue;
+            if (
+              kws.some(
+                (k) =>
+                  hay.includes(k) ||
+                  hay.toLowerCase().includes(k.toLowerCase()),
+              )
+            ) {
+              optionalBoost = 2;
+              poi.poi_planning_score_reasons = [
+                ...(poi.poi_planning_score_reasons ?? []),
+                POI_PLANNING_SCORE_REASON.OPTIONAL_BOOST,
+              ];
+              break;
+            }
+          }
+        }
+        const anchorBoost = poi?.poi_planning_anchor_slug ? 3 : 0;
         return {
           poi,
           idx,
@@ -2907,7 +3318,9 @@ ${JSON.stringify(routingDecision, null, 2)}
           score:
             localityScore +
             openingHoursBonus +
-            dataCompletenessBonus -
+            dataCompletenessBonus +
+            optionalBoost +
+            anchorBoost -
             riskPenalty -
             idx * 0.01,
         };
@@ -2916,17 +3329,48 @@ ${JSON.stringify(routingDecision, null, 2)}
     const startCoordinates = this.tryExtractStartCoordinates(
       state.trip_plan_request?.origin,
     );
-    const scored = this.selectClusteredPois(
-      scoredRows.map((x) => x.poi),
-      8,
+    const rankedPois = scoredRows.map((x) => x.poi);
+    const requiredAnchors = poiPlanSlice?.poiPlan?.requiredAnchorPoiIds ?? [];
+    const topNLimit = 8;
+    let scored = this.selectClusteredPois(
+      rankedPois,
+      topNLimit,
       startCoordinates,
       destinationRaw,
     );
+    /** Phase 2.6：最后一跳强制锚点进入 TopN（候选来自 rankedPois；与聚类解耦） */
+    if (destinationCountry === 'IS' && requiredAnchors.length > 0) {
+      const beforeLen = scored.length;
+      scored = enforceRequiredAnchorsTopN(
+        scored,
+        rankedPois,
+        requiredAnchors,
+        topNLimit,
+        {
+          createFallbackForSlug: (slug) =>
+            this.buildPoiPlanningAnchorFallbackStub(slug),
+        },
+      );
+      this.logger.debug(
+        `[POI_PLANNING_ADMISSION] required=${JSON.stringify(requiredAnchors)} clustered_len=${beforeLen} final_len=${scored.length}`,
+      );
+    }
+
+    const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
+      buildPoiPlanningAdmissionDiagnostics(
+        decisionState?.poiPlanning,
+        withPlanning,
+        rankedPois,
+        scored,
+      ) ?? undefined;
+
+    this.recordPoiPlanningOutcomeAfterSelection(state, decisionState, scored, admissionDiag);
 
     if (state.metadata?.show_poi_trace) {
       const selectedForTrace = scored
         .slice(0, 4)
         .map((x) => this.toPoiTraceNode(x));
+      const metaObs = state.metadata as Record<string, unknown>;
       state.metadata.poi_trace = {
         ...(state.metadata.poi_trace || {}),
         policy: poiPolicy,
@@ -2941,6 +3385,23 @@ ${JSON.stringify(routingDecision, null, 2)}
         after_hard_guards: scoredRows.length,
         selected_after_rank: scored.length,
         country_filter_applied: Boolean(destinationCountry),
+        /** Phase 1.6：固定可观测块（与 docs/POI_REGION_INTENT_EVAL.md 对齐） */
+        poi_planning_trace: decisionState?.poiPlanning
+          ? {
+              regionId: decisionState.poiPlanning.routeIntent?.regionId,
+              resolution: decisionState.poiPlanning.resolution,
+              feasibility: decisionState.poiPlanning.schedulePlan?.feasibility,
+              budgetGateApplied: decisionState.poiPlanning.budgetGateApplied,
+              appliedBackoffSteps: decisionState.poiPlanning.appliedBackoffSteps,
+              narrationHint: decisionState.poiPlanning.narrationHint,
+            }
+          : undefined,
+        poiPlanningExcludedFilteredCount: metaObs.poiPlanningExcludedFilteredCount,
+        poiPlanningEnrichmentDisabled: metaObs.poiPlanningEnrichmentDisabled,
+        score_reasons_top: scoredRows.slice(0, 8).map((x: any) => ({
+          rank: x.idx + 1,
+          reasons: x.poi?.poi_planning_score_reasons ?? [],
+        })),
         debug_scores: scoredRows.slice(0, 12).map((x: any) => ({
           slot: `RANK_${x.idx + 1}`,
           desiredType: String(x.poi?.category ?? x.poi?.type ?? 'poi'),
@@ -2955,6 +3416,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           commutePenalty: x.riskPenalty,
           timeWindowPenalty: 0,
           totalScore: Number((x.score ?? 0).toFixed(2)),
+          score_reasons: x.poi?.poi_planning_score_reasons ?? [],
         })),
         commute_matrix:
           state.metadata?.show_commute_matrix === true
@@ -3130,6 +3592,78 @@ ${JSON.stringify(routingDecision, null, 2)}
     };
   }
 
+  /** Phase 2.0：DSO slice 摘要，写入 metadata 与 observability，便于无 DSO 回放对齐 */
+  private compactPoiPlanningSliceForOutcome(slice: PoiPlanningDecisionSlice | undefined):
+    | {
+        regionId?: string;
+        feasibility?: 'ok' | 'tight' | 'failed';
+        resolution?: PoiPlanningDecisionSlice['resolution'];
+        appliedBackoffSteps?: string[];
+        budgetGateApplied?: boolean;
+      }
+    | undefined {
+    if (!slice) return undefined;
+    return {
+      regionId: slice.routeIntent?.regionId,
+      feasibility: slice.schedulePlan?.feasibility,
+      resolution: slice.resolution,
+      appliedBackoffSteps: slice.appliedBackoffSteps,
+      budgetGateApplied: slice.budgetGateApplied,
+    };
+  }
+
+  /** POI_SELECTION 最终 TopN（聚类后）→ slug 与 outcome 指标 */
+  private recordPoiPlanningOutcomeAfterSelection(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+    scoredPois: unknown[],
+    admissionDiagnostics?: PoiPlanningAdmissionDiagnosticsInput,
+  ): void {
+    const slugs = extractPlanningSlugsFromPois(scoredPois);
+    const fb = countPoiPlanningFallbackInPois(scoredPois);
+    const report = buildPoiPlanningOutcomePhaseReport(decisionState?.poiPlanning, slugs, {
+      phase: 'poi_selection',
+      scoredPoisForRank: scoredPois,
+      fallbackAnchorCount: fb,
+      admissionDiagnostics,
+    });
+    const meta = state.metadata as Record<string, unknown>;
+    const prev = (meta.poiPlanningOutcome ?? {}) as Record<string, unknown>;
+    meta.poiPlanningOutcome = {
+      ...prev,
+      slice: this.compactPoiPlanningSliceForOutcome(decisionState?.poiPlanning),
+      poiSelection: report,
+    };
+  }
+
+  /** PLAN/REPAIR 之后最终 itinerary → slug 与 outcome 指标（与 poiSelection 对照） */
+  private recordPoiPlanningOutcomeAfterItinerary(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): void {
+    const slugs = extractPlanningSlugsFromItinerary(state.itinerary);
+    const itineraryItems: MinimalItineraryItem[] =
+      state.itinerary?.days?.flatMap((d) => (d.items ?? []) as MinimalItineraryItem[]) ?? [];
+    const report = buildPoiPlanningOutcomePhaseReport(decisionState?.poiPlanning, slugs, {
+      phase: 'itinerary_final',
+      itineraryItemsForReasons: itineraryItems,
+      fallbackAnchorCount: 0,
+    });
+    const meta = state.metadata as Record<string, unknown>;
+    const prev = (meta.poiPlanningOutcome ?? {}) as Record<string, unknown>;
+    meta.poiPlanningOutcome = {
+      ...prev,
+      slice: this.compactPoiPlanningSliceForOutcome(decisionState?.poiPlanning),
+      itineraryFinal: report,
+    };
+    if (state.metadata?.show_poi_trace) {
+      state.metadata.poi_trace = {
+        ...(state.metadata.poi_trace || {}),
+        poi_planning_outcome: meta.poiPlanningOutcome,
+      };
+    }
+  }
+
   private resolvePoiPolicy(
     explicitPolicy: unknown,
     requirePoiData: boolean,
@@ -3292,6 +3826,8 @@ ${JSON.stringify(routingDecision, null, 2)}
     if (/东京|大阪|京都|日本|tokyo|osaka|kyoto|japan/.test(d)) return 'JP';
     if (/首尔|韩国|seoul|korea/.test(d)) return 'KR';
     if (/上海|北京|广州|深圳|杭州|成都|重庆|中国|china/.test(d)) return 'CN';
+    /** 冰岛：POI_SELECTION / poiPlanning 冰岛分支依赖 ISO 国家码 IS */
+    if (/冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(d)) return 'IS';
     return undefined;
   }
 
@@ -3370,6 +3906,14 @@ ${JSON.stringify(routingDecision, null, 2)}
     destinationCountry?: string,
     destinationRaw?: string,
   ): boolean {
+    if (
+      destinationCountry === 'IS' &&
+      (poi?.poi_planning_anchor_slug ||
+        poi?.source === 'poi_planning_fallback' ||
+        poi?.source === 'poi_planning_matched_existing')
+    ) {
+      return true;
+    }
     const riskLevel = String(poi?.metadata?.risk_level ?? '').toUpperCase();
     if (riskLevel === 'HIGH') return false;
     if (!poi?.name) return false;
@@ -3663,13 +4207,30 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): Promise<DecisionState | undefined> {
     if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.trip_plan_request) {
       const stepStartTime = Date.now();
+      let dsoForPlan = decisionState;
+      if (
+        dsoForPlan.systemState?.pendingMigrations?.length &&
+        (dsoForPlan.tripState?.planDraft as { days?: unknown[] } | undefined)?.days?.length
+      ) {
+        dsoForPlan = this.decisionKernel.applyPrePlanMigrationInjections(dsoForPlan);
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'PRE_PLAN_MIGRATION_INJECTION',
+          actor: 'Kernel',
+          inputs_summary: '消费 DSO.systemState.pendingMigrations → 注入既有 planDraft',
+          outputs_summary: `剩余待迁移条目=${dsoForPlan.systemState?.pendingMigrations?.length ?? 0}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: { duration_ms: 0 },
+        });
+      }
       const ctx = {
         requestId: state.request_id,
         tripPlanRequest: state.trip_plan_request,
         researchData: state.research_data,
         gateResult: state.gate_result as any,
       };
-      const { newState, itinerary } = await this.decisionKernel.executePlanGen(decisionState, ctx);
+      const { newState, itinerary } = await this.decisionKernel.executePlanGen(dsoForPlan, ctx);
       const derived = decisionStateToOrchestratorState(newState, state);
       Object.assign(state, derived);
       state.itinerary = itinerary as Itinerary;
@@ -3740,6 +4301,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       const { newState, issues } = await this.decisionKernel.executeVerify(decisionState, ctx);
       const derived = decisionStateToOrchestratorState(newState, state);
       Object.assign(state, derived);
+      const fatalIssues = (issues as Array<{ class?: string; message?: string }>).filter((i) => i?.class === 'FATAL');
+      const conflictIssues = (issues as Array<{ class?: string }>).filter((i) => i?.class === 'CONFLICT');
+      const advisoryIssues = (issues as Array<{ class?: string }>).filter((i) => i?.class === 'ADVISORY');
+
+      // FATAL 的终止由主链在 VERIFY 后统一处理（避免在 phase 内 throw 导致非预期降级）。
+
+      // CONFLICT/ADVISORY：不一定阻塞 DONE。当前工程口径：只要有 issues 就进入 errors（后续 REPAIR gate 用）。
+      // ADVISORY 未来可从 errors 中剥离为 warnings；先保持兼容。
       if (issues.length > 0) {
         state.errors.push({
           step: 'VERIFY',
@@ -3754,7 +4323,10 @@ ${JSON.stringify(routingDecision, null, 2)}
         step: 'VERIFY',
         actor: 'Orchestrator',
         inputs_summary: 'Kernel 原生 VERIFY',
-        outputs_summary: issues.length > 0 ? `发现 ${issues.length} 个问题` : '验证通过',
+        outputs_summary:
+          issues.length > 0
+            ? `fatal=${fatalIssues.length} conflict=${conflictIssues.length} advisory=${advisoryIssues.length}`
+            : '验证通过',
         evidence_refs: [],
         timestamp: new Date().toISOString(),
         metadata: { duration_ms: Date.now() - stepStartTime, issues, guardian: 'DR_DRE' as GuardianType },
@@ -3855,6 +4427,41 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
+   * INTAKE 后 userIntent 已合并进 patch：解析区域意图并写入 DSO.poiPlanning（命中黄金圈等则自动产出骨架）
+   */
+  private applyPoiPlanningToPatch(
+    patch: DecisionStatePatch,
+    decisionState: DecisionState,
+    state: OrchestratorState,
+  ): void {
+    if (!this.regionAnchorPlanning) return;
+    const ui = patch.userIntent ?? decisionState.userIntent;
+    if (!ui) return;
+    const q = (state.metadata as { intake_user_message?: string }).intake_user_message;
+    const userRoute: Partial<UserRouteIntent> = {
+      regionId: ui.regionId,
+      mustIncludePoiIds: ui.mustIncludePoiIds,
+      excludePoiIds: ui.excludePoiIds,
+      totalBudgetMinutes: ui.totalBudgetMinutes,
+      pace: ui.pace,
+      styleTags: ui.styleTags,
+      availableStartTime: ui.availableStartTime,
+      availableEndTime: ui.availableEndTime,
+    };
+    const slice = this.regionAnchorPlanning.resolveAndBuildSlice(userRoute, q);
+    if (slice) {
+      patch.poiPlanning = slice;
+      const meta = state.metadata as Record<string, unknown>;
+      meta.poiPlanningFeasibility = slice.schedulePlan?.feasibility;
+      meta.poiPlanningBudgetGateApplied = slice.budgetGateApplied === true;
+      meta.poiPlanningResolution = slice.resolution;
+      this.logger.debug(
+        `[STATE_UPDATE] poiPlanning region=${slice.routeIntent?.regionId ?? 'n/a'} anchors=${slice.poiPlan?.requiredAnchorPoiIds?.join(',') ?? ''} budgetGate=${slice.budgetGateApplied}`,
+      );
+    }
+  }
+
+  /**
    * STATE_UPDATE 步骤：Phase 2.3 显式同步，专利权利要求 7 原子提交
    */
   private async executeStateUpdateStep(
@@ -3876,6 +4483,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       currentPhase: 'STATE_UPDATE',
       lastUpdatedAt: new Date().toISOString(),
     };
+    this.applyPoiPlanningToPatch(patch, decisionState, state);
     // Scheme C: 世界模型三段式，从 patch + decisionState 构建 worldStateSummary（P3: research_data 补全，world.buildContext 优先）
     const { buildWorldStateSummaryFromDso } = await import('../../decision/kernel/world-state-summary.types');
     const mergedForSummary = {
@@ -3941,6 +4549,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     context: AgentContext,
     state: OrchestratorState,
     _provider: LlmProvider,
+    decisionState?: DecisionState,
   ): Promise<void> {
     state.current_step = 'RESEARCH';
     const stepStartTime = Date.now();
@@ -3998,7 +4607,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           }
         }
 
-        // 2. POI 搜索（poi.search）- IMPORTANT
+        // 2. POI 搜索（poi.search）- IMPORTANT（Phase 3：golden_circle 时 query 增强 + 第二路锚点检索）
         try {
           const poiSkill = this.skillsRegistry.getSkill('poi.search');
           if (poiSkill) {
@@ -4020,18 +4629,83 @@ ${JSON.stringify(routingDecision, null, 2)}
             const destinationQuery = countryHint
               ? `${destinationRaw} ${countryHint}`
               : destinationRaw;
-            const poiResult = await poiSkill.execute({
-              query: destinationQuery,
-              limit: 10,
-              lat: typeof tripRequest.destination === 'object' ? tripRequest.destination.lat : undefined,
-              lng: typeof tripRequest.destination === 'object' ? tripRequest.destination.lng : undefined,
-            });
-            researchData.poi_evidence = poiResult.pois || poiResult; // 兼容新旧格式
-            if (poiResult.pois && Array.isArray(poiResult.pois)) {
-              poiResult.pois.forEach((poi: any) => {
-                if (poi.evidence_id) evidenceRefs.push(poi.evidence_id);
-              });
+            const lat =
+              typeof tripRequest.destination === 'object' ? tripRequest.destination.lat : undefined;
+            const lng =
+              typeof tripRequest.destination === 'object' ? tripRequest.destination.lng : undefined;
+            const plan = buildCandidateRetrievalQueryPlan(
+              request.message ?? '',
+              destinationQuery,
+              decisionState?.poiPlanning,
+            );
+            const boost =
+              plan.boostedTerms.length > 0 ? ` ${plan.boostedTerms.slice(0, 12).join(' ')}` : '';
+            const scenicQuery = `${destinationQuery} attractions landmark museum sightseeing${boost}`;
+            const generalQuery =
+              plan.boostedTerms.length > 0
+                ? `${destinationQuery} ${plan.boostedTerms.slice(0, 8).join(' ')}`
+                : destinationQuery;
+
+            const scenicResult = await poiSkill.execute({
+              query: scenicQuery,
+              limit: 12,
+              lat,
+              lng,
+              category: 'ATTRACTION',
+            } as any);
+            const generalResult = await poiSkill.execute({
+              query: generalQuery,
+              limit: 12,
+              lat,
+              lng,
+            } as any);
+            const scenicPois = Array.isArray(scenicResult?.pois)
+              ? scenicResult.pois
+              : Array.isArray(scenicResult)
+                ? scenicResult
+                : [];
+            const generalPois = Array.isArray(generalResult?.pois)
+              ? generalResult.pois
+              : Array.isArray(generalResult)
+                ? generalResult
+                : [];
+            let merged = mergeResearchPoiLists(scenicPois, generalPois, 16);
+            if (plan.regionTags.includes('golden_circle') && plan.boostedTerms.length > 0) {
+              const anchorQuery = `Iceland Golden Circle ${plan.boostedTerms.slice(0, 10).join(' ')}`;
+              const anchorResult = await poiSkill.execute({
+                query: anchorQuery,
+                limit: 12,
+                lat,
+                lng,
+                category: 'ATTRACTION',
+              } as any);
+              const anchorPois = Array.isArray(anchorResult?.pois)
+                ? anchorResult.pois
+                : Array.isArray(anchorResult)
+                  ? anchorResult
+                  : [];
+              merged = mergeResearchPoiLists(anchorPois, merged, 22);
             }
+            /** Phase 3.2：第四路专补 Geysir / Gullfoss 召回（合并优先） */
+            if (plan.regionTags.includes('golden_circle')) {
+              const pairResult = await poiSkill.execute({
+                query: GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
+                limit: 14,
+                lat,
+                lng,
+                category: 'ATTRACTION',
+              } as any);
+              const pairPois = Array.isArray(pairResult?.pois)
+                ? pairResult.pois
+                : Array.isArray(pairResult)
+                  ? pairResult
+                  : [];
+              merged = mergeResearchPoiLists(pairPois, merged, 30);
+            }
+            researchData.poi_evidence = merged;
+            merged.forEach((poi: any) => {
+              if (poi?.evidence_id) evidenceRefs.push(poi.evidence_id);
+            });
           }
         } catch (error: any) {
           const strategy = getSkillFailureStrategy('poi.search', error);
@@ -5042,7 +5716,9 @@ ${JSON.stringify(routingDecision, null, 2)}
           userId: request.user_id,
           orchestratorState: state,
         };
-        const dso = this.decisionKernel.createInitialState(state.request_id);
+        const dso = this.decisionKernel.createInitialState(state.request_id, {
+          evaluationRunId: request.meta?.run_id,
+        });
         const result = await this.decisionKernel.executeNarrate(dso, narrateCtx);
         state.narration = result.narration as any;
       } else {
@@ -5271,9 +5947,13 @@ ${JSON.stringify(routingDecision, null, 2)}
     startTime: number,
     decisionState?: DecisionState,
   ): OrchestrationResult {
-    // 如果有澄清问题，说明需要用户提供更多信息
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
-    
+    this.finalizeHarnessTraceFromOrchestration(
+      decisionState,
+      hasClarificationQuestions ? 'NEED_USER_CONFIRM' : 'DONE',
+    );
+
+    // 如果有澄清问题，说明需要用户提供更多信息
     const answerText = hasClarificationQuestions
       ? '为了更好地规划您的行程，请回答以下问题。'
       : (state.itinerary
@@ -5318,6 +5998,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     startTime: number,
     decisionState?: DecisionState,
   ): OrchestrationResult {
+    this.finalizeHarnessTraceFromOrchestration(decisionState, 'BLOCKED');
     const violations = state.gate_result?.violations || [];
     const answerText = `行程规划被阻止。原因：${violations.map(v => v.detail).join('；')}`;
 
@@ -5352,7 +6033,12 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * 构建澄清结果（需要用户提供更多信息）
    */
-  private buildClarificationResult(state: OrchestratorState, startTime: number): OrchestrationResult {
+  private buildClarificationResult(
+    state: OrchestratorState,
+    startTime: number,
+    decisionState?: DecisionState,
+  ): OrchestrationResult {
+    this.finalizeHarnessTraceFromOrchestration(decisionState, 'NEED_USER_CONFIRM');
     const answerText = '为了更好地规划您的行程，请回答以下问题。';
 
     return {
@@ -5384,6 +6070,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     startTime: number,
     decisionState?: DecisionState,
   ): OrchestrationResult {
+    this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
     // 🆕 检查是否是超时错误
     const isTimeout = error?.message?.startsWith('TIMEOUT:') || 
                       error?.code === 'ECONNABORTED' ||

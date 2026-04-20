@@ -322,7 +322,9 @@ export class WeightPersistenceService implements OnModuleInit {
       await this.historyRepo.save({
         userId,
         tripId: metadata?.tripId ?? null,
-        weightsBefore: metadata?.weightsBefore ?? null,
+        // `WeightLearningHistoryEntity.weightsBefore` is non-nullable; when caller didn't provide
+        // the "before" snapshot, fall back to the current update target to keep persistence working.
+        weightsBefore: metadata?.weightsBefore ?? result.updatedWeights ?? DEFAULT_OBJECTIVE_WEIGHTS,
         weightsAfter: result.updatedWeights,
         learningMethod: metadata?.method ?? 'gradient_descent',
         learningRate: metadata?.learningRate ?? 0.01,

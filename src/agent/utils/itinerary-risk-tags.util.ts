@@ -43,6 +43,7 @@ export function riskTagFromAdjustmentAction(action: RequiredAdjustment['action']
     case 'ADD_BUFFER':
     case 'SHORTEN_DAY':
     case 'CHANGE_DATES':
+    case 'REDUCE_SCOPE_OR_ADD_EVIDENCE':
       return 'LOGISTICS';
     case 'CHANGE_MODE':
       return 'SAFETY';

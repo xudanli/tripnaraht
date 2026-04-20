@@ -67,6 +67,10 @@ import { AgentAdminController } from './agent-admin.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
 import { TripRunManagerService } from './services/trip-run-manager.service';
 import { ActionExecutionService } from './services/action-execution.service';
+import { JepaProjectorService } from './services/jepa-projector.service';
+import { RouteAndRunResponseAssemblerService } from './services/route-and-run-response-assembler.service';
+import { AgentEntryResponseFactoryService } from './services/agent-entry-response-factory.service';
+import { PlanningRequestClassifierService } from './services/planning-request-classifier.service';
 import { SkillsModule } from '../skills/skills.module';
 // 子 Agent 服务（Claude 编排）
 import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
@@ -154,6 +158,10 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     AgentRunAdminService, // Agent 运行管理服务（后台管理）
     TripRunManagerService, // TripRun 和 TripAttempt 管理服务
     ActionExecutionService, // Action 执行域（preview/commit/rollback）
+    JepaProjectorService,
+    RouteAndRunResponseAssemblerService,
+    AgentEntryResponseFactoryService,
+    PlanningRequestClassifierService,
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [

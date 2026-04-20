@@ -59,6 +59,7 @@ import { McpOAuthModule } from './mcp/mcp-oauth.module';
 import { McpCapabilityModule } from './mcp/mcp-capability.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DecisionKernelModule } from './decision/decision-kernel.module';
+import { HarnessModule } from './harness/harness.module';
 import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 
@@ -120,6 +121,7 @@ import { WorldModelSchedulerModule } from './trips/decision/world-model-schedule
     AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
     ContextEngineModule, // Context Engine 模块（上下文编译器）
     DecisionKernelModule, // Decision Kernel 模块（Phase 2: DSO + Kernel 入口）
+    HarnessModule, // Harness Runtime（步骤契约、确定性校验、trace）
     // SkillsModule, // Skills 模块（能力颗粒层）
     UploadModule, // 图片上传模块（阿里云 OSS）
     ChainOfWorkModule, // Chain-of-Work 引擎模块（步骤草案显性化）

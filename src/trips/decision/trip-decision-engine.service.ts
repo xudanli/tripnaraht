@@ -811,6 +811,8 @@ export class TripDecisionEngineService {
     let strategyLogs: DecisionLogEntry[] = [];
     let finalPlan = plan;
     let routeDirectionExplanation: string | undefined;
+    let cgusDsoSnapshot: any | undefined;
+    let cgusDsoSnapshotNote: string | undefined;
 
     if (this.strategyOrchestrator && this.planConverter && selectedRouteDirection) {
       try {
@@ -957,6 +959,54 @@ export class TripDecisionEngineService {
           state
         );
 
+        // Build a minimal DecisionState-like snapshot for offline CGUS replay.
+        // We intentionally keep it small and self-contained.
+        try {
+          const draftFinal = this.planConverter.convertTripPlanToRoutePlanDraft(
+            finalPlan,
+            tripId,
+            routeDirectionId,
+          );
+          const itineraryDays: any[] = [];
+          const segments = Array.isArray((draftFinal as any)?.segments) ? (draftFinal as any).segments : [];
+          for (const s of segments) {
+            const dayIndex = typeof s.dayIndex === 'number' ? s.dayIndex : 0;
+            while (itineraryDays.length <= dayIndex) itineraryDays.push({ items: [] });
+            const md = (s.metadata ?? {}) as any;
+            itineraryDays[dayIndex].items.push({
+              id: s.segmentId,
+              type: md.type ?? 'poi',
+              start_window: md.startTime ? { start: md.startTime, end: md.startTime } : undefined,
+              end_window: md.endTime ? { start: md.endTime, end: md.endTime } : undefined,
+              location_ref: {
+                place_id: md.poiId,
+                name: md.name,
+                coordinates: md.startLocation,
+              },
+              metadata: {
+                distance_meters: Math.round((s.distanceKm ?? 0) * 1000),
+                travel_duration_min_from_prev: md.travelDurationMinFromPrev,
+              },
+            });
+          }
+
+          cgusDsoSnapshot = {
+            requestId: requestId ?? traceRequestId,
+            systemState: { requestId: requestId ?? traceRequestId },
+            environmentState: {
+              countryCode: this.extractCountryCode(state.context.destination),
+              month: this.extractMonth(state.context.startDate),
+              routeDirectionId,
+            },
+            tripState: { planDraft: { days: itineraryDays } },
+            constraints: { violations: [] },
+          };
+          cgusDsoSnapshotNote =
+            'captured from TripDecisionEngineService output (final plan converted to planDraft via PlanConverter)';
+        } catch {
+          // Best-effort; do not break plan generation.
+        }
+
         // 7. 生成 RouteDirection 解释
         if (selectedRouteDirection.reasons && selectedRouteDirection.reasons.length > 0) {
           routeDirectionExplanation = selectedRouteDirection.reasons.join('；');
@@ -1019,7 +1069,50 @@ export class TripDecisionEngineService {
       strategyLogs: strategyLogs,
       // RouteDirection 解释
       routeDirectionExplanation: routeDirectionExplanation,
+      ...(cgusDsoSnapshot ? { cgusDsoSnapshot, cgusDsoSnapshotNote } : {}),
     };
+
+    // Winner-Protected MC Rerank / CGUS replay tooling requires a minimal planDraft snapshot.
+    // Produce a fallback snapshot even when planConverter / strategyOrchestrator is not available.
+    if (!log.cgusDsoSnapshot) {
+      try {
+        const itineraryDays = (finalPlan?.days ?? []).map((d) => ({
+          items: (d.timeSlots ?? []).map((s) => ({
+            id: s.id,
+            type: s.type ?? 'poi',
+            start_window: s.time ? { start: s.time, end: s.time } : undefined,
+            end_window: s.endTime ? { start: s.endTime, end: s.endTime } : undefined,
+            location_ref: {
+              place_id: s.poiId,
+              name: s.title,
+              coordinates: s.coordinates,
+            },
+            metadata: {
+              travel_duration_min_from_prev: s.travelLegFromPrev?.durationMin,
+            },
+          })),
+        }));
+        log.cgusDsoSnapshot = {
+          requestId: requestId ?? traceRequestId,
+          systemState: { requestId: requestId ?? traceRequestId },
+          environmentState: {
+            countryCode: this.extractCountryCode(state.context.destination),
+            month: this.extractMonth(state.context.startDate),
+            routeDirectionId: selectedRouteDirection?.routeDirection?.uuid
+              ? String(selectedRouteDirection.routeDirection.uuid)
+              : selectedRouteDirection?.routeDirection?.id !== undefined
+                ? String(selectedRouteDirection.routeDirection.id)
+                : 'unknown',
+          },
+          tripState: { planDraft: { days: itineraryDays } },
+          constraints: { violations: [] },
+        };
+        log.cgusDsoSnapshotNote =
+          'fallback snapshot from TripPlan (no planConverter/orchestrator); env + planDraft(days/items) only';
+      } catch {
+        // best effort
+      }
+    }
 
     // 保存路线决策记忆（L2）
     if (selectedRouteDirection && userId && this.memoryService) {

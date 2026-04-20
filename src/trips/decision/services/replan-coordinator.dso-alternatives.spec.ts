@@ -53,12 +53,11 @@ describe('ReplanCoordinatorService DSO alternatives (T3 / TD-03)', () => {
       tripRun: { findUnique: jest.fn() },
     } as unknown as PrismaService;
 
-    return new ReplanCoordinatorService(
-      deps.kernel as unknown as DecisionKernelService,
-      prisma,
-      deps.persistence as IDsoFeedbackPersistence,
-      undefined,
-    );
+    const kernel = {
+      finalizeHarnessTraceIfRecorded: jest.fn(),
+      ...deps.kernel,
+    } as unknown as DecisionKernelService;
+    return new ReplanCoordinatorService(kernel, prisma, deps.persistence as IDsoFeedbackPersistence, undefined);
   }
 
   it('GATE_EVAL 为 BLOCK 且 DSO 含 orchestratorAlternatives 时，持久化快照应仍满足 TD-03', async () => {

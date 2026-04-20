@@ -1,0 +1,31 @@
+# PR 修改 baselines/cgus/*.json 时：标题须含 [CGUS Baseline Update]，且含 comparisonClass / cases / reason（见 BASELINE_UPDATE_POLICY §3a）
+name: Baseline PR title check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - "baselines/cgus/**"
+
+jobs:
+  baseline-pr-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check baseline PR title / body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npx ts-node --transpile-only scripts/check-baseline-pr-title.ts

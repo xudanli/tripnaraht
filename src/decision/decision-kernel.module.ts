@@ -11,6 +11,7 @@ import { Module, Global, forwardRef } from '@nestjs/common';
 import { DsoFeedbackPersistenceModule } from '../trips/decision/dso-feedback-persistence.module';
 import { ReplanModule } from '../trips/decision/replan.module';
 import { DecisionKernelService } from './kernel/decision-kernel.service';
+import { HarnessShadowMetricsCollector } from './kernel/harness-shadow-metrics.collector';
 import { StateManagerService } from './kernel/state-manager.service';
 import { ConstraintEngineAdapterService } from './kernel/constraint-engine-adapter.service';
 import { OptimizationEngineAdapterService } from './kernel/optimization-engine-adapter.service';
@@ -21,10 +22,14 @@ import { DecisionModule } from '../trips/decision/decision.module';
 import { OptimizationModule } from '../trips/decision/optimization/optimization.module';
 import { AgentFeedbackModule } from '../agent/feedback/agent-feedback.module';
 import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executor.module';
+import { HarnessModule } from '../harness/harness.module';
+import { RagModule } from '../rag/rag.module';
 
 @Global()
 @Module({
   imports: [
+    HarnessModule,
+    forwardRef(() => RagModule),
     ContextEngineModule,
     forwardRef(() => DecisionModule), // P1: ConstraintEngineAdapter 可选调用 ConstraintEngineService.isFeasible
     forwardRef(() => OptimizationModule), // Scheme A: Monte Carlo 集成，ExpectedUtilityService
@@ -34,6 +39,7 @@ import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executo
     forwardRef(() => ReplanModule), // 专利实施例 2: 环境变化触发 RESEARCH→PLAN_GEN→VERIFY
   ],
   providers: [
+    HarnessShadowMetricsCollector,
     StateManagerService,
     ConstraintEngineAdapterService,
     OptimizationEngineAdapterService,
@@ -43,6 +49,7 @@ import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executo
   ],
   exports: [
     DecisionKernelService,
+    HarnessShadowMetricsCollector,
     StateManagerService,
     FeedbackEngineAdapterService,
     OptimizationEngineAdapterService, // PolicyLearningService 等需要

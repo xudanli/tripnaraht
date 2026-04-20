@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "对外响应完整性（运行时 Response Completeness Guard 目标）",
+  "whenStatusDone": {
+    "requiredFields": [
+      "result",
+      "verification",
+      "explain",
+      "dsoVersion"
+    ],
+    "notes": [
+      "字段名与正式 DecisionResponse DTO 对齐后可改为精确 JSON Schema",
+      "explain 必须为正式载荷，而非仅 observability.debug"
+    ]
+  },
+  "resumeGuard": {
+    "requiredChecks": [
+      "resumable",
+      "expectedStage",
+      "expectedDsoVersion",
+      "runIdConsistency"
+    ]
+  }
+}

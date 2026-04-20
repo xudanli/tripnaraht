@@ -90,4 +90,4 @@ EXPOSE 3000
 
 # 容器启动时执行的命令
 # 运行编译后的应用入口文件
-CMD ["node", "dist/src/main.js"]
+CMD ["node", "dist/main.js"]

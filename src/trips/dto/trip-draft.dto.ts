@@ -187,6 +187,34 @@ export class CreateTripDraftDto {
   @IsString()
   @IsOptional()
   userInput?: string;
+
+  /** Phase 1：区域线路 ID（如 golden_circle），与 DSO / RegionIntent 对齐 */
+  @ApiPropertyOptional({ description: '区域线路 ID（如 golden_circle）' })
+  @IsString()
+  @IsOptional()
+  region_id?: string;
+
+  @ApiPropertyOptional({ description: '必含 POI slug（与 RegionIntent id 对齐）', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  must_include_poi_ids?: string[];
+
+  @ApiPropertyOptional({ description: '排除 POI slug', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  exclude_poi_ids?: string[];
+
+  @ApiPropertyOptional({ description: '当日可用总时长（分钟）' })
+  @IsNumber()
+  @IsOptional()
+  total_budget_minutes?: number;
+
+  @ApiPropertyOptional({ description: '节奏 relaxed/normal/dense' })
+  @IsString()
+  @IsOptional()
+  pace?: 'relaxed' | 'normal' | 'dense';
 }
 
 /**

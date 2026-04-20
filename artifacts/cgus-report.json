@@ -1,0 +1,846 @@
+{
+  "generatedAt": "2026-04-15T16:29:47.961Z",
+  "mode": "lite",
+  "n": 30,
+  "totalMs": 93,
+  "avgMs": 3.1,
+  "cgusCount": 30,
+  "emptyCount": 0,
+  "configSnapshot": {
+    "mode": "lite",
+    "cgusMaxCandidates": 8,
+    "cgusRolloutTopK": 3,
+    "monteCarloSamples": 200,
+    "cgusPilotSamples": 20
+  },
+  "gate": {
+    "passed": true,
+    "failures": [],
+    "thresholds": {
+      "cgusRateMin": 0.95,
+      "emptyRateMax": 0.05,
+      "altP50Min": 3,
+      "uniqueDivP50Min": 2
+    }
+  },
+  "aggregates": {
+    "cgusRate": 1,
+    "emptyRate": 0,
+    "top1Score": {
+      "n": 30,
+      "min": 0.4195640764968178,
+      "max": 0.5795603218417915,
+      "quantiles": {
+        "0.1": 0.4550790090743944,
+        "0.5": 0.517444973776476,
+        "0.9": 0.5669777725991018
+      }
+    },
+    "top1FinalScore": {
+      "n": 0,
+      "min": null,
+      "max": null,
+      "quantiles": {
+        "0.1": null,
+        "0.5": null,
+        "0.9": null
+      }
+    },
+    "alternativesCount": {
+      "quantiles": {
+        "0.1": 2,
+        "0.5": 3,
+        "0.9": 3
+      },
+      "histogram": {
+        "2": 7,
+        "3": 23
+      }
+    },
+    "uniqueDiversityCount": {
+      "quantiles": {
+        "0.1": 2,
+        "0.5": 3,
+        "0.9": 3
+      },
+      "histogram": {
+        "2": 7,
+        "3": 23
+      }
+    },
+    "topViolationTypes": [
+      {
+        "key": "TIME_WINDOW_VIOLATION",
+        "count": 8
+      },
+      {
+        "key": "CONNECTIVITY_INSUFFICIENT_TIME",
+        "count": 8
+      },
+      {
+        "key": "MAX_DAILY_DRIVE_EXCEEDED",
+        "count": 7
+      },
+      {
+        "key": "WEATHER_UNSAFE",
+        "count": 7
+      }
+    ]
+  },
+  "env": {
+    "CGUS_SUITE_MODE": "lite",
+    "CGUS_GATE_ALT_P50_MIN": "3"
+  },
+  "results": [
+    {
+      "id": "cgus-suite-1",
+      "title": "days=2 itemsPerDay=1 start=08:30 dur=120 gap=30 wr=0.05 fat=0.10",
+      "elapsedMs": 13,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5614473501636916,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-pace-down-2",
+          "score": 0.5614473501636916,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-2",
+      "title": "days=3 itemsPerDay=2 start=09:00 dur=90 gap=15 wr=0.15 fat=0.22",
+      "elapsedMs": 5,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5704277278941321,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5704277278941321,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-3",
+      "title": "days=4 itemsPerDay=3 start=10:00 dur=60 gap=30 wr=0.25 fat=0.34",
+      "elapsedMs": 4,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5114798703575246,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5114798703575246,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8|1:seg-3-9-spread2-9|0:seg-3-10-spread2-10|1:seg-3-11-spread2-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-4",
+      "title": "days=5 itemsPerDay=4 start=08:30 dur=45 gap=15 wr=0.35 fat=0.46",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5516641494892328,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-16",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-16",
+          "score": 0.5516641494892328,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink16-0|0:seg-0-1-shrink16-1|0:seg-0-2-shrink16-2|0:seg-0-3-shrink16-3|1:seg-1-4-shrink16-4|1:seg-1-5-shrink16-5|1:seg-1-6-shrink16-6|1:seg-1-7-shrink16-7|2:seg-2-8-shrink16-8|2:seg-2-9-shrink16-9|2:seg-2-10-shrink16-10|2:seg-2-11-shrink16-11|3:seg-3-12-shrink16-12|3:seg-3-13-shrink16-13|3:seg-3-14-shrink16-14|3:seg-3-15-shrink16-15"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-5",
+      "title": "days=6 itemsPerDay=1 start=09:00 dur=120 gap=30 wr=0.45 fat=0.58",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.561084412884289,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.561084412884289,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2|1:seg-3-3-spread2-3|0:seg-4-4-spread2-4|1:seg-5-5-spread2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-6",
+      "title": "days=2 itemsPerDay=2 start=10:00 dur=90 gap=15 wr=0.55 fat=0.70",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5345740235031224,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5345740235031224,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-7",
+      "title": "days=3 itemsPerDay=3 start=08:30 dur=60 gap=30 wr=0.65 fat=0.82",
+      "elapsedMs": 4,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5006083196783504,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5006083196783504,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-8",
+      "title": "days=4 itemsPerDay=4 start=09:00 dur=45 gap=15 wr=0.75 fat=0.10",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5084658319340492,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-12",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-12",
+          "score": 0.5084658319340492,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink12-0|0:seg-0-1-shrink12-1|0:seg-0-2-shrink12-2|0:seg-0-3-shrink12-3|1:seg-1-4-shrink12-4|1:seg-1-5-shrink12-5|1:seg-1-6-shrink12-6|1:seg-1-7-shrink12-7|2:seg-2-8-shrink12-8|2:seg-2-9-shrink12-9|2:seg-2-10-shrink12-10|2:seg-2-11-shrink12-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-9",
+      "title": "days=5 itemsPerDay=1 start=10:00 dur=120 gap=30 wr=0.85 fat=0.22",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49427683537768113,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.49427683537768113,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2|1:seg-3-3-spread2-3|0:seg-4-4-spread2-4"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-10",
+      "title": "days=6 itemsPerDay=2 start=08:30 dur=90 gap=15 wr=0.95 fat=0.34",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.460377085565205,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.460377085565205,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5|0:seg-3-6-spread2-6|1:seg-3-7-spread2-7|0:seg-4-8-spread2-8|1:seg-4-9-spread2-9|0:seg-5-10-spread2-10|1:seg-5-11-spread2-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-11",
+      "title": "days=2 itemsPerDay=3 start=09:00 dur=60 gap=30 wr=0.05 fat=0.46",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5795603218417915,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5795603218417915,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-12",
+      "title": "days=3 itemsPerDay=4 start=10:00 dur=45 gap=15 wr=0.15 fat=0.58",
+      "elapsedMs": 1,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5611533209365062,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-9",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-9",
+          "score": 0.5611533209365062,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink9-0|0:seg-0-1-shrink9-1|0:seg-0-2-shrink9-2|0:seg-0-3-shrink9-3|1:seg-1-4-shrink9-4|1:seg-1-5-shrink9-5|1:seg-1-6-shrink9-6|1:seg-1-7-shrink9-7|2:seg-2-8-shrink9-8"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-13",
+      "title": "days=4 itemsPerDay=1 start=08:30 dur=120 gap=30 wr=0.25 fat=0.70",
+      "elapsedMs": 5,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5669777725991018,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5669777725991018,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2|1:seg-3-3-spread2-3"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-14",
+      "title": "days=5 itemsPerDay=2 start=09:00 dur=90 gap=15 wr=0.35 fat=0.82",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5384711320741806,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5384711320741806,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5|0:seg-3-6-spread2-6|1:seg-3-7-spread2-7|0:seg-4-8-spread2-8|1:seg-4-9-spread2-9"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-15",
+      "title": "days=6 itemsPerDay=3 start=10:00 dur=60 gap=30 wr=0.45 fat=0.10",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4550790090743944,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.4550790090743944,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8|1:seg-3-9-spread2-9|0:seg-3-10-spread2-10|1:seg-3-11-spread2-11|0:seg-4-12-spread2-12|1:seg-4-13-spread2-13|0:seg-4-14-spread2-14|1:seg-5-15-spread2-15|0:seg-5-16-spread2-16|1:seg-5-17-spread2-17"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-16",
+      "title": "days=2 itemsPerDay=4 start=08:30 dur=45 gap=15 wr=0.55 fat=0.22",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5345250251855045,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-6",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-6",
+          "score": 0.5345250251855045,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink6-0|0:seg-0-1-shrink6-1|0:seg-0-2-shrink6-2|0:seg-0-3-shrink6-3|1:seg-1-4-shrink6-4|1:seg-1-5-shrink6-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-17",
+      "title": "days=3 itemsPerDay=1 start=09:00 dur=120 gap=30 wr=0.65 fat=0.34",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.517444973776476,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.517444973776476,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-18",
+      "title": "days=4 itemsPerDay=2 start=10:00 dur=90 gap=15 wr=0.75 fat=0.46",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5068157034031874,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5068157034031874,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5|0:seg-3-6-spread2-6|1:seg-3-7-spread2-7"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-19",
+      "title": "days=5 itemsPerDay=3 start=08:30 dur=60 gap=30 wr=0.85 fat=0.58",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4195640764968178,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.4195640764968178,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8|1:seg-3-9-spread2-9|0:seg-3-10-spread2-10|1:seg-3-11-spread2-11|0:seg-4-12-spread2-12|1:seg-4-13-spread2-13|0:seg-4-14-spread2-14"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-20",
+      "title": "days=6 itemsPerDay=4 start=09:00 dur=45 gap=15 wr=0.95 fat=0.70",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49175970535305635,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-19",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-19",
+          "score": 0.49175970535305635,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink19-0|0:seg-0-1-shrink19-1|0:seg-0-2-shrink19-2|0:seg-0-3-shrink19-3|1:seg-1-4-shrink19-4|1:seg-1-5-shrink19-5|1:seg-1-6-shrink19-6|1:seg-1-7-shrink19-7|2:seg-2-8-shrink19-8|2:seg-2-9-shrink19-9|2:seg-2-10-shrink19-10|2:seg-2-11-shrink19-11|3:seg-3-12-shrink19-12|3:seg-3-13-shrink19-13|3:seg-3-14-shrink19-14|3:seg-3-15-shrink19-15|4:seg-4-16-shrink19-16|4:seg-4-17-shrink19-17|4:seg-4-18-shrink19-18"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-21",
+      "title": "days=2 itemsPerDay=1 start=10:00 dur=120 gap=30 wr=0.05 fat=0.82",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5600269018916918,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-pace-down-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-pace-down-2",
+          "score": 0.5600269018916918,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-pacedown2-0"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-22",
+      "title": "days=3 itemsPerDay=2 start=08:30 dur=90 gap=15 wr=0.15 fat=0.10",
+      "elapsedMs": 3,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5718357667079463,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5718357667079463,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-23",
+      "title": "days=4 itemsPerDay=3 start=09:00 dur=60 gap=30 wr=0.25 fat=0.22",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5072971586084281,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5072971586084281,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8|1:seg-3-9-spread2-9|0:seg-3-10-spread2-10|1:seg-3-11-spread2-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-24",
+      "title": "days=5 itemsPerDay=4 start=10:00 dur=45 gap=15 wr=0.35 fat=0.34",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5416847831674126,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-16",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-16",
+          "score": 0.5416847831674126,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink16-0|0:seg-0-1-shrink16-1|0:seg-0-2-shrink16-2|0:seg-0-3-shrink16-3|1:seg-1-4-shrink16-4|1:seg-1-5-shrink16-5|1:seg-1-6-shrink16-6|1:seg-1-7-shrink16-7|2:seg-2-8-shrink16-8|2:seg-2-9-shrink16-9|2:seg-2-10-shrink16-10|2:seg-2-11-shrink16-11|3:seg-3-12-shrink16-12|3:seg-3-13-shrink16-13|3:seg-3-14-shrink16-14|3:seg-3-15-shrink16-15"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-25",
+      "title": "days=6 itemsPerDay=1 start=08:30 dur=120 gap=30 wr=0.45 fat=0.46",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5591080102608383,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5591080102608383,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2|1:seg-3-3-spread2-3|0:seg-4-4-spread2-4|1:seg-5-5-spread2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-26",
+      "title": "days=2 itemsPerDay=2 start=09:00 dur=90 gap=15 wr=0.55 fat=0.58",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5245693616231328,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5245693616231328,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-27",
+      "title": "days=3 itemsPerDay=3 start=10:00 dur=60 gap=30 wr=0.65 fat=0.70",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5004119657856959,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5004119657856959,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-0-2-spread2-2|1:seg-1-3-spread2-3|0:seg-1-4-spread2-4|1:seg-1-5-spread2-5|0:seg-2-6-spread2-6|1:seg-2-7-spread2-7|0:seg-2-8-spread2-8"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-28",
+      "title": "days=4 itemsPerDay=4 start=08:30 dur=45 gap=15 wr=0.75 fat=0.82",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5040207612213407,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-shrink-scale-12",
+        "alternativesCount": 2,
+        "top": {
+          "id": "plan-repair-shrink-scale-12",
+          "score": 0.5040207612213407,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-shrink12-0|0:seg-0-1-shrink12-1|0:seg-0-2-shrink12-2|0:seg-0-3-shrink12-3|1:seg-1-4-shrink12-4|1:seg-1-5-shrink12-5|1:seg-1-6-shrink12-6|1:seg-1-7-shrink12-7|2:seg-2-8-shrink12-8|2:seg-2-9-shrink12-9|2:seg-2-10-shrink12-10|2:seg-2-11-shrink12-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-29",
+      "title": "days=5 itemsPerDay=1 start=09:00 dur=120 gap=30 wr=0.85 fat=0.10",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5109444600196719,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.5109444600196719,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-1-1-spread2-1|0:seg-2-2-spread2-2|1:seg-3-3-spread2-3|0:seg-4-4-spread2-4"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-30",
+      "title": "days=6 itemsPerDay=2 start=10:00 dur=90 gap=15 wr=0.95 fat=0.22",
+      "elapsedMs": 2,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4515634054940539,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-repair-spread-days-2",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-repair-spread-days-2",
+          "score": 0.4515634054940539,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0-spread2-0|1:seg-0-1-spread2-1|0:seg-1-2-spread2-2|1:seg-1-3-spread2-3|0:seg-2-4-spread2-4|1:seg-2-5-spread2-5|0:seg-3-6-spread2-6|1:seg-3-7-spread2-7|0:seg-4-8-spread2-8|1:seg-4-9-spread2-9|0:seg-5-10-spread2-10|1:seg-5-11-spread2-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    }
+  ]
+}

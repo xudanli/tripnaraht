@@ -3,6 +3,8 @@
  * 校验对象：`DecisionLogEntry[]` 或同形状的持久化/回放 JSON。
  */
 
+import { JEPA_TRACE_CONTRACT_VERSION } from '../shared/decision-trace-jepa.types';
+
 const PERSONAS = new Set(['ABU', 'DR_DRE', 'NEPTUNE', 'EXPECTED_UTILITY', 'USER_ACTION']);
 const SOURCES = new Set(['PHYSICAL', 'HUMAN', 'PHILOSOPHY', 'HEURISTIC', 'UTILITY', 'USER']);
 const STAGES = new Set([
@@ -17,6 +19,8 @@ const STAGES = new Set([
   'PLAN_EDIT',
 ]);
 
+const PREDICTION_ERROR_KINDS = new Set(['WORLD', 'USER_DRIFT', 'UTILITY']);
+
 export type DecisionLogTraceabilityResult = {
   valid: boolean;
   /** 阻断：缺字段或类型非法 */
@@ -27,6 +31,37 @@ export type DecisionLogTraceabilityResult = {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function validateCandidateSearchAuditMeta(meta: Record<string, unknown>, p: string, warnings: string[]) {
+  const csa = meta.candidateSearchAudit;
+  if (!isRecord(csa)) return;
+  const budget = (csa as Record<string, unknown>).budget;
+  if (!isRecord(budget)) {
+    warnings.push(`entry ${p}.metadata.candidateSearchAudit.budget should be an object`);
+    return;
+  }
+  for (const k of [
+    'maxCandidates',
+    'repairMaxIters',
+    'repairTopKPerCandidate',
+    'maxNewCandidatesPerIter',
+    'maxPoolSize',
+  ] as const) {
+    if (!isFiniteNumber((budget as Record<string, unknown>)[k])) {
+      warnings.push(`entry ${p}.metadata.candidateSearchAudit.budget.${k} should be a finite number`);
+    }
+  }
+  if (!isFiniteNumber((csa as Record<string, unknown>).initialVariantCount)) {
+    warnings.push(`entry ${p}.metadata.candidateSearchAudit.initialVariantCount should be a finite number`);
+  }
+  if (!isFiniteNumber((csa as Record<string, unknown>).finalCandidateCount)) {
+    warnings.push(`entry ${p}.metadata.candidateSearchAudit.finalCandidateCount should be a finite number`);
+  }
 }
 
 /**
@@ -69,6 +104,49 @@ export function analyzeDecisionLogTraceability(logs: unknown): DecisionLogTracea
     }
     if (entry.evidenceRefs !== undefined && !Array.isArray(entry.evidenceRefs)) {
       errors.push(`entry ${p}.evidenceRefs must be an array when present`);
+    }
+    if (entry.jepaTrace !== undefined) {
+      if (!isRecord(entry.jepaTrace)) {
+        errors.push(`entry ${p}.jepaTrace must be an object when present`);
+      } else {
+        const j = entry.jepaTrace;
+        if (j.contractVersion !== undefined && j.contractVersion !== JEPA_TRACE_CONTRACT_VERSION) {
+          errors.push(
+            `entry ${p}.jepaTrace.contractVersion must be "${JEPA_TRACE_CONTRACT_VERSION}" when present`,
+          );
+        }
+        if (
+          j.predictionErrorKind !== undefined &&
+          (typeof j.predictionErrorKind !== 'string' || !PREDICTION_ERROR_KINDS.has(j.predictionErrorKind))
+        ) {
+          errors.push(`entry ${p}.jepaTrace.predictionErrorKind must be WORLD | USER_DRIFT | UTILITY when present`);
+        }
+        for (const key of ['z_state', 'z_pred', 'z_real', 'delta', 'weakLabels'] as const) {
+          const v = j[key];
+          if (v !== undefined && !isRecord(v)) {
+            errors.push(`entry ${p}.jepaTrace.${key} must be an object when present`);
+          }
+        }
+        if (j.contractVersion === JEPA_TRACE_CONTRACT_VERSION) {
+          const hasAnySignal =
+            isRecord(j.z_state) ||
+            isRecord(j.z_pred) ||
+            isRecord(j.z_real) ||
+            isRecord(j.delta) ||
+            (typeof j.candidateId === 'string' && j.candidateId.trim().length > 0);
+          if (!hasAnySignal) {
+            warnings.push(`entry ${p}.jepaTrace: empty trace (consider z_state / z_pred / candidateId)`);
+          }
+        }
+      }
+    }
+    // Optional: if metadata carries candidateSearchAudit, validate shape (non-blocking).
+    if (isRecord((entry as Record<string, unknown>).metadata)) {
+      validateCandidateSearchAuditMeta(
+        (entry as Record<string, unknown>).metadata as Record<string, unknown>,
+        p,
+        warnings,
+      );
     }
     // 建议：物理现实判断尽量带证据引用（不阻断）
     if (

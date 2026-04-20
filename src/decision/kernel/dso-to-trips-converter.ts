@@ -28,9 +28,9 @@ const ITEM_TYPE_TO_ACTIVITY: Record<string, string> = {
   WALK: 'transport',
 };
 
-/** 从 start_window 提取 HH:mm */
-function extractTime(window: string): string {
-  const m = window.match(/T(\d{2}):(\d{2})|(\d{1,2}):(\d{2})/);
+/** 从 start/end window 提取 HH:mm（容错：window 可能缺失） */
+function extractTime(window?: string): string {
+  const m = String(window ?? '').match(/T(\d{2}):(\d{2})|(\d{1,2}):(\d{2})/);
   if (m) {
     const h = m[1] ?? m[3] ?? '09';
     const min = m[2] ?? m[4] ?? '00';
@@ -52,8 +52,9 @@ export function itineraryToTripPlan(itinerary: Itinerary): TripPlan {
 
     for (const item of day.items ?? []) {
       const activityType = (ITEM_TYPE_TO_ACTIVITY[item.type] ?? 'other') as PlanSlot['type'];
-      const time = extractTime(item.start_window);
-      const endTime = extractTime(item.end_window);
+      // Some itineraries use start_time/end_time; others use start_window/end_window.
+      const time = extractTime((item as any).start_window ?? (item as any).start_time);
+      const endTime = extractTime((item as any).end_window ?? (item as any).end_time);
 
       timeSlots.push({
         id: item.id || `slot-${++slotIndex}`,
@@ -104,6 +105,13 @@ export function itineraryToRoutePlanDraft(
           poiId: item.location_ref?.place_id,
           type: item.type,
           name: item.location_ref?.name,
+          // Time hints used by convertRoutePlanDraftToTripPlan → ConstraintChecker.checkTimeWindows
+          startTime: extractTime(item.start_window),
+          endTime: extractTime(item.end_window),
+          // Coordinates hints used for connectivity/travelLeg construction
+          startLocation: item.location_ref?.coordinates,
+          // Optional travel info if upstream provides it
+          travelDurationMinFromPrev: (item.metadata as any)?.travel_duration_min_from_prev,
         },
       });
     }

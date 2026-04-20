@@ -1,0 +1,12 @@
+{
+  "apply": false,
+  "dryRun": true,
+  "report": [
+    {
+      "id": "faf3a205-3f90-40d5-988f-cae1be176e96",
+      "chunkId": "supermarkets_supermarket_chains_1",
+      "category": "POI_HOURS",
+      "structured_data": {}
+    }
+  ]
+}

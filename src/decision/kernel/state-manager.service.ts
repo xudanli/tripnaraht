@@ -26,7 +26,9 @@ import {
   StateUpdateTransaction,
   StateCommitResult,
   StateCommitConflictError,
+  StateCommitPhaseViolationError,
   STAGE_PRIORITY,
+  VerificationReport,
 } from './decision-state.types';
 import { mergeTravelOntologyState } from './travel-ontology.mapper';
 
@@ -49,6 +51,38 @@ const DEFAULT_DISTRIBUTED_CONFIG: DistributedCommitConfig = {
 @Injectable()
 export class StateManagerService {
   private readonly logger = new Logger(StateManagerService.name);
+  private readonly strictStability = process.env.DECISION_OS_STABILITY_STRICT === '1';
+  private readonly strictPhaseWrite = process.env.DECISION_OS_PHASE_STRICT === '1';
+
+  /**
+   * 阶段→允许写入的字段前缀（最小可行矩阵）
+   * - 专利步骤三：阶段合法性校验（写入字段必须与当前阶段匹配）
+   * - 采用“前缀匹配”：touchedPath 必须以某个 allowedPrefix 开头
+   */
+  private readonly phaseWritePolicy: Record<string, string[]> = {
+    // 同步步骤：允许全量 patch（用于 bridge/兼容路径）；严格模式下仍建议由上层控制
+    STATE_UPDATE: [''],
+
+    INTAKE: ['userIntent', 'systemState', 'history', 'requestId'],
+    RESEARCH: [
+      'environmentState',
+      'worldStateSummary',
+      'uncertaintyProfile',
+      'beliefSamples',
+      'harnessRuntime',
+      'systemState',
+      'history',
+      'requestId',
+    ],
+    GATE_EVAL: ['constraints', 'tripState.orchestratorAlternatives', 'systemState', 'history', 'requestId'],
+    CONTEXT_BUILD: ['contextPackage', 'systemState', 'history', 'requestId'],
+    PLAN_GEN: ['tripState.planDraft', 'tripState.planVersion', 'candidates', 'systemState', 'history', 'requestId'],
+    OPTIMIZE: ['optimizationHints', 'tripState.fatigue', 'constraints', 'systemState', 'history', 'requestId'],
+    VERIFY: ['confidence', 'systemState', 'history', 'requestId'],
+    REPAIR: ['tripState.planDraft', 'systemState', 'history', 'requestId'],
+    NARRATE: ['systemState', 'history', 'requestId'],
+    FEEDBACK: ['feedback', 'systemState', 'history', 'requestId'],
+  };
 
   constructor(
     @Optional() private readonly dsoStability?: DSOStabilityMonitorService,
@@ -87,9 +121,83 @@ export class StateManagerService {
         patch.travelOntologyState,
       );
     }
+    if (patch.harnessRuntime !== undefined) {
+      updated.harnessRuntime = {
+        ...(current.harnessRuntime ?? {}),
+        ...patch.harnessRuntime,
+      };
+    }
+    // Phase 1 POI：patch 显式携带时合并（此前 merge 未拷贝，STATE_UPDATE 写入的 slice 会丢失）
+    if (patch.poiPlanning !== undefined) {
+      updated.poiPlanning = patch.poiPlanning;
+    }
+    if (patch.verification !== undefined) {
+      updated.verification = this.mergeVerificationReport(current.verification, patch.verification);
+    }
 
     this.logger.debug(`[StateManager] Merged: requestId=${updated.requestId}, phase=${updated.systemState.currentPhase}`);
     return updated;
+  }
+
+  /** 合并 VERIFY 全量报告与 REPAIR 局部补丁（如仅 escalationPlan） */
+  private mergeVerificationReport(
+    current: VerificationReport | undefined,
+    patch: Partial<VerificationReport>,
+  ): VerificationReport {
+    const base: VerificationReport =
+      current ??
+      ({
+        issues: [],
+        hasFatal: false,
+        hasConflict: false,
+        hasAdvisory: false,
+        counts: { fatal: 0, conflict: 0, advisory: 0 },
+        verifiedAt: patch.verifiedAt ?? new Date().toISOString(),
+      } satisfies VerificationReport);
+    const issues = patch.issues !== undefined ? patch.issues : base.issues;
+    const counts =
+      patch.counts ??
+      ((): VerificationReport['counts'] => {
+        let fatal = 0;
+        let conflict = 0;
+        let advisory = 0;
+        for (const i of issues) {
+          if (i.class === 'FATAL') fatal += 1;
+          else if (i.class === 'CONFLICT') conflict += 1;
+          else if (i.class === 'ADVISORY') advisory += 1;
+        }
+        return { fatal, conflict, advisory };
+      })();
+    return {
+      issues,
+      hasFatal: patch.hasFatal !== undefined ? patch.hasFatal : counts.fatal > 0,
+      hasConflict: patch.hasConflict !== undefined ? patch.hasConflict : counts.conflict > 0,
+      hasAdvisory: patch.hasAdvisory !== undefined ? patch.hasAdvisory : counts.advisory > 0,
+      counts,
+      verifiedAt: patch.verifiedAt ?? base.verifiedAt,
+      escalationPlan: patch.escalationPlan !== undefined ? patch.escalationPlan : base.escalationPlan,
+    };
+  }
+
+  /**
+   * v1.0 推荐入口：将阶段结果以原子提交写入 DSO（推进 `version` 与 `lastStep`）。
+   * 与 {@link commit} 等价，显式表达「仅允许经此路径做版本化写」的语义。
+   */
+  applyPhaseResult(
+    current: DecisionState,
+    patch: DecisionStatePatch,
+    phase: string,
+  ): StateCommitResult {
+    const requestId = current.systemState?.requestId ?? current.requestId ?? '';
+    return this.commit(
+      {
+        requestId,
+        expectedVersion: current.systemState?.version ?? 0,
+        patch,
+        stageOutput: phase,
+      },
+      current,
+    );
   }
 
   private mergeUserIntent(current: UserIntent, patch?: Partial<UserIntent>): UserIntent {
@@ -109,12 +217,12 @@ export class StateManagerService {
 
   private mergeSystemState(current: SystemState, patch?: Partial<SystemState>): SystemState {
     const now = new Date().toISOString();
-    const nextVersion = (current.version ?? 0) + 1;
     return {
       ...current,
       ...patch,
       lastUpdatedAt: now,
-      version: nextVersion,
+      // version 仅在 commit() 时递增；merge() 不应产生“伪提交”的版本推进
+      version: patch?.version ?? current.version ?? 0,
     };
   }
 
@@ -159,13 +267,53 @@ export class StateManagerService {
     if (transaction.expectedVersion !== currentVersion) {
       throw new StateCommitConflictError(transaction.expectedVersion, currentVersion);
     }
-    const merged = this.merge(current, transaction.patch);
+
+    // 事务锁：VERIFY→REPAIR 临界区只允许提交 VERIFY/REPAIR（避免半执行态被其它阶段覆盖）
+    const lock = current.systemState?.stageLock;
+    if (lock?.locked) {
+      const stage = (transaction.stageOutput ?? '').toString().trim();
+      const allowed = new Set(lock.allowedStages ?? []);
+      if (!allowed.has(stage as any)) {
+        const msg = `[StateManager] stageLock 拒绝提交: lockedBy=${lock.owner} stage=${stage} allowed=${JSON.stringify(
+          lock.allowedStages,
+        )}`;
+        // 事务锁属于正确性保护：默认严格拒绝
+        throw new Error(msg);
+      }
+    }
+
+    // 阶段合法性校验（专利步骤三）
+    const phase = (transaction.stageOutput ?? current.systemState?.currentPhase ?? '').toString();
+    const touchedPaths = this.computeTouchedPaths(transaction.patch);
+    const allowedPrefixes = this.phaseWritePolicy[phase] ?? [''];
+    const phaseOk = this.isPatchAllowedByPhase(touchedPaths, allowedPrefixes);
+    if (!phaseOk) {
+      const msg = `[StateManager] 阶段合法性校验失败: phase=${phase} touched=${JSON.stringify(touchedPaths)} allowed=${JSON.stringify(allowedPrefixes)}`;
+      if (this.strictPhaseWrite) {
+        throw new StateCommitPhaseViolationError(phase, touchedPaths, allowedPrefixes);
+      } else {
+        this.logger.warn(msg);
+      }
+    }
+
+    // 先合并 patch（不递增版本），commit 成功时再一次性推进版本号
+    const mergedDraft = this.merge(current, transaction.patch);
     const deltas = this.buildHistoryDeltasFromPatch(transaction.patch, transaction.stageOutput);
-    let withHistory = merged;
+    let withHistory = mergedDraft;
     for (const d of deltas) {
       withHistory = this.appendHistoryDelta(withHistory, d);
     }
-    const newVersion = withHistory.systemState?.version ?? currentVersion + 1;
+
+    // 递增版本号并提交（原子语义：一次 commit 只推进一次版本）
+    const newVersion = currentVersion + 1;
+    const stage = transaction.stageOutput?.toString().trim();
+    withHistory = this.merge(withHistory, {
+      systemState: {
+        requestId: withHistory.systemState.requestId,
+        version: newVersion,
+        ...(stage ? { lastStep: stage } : {}),
+      },
+    });
 
     // 专利 4.14.3：commit 后可选校验 DSO 稳定性 V(DSO_t)≤V(DSO_{t−1})
     if (this.dsoStability) {
@@ -177,6 +325,27 @@ export class StateManagerService {
           this.logger.warn(
             `[StateManager] DSO 稳定性校验: V_new=${vNew.toFixed(4)} > V_prev=${vPrev.toFixed(4)}`,
           );
+          if (this.strictStability) {
+            const rolledBack = this.appendHistoryDelta(current, {
+              type: 'kernel_arbitration',
+              at: new Date().toISOString(),
+              summary: 'stability violation: rollback to previous stable state',
+              payload: {
+                status: 'ROLLED_BACK',
+                reason: 'LYAPUNOV_INCREASE',
+                v_prev: vPrev,
+                v_new: vNew,
+                expected_version: transaction.expectedVersion,
+                attempted_new_version: newVersion,
+              },
+            });
+            return {
+              newState: rolledBack,
+              newVersion: currentVersion,
+              rolledBack: true,
+              rollbackReason: 'LYAPUNOV_INCREASE',
+            };
+          }
         }
       } catch (err) {
         this.logger.debug(`[StateManager] DSO 稳定性校验跳过: ${(err as Error)?.message}`);
@@ -187,6 +356,166 @@ export class StateManagerService {
       `[StateManager] Committed: requestId=${transaction.requestId}, version ${currentVersion}→${newVersion}`,
     );
     return { newState: withHistory, newVersion };
+  }
+
+  /**
+   * 批量原子提交（专利并发示例：同 base version、无字段冲突的多个增量 → 一次提交）
+   * - 所有 transaction.expectedVersion 必须等于 currentVersion
+   * - touchedPaths 两两不允许相同/前缀重叠（例如 tripState 与 tripState.planDraft 视为冲突）
+   * - 成功时仅推进一次 version
+   */
+  commitBatch(transactions: StateUpdateTransaction[], current: DecisionState): StateCommitResult {
+    if (transactions.length === 0) {
+      return { newState: current, newVersion: current.systemState?.version ?? 0 };
+    }
+
+    const currentVersion = current.systemState?.version ?? 0;
+    for (const tx of transactions) {
+      if (tx.expectedVersion !== currentVersion) {
+        throw new StateCommitConflictError(tx.expectedVersion, currentVersion);
+      }
+    }
+
+    const perTxTouched = transactions.map((tx) => ({
+      tx,
+      touched: this.computeTouchedPaths(tx.patch),
+    }));
+
+    // 字段冲突检测：任意路径相同或前缀重叠都视为冲突（不可在同一提交窗口合并）
+    for (let i = 0; i < perTxTouched.length; i++) {
+      for (let j = i + 1; j < perTxTouched.length; j++) {
+        if (this.hasPathConflict(perTxTouched[i].touched, perTxTouched[j].touched)) {
+          throw new Error(
+            `State batch commit field conflict: tx#${i} touched=${JSON.stringify(perTxTouched[i].touched)} vs tx#${j} touched=${JSON.stringify(perTxTouched[j].touched)}`,
+          );
+        }
+      }
+    }
+
+    // 阶段合法性校验：对每个 tx 单独校验其 touchedPaths
+    for (const { tx, touched } of perTxTouched) {
+      const phase = (tx.stageOutput ?? current.systemState?.currentPhase ?? '').toString();
+      const allowedPrefixes = this.phaseWritePolicy[phase] ?? [''];
+      const phaseOk = this.isPatchAllowedByPhase(touched, allowedPrefixes);
+      if (!phaseOk) {
+        const msg = `[StateManager] commitBatch 阶段合法性校验失败: phase=${phase} touched=${JSON.stringify(touched)} allowed=${JSON.stringify(allowedPrefixes)}`;
+        if (this.strictPhaseWrite) {
+          throw new StateCommitPhaseViolationError(phase, touched, allowedPrefixes);
+        } else {
+          this.logger.warn(msg);
+        }
+      }
+    }
+
+    // 合并所有 patch（不递增版本），并追加 history
+    let draft = current;
+    for (const tx of transactions) {
+      draft = this.merge(draft, tx.patch);
+      const deltas = this.buildHistoryDeltasFromPatch(tx.patch, tx.stageOutput);
+      for (const d of deltas) {
+        draft = this.appendHistoryDelta(draft, d);
+      }
+    }
+
+    // 一次性版本推进
+    const newVersion = currentVersion + 1;
+    const batchStage = transactions[transactions.length - 1]?.stageOutput?.toString().trim();
+    draft = this.merge(draft, {
+      systemState: {
+        requestId: draft.systemState.requestId,
+        version: newVersion,
+        ...(batchStage ? { lastStep: batchStage } : {}),
+      },
+    });
+
+    // 稳定性校验（与 commit() 行为对齐）
+    if (this.dsoStability) {
+      try {
+        const vPrev = this.dsoStability.computeDSOLyapunov(current, current);
+        const vNew = this.dsoStability.computeDSOLyapunov(current, draft);
+        const stable = this.dsoStability.checkStability(vNew, vPrev);
+        if (!stable) {
+          this.logger.warn(
+            `[StateManager] (batch) DSO 稳定性校验: V_new=${vNew.toFixed(4)} > V_prev=${vPrev.toFixed(4)}`,
+          );
+          if (this.strictStability) {
+            const rolledBack = this.appendHistoryDelta(current, {
+              type: 'kernel_arbitration',
+              at: new Date().toISOString(),
+              summary: 'batch stability violation: rollback to previous stable state',
+              payload: {
+                status: 'ROLLED_BACK',
+                reason: 'LYAPUNOV_INCREASE',
+                v_prev: vPrev,
+                v_new: vNew,
+                expected_version: currentVersion,
+                attempted_new_version: newVersion,
+                tx_count: transactions.length,
+              },
+            });
+            return {
+              newState: rolledBack,
+              newVersion: currentVersion,
+              rolledBack: true,
+              rollbackReason: 'LYAPUNOV_INCREASE',
+            };
+          }
+        }
+      } catch (err) {
+        this.logger.debug(`[StateManager] (batch) DSO 稳定性校验跳过: ${(err as Error)?.message}`);
+      }
+    }
+
+    this.logger.debug(
+      `[StateManager] Committed batch: requestId=${transactions[0].requestId}, tx=${transactions.length}, version ${currentVersion}→${newVersion}`,
+    );
+    return { newState: draft, newVersion };
+  }
+
+  private isPatchAllowedByPhase(touchedPaths: string[], allowedPrefixes: string[]): boolean {
+    // allowedPrefixes 包含 '' 表示允许全部
+    if (allowedPrefixes.some((p) => p === '')) return true;
+    return touchedPaths.every((path) => allowedPrefixes.some((prefix) => path === prefix || path.startsWith(prefix + '.')));
+  }
+
+  /**
+   * 计算 patch 触碰的字段路径（点分隔）
+   * - 只遍历 patch 的“存在键”，不尝试做深度 diff
+   * - 数组按整体字段处理（例如 tripState.planDraft）
+   */
+  private computeTouchedPaths(patch: DecisionStatePatch): string[] {
+    const out: string[] = [];
+    const walk = (obj: any, base: string) => {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        out.push(base);
+        return;
+      }
+      for (const [k, v] of Object.entries(obj)) {
+        const next = base ? `${base}.${k}` : k;
+        // 仅记录“叶子路径”：避免同时记录 tripState 与 tripState.planDraft 造成虚假冲突/非法提示
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          // 对嵌套对象：记录对象根路径（用于冲突检测/阶段校验），但避免记录顶层容器（如 tripState）
+          if (base) out.push(next);
+          walk(v, next);
+        } else {
+          out.push(next);
+        }
+      }
+    };
+    walk(patch as any, '');
+    // 去重 + 排序，便于测试稳定
+    return Array.from(new Set(out)).sort();
+  }
+
+  private hasPathConflict(a: string[], b: string[]): boolean {
+    for (const pa of a) {
+      for (const pb of b) {
+        if (pa === pb) return true;
+        if (pa && pb && (pa.startsWith(pb + '.') || pb.startsWith(pa + '.'))) return true;
+      }
+    }
+    return false;
   }
 
   /**

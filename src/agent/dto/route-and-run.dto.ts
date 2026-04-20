@@ -218,6 +218,25 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsEnum(['ADVICE_ONLY', 'SEMI_AUTO', 'AUTO'])
   execution_mode?: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO';
+
+  @ApiPropertyOptional({
+    description:
+      'v1.0 Durable：已有 `trip_runs.id`（UUID）时传入，用于加载 `metadata.dso_checkpoint`；与评测用 `meta.run_id` 不同。',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsString()
+  durable_trip_run_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'v1.0：状态机成功结束后将 DSO 快照写入 `TripRun.metadata.dso_checkpoint`（需先有 tripRunId，通常与新建 TripRun 同请求链）。',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  persist_dso_checkpoint?: boolean;
 }
 
 /** 与 NL message 并行：澄清/前端显式提交，避免仅靠关键词表丢失 Reykjavik 等城市 */
@@ -237,6 +256,20 @@ export class StructuredTravelInputDto {
   @IsOptional()
   @IsString()
   origin?: string;
+}
+
+/**
+ * 客户端 / Evaluation Harness 元数据（不参与业务语义；用于与 Kernel Harness trace 关联）。
+ */
+export class RouteAndRunRequestMetaDto {
+  @ApiPropertyOptional({
+    description:
+      'Evaluation Harness 单次运行 id（与 replay 报告 `runFingerprint.runId` 一致）；写入 DSO `harnessRuntime.evaluationRunId` 与 `HarnessTrace.meta.evaluationRunId`',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsString()
+  run_id?: string;
 }
 
 export class RouteAndRunRequestDto {
@@ -298,6 +331,15 @@ export class RouteAndRunRequestDto {
   @ValidateNested()
   @Type(() => ConversationContextDto)
   conversation_context?: ConversationContextDto;
+
+  @ApiPropertyOptional({
+    description: '请求级元数据（评测 / 回放关联；可选）',
+    type: RouteAndRunRequestMetaDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RouteAndRunRequestMetaDto)
+  meta?: RouteAndRunRequestMetaDto;
 
   @ApiPropertyOptional({ 
     description: '智能体执行选项',
@@ -668,6 +710,28 @@ export class RouteAndRunResponseDto {
         };
       }>;
     };
+    /** v1.0：内核可解释性（约束拒绝、DSO 版本、与 optimization 对齐的效用参数摘要） */
+    kernel_explainability?: {
+      dso_version?: number;
+      last_step?: string;
+      current_phase?: string;
+      cursor_step?: string;
+      constraint_violations?: Array<{ type: string; severity: string; detail: string; constraint?: string }>;
+      optimization_method?: string;
+      recommended_alternative_id?: string;
+      /** 影子 Harness（HARNESS_SHADOW_AFTER_PHASE=1）各阶段复验结果 */
+      harness_shadow_events?: Array<{
+        kernel_phase: string;
+        harness_step: string;
+        run_status: string;
+        harness_warning?: string;
+        validation_results: Array<{ passed: boolean; code?: string; message: string; severity?: string }>;
+        recorded_at: string;
+      }>;
+      harness_shadow_summary?: string;
+      /** Durable 恢复：准入通过的 Harness 步骤 */
+      resume_admission?: { step: string; passed?: boolean };
+    };
   };
 
   @ApiProperty({ 
@@ -714,6 +778,25 @@ export class RouteAndRunResponseDto {
     orchestration_request_id?: string;
     /** AO-05：状态机当前步骤（OrchestratorState.current_step） */
     current_step?: string;
+    /** Kernel Harness：DSO `harnessRuntime.activeTraceId`（`HARNESS_RECORD_TRACE=1` 且产生 trace 时） */
+    harness_active_trace_id?: string | null;
+    /** 若设置 `HARNESS_TRACE_EXPORT_DIR` 且落盘成功：相对 cwd 的 trace JSON 路径 */
+    harness_trace_export_path?: string | null;
+    /** 回显 Evaluation Harness `meta.run_id` / DSO `evaluationRunId` */
+    evaluation_run_id?: string | null;
+    /** Phase 2.0：区域 POI 规划 slice + 真实 outcome（metadata.poiPlanningOutcome） */
+    poi_planning?: {
+      regionId?: string;
+      feasibility?: 'ok' | 'tight' | 'failed';
+      resolution?: unknown;
+      appliedBackoffSteps?: string[];
+      budgetGateApplied?: boolean;
+      outcome?: unknown;
+    };
+    /** v1.0 Durable：本次请求是否命中 TripRun 上已存的 DSO checkpoint */
+    durable_checkpoint_loaded?: boolean;
+    /** v1.0：断点关联的 `trip_runs.id`（新建或续跑） */
+    durable_trip_run_id?: string | null;
     orchestration_mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
     received_route_direction_id?: string;
     mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';

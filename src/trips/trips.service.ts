@@ -969,6 +969,47 @@ export class TripsService {
     // 🆕 从 note 字段解析 isRequired 标记
     const metadata = tripData.metadata as any || {};
     const dayThemes = metadata.dayThemes || {};
+
+    // ===== 坐标补齐（用于路线距离/疲劳/节奏评估）=====
+    // Trip 详情接口默认只 select Place.metadata 等字段，不含 PostGIS geography 的经纬度。
+    // 这里批量从 Place.location 提取 lat/lng，并注入到返回的 Place 中：
+    // - place.location: {lat,lng}（与 /places/:id 对齐）
+    // - place.metadata.coordinates: {lat,lng}（与历史下游/评估脚本对齐）
+    const placeIds: number[] = [];
+    try {
+      for (const day of tripData.TripDay ?? []) {
+        for (const item of day?.ItineraryItem ?? []) {
+          const pid = item?.Place?.id;
+          if (typeof pid === 'number' && Number.isFinite(pid)) placeIds.push(pid);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    const uniquePlaceIds = [...new Set(placeIds)].filter((n) => Number.isInteger(n) && n > 0);
+    const locationMap = new Map<number, { lat: number; lng: number }>();
+    if (uniquePlaceIds.length > 0) {
+      try {
+        const locationResults = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+          SELECT
+            id,
+            ST_Y(location::geometry) as lat,
+            ST_X(location::geometry) as lng
+          FROM "Place"
+          WHERE id = ANY(${uniquePlaceIds}::int[]) AND location IS NOT NULL
+        `;
+        for (const r of locationResults ?? []) {
+          if (typeof r?.id !== 'number') continue;
+          const lat = Number((r as any).lat);
+          const lng = Number((r as any).lng);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            locationMap.set(r.id, { lat, lng });
+          }
+        }
+      } catch (e: any) {
+        this.logger.debug(`[Trip] 批量提取 Place 坐标失败: ${e?.message ?? String(e)}`);
+      }
+    }
     
     const transformedTripDays = tripData.TripDay?.map((day: any, index: number) => {
       const dayNumber = index + 1;
@@ -980,10 +1021,21 @@ export class TripsService {
         ItineraryItem: day.ItineraryItem?.map((item: any) => {
           // 从 note 字段解析 isRequired（检查是否包含 [必游] 标记）
           const isRequired = item.note?.includes('[必游]') || false;
+
+          const placeDto = item.Place ? toPlaceResponseDto(item.Place) : null;
+          if (placeDto && typeof placeDto.id === 'number') {
+            const coords = locationMap.get(placeDto.id);
+            if (coords) {
+              // Attach both `location` and `metadata.coordinates` for downstream compatibility.
+              (placeDto as any).location = coords;
+              const meta = ((placeDto as any).metadata ?? {}) as Record<string, unknown>;
+              (placeDto as any).metadata = { ...meta, coordinates: coords };
+            }
+          }
           
           return {
             ...item,
-            Place: item.Place ? toPlaceResponseDto(item.Place) : null,
+            Place: placeDto,
             crossDayInfo: this.calculateCrossDayInfo(item, day.date),
             isRequired: isRequired, // 添加 isRequired 字段
           };

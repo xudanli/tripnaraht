@@ -76,7 +76,7 @@ let cachedBufferMinutes = 90;
 function getTemplateJsonPath(): string {
   const candidates = [
     path.join(process.cwd(), 'src/decision/planner/fallback-templates.json'),
-    path.join(process.cwd(), 'dist/src/decision/planner/fallback-templates.json'),
+    path.join(process.cwd(), 'dist/decision/planner/fallback-templates.json'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;

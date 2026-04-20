@@ -6,6 +6,9 @@
 
 **注意**：本文档描述的是**辅助角色**（帮助用户写代码的角色），不是系统运行时使用的 Agent。系统 Agent 文档请参考 `prompts/agents/README.md`。
 
+**组织与能力体系（完整）**：见 [`tripnara-org-capability-system.md`](tripnara-org-capability-system.md)（Team→Role→SubAgent→Skill、六团队、Pipeline）；Cursor 入口 **`.cursor/org/tripnara-org-capability-system/SKILL.md`**，快捷 **`/org`**；分层见 **`.cursor/STRUCTURE.md`**。  
+**「决策 vs 干活」简视图**：见 [`five-teams-decision-vs-execution.md`](five-teams-decision-vs-execution.md)（与 `decision-platform-roles` Skill 对齐）。
+
 ## 角色列表
 
 ### 核心决策与设计角色
@@ -14,17 +17,18 @@
 2. **技术负责人/架构师（Tech Lead / Architect）** - `architect.md`
 3. **智能体工程师（Skills Engineer）** - `skills-engineer.md`
 4. **路线与优化算法工程师（Route Optimization Engineer）** - `route-optimization-engineer.md`
-5. **LangGraph 工程师（LangGraph Engineer）** - `langgraph.md`
-6. **全局工程系统（Global Engineering System）** - `GLOBAL_ENGINEERING_SYSTEM_PROMPT.md`
+5. **首席运筹优化科学家（Chief Optimization Scientist）** - `chief-optimization-scientist.md`
+6. **LangGraph 工程师（LangGraph Engineer）** - `langgraph.md`
+7. **全局工程系统（Global Engineering System）** - `GLOBAL_ENGINEERING_SYSTEM_PROMPT.md`
 
 ### 基础设施与工程角色
 
-7. **数据库工程师（Database Engineer）** - `database-engineer.md` ⭐ 高优先级
-8. **DevOps 工程师（DevOps Engineer）** - `devops-engineer.md` ⭐ 高优先级
-9. **测试工程师（QA Engineer / Test Engineer）** - `test-engineer.md` ⭐ 中优先级
-10. **数据工程师（Data Engineer）** - `data-engineer.md` ⭐ 中优先级
-11. **前端工程师（Frontend Engineer）** - `frontend-engineer.md` ⭐ 中优先级
-12. **安全工程师（Security Engineer）** - `security-engineer.md` ⭐ 低优先级（但重要）
+8. **首席数据工程师/数据平台（Chief Data Engineer / Data Platform）** - `chief-data-engineer.md` ⭐ 高优先级
+9. **DevOps 工程师（DevOps Engineer）** - `devops-engineer.md` ⭐ 高优先级
+10. **测试工程师（QA Engineer / Test Engineer）** - `test-engineer.md` ⭐ 中优先级
+11. **数据工程师（Data Engineer）** - `data-engineer.md` ⭐ 中优先级
+12. **前端工程师（Frontend Engineer）** - `frontend-engineer.md` ⭐ 中优先级
+13. **安全工程师（Security Engineer）** - `security-engineer.md` ⭐ 低优先级（但重要）
 
 ### 内容与数据管理角色
 
@@ -149,6 +153,10 @@
 - 设计路线生成算法
 - 定义约束规则（硬门控 + 软评分）
 - 设计评估指标
+
+**首席运筹优化科学家**（如涉及 Top-N 候选、约束形式化或多样性保障）：
+- 形式化约束与目标函数，明确硬约束/显式松弛口径
+- 定义 Top-N 多样性判据，避免“伪多解”
 
 **输出**：
 - 算法设计文档
@@ -514,9 +522,10 @@ LangGraph 工程师（图设计）
 - `.claude/roles/architect.md` - 架构师提示词
 - `.claude/roles/skills-engineer.md` - 智能体工程师提示词
 - `.claude/roles/route-optimization-engineer.md` - 路线优化算法工程师提示词
+- `.claude/roles/chief-optimization-scientist.md` - 首席运筹优化科学家提示词
 - `.claude/roles/langgraph.md` - LangGraph 工程师提示词
 - `.claude/roles/GLOBAL_ENGINEERING_SYSTEM_PROMPT.md` - 全局工程系统提示词
-- `.claude/roles/database-engineer.md` - 数据库工程师提示词 ⭐ 高优先级
+- `.claude/roles/chief-data-engineer.md` - 首席数据工程师/数据平台提示词 ⭐ 高优先级
 - `.claude/roles/devops-engineer.md` - DevOps 工程师提示词 ⭐ 高优先级
 - `.claude/roles/test-engineer.md` - 测试工程师提示词 ⭐ 中优先级
 - `.claude/roles/data-engineer.md` - 数据工程师提示词 ⭐ 中优先级

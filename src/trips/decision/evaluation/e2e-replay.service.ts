@@ -15,11 +15,14 @@ import {
   E2EReplayResult,
 } from './e2e-case.types';
 import { analyzeDiff } from './e2e-assertions';
+import { buildDecisionTraceSummary } from './replay-trace-contract';
 import { TripWorldState } from '../world-model';
 
 @Injectable()
 export class E2EReplayService {
   private readonly logger = new Logger(E2EReplayService.name);
+  private readonly uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   constructor(
     private readonly decisionEngine: TripDecisionEngineService,
@@ -56,26 +59,33 @@ export class E2EReplayService {
         requestId
       );
 
-      // 3. 获取决策日志（从 inputDigest 获取 tripId，如果没有则使用 requestId）
-      const tripId = result.log.inputDigest?.tripId || requestId;
-      const logs = await this.logStorage.queryLogs({
-        tripId: tripId,
-        limit: 1000,
-      });
+      // 3. 获取决策日志
+      // Production logs usually query by UUID tripId; replay runs use requestId as the stable audit key.
+      const tripId = result.log.inputDigest?.tripId;
+      const logs = await this.logStorage.queryLogs(
+        this.isUuid(tripId)
+          ? { tripId, limit: 1000 }
+          : { requestId, limit: 1000 },
+      );
 
       // 4. 构建实际结果
       const actual: E2EActualResult = {
         routeDirectionId: result.log.routeDirection?.selected?.uuid,
-        logs: logs.map(log => ({
-          persona: log.persona,
-          action: log.action,
-          explanation: log.explanation,
-          reasonCodes: log.reasonCodes,
-          evidenceRefs: log.evidenceRefs,
-          timestamp: log.timestamp,
-          decisionSource: log.decisionSource,
-          decisionStage: log.decisionStage,
-        })),
+        decisionRunLog: result.log as any,
+        logs: logs
+          .map(log => ({
+            persona: log.persona,
+            action: log.action,
+            explanation: log.explanation,
+            reasonCodes: log.reasonCodes,
+            evidenceRefs: log.evidenceRefs,
+            timestamp: log.timestamp,
+            decisionSource: log.decisionSource,
+            decisionStage: log.decisionStage,
+            metadata: (log as any).metadata,
+            jepaTrace: (log as any).jepaTrace,
+          }))
+          .sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
         finalPlan: {
           days: result.plan.days?.length || 0,
           // 判断是否允许：如果有 strategyLogs 且最后一个不是 REJECT，则允许
@@ -84,6 +94,7 @@ export class E2EReplayService {
             : true,
         },
       };
+      actual.traceSummary = buildDecisionTraceSummary(actual.logs);
 
       // 5. 分析差异
       const diff = analyzeDiff(testCase.expected, actual);
@@ -184,5 +195,9 @@ export class E2EReplayService {
     const currentYear = new Date().getFullYear();
     const date = new Date(currentYear, month - 1, 1);
     return date.toISOString().split('T')[0];
+  }
+
+  private isUuid(value: string | undefined): value is string {
+    return !!value && this.uuidRegex.test(value);
   }
 }

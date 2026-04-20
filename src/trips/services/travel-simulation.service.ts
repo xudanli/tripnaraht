@@ -39,7 +39,10 @@ export class TravelSimulationService {
       const slot = this.visitTimeToSlot(input.visitTime);
       let crowdLevel = input.crowd?.level;
       if (crowdLevel == null && this.crowdCurve) {
-        crowdLevel = await this.crowdCurve.getCrowdLevel(input.placeId, hour);
+        const resolved = await this.crowdCurve.getCrowdLevel(input.placeId, hour);
+        if (resolved != null) {
+          crowdLevel = resolved;
+        }
       }
       if (crowdLevel != null) {
         input = { ...input, crowd: { level: crowdLevel } };

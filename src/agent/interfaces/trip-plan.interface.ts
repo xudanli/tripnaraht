@@ -59,6 +59,15 @@ export interface TripPlanRequest {
     avoid_highways?: boolean;
   };
   /**
+   * Phase 1 POI：区域意图（与 UserIntent、docs/POI_REGION_INTENT_PHASE1.md 对齐）
+   */
+  region_id?: string;
+  must_include_poi_ids?: string[];
+  exclude_poi_ids?: string[];
+  total_budget_minutes?: number;
+  pace?: 'relaxed' | 'normal' | 'dense';
+  style_tags?: string[];
+  /**
    * 旅行本体扩展（Travel Vertical Ontology）
    * 用于将业务实体映射到 Agent/Place/Action/Resource/Event。
    */
@@ -128,14 +137,31 @@ export type GateResultStatus = 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK' | 'NEED_USE
  * 展示层可做映射，见 `docs/decision/ADR-B1-RISK-TAG.md`。
  */
 export interface GateViolation {
-  type: 'REACHABILITY' | 'SAFETY' | 'DEM' | 'DATA_MISSING' | 'TIME_CONFLICT' | 'FATIGUE' | 'BUDGET';
+  type:
+    | 'REACHABILITY'
+    | 'SAFETY'
+    | 'DEM'
+    | 'DATA_MISSING'
+    | 'TIME_CONFLICT'
+    | 'FATIGUE'
+    | 'BUDGET'
+    | 'META_BUDGET'
+    | 'HARNESS_GATE';
   severity: 'HARD' | 'SOFT';
   detail: string;
   evidence_refs?: string[]; // 关联的 EvidenceRef ID
 }
 
 export interface RequiredAdjustment {
-  action: 'CHANGE_MODE' | 'CHANGE_DATES' | 'SHORTEN_DAY' | 'REPLACE_SEGMENT' | 'REPLACE_POI' | 'ADD_BUFFER' | 'CHANGE_TRANSPORT';
+  action:
+    | 'CHANGE_MODE'
+    | 'CHANGE_DATES'
+    | 'SHORTEN_DAY'
+    | 'REPLACE_SEGMENT'
+    | 'REPLACE_POI'
+    | 'ADD_BUFFER'
+    | 'CHANGE_TRANSPORT'
+    | 'REDUCE_SCOPE_OR_ADD_EVIDENCE';
   why: string;
   target?: string; // 调整目标（如 POI ID、路段 ID）
   alternatives?: string[]; // 替代方案

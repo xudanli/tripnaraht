@@ -53,12 +53,59 @@ export class NarrateExecutorService implements INarrateExecutor {
     }
 
     try {
-      const narration = await this.narratorAgent.narrate(
+      const escalation = dso.verification?.escalationPlan;
+      const stateForNarrate = {
+        ...state,
+        ...(escalation ? { kernel_escalation_plan: escalation } : {}),
+      } as OrchestratorState;
+
+      let narration = await this.narratorAgent.narrate(
         state.itinerary,
         state.gate_result,
         state.decision_log ?? [],
-        state,
+        stateForNarrate,
       );
+
+      const envConstraintIssues = (dso.verification?.issues ?? []).filter(
+        (i) => i.source === 'ENVIRONMENTAL_CONSTRAINTS',
+      );
+      if (envConstraintIssues.length > 0) {
+        const tips = [...(narration.tips ?? [])];
+        const label = '[内核提示·环境/可视约束]';
+        const summary = envConstraintIssues
+          .slice(0, 2)
+          .map((i) => i.message)
+          .join(' ');
+        const line = `${label} 与路况无关的硬性约束需单独关注：${summary}`.slice(0, 500);
+        if (!tips.some((t) => t.startsWith(label))) {
+          tips.unshift(line);
+        }
+        narration = { ...narration, tips };
+      }
+
+      if (escalation?.userClarificationSnippet?.trim()) {
+        const escPrefix =
+          escalation.constraint === 'SUNSET_VISIBILITY' ? '[内核事实·日落/观景窗口]' : '[内核事实·须优先说明]';
+        const core = `${escPrefix} ${escalation.userClarificationSnippet.trim()}`;
+        const tips = [...(narration.tips ?? [])];
+        if (!tips.some((t) => t.includes(escalation.userClarificationSnippet!.slice(0, 24)))) {
+          tips.unshift(core);
+        }
+        const warnings = [...(narration.warnings ?? [])];
+        if (!warnings.some((w) => w.includes(escalation.userClarificationSnippet!.slice(0, 24)))) {
+          warnings.unshift(core);
+        }
+        narration = { ...narration, tips, warnings };
+      }
+
+      const hint = dso.poiPlanning?.narrationHint;
+      if (hint?.trim()) {
+        const tips = [...(narration.tips ?? [])];
+        if (!tips.some((t) => t.includes(hint.slice(0, 20)))) {
+          tips.unshift(hint);
+        }
+        return { narration: { ...narration, tips } };
+      }
       return { narration };
     } catch (e: unknown) {
       this.logger.warn(`[NarrateExecutor] NarratorAgent 失败: ${(e as Error)?.message}`);

@@ -65,7 +65,11 @@ export class PredictionCollectorService {
           })
           .then((predictions) => {
             (researchData as Record<string, unknown>).weather_predictions = predictions;
-            evidenceRefs.push(`weather_predictions_${Date.now()}`);
+            const evidenceId = `weather_predictions_${Date.now()}`;
+            (researchData as Record<string, unknown>).weather_predictions_evidence_id = evidenceId;
+            (researchData as Record<string, unknown>).weather_predictions_evidence_source =
+              'WeatherPredictionService.predictWeather';
+            evidenceRefs.push(evidenceId);
           })
           .catch((e) =>
             this.logger.warn(`[WeatherPredictionService] Failed: ${e?.message}`),
@@ -95,7 +99,11 @@ export class PredictionCollectorService {
           )
           .then((prediction) => {
             (researchData as Record<string, unknown>).failure_risk_prediction = prediction;
-            evidenceRefs.push(`failure_risk_prediction_${Date.now()}`);
+            const evidenceId = `failure_risk_prediction_${Date.now()}`;
+            (researchData as Record<string, unknown>).failure_risk_prediction_evidence_id = evidenceId;
+            (researchData as Record<string, unknown>).failure_risk_prediction_evidence_source =
+              'FailureRiskPredictionService.predictFailureRisk';
+            evidenceRefs.push(evidenceId);
 
             // 提前预警高风险日期
             const highRiskDays = prediction.predictions

@@ -3,6 +3,8 @@
 import { Module } from '@nestjs/common';
 import { DataQualityAdminController } from './controllers/data-quality-admin.controller';
 import { ConversationAdminController } from './controllers/conversation-admin.controller';
+import { HarnessDiagnosticsAdminController } from './controllers/harness-diagnostics-admin.controller';
+import { DoneVerifyDiagnosticsAdminController } from './controllers/done-verify-diagnostics-admin.controller';
 import { DataQualityModule } from '../data-quality/data-quality.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TripsModule } from '../trips/trips.module';
@@ -18,7 +20,12 @@ import { TripsModule } from '../trips/trips.module';
  */
 @Module({
   imports: [DataQualityModule, PrismaModule, TripsModule],
-  controllers: [DataQualityAdminController, ConversationAdminController],
+  controllers: [
+    DataQualityAdminController,
+    ConversationAdminController,
+    HarnessDiagnosticsAdminController,
+    DoneVerifyDiagnosticsAdminController,
+  ],
   providers: [],
   exports: [],
 })

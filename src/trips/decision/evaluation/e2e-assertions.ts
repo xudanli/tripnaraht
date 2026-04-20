@@ -6,7 +6,17 @@
  */
 
 import { DecisionLogEntry } from '../shared/decision-result.types';
-import { AbuExpected, DrDreExpected, NeptuneExpected, E2EDiff } from './e2e-case.types';
+import {
+  AbuExpected,
+  DecisionTraceSummary,
+  DrDreExpected,
+  NeptuneExpected,
+  E2EDiff,
+  ExpectedDecisionTraceSummary,
+  ReplayTimelineExpected,
+  ScientificReplayExpected,
+} from './e2e-case.types';
+import { diffDecisionTraceSummary } from './replay-trace-contract';
 
 /**
  * 断言 Abu 行为
@@ -167,10 +177,7 @@ export function assertNeptuneBehavior(
   };
 }
 
-/**
- * 分析差异
- */
-export function analyzeDiff(
+function analyzeOutcomeDiff(
   expected: {
     abuExpected: AbuExpected;
     drdreExpected?: DrDreExpected;
@@ -183,7 +190,10 @@ export function analyzeDiff(
     routeDirectionId?: string;
     finalPlan?: { days: number; allowed: boolean };
   }
-): E2EDiff {
+): Pick<
+  E2EDiff,
+  'abuDiff' | 'drdreDiff' | 'neptuneDiff' | 'routeDirectionDiff' | 'finalStateDiff' | 'hasDiff'
+> {
   const diff: E2EDiff = {
     hasDiff: false,
   };
@@ -241,4 +251,146 @@ export function analyzeDiff(
   }
 
   return diff;
+}
+
+function analyzeTraceDiff(
+  expected: { traceSummary?: ExpectedDecisionTraceSummary },
+  actual: { traceSummary?: DecisionTraceSummary },
+): Pick<E2EDiff, 'traceDiff' | 'hasDiff'> {
+  const diff: Pick<E2EDiff, 'traceDiff' | 'hasDiff'> = { hasDiff: false };
+  const traceDiff = diffDecisionTraceSummary(expected.traceSummary, actual.traceSummary);
+  if (traceDiff.length > 0) {
+    diff.traceDiff = traceDiff;
+    diff.hasDiff = true;
+  }
+  return diff;
+}
+
+function analyzeScientificDiff(
+  expected: { scientificExpected?: ScientificReplayExpected },
+  actual: { traceSummary?: DecisionTraceSummary },
+): Pick<E2EDiff, 'scientificDiff' | 'hasDiff'> {
+  const scientificDiff: string[] = [];
+  const optimization = expected.scientificExpected?.optimization;
+  const trace = actual.traceSummary;
+  const audit = trace?.candidateSearchAudit;
+
+  if (optimization) {
+    const hasTrace = !!trace?.metaDecisionAudit;
+    if (optimization.mustEmitTrace !== undefined && hasTrace !== optimization.mustEmitTrace) {
+      scientificDiff.push(
+        `optimization trace emission mismatch: expected=${optimization.mustEmitTrace} actual=${hasTrace}`,
+      );
+    }
+    if (
+      optimization.minCandidateSearchIterations !== undefined &&
+      ((audit?.iterations?.length ?? 0) < optimization.minCandidateSearchIterations)
+    ) {
+      scientificDiff.push(
+        `candidate search iterations below expectation: expected>=${optimization.minCandidateSearchIterations} actual=${audit?.iterations?.length ?? 0}`,
+      );
+    }
+    if (
+      optimization.minFinalFeasibleCount !== undefined &&
+      ((audit?.finalFeasibleCount ?? 0) < optimization.minFinalFeasibleCount)
+    ) {
+      scientificDiff.push(
+        `final feasible count below expectation: expected>=${optimization.minFinalFeasibleCount} actual=${audit?.finalFeasibleCount ?? 0}`,
+      );
+    }
+    if (
+      optimization.allowedStopReasons &&
+      optimization.allowedStopReasons.length > 0 &&
+      audit?.stopReason &&
+      !optimization.allowedStopReasons.includes(audit.stopReason)
+    ) {
+      scientificDiff.push(
+        `candidate search stopReason mismatch: expected one of ${optimization.allowedStopReasons.join(',')} actual=${audit.stopReason}`,
+      );
+    }
+    if (optimization.metaDecisionAuditIncludes) {
+      for (const needle of optimization.metaDecisionAuditIncludes) {
+        if (!(trace?.metaDecisionAudit ?? '').includes(needle)) {
+          scientificDiff.push(`metaDecisionAudit missing expected token: ${needle}`);
+        }
+      }
+    }
+  }
+
+  return {
+    scientificDiff: scientificDiff.length > 0 ? scientificDiff : undefined,
+    hasDiff: scientificDiff.length > 0,
+  };
+}
+
+function analyzeTimelineDiff(
+  expected: { timelineExpected?: ReplayTimelineExpected },
+  actual: { logs: DecisionLogEntry[] },
+): Pick<E2EDiff, 'timelineDiff' | 'hasDiff'> {
+  const timeline = expected.timelineExpected;
+  if (!timeline) return { hasDiff: false };
+  const stageSequence = actual.logs.map((log) => log.decisionStage);
+  const timelineDiff: string[] = [];
+
+  for (const stage of timeline.requiredStages ?? []) {
+    if (!stageSequence.includes(stage)) {
+      timelineDiff.push(`missing required stage: ${stage}`);
+    }
+  }
+  for (const stage of timeline.forbiddenStages ?? []) {
+    if (stageSequence.includes(stage)) {
+      timelineDiff.push(`unexpected forbidden stage: ${stage}`);
+    }
+  }
+  if (timeline.orderedStages && timeline.orderedStages.length > 1) {
+    let cursor = -1;
+    for (const stage of timeline.orderedStages) {
+      const nextIdx = stageSequence.indexOf(stage, cursor + 1);
+      if (nextIdx === -1) {
+        timelineDiff.push(`ordered stage missing or out of order: ${stage}`);
+        break;
+      }
+      cursor = nextIdx;
+    }
+  }
+
+  return {
+    timelineDiff: timelineDiff.length > 0 ? timelineDiff : undefined,
+    hasDiff: timelineDiff.length > 0,
+  };
+}
+
+/**
+ * 分析差异
+ */
+export function analyzeDiff(
+  expected: {
+    abuExpected: AbuExpected;
+    drdreExpected?: DrDreExpected;
+    neptuneExpected?: NeptuneExpected;
+    routeDirectionId?: string;
+    finalState: { allowed: boolean; planDays?: number };
+    traceSummary?: ExpectedDecisionTraceSummary;
+    scientificExpected?: ScientificReplayExpected;
+    timelineExpected?: ReplayTimelineExpected;
+  },
+  actual: {
+    logs: DecisionLogEntry[];
+    routeDirectionId?: string;
+    finalPlan?: { days: number; allowed: boolean };
+    traceSummary?: DecisionTraceSummary;
+  },
+): E2EDiff {
+  const outcome = analyzeOutcomeDiff(expected, actual);
+  const trace = analyzeTraceDiff(expected, actual);
+  const scientific = analyzeScientificDiff(expected, actual);
+  const timeline = analyzeTimelineDiff(expected, actual);
+
+  return {
+    ...outcome,
+    traceDiff: trace.traceDiff,
+    scientificDiff: scientific.scientificDiff,
+    timelineDiff: timeline.timelineDiff,
+    hasDiff: outcome.hasDiff || trace.hasDiff || scientific.hasDiff || timeline.hasDiff,
+  };
 }

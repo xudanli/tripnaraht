@@ -17,7 +17,7 @@ import * as path from 'path';
 export {};
 
 // 加载 .env 文件
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
 // 配置 - 优先使用环境变量
 const JWT_SECRET = process.env.JWT_SECRET || 'tripnara-dev-secret-key';

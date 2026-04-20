@@ -3,7 +3,10 @@
   "description": "TripNARA：开发期「角色 Skill 包」机器可读清单。用于编排默认读盘范围、验收项与协作 Consult。运行时 Skill 源码在 src/skills/；本文件不替代 prompts/agents。",
   "reference_docs": [
     ".claude/claude.md",
+    "docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md",
     ".claude/roles/muti_agent_collaboration.md",
+    ".claude/roles/five-teams-decision-vs-execution.md",
+    ".claude/roles/tripnara-org-capability-system.md",
     "scripts/rl-infra/roll/RACI_WEEK1_3.md"
   ],
   "tiers": {
@@ -97,14 +100,23 @@
     },
     {
       "id": "decision_ux_architect",
-      "title": { "zh": "决策体验设计师", "en": "Decision UX Architect" },
+      "title": { "zh": "决策体验与前端架构", "en": "Decision UX / Frontend Interaction" },
       "prompt": ".claude/roles/decision-ux-architect.md",
       "tier": "on_demand",
       "claude_md_section": "13.2",
-      "default_paths": [".claude/roles/decision-ux-architect.md", "src/skills/detail/", "src/skills/hitl/"],
+      "default_paths": [
+        ".claude/roles/decision-ux-architect.md",
+        "docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md",
+        "src/skills/detail/",
+        "src/skills/hitl/"
+      ],
       "runtime_skill_directories": ["src/skills/detail/", "src/skills/hitl/"],
-      "checklist": ["Delta / 三人格映射与字段对齐", "解释与审批不增加认知负担"],
-      "consult_roles": ["frontend_engineer", "content_strategy_brand_lead", "decision_safety_compliance_officer"]
+      "checklist": [
+        "Decision Log / Explain / Verification 结构化展示与 API 对齐",
+        "阶段事件流与 NEED_* / continue 一致",
+        "前端不宣称未验证的「最终正确」"
+      ],
+      "consult_roles": ["decision_product_designer", "decision_platform_runtime_engineer", "chief_product_architect", "decision_safety_compliance_officer"]
     },
     {
       "id": "decision_evaluation_evolution_lead",
@@ -116,6 +128,49 @@
       "runtime_skill_directories": ["src/skills/context/", "src/skills/decision/"],
       "checklist": ["指标/Reward 语义有版本与文档", "回归与版本对比协议可执行"],
       "consult_roles": ["rl_evaluation_engineer", "chief_data_engineer", "chief_ai_scientist"]
+    },
+    {
+      "id": "chief_ai_scientist",
+      "title": { "zh": "首席 AI 科学家", "en": "Chief AI Scientist" },
+      "prompt": ".claude/roles/chief-ai-scientist.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/roles/chief-ai-scientist.md",
+        "src/agent/",
+        "src/decision/",
+        "src/trips/decision/",
+        "src/skills/",
+        "scripts/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "评测与训练信号口径一致（Reward/指标/回放）",
+        "避免策略投机与回归退化（给出对比协议与守护门）",
+        "关键假设与不确定性显式标注，并给出可验证计划"
+      ],
+      "consult_roles": ["decision_evaluation_evolution_lead", "chief_data_engineer", "architect"]
+    },
+    {
+      "id": "chief_ontology_scientist",
+      "title": { "zh": "首席本体科学家", "en": "Chief Ontology Scientist" },
+      "prompt": ".claude/roles/chief-ontology-scientist.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/roles/chief-ontology-scientist.md",
+        "src/**/types*.ts",
+        "src/**/schema*.ts",
+        "src/**/interfaces*.ts",
+        "prisma/schema.prisma"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "概念/字段命名与语义一致，避免同义异名与暗含歧义",
+        "Schema/DTO/日志字段的语义演进可追溯（含兼容策略）",
+        "跨模块契约变更给出迁移与回滚方案"
+      ],
+      "consult_roles": ["architect", "chief_data_engineer", "skills_engineer"]
     },
     {
       "id": "chief_data_engineer",
@@ -137,6 +192,326 @@
       "runtime_skill_directories": [],
       "checklist": ["灰度/回滚/告警齐备", "关键链路 SLO 可观测"],
       "consult_roles": ["architect", "security_engineer"]
+    },
+    {
+      "id": "chief_optimization_scientist",
+      "title": { "zh": "首席运筹优化科学家", "en": "Chief Optimization Scientist" },
+      "prompt": ".claude/roles/chief-optimization-scientist.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/roles/chief-optimization-scientist.md",
+        "src/trips/decision/optimization/",
+        "src/decision/kernel/optimization-engine-adapter.service.ts",
+        "src/decision/kernel/candidate-search.pipeline.ts"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "Top-N 候选结构化且可区分（非伪多解）",
+        "硬约束/可行域优先；松弛必须显式标注",
+        "Monte Carlo 实现与 objective 对齐由 CGUS/ExpectedUtility 路径维护；你盯可行域、Top-K、松弛披露与 Gate/VERIFY 口径一致",
+        "输入与 Gate-first / VERIFY 口径一致"
+      ],
+      "consult_roles": ["architect", "chief_product_architect", "chief_ai_scientist"]
+    },
+    {
+      "id": "rag_engineer",
+      "title": { "zh": "RAG 工程师", "en": "RAG Engineer" },
+      "prompt": ".claude/roles/rag-engineer.md",
+      "tier": "core_product",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/roles/rag-engineer.md",
+        "src/rag/",
+        "src/knowledge-base/",
+        "src/places/services/embedding.service.ts",
+        ".cursor/capabilities/rag-engineering/SKILL.md",
+        "scripts/index-all-docs-kb.ts"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "Chunk/索引与新鲜度策略可执行；新代码优先 ChunkRetrievalService，勿依赖已弃用 document_index 向量路径",
+        "失败降级不伪造事实；空检索不生成虚假引用",
+        "延迟与成本可观测（缓存命中、检索耗时）"
+      ],
+      "consult_roles": ["architect", "chief_data_engineer", "skills_engineer", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "rag_content_manager",
+      "title": { "zh": "RAG 文档数据负责人", "en": "RAG Content Manager" },
+      "prompt": ".claude/roles/rag-content-manager.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [
+        ".claude/roles/rag-content-manager.md",
+        "scripts/index-*-kb*.ts",
+        "prisma/schema.prisma",
+        ".cursor/capabilities/rag-engineering/SKILL.md"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "语料来源、版本与校验状态可追溯",
+        "与 KnowledgeFile/Chunk 字段及索引脚本一致",
+        "敏感或合规类文档变更已同步披露与 Gate 相关文案（按需 Consult）"
+      ],
+      "consult_roles": ["rag_engineer", "chief_data_engineer", "chief_product_architect", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "decision_kernel_lead",
+      "title": { "zh": "决策内核负责人", "en": "Decision Kernel Lead" },
+      "prompt": ".claude/roles/decision-kernel-lead.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/decision-kernel-lead.md",
+        "docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md",
+        "src/decision/kernel/",
+        "src/agent/execution/"
+      ],
+      "runtime_skill_directories": ["src/skills/decision/", "src/skills/itinerary/", "src/skills/plan/"],
+      "checklist": [
+        "DSO 更新路径经 StateManager；无叙事层直写权威字段",
+        "阶段转移与 VERIFY/REPAIR 口径一致",
+        "变更说明对 replay/baseline 的影响"
+      ],
+      "consult_roles": ["architect", "chief_optimization_scientist", "decision_platform_runtime_engineer", "chief_ontology_scientist"]
+    },
+    {
+      "id": "decision_platform_runtime_engineer",
+      "title": { "zh": "决策平台与 Runtime 工程师", "en": "Decision Platform & Runtime Engineer" },
+      "prompt": ".claude/roles/decision-platform-runtime-engineer.md",
+      "tier": "core_product",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/decision-platform-runtime-engineer.md",
+        "docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md",
+        "src/harness/",
+        "src/agent/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "run/continue/explain API 契约与幂等键清晰",
+        "trace 与 runId/traceId 身份模型完整",
+        "MCP/OpenAPI 不暴露内核内部可变状态"
+      ],
+      "consult_roles": ["decision_kernel_lead", "devops_engineer", "architect", "chief_data_engineer"]
+    },
+    {
+      "id": "decision_evidence_world_model_engineer",
+      "title": { "zh": "证据与世界模型工程师", "en": "Evidence & World Model Engineer" },
+      "prompt": ".claude/roles/decision-evidence-world-model-engineer.md",
+      "tier": "core_product",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/decision-evidence-world-model-engineer.md",
+        "src/agent/execution/research-executor.service.ts",
+        "src/skills/world/",
+        "src/rag/"
+      ],
+      "runtime_skill_directories": ["src/skills/world/", "src/skills/places/"],
+      "checklist": [
+        "证据可溯源、可冻结；失败不伪造事实",
+        "环境字段与 DSO/Gate/VERIFY 口径一致",
+        "新鲜度与来源可靠性可说明"
+      ],
+      "consult_roles": ["rag_engineer", "chief_data_engineer", "decision_kernel_lead", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "decision_product_designer",
+      "title": { "zh": "决策产品设计师", "en": "Decision Product Designer" },
+      "prompt": ".claude/roles/decision-product-designer.md",
+      "tier": "core_product",
+      "default_paths": [
+        ".claude/roles/decision-product-designer.md",
+        "docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md",
+        "docs/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "PRD 含状态/字段与验收；无「跳过 Verify」",
+        "NEED_* 与 continue 语义可研发落地",
+        "Explain 呈现不编造数值、不弱化风险"
+      ],
+      "consult_roles": ["chief_product_architect", "decision_ux_architect", "decision_kernel_lead", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "rl_backend_infra_engineer",
+      "title": { "zh": "RL Infra：后端基础设施工程师", "en": "RL Infra: Backend Infra Engineer" },
+      "prompt": ".claude/roles/rl-infra/backend-infra-engineer.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/rl-infra/backend-infra-engineer.md",
+        ".claude/roles/rl-infra/SYSTEM_ARCHITECTURE.md",
+        "src/",
+        "scripts/",
+        "Dockerfile*",
+        "docker-compose*.yml",
+        ".github/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": ["发布链路可回滚", "关键服务可观测", "配置与密钥管理清晰"],
+      "consult_roles": ["devops_engineer", "architect"]
+    },
+    {
+      "id": "rl_ml_platform_engineer",
+      "title": { "zh": "RL Infra：RL/ML 平台工程师", "en": "RL Infra: RL/ML Platform Engineer" },
+      "prompt": ".claude/roles/rl-infra/rl-ml-platform-engineer.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/rl-infra/rl-ml-platform-engineer.md",
+        "src/agent/training/",
+        "src/llm/",
+        "scripts/",
+        "docker/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": ["训练/推理链路资源与成本可控", "版本可追溯与可回滚", "数据/模型依赖声明清晰"],
+      "consult_roles": ["chief_ai_scientist", "chief_data_engineer", "devops_engineer"]
+    },
+    {
+      "id": "rl_evaluation_engineer",
+      "title": { "zh": "RL Infra：评测工程师", "en": "RL Infra: Evaluation Engineer" },
+      "prompt": ".claude/roles/rl-infra/evaluation-engineer.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/rl-infra/evaluation-engineer.md",
+        "src/trips/decision/evaluation/",
+        "scripts/",
+        "artifacts/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": ["回归套件可重复运行", "指标口径与版本协议明确", "对比实验可复现"],
+      "consult_roles": ["decision_evaluation_evolution_lead", "chief_ai_scientist"]
+    },
+    {
+      "id": "rl_pm_product",
+      "title": { "zh": "RL Infra：产品经理（RL）", "en": "RL Infra: Product Manager (RL)" },
+      "prompt": ".claude/roles/rl-infra/pm-rl-product.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/rl-infra/pm-rl-product.md",
+        ".claude/roles/rl-infra/USER_API_DOCUMENTATION.md",
+        ".claude/roles/rl-infra/ADMIN_API_DOCUMENTATION.md"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": ["用户可见语义与验收标准清晰", "发布节奏与风险披露对齐"],
+      "consult_roles": ["chief_product_architect", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "rl_data_engineer_trajectory",
+      "title": { "zh": "RL Infra：轨迹数据工程师", "en": "RL Infra: Data Engineer (Trajectory)" },
+      "prompt": ".claude/roles/rl-infra/data-engineer-trajectory.md",
+      "tier": "release_train",
+      "claude_md_section": "13.1",
+      "default_paths": [
+        ".claude/roles/rl-infra/data-engineer-trajectory.md",
+        "src/agent/training/",
+        "src/trips/decision/",
+        "prisma/",
+        "scripts/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": ["轨迹字段血缘与版本可追溯", "回填/迁移可回滚", "训练样本筛选协议明确"],
+      "consult_roles": ["chief_data_engineer", "rl_evaluation_engineer", "chief_ai_scientist"]
+    },
+    {
+      "id": "rl_llm_judge_rm_engineer",
+      "title": { "zh": "RL Infra：LLM Judge / RM 工程师", "en": "RL Infra: LLM Judge / RM Engineer" },
+      "prompt": ".claude/roles/rl-infra/llm-judge-rm-engineer.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/rl-infra/llm-judge-rm-engineer.md", "src/agent/training/", "scripts/"],
+      "runtime_skill_directories": [],
+      "checklist": ["Judge/RM 指标不被投机", "对齐与回归对比可复现", "失败降级策略明确"],
+      "consult_roles": ["chief_ai_scientist", "decision_evaluation_evolution_lead"]
+    },
+    {
+      "id": "rl_safety_compliance_lead",
+      "title": { "zh": "RL Infra：安全与合规负责人", "en": "RL Infra: Safety & Compliance Lead" },
+      "prompt": ".claude/roles/rl-infra/safety-compliance-lead.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/rl-infra/safety-compliance-lead.md", "docs/", "src/"],
+      "runtime_skill_directories": [],
+      "checklist": ["发布门禁与责任边界明确", "敏感数据与日志策略合规", "高风险变更具备回滚"],
+      "consult_roles": ["decision_safety_compliance_officer", "devops_engineer"]
+    },
+    {
+      "id": "rl_domain_expert_network",
+      "title": { "zh": "RL Infra：领域专家网络", "en": "RL Infra: Domain Expert Network" },
+      "prompt": ".claude/roles/rl-infra/domain-expert-network.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/rl-infra/domain-expert-network.md", "docs/", "src/skills/world/"],
+      "runtime_skill_directories": [],
+      "checklist": ["目的地/季节规则变更可追溯", "反例库/禁行规则有版本与来源"],
+      "consult_roles": ["decision_safety_compliance_officer", "chief_product_architect"]
+    },
+    {
+      "id": "rl_ux_writer",
+      "title": { "zh": "RL Infra：UX Writer", "en": "RL Infra: UX Writer" },
+      "prompt": ".claude/roles/rl-infra/ux-writer.md",
+      "tier": "on_demand",
+      "claude_md_section": "13.2",
+      "default_paths": [".claude/roles/rl-infra/ux-writer.md", "docs/", "src/"],
+      "runtime_skill_directories": [],
+      "checklist": ["风险提示与用户可见语义一致", "文案不夸大、不做不可核验承诺"],
+      "consult_roles": ["chief_product_architect", "decision_safety_compliance_officer"]
+    },
+    {
+      "id": "claude_team_orchestrator",
+      "title": { "zh": "Claude 专家团队主编排器", "en": "Claude Team Orchestrator" },
+      "prompt": ".claude/roles/claude-team-orchestrator.md",
+      "tier": "release_train",
+      "default_paths": [
+        ".claude/roles/claude-team-orchestrator.md",
+        ".claude/role-router.json",
+        ".claude/role-skill-manifest.json",
+        ".claude/roles/muti_agent_collaboration.md",
+        "docs/",
+        "src/",
+        "scripts/",
+        "prisma/"
+      ],
+      "runtime_skill_directories": [],
+      "checklist": [
+        "使用 role-router 选择专家角色，不做无效拉齐",
+        "聚合 checklist 并形成可执行验收清单",
+        "每个关键结论给出权衡、风险、回滚/降级"
+      ],
+      "consult_roles": [
+        "architect",
+        "skills_engineer",
+        "chief_product_architect",
+        "devops_engineer",
+        "ai_reasoning_system_architect",
+        "decision_kernel_lead",
+        "decision_platform_runtime_engineer",
+        "decision_evidence_world_model_engineer",
+        "decision_product_designer",
+        "chief_optimization_scientist",
+        "chief_data_engineer",
+        "decision_safety_compliance_officer",
+        "decision_ux_architect",
+        "decision_evaluation_evolution_lead",
+        "chief_ai_scientist",
+        "chief_ontology_scientist",
+        "rl_backend_infra_engineer",
+        "rl_ml_platform_engineer",
+        "rl_evaluation_engineer",
+        "rl_data_engineer_trajectory",
+        "rl_pm_product",
+        "rl_llm_judge_rm_engineer",
+        "rl_safety_compliance_lead",
+        "rl_domain_expert_network",
+        "rl_ux_writer",
+        "rag_engineer",
+        "rag_content_manager"
+      ]
     }
   ]
 }

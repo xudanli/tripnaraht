@@ -9,6 +9,14 @@ import { QueryExpansionService } from './query-expansion.service';
 import { QueryIntentService } from './query-intent.service';
 import { RedisService } from '../../redis/redis.service';
 import { ParallelExecutorService } from './parallel-executor.service';
+import { expandChunkCategoryForRetrievalFilter } from '../../knowledge-base/chunk-category-derive';
+
+function parseChunkUpdatedAt(v: Date | string | null | undefined): Date | undefined {
+  if (v == null) return undefined;
+  if (v instanceof Date) return v;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
 
 export interface ChunkRetrievalResult {
   id: string;
@@ -20,6 +28,10 @@ export interface ChunkRetrievalResult {
   metadata: any;
   fileId: string;
   similarity: number;
+  /** chunks.category，供 CGUS / dominant 统计与时效衰减 */
+  category?: string | null;
+  /** chunks.updated_at，用于路况类 ageHours */
+  chunkUpdatedAt?: Date;
   sourceFile?: string;
   // Hybrid Search 相关字段
   denseScore?: number; // Dense (向量) 检索分数
@@ -36,7 +48,8 @@ export interface ChunkRetrievalParams {
   credibilityMin?: number;
   type?: string;
   category?: string; // KnowledgeFile的category (文件级别分类)
-  chunkCategory?: string; // Chunk的category (RULES, POI_INFO, GATE, WEATHER, GENERAL)
+  /** Chunk 级分类过滤；支持核心类 + 标签降级展开，见 expandChunkCategoryForRetrievalFilter */
+  chunkCategory?: string;
   fileId?: string;
   // Hybrid Search 参数
   useHybridSearch?: boolean; // 是否使用混合检索
@@ -354,6 +367,25 @@ export class ChunkRetrievalService {
   }
 
   /**
+   * API chunkCategory → 数据库细分标签（OR）；非映射值则精确匹配单列。
+   */
+  private appendChunkCategoryFilter(
+    conditions: string[],
+    paramsList: unknown[],
+    chunkCategory: string | undefined,
+    logLabel: string,
+  ): void {
+    if (!chunkCategory?.trim()) return;
+    const labels = expandChunkCategoryForRetrievalFilter(chunkCategory);
+    if (labels.length === 0) return;
+    const start = paramsList.length + 1;
+    const parts = labels.map((_, i) => `c.category = $${start + i}`);
+    conditions.push(`(${parts.join(' OR ')})`);
+    labels.forEach((l) => paramsList.push(l));
+    this.logger.debug(`🎯 ${logLabel}: chunkCategory=${chunkCategory} → ${labels.join(', ')}`);
+  }
+
+  /**
    * Dense检索（纯向量搜索）
    */
   private async denseRetrieve(params: ChunkRetrievalParams): Promise<ChunkRetrievalResult[]> {
@@ -405,12 +437,7 @@ export class ChunkRetrievalService {
       paramsList.push(fileId);
     }
 
-    // 按 Chunk 的 category 过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)
-    if (chunkCategory) {
-      conditions.push(`c.category = $${paramsList.length + 1}`);
-      paramsList.push(chunkCategory);
-      this.logger.debug(`🎯 Dense检索: 应用chunkCategory过滤 = ${chunkCategory}`);
-    }
+    this.appendChunkCategoryFilter(conditions, paramsList, chunkCategory, 'Dense检索');
 
     // 构建 FROM 子句
     let fromClause = 'FROM chunks c';
@@ -435,6 +462,8 @@ export class ChunkRetrievalService {
         c.keywords,
         c.metadata,
         c.file_id,
+        c.category,
+        c.updated_at AS chunk_updated_at,
         1 - (c.embedding <=> $1::vector) as similarity
       ${fromClause}
       ${whereClause}
@@ -451,6 +480,8 @@ export class ChunkRetrievalService {
       keywords: string[];
       metadata: any;
       file_id: string;
+      category: string | null;
+      chunk_updated_at: Date | string | null;
       similarity: number;
     }>>(querySql, ...paramsList);
 
@@ -554,11 +585,7 @@ export class ChunkRetrievalService {
       paramsList.push(fileId);
     }
 
-    // 按 Chunk 的 category 过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)
-    if (chunkCategory) {
-      conditions.push(`c.category = $${paramsList.length + 1}`);
-      paramsList.push(chunkCategory);
-    }
+    this.appendChunkCategoryFilter(conditions, paramsList, chunkCategory, 'Sparse检索');
 
     // 构建 FROM 子句
     let fromClause = 'FROM chunks c';
@@ -599,6 +626,8 @@ export class ChunkRetrievalService {
         c.keywords,
         c.metadata,
         c.file_id,
+        c.category,
+        c.updated_at AS chunk_updated_at,
         ${scoreCalculation} as keyword_score
       ${fromClause}
       ${whereClause}
@@ -618,6 +647,8 @@ export class ChunkRetrievalService {
       keywords: string[];
       metadata: any;
       file_id: string;
+      category: string | null;
+      chunk_updated_at: Date | string | null;
       keyword_score: number;
     }>>(querySql, ...allParams);
 
@@ -646,6 +677,8 @@ export class ChunkRetrievalService {
       keywords: r.keywords || [],
       metadata: r.metadata as Record<string, any> | undefined,
       fileId: r.file_id,
+      category: r.category,
+      chunkUpdatedAt: parseChunkUpdatedAt(r.chunk_updated_at),
       similarity: Math.min(parseFloat(String(r.keyword_score)) / 100, 1), // 归一化到0-1
       sparseScore: Math.min(parseFloat(String(r.keyword_score)) / 100, 1),
       sourceFile: fileMap.get(r.file_id),
@@ -849,6 +882,8 @@ export class ChunkRetrievalService {
       keywords: string[];
       metadata: any;
       file_id: string;
+      category?: string | null;
+      chunk_updated_at?: Date | string | null;
       similarity: number;
     }>,
     credibilityMin: number
@@ -892,6 +927,8 @@ export class ChunkRetrievalService {
         keywords: r.keywords || [],
         metadata: r.metadata as Record<string, any> | undefined,
         fileId: r.file_id,
+        category: r.category ?? undefined,
+        chunkUpdatedAt: parseChunkUpdatedAt(r.chunk_updated_at),
         similarity: parseFloat(String(r.similarity)),
         sourceFile: fileMap.get(r.file_id),
       }));

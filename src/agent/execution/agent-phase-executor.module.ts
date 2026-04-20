@@ -31,6 +31,8 @@ import { CountryConfigService } from '../../skills/world/services/country-config
 import { SkillsModule } from '../../skills/skills.module';
 import { ReadinessModule } from '../../trips/readiness/readiness.module';
 import { AgentModule } from '../agent.module';
+import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
+import { ExtremeScenarioRuleEngineService } from '../services/extreme-scenario-rule-engine.service';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { AgentModule } from '../agent.module';
     GateEvalExecutorService,
     PlanGenExecutorService,
     VerifyExecutorService,
+    ExtremeScenarioRuleEngineService,
+    RouteFeasibilityEngineService,
     RepairExecutorService,
     IntakeExecutorService,
     NarrateExecutorService,
@@ -64,6 +68,7 @@ import { AgentModule } from '../agent.module';
     GateEvalExecutorService,
     PlanGenExecutorService,
     VerifyExecutorService,
+    RouteFeasibilityEngineService,
     RepairExecutorService,
     IntakeExecutorService,
     NarrateExecutorService,

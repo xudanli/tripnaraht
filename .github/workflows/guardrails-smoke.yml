@@ -1,0 +1,53 @@
+# Guardrails Phase A：非阻断 — 每 PR 跑启发式检查，收集误报/漏报
+name: Guardrails Smoke
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guardrails:
+    name: guardrails (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install ripgrep (for DSO / executor scans)
+        run: sudo apt-get update -qq && sudo apt-get install -y ripgrep
+
+      - name: guardrails — DSO mutation smoke
+        id: dso
+        continue-on-error: true
+        run: npm run guardrails:check
+        env:
+          GUARDRAILS_STRICT: '0'
+
+      - name: guardrails — executor purity smoke
+        id: executor
+        continue-on-error: true
+        run: npm run guardrails:executor
+        env:
+          GUARDRAILS_STRICT: '0'
+
+      - name: Summary (always)
+        if: always()
+        run: |
+          echo "## Guardrails smoke (non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **DSO mutation**: step outcome ${{ steps.dso.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Executor purity**: step outcome ${{ steps.executor.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set \`GUARDRAILS_STRICT=1\` locally or in a follow-up job to fail on hits. See \`docs/TRIPNARA_ENGINEERING_GUARDRAILS.md\`." >> "$GITHUB_STEP_SUMMARY"

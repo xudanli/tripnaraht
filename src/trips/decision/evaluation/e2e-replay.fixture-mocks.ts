@@ -5,6 +5,59 @@
 import type { E2ECase } from './e2e-case.types';
 import type { DecisionLogEntry } from '../shared/decision-result.types';
 
+function normalizeCandidateSearchTrace(input: {
+  candidateSearchBudget?: any;
+  candidateSearchAudit?: any;
+}): { candidateSearchBudget?: any; candidateSearchAudit?: any } {
+  const budget = (input.candidateSearchBudget ?? input.candidateSearchAudit?.budget) as any;
+  const audit = input.candidateSearchAudit as any;
+
+  if (!audit) {
+    return { candidateSearchBudget: input.candidateSearchBudget, candidateSearchAudit: input.candidateSearchAudit };
+  }
+
+  const normalizedBudget = budget ? { ...budget } : undefined;
+  const iterations = Array.isArray(audit.iterations) ? audit.iterations : [];
+
+  let finalCandidateCount = audit.finalCandidateCount;
+  let finalFeasibleCount = audit.finalFeasibleCount;
+
+  if (iterations.length > 0) {
+    const last = iterations[iterations.length - 1] ?? {};
+    const maxCandidates = typeof normalizedBudget?.maxCandidates === 'number' ? normalizedBudget.maxCandidates : undefined;
+    const poolAfterDedup = typeof last.poolSizeAfterDedup === 'number' ? last.poolSizeAfterDedup : undefined;
+    const feasibleAfterProjection =
+      typeof last.feasibleCountAfterProjection === 'number' ? last.feasibleCountAfterProjection : undefined;
+
+    const derivedFinalCandidateCount =
+      typeof poolAfterDedup === 'number'
+        ? typeof maxCandidates === 'number'
+          ? Math.min(maxCandidates, poolAfterDedup)
+          : poolAfterDedup
+        : undefined;
+    const derivedFinalFeasibleCount =
+      typeof feasibleAfterProjection === 'number' && typeof derivedFinalCandidateCount === 'number'
+        ? Math.min(derivedFinalCandidateCount, feasibleAfterProjection)
+        : feasibleAfterProjection;
+
+    if (typeof derivedFinalCandidateCount === 'number') finalCandidateCount = derivedFinalCandidateCount;
+    if (typeof derivedFinalFeasibleCount === 'number') finalFeasibleCount = derivedFinalFeasibleCount;
+  }
+
+  const normalizedAudit = {
+    ...audit,
+    budget: normalizedBudget ?? audit.budget,
+    iterations,
+    finalCandidateCount: typeof finalCandidateCount === 'number' ? finalCandidateCount : 0,
+    finalFeasibleCount: typeof finalFeasibleCount === 'number' ? finalFeasibleCount : 0,
+  };
+
+  return {
+    candidateSearchBudget: normalizedAudit.budget ?? input.candidateSearchBudget,
+    candidateSearchAudit: normalizedAudit,
+  };
+}
+
 export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry[] {
   const ts = new Date().toISOString();
   const abu = testCase.expected.abuExpected;
@@ -23,6 +76,30 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
       decisionStage: 'ABU_GATE',
     },
   ];
+
+  const trace = testCase.expected.traceSummary;
+  if (trace) {
+    const normalized = normalizeCandidateSearchTrace({
+      candidateSearchBudget: trace.candidateSearchBudget,
+      candidateSearchAudit: trace.candidateSearchAudit,
+    });
+    logs.push({
+      persona: 'EXPECTED_UTILITY',
+      action: 'EVALUATE',
+      explanation: 'fixture trace summary audit',
+      reasonCodes: [],
+      evidenceRefs: ['fixture:plan-score'],
+      timestamp: ts,
+      decisionSource: 'UTILITY',
+      decisionStage: 'PLAN_SCORE',
+      metadata: {
+        schemaVersion: trace.schemaVersion ?? 'trace/v1',
+        metaDecisionAudit: trace.metaDecisionAudit,
+        candidateSearchBudget: normalized.candidateSearchBudget,
+        candidateSearchAudit: normalized.candidateSearchAudit,
+      },
+    });
+  }
 
   const dr = testCase.expected.drdreExpected;
   if (dr?.mustAdjust) {

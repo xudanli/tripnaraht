@@ -1,0 +1,392 @@
+{
+  "generatedAt": "2026-04-15T14:18:32.911Z",
+  "mode": "app",
+  "n": 12,
+  "totalMs": 100,
+  "avgMs": 8.333333333333334,
+  "cgusCount": 12,
+  "emptyCount": 0,
+  "configSnapshot": {
+    "defaultTimeoutMs": 5000,
+    "maxConcurrentDecisions": 100,
+    "monteCarloSamples": 1000,
+    "explorationRate": 0.1,
+    "confidenceThreshold": 0.8,
+    "cgusMaxIterations": 100,
+    "cgusConvergenceThreshold": 0.001,
+    "cgusMaxCandidates": 8,
+    "cgusRolloutTopK": 3,
+    "cgusRepairMaxIters": 2,
+    "cgusRepairTopKPerCandidate": 2,
+    "cgusMaxNewCandidatesPerIter": 30,
+    "cgusMaxPoolSize": 200,
+    "cgusPilotSamples": 20
+  },
+  "gate": {
+    "passed": true,
+    "failures": [],
+    "thresholds": {
+      "cgusRateMin": 0.95,
+      "emptyRateMax": 0.05,
+      "altP50Min": 3
+    }
+  },
+  "aggregates": {
+    "cgusRate": 1,
+    "emptyRate": 0,
+    "top1Score": {
+      "n": 12,
+      "min": 0.49752999924046715,
+      "max": 0.5766842200531297,
+      "quantiles": {
+        "0.1": 0.4978083705680493,
+        "0.5": 0.538512426354672,
+        "0.9": 0.5634302136055045
+      }
+    },
+    "top1FinalScore": {
+      "n": 0,
+      "min": null,
+      "max": null,
+      "quantiles": {
+        "0.1": null,
+        "0.5": null,
+        "0.9": null
+      }
+    },
+    "alternativesCount": {
+      "quantiles": {
+        "0.1": 3,
+        "0.5": 3,
+        "0.9": 3
+      },
+      "histogram": {
+        "3": 12
+      }
+    },
+    "topViolationTypes": [
+      {
+        "key": "TIME_WINDOW_VIOLATION",
+        "count": 3
+      },
+      {
+        "key": "CONNECTIVITY_INSUFFICIENT_TIME",
+        "count": 3
+      },
+      {
+        "key": "MAX_DAILY_DRIVE_EXCEEDED",
+        "count": 3
+      },
+      {
+        "key": "WEATHER_UNSAFE",
+        "count": 3
+      }
+    ]
+  },
+  "env": {
+    "CGUS_SUITE_MODE": "app",
+    "CGUS_GATE_ALT_P50_MIN": "3"
+  },
+  "results": [
+    {
+      "id": "cgus-suite-1",
+      "title": "days=2 itemsPerDay=1 start=08:30 dur=120 gap=30 wr=0.05 fat=0.10",
+      "elapsedMs": 14,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5603823582504021,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5603823582504021,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|1:seg-1-1"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-2",
+      "title": "days=3 itemsPerDay=2 start=09:00 dur=90 gap=15 wr=0.15 fat=0.22",
+      "elapsedMs": 12,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5682941374622612,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5682941374622612,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|1:seg-1-2|1:seg-1-3|2:seg-2-4|2:seg-2-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-3",
+      "title": "days=4 itemsPerDay=3 start=10:00 dur=60 gap=30 wr=0.25 fat=0.34",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5634302136055045,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5634302136055045,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|1:seg-1-3|1:seg-1-4|1:seg-1-5|2:seg-2-6|2:seg-2-7|2:seg-2-8|3:seg-3-9|3:seg-3-10|3:seg-3-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-4",
+      "title": "days=5 itemsPerDay=4 start=08:30 dur=45 gap=15 wr=0.35 fat=0.46",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5468954420145403,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5468954420145403,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|1:seg-1-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|2:seg-2-8|2:seg-2-9|2:seg-2-10|2:seg-2-11|3:seg-3-12|3:seg-3-13|3:seg-3-14|3:seg-3-15|4:seg-4-16|4:seg-4-17|4:seg-4-18|4:seg-4-19"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-5",
+      "title": "days=6 itemsPerDay=1 start=09:00 dur=120 gap=30 wr=0.45 fat=0.58",
+      "elapsedMs": 10,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.538512426354672,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.538512426354672,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|1:seg-1-1|2:seg-2-2|3:seg-3-3|4:seg-4-4|5:seg-5-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-6",
+      "title": "days=2 itemsPerDay=2 start=10:00 dur=90 gap=15 wr=0.55 fat=0.70",
+      "elapsedMs": 4,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5268705696633618,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5268705696633618,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|1:seg-1-2|1:seg-1-3"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-7",
+      "title": "days=3 itemsPerDay=3 start=08:30 dur=60 gap=30 wr=0.65 fat=0.82",
+      "elapsedMs": 5,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5256073872466738,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5256073872466738,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|1:seg-1-3|1:seg-1-4|1:seg-1-5|2:seg-2-6|2:seg-2-7|2:seg-2-8"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-8",
+      "title": "days=4 itemsPerDay=4 start=09:00 dur=45 gap=15 wr=0.75 fat=0.10",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4980965800426517,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.4980965800426517,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|1:seg-1-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|2:seg-2-8|2:seg-2-9|2:seg-2-10|2:seg-2-11|3:seg-3-12|3:seg-3-13|3:seg-3-14|3:seg-3-15"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-9",
+      "title": "days=5 itemsPerDay=1 start=10:00 dur=120 gap=30 wr=0.85 fat=0.22",
+      "elapsedMs": 5,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.49752999924046715,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.49752999924046715,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|1:seg-1-1|2:seg-2-2|3:seg-3-3|4:seg-4-4"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "TIME_WINDOW_VIOLATION",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-10",
+      "title": "days=6 itemsPerDay=2 start=08:30 dur=90 gap=15 wr=0.95 fat=0.34",
+      "elapsedMs": 5,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.4978083705680493,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.4978083705680493,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|1:seg-1-2|1:seg-1-3|2:seg-2-4|2:seg-2-5|3:seg-3-6|3:seg-3-7|4:seg-4-8|4:seg-4-9|5:seg-5-10|5:seg-5-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "CONNECTIVITY_INSUFFICIENT_TIME",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-11",
+      "title": "days=2 itemsPerDay=3 start=09:00 dur=60 gap=30 wr=0.05 fat=0.46",
+      "elapsedMs": 4,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5766842200531297,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5766842200531297,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|1:seg-1-3|1:seg-1-4|1:seg-1-5"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "MAX_DAILY_DRIVE_EXCEEDED",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    },
+    {
+      "id": "cgus-suite-12",
+      "title": "days=3 itemsPerDay=4 start=10:00 dur=45 gap=15 wr=0.15 fat=0.58",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5573614877159697,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5573614877159697,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|1:seg-1-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|2:seg-2-8|2:seg-2-9|2:seg-2-10|2:seg-2-11"
+        }
+      },
+      "violationsTop3": [
+        {
+          "type": "WEATHER_UNSAFE",
+          "severity": "HARD",
+          "degree": 1
+        }
+      ]
+    }
+  ]
+}

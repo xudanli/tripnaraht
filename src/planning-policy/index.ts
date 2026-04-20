@@ -44,6 +44,76 @@ export { RankingService } from './services/ranking.service';
 export * from './interfaces/planning-policy.interface';
 export * from './interfaces/transit-segment.interface';
 export * from './interfaces/poi.interface';
+export * from './interfaces/region-intent.types';
+export { GOLDEN_CIRCLE_INTENT, ICELAND_REGION_INTENT_BY_ID } from './regions/iceland-region-intents';
+export { ICELAND_POI_SLUG_KEYWORDS } from './regions/iceland-poi-slugs';
+export {
+  GOLDEN_CIRCLE_ANCHOR_MAPPINGS,
+  aliasesForGoldenCircleAnchor,
+  type GoldenCircleAnchorSlug,
+} from './regions/golden-circle-anchor-mappings';
+export {
+  GOLDEN_CIRCLE_RETRIEVAL_PROFILE,
+  GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
+  getAnchorRetrievalProfile,
+  type AnchorRetrievalProfile,
+  type AnchorRetrievalEntry,
+} from './regions/golden-circle-anchor-retrieval-profile';
+export { POI_PLANNING_SCORE_REASON } from './constants/poi-planning-score-reasons';
+export { buildPoiPlanningNarrationHint } from './utils/poi-planning-narration.util';
+export {
+  computePoiPlanningOutcomeMetrics,
+  buildPoiPlanningOutcomePhaseReport,
+  type PoiPlanningOutcomeMetrics,
+  type PoiPlanningOutcomePhaseReport,
+  type PoiPlanningAdmissionDiagnosticsInput,
+} from './utils/poi-planning-outcome-metrics.util';
+export {
+  buildCandidateRetrievalQueryPlan,
+  mergeResearchPoiLists,
+  type CandidateRetrievalQueryPlan,
+} from './utils/build-candidate-retrieval-query-plan.util';
+export {
+  goldenCircleEntityStrongMatch,
+  keywordMatchResearchPoiToSlug,
+  researchPoiHasStableId,
+  matchAnchorSlugFromResearchPoi,
+} from './utils/anchor-entity-match.util';
+export {
+  computeAnchorOutcomeSources,
+  type AnchorOutcomeSourceRow,
+  type AnchorOutcomeSourceKind,
+} from './utils/anchor-outcome-sources.util';
+export {
+  pickRequiredAnchorPoisInOrder,
+  enforceRequiredAnchorsTopN,
+  poiRowMatchesRequiredAnchorSlug,
+  buildPoiPlanningAdmissionDiagnostics,
+  poiPlanningRowIdentityKey,
+  type PoiPlanningAdmissionDiagnostics,
+} from './utils/poi-planning-anchor-admission.util';
+export {
+  resolveIcelandPlanningSlugFromPoi,
+  resolveIcelandPlanningSlugFromItineraryItem,
+  extractPlanningSlugsFromPois,
+  extractPlanningSlugsFromItinerary,
+  computeTopAnchorRanksInSelection,
+  countPoiPlanningFallbackInPois,
+  matchGoldenCircleSlugFromHaystack,
+  computeUnresolvedAnchorReasonsForPoiRows,
+  computeUnresolvedAnchorReasonsForItineraryItems,
+  type MinimalItinerary,
+  type MinimalItineraryItem,
+  type UnresolvedAnchorReason,
+} from './utils/poi-planning-slug-resolve.util';
+export { RegionIntentResolverService } from './services/region-intent-resolver.service';
+export {
+  RegionAnchorPlanningService,
+  paceBufferFraction,
+  POI_PLAN_BACKOFF_STEPS,
+  type AnchorBudgetOptions,
+  type PoiPlanBackoffStep,
+} from './services/region-anchor-planning.service';
 export * from './interfaces/rest-stop.interface';
 export * from './interfaces/scheduler.interface';
 export * from './interfaces/replanner.interface';

@@ -35,7 +35,10 @@ export interface UnifiedDecisionFormulaInput {
   weights: Record<string, number>;
   /** 约束违反列表 */
   constraintViolations: ConstraintViolation[];
-  /** 约束惩罚系数 λj，HARD 可用大值近似 ∞ */
+  /**
+   * 约束惩罚系数 λj，HARD 可用大值近似 ∞。
+   * 未单独配置的类型使用 `__defaultSoft`（若存在），否则 0.5（见 retrieval-category-constraint-boost）。
+   */
   constraintPenaltyCoefficients?: Record<string, number>;
   /** 风险成本（天气、疲劳、预算等） */
   riskPenalty: number;
@@ -92,7 +95,9 @@ export class UnifiedDecisionFormulaService {
       const lambda =
         v.severity === 'HARD'
           ? HARD_CONSTRAINT_PENALTY
-          : constraintPenaltyCoefficients[v.type] ?? 0.5;
+          : (constraintPenaltyCoefficients[v.type] ??
+            constraintPenaltyCoefficients['__defaultSoft'] ??
+            0.5);
       constraintPenalty += lambda * Math.max(0, Math.min(1, v.degree));
     }
 

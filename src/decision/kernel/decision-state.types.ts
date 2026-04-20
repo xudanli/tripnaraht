@@ -10,6 +10,7 @@
 
 import type { ContextPackage } from '../../agent/context-engine/types/context-package.types';
 import type { WorldStateSummary } from './world-state-summary.types';
+import type { HarnessStepName } from '../../harness/contracts/harness-step.types';
 
 /** 用户意图（从 INTAKE 提取） */
 export interface UserIntent {
@@ -33,6 +34,20 @@ export interface UserIntent {
   fitnessLevel?: number;
   /** 风险承受度 (0-1) */
   riskTolerance?: number;
+
+  // --- Phase 1 POI：区域意图与路线约束（见 docs/POI_REGION_INTENT_PHASE1.md） ---
+  /** 区域线路 ID（如 golden_circle），与 planning-policy RegionIntent 对齐 */
+  regionId?: string;
+  /** 用户指定必含 POI（可抬升为与锚点同级必选） */
+  mustIncludePoiIds?: string[];
+  excludePoiIds?: string[];
+  availableStartTime?: string;
+  availableEndTime?: string;
+  /** 当日可用总时长（分钟） */
+  totalBudgetMinutes?: number;
+  /** 节奏（影响日程 buffer 比例） */
+  pace?: 'relaxed' | 'normal' | 'dense';
+  styleTags?: string[];
 }
 
 /** 行程状态 */
@@ -92,6 +107,8 @@ export interface EnvironmentState {
   month?: number;
   roadConditions?: Record<string, unknown>;
   weatherRisk?: number;
+  /** 观测/预测的平均风速（m/s），供 POMDP 信念更新与审计使用 */
+  windSpeedMs?: number;
   routeDirectionId?: string;
   /** RouteDirection 解析后的走廊/区域语义，供检索、fallback、世界摘要共用 */
   routeCorridorWorld?: RouteCorridorWorldModel;
@@ -107,6 +124,11 @@ export interface EnvironmentState {
   priceLevel?: number;
   /** 航班信息（实施例 2：航班取消时触发 REPLAN） */
   flights?: EnvironmentFlight[];
+  /**
+   * 按行程 `day.date`（YYYY-MM-DD）索引的日出/日落（ISO 8601 字符串，建议 UTC）。
+   * 由 RESEARCH / 气象或天文 skill 写入，供 `solveDayTimeline` 对户外自然景观做可视窗口裁剪。
+   */
+  daylightByDate?: Record<string, { sunrise?: string; sunset?: string; civil_dusk?: string }>;
   /** 扩展字段（测试/世界模型推送用，如 _weatherUpdateAt、_simulatedBy） */
   [key: string]: unknown;
 }
@@ -115,6 +137,18 @@ export interface EnvironmentState {
 export interface SystemState {
   requestId: string;
   currentPhase?: string;
+  /**
+   * 上一原子提交（commit）关联的阶段名，与 `StateUpdateTransaction.stageOutput` / 内核阶段字符串对齐。
+   * v1.0：表示「本阶段已成功落盘」的事实；`merge()` 不会自动写入，仅在 `commit()` / `applyPhaseResult()` 成功时推进。
+   * 下一准入步须由编排/恢复逻辑 **显式** 计算（例如 `calculateNextLogicalStep`），勿把本字段当作「待执行」指针。
+   */
+  lastStep?: string;
+  /**
+   * v1.0：与 `HarnessStepName` 对齐的 **已完成** 硬阶段里程碑（与 `executePhase` 本次提交对应的 Harness 步一致）。
+   * 语义刻意为「已达成的成就」而非「下一待准入步」：异步/崩溃恢复时避免与「跑了一半」混淆；`lastStep`（string）与本枚举双锚点，供恢复与契约校验推导下一 `validateStepAdmission` 目标。
+   * 断点续跑时优先于 `OrchestratorState.current_step`（后者可含 UI 中间态）。
+   */
+  cursorStep?: HarnessStepName;
   startedAt?: string;
   lastUpdatedAt?: string;
   /** 专利要求：版本号，用于冲突解决与回滚（DECISION_OS_PATENT_GAP_IMPLEMENTATION_PLAN） */
@@ -123,6 +157,65 @@ export interface SystemState {
   confidence?: number;
   /** 迭代计数（用于 differentiable-decision） */
   iterationCount?: number;
+
+  /**
+   * VERIFY↔REPAIR 自动修复计数器（收敛保护）
+   * - 每进入一次 Kernel.executeRepair 且 **RepairExecutor 已实际执行**（未在 harness/BLOCK 等路径提前返回）后递增一次
+   * - 计入范围包含：**仅产生 `verification.escalationPlan`、未改写 planDraft`** 的高成本策略博弈（L1→L2→二阶仍物理不可行），防止 VERIFY↔REPAIR 死循环
+   * - 超过阈值后建议由编排层转为 NEED_CONFIRMATION（HITL）
+   */
+  repairCount?: number;
+
+  /**
+   * Decision Transaction（事务性保护）：
+   * 当进入 VERIFY→REPAIR 临界区时加锁，防止“半执行态”被持久化/继续执行。
+   * - locked=true 表示临界区内；allowedStages 仅允许 VERIFY/REPAIR 提交
+   * - baseVersion 用于异常时回滚到锁定前的稳定版本（由上层决定如何取回快照）
+   */
+  stageLock?: {
+    locked: boolean;
+    owner: 'VERIFY_REPAIR';
+    lockedAt: string;
+    baseVersion: number;
+    allowedStages: Array<'VERIFY' | 'REPAIR'>;
+  };
+
+  /**
+   * 自动修复的“效用衰减”收敛保护（最小实现）
+   * - lastExpectedUtility: 上一次 OPTIMIZE 的 E[U]（若存在）
+   * - consecutiveUtilityDeclines: 连续下降计数；达到阈值后应停止自动修复
+   */
+  lastExpectedUtility?: number;
+  consecutiveUtilityDeclines?: number;
+
+  /**
+   * 跨天迁移请求队列（VERIFY/REPAIR 发现单日无法收敛时由 Repair 写入，编排层消费）
+   * @see PendingMigrationRequest
+   */
+  pendingMigrations?: PendingMigrationRequest[];
+
+  /**
+   * 绝境下的可恢复失败：自动修复已尽力但物理/环境仍不可行，需用户确认或改期而非无限重试
+   * （例如全境封路导致各段 ETA 极端偏长）
+   */
+  recoverySignal?: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION';
+
+  /**
+   * 迁移注入后仍连续 REPAIR 升级（无法被相邻日吸收）的计数；≥2 时可置 NEED_USER_INTERVENTION
+   */
+  migrationAbsorptionFailures?: number;
+}
+
+/** 跨天迁移协议（Bubble-up）：锚点或关键节点无法在当日时间/日照约束下落位时建议挪至相邻日 */
+export interface PendingMigrationRequest {
+  id: string;
+  kind: 'MIGRATION_REQUEST';
+  fromDayDate: string;
+  toDayDate: string;
+  /** 与 itinerary item / place_id 对齐的节点引用 */
+  nodeId: string;
+  reason: 'SUNSET_ANCHOR_NOT_ASSIGNABLE_ON_DAY';
+  createdAt: string;
 }
 
 /** 约束违规项（专利：g_i(s,a) 违反程度，g_i ≤ 0 表示满足） */
@@ -190,6 +283,52 @@ export interface MonteCarloConfidenceInterval {
   level: number;
 }
 
+/** 约束松弛项（用于显式标注“放宽了什么/为什么”） */
+export interface ConstraintRelaxation {
+  /** 松弛标识（稳定可审计） */
+  id: string;
+  /** 约束类型/编码（与 ConstraintViolationItem.type 对齐） */
+  constraintType: string;
+  /** 松弛原因（例如：用户选择更激进策略/低功耗降级/无可行解时的应急） */
+  reason: string;
+  /** 严重度：HARD 的松弛必须显式标注（专利口径） */
+  severity: 'HARD' | 'SOFT';
+  /** 松弛程度 (0-1)，0 表示未松弛，1 表示完全放宽 */
+  degree: number;
+}
+
+export interface CandidateSearchBudget {
+  maxCandidates: number;
+  repairMaxIters: number;
+  repairTopKPerCandidate: number;
+  maxNewCandidatesPerIter: number;
+  maxPoolSize: number;
+  stopWhenFeasibleCount?: number;
+}
+
+export interface CandidateSearchAudit {
+  budget: CandidateSearchBudget;
+  initialVariantCount: number;
+  iterations: Array<{
+    iter: number;
+    poolSizeBeforeProjection: number;
+    feasibleCountAfterProjection: number;
+    infeasibleCountAfterProjection: number;
+    repairsGenerated: number;
+    repairsAccepted: number;
+    poolSizeAfterDedup: number;
+  }>;
+  finalCandidateCount: number;
+  finalFeasibleCount: number;
+  stopReason:
+    | 'FEASIBLE_TARGET_REACHED'
+    | 'REPAIR_ITER_LIMIT'
+    | 'MAX_NEW_CANDIDATES_REACHED'
+    | 'MAX_POOL_SIZE_REACHED'
+    | 'DIVERSITY_SELECTION'
+    | 'COMPLETED';
+}
+
 export interface OptimizationHints {
   safetyTrend?: 'LOW' | 'MEDIUM' | 'HIGH';
   fatigueTrend?: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -210,6 +349,14 @@ export interface OptimizationHints {
   /** Phase 2：不确定性概要，用于信念状态判断 */
   uncertaintyProfile?: UncertaintyProfile;
   /**
+   * Kernel fail-safe：当元决策预算不足以支撑高风险优化时，明确给出降级动作。
+   * - BLOCK: 禁止继续推进优化（需要用户/外部系统干预）
+   * - ADJUST_REQUIRED: 允许继续，但要求收缩目标/降低复杂度/补充信息后重试
+   */
+  failSafeAction?: 'BLOCK' | 'ADJUST_REQUIRED';
+  /** fail-safe 触发原因（稳定可审计） */
+  failSafeReason?: string;
+  /**
    * CGUS / OPTIMIZE 解释用的候选摘要（Top-N）
    * 用于向用户展示“我比较了哪些备选、为什么推荐这个”
    */
@@ -217,12 +364,44 @@ export interface OptimizationHints {
     id: string;
     /** 排序分数（通常为 expectedUtility；缺失时退化为 utility） */
     score: number;
+    /** Rollout-aware final score（当启用 rollout-aware rerank 时） */
+    finalScore?: number;
+    /** 分数拆解（用于解释与回放） */
+    scoreBreakdown?: {
+      baseU: number;
+      baseP: number;
+      rolloutU?: number;
+      rolloutP?: number;
+      blendedU: number;
+      blendedP: number;
+    };
     expectedUtility?: number;
     feasibilityProbability?: number;
     confidenceInterval?: MonteCarloConfidenceInterval;
+    /** 候选摘要（用于避免伪多解：可人读/可审计的差异点） */
+    summary?: string;
+    /** 本候选使用的松弛清单（若存在） */
+    relaxations?: ConstraintRelaxation[];
+    /** 违反列表（简化版），用于解释“为何被拒绝/降级” */
+    violations?: Array<Pick<ConstraintViolationItem, 'type' | 'severity' | 'degree' | 'detail'>>;
+    /** 用于多样性去重的签名（内部诊断字段） */
+    diversitySignature?: string;
   }>;
   /** 推荐候选 id（若已计算） */
   recommendedAlternativeId?: string;
+
+  /**
+   * 元决策预算审计摘要（人读/可截图）
+   * 例：`META_BUDGET(sample=240,topK=8,H=4,entropy=0.92,ESS=120.3)`
+   */
+  metaDecisionAudit?: string;
+
+  /** CGUS rollout horizon（步数），由 Kernel 的 planningDepth 映射而来 */
+  rolloutHorizonSteps?: number;
+  /** Candidate generation / repair budget（由 uncertaintyProfile 驱动） */
+  candidateSearchBudget?: CandidateSearchBudget;
+  /** Candidate generation / repair 审计（证明元预算如何影响搜索行为） */
+  candidateSearchAudit?: CandidateSearchAudit;
 }
 
 /** 决策模式（Decision Meta - 系统稳定性关键） */
@@ -272,6 +451,100 @@ export interface StateHistoryDelta {
 
 /** 状态变化历史（RLHF/异常检测/模型评估核心） */
 export type DecisionStateHistory = StateHistoryDelta[];
+
+/**
+ * Harness Runtime 在 DSO 上的可选挂载点（证据快照、幂等、trace 指针）
+ * 见 docs/Harness Runtime.md
+ */
+/**
+ * Kernel 影子 Harness（`HARNESS_SHADOW_AFTER_PHASE=1`）：不阻断主链，供 explain / 监控看板。
+ * 演练期建议观测：（A）契约虚警率——内核/ EU 逻辑变更后 DeterministicValidators 是否滞后导致大量 `harness_warning`；
+ * （B）恢复误判——`validateStepAdmission` / 投影是否因 `readableStatePaths` 或 DSO 缺字段而误失败。
+ */
+export interface HarnessShadowHarnessEvent {
+  kernel_phase: string;
+  harness_step: string;
+  run_status: string;
+  shadow_enforcement: true;
+  /** 非 PASSED 时的人读告警（API explain 高亮） */
+  harness_warning?: string;
+  validation_results: Array<{
+    passed: boolean;
+    code?: string;
+    message: string;
+    severity?: string;
+  }>;
+  recorded_at: string;
+}
+
+export interface HarnessRuntimeState {
+  /** RESEARCH 冻结后写入；VERIFY 必须绑定该 id，异步刷新须 bump */
+  researchEvidenceSnapshotId?: string;
+  /** 与快照一致的可读版本（可选，审计展示） */
+  evidenceVersion?: string;
+  /** 本 request 已成功提交的幂等键（工具调用或写路径） */
+  committedIdempotencyKeys?: string[];
+  /** 当前活跃 harness trace id */
+  activeTraceId?: string;
+  /**
+   * Evaluation Harness 单次运行 id（与 `runFingerprint.runId`、`POST /agent/route_and_run` 的 `meta.run_id` 对齐），
+   * 写入内存 `HarnessTrace.meta.evaluationRunId`，供 replay/compare 与执行层 trace 关联。
+   */
+  evaluationRunId?: string;
+  /**
+   * 若设置 `HARNESS_TRACE_EXPORT_DIR` 且落盘成功：相对 `process.cwd()` 的 POSIX 路径（replay `traceRefs.path` / API observability）。
+   */
+  traceExportRelativePath?: string;
+  /** 各 `executePhase` 结束后影子 Harness 校验累积（不替代主路 pre-phase Harness） */
+  shadow_harness_events?: HarnessShadowHarnessEvent[];
+  /** Durable 恢复：准入通过的 Harness 步骤 */
+  resume_admission_step?: HarnessStepName | string;
+  resume_admission_passed?: boolean;
+}
+
+/** Phase 1.5：区域解析溯源（可观测 / 排障） */
+export type PoiPlanningResolutionSource = 'region_intent_resolver';
+
+export interface PoiPlanningResolutionMeta {
+  source: PoiPlanningResolutionSource;
+  matchedBy: 'region_id' | 'keyword' | 'message_text';
+  /** 命中的关键词或模式标签（审计用，非自然语言全文） */
+  matchedRegionKeyword?: string;
+}
+
+/**
+ * POI 区域骨架与日程预算（DSO 显式挂载）
+ * 见 docs/POI_REGION_INTENT_PHASE1.md
+ */
+export interface PoiPlanningDecisionSlice {
+  routeIntent?: {
+    regionId?: string;
+    regionName?: string;
+    confidence?: number;
+    mustCoverAnchors?: boolean;
+  };
+  poiPlan?: {
+    requiredAnchorPoiIds: string[];
+    optionalCandidatePoiIds: string[];
+    excludedPoiIds: string[];
+    selectedOptionalPoiIds: string[];
+  };
+  schedulePlan?: {
+    totalBudgetMinutes: number;
+    requiredCostMinutes: number;
+    optionalCapacityMinutes: number;
+    bufferMinutes: number;
+    feasibility: 'ok' | 'tight' | 'failed';
+  };
+  /** 区域意图如何命中（显式字段，便于排查） */
+  resolution?: PoiPlanningResolutionMeta;
+  /** 预算门控实际触发的回退步骤 id */
+  appliedBackoffSteps?: string[];
+  /** 是否因 tight/failed/cap≤0 收缩了 optional（排序约束语义） */
+  budgetGateApplied?: boolean;
+  /** 供 NARRATE / 前端展示的预算与骨架说明 */
+  narrationHint?: string;
+}
 
 /**
  * Decision State Object (DSO)
@@ -409,6 +682,102 @@ export interface DecisionState {
       rolledBack?: string[];
     };
   };
+
+  /** Harness Runtime 切片（与 travelOntologyState 并列，避免深层合并） */
+  harnessRuntime?: HarnessRuntimeState;
+
+  /** POI 区域骨架、锚点与预算（Phase 1） */
+  poiPlanning?: PoiPlanningDecisionSlice;
+
+  /**
+   * VERIFY 结构化结果（Phase 3）
+   * - 以结构化 issue 取代纯 string[]，用于：是否可修复、是否阻塞 DONE、Explain / Guardrails
+   */
+  verification?: VerificationReport;
+}
+
+export type VerificationIssueClass = 'FATAL' | 'CONFLICT' | 'ADVISORY';
+
+export type VerificationIssueCode =
+  | 'DESTINATION_CLOSED_DISASTER'
+  | 'BUDGET_ORDER_OF_MAGNITUDE_MISMATCH'
+  | 'POI_CLOSED'
+  | 'TIME_WINDOW_BREACH'
+  | 'TIME_WINDOW_OVERLAP'
+  | 'ROUTE_INFEASIBLE'
+  | 'FATIGUE_HIGH'
+  | 'FATIGUE_OVERLOAD'
+  | 'WEATHER_RISK'
+  | 'CONFIDENCE_DEGRADED'
+  | 'SUNSET_BREACH'
+  | 'UNKNOWN';
+
+export interface VerificationIssueMetadata {
+  /** 对 DSO.confidence 的增量（通常为负），由 Kernel/编排层汇总 */
+  confidence_impact?: number;
+  /** 证据形态（营业时间等） */
+  evidenceKind?: 'PERIODS' | 'IS_OPEN_NOW_ONLY' | 'WEEKDAY_TEXT_ONLY' | 'NONE';
+}
+
+export interface VerificationIssue {
+  /** 稳定、可聚合的机器码（用于指标/回放/guardrail） */
+  code: VerificationIssueCode;
+  /** 可修复性分类：FATAL=不可修复；CONFLICT=可自动修复；ADVISORY=提示不阻塞 */
+  class: VerificationIssueClass;
+  /** 人类可读描述（可直接进入 explain.warnings / failure reason） */
+  message: string;
+  /** 结构化元数据（置信度降级、证据形态等） */
+  metadata?: VerificationIssueMetadata;
+  /** 可选：关联实体（如 POI id、day index、segment id） */
+  entityRef?: { type: 'POI' | 'DAY' | 'SEGMENT' | 'BUDGET' | 'DESTINATION' | 'OTHER'; id?: string };
+  /** 可选：建议动作（供 RepairExecutor / UI / HITL） */
+  suggestedActions?: Array<{ action: 'REPLACE' | 'REORDER' | 'RELAX' | 'ASK_USER' | 'BLOCK'; detail?: string }>;
+  /** 可选：置信度 [0,1]（用于 conflict resolution / explain） */
+  confidence01?: number;
+  /**
+   * 溯源：由谁提出（verify skill / feasibility engine / harness）
+   * - ENVIRONMENTAL_CONSTRAINTS：日照/可视窗口等与「路通不通」正交的硬约束（如 solveDayTimeline 日落 LIMIT）
+   */
+  source?:
+    | 'ROUTE_FEASIBILITY'
+    | 'ENVIRONMENTAL_CONSTRAINTS'
+    | 'ITINERARY_VERIFY_SKILL'
+    | 'EXPERIENCE_AGENT'
+    | 'HARNESS'
+    | 'OTHER';
+  /** 时间戳（便于回放） */
+  at?: string;
+}
+
+/** REPAIR 无法闭环时上收到 DSO，供 NARRATE / HITL 读取（决策层，非仅 itinerary.metadata） */
+export type RepairEscalationType = 'PHYSICAL_LIMIT_REACHED';
+
+export interface RepairEscalationPlan {
+  type: RepairEscalationType;
+  /** 与 TimelineFeasibility.status 或业务原因码对齐 */
+  reason: string;
+  bottleneckNodeId?: string;
+  suggestedAction?: string;
+  userClarificationSnippet: string;
+  at: string;
+  /** 物理连通性 vs 日落可视窗口 */
+  constraint?: 'PHYSICAL_CONNECTIVITY' | 'SUNSET_VISIBILITY';
+}
+
+export interface VerificationReport {
+  issues: VerificationIssue[];
+  /** 是否存在 FATAL（不可修复）issue：为 true 时应跳过 REPAIR，推向 FAILED */
+  hasFatal: boolean;
+  /** 是否存在 CONFLICT（可自动修复）issue：为 true 时可触发 REPAIR */
+  hasConflict: boolean;
+  /** 是否存在 ADVISORY（软警告）：不阻塞 DONE，但应进入 explain.warnings */
+  hasAdvisory: boolean;
+  /** 统计摘要（便于观测与 guardrail） */
+  counts: { fatal: number; conflict: number; advisory: number };
+  /** 最近一次 VERIFY 时间 */
+  verifiedAt: string;
+  /** REPAIR 极限/编排升级信号（与 issues 并列，便于 NARRATE 精准引用） */
+  escalationPlan?: RepairEscalationPlan;
 }
 
 /** 信念状态采样（b(s) 的离散近似） */
@@ -416,6 +785,8 @@ export interface BeliefStateSample {
   sampleId: string;
   /** 采样的环境状态摘要 */
   environmentSummary?: Record<string, number>;
+  /** 粒子权重（归一化后为概率） */
+  weight?: number;
   /** 采样的效用或可行性得分 */
   utility?: number;
   feasibilityScore?: number;
@@ -427,8 +798,26 @@ export interface UncertaintyProfile {
   hasUncertainty: boolean;
   /** 主要不确定性来源 */
   sources?: Array<'weather' | 'road' | 'human' | 'budget'>;
+  /**
+   * 不确定性熵（归一化到 [0,1] 的工程指标）
+   * - 0：近似确定
+   * - 1：高度不确定
+   */
+  entropy01?: number;
+  /** 有效粒子数（ESS / effective particle count），用于触发重采样/预算调节 */
+  effectiveParticleCount?: number;
   /** 建议采样数量（用于 Monte Carlo） */
   suggestedSampleSize?: number;
+  /**
+   * 元决策：世界模型 rollout 的 Top-K（CGUS Step 4）
+   * - 由不确定性/粒子退化信号驱动（Kernel 写入，Adapter 消费）
+   */
+  rolloutTopK?: number;
+  /**
+   * 元决策：规划深度（多步展开预算的抽象旋钮）
+   * - 当前作为可审计预算字段；具体解释由各优化器自行映射
+   */
+  planningDepth?: number;
 }
 
 /**
@@ -476,6 +865,10 @@ export interface StateCommitResult {
   newState: DecisionState;
   newVersion: number;
   conflict?: boolean;
+  /** 当启用严格稳定性策略时，若检测到不稳定则回滚并返回旧状态 */
+  rolledBack?: boolean;
+  /** 回滚原因（用于审计与可观测） */
+  rollbackReason?: 'LYAPUNOV_INCREASE' | 'UNKNOWN';
 }
 
 /** 阶段优先级（专利权利要求 6：多模块更新同一字段时，阶段优先级确定最终状态） */
@@ -501,5 +894,21 @@ export class StateCommitConflictError extends Error {
   ) {
     super(`State commit conflict: expected version ${expectedVersion}, actual ${actualVersion}`);
     this.name = 'StateCommitConflictError';
+  }
+}
+
+/** 阶段合法性错误：当前阶段不允许写入某些字段 */
+export class StateCommitPhaseViolationError extends Error {
+  constructor(
+    public readonly phase: string,
+    public readonly touchedPaths: string[],
+    public readonly allowedPrefixes: string[],
+  ) {
+    super(
+      `State commit phase violation: phase=${phase} touched=[${touchedPaths.join(
+        ',',
+      )}] allowed=[${allowedPrefixes.join(',')}]`,
+    );
+    this.name = 'StateCommitPhaseViolationError';
   }
 }

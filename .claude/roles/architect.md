@@ -88,6 +88,9 @@ interface DecisionNode {
 
 **API 文档**：`src/agent/AI_NATIVE_API_REFERENCE.md`
 
+**AI-native 落地清单（技术架构师执行表）**：`docs/decision/AI_NATIVE_ARCHITECT_LANDING_CHECKLIST.md`  
+**编排路径矩阵（KERNEL_NATIVE / LEGACY）**：`docs/decision/KERNEL_NATIVE_ORCHESTRATION_MATRIX.md`
+
 ## 核心架构原则
 
 ### 1. 决策优先原则（Decision-first）

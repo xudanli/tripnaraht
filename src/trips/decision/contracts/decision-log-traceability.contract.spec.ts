@@ -44,4 +44,44 @@ describe('decision-log-traceability.contract (TD-04)', () => {
     expect(r.valid).toBe(true);
     expect(r.warnings.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('accepts optional jepaTrace with decision-trace-jepa@v1', () => {
+    const r = analyzeDecisionLogTraceability([
+      minimalValid({
+        jepaTrace: {
+          contractVersion: 'decision-trace-jepa@v1',
+          z_state: { fatigue: 0.3, risk_score: 0.2 },
+          predictionErrorKind: 'WORLD',
+        },
+      }),
+    ]);
+    expect(r.valid).toBe(true);
+    expect(r.errors).toHaveLength(0);
+  });
+
+  it('rejects jepaTrace.predictionErrorKind when invalid', () => {
+    const r = analyzeDecisionLogTraceability([
+      minimalValid({
+        jepaTrace: {
+          contractVersion: 'decision-trace-jepa@v1',
+          z_state: { fatigue: 0.1 },
+          predictionErrorKind: 'INVALID' as any,
+        },
+      }),
+    ]);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('predictionErrorKind'))).toBe(true);
+  });
+
+  it('warns when jepaTrace@v1 has no substantive fields', () => {
+    const r = analyzeDecisionLogTraceability([
+      minimalValid({
+        jepaTrace: {
+          contractVersion: 'decision-trace-jepa@v1',
+        },
+      }),
+    ]);
+    expect(r.valid).toBe(true);
+    expect(r.warnings.some((w) => w.includes('empty trace'))).toBe(true);
+  });
 });

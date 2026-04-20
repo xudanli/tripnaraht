@@ -7,6 +7,7 @@
       "bugfix",
       "refactor",
       "performance",
+      "algorithm_tuning",
       "security",
       "compliance",
       "ux_copy",
@@ -19,14 +20,101 @@
     "change_areas": [
       "claude_exec_or_state_machine",
       "gate_policy_or_risk_disclosure",
+      "itinerary_verify_or_repair_feasibility",
       "decision_log_or_replay",
       "skill_contract_or_new_skill",
       "db_schema_or_postgis",
       "trajectory_reward_or_metrics",
+      "optimization_or_cgus_candidates",
       "frontend_approval_or_explainability_ui",
       "rag_index_or_chunking",
-      "deployment_or_observability"
+      "deployment_or_observability",
+      "decision_api_or_durable_execution",
+      "kernel_state_or_dso_governance",
+      "research_evidence_or_world_model"
     ]
+  },
+  "change_area_aliases": {
+    "gate": "gate_policy_or_risk_disclosure",
+    "should_exist_gate": "gate_policy_or_risk_disclosure",
+    "risk_disclosure": "gate_policy_or_risk_disclosure",
+    "免责声明": "gate_policy_or_risk_disclosure",
+    "披露": "gate_policy_or_risk_disclosure",
+
+    "verify": "itinerary_verify_or_repair_feasibility",
+    "repair": "itinerary_verify_or_repair_feasibility",
+    "可执行性": "itinerary_verify_or_repair_feasibility",
+    "开放时间冲突": "itinerary_verify_or_repair_feasibility",
+    "换乘buffer": "itinerary_verify_or_repair_feasibility",
+    "fatigue_threshold": "itinerary_verify_or_repair_feasibility",
+
+    "decision_log": "decision_log_or_replay",
+    "replay": "decision_log_or_replay",
+    "traceability": "decision_log_or_replay",
+    "evidence_refs": "decision_log_or_replay",
+
+    "skill": "skill_contract_or_new_skill",
+    "new_skill": "skill_contract_or_new_skill",
+    "tooling": "skill_contract_or_new_skill",
+
+    "schema": "db_schema_or_postgis",
+    "migration": "db_schema_or_postgis",
+    "postgis": "db_schema_or_postgis",
+
+    "reward": "trajectory_reward_or_metrics",
+    "metrics": "trajectory_reward_or_metrics",
+    "trajectory": "trajectory_reward_or_metrics",
+    "评测": "trajectory_reward_or_metrics",
+
+    "cgus": "optimization_or_cgus_candidates",
+    "candidate_search": "optimization_or_cgus_candidates",
+    "ranking": "optimization_or_cgus_candidates",
+    "expected_utility": "optimization_or_cgus_candidates",
+
+    "explain_ui": "frontend_approval_or_explainability_ui",
+    "evidence_drawer": "frontend_approval_or_explainability_ui",
+    "delta_ui": "frontend_approval_or_explainability_ui",
+    "审批": "frontend_approval_or_explainability_ui",
+
+    "rag": "rag_index_or_chunking",
+    "chunking": "rag_index_or_chunking",
+    "indexing": "rag_index_or_chunking",
+    "embedding": "rag_index_or_chunking",
+
+    "observability": "deployment_or_observability",
+    "release": "deployment_or_observability",
+    "feature_flag": "deployment_or_observability",
+    "灰度": "deployment_or_observability",
+
+    "decision_api": "decision_api_or_durable_execution",
+    "decision_api_layer": "decision_api_or_durable_execution",
+    "durable": "decision_api_or_durable_execution",
+    "durable_execution": "decision_api_or_durable_execution",
+    "continue": "decision_api_or_durable_execution",
+    "run_continue": "decision_api_or_durable_execution",
+    "session_layer": "decision_api_or_durable_execution",
+    "mcp_decision": "decision_api_or_durable_execution",
+    "openapi_decision": "decision_api_or_durable_execution",
+    "幂等": "decision_api_or_durable_execution",
+    "暂停恢复": "decision_api_or_durable_execution",
+    "checkpoint": "decision_api_or_durable_execution",
+
+    "immutable_dso": "kernel_state_or_dso_governance",
+    "dso_governance": "kernel_state_or_dso_governance",
+    "state_manager": "kernel_state_or_dso_governance",
+    "phase_result": "kernel_state_or_dso_governance",
+    "computeNextState": "kernel_state_or_dso_governance",
+    "compute_next_state": "kernel_state_or_dso_governance",
+    "commitNextState": "kernel_state_or_dso_governance",
+    "commit_next_state": "kernel_state_or_dso_governance",
+    "transition_rules": "kernel_state_or_dso_governance",
+    "kernel_runtime": "kernel_state_or_dso_governance",
+
+    "world_model": "research_evidence_or_world_model",
+    "evidence_snapshot": "research_evidence_or_world_model",
+    "research_pipeline": "research_evidence_or_world_model",
+    "environment_state": "research_evidence_or_world_model",
+    "world_state_summary": "research_evidence_or_world_model"
   },
   "routing_rules": [
     {
@@ -38,6 +126,15 @@
       "when": { "any_change_areas": ["gate_policy_or_risk_disclosure"] },
       "include_roles": ["decision_safety_compliance_officer", "ai_reasoning_system_architect", "chief_product_architect"],
       "must_check": ["ALLOW/ADJUST/BLOCK 语义与触发条件", "披露/免责声明", "审计与可追溯字段"]
+    },
+    {
+      "when": { "any_change_areas": ["itinerary_verify_or_repair_feasibility"] },
+      "include_roles": ["ai_reasoning_system_architect", "decision_ux_architect", "devops_engineer"],
+      "must_check": [
+        "VERIFY/REPAIR 规则口径与 Gate-first 顺序一致（不得绕过 Gate_evel 决策）",
+        "可执行性失败的 degrade 策略明确（NEED_USER_CONFIRM / fallback plan / hard block）",
+        "用户侧解释仍归因三人格；字段/状态对齐且可观测（冲突率、修复率、降级率）"
+      ]
     },
     {
       "when": { "any_change_areas": ["decision_log_or_replay"] },
@@ -56,8 +153,31 @@
     },
     {
       "when": { "any_change_areas": ["trajectory_reward_or_metrics"] },
-      "include_roles": ["decision_evaluation_evolution_lead", "chief_data_engineer"],
-      "must_check": ["指标/Reward 语义与版本协议", "数据映射与筛选规则", "回归与对比协议"]
+      "include_roles": [
+        "decision_evaluation_evolution_lead",
+        "chief_ai_scientist",
+        "chief_data_engineer",
+        "rl_evaluation_engineer",
+        "rl_data_engineer_trajectory",
+        "rl_ml_platform_engineer",
+        "rl_llm_judge_rm_engineer"
+      ],
+      "must_check": [
+        "指标/Reward 语义与版本协议（含版本号与变更说明）",
+        "数据映射与筛选规则（训练/评测样本口径一致）",
+        "回归与对比协议可复现（固定种子/固定数据切片/固定评测集）",
+        "防投机/守护门：Judge/RM 或规则 guardrail 的 block/degrade 策略明确",
+        "上线策略：先观测再强制（shadow → canary → ramp），并具备回滚开关"
+      ]
+    },
+    {
+      "when": { "any_change_areas": ["optimization_or_cgus_candidates"] },
+      "include_roles": ["chief_optimization_scientist", "architect", "chief_product_architect"],
+      "must_check": [
+        "Top-K 候选的多样性（结构差异可测）",
+        "硬约束与 Gate/VERIFY 口径一致；松弛显式披露",
+        "Explain 输出包含备选与推荐 id（不只埋日志）"
+      ]
     },
     {
       "when": { "any_change_areas": ["frontend_approval_or_explainability_ui"] },
@@ -66,13 +186,56 @@
     },
     {
       "when": { "any_change_areas": ["rag_index_or_chunking"] },
-      "include_roles": ["rag_engineer", "rag_content_manager"],
+      "include_roles": ["rag_engineer", "rag_content_manager", "chief_data_engineer"],
       "must_check": ["chunk/索引与新鲜度策略", "失败降级不伪造事实", "延迟/成本观测"]
     },
     {
       "when": { "any_change_areas": ["deployment_or_observability"] },
       "include_roles": ["devops_engineer", "architect"],
       "must_check": ["灰度/回滚/告警", "SLO 观测", "配置与密钥管理"]
+    },
+    {
+      "when": { "any_change_areas": ["decision_api_or_durable_execution"] },
+      "include_roles": [
+        "decision_platform_runtime_engineer",
+        "decision_kernel_lead",
+        "architect",
+        "chief_data_engineer"
+      ],
+      "must_check": [
+        "run/continue/get_run/trace 契约与版本；幂等键与错误码",
+        "合法暂停点与 DSO 持久化语义；恢复后 version/trace 延续可审计",
+        "MCP/OpenAPI 不暴露内核可变状态；鉴权与限流",
+        "流式阶段事件与 DecisionEvent 语义一致（若有）"
+      ]
+    },
+    {
+      "when": { "any_change_areas": ["kernel_state_or_dso_governance"] },
+      "include_roles": [
+        "decision_kernel_lead",
+        "architect",
+        "ai_reasoning_system_architect",
+        "chief_ontology_scientist"
+      ],
+      "must_check": [
+        "DSO 更新经 StateManager；阶段写权限与 phaseWritePolicy 一致",
+        "PhaseResult → computeNextState 路径（目标：禁止执行器就地 mutate）",
+        "状态转移规则集中可述；对 replay/baseline 的影响已评估"
+      ]
+    },
+    {
+      "when": { "any_change_areas": ["research_evidence_or_world_model"] },
+      "include_roles": [
+        "decision_evidence_world_model_engineer",
+        "rag_engineer",
+        "chief_data_engineer",
+        "decision_kernel_lead"
+      ],
+      "must_check": [
+        "证据可溯源、可冻结；失败不伪造事实",
+        "Environment/worldState 字段与 Gate/VERIFY 输入口径一致",
+        "新鲜度、来源与 RAG/DB/API 边界清晰"
+      ]
     }
   ],
   "global_policies": {

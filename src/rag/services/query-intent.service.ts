@@ -36,9 +36,8 @@ const INTENT_KEYWORDS: Record<QueryIntentType, {
 }> = {
   ROUTE: {
     keywords: ['路线', '环岛', '自驾', '行程', '几天', '天数', '规划', 'ring road', '一号公路', '环线', '绕岛'],
-    // ROUTE类型不使用category过滤，因为路线信息分布在多个category中
-    // 依赖Sparse检索的关键词扩展（环岛→ring-road）来提高召回
-    chunkCategory: undefined,
+    /** 与 DB 细分标签 ROUTE_INFO 通过 ChunkRetrieval 的标签降级一并命中 */
+    chunkCategory: 'DECISION_SUPPORT',
     synonyms: {
       '环岛': ['ring road', 'ring-road', 'route 1', '一号公路', '环线', '绕岛一圈'],
       '路线': ['route', '行程', '路径', 'itinerary'],

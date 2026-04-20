@@ -364,22 +364,52 @@ export class ChainOfWorkStorageService {
 
     // 转换为 TripNARAWorkflowDraft 格式
     const stepDraftData = decisionDraft.stepDraftData as any;
+
+    // 说明：
+    // - `stepDraftData.steps` 是“草案生成时”的快照（通常 status= draft）
+    // - 执行后我们会更新 `decisionSteps` 的 status/evidence 等字段
+    // 为了让管理端详情页能反映“执行后的真实状态”，这里把 DB 的状态合并回草案快照。
+    const decisionStepsById = new Map(
+      (decisionDraft.decisionSteps || []).map(s => [s.stepId, s]),
+    );
+
+    const mergedSteps =
+      stepDraftData?.steps && Array.isArray(stepDraftData.steps)
+        ? stepDraftData.steps.map((step: any) => {
+            const dbStep = decisionStepsById.get(step.id);
+            if (!dbStep) return step;
+            return {
+              ...step,
+              title: step.title ?? dbStep.title,
+              description: step.description ?? dbStep.description ?? '',
+              status: (dbStep.status as any) ?? step.status,
+              confidence: dbStep.confidence ?? step.confidence,
+              inputs: (dbStep.inputs as any[]) ?? step.inputs,
+              outputs: (dbStep.outputs as any[]) ?? step.outputs,
+              evidence: (dbStep.evidence as any) ?? step.evidence,
+              updated_at: dbStep.updatedAt?.toISOString?.() ?? step.updated_at,
+            };
+          })
+        : null;
+
     const draft: TripNARAWorkflowDraft = {
       draft_id: decisionDraft.draftId,
       workflow_id: decisionDraft.workflowId,
       version: decisionDraft.version,
       orchestration_mode: 'CLAUDE_SM',
-      steps: stepDraftData?.steps || decisionDraft.decisionSteps.map(step => ({
-        id: step.stepId,
-        step_type: this.mapDecisionTypeToStepType(step.decisionType),
-        title: step.title,
-        description: step.description || '',
-        status: step.status as any,
-        confidence: step.confidence,
-        inputs: step.inputs as any[],
-        outputs: step.outputs as any[],
-        evidence: step.evidence as any[],
-      })),
+      steps:
+        mergedSteps ||
+        decisionDraft.decisionSteps.map(step => ({
+          id: step.stepId,
+          step_type: this.mapDecisionTypeToStepType(step.decisionType),
+          title: step.title,
+          description: step.description || '',
+          status: step.status as any,
+          confidence: step.confidence,
+          inputs: step.inputs as any[],
+          outputs: step.outputs as any[],
+          evidence: step.evidence as any[],
+        })),
       metadata: {
         step_count: decisionDraft.stepCount,
         skills_count: 0,
@@ -703,8 +733,10 @@ export class ChainOfWorkStorageService {
 
     // 更新每个步骤的状态和 evidence
     if (executionResult.steps && Array.isArray(executionResult.steps)) {
+      let totalUpdatedDecisionSteps = 0;
+
       for (const stepResult of executionResult.steps) {
-        await this.prisma.decisionStep.updateMany({
+        const res = await this.prisma.decisionStep.updateMany({
           where: {
             decisionDraftId: draft.id,
             stepId: stepResult.step_id,
@@ -725,6 +757,54 @@ export class ChainOfWorkStorageService {
             updatedAt: new Date(),
           },
         });
+        totalUpdatedDecisionSteps += res.count || 0;
+      }
+
+      // 如果该草案没有持久化到 DecisionStep（仅有 stepDraftData 快照），
+      // 仍然需要把执行后的状态写回 stepDraftData，避免管理端看到永远是 draft。
+      if (totalUpdatedDecisionSteps === 0) {
+        // 注意：不要依赖 prisma.update() 的返回体里一定包含 JSON 字段（在某些配置/生成器下可能不稳定）。
+        // 这里重新读取一次最新的 stepDraftData，再做合并写回。
+        const fresh = await this.prisma.decisionDraft.findUnique({
+          where: { id: draft.id },
+          select: { stepDraftData: true },
+        });
+        const stepDraftData = (fresh as any)?.stepDraftData as any;
+        if (stepDraftData?.steps && Array.isArray(stepDraftData.steps)) {
+          const resultByStepId: Map<string, any> = new Map(
+            executionResult.steps.map((s: any) => [s.step_id, s]),
+          );
+          const merged = stepDraftData.steps.map((step: any) => {
+            const r: any = resultByStepId.get(step.id);
+            if (!r) return step;
+            return {
+              ...step,
+              status: r.status === 'completed' ? 'approved' : r.status === 'failed' ? 'rejected' : 'pending',
+              evidence: {
+                execution_id: executionResult.execution_id,
+                executed_at: new Date().toISOString(),
+                duration_ms: r.duration_ms,
+                status: r.status,
+                output: r.output,
+                error: r.error,
+                skill_name: r.skill_name || this.inferSkillName(r.step_id),
+                sub_agent: r.sub_agent || this.inferSubAgent(r.step_id),
+              },
+              updated_at: new Date().toISOString(),
+            };
+          });
+
+          await this.prisma.decisionDraft.update({
+            where: { id: draft.id },
+            data: {
+              stepDraftData: {
+                ...(stepDraftData || {}),
+                steps: merged,
+              } as any,
+              updatedAt: new Date(),
+            },
+          });
+        }
       }
     }
 

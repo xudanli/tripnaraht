@@ -1,0 +1,155 @@
+{
+  "generatedAt": "2026-04-15T13:51:29.014Z",
+  "n": 5,
+  "totalMs": 46,
+  "avgMs": 9.2,
+  "cgusCount": 5,
+  "emptyCount": 0,
+  "configSnapshot": {
+    "defaultTimeoutMs": 5000,
+    "maxConcurrentDecisions": 100,
+    "monteCarloSamples": 1000,
+    "explorationRate": 0.1,
+    "confidenceThreshold": 0.8,
+    "cgusMaxIterations": 100,
+    "cgusConvergenceThreshold": 0.001,
+    "cgusMaxCandidates": 8,
+    "cgusRolloutTopK": 3,
+    "cgusRepairMaxIters": 2,
+    "cgusRepairTopKPerCandidate": 2,
+    "cgusMaxNewCandidatesPerIter": 30,
+    "cgusMaxPoolSize": 200,
+    "cgusPilotSamples": 20
+  },
+  "aggregates": {
+    "cgusRate": 1,
+    "emptyRate": 0,
+    "top1Score": {
+      "n": 5,
+      "min": 0.5340498120065148,
+      "max": 0.567171617781883,
+      "quantiles": {
+        "0.1": 0.5340498120065148,
+        "0.5": 0.5559290691325852,
+        "0.9": 0.565251686362403
+      }
+    },
+    "top1FinalScore": {
+      "n": 0,
+      "min": null,
+      "max": null,
+      "quantiles": {
+        "0.1": null,
+        "0.5": null,
+        "0.9": null
+      }
+    },
+    "alternativesCount": {
+      "quantiles": {
+        "0.1": 1,
+        "0.5": 1,
+        "0.9": 1
+      },
+      "histogram": {
+        "1": 4,
+        "3": 1
+      }
+    },
+    "topViolationTypes": []
+  },
+  "env": {
+    "ALLOW_NO_DATABASE": "true"
+  },
+  "results": [
+    {
+      "id": "cgus-suite-1",
+      "title": "days=2 itemsPerDay=1 start=08:30 dur=120 gap=30 wr=0.05 fat=0.10",
+      "elapsedMs": 20,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5559290691325852,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 1,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5559290691325852,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|1:seg-1-1"
+        }
+      }
+    },
+    {
+      "id": "cgus-suite-2",
+      "title": "days=3 itemsPerDay=2 start=09:00 dur=90 gap=15 wr=0.15 fat=0.22",
+      "elapsedMs": 7,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.565251686362403,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 1,
+        "top": {
+          "id": "plan-base",
+          "score": 0.565251686362403,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|1:seg-1-2|1:seg-1-3|2:seg-2-4|2:seg-2-5"
+        }
+      }
+    },
+    {
+      "id": "cgus-suite-3",
+      "title": "days=4 itemsPerDay=3 start=10:00 dur=60 gap=30 wr=0.25 fat=0.34",
+      "elapsedMs": 6,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.567171617781883,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 1,
+        "top": {
+          "id": "plan-base",
+          "score": 0.567171617781883,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|1:seg-1-3|1:seg-1-4|1:seg-1-5|2:seg-2-6|2:seg-2-7|2:seg-2-8|3:seg-3-9|3:seg-3-10|3:seg-3-11"
+        }
+      }
+    },
+    {
+      "id": "cgus-suite-4",
+      "title": "days=5 itemsPerDay=4 start=08:30 dur=45 gap=15 wr=0.35 fat=0.46",
+      "elapsedMs": 9,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5500753155624083,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 3,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5500753155624083,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|0:seg-0-1|0:seg-0-2|0:seg-0-3|1:seg-1-4|1:seg-1-5|1:seg-1-6|1:seg-1-7|2:seg-2-8|2:seg-2-9|2:seg-2-10|2:seg-2-11|3:seg-3-12|3:seg-3-13|3:seg-3-14|3:seg-3-15|4:seg-4-16|4:seg-4-17|4:seg-4-18|4:seg-4-19"
+        }
+      }
+    },
+    {
+      "id": "cgus-suite-5",
+      "title": "days=6 itemsPerDay=1 start=09:00 dur=120 gap=30 wr=0.45 fat=0.58",
+      "elapsedMs": 4,
+      "summary": {
+        "method": "CGUS",
+        "expectedUtility": 0.5340498120065148,
+        "feasibilityProbability": 1,
+        "recommendedAlternativeId": "plan-base",
+        "alternativesCount": 1,
+        "top": {
+          "id": "plan-base",
+          "score": 0.5340498120065148,
+          "feasibilityProbability": 1,
+          "diversitySignature": "unknown|0:seg-0-0|1:seg-1-1|2:seg-2-2|3:seg-3-3|4:seg-4-4|5:seg-5-5"
+        }
+      }
+    }
+  ]
+}

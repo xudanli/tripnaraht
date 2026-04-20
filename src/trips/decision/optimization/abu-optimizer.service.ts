@@ -1,8 +1,6 @@
 // src/trips/decision/optimization/abu-optimizer.service.ts
 /**
- * Abu 优化器服务（Phase 1 升级版）
- * 
- * 从"布尔判断规则引擎"升级为"约束满足度优化器"
+ * Abu 优化器服务
  * 
  * 核心变化：
  * 1. 返回约束满足度分数（0-1），而不仅仅是 ALLOW/REJECT

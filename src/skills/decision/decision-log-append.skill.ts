@@ -48,6 +48,12 @@ export interface DecisionLogAppendInput extends SkillInput {
     
     /** 时间戳（可选，默认现在） */
     timestamp?: string;
+
+    /** Optional structured metadata for replay/audit (merged into DB metadata). */
+    metadata?: Record<string, any>;
+
+    /** Optional JEPA trace payload stored in metadata.jepaTrace */
+    jepaTrace?: Record<string, any>;
   }>;
   
   /** 元数据 */
@@ -110,6 +116,8 @@ export class DecisionLogAppendSkill implements Skill<DecisionLogAppendInput, Dec
         decisionStage: (entry.decisionStage || 'FINALIZE') as any,
         evidenceRefs: entry.evidenceRefs || [],
         timestamp: entry.timestamp || new Date().toISOString(),
+        metadata: entry.metadata,
+        jepaTrace: entry.jepaTrace as any,
       }));
 
       // 使用 DecisionLogStorageService 批量保存

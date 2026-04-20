@@ -210,6 +210,18 @@ export interface DecisionRunLog {
   // 约束冲突检测结果
   conflicts?: ConstraintConflict[];
 
+  /**
+   * Optional minimal DSO snapshot for offline CGUS/optimization replay.
+   *
+   * This is intentionally a "minimum viable" DecisionState-like object:
+   * - environmentState + tripState.planDraft + constraints.violations
+   *
+   * It allows downstream replay tooling to evaluate ranking strategies without
+   * booting the full agent pipeline or reconstructing hidden engine state.
+   */
+  cgusDsoSnapshot?: unknown;
+  cgusDsoSnapshotNote?: string;
+
   /** Phase 0: 约束引擎拒绝（硬约束违规，方案淘汰） */
   constraintEngineRejection?: {
     infeasibilityExplanation?: {

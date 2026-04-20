@@ -5,17 +5,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RepairExecutorService } from './repair-executor.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
 
 describe('RepairExecutorService', () => {
   let service: RepairExecutorService;
   let mockSkillsRegistry: { getSkill: jest.Mock };
+  let mockLocalInsight: { suggestAlternatives: jest.Mock };
 
   beforeEach(async () => {
     mockSkillsRegistry = { getSkill: jest.fn() };
+    mockLocalInsight = { suggestAlternatives: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RepairExecutorService,
         { provide: SkillsRegistryService, useValue: mockSkillsRegistry },
+        { provide: ClaudeLocalInsightAgentService, useValue: mockLocalInsight },
       ],
     }).compile();
     service = module.get<RepairExecutorService>(RepairExecutorService);
@@ -70,5 +74,30 @@ describe('RepairExecutorService', () => {
     );
     expect(result.repairApplied).toBe(true);
     expect(result.itinerary?.days).toHaveLength(1);
+  });
+
+  it('当 required_adjustments 含 REDUCE_SCOPE_OR_ADD_EVIDENCE 时应跳过 LocalInsightAgent', async () => {
+    mockSkillsRegistry.getSkill.mockReturnValue({
+      execute: jest.fn().mockResolvedValue({
+        repaired: false,
+      }),
+    });
+
+    await service.execute(
+      {} as any,
+      {
+        requestId: 'r1',
+        tripPlanRequest: { destination: 'Iceland' },
+        gateResult: {
+          gate_result: 'ADJUST_REQUIRED',
+          violations: [],
+          required_adjustments: [{ action: 'REDUCE_SCOPE_OR_ADD_EVIDENCE', why: 'low budget' }],
+          confidence: 0.8,
+        },
+        itinerary: { request_id: 'r1', days: [] },
+      },
+    );
+
+    expect(mockLocalInsight.suggestAlternatives).not.toHaveBeenCalled();
   });
 });

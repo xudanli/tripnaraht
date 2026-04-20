@@ -1,0 +1,650 @@
+{
+  "id": "golden-iceland-highlands-2026q3-002",
+  "name": "Golden Iceland Highlands Repair Capture",
+  "description": "Captured-style golden replay case where the system remains allowed but performs spatial repair under degraded highlands conditions.",
+  "input": {
+    "userProfile": {
+      "pacePreference": "MEDIUM",
+      "altitudeTolerance": "MEDIUM",
+      "riskTolerance": "LOW",
+      "travelPhilosophy": "adventure",
+      "preferredRouteTypes": [
+        "highlands",
+        "nature"
+      ]
+    },
+    "season": 7,
+    "countryCode": "IS",
+    "userQuery": "7月冰岛高地，保守一些，但尽量保留体验核心。"
+  },
+  "expected": {
+    "routeDirectionTags": [
+      "highlands",
+      "nature"
+    ],
+    "abuExpected": {
+      "action": "ALLOW"
+    },
+    "drdreExpected": {
+      "mustAdjust": false
+    },
+    "neptuneExpected": {
+      "mustRepair": true,
+      "replacementTypes": [
+        "SEGMENT"
+      ]
+    },
+    "finalState": {
+      "allowed": true,
+      "planDays": 7
+    },
+    "traceSummary": {
+      "schemaVersion": "trace/v1",
+      "metaDecisionAudit": "golden-meta-budget entropy=0.61 cand=16 repair=3",
+      "candidateSearchBudget": {
+        "maxCandidates": 16,
+        "repairMaxIters": 3,
+        "repairTopKPerCandidate": 4,
+        "maxNewCandidatesPerIter": 16,
+        "maxPoolSize": 36,
+        "stopWhenFeasibleCount": 8
+      },
+      "candidateSearchAudit": {
+        "budget": {
+          "maxCandidates": 16,
+          "repairMaxIters": 3,
+          "repairTopKPerCandidate": 4,
+          "maxNewCandidatesPerIter": 16,
+          "maxPoolSize": 36,
+          "stopWhenFeasibleCount": 8
+        },
+        "initialVariantCount": 5,
+        "iterations": [
+          {
+            "iter": 0,
+            "poolSizeBeforeProjection": 6,
+            "feasibleCountAfterProjection": 2,
+            "infeasibleCountAfterProjection": 4,
+            "repairsGenerated": 5,
+            "repairsAccepted": 2,
+            "poolSizeAfterDedup": 7
+          },
+          {
+            "iter": 1,
+            "poolSizeBeforeProjection": 7,
+            "feasibleCountAfterProjection": 5,
+            "infeasibleCountAfterProjection": 2,
+            "repairsGenerated": 3,
+            "repairsAccepted": 1,
+            "poolSizeAfterDedup": 8
+          }
+        ],
+        "finalCandidateCount": 8,
+        "finalFeasibleCount": 5,
+        "stopReason": "COMPLETED"
+      }
+    },
+    "scientificExpected": {
+      "optimization": {
+        "mustEmitTrace": true,
+        "minCandidateSearchIterations": 2,
+        "minFinalFeasibleCount": 5,
+        "allowedStopReasons": [
+          "COMPLETED"
+        ],
+        "metaDecisionAuditIncludes": [
+          "cand=16",
+          "repair=3"
+        ]
+      }
+    },
+    "timelineExpected": {
+      "requiredStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "SPATIAL_REPAIR"
+      ],
+      "forbiddenStages": [
+        "PACE_ADJUST"
+      ],
+      "orderedStages": [
+        "ABU_GATE",
+        "PLAN_SCORE",
+        "SPATIAL_REPAIR"
+      ]
+    }
+  },
+  "metadata": {
+    "tags": [
+      "golden",
+      "iceland",
+      "highlands",
+      "repair"
+    ],
+    "priority": "P1",
+    "source": "captured-iceland-2026q3",
+    "description": "Golden corpus highlands capture with stable spatial-repair outcome.",
+    "fixtureKind": "golden",
+    "cgusDsoSnapshot": {
+      "requestId": "golden-capture-golden-iceland-highlands-2026q3-002-1776438935524",
+      "systemState": {
+        "requestId": "golden-capture-golden-iceland-highlands-2026q3-002-1776438935524"
+      },
+      "environmentState": {
+        "countryCode": "IS",
+        "month": 7,
+        "routeDirectionId": "unknown"
+      },
+      "tripState": {
+        "planDraft": {
+          "days": [
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-01_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-0-5",
+                    "name": "候选 0-5",
+                    "coordinates": {
+                      "lat": 64.005,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-01_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-0-4",
+                    "name": "候选 0-4",
+                    "coordinates": {
+                      "lat": 64.004,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-01_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-0-1",
+                    "name": "候选 0-1",
+                    "coordinates": {
+                      "lat": 64.001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-02_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-1-5",
+                    "name": "候选 1-5",
+                    "coordinates": {
+                      "lat": 64.02499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-02_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-1-4",
+                    "name": "候选 1-4",
+                    "coordinates": {
+                      "lat": 64.024,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-02_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-1-1",
+                    "name": "候选 1-1",
+                    "coordinates": {
+                      "lat": 64.021,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-03_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-2-5",
+                    "name": "候选 2-5",
+                    "coordinates": {
+                      "lat": 64.045,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-03_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-2-4",
+                    "name": "候选 2-4",
+                    "coordinates": {
+                      "lat": 64.04400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-03_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-2-1",
+                    "name": "候选 2-1",
+                    "coordinates": {
+                      "lat": 64.04100000000001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-04_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-3-5",
+                    "name": "候选 3-5",
+                    "coordinates": {
+                      "lat": 64.065,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-04_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-3-4",
+                    "name": "候选 3-4",
+                    "coordinates": {
+                      "lat": 64.06400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-04_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-3-1",
+                    "name": "候选 3-1",
+                    "coordinates": {
+                      "lat": 64.061,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-05_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-4-5",
+                    "name": "候选 4-5",
+                    "coordinates": {
+                      "lat": 64.085,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-05_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-4-4",
+                    "name": "候选 4-4",
+                    "coordinates": {
+                      "lat": 64.084,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-05_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-4-1",
+                    "name": "候选 4-1",
+                    "coordinates": {
+                      "lat": 64.081,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-06_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-5-5",
+                    "name": "候选 5-5",
+                    "coordinates": {
+                      "lat": 64.10499999999999,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-06_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-5-4",
+                    "name": "候选 5-4",
+                    "coordinates": {
+                      "lat": 64.104,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-06_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-5-1",
+                    "name": "候选 5-1",
+                    "coordinates": {
+                      "lat": 64.101,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "id": "slot_2026-07-07_520",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "08:40",
+                    "end": "08:40"
+                  },
+                  "end_window": {
+                    "start": "10:55",
+                    "end": "10:55"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-6-5",
+                    "name": "候选 6-5",
+                    "coordinates": {
+                      "lat": 64.125,
+                      "lng": -21.1
+                    }
+                  },
+                  "metadata": {}
+                },
+                {
+                  "id": "slot_2026-07-07_670",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "11:10",
+                    "end": "11:10"
+                  },
+                  "end_window": {
+                    "start": "13:10",
+                    "end": "13:10"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-6-4",
+                    "name": "候选 6-4",
+                    "coordinates": {
+                      "lat": 64.12400000000001,
+                      "lng": -21.08
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 5
+                  }
+                },
+                {
+                  "id": "slot_2026-07-07_808",
+                  "type": "poi",
+                  "start_window": {
+                    "start": "13:28",
+                    "end": "13:28"
+                  },
+                  "end_window": {
+                    "start": "14:43",
+                    "end": "14:43"
+                  },
+                  "location_ref": {
+                    "place_id": "cand-golden-iceland-highlands-2026q3-002-6-1",
+                    "name": "候选 6-1",
+                    "coordinates": {
+                      "lat": 64.12100000000001,
+                      "lng": -21.02
+                    }
+                  },
+                  "metadata": {
+                    "travel_duration_min_from_prev": 8
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constraints": {
+        "violations": []
+      }
+    },
+    "cgusDsoSnapshotNote": "fallback snapshot from TripPlan (no planConverter/orchestrator); env + planDraft(days/items) only",
+    "cgusDsoFixtureVersion": "engine-dso-v1",
+    "cgusDsoGeneratedAt": "2026-04-17T15:15:35.505Z",
+    "cgusDsoSourceCaseId": "golden-iceland-highlands-2026q3-002"
+  }
+}

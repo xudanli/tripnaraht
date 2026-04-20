@@ -1839,7 +1839,11 @@ export class RagController {
         rerankTopK: { type: 'number', description: '重排序的Top-K数量（默认20）', default: 20 },
         useQueryExpansion: { type: 'boolean', description: '是否使用查询扩展（默认false，会增加延迟和成本但提升召回率）', default: false },
         maxQueryVariants: { type: 'number', description: '最大查询变体数量（默认3）', default: 3 },
-        chunkCategory: { type: 'string', description: 'Chunk分类过滤 (RULES, POI_INFO, GATE, WEATHER, GENERAL)' },
+        chunkCategory: {
+          type: 'string',
+          description:
+            'Chunk分类过滤：RULES, POI_INFO, GATE, WEATHER, GENERAL, DECISION_SUPPORT（细分库标签经服务端展开 OR 匹配）',
+        },
         useIntentClassification: { type: 'boolean', description: '是否使用意图分类自动过滤（默认false）', default: false },
       },
       required: ['query'],

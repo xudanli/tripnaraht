@@ -554,15 +554,18 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     const variance = fatigueIndices.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / fatigueIndices.length;
     const stdDev = Math.sqrt(variance);
 
-    // 标准差越大，惩罚越高
-    // 理想标准差 < 0.2
+    // 标准差越大，惩罚越高（分段线性）；与其它惩罚项一致，**必须落在 [0,1]**。
+    // 否则当跨天 fatigueIndex 方差很大时，会出现 >1 的“惩罚”，与 ExpectedUtility 路径里
+    // `dimensions.pacingVariance = Math.min(1, …)` 的口径不一致，也会把 totalUtility 拉爆。
+    let penalty = 0;
     if (stdDev < 0.2) {
-      return 0;
+      penalty = 0;
     } else if (stdDev < 0.4) {
-      return (stdDev - 0.2) / 0.2 * 0.5;
+      penalty = ((stdDev - 0.2) / 0.2) * 0.5;
     } else {
-      return 0.5 + (stdDev - 0.4) * 0.5;
+      penalty = 0.5 + (stdDev - 0.4) * 0.5;
     }
+    return Math.max(0, Math.min(1, penalty));
   }
 
   // ========== 约束检查实现 ==========

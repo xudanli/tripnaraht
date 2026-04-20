@@ -61,6 +61,15 @@ export function mergeUserIntentForDsoPrimaryPatch(
   ) {
     merged.origin = o.origin;
   }
+  if (!merged.regionId && o.regionId) {
+    merged.regionId = o.regionId;
+  }
+  if (
+    (!merged.mustIncludePoiIds || merged.mustIncludePoiIds.length === 0) &&
+    o.mustIncludePoiIds?.length
+  ) {
+    merged.mustIncludePoiIds = o.mustIncludePoiIds;
+  }
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
@@ -195,6 +204,13 @@ export function buildHistoryDeltasFromPatch(patch: DecisionStatePatch): StateHis
   if (patch.travelOntologyState) {
     deltas.push({ type: 'ontology', summary: 'travelOntologyState updated', at: now });
   }
+  if (patch.poiPlanning) {
+    deltas.push({
+      type: 'poi_planning',
+      summary: `region=${patch.poiPlanning.routeIntent?.regionId ?? 'n/a'} anchors=${patch.poiPlanning.poiPlan?.requiredAnchorPoiIds?.length ?? 0}`,
+      at: now,
+    });
+  }
   return deltas;
 }
 
@@ -229,6 +245,29 @@ function tripPlanRequestToUserIntent(req: TripPlanRequest): UserIntent {
       fitnessLevel: req.party.fitness_level,
       riskTolerance: req.party_profile?.risk_tolerance,
     };
+  }
+
+  if (req.region_id?.trim()) {
+    intent.regionId = req.region_id.trim();
+  }
+  if (req.must_include_poi_ids?.length) {
+    intent.mustIncludePoiIds = [...req.must_include_poi_ids];
+  }
+  if (req.exclude_poi_ids?.length) {
+    intent.excludePoiIds = [...req.exclude_poi_ids];
+  }
+  if (req.total_budget_minutes !== undefined && Number.isFinite(req.total_budget_minutes)) {
+    intent.totalBudgetMinutes = Math.max(0, Math.round(req.total_budget_minutes));
+  }
+  if (req.pace) {
+    intent.pace = req.pace;
+  }
+  if (req.style_tags?.length) {
+    intent.styleTags = [...req.style_tags];
+  }
+  if (req.constraints?.daily_time_window) {
+    intent.availableStartTime = req.constraints.daily_time_window.start;
+    intent.availableEndTime = req.constraints.daily_time_window.end;
   }
 
   return intent;
@@ -373,6 +412,20 @@ function userIntentToTripPlanRequest(intent: UserIntent, requestId: string): Tri
   }
   if (intent.constraints) req.constraints = intent.constraints as TripPlanRequest['constraints'];
   if (intent.preferences) req.preferences = intent.preferences as TripPlanRequest['preferences'];
+  if (intent.regionId) req.region_id = intent.regionId;
+  if (intent.mustIncludePoiIds?.length) {
+    req.must_include_poi_ids = [...intent.mustIncludePoiIds];
+  }
+  if (intent.excludePoiIds?.length) {
+    req.exclude_poi_ids = [...intent.excludePoiIds];
+  }
+  if (intent.totalBudgetMinutes !== undefined) {
+    req.total_budget_minutes = intent.totalBudgetMinutes;
+  }
+  if (intent.pace) req.pace = intent.pace;
+  if (intent.styleTags?.length) {
+    req.style_tags = [...intent.styleTags];
+  }
   return req;
 }
 

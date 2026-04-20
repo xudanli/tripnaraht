@@ -37,10 +37,18 @@ import {
   OutcomePrediction,
 } from './probabilistic-world-model.interface';
 import { WorldModelContext } from '../../shared/world-model.types';
+import type { PlanFeatures } from '../plan-features/plan-features.service';
+import { ExposureMapService } from '../plan-features/exposure-map.service';
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
 
 @Injectable()
 export class ProbabilisticWorldModelService implements IProbabilisticWorldModelService {
   private readonly logger = new Logger(ProbabilisticWorldModelService.name);
+  constructor(private readonly exposureMap: ExposureMapService) {}
 
   /**
    * 从确定性世界模型转换为概率模型
@@ -422,7 +430,7 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
         },
         roadStatuses: context.physical.roadStatuses.map(road => ({
           roadId: road.roadId,
-          status: this.sampleCategorical(road.status) as 'OPEN' | 'CONDITIONAL' | 'CLOSED',
+          status: this.sampleCategorical(road.status) as 'OPEN' | 'RESTRICTED' | 'CLOSED',
         })),
         humanCapability: {
           maxDailyAscentM: this.sampleGaussian(context.human.maxDailyAscent),
@@ -553,6 +561,74 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
 
     // 根据动作类型调整预测状态
     switch (action.type) {
+      case 'PLAN_EVALUATION': {
+        const pf = (action.payload as { planFeatures?: PlanFeatures } | undefined)?.planFeatures;
+        const exposure = (action.payload as { exposure?: { roadIdsTouched?: string[]; hazardTypesTouched?: string[] } } | undefined)
+          ?.exposure;
+        if (pf) {
+          const fragility = clamp01(0.55 * pf.slackTightness01 + 0.45 * pf.effort01);
+
+          // Weather risk proxy from mean values (cheap but plan-conditioned through fragility).
+          const windMean = Number(nextState.physical.weather.windSpeed.params.mean) || 0;
+          const precipMean = Number(nextState.physical.weather.precipitation.params.mean) || 0;
+          const visibilityMean = Number(nextState.physical.weather.visibility.params.mean) || 10000;
+          const weatherRisk =
+            clamp01(
+              (windMean > 15 ? 0.25 : windMean > 10 ? 0.1 : 0) +
+                (precipMean > 10 ? 0.25 : precipMean > 5 ? 0.1 : 0) +
+                (visibilityMean < 800 ? 0.2 : visibilityMean < 1500 ? 0.1 : 0),
+            );
+
+          // Road closure probability proxy from categorical distributions.
+          const roadClosedProbAvg =
+            nextState.physical.roadStatuses.length > 0
+              ? nextState.physical.roadStatuses
+                  .map((r) => {
+                    const cats = r.status.params.categories;
+                    const probs = r.status.params.probabilities;
+                    const idx = cats.indexOf('CLOSED');
+                    return idx >= 0 ? probs[idx] ?? 0 : 0;
+                  })
+                  .reduce((s, p) => s + p, 0) / nextState.physical.roadStatuses.length
+              : 0;
+
+          // Hazard occurrence probability proxy (mean of Beta).
+          const hazardOccurProbAvg =
+            nextState.physical.hazards.length > 0
+              ? nextState.physical.hazards
+                  .map((h) => {
+                    const a = h.occurrenceProbability.params.alpha;
+                    const b = h.occurrenceProbability.params.beta;
+                    const mean = a + b > 0 ? a / (a + b) : 0;
+                    return mean;
+                  })
+                  .reduce((s, p) => s + p, 0) / nextState.physical.hazards.length
+              : 0;
+
+          const touchesRoad = (exposure?.roadIdsTouched?.length ?? 0) > 0;
+          const touchesHazard = (exposure?.hazardTypesTouched?.length ?? 0) > 0;
+          const roadExposureFactor = touchesRoad ? 1.35 : 1.0;
+          const hazardExposureFactor = touchesHazard ? 1.3 : 1.0;
+
+          const density = pf.avgSegmentsPerDay;
+          const densityBonus = density >= 3 && density <= 5 ? 0.08 : density >= 2 && density <= 6 ? 0.04 : -0.02;
+
+          const feasibilityRisk =
+            0.45 * weatherRisk +
+            0.35 * clamp01(roadClosedProbAvg * roadExposureFactor * (0.5 + fragility)) +
+            0.25 * clamp01(hazardOccurProbAvg * hazardExposureFactor * (0.4 + fragility)) +
+            0.25 * fragility;
+
+          feasibilityProbability = clamp01(0.92 - feasibilityRisk);
+          // Utility proxy: better when not fragile and weather/roads are favorable.
+          estimatedUtility = clamp01(0.82 + densityBonus - 0.4 * fragility - 0.28 * weatherRisk - 0.18 * roadClosedProbAvg);
+
+          if (weatherRisk > 0.35) constraintViolations.push('WEATHER_RISK');
+          if (roadClosedProbAvg > 0.25) constraintViolations.push('ROAD_CLOSURE_RISK');
+          if (hazardOccurProbAvg > 0.2) constraintViolations.push('HAZARD_RISK');
+        }
+        break;
+      }
       case 'ADD_ACTIVITY':
       case 'REPLACE_ACTIVITY': {
         // 增加活动可能增加疲劳、影响可行性
@@ -637,7 +713,7 @@ export class ProbabilisticWorldModelService implements IProbabilisticWorldModelS
     
     const road = context.physical.roadStatuses.find(r => r.roadId === roadId);
     if (road && typeof status === 'string') {
-      const statusIndex = ['OPEN', 'CONDITIONAL', 'CLOSED'].indexOf(status);
+      const statusIndex = ['OPEN', 'RESTRICTED', 'CLOSED'].indexOf(status);
       if (statusIndex >= 0) {
         // 增加观测状态的概率
         const probs = road.status.params.probabilities;

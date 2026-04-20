@@ -95,7 +95,17 @@ export type TripPlanRequestInput = z.infer<typeof TripPlanRequestSchema>;
 export const GateResultStatusSchema = z.enum(['ALLOW', 'ADJUST_REQUIRED', 'BLOCK', 'NEED_USER_CONFIRM']);
 
 export const GateViolationSchema = z.object({
-  type: z.enum(['REACHABILITY', 'SAFETY', 'DEM', 'DATA_MISSING', 'TIME_CONFLICT', 'FATIGUE', 'BUDGET']),
+  type: z.enum([
+    'REACHABILITY',
+    'SAFETY',
+    'DEM',
+    'DATA_MISSING',
+    'TIME_CONFLICT',
+    'FATIGUE',
+    'BUDGET',
+    'META_BUDGET',
+    'HARNESS_GATE',
+  ]),
   severity: z.enum(['HARD', 'SOFT']),
   detail: z.string().min(1, 'Violation detail is required'),
   evidence_refs: z.array(z.string()).optional(),
@@ -110,6 +120,7 @@ export const RequiredAdjustmentSchema = z.object({
     'REPLACE_POI',
     'ADD_BUFFER',
     'CHANGE_TRANSPORT',
+    'REDUCE_SCOPE_OR_ADD_EVIDENCE',
   ]),
   why: z.string().min(1, 'Adjustment reason is required'),
   target: z.string().optional(),

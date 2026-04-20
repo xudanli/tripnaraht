@@ -77,6 +77,8 @@
 
 以下角色在触发条件出现时再拉入；**默认不进主链 R/A**：
 
+- `chief-optimization-scientist.md`  
+  - 仅当“Top-K 候选生成/多样性/约束形式化”或 “CGUS 备选解释结构”成为瓶颈时介入
 - `rl-infra/ux-writer.md`  
   - 仅当“用户可见语义”变化时介入（风险提示、审批文案、解释结构）
 - `rl-infra/domain-expert-network.md`  

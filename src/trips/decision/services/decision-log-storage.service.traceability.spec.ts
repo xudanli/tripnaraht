@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { DecisionLogEntry } from '../shared/decision-result.types';
+import { minimalJepaTraceForCandidate } from '../shared/decision-trace-jepa.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
 
 describe('DecisionLogStorageService (TD-04 traceability)', () => {
@@ -114,6 +115,68 @@ describe('DecisionLogStorageService (TD-04 traceability)', () => {
     } finally {
       delete process.env.DECISION_LOG_STRICT_WRITE;
     }
+  });
+
+  it('saveLogEntry: merges jepaTrace into Prisma metadata.jepaTrace', async () => {
+    await service.saveLogEntry(
+      validEntry({
+        jepaTrace: minimalJepaTraceForCandidate('cand-99'),
+        metadata: {
+          candidateSearchAudit: {
+            budget: { maxCandidates: 12, repairMaxIters: 2, repairTopKPerCandidate: 2, maxNewCandidatesPerIter: 30, maxPoolSize: 200 },
+            initialVariantCount: 10,
+            finalCandidateCount: 8,
+          },
+        },
+      }),
+      { tripId: tripUuid },
+    );
+
+    expect(prisma.decisionLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            jepaTrace: expect.objectContaining({ candidateId: 'cand-99' }),
+            candidateSearchAudit: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('queryLogs: maps metadata.jepaTrace back to DecisionLogEntry.jepaTrace', async () => {
+    prisma.decisionLog.findMany.mockResolvedValue([
+      {
+        persona: 'ABU',
+        action: 'ALLOW',
+        explanation: 'ok',
+        reasonCodes: [],
+        evidenceRefs: [],
+        timestamp: new Date(),
+        decisionSource: 'PHYSICAL',
+        decisionStage: 'PLAN_SCORE',
+        metadata: { jepaTrace: minimalJepaTraceForCandidate('from-db'), candidateSearchAudit: { initialVariantCount: 3 } },
+      },
+    ]);
+
+    const rows = await service.queryLogs({ tripId: tripUuid, limit: 5 });
+    expect(rows[0].jepaTrace?.candidateId).toBe('from-db');
+    expect(rows[0].metadata?.candidateSearchAudit).toBeDefined();
+  });
+
+  it('queryLogs: supports requestId metadata filter when tripId is not a UUID', async () => {
+    await service.queryLogs({ tripId: 'e2e-case-1', requestId: 'e2e-case-1', limit: 5 });
+
+    expect(prisma.decisionLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          metadata: {
+            path: ['requestId'],
+            equals: 'e2e-case-1',
+          },
+        }),
+      }),
+    );
   });
 
   it('getLogById: runs read traceability on returned entry', async () => {

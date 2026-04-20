@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "cgus-replay-report-diff/v1",
+  "generatedAt": "2026-04-17T15:44:43.143Z",
+  "baseline": {
+    "label": "baseline",
+    "generatedAt": "2026-04-17T15:44:30.587Z",
+    "corpus": "td-replay-fixtures",
+    "caseCount": 10,
+    "fixtureVersion": "engine-dso-v1"
+  },
+  "current": {
+    "label": "current",
+    "generatedAt": "2026-04-17T15:44:38.607Z",
+    "corpus": "td-replay-fixtures",
+    "caseCount": 10,
+    "fixtureVersion": "engine-dso-v1"
+  },
+  "rateComparison": {
+    "mcEligibleRate": {
+      "baseline": 1,
+      "current": 1,
+      "delta": 0
+    },
+    "winnerChangedRate": {
+      "baseline": 0,
+      "current": 0.7,
+      "delta": 0.7
+    },
+    "winnerLockedButTopNChangedRate": {
+      "baseline": 1,
+      "current": 0,
+      "delta": -1
+    },
+    "marginBlockedFlipRate": {
+      "baseline": 0.9,
+      "current": 0,
+      "delta": -0.9
+    }
+  },
+  "cases": {
+    "top1Changed": [
+      "iceland-highlands-001",
+      "iceland-highlands-dem-missing-001",
+      "iceland-highlands-pace-adjust-001",
+      "iceland-highlands-spatial-repair-001",
+      "iceland-highlands-compound-stress-001",
+      "iceland-ring-road-001",
+      "iceland-ring-road-pace-adjust-001",
+      "iceland-ring-road-spatial-repair-001",
+      "golden-iceland-ring-road-2026q3-001",
+      "golden-iceland-highlands-2026q3-002"
+    ],
+    "topNChangedWinnerLocked": [],
+    "missingInBaseline": [],
+    "missingRankReplaySnapshot": []
+  }
+}

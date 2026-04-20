@@ -7,7 +7,7 @@
  * 参考：docs/Decision_OS_技术交底书.md 3.6.1
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   UnifiedDecisionFormulaService,
   UnifiedDecisionFormulaInput,
@@ -23,6 +23,16 @@ import { ComplexityAnalysisService } from './theory/complexity-analysis.service'
 import type { ComplexityReport } from './theory/complexity-analysis.interface';
 import { UCBVisitTrackerService } from './theory/ucb-visit-tracker.service';
 import type { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
+import { PlanFeaturesService } from './plan-features/plan-features.service';
+import { ExposureMapService } from './plan-features/exposure-map.service';
+import type { CandidateScorerPerCandidateOutput, ICandidateScorer } from './scoring/candidate-scorer.interface';
+import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
+import { latentSnapshotFromWorldContext } from './scoring/latent-from-world-context';
+import {
+  buildConstraintPenaltyCoefficientsFromRetrievalEvidence,
+  buildConstraintPenaltyCoefficientsFromRetrievalHints,
+  type RetrievalCategoryEvidence,
+} from './retrieval-category-constraint-boost';
 
 /** 候选方案（动作 a） */
 export interface CGUSCandidate {
@@ -38,8 +48,14 @@ export interface CGUSCandidate {
 export interface MonteCarloSamplingDetails {
   /** 总采样数 */
   totalSamples: number;
+  /** pilot 试采样本数（每候选） */
+  pilotSamplesPerCandidate?: number;
   /** 各候选分配到的采样数（候选 id → 数量） */
   samplesPerCandidate?: Record<string, number>;
+  /** pilot 方差估计（候选 id → variance） */
+  pilotVariancePerCandidate?: Record<string, number>;
+  /** pilot 有效样本数估计（候选 id → ESS） */
+  pilotEssPerCandidate?: Record<string, number>;
   /** 是否使用效用加权预算分配（专利：采样概率 ∝ exp(β·Û)·σ） */
   usedUtilityWeightedAllocation?: boolean;
   /** 数据来源说明：当前由 fromDeterministicModel 从 worldContext 推断分布，无外部预报 PDF */
@@ -59,8 +75,20 @@ export interface CGUSSearchResult {
     feasibilityProbability?: number;
     /** Step 4：世界模型推演结果 */
     rolloutPrediction?: { feasibilityProbability: number; estimatedUtility: number };
+    /** Rollout-aware final score used for ranking when rollout enabled */
+    finalScore?: number;
+    scoreBreakdown?: {
+      baseU: number;
+      baseP: number;
+      rolloutU?: number;
+      rolloutP?: number;
+      blendedU: number;
+      blendedP: number;
+    };
     /** Monte Carlo 采样详情（当 usedMonteCarlo 时） */
     samplingDetails?: { totalSamples: number; effectiveSampleSize?: number };
+    /** Optional learned / auxiliary scores; never carries Gate verdicts. */
+    scorerSidecar?: CandidateScorerPerCandidateOutput;
   }>;
   /** 推荐方案（最高效用且可行） */
   recommended?: CGUSCandidate;
@@ -88,6 +116,9 @@ export class CGUSSearchService {
     @Optional() private readonly informationGain?: InformationGainService,
     @Optional() private readonly complexityAnalysis?: ComplexityAnalysisService,
     @Optional() private readonly ucbVisitTracker?: UCBVisitTrackerService,
+    @Optional() private readonly planFeatures?: PlanFeaturesService,
+    @Optional() private readonly exposureMap?: ExposureMapService,
+    @Optional() @Inject(CANDIDATE_SCORER) private readonly candidateScorer?: ICandidateScorer,
   ) {}
 
   /**
@@ -100,21 +131,65 @@ export class CGUSSearchService {
     options?: {
       useMonteCarlo?: boolean;
       sampleSize?: number;
+      /** 可选的随机种子，用于蒙特卡洛的可重现性（重放测试/持续集成）。 */
+      seed?: number;
       useUtilityPrior?: boolean;
       /** 专利 3.6.1：采样概率 ∝ exp(β·Û(a))·σ(a)，启用时按效用先验分配采样预算 */
       useUtilityWeightedSampling?: boolean;
       /** 效用加权采样的 β（默认 2，Û 高则多采样） */
       utilityWeightedBeta?: number;
+      /** 用于方差分配时每个候选的试点样本数（当 useUtilityWeightedSampling=true 时） */
+      pilotSamplesPerCandidate?: number;
       useWorldModelRollout?: boolean;
       rolloutTopK?: number;
+      /** 世界模型 rollout 的多步 horizon（工程近似：重复 predictOutcome 并融合） */
+      rolloutHorizonSteps?: number;
       /** 专利 3.12.2：Exploration 系数 β，U'(a)=U(a)+β·InformationGain(a)，0 表示关闭 */
       explorationBeta?: number;
       /** 专利 3.6.2 定理 5：UCB 探索，Regret(T)=O(log T)，与 explorationBeta 二选一 */
       explorationStrategy?: 'INFORMATION_GAIN' | 'UCB' | 'NONE';
       /** UCB 常数 c，score = Û(a) + c·√(ln(T+1)/(N_a+1)) */
       explorationC?: number;
+      /** 可插拔的候选评分器；影子模式仅附加附属信息（不改变排序）. */
+      candidateScorer?: { mode: 'off' | 'shadow' | 'active' };
+      /**
+       * RAG / Belief 侧主导 chunk 类（如 RULES、ROAD_STATUS）；存在高压类时抬高软约束默认 λ（__defaultSoft）。
+       */
+      retrievalCategoryHints?: string[];
+      /**
+       * 带 `ageHours` 的证据行；若传入则优先于此路径，并对 ROAD_STATUS / TRAFFIC_ALERT / GATE 做时效衰减。
+       */
+      retrievalCategoryEvidence?: RetrievalCategoryEvidence[];
+      /**
+      * 步骤3 蒙特卡洛排序权柄：
+      * - deterministic：预排序 / 先验排序
+      * - MC：符合条件时的最终排序
+      * 默认值：禁用（仅观测模式）
+       */
+      mcRankAuthority?: {
+        enabled?: boolean;
+        /** 允许蒙特卡洛进行重排序所需的最小每候选样本数。 */
+        minSamplesPerCandidate?: number;
+        /** 可接受的最大 top1 置信区间宽度；未定义则跳过此门控。 */
+        maxTopCiWidth?: number;
+        /** 要求 top1 与 top2 的边际差值大于等于阈值；未定义则跳过此门控。 */
+        minTopMargin?: number;
+        /** 比较日志中包含的候选方案数量。 */
+        compareTopN?: number;
+      };
     },
   ): Promise<CGUSSearchResult> {
+    const retrievalConstraintCoeffs =
+      options?.retrievalCategoryEvidence?.length
+        ? buildConstraintPenaltyCoefficientsFromRetrievalEvidence(options.retrievalCategoryEvidence)
+        : buildConstraintPenaltyCoefficientsFromRetrievalHints(options?.retrievalCategoryHints);
+    if (Object.keys(retrievalConstraintCoeffs).length > 0) {
+      this.logger.debug(
+        `[CGUS] retrieval λ boost: hints=${JSON.stringify(options?.retrievalCategoryHints)} ` +
+          `evidence=${JSON.stringify(options?.retrievalCategoryEvidence)} → __defaultSoft=${retrievalConstraintCoeffs.__defaultSoft}`,
+      );
+    }
+
     // Step 1：可行域投影 A_f = {a | g_i(s,a) ≤ 0}
     const feasibleCandidates = candidates.filter((c) => c.feasible);
     if (feasibleCandidates.length === 0) {
@@ -133,6 +208,8 @@ export class CGUSSearchService {
         dimensionScores,
         weights: DEFAULT_UNIFIED_WEIGHTS,
         constraintViolations: candidate.constraintViolations,
+        constraintPenaltyCoefficients:
+          Object.keys(retrievalConstraintCoeffs).length > 0 ? retrievalConstraintCoeffs : undefined,
         riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
         preferenceScore: 0,
       };
@@ -156,6 +233,7 @@ export class CGUSSearchService {
       feasibilityProbability: undefined as number | undefined,
       rolloutPrediction: undefined as { feasibilityProbability: number; estimatedUtility: number } | undefined,
       samplingDetails: undefined as { totalSamples: number; effectiveSampleSize?: number } | undefined,
+      scorerSidecar: undefined as CandidateScorerPerCandidateOutput | undefined,
     }));
 
     // Step 3：不确定性采样 — 当有条件时执行 Monte Carlo
@@ -172,25 +250,69 @@ export class CGUSSearchService {
           worldContext,
           DEFAULT_UNCERTAINTY_CONFIG,
         );
+        // Align Monte Carlo scoring weights with deterministic objective function when available.
+        // This reduces drift between deterministic utility ranking and E[U] estimates.
+        const mcWeights = this.objectiveFunction?.weights ?? DEFAULT_OBJECTIVE_WEIGHTS;
         const totalSampleBudget = options?.sampleSize ?? 200;
         const utilityWeightedBeta = options?.utilityWeightedBeta ?? 2;
         const minSamplesPerCandidate = 20;
+        const pilotSamplesPerCandidate =
+          options?.pilotSamplesPerCandidate ??
+          Math.min(30, Math.max(10, Math.floor(minSamplesPerCandidate / 2)));
 
         // 专利 3.6.1：按 exp(β·Û)·σ 分配采样预算；σ 用 (1 + 软约束违反数) 近似不确定性
         let sampleAllocations: number[];
+        let pilotVariancePerCandidate: Record<string, number> | undefined;
+        let pilotEssPerCandidate: Record<string, number> | undefined;
         if (options?.useUtilityWeightedSampling === true && withPrior.some((r) => r.utilityPrior !== undefined)) {
-          const sigmaProxy = (r: (typeof withPrior)[0]) =>
-            1 + (r.candidate.constraintViolations?.filter((v) => v.severity === 'SOFT').length ?? 0) * 0.2;
+          const sigmaProxy = (r: (typeof withPrior)[0]) => {
+            const softCount = r.candidate.constraintViolations?.filter((v) => v.severity === 'SOFT').length ?? 0;
+            let sigma = 1 + softCount * 0.2;
+            if (this.planFeatures && r.candidate.plan) {
+              const f = this.planFeatures.extract(r.candidate.plan);
+              sigma *= 1 + 0.6 * f.slackTightness01 + 0.4 * f.effort01;
+            }
+            return sigma;
+          };
           const uMin = Math.min(...withPrior.map((r) => r.utilityPrior ?? 0));
           const uRange = Math.max(1e-6, Math.max(...withPrior.map((r) => r.utilityPrior ?? 0)) - uMin);
-          const weights = withPrior.map((r) => {
-            const uNorm = ((r.utilityPrior ?? 0) - uMin) / uRange;
-            return Math.exp(utilityWeightedBeta * uNorm) * sigmaProxy(r);
+
+          // Pilot: estimate variance / ESS per candidate, then allocate remaining budget.
+          pilotVariancePerCandidate = {};
+          pilotEssPerCandidate = {};
+          const pilotResults = withPrior.map((r) => {
+            const pilot = this.expectedUtility!.computeExpectedUtility(
+              r.candidate.plan,
+              probabilisticContext,
+              mcWeights,
+              {
+                ...DEFAULT_MONTE_CARLO_CONFIG,
+                sampleSize: pilotSamplesPerCandidate,
+                seed: options?.seed,
+                deterministicWorld: worldContext,
+              },
+            );
+            pilotVariancePerCandidate![r.candidate.id] = pilot.statistics.variance ?? 0;
+            pilotEssPerCandidate![r.candidate.id] =
+              pilot.samplingDetails?.effectiveSampleSize ?? pilotSamplesPerCandidate;
+            return pilot;
           });
-          const sumW = weights.reduce((s, w) => s + w, 0);
-          sampleAllocations = weights.map((w) =>
-            Math.max(minSamplesPerCandidate, Math.round((w / sumW) * totalSampleBudget)),
-          );
+
+          const baseBudget = Math.min(totalSampleBudget, withPrior.length * minSamplesPerCandidate);
+          const remaining = Math.max(0, totalSampleBudget - baseBudget);
+
+          const weights = withPrior.map((r, idx) => {
+            const uNorm = ((r.utilityPrior ?? 0) - uMin) / uRange;
+            const varEst = Math.max(1e-6, pilotResults[idx]?.statistics?.variance ?? 0.01);
+            const varianceWeight = Math.sqrt(varEst);
+            return Math.exp(utilityWeightedBeta * uNorm) * sigmaProxy(r) * varianceWeight;
+          });
+          const sumW = weights.reduce((s, w) => s + w, 0) || 1;
+          sampleAllocations = weights.map((w) => {
+            const extra = remaining > 0 ? Math.round((w / sumW) * remaining) : 0;
+            return Math.max(minSamplesPerCandidate, Math.round(baseBudget / withPrior.length) + extra);
+          });
+
           const allocated = sampleAllocations.reduce((s, n) => s + n, 0);
           if (allocated > totalSampleBudget) {
             sampleAllocations = sampleAllocations.map((n) =>
@@ -211,10 +333,41 @@ export class CGUSSearchService {
           const result = this.expectedUtility!.computeExpectedUtility(
             candidate.plan,
             probabilisticContext,
-            DEFAULT_OBJECTIVE_WEIGHTS,
-            { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize: perSize },
+            mcWeights,
+            {
+              ...DEFAULT_MONTE_CARLO_CONFIG,
+              sampleSize: perSize,
+              seed: options?.seed,
+              deterministicWorld: worldContext,
+            },
           );
-          finalResults[i].expectedUtility = result.expectedUtility;
+          // IMPORTANT: Monte Carlo E[U] is computed from the objective function under sampled worlds.
+          // To keep CGUS constraint-guidance meaningful, we must reflect soft constraint penalties in E[U]
+          // (hard constraints are handled by feasible-candidate projection in Step 1).
+          const dimensionScores = this.deriveDimensionScores(candidate, worldContext);
+          const scoreNoConstraints = this.unifiedFormula.computeUnifiedScore({
+            dimensionScores,
+            weights: DEFAULT_UNIFIED_WEIGHTS,
+            constraintViolations: [],
+            riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
+            preferenceScore: 0,
+          });
+          const scoreWithConstraints = this.unifiedFormula.computeUnifiedScore({
+            dimensionScores,
+            weights: DEFAULT_UNIFIED_WEIGHTS,
+            constraintViolations: candidate.constraintViolations ?? [],
+            constraintPenaltyCoefficients:
+              Object.keys(retrievalConstraintCoeffs).length > 0 ? retrievalConstraintCoeffs : undefined,
+            riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
+            preferenceScore: 0,
+          });
+          const softPenaltyDelta =
+            Number.isFinite(scoreNoConstraints) && Number.isFinite(scoreWithConstraints)
+              ? Math.max(0, scoreNoConstraints - scoreWithConstraints)
+              : 0;
+          (finalResults[i] as any).rawMonteCarloExpectedUtility = result.expectedUtility;
+          (finalResults[i] as any).appliedSoftPenaltyDelta = softPenaltyDelta;
+          finalResults[i].expectedUtility = Math.max(0, Math.min(1, result.expectedUtility - softPenaltyDelta));
           finalResults[i].confidenceInterval = result.confidenceInterval;
           finalResults[i].feasibilityProbability = result.feasibilityProbability;
           finalResults[i].samplingDetails = {
@@ -227,7 +380,10 @@ export class CGUSSearchService {
         usedMonteCarlo = true;
         monteCarloSamplingDetails = {
           totalSamples: totalSamplesUsed,
+          pilotSamplesPerCandidate: usedUtilityWeightedAllocation ? pilotSamplesPerCandidate : undefined,
           samplesPerCandidate,
+          pilotVariancePerCandidate,
+          pilotEssPerCandidate,
           usedUtilityWeightedAllocation,
           dataSourceNote:
             '当前由 ProbabilisticWorldModel.fromDeterministicModel 从 worldContext 推断概率分布（天气、道路等），无外部预报 PDF 注入。若需真实不确定性，可扩展 physical.climateSeasonality 注入 API 分布参数。',
@@ -237,8 +393,100 @@ export class CGUSSearchService {
       }
     }
 
+    /**
+   * 步骤 3.5 — 胜者保护的 MC 重排序（默认策略语义固化）
+   *
+   * 设计目标：
+   * - 保持蒙特卡洛“活跃”（指标 + top-N 排序信号），同时避免 top1 翻转产生过多噪声。
+   *
+   * 默认语义：
+   * - **样本门控**：决定 MC 是否有资格参与（附加指标 / 影响排序）。
+   * - **边际软门控**（minTopMargin）：决定是否允许 MC 改写确定性胜出者（top1 翻转）。
+   *   - 如果 topMargin < minTopMargin：保留确定性 top1，但允许 MC 最终评估对 top2..topN 进行重排序。
+   * - **置信度门控**：默认仅观测；后续可通过 maxTopCiWidth 开启。
+   *
+   * 术语说明：
+   * - “MC 有资格”并不意味着“MC 可以翻转胜出者”——而是指 MC 可以参与。
+   * - 胜出者翻转由边际软门控单独控制。
+   */
+    const deterministicTopId = finalResults[0]?.candidate?.id;
+    const mcAuthority = options?.mcRankAuthority;
+    const mcRerankEnabled = mcAuthority?.enabled === true;
+    const minSamplesPerCandidate = mcAuthority?.minSamplesPerCandidate ?? 20;
+    const maxTopCiWidth = mcAuthority?.maxTopCiWidth;
+    const minTopMargin = mcAuthority?.minTopMargin;
+    const compareTopN = Math.max(1, Math.min(10, mcAuthority?.compareTopN ?? 5));
+
+    const mcSorted = [...finalResults].sort((a, b) => {
+      const ua = a.expectedUtility ?? a.utility;
+      const ub = b.expectedUtility ?? b.utility;
+      return ub - ua;
+    });
+    const mcTopId = mcSorted[0]?.candidate?.id;
+
+    const sampleOk =
+      usedMonteCarlo &&
+      finalResults.every((r) => (r.samplingDetails?.totalSamples ?? 0) >= minSamplesPerCandidate);
+    const topCi = mcSorted[0]?.confidenceInterval;
+    const confidenceOk =
+      !usedMonteCarlo
+        ? false
+        : maxTopCiWidth === undefined
+          ? true
+          : !!topCi && Number.isFinite(topCi.lower) && Number.isFinite(topCi.upper) && topCi.upper - topCi.lower <= maxTopCiWidth;
+    const top1Provisional = mcSorted[0];
+    const top2Provisional = mcSorted[1];
+    const provisionalTopMargin =
+      top1Provisional && top2Provisional
+        ? (top1Provisional.expectedUtility ?? top1Provisional.utility) -
+          (top2Provisional.expectedUtility ?? top2Provisional.utility)
+        : undefined;
+    const marginOk =
+      !usedMonteCarlo
+        ? false
+        : minTopMargin === undefined
+          ? true
+          : (provisionalTopMargin ?? 0) >= minTopMargin;
+
+    // NOTE: margin gate is a *winner flip* stabilizer, not an eligibility gate.
+    // MC can still attach metrics / reorder non-winner candidates even when margin is small.
+    const mcEligibleForRerank = usedMonteCarlo && sampleOk && confidenceOk;
+    const sameWinner = !!deterministicTopId && !!mcTopId && deterministicTopId === mcTopId;
+
+    // Stable rank authority observability (phase 1: observe-only by default).
+    this.logger.log(
+      `[CGUS] rank authority check: ${JSON.stringify({
+        deterministicTopId,
+        mcTopId,
+        sameWinner,
+        sampleOk,
+        confidenceOk,
+        marginOk,
+        provisionalTopMargin,
+        mcEligibleForRerank,
+        mcRerankEnabled,
+        minSamplesPerCandidate,
+        maxTopCiWidth,
+        minTopMargin,
+      })}`,
+    );
+
+    const detRankById = new Map(finalResults.map((r, idx) => [r.candidate.id, idx + 1]));
+    const mcRankById = new Map(mcSorted.map((r, idx) => [r.candidate.id, idx + 1]));
+    const topCompare = mcSorted.slice(0, Math.min(compareTopN, mcSorted.length)).map((r) => ({
+      id: r.candidate.id,
+      deterministicRank: detRankById.get(r.candidate.id),
+      deterministicScore: r.utility,
+      rawMonteCarloExpectedUtility: (r as any).rawMonteCarloExpectedUtility,
+      appliedSoftPenaltyDelta: (r as any).appliedSoftPenaltyDelta,
+      finalExpectedUtility: r.expectedUtility ?? r.utility,
+      mcRank: mcRankById.get(r.candidate.id),
+    }));
+    this.logger.log(`[CGUS] rank authority compareTopN: ${JSON.stringify(topCompare)}`);
+
     // Step 4：世界模型推演（可选，对 top-k 候选执行轨迹模拟）
     const rolloutTopK = options?.rolloutTopK ?? 3;
+    const rolloutHorizonSteps = Math.max(1, Math.min(8, Math.floor(options?.rolloutHorizonSteps ?? 1)));
     if (
       options?.useWorldModelRollout === true &&
       this.probabilisticWorldModel &&
@@ -249,18 +497,52 @@ export class CGUSSearchService {
           worldContext,
           DEFAULT_UNCERTAINTY_CONFIG,
         );
-        const toRollout = finalResults.slice(0, Math.min(rolloutTopK, finalResults.length));
+        // Use MC provisional ordering (when available) to pick rollout candidates,
+        // but do NOT finalize rank authority until after rollout/exploration completes.
+        const rolloutPool = usedMonteCarlo ? mcSorted : finalResults;
+        const toRollout = rolloutPool.slice(0, Math.min(rolloutTopK, rolloutPool.length));
         for (let i = 0; i < toRollout.length; i++) {
-          const pred = this.probabilisticWorldModel.predictOutcome(probContext, {
-            type: 'PLAN_EVALUATION',
-            payload: { candidateId: toRollout[i].candidate.id },
-          });
+          // Multi-step horizon fusion (lightweight): repeat prediction and blend over horizon.
+          let fp = 1;
+          let eu = 0;
+          for (let h = 0; h < rolloutHorizonSteps; h++) {
+            const pred = this.probabilisticWorldModel.predictOutcome(probContext, {
+              type: 'PLAN_EVALUATION',
+              payload: { candidateId: toRollout[i].candidate.id, rolloutStep: h, rolloutHorizonSteps },
+            });
+            const wNew = 1 / (h + 1);
+            fp = h === 0 ? pred.feasibilityProbability : (1 - wNew) * fp + wNew * pred.feasibilityProbability;
+            eu = h === 0 ? pred.estimatedUtility : (1 - wNew) * eu + wNew * pred.estimatedUtility;
+          }
           finalResults[i].rolloutPrediction = {
-            feasibilityProbability: pred.feasibilityProbability,
-            estimatedUtility: pred.estimatedUtility,
+            feasibilityProbability: fp,
+            estimatedUtility: eu,
           };
         }
         usedRollout = true;
+
+        // Rollout-aware re-ranking: integrate predicted feasibility/utility into ordering.
+        // Semantics: prefer higher utility under plausible world evolutions while respecting feasibility.
+        const scoreWithRollout = (r: (typeof finalResults)[0]) => {
+          const baseU = r.expectedUtility ?? r.utility;
+          const baseP = r.feasibilityProbability ?? 1;
+          const rollU = r.rolloutPrediction?.estimatedUtility;
+          const rollP = r.rolloutPrediction?.feasibilityProbability;
+          const blendedU = rollU !== undefined ? 0.75 * baseU + 0.25 * rollU : baseU;
+          const blendedP = rollP !== undefined ? Math.min(baseP, rollP) : baseP;
+          const finalScore = blendedU * blendedP;
+          (r as any).finalScore = finalScore;
+          (r as any).scoreBreakdown = {
+            baseU,
+            baseP,
+            rolloutU: rollU,
+            rolloutP: rollP,
+            blendedU,
+            blendedP,
+          };
+          return finalScore;
+        };
+        finalResults.sort((a, b) => scoreWithRollout(b) - scoreWithRollout(a));
       } catch (err) {
         this.logger.warn(`[CGUS] World Model Rollout 失败: ${(err as Error)?.message}`);
       }
@@ -302,7 +584,62 @@ export class CGUSSearchService {
       usedExploration = true;
     }
 
+    // 可选的候选评分器附属信息（影子模式会附加该信息，但不进行重新排序）。
+    const scorerOpts = options?.candidateScorer;
+    let scorerMode = scorerOpts?.mode;
+    if (scorerMode === 'active') {
+      this.logger.warn('[CGUS] candidateScorer mode=active is disabled; coercing to shadow');
+      scorerMode = 'shadow';
+    }
+    if (scorerMode && scorerMode !== 'off' && this.candidateScorer && finalResults.length > 0) {
+      try {
+        const latent = latentSnapshotFromWorldContext(worldContext);
+        const batch = await this.candidateScorer.score({
+          candidates: finalResults.map((r) => ({
+            id: r.candidate.id,
+            feasible: r.candidate.feasible,
+            plan: r.candidate.plan,
+          })),
+          worldContext,
+          latent,
+          mode: scorerMode,
+        });
+        const byId = new Map(batch.perCandidate.map((p) => [p.candidateId, p]));
+        for (const r of finalResults) {
+          const s = byId.get(r.candidate.id);
+          if (s) r.scorerSidecar = s;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[CGUS] CandidateScorer failed: ${e?.message}`);
+      }
+    }
+
     const recommended = finalResults.find((r) => r.candidate.feasible)?.candidate;
+
+    // 在所有价值增强步骤（rollout/exploration）完成后的最终 MC 排序权柄。
+    // 若门控条件通过，则 MC 接管最终排序；否则保持当前顺序。
+    const winnerSource: 'deterministic' | 'mc' | 'fallback' =
+      mcRerankEnabled && mcEligibleForRerank ? (marginOk ? 'mc' : 'deterministic') : usedMonteCarlo ? 'deterministic' : 'fallback';
+    if (mcRerankEnabled && mcEligibleForRerank) {
+      // 使用最新的候选指标（预期效用/最终得分）重新计算 MC 排序。
+      const mcFinalSorted = [...finalResults].sort((a, b) => {
+        const ua = (a as any).finalScore ?? a.expectedUtility ?? a.utility;
+        const ub = (b as any).finalScore ?? b.expectedUtility ?? b.utility;
+        return ub - ua;
+      });
+      if (marginOk) {
+        finalResults.splice(0, finalResults.length, ...mcFinalSorted);
+      } else if (deterministicTopId) {
+        // 软门控：保留确定性胜出者为第一名，但允许 MC 对其余候选进行重新排序。
+        const detWinner = finalResults.find((r) => r.candidate.id === deterministicTopId);
+        const rest = mcFinalSorted.filter((r) => r.candidate.id !== deterministicTopId);
+        finalResults.splice(0, finalResults.length, ...(detWinner ? [detWinner, ...rest] : rest));
+      } else {
+        finalResults.splice(0, finalResults.length, ...mcFinalSorted);
+      }
+    }
+    const winnerChanged =
+      winnerSource === 'mc' && !!deterministicTopId && !!finalResults[0]?.candidate?.id && deterministicTopId !== finalResults[0].candidate.id;
 
     if (explorationStrategy === 'UCB' && this.ucbVisitTracker && recommended) {
       this.ucbVisitTracker.recordSelection(recommended.id);
@@ -314,6 +651,25 @@ export class CGUSSearchService {
         feasibleCandidates.length,
         options?.rolloutTopK ?? 3,
       );
+
+    // Ranking diagnostics: make constraint-vs-sampling contributions mechanically inspectable.
+    // This log is intentionally compact and stable for regression/debugging.
+    const rankingSummary = finalResults.map((r, idx) => ({
+      id: r.candidate.id,
+      rawMonteCarloExpectedUtility: (r as any).rawMonteCarloExpectedUtility,
+      expectedUtility: r.expectedUtility,
+      feasibilityProbability: r.feasibilityProbability,
+      confidenceInterval: r.confidenceInterval,
+      appliedSoftPenaltyDelta: (r as any).appliedSoftPenaltyDelta,
+      finalRank: idx + 1,
+    }));
+    this.logger.log(
+      `[CGUS] ranking summary: ${JSON.stringify({
+        winnerSource,
+        winnerChanged,
+        ranking: rankingSummary,
+      })}`,
+    );
 
     this.logger.debug(
       `[CGUS] 完成: candidates=${candidates.length} feasible=${feasibleCandidates.length} ` +
@@ -389,7 +745,8 @@ export class CGUSSearchService {
     if (plan?.segments) {
       // 从 segments 的 dayIndex 推算总天数
       const maxDayIndex = Math.max(...plan.segments.map(s => s.dayIndex), 0);
-      const totalDays = maxDayIndex + 1;
+      // dayIndex 在系统内为 1-based（1..N），因此总天数应为 maxDayIndex（而非 +1）
+      const totalDays = Math.max(1, maxDayIndex);
       const avgActivitiesPerDay = plan.segments.length / Math.max(1, totalDays);
       experienceDensity = Math.min(1, 0.5 + avgActivitiesPerDay * 0.1);
     }
@@ -466,13 +823,7 @@ export class CGUSSearchService {
       risk += closedRoads * 0.15;
     }
 
-    // 4. 软约束违反风险
-    const softViolations = candidate.constraintViolations.filter(v => v.severity === 'SOFT');
-    for (const violation of softViolations) {
-      risk += (violation.degree ?? 0.5) * 0.1;
-    }
-
-    // 5. 危险区域风险（基于 hazardZones 的 level）
+    // 4. 危险区域风险（基于 hazardZones 的 level）
     if (physical?.hazardZones) {
       const highHazards = physical.hazardZones.filter(h => h.level === 'HIGH');
       const mediumHazards = physical.hazardZones.filter(h => h.level === 'MEDIUM');
@@ -480,7 +831,7 @@ export class CGUSSearchService {
       risk += mediumHazards.length * 0.05;
     }
 
-    // 6. 气候季节性风险因素
+    // 5. 气候季节性风险因素
     const riskFactors = physical?.climateSeasonality?.riskFactors ?? [];
     risk += riskFactors.length * 0.05;
 

@@ -723,6 +723,7 @@ describe('PlanningAssistantV2Service', () => {
       expect(result.success).toBe(true);
       expect(prisma.trip.findUnique).toHaveBeenCalledWith({
         where: { id: 'trip123' },
+        include: { TripCollaborator: true },
       });
     });
 
@@ -850,6 +851,7 @@ describe('PlanningAssistantV2Service', () => {
       expect(prisma.trip.findUnique).toHaveBeenCalledWith({
         where: { id: tripId },
         include: {
+          TripCollaborator: true,
           TripDay: {
             include: {
               ItineraryItem: true,

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "DSO 关键字段与 StateManager 主权；供 grep/AST/ESLint 规则消费",
+  "authoritativeMergePaths": [
+    "src/decision/kernel/state-manager.service.ts"
+  ],
+  "protectedDsoTopLevelKeys": [
+    "tripState",
+    "environmentState",
+    "constraints",
+    "contextPackage",
+    "candidates",
+    "decisionMeta",
+    "history",
+    "systemState",
+    "userIntent",
+    "optimizationHints",
+    "confidence",
+    "beliefSamples",
+    "uncertaintyProfile",
+    "harnessRuntime",
+    "poiPlanning"
+  ],
+  "heuristicBannedPatterns": [
+    "dso\\.tripState\\s*=",
+    "dso\\.environmentState\\s*=",
+    "dso\\.constraints\\s*=",
+    "dso\\.systemState\\s*=",
+    "currentDso\\.tripState",
+    "\\.merge\\(.*dso"
+  ],
+  "notes": [
+    "合法 merge 应集中在 StateManager.merge / computeNextState（未来）",
+    "OrchestratorState 与 DecisionState 映射层亦需审计，避免双写"
+  ]
+}

@@ -1,0 +1,52 @@
+# CGUS replay：指纹 + compare 管线烟雾（自对比 + STRICT）
+# 有提交基线 JSON 后，可再增加「基线 vs 当前」一步；见 baselines/cgus/README.md
+name: CGUS Replay Compare Gate
+
+on:
+  push:
+    paths:
+      - "scripts/replay-cgus-suite.ts"
+      - "scripts/compare-cgus-replay-reports.ts"
+      - "scripts/lib/harness-run-fingerprint.ts"
+      - "scripts/lib/cgus-replay-config-hash.ts"
+      - "scripts/lib/cgus-replay-observability.ts"
+      - ".github/workflows/cgus-replay-compare-gate.yml"
+  pull_request:
+    paths:
+      - "scripts/replay-cgus-suite.ts"
+      - "scripts/compare-cgus-replay-reports.ts"
+      - "scripts/lib/harness-run-fingerprint.ts"
+      - "scripts/lib/cgus-replay-config-hash.ts"
+      - "scripts/lib/cgus-replay-observability.ts"
+      - ".github/workflows/cgus-replay-compare-gate.yml"
+
+jobs:
+  fingerprint-and-compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit — harness run fingerprint
+        run: npx jest scripts/lib/harness-run-fingerprint.spec.ts --no-cache
+
+      - name: CGUS suite smoke + self-compare (STRICT)
+        env:
+          ENABLE_READINESS_MODULE: "true"
+          SKIP_GEO_MONITORING: "1"
+          CGUS_SUITE_MODE: lite
+          CGUS_SUITE_N: "2"
+          CGUS_SUITE_OUT: artifacts/cgus-ci-replay-gate.json
+          CGUS_COMPARE_FP_STRICT: "1"
+        run: |
+          npx ts-node --transpile-only scripts/replay-cgus-suite.ts
+          npx ts-node --transpile-only scripts/compare-cgus-replay-reports.ts \
+            artifacts/cgus-ci-replay-gate.json artifacts/cgus-ci-replay-gate.json \
+            --out artifacts/cgus-ci-replay-gate.diff.json

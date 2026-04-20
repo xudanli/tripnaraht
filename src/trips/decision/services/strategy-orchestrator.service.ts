@@ -234,6 +234,8 @@ export class StrategyOrchestratorService {
               decisionStage: log.decisionStage,
               evidenceRefs: log.evidenceRefs,
               timestamp: log.timestamp,
+              metadata: log.metadata,
+              jepaTrace: log.jepaTrace as any,
             })),
             metadata: {
               month: world.physical.month,

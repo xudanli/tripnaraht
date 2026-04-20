@@ -419,7 +419,10 @@ export class OptimizationUserController {
       plan,
       probabilisticContext,
       this.objectiveFunction.weights,
-      { sampleSize: Number(sampleSize) || 1000 },
+      {
+        sampleSize: Number(sampleSize) || 1000,
+        deterministicWorld: world,
+      },
     );
     const safe = (n: number) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
     return {
