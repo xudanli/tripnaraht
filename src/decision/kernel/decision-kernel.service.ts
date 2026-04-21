@@ -23,6 +23,7 @@ import {
   RepairEscalationPlan,
   VerificationIssue,
   VerificationReport,
+  PlanGenTerminalFailure,
 } from './decision-state.types';
 import { StateManagerService } from './state-manager.service';
 import { ConstraintEngineAdapterService } from './constraint-engine-adapter.service';
@@ -1066,9 +1067,28 @@ export class DecisionKernelService {
     dso: DecisionState,
     ctx: PhaseExecutorContext,
   ): Promise<{ newState: DecisionState; itinerary: import('./interfaces/phase-executor.interface').ItineraryLike }> {
+    const emptyItin = (): import('./interfaces/phase-executor.interface').ItineraryLike => ({
+      request_id: ctx.requestId,
+      days: [],
+    });
+
     if (!this.planGenExecutor) {
       this.logger.warn('[Kernel] PlanGenExecutorService 未注入');
-      return { newState: dso, itinerary: { request_id: ctx.requestId, days: [] } };
+      const failure: PlanGenTerminalFailure = {
+        code: 'PLAN_GEN_EXECUTOR_UNAVAILABLE',
+        message: 'PlanGen 执行器未注入，无法生成日程。',
+      };
+      return {
+        newState: this.stateManager.merge(dso, {
+          tripState: { planDraft: emptyItin() },
+          systemState: {
+            requestId: ctx.requestId,
+            currentPhase: 'PLAN_GEN',
+            planGenTerminalFailure: failure,
+          } as any,
+        }),
+        itinerary: emptyItin(),
+      };
     }
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
@@ -1091,11 +1111,27 @@ export class DecisionKernelService {
         this.logger.warn(
           `[Kernel] Harness PLAN_GEN 未通过: status=${harnessOutcome.status} codes=${harnessOutcome.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );
-        return { newState: dso, itinerary: { request_id: ctx.requestId, days: [] } };
+        const detail = harnessOutcome.failureEvents?.map((e) => e.code).join(',') || undefined;
+        const failure: PlanGenTerminalFailure = {
+          code: 'PLAN_GEN_HARNESS_BLOCKED',
+          message: '行程生成准入（Harness）未通过，未调用生成器。',
+          detail,
+        };
+        return {
+          newState: this.stateManager.merge(dso, {
+            tripState: { planDraft: emptyItin() },
+            systemState: {
+              requestId: ctx.requestId,
+              currentPhase: 'PLAN_GEN',
+              planGenTerminalFailure: failure,
+            } as any,
+          }),
+          itinerary: emptyItin(),
+        };
       }
     }
-    const { itinerary } = await this.planGenExecutor.execute(dso, ctx);
-    let finalItinerary = itinerary as import('./interfaces/phase-executor.interface').ItineraryLike;
+    const execResult = await this.planGenExecutor.execute(dso, ctx);
+    let finalItinerary = execResult.itinerary as import('./interfaces/phase-executor.interface').ItineraryLike;
     const pend = dso.systemState?.pendingMigrations ?? [];
     let pendingRem = pend;
     if (pend.length > 0 && Array.isArray((finalItinerary as any).days) && (finalItinerary as any).days.length > 0) {
@@ -1105,6 +1141,7 @@ export class DecisionKernelService {
         pendingRem = pend.filter((m) => !appliedIds.includes(m.id));
       }
     }
+    const dayCount = Array.isArray((finalItinerary as any).days) ? (finalItinerary as any).days.length : 0;
     const sysPatch: Record<string, unknown> = {
       requestId: ctx.requestId,
       currentPhase: 'PLAN_GEN',
@@ -1112,6 +1149,16 @@ export class DecisionKernelService {
     };
     if (pend.length > 0) {
       (sysPatch as any).pendingMigrations = pendingRem.length > 0 ? pendingRem : [];
+    }
+    if (dayCount === 0) {
+      const fromExec = execResult.emptyDraftExplanation;
+      (sysPatch as any).planGenTerminalFailure = {
+        code: fromExec?.code ?? 'PLAN_GEN_EMPTY_DRAFT',
+        message: fromExec?.message ?? '未能生成任何日程天。',
+        detail: fromExec?.detail,
+      } satisfies PlanGenTerminalFailure;
+    } else {
+      (sysPatch as any).planGenTerminalFailure = undefined;
     }
     const newState = this.stateManager.merge(dso, {
       tripState: { planDraft: finalItinerary },

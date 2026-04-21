@@ -61,6 +61,13 @@ export interface ItineraryLike {
   metadata?: Record<string, unknown>;
 }
 
+/** PLAN_GEN 执行器在空草案时回传的说明，供 Kernel 写入 `systemState.planGenTerminalFailure` */
+export interface PlanGenEmptyDraftExplanation {
+  code: string;
+  message: string;
+  detail?: string;
+}
+
 /** RESEARCH 阶段执行器 */
 export interface IResearchExecutor {
   execute(
@@ -93,6 +100,8 @@ export interface IPlanGenExecutor {
   ): Promise<{
     itinerary: ItineraryLike;
     planDraft: unknown;
+    /** 仅当 `itinerary.days` 为空时建议填充 */
+    emptyDraftExplanation?: PlanGenEmptyDraftExplanation;
   }>;
 }
 

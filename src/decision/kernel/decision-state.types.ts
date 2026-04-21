@@ -133,6 +133,13 @@ export interface EnvironmentState {
   [key: string]: unknown;
 }
 
+/** PLAN_GEN 空草案或无法进入生成器时的终止信号（写入 DSO.systemState） */
+export interface PlanGenTerminalFailure {
+  code: string;
+  message: string;
+  detail?: string;
+}
+
 /** 系统状态 */
 export interface SystemState {
   requestId: string;
@@ -199,6 +206,21 @@ export interface SystemState {
    * （例如全境封路导致各段 ETA 极端偏长）
    */
   recoverySignal?: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION';
+
+  /**
+   * PLAN_GEN 后 `planDraft` 无任何日程天，或生成前即失败（执行器缺失、Harness 拦截等）。
+   * 编排层应短路 VERIFY/OPTIMIZE/REPAIR/NARRATE，避免在空草案上「编建议」。
+   */
+  planGenTerminalFailure?: PlanGenTerminalFailure;
+
+  /** PLAN_GEN 空草案后的用户回合次数（用于防死循环与审计） */
+  planGenRetryCount?: number;
+  /** 对 clarification_answers 做稳定序列化后的 hash，用于识别无效重复尝试 */
+  lastRelaxationFingerprint?: string;
+  /** 连续提交相同 fingerprint 的次数 */
+  consecutiveSameRelaxationAttempts?: number;
+  /** 用户批准的终止意图：在不放宽约束前提下确认无解 */
+  terminalIntent?: 'TERMINAL_NO_SOLUTION';
 
   /**
    * 迁移注入后仍连续 REPAIR 升级（无法被相邻日吸收）的计数；≥2 时可置 NEED_USER_INTERVENTION

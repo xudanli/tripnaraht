@@ -99,6 +99,8 @@ import { OptimizationModule } from './optimization/optimization.module';
 
 // Phase 2: 数据飞轮（Decision → Outcome → Parameter Update → Better Decision）
 import { FlywheelModule } from './flywheel/flywheel.module';
+import { DecisionFlywheelController } from './flywheel/decision-flywheel.controller';
+import { InterventionEngine } from '../../decision/actuator/intervention-engine';
 
 // 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
 let DataQualityModule: any;
@@ -142,8 +144,10 @@ try {
     ApprovalController, // 恢复：审批控制器
     FitnessAssessmentController, // Phase 1：体能评估控制器
     FitnessAnalyticsController, // Phase 2：体能数据分析控制器
+    DecisionFlywheelController, // Phase 2+: Live preview + risk feedback gateway
   ],
   providers: [
+    InterventionEngine,
     TripDecisionEngineService,
     SenseToolsAdapter,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞

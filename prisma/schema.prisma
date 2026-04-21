@@ -1437,6 +1437,34 @@ model FlywheelOutcome {
   @@map("flywheel_outcomes")
 }
 
+/// Layer 3.1: Shadow Mode audit - intervention decisions recorded without enforcing.
+model ShadowDecision {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  tripId     String?  @map("trip_id") @db.Uuid
+  region     String?  @db.VarChar(120)
+  contextKey String?  @map("context_key") @db.VarChar(80)
+  capturedAt DateTime @default(now()) @map("captured_at")
+  decision   Json     @map("decision")
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([contextKey])
+  @@index([capturedAt(sort: Desc)])
+  @@map("shadow_decisions")
+}
+
+/// Consensus latch (hysteresis) for distributed emergency mode, keyed by normalized contextKey.
+model FlywheelConsensusLatch {
+  id         String   @id @default(uuid()) @db.Uuid
+  contextKey String   @unique @map("context_key") @db.VarChar(80)
+  state      Json     @map("state")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([updatedAt(sort: Desc)])
+  @@map("flywheel_consensus_latches")
+}
+
 /// Layer 4: 参数版本 - 学习结果版本化，支持回滚
 model FlywheelParameterSet {
   id                  String   @id @default(uuid()) @db.Uuid

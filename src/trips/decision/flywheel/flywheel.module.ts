@@ -14,6 +14,7 @@ import { FlywheelParameterService } from './flywheel-parameter.service';
 import { FlywheelPipelineService } from './flywheel-pipeline.service';
 import { FlywheelAdminController } from './flywheel-admin.controller';
 import { OptimizationModule } from '../optimization/optimization.module';
+import { DecisionAuditService } from './decision-audit.service';
 
 @Module({
   imports: [PrismaModule, OptimizationModule],
@@ -24,6 +25,7 @@ import { OptimizationModule } from '../optimization/optimization.module';
     FlywheelOutcomeService,
     FlywheelParameterService,
     FlywheelPipelineService,
+    DecisionAuditService,
   ],
   exports: [
     FlywheelDecisionLogService,
@@ -31,6 +33,7 @@ import { OptimizationModule } from '../optimization/optimization.module';
     FlywheelOutcomeService,
     FlywheelParameterService,
     FlywheelPipelineService,
+    DecisionAuditService,
   ],
 })
 export class FlywheelModule {}
