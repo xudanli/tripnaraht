@@ -260,7 +260,7 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
     expect(p1.allErrors).toHaveLength(0);
   });
 
-  it('AO-04: exposes optimization candidates[] with score_breakdown + risk_profile', async () => {
+  it('AO-04 diversity: alternatives include tradeoffs (utility differs, drift risk differs)', async () => {
     mockClaudeOrchestrator.orchestrateWithStateMachine.mockResolvedValue(
       baseOrchestrationResult({
         result: {
@@ -274,15 +274,25 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
           decisionState: {
             optimizationHints: {
               method: 'CGUS',
-              recommendedAlternativeId: 'plan-base',
+              recommendedAlternativeId: 'plan-a-experience',
               alternatives: [
                 {
-                  id: 'plan-base',
-                  score: 0.88,
-                  finalScore: 0.81,
-                  scoreBreakdown: { baseU: 0.9, baseP: 0.9, blendedU: 0.9, blendedP: 0.9 },
-                  riskProfile: { hard_violations: 0, soft_degree: 0.2 },
-                  itinerary: { request_id: 'plan-base', days: [], action_plan: [] },
+                  // Plan A: higher utility, higher drift probability (lower feasibilityProbability)
+                  id: 'plan-a-experience',
+                  expectedUtility: 0.92,
+                  feasibilityProbability: 0.65,
+                  summary: '体验极高，但风险更大（更容易发生漂移）',
+                  itinerary: { request_id: 'plan-a-experience', days: [], action_plan: [] },
+                  violations: [{ type: 'TIME_SLACK_SOFT', severity: 'SOFT', degree: 0.6, detail: 'tight window' }],
+                },
+                {
+                  // Plan B: lower utility, very robust (higher feasibilityProbability)
+                  id: 'plan-b-robust',
+                  expectedUtility: 0.78,
+                  feasibilityProbability: 0.95,
+                  summary: '更稳健，但体验略弱',
+                  itinerary: { request_id: 'plan-b-robust', days: [], action_plan: [] },
+                  violations: [{ type: 'EXPERIENCE_DENSITY_LOW', severity: 'SOFT', degree: 0.4, detail: 'less packed' }],
                 },
               ],
             },
@@ -292,16 +302,22 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
     );
 
     const res = await agentService.routeAndRun(aoP0Request());
-    expect(Array.isArray(res.result.payload.candidates)).toBe(true);
-    expect(res.result.payload.candidates.length).toBe(1);
-    expect((res.result.payload.candidates[0] as any).candidate_id).toBe('plan-base');
-    expect((res.result.payload.candidates[0] as any).score_breakdown?.total_utility).toBe(0.88);
-    // mockClaudeOrchestrator here does not run real CGUS; drift probability is best-effort and may be undefined.
-    expect(typeof (res.result.payload.candidates[0] as any).risk_profile).toBe('object');
-    expect((res.result.payload.candidates[0] as any).itinerary?.request_id).toBe('plan-base');
+    const alternatives = (res.result.payload as any).alternatives;
+    expect(Array.isArray(alternatives)).toBe(true);
 
-    expect(Array.isArray((res.result.payload as any).alternatives)).toBe(true);
-    expect(((res.result.payload as any).alternatives?.[0] as any)?.candidate_id).toBe('plan-base');
+    // Assertion 1: alternatives.length >= 2
+    expect(alternatives.length).toBeGreaterThanOrEqual(2);
+
+    const planA = alternatives.find((c: any) => c?.candidate_id === 'plan-a-experience');
+    const planB = alternatives.find((c: any) => c?.candidate_id === 'plan-b-robust');
+    expect(planA).toBeTruthy();
+    expect(planB).toBeTruthy();
+
+    // Assertion 2: total_utility must differ
+    expect(planA.score_breakdown?.total_utility).not.toBe(planB.score_breakdown?.total_utility);
+
+    // Assertion 3: aggressive plan has higher probability_of_drift
+    expect(planA.risk_profile?.probability_of_drift).toBeGreaterThan(planB.risk_profile?.probability_of_drift);
   });
 
   it('将仅 prompt、无 text 的 readiness 问题映射到 payload（与 executeGateEvalStep 注入一致）', async () => {
