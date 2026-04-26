@@ -2,6 +2,7 @@
 
 import { Controller, Get, Header } from '@nestjs/common';
 import { PrometheusMetricsService } from './prometheus-metrics.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 /**
  * Prometheus Metrics Controller
@@ -9,6 +10,7 @@ import { PrometheusMetricsService } from './prometheus-metrics.service';
  * 提供 /metrics 端点供 Prometheus 抓取
  */
 @Controller()
+@Public()
 export class PrometheusMetricsController {
   constructor(private readonly metricsService: PrometheusMetricsService) {}
 

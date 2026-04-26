@@ -1,8 +1,9 @@
 # prometheus.yml - Prometheus Configuration for TripNARA
 
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  # Dev-friendly: low-traffic histograms need a few scrapes for `rate()` windows to become non-empty in Grafana.
+  scrape_interval: 5s
+  evaluation_interval: 5s
   external_labels:
     cluster: 'tripnara-iceland'
     environment: 'production'
@@ -28,7 +29,8 @@ scrape_configs:
   - job_name: 'tripnara-iceland'
     scrape_interval: 30s
     scrape_timeout: 10s
-    metrics_path: '/metrics'
+    # Nest app uses global prefix "api", so Prometheus endpoint is /api/metrics
+    metrics_path: '/api/metrics'
     static_configs:
       - targets: ['localhost:3000']
     relabel_configs:

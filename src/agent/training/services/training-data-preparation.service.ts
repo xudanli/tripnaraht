@@ -63,7 +63,7 @@ export class TrainingDataPreparationService {
     }
 
     // 查询符合条件的轨迹
-    const trajectories = await this.prisma.validatedTrajectory.findMany({
+    const rawTrajectories = await this.prisma.validatedTrajectory.findMany({
       where,
       orderBy: [
         { totalReward: 'desc' }, // 优先选择 reward 高的
@@ -72,6 +72,9 @@ export class TrainingDataPreparationService {
       ],
       take: batchSize,
     });
+    // 安全性：即使上游返回的数量超出请求量（模拟数据 / 数据库配置错误），
+    // 在此处进行截断，使批量大小成为硬性契约。
+    const trajectories = rawTrajectories.slice(0, Math.max(0, batchSize));
 
     this.logger.log(
       `[TrainingDataPrep] 找到 ${trajectories.length} 条符合条件的轨迹`,

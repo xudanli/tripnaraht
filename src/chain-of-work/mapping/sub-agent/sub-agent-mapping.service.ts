@@ -59,7 +59,7 @@ export class SubAgentMappingService {
     this.logger.debug(`[SubAgentMapping] 开始映射步骤到 Sub-Agent: step_id=${step.id}, step_type=${step.step_type}`);
     
     const subAgent = this.stepToSubAgentMap[step.step_type] || 'Planner';
-    const guardian = this.subAgentToGuardianMap[subAgent] || undefined;
+    const guardian = this.subAgentToGuardianMap[subAgent] ?? null;
     
     return {
       step_id: step.id,

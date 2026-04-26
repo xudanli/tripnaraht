@@ -13,6 +13,7 @@ import type {
   RepairEscalationPlan,
   VerificationIssue,
 } from '../decision-state.types';
+import type { RepairTrace, SimulatedRepairTrace } from '../../../agent/services/route-feasibility.types';
 
 /** 阶段执行上下文 */
 export interface PhaseExecutorContext {
@@ -124,6 +125,8 @@ export interface IRepairExecutor {
   ): Promise<{
     itinerary?: ItineraryLike;
     repairApplied: boolean;
+    /** Strongly-typed proof trace emitted by tactics (for RL/audit). */
+    repairTraces?: RepairTrace[];
     /** 物理极限等：写入 DSO.verification.escalationPlan（由 Kernel merge） */
     escalationPlan?: RepairEscalationPlan;
     /** 如营业时间弱证据：追加 ADVISORY issue 并下调 confidence */
@@ -136,7 +139,13 @@ export interface IRepairExecutor {
 }
 
 /** INTAKE 缺口类型 */
-export type IntakeGapType = 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
+export type IntakeGapType =
+  | 'MISSING_DESTINATION'
+  | 'MISSING_DATES'
+  | 'MISSING_CONSTRAINTS'
+  | 'MISSING_PREFERENCES'
+  | 'SPEC_TYPE_ERROR'
+  | 'INTENT_COMPILE_ERROR';
 
 /** INTAKE 阶段执行器上下文扩展（P3 B: tripPlanRequest + orchestratorState 由 Conductor 传入） */
 export interface IntakeExecutorContext extends PhaseExecutorContext {
@@ -153,6 +162,8 @@ export interface IIntakeExecutor {
     ctx: IntakeExecutorContext,
   ): Promise<{
     tripPlanRequest: IntakeExecutorContext['tripPlanRequest'];
+    /** INTAKE 阶段形式化仿真（与真实 RepairTrace 同构，供 EARLY_WARNING / 叙事复用） */
+    simulation?: { simulatedRepairTraces: SimulatedRepairTrace[] };
     gaps: Array<{ type: IntakeGapType; severity: 'HARD' | 'SOFT'; detail: string }>;
     clarificationQuestions: Array<{
       id: string;
@@ -169,13 +180,32 @@ export interface IIntakeExecutor {
   }>;
 }
 
+/**
+ * Structured narration warning for UI “evidence cards” (Level 4).
+ * Plain `string` entries remain supported for legacy L3 / escalation lines.
+ */
+export interface NarrationEvidenceCard {
+  kind: 'iron_shield_evidence';
+  message: string;
+  severity: 'HARD' | 'SOFT';
+  rule_id: string;
+  rule_name?: string;
+  /** 1=fact, 2=impact, 3=authority — see `persuasion-tier.util.ts` */
+  persuasion_tier?: 1 | 2 | 3;
+  /** Physics / provenance bundle (solar_physics, weather_physics, …) */
+  evidence: Record<string, unknown>;
+  narrator_hint_rendered?: string;
+}
+
+export type NarrationWarningEntry = string | NarrationEvidenceCard;
+
 /** NARRATE 阶段叙述输出（P3 C） */
 export interface NarrationLike {
   user_friendly_summary: string;
   day_by_day_narrative: Array<{ day: number; date: string; narrative: string }>;
   highlights: string[];
   tips: string[];
-  warnings?: string[];
+  warnings?: NarrationWarningEntry[];
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */

@@ -119,6 +119,38 @@ export class FeedbackEngineAdapterService {
   /**
    * 记录用户反馈（接受/拒绝/评分等）
    */
+  /**
+   * 效用补偿 / REPAIR 澄清：用户选择（与 escalationPlan.correlationId join）
+   */
+  async recordUserRepairResolutionSignal(params: {
+    tripRunId: string;
+    userId: string;
+    correlationId: string;
+    resolution: string;
+    feedbackPhase?: 'INTAKE' | 'REPAIR';
+  }): Promise<void> {
+    if (!this.rlhfCollector) {
+      this.logger.debug('[FeedbackAdapter] RLHF 未注入，跳过 recordUserRepairResolutionSignal');
+      return;
+    }
+    try {
+      this.rlhfCollector.recordFeedbackSignal({
+        trip_run_id: params.tripRunId,
+        user_id: params.userId,
+        decision_point_id: `user_repair_resolution:${params.correlationId}`,
+        feedback_type: 'COMMENT',
+        value: { comment: `USER_REPAIR_RESOLUTION=${params.resolution}` },
+        context: {
+          correlation_id: params.correlationId,
+          user_repair_resolution: params.resolution,
+          feedback_phase: params.feedbackPhase ?? 'REPAIR',
+        },
+      });
+    } catch (e: unknown) {
+      this.logger.warn(`[FeedbackAdapter] recordUserRepairResolutionSignal 失败: ${(e as Error)?.message}`);
+    }
+  }
+
   async recordUserFeedback(params: RecordUserFeedbackParams): Promise<void> {
     if (!this.rlhfCollector) {
       this.logger.debug('[FeedbackAdapter] RLHF 未注入，跳过 recordUserFeedback');

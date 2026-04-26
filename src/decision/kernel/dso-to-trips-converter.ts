@@ -18,6 +18,26 @@ import type {
   ExternalSignalsState,
 } from '../../trips/decision/world-model';
 
+function sameLatLng(
+  a?: { lat: number; lng: number } | null,
+  b?: { lat: number; lng: number } | null,
+): boolean {
+  if (!a || !b) return false;
+  return a.lat === b.lat && a.lng === b.lng;
+}
+
+function cloneCoord(c: { lat: number; lng: number }): { lat: number; lng: number } {
+  return { lat: c.lat, lng: c.lng };
+}
+
+/**
+ * 西峡湾走廊粗粒度包络（用于审计语义：碎石/峡湾臂弯密集区），非精确行政界。
+ * 约：65.05–66.45°N，24.9–20.5°W。
+ */
+export function isWestfjordsCorridorHeuristic(lat: number, lng: number): boolean {
+  return lat >= 65.05 && lat <= 66.45 && lng >= -24.9 && lng <= -20.5;
+}
+
 const ITEM_TYPE_TO_ACTIVITY: Record<string, string> = {
   POI: 'sightseeing',
   REST: 'rest',
@@ -84,6 +104,10 @@ export function itineraryToTripPlan(itinerary: Itinerary): TripPlan {
 /**
  * Itinerary → RoutePlanDraft 最小转换（供 Fast Path 三人格使用）
  * 将 Itinerary 的 days/items 转为 RoutePlanDraft 的 segments
+ *
+ * endLocation：优先 `item.metadata.endLocation`；否则用**同日下一项**或**次日首项**的
+ * `location_ref.coordinates` 作为相邻 POI 链推断，并置 `metadata.auto_filled_for_audit: true`
+ *（供 TerrainAudit / TerminalAudit 区分「数据补全」与原始残缺输入）。
  */
 export function itineraryToRoutePlanDraft(
   itinerary: Itinerary,
@@ -91,28 +115,66 @@ export function itineraryToRoutePlanDraft(
   routeDirectionId: string,
 ): RoutePlanDraft {
   const segments: RouteSegment[] = [];
-  for (let dayIdx = 0; dayIdx < (itinerary.days?.length ?? 0); dayIdx++) {
-    const day = itinerary.days![dayIdx];
-    for (const item of day.items ?? []) {
-      const distanceM = (item.metadata as any)?.distance_meters ?? 0;
+  const days = itinerary.days ?? [];
+  for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
+    const day = days[dayIdx];
+    const items = day.items ?? [];
+    const nextDayFirst = days[dayIdx + 1]?.items?.[0];
+
+    for (let j = 0; j < items.length; j++) {
+      const item = items[j];
+      const nextItem = items[j + 1];
+      const distanceM = item.metadata?.distance_meters ?? 0;
+
+      const explicitEnd = item.metadata?.endLocation;
+      let endLocation: { lat: number; lng: number } | undefined;
+      let autoFilledForAudit = false;
+
+      if (explicitEnd && typeof explicitEnd.lat === 'number' && typeof explicitEnd.lng === 'number') {
+        endLocation = cloneCoord(explicitEnd);
+      } else if (nextItem?.location_ref?.coordinates) {
+        endLocation = cloneCoord(nextItem.location_ref.coordinates);
+        autoFilledForAudit = true;
+      } else if (j === items.length - 1 && nextDayFirst?.location_ref?.coordinates) {
+        endLocation = cloneCoord(nextDayFirst.location_ref.coordinates);
+        autoFilledForAudit = true;
+      }
+
+      const startLoc = item.location_ref?.coordinates;
+      if (autoFilledForAudit && endLocation && startLoc && sameLatLng(startLoc, endLocation)) {
+        endLocation = undefined;
+        autoFilledForAudit = false;
+      }
+
+      const meta: Record<string, unknown> = {
+        poiId: item.location_ref?.place_id,
+        type: item.type,
+        name: item.location_ref?.name,
+        startTime: extractTime(item.start_window),
+        endTime: extractTime(item.end_window),
+        startLocation: item.location_ref?.coordinates,
+        travelDurationMinFromPrev: (item.metadata as { travel_duration_min_from_prev?: number } | undefined)
+          ?.travel_duration_min_from_prev,
+      };
+      if (endLocation) {
+        meta.endLocation = endLocation;
+      }
+      if (autoFilledForAudit) {
+        meta.auto_filled_for_audit = true;
+        const wfStart = startLoc ? isWestfjordsCorridorHeuristic(startLoc.lat, startLoc.lng) : false;
+        const wfEnd = endLocation ? isWestfjordsCorridorHeuristic(endLocation.lat, endLocation.lng) : false;
+        if (wfStart || wfEnd) {
+          meta.terrain_audit_trigger = 'westfjords_corridor_heuristic';
+        }
+      }
+
       segments.push({
         segmentId: item.id || `seg-${dayIdx}-${segments.length}`,
         dayIndex: dayIdx,
         distanceKm: distanceM / 1000,
         ascentM: 0,
         slopePct: 0,
-        metadata: {
-          poiId: item.location_ref?.place_id,
-          type: item.type,
-          name: item.location_ref?.name,
-          // Time hints used by convertRoutePlanDraftToTripPlan → ConstraintChecker.checkTimeWindows
-          startTime: extractTime(item.start_window),
-          endTime: extractTime(item.end_window),
-          // Coordinates hints used for connectivity/travelLeg construction
-          startLocation: item.location_ref?.coordinates,
-          // Optional travel info if upstream provides it
-          travelDurationMinFromPrev: (item.metadata as any)?.travel_duration_min_from_prev,
-        },
+        metadata: meta,
       });
     }
   }

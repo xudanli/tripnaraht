@@ -22,11 +22,24 @@ export const ACTION_REJECT_REASON_CODES = {
   ACTION_NOT_REGISTERED: 'ACTION_NOT_REGISTERED',
   ACTION_EXECUTION_FAILED: 'ACTION_EXECUTION_FAILED',
   ACTION_PRECONDITION_FAILED: 'ACTION_PRECONDITION_FAILED',
+  ACTION_PREVIEW_SIGNATURE_MISSING: 'ACTION_PREVIEW_SIGNATURE_MISSING',
+  ACTION_PREVIEW_SIGNATURE_MISMATCH: 'ACTION_PREVIEW_SIGNATURE_MISMATCH',
   BOOK_ADD_MISSING_REQUIRED_FIELDS: 'BOOK_ADD_MISSING_REQUIRED_FIELDS',
 } as const;
 
 export type ActionRejectReasonCode =
   (typeof ACTION_REJECT_REASON_CODES)[keyof typeof ACTION_REJECT_REASON_CODES];
+
+/**
+ * 编排器在特定系统条件下注入的「系统动作」标识（非 ActionRegistry 可执行动词）。
+ * 供审计、UI 与 Agent 解析：例如空草案时禁止继续产出行程级建议。
+ */
+export const SYSTEM_ORCHESTRATOR_ACTIONS = {
+  PLAN_GEN_EMPTY_DRAFT_HALT: 'SYSTEM.plan_gen_empty_draft.request_relax_constraints',
+} as const;
+
+export type SystemOrchestratorAction =
+  (typeof SYSTEM_ORCHESTRATOR_ACTIONS)[keyof typeof SYSTEM_ORCHESTRATOR_ACTIONS];
 
 export const ACTION_REJECT_REASON_MESSAGES: Record<ActionRejectReasonCode, string> = {
   HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN: 'High-risk action requires confirmation token.',
@@ -34,5 +47,9 @@ export const ACTION_REJECT_REASON_MESSAGES: Record<ActionRejectReasonCode, strin
   ACTION_NOT_REGISTERED: 'Mapped action is not registered in ActionRegistry.',
   ACTION_EXECUTION_FAILED: 'Action execution failed at runtime.',
   ACTION_PRECONDITION_FAILED: 'Action precondition check failed.',
+  ACTION_PREVIEW_SIGNATURE_MISSING:
+    'Missing preview context_signature. Please call preview again and re-submit commit with the signature.',
+  ACTION_PREVIEW_SIGNATURE_MISMATCH:
+    'Preview is stale (signature mismatch). Please re-run preview to re-evaluate consequences before commit.',
   BOOK_ADD_MISSING_REQUIRED_FIELDS: 'BOOK add action requires placeId, tripDayId, startTime, and endTime.',
 };

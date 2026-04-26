@@ -1,0 +1,64 @@
+name: Iron Shield Eval (Narrator)
+
+on:
+  pull_request:
+    paths:
+      - "scripts/eval-iron-shield-narrator.ts"
+      - "scripts/assert-iron-shield-eval.ts"
+      - "src/agent/utils/template-renderer.util.ts"
+      - "src/agent/execution/narrate-executor.service.ts"
+      - "src/agent/training/services/constraints-engine.service.ts"
+      - "src/agent/training/services/constraint-rule-manager.service.ts"
+      - "src/assets/ontology/rules/**"
+      - "src/decision/kernel/environmental-physics.service.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/iron-shield-eval.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "scripts/eval-iron-shield-narrator.ts"
+      - "scripts/assert-iron-shield-eval.ts"
+      - "src/agent/utils/template-renderer.util.ts"
+      - "src/agent/execution/narrate-executor.service.ts"
+      - "src/agent/training/services/constraints-engine.service.ts"
+      - "src/agent/training/services/constraint-rule-manager.service.ts"
+      - "src/assets/ontology/rules/**"
+      - "src/decision/kernel/environmental-physics.service.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/iron-shield-eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iron-shield-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Iron Shield eval (local, asserted)
+        run: npm run eval:iron-shield
+
+      - name: Upload eval artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iron_shield_eval_result
+          path: artifacts/eval/iron_shield_eval_result.json
+

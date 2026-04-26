@@ -18,6 +18,7 @@ import {
   RoutePlanDraft,
 } from '../shared/world-model.types';
 import { DecisionLogEntry } from '../shared/decision-result.types';
+import { mergeTriggeredAssertions, type HardRuleFact, normalizeHardRuleSnapshot } from '../shared/hard-rule-snapshot.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
@@ -215,6 +216,55 @@ export class StrategyOrchestratorService {
       return;
     }
 
+    // Ensure Fact snapshot is present in metadata for QA (Fact vs Reasoning).
+    // v1: best-effort extraction from structured metadata when available; else fall back to reasonCodes as rule_id.
+    const withFacts: DecisionLogEntry[] = logs.map((log) => {
+      const meta = (log.metadata && typeof log.metadata === 'object') ? { ...(log.metadata as any) } : {};
+      const existing = normalizeHardRuleSnapshot(meta).assertions_triggered;
+      if (existing.length > 0) {
+        return { ...log, metadata: meta };
+      }
+
+      const facts: HardRuleFact[] = [];
+      const pickRuleId = () => String(meta.rule_id ?? meta.ruleId ?? log.reasonCodes?.[0] ?? '').trim();
+      const rule_id = pickRuleId();
+
+      // Pattern A: metadata.details.evidence contains threshold/value pairs (IronShield/constraints style)
+      const ev = (meta as any)?.details?.evidence;
+      if (rule_id && ev && typeof ev === 'object' && !Array.isArray(ev)) {
+        const threshold_mps = (ev as any).threshold_mps;
+        const value_mps = (ev as any).value_mps;
+        if (typeof threshold_mps === 'number' && typeof value_mps === 'number') {
+          facts.push({
+            rule_id,
+            actual_value: value_mps,
+            threshold: threshold_mps,
+            unit: 'm/s',
+            is_violated: value_mps > threshold_mps,
+            severity: 'HARD',
+            evidence: ev as any,
+            at: log.timestamp,
+          });
+        }
+      }
+
+      // Pattern B: fallback minimal fact from reasonCodes (still useful for drift labeling)
+      if (facts.length === 0 && rule_id) {
+        facts.push({
+          rule_id,
+          is_violated: log.action === 'REJECT',
+          severity: log.decisionSource === 'PHYSICAL' ? 'HARD' : 'SOFT',
+          at: log.timestamp,
+        });
+      }
+
+      if (facts.length === 0) {
+        return { ...log, metadata: meta };
+      }
+      const merged = mergeTriggeredAssertions(meta, facts);
+      return { ...log, metadata: { ...meta, ...merged } };
+    });
+
     // 优先使用 decision.logAppend skill（如果可用）
     const skillsRegistry = this.getSkillsRegistry();
     if (skillsRegistry) {
@@ -225,7 +275,7 @@ export class StrategyOrchestratorService {
             tripId: plan.tripId,
             countryCode: world.physical.countryCode,
             routeDirectionId: plan.routeDirectionId,
-            entries: logs.map((log) => ({
+            entries: withFacts.map((log) => ({
               persona: log.persona,
               action: log.action,
               reasonCodes: log.reasonCodes,
@@ -250,7 +300,7 @@ export class StrategyOrchestratorService {
     }
 
     // 回退到直接调用 DecisionLogStorageService
-    await this.logStorage.saveLogEntries(logs, {
+    await this.logStorage.saveLogEntries(withFacts, {
       tripId: plan.tripId,
       countryCode: world.physical.countryCode,
       routeDirectionId: plan.routeDirectionId,

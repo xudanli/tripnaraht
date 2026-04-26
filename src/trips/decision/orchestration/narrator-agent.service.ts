@@ -124,6 +124,32 @@ export class NarratorAgentService implements INarratorAgent {
       contextPrompt = `\n\n上下文信息：\n${buildPromptFromContextPackage(contextPackage)}\n`;
     }
 
+    const historical_precedents =
+      (state?.metadata as any)?.historical_precedents ??
+      (state?.metadata as any)?.early_warning?.historical_precedents ??
+      undefined;
+    const precedentsArr = Array.isArray(historical_precedents) ? historical_precedents : [];
+    const top = precedentsArr.length > 0 ? (precedentsArr[0] as any) : undefined;
+    const N =
+      typeof top?.sample_count === 'number'
+        ? top.sample_count
+        : (() => {
+            const m = String(top?.summary ?? '').match(/N\s*=\s*(\d+)/i);
+            return m ? parseInt(m[1], 10) : 0;
+          })();
+
+    const citationRule =
+      N > 3
+        ? `【权威引用规则】N>3：必须引用具体百分比（%），并给出“节省成本”一项（如耗时 ms）。不得使用“可能/大概”。`
+        : N >= 1
+          ? `【探索性引用规则】1≤N≤3：禁止报百分比；只能用“近期类似案例显示/往往需要…”的判例描述，不得夸大确定性。`
+          : `【降维规则】N=0：不要引用判例统计；只回到物理/业务规则与证据解释。`;
+
+    const precedentsPrompt =
+      precedentsArr.length > 0
+        ? `\n\nhistorical_precedents（判例库召回结果）：\n${JSON.stringify(precedentsArr, null, 2)}\n\n${citationRule}\n`
+        : `\n\nhistorical_precedents：[]\n\n${citationRule}\n`;
+
     const prompt = `你是一个旅行规划助手，负责将技术性的决策结果转化为友好、易懂的自然语言解释。
 
 决策结果：
@@ -134,7 +160,7 @@ export class NarratorAgentService implements INarratorAgent {
 决策日志：
 ${JSON.stringify(personaLogs, null, 2)}
 
-${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}
+${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}${precedentsPrompt}
 
 请生成一段友好、易懂的中文解释，要求：
 1. 如果路线被拒绝，要说明原因并给出建议
@@ -143,6 +169,8 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
 4. 如果有合规要求，要明确提示
 5. 长度控制在 200 字以内
 6. 如果上下文信息中有相关的决策历史或计划摘要，可以引用它们来增强解释的准确性
+7. 如果提供了 historical_precedents，请用 1 句“判例式”表达总结（避免夸大，给出范围/概率/代价之一），用于节省用户反复试错成本
+8. 严格遵守“权威引用规则”：当 N>3 时必须报百分比；当 1≤N≤3 时禁止报百分比；当 N=0 时禁止提及统计口径
 
 只返回解释文本，不要其他格式。`;
 

@@ -1,6 +1,7 @@
 // src/agent/services/action-registry.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { Action } from '../interfaces/action.interface';
+import type { Action, PreconditionAssessment, PreconditionFinding } from '../interfaces/action.interface';
+import { assessBudgetImpactForBookFlight } from '../actions/models/budget-impact.model';
 
 /**
  * Action Registry Service
@@ -61,21 +62,64 @@ export class ActionRegistryService {
   /**
    * 检查前置条件
    */
-  checkPreconditions(actionName: string, state: any): boolean {
+  checkPreconditions(actionName: string, state: any, actionInput?: any): PreconditionAssessment {
     const action = this.get(actionName);
     if (!action) {
-      return false;
+      return {
+        status: 'blocked',
+        findings: [
+          { code: 'UNKNOWN', message: `Action not registered: ${actionName}`, severity: 'BLOCK' } satisfies PreconditionFinding,
+        ],
+      };
     }
 
-    // 简单的前置条件检查（可以根据需要扩展）
-    for (const precondition of action.metadata.preconditions) {
-      // 这里可以实现更复杂的条件检查逻辑
-      if (!this.evaluatePrecondition(precondition, state)) {
-        return false;
+    // Action-specific assessment hook (preferred for preview).
+    if (typeof action.assess_preconditions === 'function') {
+      try {
+        const res = action.assess_preconditions(actionInput, state) as any;
+        return res;
+      } catch (e: any) {
+        return {
+          status: 'blocked',
+          findings: [
+            { code: 'UNKNOWN', message: `assess_preconditions threw: ${e?.message ?? String(e)}`, severity: 'BLOCK' },
+          ],
+        };
       }
     }
 
-    return true;
+    const findings: PreconditionFinding[] = [];
+
+    // Heuristic model hook: BOOK:FLIGHT style actions typically map to trip.apply_user_edit.
+    // If an action declares a wallet precondition, emit a shadow budget delta.
+    const wantsWallet = (action.metadata.preconditions ?? []).some((p) => String(p).includes('wallet.'));
+    const hasPrice = actionInput && (actionInput.price != null || actionInput.amount != null);
+    if (wantsWallet && hasPrice) {
+      const assessed = assessBudgetImpactForBookFlight({ actionInput, state });
+      findings.push(...assessed.findings);
+      return {
+        status: assessed.status,
+        findings,
+        ...(assessed.shadow_delta ? { shadow_delta: assessed.shadow_delta } : {}),
+      };
+    }
+
+    // Fallback: dotted-path existence checks from metadata.preconditions
+    for (const precondition of action.metadata.preconditions ?? []) {
+      if (!this.evaluatePrecondition(precondition, state)) {
+        findings.push({
+          code: 'MISSING_FIELD',
+          message: `Missing required precondition: ${precondition}`,
+          path: precondition,
+          severity: 'BLOCK',
+        });
+      }
+    }
+
+    return {
+      status: findings.some((f) => f.severity === 'BLOCK') ? 'blocked' : 'feasible',
+      findings,
+    };
   }
 
   /**

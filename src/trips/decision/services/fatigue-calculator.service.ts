@@ -187,6 +187,13 @@ export class FatigueCalculatorService {
       baseFatigue *= terrainFactor;
     }
 
+    // 6. 高累计爬升的非线性放大（高爬升日 timeSlack / 疲劳信号更快触顶）
+    if (day.totalAscentM > 1000) {
+      baseFatigue *= Math.pow(1.1, day.totalAscentM / 500);
+    } else if (day.totalAscentM > 500) {
+      baseFatigue *= 1 + (day.totalAscentM - 500) / 2500;
+    }
+
     return baseFatigue;
   }
 
@@ -212,11 +219,16 @@ export class FatigueCalculatorService {
       descentM?: number;
       terrainType?: 'easy' | 'moderate' | 'technical' | 'extreme';
       averageElevationM?: number;
+      /** 爬升垂直速度（米/小时）；画像或反馈校准可覆盖默认值 600 */
+      ascentSpeedMPerH?: number;
     }
   ): number {
     // 基础速度参数
     let flatSpeedKmH = 4.0;  // 平路速度
-    let ascentSpeedMH = 600; // 爬升速度（米/小时）
+    let ascentSpeedMH =
+      typeof options?.ascentSpeedMPerH === 'number' && options.ascentSpeedMPerH > 0
+        ? options.ascentSpeedMPerH
+        : 600;
     let descentSpeedMH = 900; // 下坡速度（米/小时）
 
     // 地形系数修正

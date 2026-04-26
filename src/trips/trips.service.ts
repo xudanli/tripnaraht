@@ -768,29 +768,79 @@ export class TripsService {
       if (startDate > endDate) {
         throw new BadRequestException('开始日期不能晚于结束日期');
       }
-
-      // 计算天数（包含开始和结束日期）
-      const start = DateTime.fromJSDate(startDate).startOf('day');
-      const end = DateTime.fromJSDate(endDate).startOf('day');
-      const durationDays = end.diff(start, 'days').days + 1;
-
-      updateData.durationDays = Math.round(durationDays);
     }
 
-    // 执行更新
-    const updatedTrip = await this.prisma.trip.update({
-      where: { id },
-      data: updateData,
-      include: {
-        TripDay: {
-          include: {
-            ItineraryItem: true,
+    // 如果 startDate 平移，需要同步平移 TripDay.date（以及 ItineraryItem.startTime/endTime）
+    const oldStartDay = DateTime.fromJSDate(existingTrip.startDate, { zone: 'utc' }).startOf('day');
+    const nextStartDate = (updateData.startDate as Date | undefined) ?? existingTrip.startDate;
+    const newStartDay = DateTime.fromJSDate(nextStartDate, { zone: 'utc' }).startOf('day');
+    const rawDeltaDays = newStartDay.diff(oldStartDay, 'days').days;
+    const deltaDays = Math.round(rawDeltaDays);
+
+    const updatedTrip = await this.prisma.$transaction(async (tx) => {
+      // 1) 更新 Trip 本身
+      await tx.trip.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // 2) 如有平移，更新 TripDay 与 ItineraryItem
+      if (deltaDays !== 0) {
+        const days = await tx.tripDay.findMany({
+          where: { tripId: id },
+          include: { ItineraryItem: true },
+        });
+
+        for (const day of days) {
+          const shiftedDayDate = DateTime.fromJSDate(day.date, { zone: 'utc' })
+            .plus({ days: deltaDays })
+            .toJSDate();
+
+          await tx.tripDay.update({
+            where: { id: day.id },
+            data: { date: shiftedDayDate },
+          });
+
+          for (const item of day.ItineraryItem) {
+            const startTime = item.startTime
+              ? DateTime.fromJSDate(item.startTime, { zone: 'utc' }).plus({ days: deltaDays }).toJSDate()
+              : undefined;
+            const endTime = item.endTime
+              ? DateTime.fromJSDate(item.endTime, { zone: 'utc' }).plus({ days: deltaDays }).toJSDate()
+              : undefined;
+
+            // 只在字段存在时更新，避免把 null/undefined 写回去改变语义
+            const itemUpdateData: Record<string, Date> = {};
+            if (startTime) itemUpdateData.startTime = startTime;
+            if (endTime) itemUpdateData.endTime = endTime;
+
+            if (Object.keys(itemUpdateData).length > 0) {
+              await tx.itineraryItem.update({
+                where: { id: item.id },
+                data: itemUpdateData,
+              });
+            }
+          }
+        }
+      }
+
+      // 3) 重新读取（带关联）用于返回
+      const tripWithDays = await tx.trip.findUnique({
+        where: { id },
+        include: {
+          TripDay: {
+            include: { ItineraryItem: true },
           },
         },
-      },
+      });
+
+      if (!tripWithDays) {
+        throw new NotFoundException(`行程 ID ${id} 不存在`);
+      }
+
+      return tripWithDays;
     });
 
-    // 返回增强后的数据
     return await this.enrichTripData(updatedTrip);
   }
 

@@ -71,6 +71,18 @@ export interface WorldBuildContextInput extends SkillInput {
   routeDirectionId?: string;
   /** 用户 ID（可选，用于从 Memory 读取 UserTravelProfile.drivingFatiguePreferences） */
   userId?: string;
+
+  /**
+   * Emergency constraint injection (auto-heal).
+   * If provided, WorldModelContext.physical.roadStates will be overlaid with forced CLOSED states.
+   */
+  emergency_constraints?: {
+    forbidden_segments?: string[];
+    forced_road_states?: Record<string, 'CLOSED'>;
+    /** Temporal hard deadlines (latest allowable end time), keyed by poi_id or segment_id. ISO-8601 preferred. */
+    hard_deadlines?: Record<string, string>;
+    reason_code?: string;
+  };
 }
 
 export interface WorldBuildContextOutput extends SkillOutput {
@@ -545,6 +557,32 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         missingPieces.physicalRealityIncomplete = true;
       }
 
+      // Emergency constraint injection: overlay forced CLOSED road states (hard-forbidden).
+      if (input.emergency_constraints?.forced_road_states) {
+        const forced = input.emergency_constraints.forced_road_states;
+        for (const [segmentId, status] of Object.entries(forced)) {
+          if (status !== 'CLOSED') continue;
+          physical.roadStates.push({
+            roadId: `emergency_${String(segmentId)}`,
+            status: 'CLOSED',
+            segmentId: String(segmentId),
+            metadata: {
+              source: 'EMERGENCY_CONSTRAINT',
+              reason_code: input.emergency_constraints.reason_code ?? 'HEALING_PHYSICAL_DRIFT',
+            },
+          });
+        }
+      }
+
+      // Emergency constraint injection: temporal hard deadlines (latest_end_time) for time-shifting heal.
+      if (input.emergency_constraints?.hard_deadlines && Object.keys(input.emergency_constraints.hard_deadlines).length > 0) {
+        physical.temporalConstraints = {
+          ...(physical.temporalConstraints ?? {}),
+          hard_deadlines: input.emergency_constraints.hard_deadlines,
+          reason_code: input.emergency_constraints.reason_code ?? (physical.temporalConstraints as any)?.reason_code,
+        };
+      }
+
       // 5. 构建合规证据
       const complianceEvidence = this.buildComplianceEvidence(routeDirection);
 
@@ -693,6 +731,16 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
           .substring(0, 8);
         parts.push(`profile:${profileHash}`);
       }
+    }
+
+    // Emergency constraints must participate in cache key to avoid reusing stale world overlays.
+    if (input.emergency_constraints && Object.keys(input.emergency_constraints).length > 0) {
+      const ecHash = crypto
+        .createHash('md5')
+        .update(JSON.stringify(input.emergency_constraints))
+        .digest('hex')
+        .substring(0, 8);
+      parts.push(`ec:${ecHash}`);
     }
 
     const key = `${this.cachePrefix}${parts.join(':')}`;

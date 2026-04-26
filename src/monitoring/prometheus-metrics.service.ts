@@ -39,6 +39,9 @@ export class PrometheusMetricsService implements OnModuleInit {
   private evidenceChainLengthGauge: Gauge;
   private evidenceConfidenceGauge: Gauge;
 
+  // Decision OS consistency / drift (audit-derived)
+  private sessionConsistencyScore: Histogram;
+
   constructor() {
     this.registry = new Registry();
     this.initializeMetrics();
@@ -180,6 +183,15 @@ export class PrometheusMetricsService implements OnModuleInit {
       labelNames: ['evidence_type'],
       registers: [this.registry],
     });
+
+    // Consistency score: 0..100 (higher is better)
+    this.sessionConsistencyScore = new Histogram({
+      name: 'tripnara_session_consistency_score',
+      help: 'Audit-derived session consistency score (0-100; higher is better)',
+      labelNames: ['dominant_cid', 'phase'],
+      buckets: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+      registers: [this.registry],
+    });
   }
 
   // Gate Metrics Methods
@@ -218,6 +230,30 @@ export class PrometheusMetricsService implements OnModuleInit {
 
   recordRoadApiError(errorType: string, roadId: string) {
     this.roadApiErrorsTotal.inc({ error_type: errorType, road_id: roadId });
+  }
+
+  /**
+   * Record audit-derived consistency score.
+   *
+   * Notes:
+   * - dominant_cid: best-effort "most binding" constraint id for the session
+   * - phase: INTAKE or REPAIR (defaults to REPAIR since score is computed on predictive→real repair alignment)
+   */
+  recordSessionConsistencyScore(params: {
+    score: number;
+    dominant_cid?: string;
+    phase?: 'INTAKE' | 'REPAIR';
+  }): void {
+    const score = Number(params.score);
+    if (!Number.isFinite(score)) return;
+    const s = Math.max(0, Math.min(100, score));
+    this.sessionConsistencyScore.observe(
+      {
+        dominant_cid: params.dominant_cid ? String(params.dominant_cid) : 'UNKNOWN',
+        phase: params.phase ?? 'REPAIR',
+      },
+      s,
+    );
   }
 
   recordRoadCacheHit(roadId: string) {

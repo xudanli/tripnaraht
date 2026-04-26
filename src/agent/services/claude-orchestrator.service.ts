@@ -10,6 +10,14 @@ import { ActionRegistryService } from './action-registry.service';
 import { SimpleLruCache } from './orchestration-utils';
 import { createDeadline } from './orchestration-stability.util';
 import {
+  collectDecisionEvidenceSummaries,
+  computeDecisionEvidenceFingerprint,
+} from '../utils/decision-evidence-fingerprint.util';
+import { CONSTRAINT_IDS } from './constraint-registry';
+import { buildL3PersuasionLine, selectPersuasionMode } from '../utils/narrator-l3-persuasion.util';
+import { formatPredictiveFailureReport } from '../utils/repair-causal-explainer.util';
+import { calculateEarlyWarningRisk } from '../utils/early-warning-risk-model.util';
+import {
   IntentAnalysis,
   RoutingDecision,
   SkillsPlan,
@@ -45,6 +53,15 @@ import { isInGrayBucket } from '../utils/gray-release.util';
 import { ErrorType, inferErrorType, getErrorHandlingStrategy } from '../interfaces/error-types.interface';
 import { ClarificationQuestion } from '../interfaces/clarification.interface';
 import { SKILL_VALIDATION_RULES } from './skill-validation-rules.config';
+import { SYSTEM_ORCHESTRATOR_ACTIONS } from '../constants/action-execution.constants';
+import { ClarificationHandlerService } from './clarification-handler.service';
+import { ShadowConflictScannerService, type EarlyWarning } from './shadow-conflict-scanner.service';
+import { LocalCaseStoreService } from '../cbr/local-case-store.service';
+import { CbrAggregatorService } from '../cbr/cbr-aggregator.service';
+import { auditReportToCaseRecord } from '../cbr/case-extractor.util';
+import { ConstraintScorer, type RelaxationActionId } from '../cbr/constraint-scorer.util';
+import { groupMinCutPaths } from '../cbr/option-grouper.util';
+import { SignatureBuilder } from '../cbr/signature-builder.util';
 import { SkillInputValidatorService } from './skill-input-validator.service';
 import { HallucinationDetectionService } from './hallucination-detection.service';
 import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
@@ -65,6 +82,7 @@ import type { HarnessTraceFinalStatus } from '../../harness/tracing/harness-trac
 import { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import { TdfpmCalculatorService } from '../../trips/decision/services/tdfpm-calculator.service';
 import type { TdfpmDayContext } from '../../trips/decision/services/tdfpm-calculator.service';
+import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
 import {
   orchestratorStateToDecisionStatePatch,
   decisionStateToOrchestratorState,
@@ -75,6 +93,14 @@ import {
   type DecisionStatePatch,
   type PoiPlanningDecisionSlice,
 } from '../../decision/kernel/decision-state.types';
+import type { PlanGenTerminalFailure } from '../../decision/kernel/decision-state.types';
+import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
+import {
+  buildDecisionFeedbackCorrelationId,
+  computePredictiveFailureStateHash,
+  digestSimulatedRepairTracesForCorrelation,
+  digestTripPlanRequestLight,
+} from '../../decision/kernel/utils/decision-feedback-correlation.util';
 import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
 import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
 import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
@@ -147,11 +173,15 @@ export class ClaudeOrchestratorService {
     @Optional() private narratorAgent?: ClaudeNarratorAgentService,
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
     @Optional() private hallucinationDetection?: HallucinationDetectionService,
+    @Optional() private readonly clarificationHandler?: ClarificationHandlerService,
+    @Optional() private readonly shadowConflictScanner?: ShadowConflictScannerService,
+    @Optional() private readonly localCaseStore?: LocalCaseStoreService,
+    @Optional() private readonly cbrAggregator?: CbrAggregatorService,
     @Optional() private trajectoryCollection?: TrajectoryCollectionService,
     @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
-    // Domain Agents (World Model Layer)
+    //领域智能体（世界模型层）
     @Optional() private readonly geoAgent?: GeoAgentService,
     @Optional() private readonly weatherAgent?: WeatherAgentService,
     @Optional() private readonly costAgent?: CostAgentService,
@@ -172,6 +202,8 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly decisionReplay?: DecisionReplayService,
     /** Phase 1：区域锚点 → DSO.poiPlanning */
     @Optional() private readonly regionAnchorPlanning?: RegionAnchorPlanningService,
+    /** Monitoring (Prometheus) */
+    @Optional() private readonly promMetrics?: PrometheusMetricsService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -2025,6 +2057,11 @@ ${JSON.stringify(routingDecision, null, 2)}
       if (input.countryCode === 'none' || input.countryCode === 'undefined' || input.countryCode === 'null') {
         delete input.countryCode;
       }
+
+      // Emergency constraint injection (auto-heal): pass through to world.buildContext so physical.roadStates can be overlaid.
+      if ((request as any).emergency_constraints && !(input as any).emergency_constraints) {
+        (input as any).emergency_constraints = (request as any).emergency_constraints;
+      }
     }
     
     // 为 decision.runThreeGuardians 提供智能默认值
@@ -2489,8 +2526,63 @@ ${JSON.stringify(routingDecision, null, 2)}
       decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
       this.maybeSnapshot(state, 'AUTO');
 
+      // 在 DSO 里记录本轮澄清 fingerprint 与重复尝试次数（用于高亮 accept_no_solution 等防御性策略）
+      if (this.decisionKernel && decisionState) {
+        const fp = (state.metadata as any)?.last_relaxation_fingerprint as string | undefined;
+        if (fp) {
+          const prev = decisionState.systemState?.lastRelaxationFingerprint;
+          const prevSame = decisionState.systemState?.consecutiveSameRelaxationAttempts ?? 0;
+          const same = prev && prev === fp;
+          const nextSame = same ? prevSame + 1 : 0;
+          const prevRetry = decisionState.systemState?.planGenRetryCount ?? 0;
+          decisionState = this.decisionKernel.updateState(decisionState, {
+            systemState: {
+              requestId: state.request_id,
+              lastRelaxationFingerprint: fp,
+              consecutiveSameRelaxationAttempts: nextSame,
+              planGenRetryCount: prevRetry + 1,
+            } as any,
+          });
+        }
+      }
+
+      // 用户批准终止：优雅拒绝出口（不进入 RESEARCH/Gate/Plan）
+      const terminalIntent = (state.metadata as any)?.terminal_intent as string | undefined;
+      if (terminalIntent === 'TERMINAL_NO_SOLUTION') {
+        this.logger.warn(`[Claude Orchestrator] TERMINAL_NO_SOLUTION confirmed by user; halting orchestration.`);
+        state.current_step = 'DONE';
+        state.verdict = 'REJECT';
+        state.metadata.last_updated_at = new Date().toISOString();
+        state.metadata.total_duration_ms = Date.now() - startTime;
+        this.maybeSnapshot(state, 'CHECKPOINT');
+        return this.buildTerminalNoSolutionResult(state, startTime, decisionState);
+      }
+
       // HARD 缺口 + 已生成澄清问题：必须在 RESEARCH 之前返回，避免 transport.search 等技能在「未指定」上失败
       if (this.shouldReturnClarificationForHardGaps(state)) {
+        const compileHard =
+          state.gaps?.find(
+            (g) =>
+              g?.severity === 'HARD' &&
+              (g.type === 'INTENT_COMPILE_ERROR' || g.type === 'SPEC_TYPE_ERROR'),
+          ) ?? null;
+        if (compileHard) {
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'INTAKE',
+            actor: 'Orchestrator',
+            inputs_summary: 'INTAKE compiler hard error → clarification',
+            outputs_summary: `INTENT_COMPILE_BLOCK: ${compileHard.type}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'INTENT_COMPILE_BLOCK',
+              gap_type: compileHard.type,
+              detail: compileHard.detail,
+              allow_partial: state.metadata?.allow_partial === true,
+            },
+          });
+        }
         this.logger.debug(
           `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
         );
@@ -2500,6 +2592,296 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
       decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
       this.maybeSnapshot(state, 'AUTO');
+
+      // Early Warning：RESEARCH 后前置侦察（不阻断；仅写入 metadata/decision_log，供 UI 提示）
+      if (this.shadowConflictScanner) {
+        try {
+          const ew = await this.shadowConflictScanner.scan({
+            decisionKernel: this.decisionKernel,
+            decisionState,
+            state,
+            request,
+          });
+          if (ew) {
+            const early_warning_id =
+              ew.early_warning_id ??
+              this.djb2Fingerprint({
+                request_id: state.request_id,
+                risk_level: ew.risk_level,
+                conflict_type: ew.conflict_type,
+                evidence_summary: ew.evidence_summary,
+                suggested_actions: (ew.suggested_actions ?? [])
+                  .map((s) => ({
+                    relaxation_type: s.relaxation_type,
+                    shadow_confidence: s.shadow_confidence,
+                    violations_before: s.violations_before,
+                    violations_after: s.violations_after,
+                    fixed_conflict_types: (s.fixed_conflict_types ?? []).slice().sort(),
+                  }))
+                  .sort((a, b) => a.relaxation_type.localeCompare(b.relaxation_type)),
+              });
+            const withId: EarlyWarning = { ...ew, early_warning_id };
+            (state.metadata as any) = { ...(state.metadata ?? {}), early_warning: withId };
+            state.decision_log.push({
+              request_id: state.request_id,
+              step: 'RESEARCH',
+              actor: 'Orchestrator',
+              inputs_summary: 'ShadowConflictScanner (post-RESEARCH)',
+              outputs_summary: `EARLY_WARNING: id=${early_warning_id} risk=${ew.risk_level} type=${ew.conflict_type} suggestions=${ew.suggested_actions.length}`,
+              evidence_refs: [],
+              timestamp: new Date().toISOString(),
+              metadata: {
+                system_action: 'EARLY_WARNING',
+                early_warning: withId,
+              },
+            });
+          }
+        } catch (e: any) {
+          this.logger.debug(`[Claude Orchestrator] Early warning scan skipped: ${e?.message}`);
+        }
+      }
+
+      // INTAKE 形式化仿真：PREDICTIVE_FAILURE_REPORT（可与 Shadow EW 叠加；核心载荷为 SimulatedRepairTrace[]）
+      const intakeSim = (state.metadata as any)?.intake_simulation as
+        | { simulatedRepairTraces?: import('../services/route-feasibility.types').SimulatedRepairTrace[] }
+        | undefined;
+      const simTraces = intakeSim?.simulatedRepairTraces ?? [];
+      if (simTraces.length > 0) {
+        const audit_text = formatPredictiveFailureReport(simTraces);
+        const simDigest = digestSimulatedRepairTracesForCorrelation(simTraces as unknown[]);
+        const tripDigest = digestTripPlanRequestLight(state.trip_plan_request ?? {});
+        const predictiveStateHash = computePredictiveFailureStateHash({
+          dsoVersion: decisionState?.systemState?.version ?? 0,
+          simulatedTracesDigest: simDigest,
+          tripDigest,
+        });
+        const predictiveCorrelationId = buildDecisionFeedbackCorrelationId({
+          sessionId: state.request_id,
+          phase: 'INTAKE',
+          kind: 'PREDICTIVE_FAILURE',
+          roundIndex: 0,
+          stateHash: predictiveStateHash,
+        });
+        const predictive_failure_report = {
+          card_type: 'PREDICTIVE_FAILURE_REPORT' as const,
+          correlationId: predictiveCorrelationId,
+          audit_text,
+          simulated_repair_traces: simTraces,
+        };
+        const existingEw = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
+        const mergedEw: EarlyWarning = existingEw
+          ? { ...existingEw, predictive_failure_report }
+          : {
+              early_warning_id: `pred-${state.request_id}`,
+              risk_level: 'MEDIUM',
+              conflict_type: 'MIXED',
+              evidence_summary: 'INTAKE_PREDICTIVE_SIMULATION',
+              suggested_actions: [],
+              predictive_failure_report,
+            };
+        (state.metadata as any) = { ...(state.metadata ?? {}), early_warning: mergedEw };
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'RESEARCH',
+          actor: 'Orchestrator',
+          inputs_summary: 'IntakeCompilerService simulation → PREDICTIVE_FAILURE_REPORT',
+          outputs_summary: `PREDICTIVE_FAILURE_REPORT: traces=${simTraces.length}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'PREDICTIVE_FAILURE_REPORT',
+            correlation_id: predictiveCorrelationId,
+            predictive_failure_report,
+          },
+        });
+      }
+
+      // 预防性放宽闭环：HIGH/CRITICAL 在进入 POI 前强制澄清；下一回合 `clarification_answers` 由 ClarificationHandlerService 与 PLAN_GEN 同源 Patch
+      const ewMeta = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
+      if (ewMeta && (ewMeta.risk_level === 'HIGH' || ewMeta.risk_level === 'CRITICAL')) {
+        const clarAnswers = (request as any).clarification_answers as Array<{ questionId?: string }> | undefined;
+        const answeredEarlyWarning = clarAnswers?.some((a) => a?.questionId === 'early_warning_relaxations');
+        const earlyWarningAcknowledged =
+          (state.metadata as any)?.early_warning_acknowledged === true ||
+          decisionState?.systemState?.earlyWarningAcknowledged === true;
+        if (!answeredEarlyWarning && !earlyWarningAcknowledged) {
+            // A/B 实验：50% 保留传统模糊措辞，50% 注入 L3 级论证风格的劝说语句。
+          const ab = (() => {
+            // djb2:deadbeef -> 取低 8 位十六进制数字作为稳定分桶标识
+            const fp = this.djb2Fingerprint({ request_id: state.request_id, exp: 'ew_l3_prompt_v1' });
+            const hex = fp.includes(':') ? fp.split(':')[1] : fp;
+            const n = parseInt(hex.slice(-8), 16);
+            const bucket = Number.isFinite(n) ? n % 100 : 0;
+            return { fingerprint: fp, bucket, treatment: bucket < 50 };
+          })();
+
+          const supported = new Set(['upgrade_vehicle_to_4wd', 'increase_days_by_1', 'drop_one_must_include_poi']);
+          const dedup = new Map<string, (typeof ewMeta.suggested_actions)[number]>();
+          for (const s of ewMeta.suggested_actions ?? []) {
+            if (s?.relaxation_type && supported.has(s.relaxation_type) && !dedup.has(s.relaxation_type)) {
+              dedup.set(s.relaxation_type, s);
+            }
+          }
+          const list = [...dedup.values()];
+          if (list.length > 0) {
+            const anyHigh = list.some((s) => s.shadow_confidence === 'high_probability_fixed');
+            this.logger.warn(
+              `[Claude Orchestrator] EARLY_WARNING intercept: risk=${ewMeta.risk_level} type=${ewMeta.conflict_type} options=${list.length}`,
+            );
+
+            const risk = calculateEarlyWarningRisk(
+              {
+                risk_level: ewMeta.risk_level,
+                conflict_type: ewMeta.conflict_type,
+                suggested_actions: list,
+              },
+              { request_id: state.request_id },
+            );
+            const failure_risk_score = risk.score;
+
+            const failure_prob_hint = (() => {
+              if (!ab.treatment) return undefined;
+              if (failure_risk_score >= 0.8) {
+                return `【高危逻辑拦截】若保持现状继续，预计撞墙风险很高（score=${failure_risk_score.toFixed(2)}）。建议立即选择一项修复以恢复物理可行域。`;
+              }
+              if (failure_risk_score >= 0.4) {
+                return `【运行风险提示】该配置存在较高后续回溯成本（score=${failure_risk_score.toFixed(2)}）。建议优先修复，避免反复试错。`;
+              }
+              return `【提示】已检测到潜在风险（score=${failure_risk_score.toFixed(2)}），建议先修复再继续。`;
+            })();
+
+            const l3Line = (() => {
+              if (!ab.treatment) return undefined;
+              const cid =
+                ewMeta.conflict_type === 'REACHABILITY'
+                  ? CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY
+                  : ewMeta.conflict_type === 'SCOPE'
+                    ? CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY
+                    : CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY;
+              const mode = selectPersuasionMode(cid);
+             // 注意：early_warning 处于行程生成之前阶段；我们此时尚无具体的数值宽松量。
+             // 但我们仍会展示一个确定性的“硬约束”横幅，包含 cid 和证据摘要。
+              const out = buildL3PersuasionLine({
+                mode,
+                proof: {
+                  cid,
+                  unit: 'bool',
+                  slack: -1,
+                  evidence: ewMeta.evidence_summary
+                    ? { source: 'SHADOW_GATE', refIds: [String(ewMeta.early_warning_id ?? 'early_warning')] }
+                    : { source: 'SHADOW_GATE' },
+                },
+              });
+              return out?.line;
+            })();
+
+            const questionHeader = ab.treatment
+              ? `[SYSTEM_ACTION]: EARLY_WARNING(L3) 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`
+              : `[SYSTEM_ACTION]: EARLY_WARNING 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`;
+            const questionBody = `${ewMeta.evidence_summary} 请在 POI 选择与排程前确认一项或多项“物理可行域”放宽（影子推演置信度已标注）。`;
+            const question = `${questionHeader}${failure_prob_hint ? `\n${failure_prob_hint}\n` : ''}${l3Line ? `\n${l3Line}\n` : ''}${questionBody}`;
+
+            // 约束评分器：对选项进行排序，以打破振荡 / 优先处理硬物理约束。
+            const topPrecedent = Array.isArray((ewMeta as any).historical_precedents)
+              ? ((ewMeta as any).historical_precedents[0] as any)
+              : undefined;
+            const oscillation_k = decisionState?.systemState?.consecutiveSameRelaxationAttempts ?? 0;
+            const dominant_cid =
+              String((decisionState as any)?.constraints?.violations?.[0]?.type ?? '').trim() ||
+              (ewMeta.conflict_type === 'REACHABILITY' ? 'REACHABILITY_HARD' : ewMeta.conflict_type === 'SCOPE' ? 'SCOPE' : 'MIXED');
+            const is_hard = ewMeta.conflict_type === 'REACHABILITY' || ewMeta.risk_level === 'CRITICAL';
+
+            const scored = list
+              .map((s) => {
+                const id = s.relaxation_type as RelaxationActionId;
+                const persuasion = this.localCaseStore?.getPersuasionRate({
+                  signature: SignatureBuilder.buildConversionSignature({
+                    conflict_type: ewMeta.conflict_type,
+                    primary_violation_type: dominant_cid,
+                    region_id: (state.trip_plan_request as any)?.region_id,
+                    start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
+                  }),
+                  action: id,
+                });
+                const breakdown = ConstraintScorer.calculateScore(id, {
+                  dominant_cid,
+                  is_hard,
+                  oscillation_k,
+                  precedent: topPrecedent,
+                  preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+                  persuasion,
+                  delta: 1.5,
+                });
+                return { s, breakdown };
+              })
+              .sort((a, b) => b.breakdown.score - a.breakdown.score);
+
+            state.clarification_questions = [
+              {
+                id: 'early_warning_relaxations',
+                question,
+                type: anyHigh ? 'single_choice' : 'multi_choice',
+                required: true,
+                options: ([
+                  ...scored.map(({ s, breakdown }) => ({
+                    value: s.relaxation_type,
+                    label: `${s.relaxation_type}｜${s.impact_description}（${
+                      s.shadow_confidence === 'high_probability_fixed' ? 'high_probability_fixed' : 'needs_more_changes'
+                    }）`,
+                    metadata: {
+                      score: breakdown.score,
+                      weights: breakdown.weights,
+                      dominant_cid: breakdown.dominant_cid,
+                      precedent_n: breakdown.precedent_n,
+                      terms: breakdown.terms,
+                    },
+                  })),
+                  {
+                    value: 'proceed_at_own_risk',
+                    label: '[实验性] 保持现状继续规划（可能导致失败）',
+                    metadata: {
+                      score: ConstraintScorer.calculateScore('proceed_at_own_risk', {
+                        dominant_cid,
+                        is_hard,
+                        oscillation_k,
+                        precedent: topPrecedent,
+                        preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+                      }).score,
+                      dominant_cid,
+                      precedent_n: typeof topPrecedent?.sample_count === 'number' ? topPrecedent.sample_count : 0,
+                    },
+                  },
+                ] as any),
+                hint: '提交后下一回合将合并写入 TripPlanRequest；再次规划时可行域已被物理修复。也可选择「自担风险继续」跳过拦截（撞南墙模式，仍可能进入 PLAN_GEN 熔断）。',
+              },
+            ];
+            state.decision_log.push({
+              request_id: state.request_id,
+              step: 'RESEARCH',
+              actor: 'Orchestrator',
+              inputs_summary: 'EARLY_WARNING intercept → clarification',
+              outputs_summary: `PREVENTIVE_RELAXATION_REQUIRED: risk=${ewMeta.risk_level}`,
+              evidence_refs: [],
+              timestamp: new Date().toISOString(),
+              metadata: {
+                system_action: 'EARLY_WARNING_INTERCEPT',
+                early_warning: ewMeta,
+                options_snapshot: (state.clarification_questions?.[0] as any)?.options ?? [],
+                ew_prompt_ab: ab,
+                failure_risk_score,
+                failure_risk_reason: risk.reason,
+                failure_risk_confidence: risk.confidence,
+                ...(l3Line ? { ew_l3_line: l3Line } : {}),
+                ...(failure_prob_hint ? { failure_prob_hint } : {}),
+              },
+            });
+            state.metadata.last_updated_at = new Date().toISOString();
+            state.metadata.total_duration_ms = Date.now() - startTime;
+            this.maybeSnapshot(state, 'CHECKPOINT');
+            return this.buildClarificationResult(state, startTime, decisionState);
+          }
+        }
+      }
 
       // 步骤 4: POI_SELECTION - 明确执行 POI 选择/排序，不直接从 RESEARCH 跳到 PLAN_GEN
       const poiSelectionResult = await this.executePoiSelectionStep(state, decisionState);
@@ -2542,11 +2924,320 @@ ${JSON.stringify(routingDecision, null, 2)}
       decisionState = await this.executePlanGenPhase(decisionState, state, request, context, llmProvider);
       this.maybeSnapshot(state, 'AUTO');
 
-      // 步骤 8: OPTIMIZE - Phase 2.3 抽取 Optimization Hints
+      // PLAN_GEN 空草案：系统动作短路 — 不进入 OPTIMIZE/VERIFY/NARRATE，避免无依据行程建议
+      const itineraryDays = Array.isArray((state.itinerary as any)?.days) ? (state.itinerary as any).days.length : 0;
+      if (itineraryDays === 0 && this.decisionKernel && decisionState && !decisionState.systemState?.planGenTerminalFailure) {
+        const inconsistent: PlanGenTerminalFailure = {
+          code: 'INCONSISTENT_EMPTY_DRAFT',
+          message: 'Itinerary is empty but no terminal failure was signaled.',
+        };
+        decisionState = this.decisionKernel.updateState(decisionState, {
+          systemState: {
+            requestId: state.request_id,
+            currentPhase: 'PLAN_GEN',
+            planGenTerminalFailure: inconsistent,
+          } as any,
+        });
+      }
+
+      const planGenTf = decisionState?.systemState?.planGenTerminalFailure;
+      if (planGenTf) {
+        this.logger.warn(
+          `[Claude Orchestrator] PLAN_GEN 空草案终止: code=${planGenTf.code} system_action=${SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT}`,
+        );
+        const mustInclude =
+          decisionState?.userIntent?.mustIncludePoiIds ??
+          (state.trip_plan_request as any)?.must_include_poi_ids ??
+          [];
+        const days =
+          decisionState?.userIntent?.days ??
+          (state.trip_plan_request as any)?.days ??
+          undefined;
+
+        const vehicleRequiredRaw =
+          (decisionState?.environmentState as any)?.routeCorridorWorld?.constraints?.vehicleRequired ??
+          (decisionState?.environmentState as any)?.routeCorridorWorld?.constraints?.vehicle_requirement ??
+          (state.research_data as any)?.routeCorridorWorld?.constraints?.vehicleRequired ??
+          (state.research_data as any)?.route_corridor_world?.constraints?.vehicleRequired;
+        const vehicleRequired = typeof vehicleRequiredRaw === 'string' ? vehicleRequiredRaw.toLowerCase() : '';
+        const assumedVehicleType =
+          typeof (state.trip_plan_request as any)?.constraints?.vehicle_type === 'string'
+            ? String((state.trip_plan_request as any).constraints.vehicle_type)
+            : '2WD';
+
+        const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
+        const userIs2wd = /2wd|两驱|2驱|2x4/i.test(assumedVehicleType) || assumedVehicleType === '2WD';
+
+        const labelWithFixTypes = (
+          base: string,
+          fixed: boolean,
+          impact?: string,
+          fixedTypes?: string[],
+        ): string => {
+          const fx =
+            fixedTypes && fixedTypes.length > 0
+              ? `｜效果: 解决${fixedTypes.map((t) => `【${t}】`).join('')}冲突`
+              : '';
+          return `${base}（${fixed ? 'high_probability_fixed' : 'needs_more_changes'}）${impact ? `｜Impact: ${impact}` : ''}${fx}`;
+        };
+
+        const clone = <T,>(v: T): T => {
+          const sc = (globalThis as any).structuredClone as ((x: any) => any) | undefined;
+          if (typeof sc === 'function') return sc(v);
+          return JSON.parse(JSON.stringify(v)) as T;
+        };
+
+        const baseViolations = ((decisionState as any).constraints?.violations ??
+          (state.gate_result as any)?.violations ??
+          []) as Array<{ type?: string }>;
+        const baseVTypes = new Set(baseViolations.map((v) => String(v?.type ?? '')).filter(Boolean));
+        const baseCount = baseViolations.length;
+
+        const shadowGate = async (
+          patchTrip: (t: any) => any,
+        ): Promise<{ fixed: boolean; improved: boolean; fixedTypes: string[]; afterCount: number; afterTypes: string[] }> => {
+          if (!this.decisionKernel || !decisionState) {
+            return { fixed: false, improved: false, fixedTypes: [], afterCount: baseCount, afterTypes: Array.from(baseVTypes) };
+          }
+          const shadowDso = clone(decisionState);
+          const shadowTrip = patchTrip(clone(state.trip_plan_request ?? { request_id: state.request_id, origin: '', destination: '' }));
+          const ctx = {
+            requestId: state.request_id,
+            routeDirectionId: (request as any).route_direction_id ?? undefined,
+            userId: (request as any).user_id,
+            tripPlanRequest: shadowTrip,
+            researchData: state.research_data,
+          };
+          const { gateResult } = await this.decisionKernel.executeGateEval(shadowDso as any, ctx as any);
+          const vs = (gateResult.violations ?? []) as Array<{ type?: string }>;
+          const afterTypes = vs.map((v) => String(v?.type ?? '')).filter(Boolean);
+          const afterSet = new Set(afterTypes);
+          const fixedTypes = Array.from(baseVTypes).filter((t) => !afterSet.has(t)).map((t) => this.violationTypeToCn(t));
+          const afterCount = vs.length;
+          const fixed = afterCount === 0;
+          const improved = afterCount < baseCount;
+          return { fixed, improved, fixedTypes, afterCount, afterTypes };
+        };
+
+        const optA = (() => {
+          // 空间约束：MustIncludePoi vs TotalTripDuration
+          if (!Array.isArray(mustInclude) || mustInclude.length === 0 || typeof days !== 'number' || !Number.isFinite(days)) {
+            return undefined;
+          }
+          const fixed = mustInclude.length <= Math.max(1, Math.floor(days) + 1);
+          return {
+            value: 'increase_days_by_1',
+            label: labelWithFixTypes(
+              `将总天数增加 1 天（${days}→${days + 1}）以容纳必去点`,
+              fixed,
+              `近似将必去点容量上限从 ${Math.max(1, Math.floor(days) + 1)} 提升到 ${Math.max(1, Math.floor(days + 1) + 1)}`,
+            ),
+          };
+        })();
+
+        const optB = (() => {
+          if (!Array.isArray(mustInclude) || mustInclude.length === 0) return undefined;
+          const fixed = typeof days === 'number' ? mustInclude.length - 1 <= Math.max(1, Math.floor(days)) : true;
+          return {
+            value: 'drop_one_must_include_poi',
+            label: labelWithFixTypes(
+              '移除 1 个必去点（最小冲突集近似）',
+              fixed,
+              `必去点数量从 ${mustInclude.length} 降至 ${Math.max(0, mustInclude.length - 1)}`,
+            ),
+          };
+        })();
+
+        const optC = (() => {
+          // 准入约束：F-road vs Vehicle
+          if (!need4x4) return undefined;
+          const fixed = true; // 升级车辆能力本身即满足该原子冲突（不保证全局可行，但对该冲突是“高概率修复”）
+          return {
+            value: 'upgrade_vehicle_to_4wd',
+            label: labelWithFixTypes(
+              '将车辆能力升级为 4WD/4x4（满足 F-road 准入）',
+              fixed && userIs2wd,
+              vehicleRequiredRaw ? `满足车辆要求：${String(vehicleRequiredRaw)}` : undefined,
+            ),
+          };
+        })();
+
+        const optionsBase = [optC, optA, optB].filter(Boolean) as Array<{ value: string; label: string }>;
+
+        // 真正 Dry-Run：对每个 option 构造 shadow tripPlanRequest，执行 Kernel.executeGateEval 并回填 delta（violation types）
+        const dryRunResults = await Promise.all(
+          optionsBase.map(async (o) => {
+            const r = await shadowGate((t) => {
+              const next = { ...t, constraints: { ...(t.constraints ?? {}) } } as any;
+              if (o.value === 'upgrade_vehicle_to_4wd') next.constraints.vehicle_type = '4WD';
+              if (o.value === 'increase_days_by_1') {
+                if (next.date_range?.end_date) {
+                  const end = new Date(next.date_range.end_date + 'T00:00:00Z');
+                  if (!Number.isNaN(end.getTime())) {
+                    const plus = new Date(end);
+                    plus.setUTCDate(plus.getUTCDate() + 1);
+                    next.date_range = { ...next.date_range, end_date: plus.toISOString().slice(0, 10) };
+                  }
+                } else if (typeof next.days === 'number' && Number.isFinite(next.days)) {
+                  next.days = Math.max(1, Math.floor(next.days) + 1);
+                }
+              }
+              if (o.value === 'drop_one_must_include_poi') {
+                const arr = Array.isArray(next.must_include_poi_ids) ? [...next.must_include_poi_ids] : [];
+                if (arr.length > 0) arr.pop();
+                next.must_include_poi_ids = arr;
+              }
+              return next;
+            });
+            const fixed = r.fixed;
+            const improved = r.improved;
+            const fixedTypes = r.fixedTypes;
+            const scoreLabel = fixed
+              ? 'high_probability_fixed'
+              : improved
+                ? `needs_more_changes（improved ${baseCount}→${r.afterCount}）`
+                : 'needs_more_changes';
+            const enrichedLabel = `${o.label}`.replace(
+              /\（(high_probability_fixed|needs_more_changes)\）/,
+              `（${scoreLabel}）`,
+            ) + (fixedTypes.length ? `｜效果: 解决${fixedTypes.map((t) => `【${t}】`).join('')}冲突` : '');
+            return { value: o.value, label: enrichedLabel, fixed };
+          }),
+        );
+
+        const anyHigh = dryRunResults.some((r) => r.label.includes('high_probability_fixed'));
+        const sameAttempts = decisionState?.systemState?.consecutiveSameRelaxationAttempts ?? 0;
+        const recommendTermination = sameAttempts >= 2;
+        // 约束评分器 + 最小割集分组，用于 PLAN_GEN 空草案的澄清说明。
+        const dominant_cid =
+          String((decisionState as any)?.constraints?.violations?.[0]?.type ?? '').trim() ||
+          (need4x4 ? 'REACHABILITY_HARD' : mustInclude?.length ? 'SCOPE' : 'MIXED');
+        const is_hard = need4x4 || String((baseViolations?.[0] as any)?.severity ?? '').toUpperCase() === 'HARD';
+        const ewMetaTop = (state.metadata as any)?.early_warning?.historical_precedents?.[0] as any | undefined;
+
+        const scored = dryRunResults.map(({ value, label }) => {
+          const id = value as RelaxationActionId;
+          const persuasion = this.localCaseStore?.getPersuasionRate({
+            signature: SignatureBuilder.buildConversionSignature({
+              conflict_type: (need4x4 ? 'REACHABILITY' : mustInclude?.length ? 'SCOPE' : 'MIXED') as any,
+              primary_violation_type: dominant_cid,
+              region_id: (state.trip_plan_request as any)?.region_id,
+              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
+            }),
+            action: id,
+          });
+          const breakdown = ConstraintScorer.calculateScore(id, {
+            dominant_cid,
+            is_hard,
+            oscillation_k: sameAttempts,
+            precedent: ewMetaTop,
+            preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+            persuasion,
+            delta: 1.5,
+          });
+          return { value: id, label, breakdown };
+        });
+        scored.sort((a, b) => b.breakdown.score - a.breakdown.score);
+
+        const grouped = groupMinCutPaths({ dominant_cid, is_hard, options: scored });
+        const decorate = (prefix: string, o: (typeof scored)[number]) => ({
+          value: o.value,
+          label: `${prefix}${o.label}${
+            o.breakdown.precedent_n > 3 && typeof ewMetaTop?.stats?.historical_late_accept_rate === 'number'
+              ? `｜判例: N=${o.breakdown.precedent_n}, ${(ewMetaTop.stats.historical_late_accept_rate * 100).toFixed(0)}% 最终采纳`
+              : o.breakdown.precedent_n >= 1
+                ? `｜判例: N=${o.breakdown.precedent_n}`
+                : ''
+          }`,
+          metadata: {
+            score: o.breakdown.score,
+            weights: o.breakdown.weights,
+            dominant_cid: o.breakdown.dominant_cid,
+            precedent_n: o.breakdown.precedent_n,
+            terms: o.breakdown.terms,
+            path: prefix.includes('路径 A') ? 'A' : prefix.includes('路径 B') ? 'B' : 'OTHER',
+          },
+        });
+
+        const options = ([
+          ...grouped.pathA.map((o) => decorate('【路径 A·推荐】', o)),
+          ...grouped.pathB.map((o) => decorate('【路径 B·可选】', o)),
+          ...grouped.other.map((o) => decorate('【可选】', o)),
+          {
+            value: 'accept_no_solution',
+            label: `${recommendTermination ? '【推荐】' : ''}保持所有约束不变（TERMINAL_NO_SOLUTION｜CONSENSUS_REACHED: NO_FEASIBLE_PATH）${
+              recommendTermination ? '（已连续多次尝试当前约束，物理冲突仍无法消除）' : ''
+            }`,
+            metadata: {
+              score: ConstraintScorer.calculateScore('accept_no_solution', {
+                dominant_cid,
+                is_hard,
+                oscillation_k: sameAttempts,
+                precedent: ewMetaTop,
+                preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+              }).score,
+              dominant_cid,
+              precedent_n: typeof ewMetaTop?.sample_count === 'number' ? ewMetaTop.sample_count : 0,
+              path: 'OTHER',
+            },
+          },
+        ] as any);
+
+        state.errors.push({
+          step: 'PLAN_GEN',
+          error_code: planGenTf.code,
+          message: planGenTf.message,
+          timestamp: new Date().toISOString(),
+        });
+        state.clarification_questions = [
+          {
+            id: 'plan_gen_empty_draft_relax_constraints',
+            question: `${
+              recommendTermination
+                ? `[SYSTEM_ACTION]: 观察到多次尝试未果（连续相同放宽尝试次数=${sameAttempts}）。建议保持当前约束终止规划，或尝试更高强度的组合放宽。\n\n`
+                : ''
+            }${planGenTf.message} 系统已停止后续验证与行程叙述，以免产生无依据建议。请选择一个“放宽约束”的动作（已做影子预演/近似检查并标注置信度）。`,
+            type: anyHigh ? 'single_choice' : 'multi_choice',
+            required: true,
+            options:
+            options.length > 0
+                ? options
+                : [
+                    {
+                      value: 'manual_relax_constraints',
+                      label: labelWithFixTypes('手动描述你愿意放宽的约束（改期/减少必去点/降低强度）', false),
+                    },
+                  ],
+            hint: planGenTf.detail ? `技术详情：${planGenTf.detail}` : undefined,
+          },
+        ];
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'PLAN_GEN',
+          actor: 'Orchestrator',
+          inputs_summary: 'PLAN_GEN_EMPTY_DRAFT → clarification options snapshot',
+          outputs_summary: `PLAN_GEN_EMPTY_DRAFT_CLARIFICATION: options=${Array.isArray(options) ? options.length : 0}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'PLAN_GEN_EMPTY_DRAFT_CLARIFICATION',
+            options_snapshot: options ?? [],
+            dominant_cid,
+            is_hard,
+          },
+        });
+        state.current_step = 'DONE';
+        state.metadata.last_updated_at = new Date().toISOString();
+        state.metadata.total_duration_ms = Date.now() - startTime;
+        this.maybeSnapshot(state, 'CHECKPOINT');
+        return this.buildClarificationResult(state, startTime, decisionState);
+      }
+
+      // 步骤 8:优化（OPTIMIZE）- 阶段 2.3：抽取优化提示
       decisionState = await this.executeOptimizeStep(state, decisionState);
       this.maybeSnapshot(state, 'AUTO');
 
-      // 步骤 9: VERIFY - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
+      // 步骤 9: 验证（VERIFY）- 当执行模式为 KERNEL_NATIVE_EXECUTION 时，走 Kernel.executeVerify 路径
       decisionState = await this.executeVerifyPhase(decisionState, state, request, context, llmProvider);
       decisionState = this.syncConfidenceAfterVerify(state, decisionState) ?? decisionState;
       this.maybeSnapshot(state, 'AUTO');
@@ -2567,7 +3258,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         return this.buildErrorResult(state, new Error(msg), startTime, decisionState);
       }
 
-      // 步骤 10: REPAIR - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair（条件执行）
+      // 步骤 10: 修复（REPAIR）- 当执行模式为 KERNEL_NATIVE_EXECUTION 时，走 Kernel.executeRepair 路径（条件执行）
       if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
         const euBefore = decisionState?.optimizationHints?.expectedUtility;
         decisionState = await this.executeRepairPhase(decisionState, state, request, context, llmProvider) ?? decisionState;
@@ -2722,6 +3413,17 @@ ${JSON.stringify(routingDecision, null, 2)}
   private shouldReturnClarificationForHardGaps(state: OrchestratorState): boolean {
     const allowPartial = state.metadata?.allow_partial === true;
     if (allowPartial) {
+      // 意图编译错误必须始终阻止下游阶段执行（即使设置了 allow_partial 也不例外）。
+      const hasCompileError =
+        state.gaps?.some((g) => g.severity === 'HARD' && (g.type === 'INTENT_COMPILE_ERROR' || g.type === 'SPEC_TYPE_ERROR')) ??
+        false;
+      if (
+        hasCompileError &&
+        state.clarification_questions &&
+        state.clarification_questions.length > 0
+      ) {
+        return true;
+      }
       const hasHardDestinationGap =
         state.gaps?.some((g) => g.severity === 'HARD' && g.type === 'MISSING_DESTINATION') ??
         false;
@@ -2737,6 +3439,23 @@ ${JSON.stringify(routingDecision, null, 2)}
       state.clarification_questions &&
       state.clarification_questions.length > 0
     );
+  }
+
+  private djb2Fingerprint(value: unknown): string {
+    const stable = JSON.stringify(value, (_k, v) => {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        return Object.keys(v as any)
+          .sort()
+          .reduce((acc: any, key) => {
+            acc[key] = (v as any)[key];
+            return acc;
+          }, {});
+      }
+      return v;
+    });
+    let h = 5381;
+    for (let i = 0; i < stable.length; i++) h = (h * 33) ^ stable.charCodeAt(i);
+    return `djb2:${(h >>> 0).toString(16)}`;
   }
 
   /**
@@ -2926,6 +3645,13 @@ ${JSON.stringify(routingDecision, null, 2)}
       mode = 'transit';
     }
 
+    // 提取车辆类型（用于准入类约束与 INTAKE predictive simulation）
+    const vehicle_type: '2WD' | '4WD' | undefined = /4wd|4x4|四驱|四驱车/i.test(request.message)
+      ? '4WD'
+      : /2wd|两驱/i.test(request.message)
+        ? '2WD'
+        : undefined;
+
     // 未命中关键词表时：从「在X的…行程」抽取 X（覆盖 Reykjavik、雷克雅未克市区等）
     if (
       !destination ||
@@ -2951,6 +3677,9 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     return {
       request_id: request.request_id,
+      // Carry raw NL message forward for deterministic intake compile & predictive simulation.
+      // This is intentionally duplicated from the API request and treated as non-authoritative hint.
+      message: request.message,
       origin: structOrigin.length >= 1 ? structOrigin : '起点', // 默认值，实际应该从 message 或上下文提取
       destination: destination || '未指定',
       date_range,
@@ -2960,6 +3689,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       party: {
         count: partyCount,
       },
+      ...(vehicle_type ? { constraints: { vehicle_type } } : {}),
     };
   }
 
@@ -2979,7 +3709,295 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 INTAKE 步骤...`);
 
     try {
-      const tripPlanRequest = this.convertToTripPlanRequest(request, state);
+      let tripPlanRequest = this.convertToTripPlanRequest(request, state);
+
+      // Constraint Zone (Temporal hard deadlines): make them explicitly visible to downstream LLM/planning skills.
+      // We keep it as a high-weight system hint embedded in TripPlanRequest.message (best-effort, backwards compatible).
+      const hardDeadlines = (request as any)?.emergency_constraints?.hard_deadlines as Record<string, string> | undefined;
+      if (hardDeadlines && typeof hardDeadlines === 'object' && Object.keys(hardDeadlines).length > 0) {
+        const lines = Object.entries(hardDeadlines)
+          .slice(0, 10)
+          .map(([k, v]) => `- ${String(k)} 截止于 ${String(v)}`);
+        const sysHint =
+          `[SYSTEM_MESSAGE][CONSTRAINT_ZONE][TEMPORAL_DEADLINE]\n` +
+          `注意：以下 POI/Segment 受到物理环境限制（如日落），必须在指定时间前结束。\n` +
+          `${lines.join('\n')}\n` +
+          `如果当前计划冲突，请优先尝试调换行程顺序（例如将上午的室内活动挪至傍晚，或将高风险户外活动提前）。\n`;
+        tripPlanRequest.message = `${sysHint}\n${tripPlanRequest.message ?? request.message ?? ''}`.trim();
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: 'emergency_constraints.hard_deadlines → Constraint Zone system hint',
+          outputs_summary: `TEMPORAL_DEADLINES=${Object.keys(hardDeadlines).length}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'CONSTRAINT_ZONE_TEMPORAL_DEADLINE',
+            hard_deadlines: hardDeadlines,
+          },
+        });
+      }
+
+      // 闭环：消费澄清回合答案 → 组合放宽补丁 / 或用户批准终止
+      const clarificationAnswers = (request as any).clarification_answers as any[] | undefined;
+      if (this.clarificationHandler && Array.isArray(clarificationAnswers) && clarificationAnswers.length > 0) {
+        const { tripPlanRequest: patched, applied, terminalIntent, fingerprint, earlyWarningProceedAtOwnRisk, didPatch } =
+          this.clarificationHandler.applyRelaxationsFromAnswers(tripPlanRequest, clarificationAnswers);
+        // 防御性：记录 fingerprint 与重试次数到 DSO.systemState（用于识别无效重复尝试）
+        if (this.decisionKernel && (state as any).decisionState) {
+          // no-op: decisionState 不在 state 上；留给 STATE_UPDATE 后统一写入
+        }
+        if (terminalIntent) {
+          state.metadata = {
+            ...(state.metadata ?? {}),
+            terminal_intent: terminalIntent,
+            last_relaxation_fingerprint: fingerprint,
+          } as any;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → TerminalIntent',
+            outputs_summary: 'CONSENSUS_REACHED: NO_FEASIBLE_PATH',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'CONSENSUS_REACHED_NO_FEASIBLE_PATH',
+              terminal_intent: terminalIntent,
+              fingerprint,
+            },
+          });
+        } else if (applied.length > 0 || didPatch) {
+          tripPlanRequest = patched;
+          state.metadata = {
+            ...(state.metadata ?? {}),
+            applied_relaxations: applied,
+            last_relaxation_fingerprint: fingerprint,
+          } as any;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → CompositeRelaxationPatch',
+            outputs_summary: `RELAXATION_APPLIED: ${applied.map((a) => a.id).join('+')}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'RELAXATION_APPLIED',
+              applied_relaxations: applied,
+              fingerprint,
+            },
+          });
+        }
+
+        if (earlyWarningProceedAtOwnRisk) {
+          const ew = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
+          // 此时我们可能还没有 VERIFY 报告；保持绑定的稳定性和轻量级。
+          const evidence = collectDecisionEvidenceSummaries(undefined);
+          const fp = computeDecisionEvidenceFingerprint(evidence);
+          state.metadata = {
+            ...(state.metadata ?? {}),
+            early_warning_acknowledged: true,
+            early_warning_proceed_at: new Date().toISOString(),
+            ...(fingerprint ? { last_relaxation_fingerprint: fingerprint } : {}),
+          } as any;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → EARLY_WARNING_PROCEED_AT_OWN_RISK',
+            outputs_summary: 'USER_PROCEEDED_AT_OWN_RISK: no TripPlanRequest patch; downstream POI/PLAN_GEN allowed',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'EARLY_WARNING_PROCEED_AT_OWN_RISK',
+              early_warning_id: ew?.early_warning_id,
+              event: 'PROCEED_AT_OWN_RISK',
+              evidence_fingerprint: fp.evidence_fingerprint,
+              acknowledged_violations: fp.acknowledged_violations,
+              max_violation_slack: fp.max_violation_slack,
+            },
+          });
+        }
+
+        // 行为分析：记录用户在澄清问题上的“选择/拒绝”（用于 EARLY_WARNING → PLAN_GEN 的认知差语料）
+        const ewAnswer = clarificationAnswers.find((a) => a?.questionId === 'early_warning_relaxations');
+        const pgAnswer = clarificationAnswers.find((a) => a?.questionId === 'plan_gen_empty_draft_relax_constraints');
+
+        const normalizePicked = (v: any): string[] => {
+          if (Array.isArray(v)) return v.map(String).filter(Boolean);
+          if (typeof v === 'string') return [v].filter(Boolean);
+          return [];
+        };
+
+        if (ewAnswer) {
+          const ew = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
+          const suggested = Array.isArray(ew?.suggested_actions)
+            ? ew!.suggested_actions.map((s) => String(s?.relaxation_type ?? '')).filter(Boolean)
+            : [];
+          const chosen = normalizePicked(ewAnswer.value);
+          const rejected = suggested.filter((x) => !chosen.includes(x));
+          const proceed = chosen.includes('proceed_at_own_risk');
+          const evidence = proceed ? collectDecisionEvidenceSummaries(undefined) : [];
+          const fp = proceed ? computeDecisionEvidenceFingerprint(evidence) : undefined;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → EARLY_WARNING_USER_CHOICE',
+            outputs_summary: `EARLY_WARNING_USER_CHOICE: chosen=${chosen.join(',') || '∅'} rejected=${rejected.join(',') || '∅'}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'EARLY_WARNING_USER_CHOICE',
+              early_warning_id: ew?.early_warning_id,
+              suggested_actions: suggested,
+              chosen_actions: chosen,
+              rejected_actions: rejected,
+              ...(proceed && fp
+                ? {
+                    event: 'PROCEED_AT_OWN_RISK',
+                    evidence_fingerprint: fp.evidence_fingerprint,
+                    acknowledged_violations: fp.acknowledged_violations,
+                    max_violation_slack: fp.max_violation_slack,
+                  }
+                : {}),
+            },
+          });
+
+          // Conversion Learning: CLARIFICATION_FEEDBACK — bind the choice to the option snapshot at presentation time.
+          const snap = (state.decision_log ?? [])
+            .slice()
+            .reverse()
+            .find((e) => e?.metadata?.system_action === 'EARLY_WARNING_INTERCEPT')?.metadata?.options_snapshot as any[] | undefined;
+          const top = Array.isArray(snap)
+            ? snap
+                .filter((o) => o && typeof o === 'object' && typeof (o as any).metadata?.score === 'number')
+                .sort((a, b) => ((b as any).metadata.score as number) - ((a as any).metadata.score as number))[0]
+            : undefined;
+          const topValue = top ? String((top as any).value ?? '') : '';
+          const reward = proceed ? -1 : topValue && chosen.includes(topValue) ? 1 : 0;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → CLARIFICATION_FEEDBACK (EARLY_WARNING)',
+            outputs_summary: `CLARIFICATION_FEEDBACK: q=early_warning_relaxations reward=${reward}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'CLARIFICATION_FEEDBACK',
+              questionId: 'early_warning_relaxations',
+              early_warning_id: ew?.early_warning_id,
+              dominant_cid: (top as any)?.metadata?.dominant_cid ?? (ew as any)?.conflict_type,
+              fingerprint: (state.metadata as any)?.last_relaxation_fingerprint,
+              oscillation_k: 0,
+              options_snapshot: Array.isArray(snap) ? snap : [],
+              chosen_actions: chosen,
+              top_scored_value: topValue || undefined,
+              reward,
+            },
+          });
+
+          // 回灌到 CaseStore：记录 shown/chosen_top/proceeded/rejected（best-effort，不阻塞）
+          if (this.localCaseStore && Array.isArray(snap)) {
+            const sig = SignatureBuilder.buildConversionSignature({
+              conflict_type: ((ew as any)?.conflict_type ?? 'MIXED') as any,
+              primary_violation_type: (top as any)?.metadata?.dominant_cid,
+              region_id: (state.trip_plan_request as any)?.region_id,
+              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
+            }) as any;
+            Promise.resolve()
+              .then(() => {
+                for (const o of snap) {
+                  const v = String((o as any)?.value ?? '');
+                  if (!v) continue;
+                  this.localCaseStore!.recordConversion({ signature: sig, action: v as any, kind: 'shown' });
+                }
+                if (proceed) this.localCaseStore!.recordConversion({ signature: sig, action: 'proceed_at_own_risk', kind: 'proceeded' });
+                if (topValue && chosen.includes(topValue)) this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'chosen_top' });
+                // targeted rejection: only count top-scored action rejected when user didn't pick it.
+                if (topValue && !chosen.includes(topValue)) {
+                  this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'rejected' });
+                }
+              })
+              .catch(() => undefined);
+          }
+        }
+
+        if (pgAnswer) {
+          const chosen = normalizePicked(pgAnswer.value);
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → PLAN_GEN_USER_CHOICE',
+            outputs_summary: `PLAN_GEN_USER_CHOICE: chosen=${chosen.join(',') || '∅'}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'PLAN_GEN_USER_CHOICE',
+              chosen_actions: chosen,
+            },
+          });
+
+          const snap = (state.decision_log ?? [])
+            .slice()
+            .reverse()
+            .find((e) => e?.metadata?.system_action === 'PLAN_GEN_EMPTY_DRAFT_CLARIFICATION')?.metadata?.options_snapshot as any[] | undefined;
+          const top = Array.isArray(snap)
+            ? snap
+                .filter((o) => o && typeof o === 'object' && typeof (o as any).metadata?.score === 'number')
+                .sort((a, b) => ((b as any).metadata.score as number) - ((a as any).metadata.score as number))[0]
+            : undefined;
+          const topValue = top ? String((top as any).value ?? '') : '';
+          const reward = chosen.includes('accept_no_solution') ? -1 : topValue && chosen.includes(topValue) ? 1 : 0;
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'STATE_UPDATE',
+            actor: 'Orchestrator',
+            inputs_summary: 'clarification_answers → CLARIFICATION_FEEDBACK (PLAN_GEN)',
+            outputs_summary: `CLARIFICATION_FEEDBACK: q=plan_gen_empty_draft_relax_constraints reward=${reward}`,
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'CLARIFICATION_FEEDBACK',
+              questionId: 'plan_gen_empty_draft_relax_constraints',
+              dominant_cid: (top as any)?.metadata?.dominant_cid,
+              fingerprint: (state.metadata as any)?.last_relaxation_fingerprint,
+              oscillation_k: 0,
+              options_snapshot: Array.isArray(snap) ? snap : [],
+              chosen_actions: chosen,
+              top_scored_value: topValue || undefined,
+              reward,
+            },
+          });
+
+          if (this.localCaseStore && Array.isArray(snap)) {
+            const sig = SignatureBuilder.buildConversionSignature({
+              conflict_type: 'MIXED',
+              primary_violation_type: (top as any)?.metadata?.dominant_cid,
+              region_id: (state.trip_plan_request as any)?.region_id,
+              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
+            }) as any;
+            Promise.resolve()
+              .then(() => {
+                for (const o of snap) {
+                  const v = String((o as any)?.value ?? '');
+                  if (!v) continue;
+                  this.localCaseStore!.recordConversion({ signature: sig, action: v as any, kind: 'shown' });
+                }
+                if (topValue && chosen.includes(topValue)) this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'chosen_top' });
+                if (topValue && !chosen.includes(topValue)) {
+                  this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'rejected' });
+                }
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
       state.trip_plan_request = tripPlanRequest;
       state.metadata.intake_user_message = request.message;
 
@@ -2997,6 +4015,9 @@ ${JSON.stringify(routingDecision, null, 2)}
 
         state.gaps = result.gaps as OrchestratorState['gaps'];
         state.clarification_questions = result.clarificationQuestions as any;
+        if ((result as any).simulation) {
+          (state.metadata as any) = { ...(state.metadata ?? {}), intake_simulation: (result as any).simulation };
+        }
         state.decision_log.push({
           request_id: state.request_id,
           step: 'INTAKE',
@@ -4215,8 +5236,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         dsoForPlan = this.decisionKernel.applyPrePlanMigrationInjections(dsoForPlan);
         state.decision_log.push({
           request_id: state.request_id,
-          step: 'PRE_PLAN_MIGRATION_INJECTION',
-          actor: 'Kernel',
+          step: 'CONTEXT_BUILD',
+          actor: 'Orchestrator',
           inputs_summary: '消费 DSO.systemState.pendingMigrations → 注入既有 planDraft',
           outputs_summary: `剩余待迁移条目=${dsoForPlan.systemState?.pendingMigrations?.length ?? 0}`,
           evidence_refs: [],
@@ -4235,15 +5256,27 @@ ${JSON.stringify(routingDecision, null, 2)}
       Object.assign(state, derived);
       state.itinerary = itinerary as Itinerary;
       state.current_step = 'PLAN_GEN';
+      const pgFail = newState.systemState?.planGenTerminalFailure;
       state.decision_log.push({
         request_id: state.request_id,
         step: 'PLAN_GEN',
         actor: 'Planner',
         inputs_summary: 'Kernel 原生 PLAN_GEN',
-        outputs_summary: `生成了 ${itinerary.days.length} 天的行程`,
+        outputs_summary:
+          itinerary.days.length > 0
+            ? `生成了 ${itinerary.days.length} 天的行程`
+            : `未生成任何日程天（${pgFail?.message ?? 'planGenTerminalFailure'}）`,
         evidence_refs: [],
         timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime },
+        metadata: {
+          duration_ms: Date.now() - stepStartTime,
+          ...(pgFail
+            ? {
+                system_action: SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT,
+                planGenTerminalFailure: pgFail,
+              }
+            : {}),
+        },
       });
       state.metadata.last_updated_at = new Date().toISOString();
       await this.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
@@ -4295,6 +5328,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       const stepStartTime = Date.now();
       const ctx = {
         requestId: state.request_id,
+        tripPlanRequest: state.trip_plan_request,
         itinerary: state.itinerary as any,
         researchData: state.research_data,
       };
@@ -4331,6 +5365,60 @@ ${JSON.stringify(routingDecision, null, 2)}
         timestamp: new Date().toISOString(),
         metadata: { duration_ms: Date.now() - stepStartTime, issues, guardian: 'DR_DRE' as GuardianType },
       });
+
+      // Hard opening-hours audit proof (C1 strict): materialize a stable evidence bundle for temporal_opening_v1.
+      // Source of truth: Kernel verify issues + (itinerary + research_data.opening_hours_evidence) for human-readable windows.
+      try {
+        const poiClosed = (issues as any[]).filter((i) => i?.code === 'POI_CLOSED' && i?.entityRef?.type === 'POI');
+        if (poiClosed.length > 0 && state.itinerary && state.research_data?.opening_hours_evidence) {
+          const ohData = state.research_data.opening_hours_evidence;
+          const openingHoursMap = new Map<string, any>();
+          const rows = Array.isArray(ohData) ? ohData : Array.isArray((ohData as any)?.opening_hours) ? (ohData as any).opening_hours : [];
+          for (const r of rows) {
+            if (r && r.poi_id && r.opening_hours) openingHoursMap.set(String(r.poi_id), r);
+          }
+          const day0 = (state.itinerary as any)?.days?.[0];
+          const dayDate = String(day0?.date ?? '');
+          const items: any[] = Array.isArray(day0?.items) ? day0.items : [];
+          for (const it of items) {
+            const poiId = String(it?.location_ref?.place_id ?? '');
+            if (!poiId) continue;
+            const hit = poiClosed.find((x) => String(x?.entityRef?.id ?? '') === String(it?.id ?? ''));
+            if (!hit) continue;
+            const oh = openingHoursMap.get(poiId);
+            const openWindow = oh?.opening_hours ?? (oh?.open_time && oh?.close_time ? `${oh.open_time}-${oh.close_time}` : undefined) ?? 'UNKNOWN';
+            state.decision_log.push({
+              request_id: state.request_id,
+              step: 'VERIFY',
+              actor: 'Orchestrator',
+              inputs_summary: 'temporal_opening_v1: opening hours hard check',
+              outputs_summary: `POI_CLOSED: ${String(it?.location_ref?.name ?? poiId)} @ ${String(it?.start_window ?? '')}-${String(it?.end_window ?? '')}`,
+              evidence_refs: oh?.evidence_id ? [String(oh.evidence_id)] : [],
+              timestamp: new Date().toISOString(),
+              metadata: {
+                rule_id: 'temporal_opening_v1',
+                details: {
+                  evidence: {
+                    type: 'opening_hours',
+                    source: 'OPENING_HOURS',
+                    poi_id: poiId,
+                    date: dayDate || undefined,
+                    timezone: 'UTC',
+                    planned_start: dayDate && it?.start_window ? `${dayDate}T${String(it.start_window)}:00.000Z` : null,
+                    planned_end: dayDate && it?.end_window ? `${dayDate}T${String(it.end_window)}:00.000Z` : null,
+                    open_window: openWindow,
+                    is_violated: true,
+                    item_id: String(it?.id ?? ''),
+                  },
+                },
+              },
+            } as any);
+          }
+        }
+      } catch {
+        // best-effort only
+      }
+
       state.metadata.last_updated_at = new Date().toISOString();
       await this.generateDecisionStepForStep(state, 'VERIFY', 'CoreDecision');
       return newState;
@@ -4377,6 +5465,61 @@ ${JSON.stringify(routingDecision, null, 2)}
       });
       state.metadata.last_updated_at = new Date().toISOString();
       await this.generateDecisionStepForStep(state, 'REPAIR', 'LocalInsight');
+
+      // Observability: best-effort score sample even for non-terminal REPAIR exits (oscillation/max-iter/utility-compensation)
+      try {
+        const audit_report = AuditReportGenerator.generate(newState, state);
+        const score = (audit_report as any)?.session_consistency_score;
+        if (typeof score === 'number') {
+          this.promMetrics?.recordSessionConsistencyScore({
+            score,
+            dominant_cid: (audit_report as any)?.dominant_cid,
+            phase: 'REPAIR',
+          });
+        }
+
+        // LogicOps: emit a single atomic audit event when REPAIR produced actionable traces or a score.
+        // This allows P0/P1/P2 matrix to light up even when the run returns OK (non-terminal).
+        const hasRealTraces =
+          Array.isArray((audit_report as any)?.repair_traces) && (audit_report as any).repair_traces.length > 0;
+        if (hasRealTraces || typeof score === 'number') {
+          const drift = (audit_report as any)?.predictive_feedback_then_repair?.drift_vector;
+          const deltaReason = String(drift?.delta_reason ?? '').trim();
+          const deltaUtility = Number(drift?.delta_utility);
+          const delta_reason_kind =
+            deltaReason === 'aligned'
+              ? ('aligned' as const)
+              : deltaReason
+                ? ('mismatch' as const)
+                : ('unknown' as const);
+          const is_intent_revised = Boolean((audit_report as any)?.predictive_feedback_then_repair?.intent_revision_flag);
+          const utility_drift_severity = (() => {
+            if (!Number.isFinite(deltaUtility)) return 'unknown' as const;
+            const a = Math.abs(deltaUtility);
+            if (a <= 5) return 'low' as const;
+            if (a <= 20) return 'medium' as const;
+            return 'high' as const;
+          })();
+
+          this.logger.log(
+            JSON.stringify({
+              event: 'decision_os_audit_report',
+              phase: 'REPAIR',
+              terminal: false,
+              request_id: state.request_id,
+              dominant_cid: (audit_report as any)?.dominant_cid,
+              session_consistency_score: (audit_report as any)?.session_consistency_score,
+              delta_reason_kind,
+              is_intent_revised,
+              utility_drift_severity,
+              audit_report,
+            }),
+          );
+        }
+      } catch {
+        // best-effort only
+      }
+
       return newState;
     }
     return this.executePhaseViaKernel(decisionState, state, 'REPAIR', () =>
@@ -4797,7 +5940,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           }
         }
 
-        // 6. Domain Agents - World Model Data
+        // 6. 领域智能体——世界模型数据
         await this.collectWorldModelData(tripRequest, researchData, evidenceRefs);
 
         // 7. 护城河扩展：预测数据（并行获取）
@@ -5938,6 +7081,15 @@ ${JSON.stringify(routingDecision, null, 2)}
     return messages.join('\n');
   }
 
+  private violationTypeToCn(type: string): string {
+    const t = String(type || '').toUpperCase();
+    if (t === 'REACHABILITY') return '准入类';
+    if (t === 'SCOPE') return '空间类';
+    if (t === 'SAFETY') return '安全类';
+    if (t === 'FAILURE_RISK') return '风险类';
+    return type;
+  }
+
   /**
    * 构建成功结果
    * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
@@ -6098,6 +7250,154 @@ ${JSON.stringify(routingDecision, null, 2)}
       })),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log, // 🆕 确保决策日志被包含
+    };
+  }
+
+  private buildTerminalNoSolutionResult(
+    state: OrchestratorState,
+    startTime: number,
+    decisionState?: DecisionState,
+  ): OrchestrationResult {
+    this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
+
+    const tf = decisionState?.systemState?.planGenTerminalFailure;
+    const violations = (decisionState as any)?.constraints?.violations ?? state.gate_result?.violations ?? [];
+    const vStr = Array.isArray(violations)
+      ? violations
+          .slice(0, 3)
+          .map((v: any) => `${v?.type ?? 'CONSTRAINT'}: ${v?.detail ?? ''}`.trim())
+          .filter(Boolean)
+          .join('；')
+      : '';
+
+    const answerText =
+      `基于您的确认，系统已停止规划（CONSENSUS_REACHED: NO_FEASIBLE_PATH）。` +
+      `在不放宽约束（加天数/换车/删必去点）的前提下，当前物理/业务冲突不可逾越。` +
+      (tf?.message ? ` 终止原因：${tf.message}.` : '') +
+      (vStr ? ` 冲突摘要：${vStr}` : '');
+
+    // If user terminates early (accept_no_solution), we may not have reached the RESEARCH-stage
+    // PREDICTIVE_FAILURE_REPORT emission. Synthesize it from INTAKE simulation so the terminal
+    // audit can still carry drift_vector / session_consistency_score for LogicOps.
+    try {
+      const existingEw = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
+      const hasPfr = Boolean((existingEw as any)?.predictive_failure_report);
+      const intakeSim = (state.metadata as any)?.intake_simulation as
+        | { simulatedRepairTraces?: import('../services/route-feasibility.types').SimulatedRepairTrace[] }
+        | undefined;
+      const simTraces = intakeSim?.simulatedRepairTraces ?? [];
+      if (!hasPfr && Array.isArray(simTraces) && simTraces.length > 0) {
+        const predictive_failure_report = {
+          card_type: 'PREDICTIVE_FAILURE_REPORT' as const,
+          correlationId: undefined as unknown as string | undefined,
+          audit_text: formatPredictiveFailureReport(simTraces),
+          simulated_repair_traces: simTraces,
+        };
+        const mergedEw: EarlyWarning = existingEw
+          ? { ...existingEw, predictive_failure_report }
+          : {
+              early_warning_id: `pred-${state.request_id}`,
+              risk_level: 'MEDIUM',
+              conflict_type: 'MIXED',
+              evidence_summary: 'INTAKE_PREDICTIVE_SIMULATION',
+              suggested_actions: [],
+              predictive_failure_report,
+            };
+        (state.metadata as any) = { ...(state.metadata ?? {}), early_warning: mergedEw };
+      }
+    } catch {
+      // best-effort only
+    }
+
+    const audit_report = AuditReportGenerator.generate(decisionState, state);
+
+    // Observability: record session consistency score for dashboards / alerts
+    try {
+      const score = (audit_report as any)?.session_consistency_score;
+      if (typeof score === 'number') {
+        this.promMetrics?.recordSessionConsistencyScore({
+          score,
+          dominant_cid: (audit_report as any)?.dominant_cid,
+          phase: 'REPAIR',
+        });
+      }
+    } catch {
+      // best-effort only
+    }
+
+    // Observability (Logs): emit a single atomic audit event for Loki drill-down.
+    // Important: only emit on terminal reports to avoid I/O explosion.
+    try {
+      const drift = (audit_report as any)?.predictive_feedback_then_repair?.drift_vector;
+      const deltaReason = String(drift?.delta_reason ?? '').trim();
+      const deltaUtility = Number(drift?.delta_utility);
+      const delta_reason_kind =
+        deltaReason === 'aligned' ? ('aligned' as const) : deltaReason ? ('mismatch' as const) : ('unknown' as const);
+      const is_intent_revised = Boolean((audit_report as any)?.predictive_feedback_then_repair?.intent_revision_flag);
+      const utility_drift_severity = (() => {
+        if (!Number.isFinite(deltaUtility)) return 'unknown' as const;
+        const a = Math.abs(deltaUtility);
+        if (a <= 5) return 'low' as const;
+        if (a <= 20) return 'medium' as const;
+        return 'high' as const;
+      })();
+
+      const payload = {
+        event: 'decision_os_audit_report',
+        request_id: state.request_id,
+        dominant_cid: (audit_report as any)?.dominant_cid,
+        session_consistency_score: (audit_report as any)?.session_consistency_score,
+        delta_reason_kind,
+        is_intent_revised,
+        utility_drift_severity,
+        audit_report,
+      };
+      this.logger.log(JSON.stringify(payload));
+    } catch {
+      // best-effort only
+    }
+
+    // In-Memory Precedents (CBR): 异步抽取并聚合 gold_sample 到本地判例库（不阻塞返回）
+    if (this.localCaseStore) {
+      Promise.resolve()
+        .then(() => {
+          const rec = auditReportToCaseRecord({ audit_report: audit_report as any, request_id: state.request_id });
+          if (rec) this.localCaseStore!.saveCase(rec);
+        })
+        .catch(() => undefined);
+    }
+
+    if (this.cbrAggregator) {
+      void this.cbrAggregator
+        .ingestAuditReport(audit_report as any, state.request_id)
+        .catch((err) =>
+          this.logger.warn(
+            `CBR background ingest failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
+
+    return {
+      success: false,
+      result: {
+        state,
+        needsUserConfirmation: false,
+        terminal: {
+          type: 'TERMINAL_NO_SOLUTION',
+          planGenTerminalFailure: tf,
+          violations,
+          audit_report,
+        } as any,
+        ...(decisionState && { decisionState }),
+      } as any,
+      answerText,
+      stepsExecuted: state.decision_log.map((log) => ({
+        stepId: log.step,
+        success: true,
+        duration: log.metadata?.duration_ms || 0,
+      })),
+      totalDuration: Date.now() - startTime,
+      decisionLog: state.decision_log,
     };
   }
 

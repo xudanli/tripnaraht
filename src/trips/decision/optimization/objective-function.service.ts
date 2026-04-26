@@ -484,15 +484,38 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     const avgSlack = dayProfiles.length > 0 ? totalSlack / dayProfiles.length : 0;
     
     // 理想余量：2-4 小时
+    let band: number;
     if (avgSlack >= 2 && avgSlack <= 4) {
-      return 1.0;
+      band = 1.0;
     } else if (avgSlack >= 1 && avgSlack <= 5) {
-      return 0.8;
+      band = 0.8;
     } else if (avgSlack < 1) {
-      return 0.5 + avgSlack * 0.3;
+      band = 0.5 + avgSlack * 0.3;
     } else {
-      return 0.7; // 余量太多，效率偏低
+      band = 0.7; // 余量太多，效率偏低
     }
+
+    // 高爬升 / 高海拔：时间余量「感知」非线性塌缩（生理风险 > 线性耗时）
+    const terrainCollapse = this.terrainTimeSlackCollapseMultiplier(dayProfiles);
+    return Math.max(0, Math.min(1, band * terrainCollapse));
+  }
+
+  /**
+   * 高累计爬升或高海拔时压低 timeSlackScore（与 FatigueCalculator 非线性一致）
+   */
+  private terrainTimeSlackCollapseMultiplier(profiles: DayProfile[]): number {
+    let m = 1;
+    for (const d of profiles) {
+      const a = d.totalAscentM;
+      const z = d.averageElevationM ?? 0;
+      if (a > 2500) m = Math.min(m, 0.52);
+      else if (a > 1800) m = Math.min(m, 0.68);
+      else if (a > 1200) m = Math.min(m, 0.82);
+      else if (a > 800) m = Math.min(m, 0.92);
+      if (z > 3500) m = Math.min(m, m * 0.72);
+      else if (z > 2800) m = Math.min(m, m * 0.86);
+    }
+    return m;
   }
 
   /**
@@ -933,9 +956,25 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
           (m, seg) => Math.max(m, seg.slopePct ?? 0),
           0
         );
-        const estMovingHours = this.fatigueCalculator.estimateMovingHours(
+
+        let sumElev = 0;
+        let nElev = 0;
+        for (const seg of segments) {
+          const m = Number((seg.metadata as { avgElevationM?: number } | undefined)?.avgElevationM);
+          if (Number.isFinite(m)) {
+            sumElev += m;
+            nElev++;
+          }
+        }
+        const averageElevationM = nElev > 0 ? sumElev / nElev : undefined;
+
+        const estMovingHours = this.fatigueCalculator.estimateMovingHoursEnhanced(
           totalDistanceKm,
-          totalAscentM
+          totalAscentM,
+          {
+            ascentSpeedMPerH: pace.ascentSpeedMPerH,
+            averageElevationM: averageElevationM ?? undefined,
+          },
         );
 
         const dp: DayProfile = {
@@ -946,9 +985,12 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
           maxSlopePct,
           estMovingHours,
           fatigueIndex: 0,
+          averageElevationM,
         };
 
-        dp.fatigueIndex = this.fatigueCalculator.computeFatigueIndex(dp, pace);
+        dp.fatigueIndex = this.fatigueCalculator.computeFatigueIndexEnhanced(dp, pace, {
+          averageElevationM: dp.averageElevationM,
+        });
         return dp;
       });
   }
@@ -965,6 +1007,11 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     const preferredPace = human?.preferredPace;
     const rollingAscent = human?.rollingAscent3DaysM || 3000;
 
+    const ascentSpeedMPerH =
+      typeof human?.ascentSpeedMPerH === 'number' && human.ascentSpeedMPerH > 0
+        ? human.ascentSpeedMPerH
+        : 600;
+
     return {
       maxDailyAscentM: Math.min(
         maxAscent,
@@ -977,6 +1024,7 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
         : preferredPace === 'FAST' ? 10 
         : 9,
       rollingAscent3DaysM: rollingAscent,
+      ascentSpeedMPerH,
     };
   }
 }

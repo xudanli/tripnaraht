@@ -64,7 +64,7 @@ export class DEMElevationService {
    * 检查坐标是否在冰岛范围内
    * 冰岛大致范围：纬度 63.3°N - 66.5°N，经度 -24.5°W - -13.5°W
    */
-  private isInIcelandBounds(lat: number, lng: number): boolean {
+  isInIcelandBounds(lat: number, lng: number): boolean {
     return lat >= 63.3 && lat <= 66.5 && lng >= -24.5 && lng <= -13.5;
   }
 

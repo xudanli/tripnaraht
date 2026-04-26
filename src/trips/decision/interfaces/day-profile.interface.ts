@@ -25,6 +25,8 @@ export interface DayProfile {
   estMovingHours: number;
   /** 疲劳指数（综合指标） */
   fatigueIndex: number;
+  /** DEM TerrainAudit 回填的当日平均海拔（米），用于高海拔非线性时间余量 */
+  averageElevationM?: number;
 }
 
 /**
@@ -39,6 +41,12 @@ export interface PaceConstraints {
   maxMovingHours: number;
   /** 3 天滚动窗口最大累计爬升（米） */
   rollingAscent3DaysM: number;
+
+  /**
+   * 垂直爬升速度（米/小时），用于 estimateMovingHours；默认 600。
+   * 可由用户画像或「早拒晚接」等反馈校准下调，使后续计划更保守。
+   */
+  ascentSpeedMPerH?: number;
 }
 
 /**

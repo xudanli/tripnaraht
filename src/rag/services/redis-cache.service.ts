@@ -32,6 +32,13 @@ export class RedisCacheService implements OnModuleDestroy {
    */
   private async initialize() {
     try {
+      const disabled = String(process.env.DISABLE_REDIS ?? '').toLowerCase();
+      if (disabled === '1' || disabled === 'true') {
+        this.logger.warn('[Redis] DISABLE_REDIS enabled, using in-memory fallback');
+        this.client = null;
+        this.isConnected = false;
+        return;
+      }
       const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
       this.logger.log(`[Redis] 连接到 Redis: ${redisUrl}`);
 

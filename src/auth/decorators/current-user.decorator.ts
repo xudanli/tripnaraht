@@ -4,6 +4,8 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 export interface CurrentUserPayload {
   userId: string;
   email?: string;
+  /** ADMIN / OPERATOR when present (admin god-mode APIs). */
+  roles?: string[];
 }
 
 export const CurrentUser = createParamDecorator(

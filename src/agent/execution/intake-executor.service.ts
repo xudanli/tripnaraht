@@ -12,6 +12,7 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { IIntakeExecutor, IntakeExecutorContext } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { ClaudePlannerAgentService } from '../services/sub-agents/planner-agent.service';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import { IntakeCompilerService } from './intake-compiler.service';
 import {
   identifyGapsFromRequest,
   generateClarificationQuestions,
@@ -22,14 +23,28 @@ import {
 export class IntakeExecutorService implements IIntakeExecutor {
   private readonly logger = new Logger(IntakeExecutorService.name);
 
-  constructor(@Optional() private readonly plannerAgent?: ClaudePlannerAgentService) {}
+  constructor(
+    @Optional() private readonly plannerAgent?: ClaudePlannerAgentService,
+    private readonly intakeCompiler: IntakeCompilerService = new IntakeCompilerService(),
+  ) {}
 
   async execute(
     dso: DecisionState,
     ctx: IntakeExecutorContext,
   ): Promise<{
     tripPlanRequest: IntakeExecutorContext['tripPlanRequest'];
-    gaps: Array<{ type: 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES'; severity: 'HARD' | 'SOFT'; detail: string }>;
+    simulation?: { simulatedRepairTraces: import('../services/route-feasibility.types').SimulatedRepairTrace[] };
+    gaps: Array<{
+      type:
+        | 'MISSING_DESTINATION'
+        | 'MISSING_DATES'
+        | 'MISSING_CONSTRAINTS'
+        | 'MISSING_PREFERENCES'
+        | 'SPEC_TYPE_ERROR'
+        | 'INTENT_COMPILE_ERROR';
+      severity: 'HARD' | 'SOFT';
+      detail: string;
+    }>;
     clarificationQuestions: Array<{
       id: string;
       question: string;
@@ -75,10 +90,27 @@ export class IntakeExecutorService implements IIntakeExecutor {
     }
 
     const hardGaps = gaps.filter((g) => g.severity === 'HARD');
-    const clarificationQuestions = generateClarificationQuestions(hardGaps, tripPlanRequest);
+    // Intake compile: L4 schema/type + L3 lower-bound checks.
+    // If compile fails, surface deterministic diagnostics as HARD gaps to block downstream phases.
+    const compiled = this.intakeCompiler.compile({
+      tripPlanRequest,
+      sessionRepairTraces: ((dso as any)?.systemState?.repairTraceHistory ?? []) as any,
+    });
+    if (compiled.status !== 'SUCCESS') {
+      const compileGaps = compiled.diagnostics
+        .map((d) => d.gap)
+        .filter(Boolean) as IntakeGap[];
+      if (compileGaps.length > 0) {
+        gaps = [...compileGaps, ...gaps];
+      }
+    }
+
+    const hardGaps2 = gaps.filter((g) => g.severity === 'HARD');
+    const clarificationQuestions = generateClarificationQuestions(hardGaps2, tripPlanRequest);
 
     return {
       tripPlanRequest: ctx.tripPlanRequest ?? {},
+      ...(compiled.simulation ? { simulation: compiled.simulation } : {}),
       gaps,
       clarificationQuestions: clarificationQuestions.map((q) => ({
         id: q.id,

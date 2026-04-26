@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_TERRAIN_POLICY } from '../../trips/readiness/config/terrain-policy.config';
-import type { FeasibilityFinding, RouteFeasibilityEngineInput } from './route-feasibility.types';
+import type { ConstraintViolation, FeasibilityFinding, RouteFeasibilityEngineInput } from './route-feasibility.types';
+import { CONSTRAINT_IDS } from './constraint-registry';
 
 export type ExtremeRuleDecision = 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK';
 
@@ -37,12 +38,35 @@ export class ExtremeScenarioRuleEngineService {
     const inferredDailyAscent = this.inferDailyAscentFromResearch(input.researchData);
     if (inferredDailyAscent !== undefined && inferredDailyAscent > maxDailyAscentM) {
       decision.push('ADJUST_REQUIRED');
+      const violation: ConstraintViolation = {
+        anchor: {
+          constraintId: CONSTRAINT_IDS.TERRAIN_MAX_DAILY_ASCENT_M,
+          ruleId: 'extreme_rules.max_daily_ascent',
+          policyId: 'DEFAULT_TERRAIN_POLICY',
+        },
+        entityRef: { type: 'DAY' },
+        metric: {
+          cmp: 'LEQ',
+          actual: inferredDailyAscent,
+          limit: maxDailyAscentM,
+          unit: 'm',
+          // LEQ slack: limit - actual (negative => violation)
+          slack: maxDailyAscentM - inferredDailyAscent,
+        },
+        evidence: { source: 'DEM' },
+        scope: 'GLOBAL',
+        suggestedActions: [
+          { action: 'RELAX', detail: 'reduce ascent / split day / add rest day' },
+          { action: 'REORDER', detail: 'redistribute high-effort segments across days' },
+        ],
+      };
       findings.push({
         source: 'EXTREME_RULES',
         severity: 'WARNING',
         code: 'MAX_DAILY_ASCENT_EXCEEDED',
         message: `日爬升估计 ${Math.round(inferredDailyAscent)}m 超过阈值 ${maxDailyAscentM}m，需调整节奏/拆分/加休息日`,
         data: { inferredDailyAscent, maxDailyAscentM },
+        violation,
       });
     }
 
@@ -52,12 +76,33 @@ export class ExtremeScenarioRuleEngineService {
     const isWinter = month !== undefined ? [11, 12, 1, 2, 3].includes(month) : undefined;
     if (isWinter === true && typeof wind === 'number' && wind > 20) {
       decision.push('BLOCK');
+      const violation: ConstraintViolation = {
+        anchor: {
+          // v0 constraintId: environment.wind_speed_limit (winter-high-wind is a specific lemma/ruleId)
+          constraintId: CONSTRAINT_IDS.ENVIRONMENT_WIND_SPEED_LIMIT,
+          ruleId: 'extreme_rules.winter_high_wind_block',
+          policyId: 'DEFAULT_TERRAIN_POLICY',
+        },
+        entityRef: { type: 'SEGMENT' },
+        metric: {
+          cmp: 'LEQ',
+          actual: wind,
+          limit: 20,
+          unit: 'm/s',
+          // LEQ slack: limit - actual (negative => violation)
+          slack: 20 - wind,
+        },
+        evidence: { source: 'WEATHER' },
+        scope: 'GLOBAL',
+        suggestedActions: [{ action: 'BLOCK', detail: 'avoid exposed outdoor routes; replan dates/region' }],
+      };
       findings.push({
         source: 'EXTREME_RULES',
         severity: 'BLOCK',
         code: 'WINTER_HIGH_WIND_BLOCK',
         message: `冬季风速 ${wind}m/s > 20m/s：按红线规则阻断户外高暴露活动/路线`,
         data: { month, wind_speed_mps: wind },
+        violation,
       });
     }
 

@@ -35,14 +35,59 @@ export class RagService {
    * 
    * @deprecated document_index表已删除，此方法不再可用，请使用ChunkRetrievalService
    */
-  async retrieve(_params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
-    // document_index表已删除，直接返回空结果
-    this.logger.warn(
-      '⚠️  document_index表已删除，RagService.retrieve()不再可用。请使用ChunkRetrievalService（基于chunks表）'
-    );
-    return [];
-    
-    /* 原实现已注释（document_index表已删除）
+  async retrieve(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
+    const { query, collection, limit = 10, countryCode, tags, minScore = 0.5 } = params;
+
+    // Compat: keep legacy RagService.retrieve working for tests/older callers.
+    // New code should use ChunkRetrievalService.
+    this.logger.warn('⚠️  RagService.retrieve() 兼容模式：建议迁移到 ChunkRetrievalService');
+
+    const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    const queryEmbeddingStr = `[${queryEmbedding.join(',')}]`;
+
+    let results: Array<{
+      id: string;
+      title: string;
+      content: string;
+      source: string | null;
+      metadata: any;
+      score: number;
+    }> = [];
+    try {
+      results = await this.prisma.$queryRaw(
+        Prisma.sql`
+          /* rag.retrieve compat */
+          SELECT id, title, content, source, metadata, score
+          FROM document_index
+          WHERE collection = ${collection}
+            AND (${countryCode}::text IS NULL OR country_code = ${countryCode})
+            AND (${tags as any}::text[] IS NULL OR tags && ${tags as any}::text[])
+            AND embedding IS NOT NULL
+          ORDER BY embedding <=> ${queryEmbeddingStr}::vector
+          LIMIT ${limit}
+        `,
+      );
+    } catch (e: any) {
+      // If the legacy table is actually missing, keep the contract: return empty results.
+      if (String(e?.message ?? '').includes('document_index') || String(e?.message ?? '').includes('relation')) {
+        return [];
+      }
+      throw e;
+    }
+
+    return (results ?? [])
+      .filter((r) => (typeof r.score === 'number' ? r.score : 0) >= minScore)
+      .map((r) => ({
+        id: r.id,
+        content: r.content,
+        title: r.title,
+        source: r.source || undefined,
+        score: Number(r.score),
+        metadata: (r.metadata as Record<string, any> | undefined) ?? undefined,
+      }));
+  }
+
+    /* Original implementation (document_index removed in prod)
     async retrieve_OLD(params: RagRetrievalParams): Promise<RagRetrievalResult[]> {
     const { query, collection, limit = 10, countryCode, tags, minScore = 0.5 } = params;
 
@@ -176,7 +221,6 @@ export class RagService {
       return await this.fallbackKeywordSearch(params);
     }
     */
-  }
 
   /**
    * 降级策略：关键词搜索

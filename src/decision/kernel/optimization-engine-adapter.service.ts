@@ -30,6 +30,10 @@ import { DecisionOSConfigService } from '../../trips/decision/optimization/confi
 import { ChunkRetrievalService } from '../../rag/services/chunk-retrieval.service';
 import { RetrievalEvidenceMapper } from '../../rag/mappers/retrieval-evidence.mapper';
 import { isKernelCgusRagEvidenceEnabledFromEnv } from './kernel-cgus-rag.constants';
+import { StateConsistencyGuardService } from '../../trips/dem/services/state-consistency-guard.service';
+import { PlanFeaturesService } from '../../trips/decision/optimization/plan-features/plan-features.service';
+import { decisionStateToTripWorldState } from './dso-to-trips-converter';
+import { convertRoutePlanDraftToTripPlan } from '../../trips/decision/tot/plan-converter';
 
 @Injectable()
 export class OptimizationEngineAdapterService {
@@ -44,6 +48,8 @@ export class OptimizationEngineAdapterService {
     @Optional() private readonly cgusSearch?: CGUSSearchService,
     /** 显式 token：避免与其它 `@Optional()` 依赖并列时 Nest 按位错注入 */
     @Optional() @Inject(ChunkRetrievalService) private readonly chunkRetrieval?: ChunkRetrievalService,
+    @Optional() private readonly stateConsistencyGuard?: StateConsistencyGuardService,
+    @Optional() private readonly planFeatures?: PlanFeaturesService,
   ) {}
 
   /**
@@ -201,7 +207,10 @@ export class OptimizationEngineAdapterService {
 
       const routeDirectionId = env.routeDirectionId ?? 'unknown';
       const tripId = state.systemState?.requestId ?? state.requestId ?? 'unknown';
-      const plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
+      let plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
+      if (this.stateConsistencyGuard) {
+        ({ plan } = await this.stateConsistencyGuard.enrichRoutePlanDraftIfNeeded(plan));
+      }
 
       const result = this.expectedUtility.computeExpectedUtility(
         plan,
@@ -219,7 +228,7 @@ export class OptimizationEngineAdapterService {
         suggestedSampleSize: sampleSize,
       };
 
-      const hints: OptimizationHints = {
+      let hints: OptimizationHints = {
         ...baseHints,
         method: 'MONTE_CARLO',
         expectedUtility: result.expectedUtility,
@@ -233,9 +242,34 @@ export class OptimizationEngineAdapterService {
         uncertaintyProfile,
       };
 
+      if (this.planFeatures) {
+        const f = this.planFeatures.extract(plan);
+        const inflation = 1 + Math.min(1.35, f.effort01 * 1.5);
+        const ci0 = hints.confidenceInterval;
+        if (ci0 && inflation > 1.001 && Number.isFinite(ci0.lower) && Number.isFinite(ci0.upper)) {
+          const mid = (ci0.upper + ci0.lower) / 2;
+          const half = ((ci0.upper - ci0.lower) / 2) * inflation;
+          hints = {
+            ...hints,
+            confidenceInterval: {
+              ...ci0,
+              lower: mid - half,
+              upper: mid + half,
+            },
+            terrainEpistemicUncertainty: {
+              effort01: f.effort01,
+              confidenceIntervalInflation: inflation,
+            },
+            ...(f.effort01 >= 0.5 && inflation >= 1.12
+              ? { earlyWarningCodes: ['TERRAIN_EPISTEMIC_HIGH_VARIANCE'] }
+              : {}),
+          };
+        }
+      }
+
       this.logger.debug(
         `[OptimizationAdapter] Monte Carlo: E[U]=${result.expectedUtility.toFixed(3)} ` +
-          `CI=[${result.confidenceInterval.lower.toFixed(2)},${result.confidenceInterval.upper.toFixed(2)}] ` +
+          `CI=[${hints.confidenceInterval!.lower.toFixed(2)},${hints.confidenceInterval!.upper.toFixed(2)}] ` +
           `P(feasible)=${result.feasibilityProbability.toFixed(2)}`,
       );
       this.logger.log(`[OptimizationAdapter] OPTIMIZE path: ${JSON.stringify({ mode: 'MonteCarlo' })}`);
@@ -338,7 +372,10 @@ export class OptimizationEngineAdapterService {
     const env = state.environmentState ?? {};
     const routeDirectionId = env.routeDirectionId ?? 'unknown';
     const tripId = state.systemState?.requestId ?? state.requestId ?? 'unknown';
-    const plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
+    let plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
+    if (this.stateConsistencyGuard) {
+      ({ plan } = await this.stateConsistencyGuard.enrichRoutePlanDraftIfNeeded(plan));
+    }
 
     const violations = (state.constraints?.violations ?? []).map((v) => ({
       type: v.type,
@@ -553,20 +590,82 @@ export class OptimizationEngineAdapterService {
     this.logger.log(`[OptimizationAdapter] CGUS penalty calibration table: ${JSON.stringify(penaltyCalibrationTable)}`);
 
     const ci = top?.confidenceInterval;
+    const te = result.terrainEpistemics;
+    const earlyWarningCodes =
+      te?.earlyWarningTerrain ? ['TERRAIN_EPISTEMIC_HIGH_VARIANCE' as const] : undefined;
+    const terrainEpistemicUncertainty =
+      te && te.topConfidenceIntervalInflation > 1
+        ? {
+            effort01: te.topCandidateEffort01,
+            confidenceIntervalInflation: te.topConfidenceIntervalInflation,
+          }
+        : undefined;
+
+    const tripWorldState = decisionStateToTripWorldState(state);
+    const tripPlanToItinerary = (tp: { days?: any[] } | undefined): Itinerary | undefined => {
+      if (!tp?.days || !Array.isArray(tp.days)) return undefined;
+      return {
+        request_id: tripId,
+        days: tp.days.map((d: any) => ({
+          date: String(d?.date ?? ''),
+          items: Array.isArray(d?.timeSlots)
+            ? d.timeSlots.map((s: any) => ({
+                id: String(s?.id ?? ''),
+                type: 'POI',
+                start_window: String(s?.time ?? ''),
+                end_window: String(s?.endTime ?? ''),
+                location_ref: {
+                  place_id: s?.poiId ? String(s.poiId) : undefined,
+                  name: String(s?.title ?? ''),
+                  coordinates: s?.coordinates,
+                },
+                evidence_refs: [],
+                verified: false,
+                verification_status: 'ASSUMPTION',
+              }))
+            : [],
+        })),
+        action_plan: [],
+      } as any;
+    };
+
     return {
       ...baseHints,
       method: 'CGUS',
       strategyDirection: `CGUS(${candidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
-      alternatives: result.rankedCandidates.slice(0, 3).map((r) => ({
-        id: r.candidate.id,
-        score: r.expectedUtility ?? r.utility,
-        expectedUtility: r.expectedUtility,
-        feasibilityProbability: r.feasibilityProbability,
-        confidenceInterval: r.confidenceInterval
-          ? { lower: r.confidenceInterval.lower, upper: r.confidenceInterval.upper, level: 0.95 }
-          : undefined,
-      })),
+      ...(terrainEpistemicUncertainty ? { terrainEpistemicUncertainty } : {}),
+      ...(earlyWarningCodes ? { earlyWarningCodes } : {}),
+      alternatives: result.rankedCandidates.slice(0, 3).map((r) => {
+        const hardCount = (r.candidate.constraintViolations ?? []).filter((v) => v.severity === 'HARD').length;
+        const softDegree = (r.candidate.constraintViolations ?? [])
+          .filter((v) => v.severity === 'SOFT')
+          .reduce((s, v) => s + (v.degree ?? 0), 0);
+        const tp = r.candidate?.plan
+          ? convertRoutePlanDraftToTripPlan(r.candidate.plan as any, tripWorldState as any)
+          : undefined;
+        const itinerary = tripPlanToItinerary(tp as any);
+        return {
+          id: r.candidate.id,
+          score: r.expectedUtility ?? r.utility,
+          finalScore: r.finalScore,
+          scoreBreakdown: (r as any).scoreBreakdown,
+          expectedUtility: r.expectedUtility,
+          feasibilityProbability: r.feasibilityProbability,
+          confidenceInterval: r.confidenceInterval
+            ? { lower: r.confidenceInterval.lower, upper: r.confidenceInterval.upper, level: 0.95 }
+            : undefined,
+          summary: (r.candidate as any)?.summary,
+          violations: (r.candidate.constraintViolations ?? []).map((v: any) => ({
+            type: v.type,
+            severity: v.severity,
+            degree: v.degree,
+            detail: v.detail,
+          })),
+          riskProfile: { hard_violations: hardCount, soft_degree: softDegree },
+          itinerary,
+        };
+      }),
       ...(eu !== undefined && { expectedUtility: eu }),
       ...(fp !== undefined && { feasibilityProbability: fp }),
       ...(ci && {

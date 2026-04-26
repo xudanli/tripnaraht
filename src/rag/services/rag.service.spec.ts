@@ -147,6 +147,9 @@ describe('RagService', () => {
         limit: 10,
       };
 
+    // 模拟“document_index 表已删除”的运行时行为。
+      prisma.$queryRaw.mockRejectedValue(new Error('relation "document_index" does not exist'));
+
       const results = await service.retrieve(params);
 
       // document_index表已删除，应返回空结果

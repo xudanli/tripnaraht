@@ -78,6 +78,10 @@ export interface FeedbackSignal {
       daySkipped?: string[];
       [key: string]: unknown;
     };
+    /** 澄清 / 先知 / REPAIR 因果指纹（与 audit join） */
+    correlation_id?: string;
+    user_repair_resolution?: string;
+    feedback_phase?: 'INTAKE' | 'REPAIR';
   };
 }
 

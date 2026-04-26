@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { resolvePlatformRoles } from '../platform-roles';
 
 @Injectable()
 export class TokenService {
@@ -27,9 +28,23 @@ export class TokenService {
    * Issue access token (short-lived JWT)
    */
   async issueAccessToken(userId: string, email?: string): Promise<string> {
-    const payload: any = {
+    let dbPlatformRole: string | null = null;
+    try {
+      if (this.prisma.isDbConnected()) {
+        const u = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { platformRole: true },
+        });
+        dbPlatformRole = u?.platformRole ?? null;
+      }
+    } catch {
+      dbPlatformRole = null;
+    }
+    const roles = resolvePlatformRoles(this.configService, userId, undefined, dbPlatformRole);
+    const payload: Record<string, unknown> = {
       sub: userId,
       email,
+      ...(roles.length ? { roles } : {}),
     };
 
     return this.jwtService.signAsync(payload, {

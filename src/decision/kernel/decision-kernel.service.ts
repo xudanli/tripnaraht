@@ -76,6 +76,12 @@ import type {
 } from '../../harness/tracing/harness-trace.types';
 import { buildResearchEvidenceSnapshot } from '../../harness/lib/research-evidence-snapshot';
 import { applyPendingMigrationsToPlanDraft } from './migration-injection.util';
+import {
+  buildDecisionFeedbackCorrelationId,
+  computeRepairInterventionStateHash,
+  digestPlanDraftForCorrelation,
+  isUserRepairResolutionLabel,
+} from './utils/decision-feedback-correlation.util';
 
 @Injectable()
 export class DecisionKernelService {
@@ -1428,6 +1434,7 @@ export class DecisionKernelService {
     let repairApplied = false;
     let repairPostAdvisories: VerificationIssue[] = [];
     let repairEscalationPlan: RepairEscalationPlan | undefined;
+    let repairTraces: any[] = [];
     const mergedPendingMigrations = [...(dso.systemState?.pendingMigrations ?? [])];
     let repairRecoverySignal: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined =
       dso.systemState?.recoverySignal as 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined;
@@ -1438,6 +1445,7 @@ export class DecisionKernelService {
       repairApplied = out.repairApplied;
       repairPostAdvisories = out.postRepairAdvisories ?? [];
       repairEscalationPlan = out.escalationPlan;
+      repairTraces = (out as any).repairTraces ?? [];
       if (out.pendingMigrations?.length) mergedPendingMigrations.push(...out.pendingMigrations);
       if (out.recoverySignal) repairRecoverySignal = out.recoverySignal;
     } catch (e: any) {
@@ -1500,6 +1508,31 @@ export class DecisionKernelService {
         });
       }
     }
+    const prevHist = dso.systemState?.repairTraceHistory ?? [];
+    const incoming = Array.isArray(repairTraces) ? repairTraces : [];
+    const repairTraceHistory = [...prevHist, ...incoming].slice(-120);
+
+    if (repairEscalationPlan && !repairEscalationPlan.correlationId) {
+      const utilitySum = incoming.reduce((s, t: any) => s + (Number(t?.metrics?.utility_delta) || 0), 0);
+      const planForDigest = itinerary ?? ctx.itinerary ?? dso.tripState?.planDraft;
+      const planDigest = digestPlanDraftForCorrelation(planForDigest);
+      const stateHash = computeRepairInterventionStateHash({
+        dsoVersion: dso.systemState?.version ?? 0,
+        escalationReason: repairEscalationPlan.reason,
+        utilityDeltaSum: utilitySum,
+        planDigest,
+      });
+      const sessionId = String(ctx.requestId || dso.requestId || '');
+      const correlationId = buildDecisionFeedbackCorrelationId({
+        sessionId,
+        phase: 'REPAIR',
+        kind: 'REPAIR_ESCALATION',
+        roundIndex: nextCount,
+        stateHash,
+      });
+      repairEscalationPlan = { ...repairEscalationPlan, correlationId };
+    }
+
     const baseSystemPatch = {
       requestId: ctx.requestId,
       currentPhase: 'REPAIR',
@@ -1509,8 +1542,10 @@ export class DecisionKernelService {
         ? { ...dso.systemState.stageLock, locked: false }
         : dso.systemState?.stageLock,
       migrationAbsorptionFailures,
+      repairTraceHistory,
       ...(mergedPendingMigrations.length > 0 ? { pendingMigrations: mergedPendingMigrations } : {}),
       ...(repairRecoverySignal ? { recoverySignal: repairRecoverySignal } : {}),
+      ...(Array.isArray(repairTraces) && repairTraces.length > 0 ? { repairTraces } : {}),
     };
     const confDelta = repairPostAdvisories.reduce((s, i) => s + (i.metadata?.confidence_impact ?? 0), 0);
     const verificationPatch = this.buildVerificationAfterRepair(dso, {
@@ -1537,6 +1572,7 @@ export class DecisionKernelService {
   ): Promise<{
     newState: DecisionState;
     tripPlanRequest: IntakeExecutorContext['tripPlanRequest'];
+    simulation?: { simulatedRepairTraces: import('../../agent/services/route-feasibility.types').SimulatedRepairTrace[] };
     gaps: Array<{ type: import('./interfaces/phase-executor.interface').IntakeGapType; severity: 'HARD' | 'SOFT'; detail: string }>;
     clarificationQuestions: Array<{
       id: string;
@@ -1605,6 +1641,7 @@ export class DecisionKernelService {
     return {
       newState,
       tripPlanRequest: result.tripPlanRequest,
+      ...(result.simulation ? { simulation: result.simulation } : {}),
       gaps: result.gaps,
       clarificationQuestions: result.clarificationQuestions,
       intent: result.intent,
@@ -1734,6 +1771,91 @@ export class DecisionKernelService {
       const dsoFeedback = this.mapToDecisionStateFeedback(params);
       await this.commitFeedbackToDso(params.tripRunId, dsoFeedback);
     }
+  }
+
+  /**
+   * 澄清按钮回传：将 `user_repair_resolution` 与 `correlationId` 写入 DSO（及 RLHF 信号），供离线 join。
+   * - `feedbackPhase: INTAKE`：先知卡（PREDICTIVE_FAILURE）指纹；`REPAIR`：效用补偿 / REPAIR 升级（默认）。
+   */
+  async recordUserRepairResolution(params: {
+    tripRunId: string;
+    correlationId: string;
+    resolution: import('./decision-state.types').UserRepairResolutionLabel;
+    userId?: string;
+    feedbackPhase?: import('./decision-state.types').UserRepairResolutionFeedbackPhase;
+  }): Promise<{ ok: boolean; deduped?: boolean; persisted?: boolean }> {
+    if (!isUserRepairResolutionLabel(params.resolution)) {
+      this.logger.warn(`[Kernel] recordUserRepairResolution: invalid resolution=${params.resolution}`);
+      return { ok: false };
+    }
+    const uid = params.userId ?? '';
+    const feedbackPhase = params.feedbackPhase ?? 'REPAIR';
+    if (!this.feedbackPersistence) {
+      this.logger.debug('[Kernel] recordUserRepairResolution: 无 DSO 持久化，仅写 RLHF 信号');
+      await this.feedbackAdapter.recordUserRepairResolutionSignal({
+        tripRunId: params.tripRunId,
+        userId: uid,
+        correlationId: params.correlationId,
+        resolution: params.resolution,
+        feedbackPhase,
+      });
+      return { ok: true, persisted: false };
+    }
+
+    const dso = await this.feedbackPersistence.getDso(params.tripRunId);
+    if (!dso) {
+      await this.feedbackAdapter.recordUserRepairResolutionSignal({
+        tripRunId: params.tripRunId,
+        userId: uid,
+        correlationId: params.correlationId,
+        resolution: params.resolution,
+        feedbackPhase,
+      });
+      return { ok: true, persisted: false };
+    }
+
+    const prev = dso.systemState?.userRepairResolutionLog ?? [];
+    if (prev.some((e) => e.correlationId === params.correlationId)) {
+      return { ok: true, deduped: true, persisted: true };
+    }
+
+    const recordedAt = new Date().toISOString();
+    const entry: import('./decision-state.types').UserRepairResolutionEvent = {
+      correlationId: params.correlationId,
+      resolution: params.resolution,
+      recordedAt,
+      feedbackPhase,
+    };
+    const historyDelta: import('./decision-state.types').StateHistoryDelta = {
+      type: 'user_repair_resolution',
+      summary: `user_repair_resolution=${params.resolution} phase=${feedbackPhase}`,
+      at: recordedAt,
+      meta: {
+        correlation_id: params.correlationId,
+        user_repair_resolution: params.resolution,
+        feedback_phase: feedbackPhase,
+        request_id: dso.systemState?.requestId ?? dso.requestId,
+        version: dso.systemState?.version,
+      },
+    };
+
+    const newState = this.stateManager.merge(dso, {
+      systemState: {
+        requestId: dso.systemState?.requestId ?? dso.requestId,
+        userRepairResolutionLog: [...prev, entry].slice(-50),
+      },
+      history: [historyDelta],
+    });
+
+    await this.feedbackPersistence.persistDso(params.tripRunId, newState);
+    await this.feedbackAdapter.recordUserRepairResolutionSignal({
+      tripRunId: params.tripRunId,
+      userId: uid,
+      correlationId: params.correlationId,
+      resolution: params.resolution,
+      feedbackPhase,
+    });
+    return { ok: true, persisted: true };
   }
 
   /**

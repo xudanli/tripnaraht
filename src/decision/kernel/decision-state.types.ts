@@ -11,6 +11,7 @@
 import type { ContextPackage } from '../../agent/context-engine/types/context-package.types';
 import type { WorldStateSummary } from './world-state-summary.types';
 import type { HarnessStepName } from '../../harness/contracts/harness-step.types';
+import type { RepairTrace } from '../../agent/services/route-feasibility.types';
 
 /** 用户意图（从 INTAKE 提取） */
 export interface UserIntent {
@@ -196,6 +197,18 @@ export interface SystemState {
   consecutiveUtilityDeclines?: number;
 
   /**
+   * Strongly-typed repair traces (proof observability for RL / audit).
+   * v1: last repair round only (bounded payload).
+   */
+  repairTraces?: RepairTrace[];
+
+  /**
+   * Session-scoped append-only log of repair traces (same request / DSO lifetime).
+   * Used by INTAKE UserDynamicBoundary and utility-budget aggregation.
+   */
+  repairTraceHistory?: RepairTrace[];
+
+  /**
    * 跨天迁移请求队列（VERIFY/REPAIR 发现单日无法收敛时由 Repair 写入，编排层消费）
    * @see PendingMigrationRequest
    */
@@ -223,9 +236,19 @@ export interface SystemState {
   terminalIntent?: 'TERMINAL_NO_SOLUTION';
 
   /**
+   * 用户在 EARLY_WARNING 拦截回合选择「自担风险继续」：不 Patch TripPlanRequest，但放行后续 POI/PLAN_GEN（撞南墙模式，供审计与 Narrator 训练）。
+   */
+  earlyWarningAcknowledged?: boolean;
+
+  /**
    * 迁移注入后仍连续 REPAIR 升级（无法被相邻日吸收）的计数；≥2 时可置 NEED_USER_INTERVENTION
    */
   migrationAbsorptionFailures?: number;
+
+  /**
+   * 用户针对带 `correlationId` 的 REPAIR/效用补偿澄清之选择（append-only，供离线 RLHF join）。
+   */
+  userRepairResolutionLog?: UserRepairResolutionEvent[];
 }
 
 /** 跨天迁移协议（Bubble-up）：锚点或关键节点无法在当日时间/日照约束下落位时建议挪至相邻日 */
@@ -366,6 +389,17 @@ export interface OptimizationHints {
   dimensionBreakdown?: DimensionBreakdown;
   /** Monte Carlo 置信区间（专利：不确定性时采用 Monte Carlo 模拟） */
   confidenceInterval?: MonteCarloConfidenceInterval;
+  /**
+   * 地形/爬升带来的认知不确定性：CGUS 中 effort01 会放大 MC 置信区间半宽。
+   */
+  terrainEpistemicUncertainty?: {
+    effort01: number;
+    confidenceIntervalInflation: number;
+  };
+  /**
+   * 早期预警码（如高地形方差），供 Decision OS / Narrator 与审计消费。
+   */
+  earlyWarningCodes?: string[];
   /** 可行性概率 P(all hard constraints satisfied) */
   feasibilityProbability?: number;
   /** Phase 2：不确定性概要，用于信念状态判断 */
@@ -727,6 +761,7 @@ export type VerificationIssueCode =
   | 'TIME_WINDOW_BREACH'
   | 'TIME_WINDOW_OVERLAP'
   | 'ROUTE_INFEASIBLE'
+  | 'TERRAIN_F_ROAD_UNFIT'
   | 'FATIGUE_HIGH'
   | 'FATIGUE_OVERLOAD'
   | 'WEATHER_RISK'
@@ -774,6 +809,26 @@ export interface VerificationIssue {
 /** REPAIR 无法闭环时上收到 DSO，供 NARRATE / HITL 读取（决策层，非仅 itinerary.metadata） */
 export type RepairEscalationType = 'PHYSICAL_LIMIT_REACHED';
 
+/** 澄清回传标签，与 `decision-feedback-correlation.util` 字符串枚举对齐 */
+export type UserRepairResolutionLabel =
+  | 'ACCEPTED_AUTO_REPAIR'
+  | 'RELAXED_CONSTRAINTS'
+  /** 先知卡等：用户知晓风险后仍选择保持现状继续 */
+  | 'PROCEED_REGARDLESS'
+  | 'ABANDONED';
+
+/** 反馈所针对的因果阶段（与 correlation 的 phase/kind 对齐审计） */
+export type UserRepairResolutionFeedbackPhase = 'INTAKE' | 'REPAIR';
+
+/** 单条用户修复决策反馈（按 correlationId 幂等追加） */
+export interface UserRepairResolutionEvent {
+  correlationId: string;
+  resolution: UserRepairResolutionLabel;
+  recordedAt: string;
+  /** 缺省视为 REPAIR（历史数据兼容） */
+  feedbackPhase?: UserRepairResolutionFeedbackPhase;
+}
+
 export interface RepairEscalationPlan {
   type: RepairEscalationType;
   /** 与 TimelineFeasibility.status 或业务原因码对齐 */
@@ -784,6 +839,10 @@ export interface RepairEscalationPlan {
   at: string;
   /** 物理连通性 vs 日落可视窗口 */
   constraint?: 'PHYSICAL_CONNECTIVITY' | 'SUNSET_VISIBILITY';
+  /**
+   * 因果指纹：sha256(sessionId|repairRound|stateHash) 截断；澄清 payload 原样回传以 join 审计/训练语料。
+   */
+  correlationId?: string;
 }
 
 export interface VerificationReport {

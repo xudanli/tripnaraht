@@ -16,6 +16,8 @@ import { applyRiskTagsFromVerifyIssues } from '../../agent/utils/itinerary-risk-
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { OpeningHoursUtil } from '../../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
+import type { ConstraintViolation } from '../../agent/services/route-feasibility.types';
+import { CONSTRAINT_IDS } from '../../agent/services/constraint-registry';
 
 export interface ItineraryVerifyInput extends SkillInput {
   itinerary: Itinerary;
@@ -31,6 +33,8 @@ export interface ItineraryVerifyOutput extends SkillOutput {
     day?: string;
     message: string;
     suggestion?: string;
+    /** Optional L3 proof payload (best-effort). */
+    violation?: ConstraintViolation;
   }>;
   summary: {
     total_issues: number;
@@ -171,6 +175,14 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
             day: day.date,
             message: `POI "${item.location_ref.name}" 缺少开放时间数据`,
             suggestion: '请确认该地点在指定时间是否开放',
+            violation: {
+              anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
+              entityRef: { type: 'POI', id: item.id },
+              evidence: {
+                source: 'OPENING_HOURS',
+              },
+              scope: 'LOCAL',
+            },
           });
           continue;
         }
@@ -191,6 +203,14 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
               day: day.date,
               message: `POI "${item.location_ref.name}" 在 ${day.date} ${item.start_window} 可能未开放`,
               suggestion: openingHours ? `建议调整到开放时间：${openingHours}` : '请检查该地点的开放时间',
+              violation: {
+                anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
+                entityRef: { type: 'POI', id: item.id },
+                evidence: {
+                  source: 'OPENING_HOURS',
+                },
+                scope: 'LOCAL',
+              },
             });
           } else if (openingHours && typeof openingHours === 'string') {
             // 尝试解析开放时间字符串并验证
@@ -199,6 +219,24 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
             const timezone = 'UTC'; // 默认 UTC，实际应该从 POI 元数据获取
             
             if (!OpeningHoursUtil.isOpenAt(hoursStr, checkDate, timezone)) {
+              // Best-effort dual-lemma metric inference, only when evidence carries explicit window.
+              const inferred = this.inferOpenCloseMinutes(openingHoursInfo, dayDate);
+              const startMin = Math.round(startTime.diff(dayDate.startOf('day'), 'minutes').minutes);
+              const endMin = Math.round(endTime.diff(dayDate.startOf('day'), 'minutes').minutes);
+              const metric: ConstraintViolation['metric'] | undefined = inferred
+                ? (() => {
+                    const { openMin, closeMin } = inferred;
+                    // If start < open => GEQ lemma violated (slack = actual - limit)
+                    if (startMin < openMin) {
+                      return { cmp: 'GEQ', actual: startMin, limit: openMin, unit: 'min', slack: startMin - openMin };
+                    }
+                    // If end > close => LEQ lemma violated (slack = limit - actual)
+                    if (endMin > closeMin) {
+                      return { cmp: 'LEQ', actual: endMin, limit: closeMin, unit: 'min', slack: closeMin - endMin };
+                    }
+                    return undefined;
+                  })()
+                : undefined;
               issues.push({
                 type: 'OPENING_HOURS_CONFLICT',
                 severity: 'ERROR',
@@ -206,12 +244,47 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
                 day: day.date,
                 message: `POI "${item.location_ref.name}" 在 ${item.start_window} 不在开放时间内`,
                 suggestion: `开放时间：${hoursStr}`,
+                violation: {
+                  anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
+                  entityRef: { type: 'POI', id: item.id },
+                  ...(metric ? { metric } : {}),
+                  evidence: {
+                    source: 'OPENING_HOURS',
+                  },
+                  scope: 'LOCAL',
+                },
               });
             }
           }
         }
       }
     }
+  }
+
+  private inferOpenCloseMinutes(
+    openingHoursInfo: any,
+    dayDate: DateTime,
+  ): { openMin: number; closeMin: number } | undefined {
+    // Accept a few common evidence shapes:
+    // - { open_min: number, close_min: number }
+    // - { open_time: "HH:mm", close_time: "HH:mm" }
+    const openMin = typeof openingHoursInfo?.open_min === 'number' ? openingHoursInfo.open_min : undefined;
+    const closeMin = typeof openingHoursInfo?.close_min === 'number' ? openingHoursInfo.close_min : undefined;
+    if (Number.isFinite(openMin) && Number.isFinite(closeMin)) {
+      return { openMin: Math.round(openMin), closeMin: Math.round(closeMin) };
+    }
+    const openTime = typeof openingHoursInfo?.open_time === 'string' ? openingHoursInfo.open_time : undefined;
+    const closeTime = typeof openingHoursInfo?.close_time === 'string' ? openingHoursInfo.close_time : undefined;
+    if (openTime && closeTime) {
+      const o = this.parseTimeWindow(openTime, dayDate);
+      const c = this.parseTimeWindow(closeTime, dayDate);
+      if (o && c) {
+        const oMin = Math.round(o.diff(dayDate.startOf('day'), 'minutes').minutes);
+        const cMin = Math.round(c.diff(dayDate.startOf('day'), 'minutes').minutes);
+        if (Number.isFinite(oMin) && Number.isFinite(cMin)) return { openMin: oMin, closeMin: cMin };
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -246,6 +319,23 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
                 day: day.date,
                 message: `换乘时间不足：从 "${currentItem.location_ref?.name || '上一站'}" 到 "${nextItem.location_ref?.name || '下一站'}" 只有 ${Math.round(bufferMinutes)} 分钟`,
                 suggestion: `建议至少预留 ${MIN_TRANSFER_BUFFER_MINUTES} 分钟换乘时间`,
+                violation: {
+                  anchor: { constraintId: CONSTRAINT_IDS.TIME_SPACE_MIN_TRANSFER_BUFFER, ruleId: 'itinerary.verify:transfer_buffer' },
+                  entityRef: { type: 'SEGMENT', id: `${day.date}|${currentItem.id}->${nextItem.id}` },
+                  metric: {
+                    cmp: 'GEQ',
+                    actual: Math.max(0, Math.round(bufferMinutes)),
+                    limit: MIN_TRANSFER_BUFFER_MINUTES,
+                    unit: 'min',
+                    slack: Math.round(bufferMinutes) - MIN_TRANSFER_BUFFER_MINUTES,
+                  },
+                  evidence: { source: 'RULE' },
+                  scope: 'LOCAL',
+                  suggestedActions: [
+                    { action: 'RELAX', detail: 'insert buffer / reduce stay time at previous item' },
+                    { action: 'REORDER', detail: 'swap items to increase transfer slack' },
+                  ],
+                },
               });
             }
           }

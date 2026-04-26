@@ -2144,87 +2144,110 @@ export class ItineraryItemsService {
   /**
    * 修复行程项的日期一致性
    * 
-   * 将行程项的 startTime/endTime 调整为与 TripDay.date 一致
+   * - 先按 Trip.startDate 对齐 TripDay.date（按天序平移）
+   * - 再将行程项的 startTime/endTime 调整为与 TripDay.date 一致（保留时分秒与时长）
    */
   async fixItemDateConsistency(tripId: string) {
-    const trip = await this.prisma.trip.findUnique({
-      where: { id: tripId },
-      include: {
-        TripDay: {
-          include: {
-            ItineraryItem: true,
+    const result = await this.prisma.$transaction(async (tx) => {
+      const trip = await tx.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: true,
+            },
+            orderBy: { date: 'asc' },
           },
-          orderBy: { date: 'asc' },
         },
-      },
-    });
+      });
 
-    if (!trip) {
-      throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
-    }
+      if (!trip) {
+        throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
+      }
 
-    const fixes: Array<{
-      itemId: string;
-      placeName: string;
-      oldStartTime: string;
-      newStartTime: string;
-      fixed: boolean;
-    }> = [];
+      const tripStartDay = DateTime.fromJSDate(trip.startDate, { zone: 'utc' }).startOf('day');
 
-    for (const day of trip.TripDay) {
-      const tripDayDate = DateTime.fromJSDate(day.date, { zone: 'utc' });
-      
-      for (const item of day.ItineraryItem) {
-        if (!item.startTime) continue;
-        
-        const startDateTime = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
-        const startDateOnly = startDateTime.toFormat('yyyy-MM-dd');
-        const tripDayDateOnly = tripDayDate.toFormat('yyyy-MM-dd');
-        
-        // 检查日期是否一致
-        if (startDateOnly !== tripDayDateOnly) {
-          // 保留原始的时间部分（小时、分钟），只修改日期
-          const timeOfDay = startDateTime.toFormat('HH:mm:ss');
-          const newStartTime = DateTime.fromFormat(
-            `${tripDayDateOnly} ${timeOfDay}`,
-            'yyyy-MM-dd HH:mm:ss',
-            { zone: 'utc' }
-          );
-          
-          // 计算时间差，用于调整 endTime
-          const timeDiff = newStartTime.toMillis() - startDateTime.toMillis();
-          
-          let newEndTime: DateTime | null = null;
-          if (item.endTime) {
-            newEndTime = DateTime.fromJSDate(item.endTime, { zone: 'utc' }).plus({ milliseconds: timeDiff });
+      const fixes: Array<{
+        itemId?: string;
+        tripDayId?: string;
+        oldDate?: string;
+        newDate?: string;
+        oldStartTime?: string;
+        newStartTime?: string;
+        fixed: boolean;
+        kind: 'tripDay' | 'item';
+      }> = [];
+
+      // 1) 先对齐 TripDay.date：按排序后的天序映射到 trip.startDate + index
+      for (let i = 0; i < trip.TripDay.length; i++) {
+        const day = trip.TripDay[i];
+        const desiredDay = tripStartDay.plus({ days: i });
+
+        const currentDay = DateTime.fromJSDate(day.date, { zone: 'utc' }).startOf('day');
+        if (currentDay.toISODate() !== desiredDay.toISODate()) {
+          await tx.tripDay.update({
+            where: { id: day.id },
+            data: { date: desiredDay.toJSDate() },
+          });
+
+          fixes.push({
+            kind: 'tripDay',
+            tripDayId: day.id,
+            oldDate: currentDay.toISO() || '',
+            newDate: desiredDay.toISO() || '',
+            fixed: true,
+          });
+        }
+
+        // 2) 再对齐 items：把日期部分改成 desiredDay，保留时分秒；endTime 按差值平移
+        for (const item of day.ItineraryItem) {
+          if (!item.startTime) continue;
+
+          const startDateTime = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
+          const newStartTime = desiredDay.set({
+            hour: startDateTime.hour,
+            minute: startDateTime.minute,
+            second: startDateTime.second,
+            millisecond: startDateTime.millisecond,
+          });
+
+          if (startDateTime.toISODate() === newStartTime.toISODate()) {
+            continue;
           }
-          
-          // 更新数据库
-          await this.prisma.itineraryItem.update({
+
+          const timeDiffMs = newStartTime.toMillis() - startDateTime.toMillis();
+          const newEndTime = item.endTime
+            ? DateTime.fromJSDate(item.endTime, { zone: 'utc' }).plus({ milliseconds: timeDiffMs })
+            : null;
+
+          await tx.itineraryItem.update({
             where: { id: item.id },
             data: {
               startTime: newStartTime.toJSDate(),
-              ...(newEndTime && { endTime: newEndTime.toJSDate() }),
+              ...(newEndTime ? { endTime: newEndTime.toJSDate() } : {}),
             },
           });
-          
+
           fixes.push({
+            kind: 'item',
             itemId: item.id,
-            placeName: item.id, // 简化，实际可以关联 Place
             oldStartTime: startDateTime.toISO() || '',
             newStartTime: newStartTime.toISO() || '',
             fixed: true,
           });
         }
       }
-    }
 
-    return {
-      tripId,
-      totalDays: trip.TripDay.length,
-      fixedCount: fixes.length,
-      fixes,
-    };
+      return {
+        tripId,
+        totalDays: trip.TripDay.length,
+        fixedTripDayCount: fixes.filter(f => f.kind === 'tripDay').length,
+        fixedItemCount: fixes.filter(f => f.kind === 'item').length,
+        fixes,
+      };
+    });
+
+    return result;
   }
 
   /**

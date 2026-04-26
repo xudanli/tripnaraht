@@ -108,7 +108,7 @@ describe('ModelCollapseMonitorService', () => {
 
       expect(report.riskLevel).toBe('LOW');
       expect(report.indicators.performanceTrend).toBe('INSUFFICIENT_DATA');
-      expect(report.recommendations).toContain(
+      expect(report.recommendations).toContainEqual(
         expect.stringContaining('需要更多轨迹数据'),
       );
     });

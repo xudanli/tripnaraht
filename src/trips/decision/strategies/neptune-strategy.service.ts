@@ -55,6 +55,7 @@ import { BookingComIntegrationService } from '../../../mcp/booking-com-integrati
 export class NeptuneStrategy implements DecisionPersonaStrategy {
   private readonly logger = new Logger(NeptuneStrategy.name);
   readonly personaName = 'NEPTUNE' as const;
+  private static readonly FIXED_SUNSET_HHMM = '19:00'; // v0 mock: wire real solar service later
 
   constructor(
     private readonly spatialReplacement: SpatialReplacementService,
@@ -298,6 +299,47 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
         timestamp: new Date().toISOString(),
         decisionSource: 'PHYSICAL', // 空间替换基于物理现实
         decisionStage: 'SPATIAL_REPAIR',
+        metadata:
+          issue.type === 'SEGMENT_BLOCKED' &&
+          (issue.issueId?.startsWith('weather_') ||
+            issue.issueId?.startsWith('road_closed_') ||
+            issue.issueId?.startsWith('solar_safety_'))
+            ? issue.issueId?.startsWith('solar_safety_')
+              ? (issue as any)?.metadata
+              : issue.issueId?.startsWith('road_closed_')
+              ? {
+                  rule_id: 'road_closed_v1',
+                  details: {
+                    evidence: {
+                      type: 'road_state',
+                      source: (issue as any)?.metadata?.source ?? 'EMERGENCY_CONSTRAINT',
+                      status: 'CLOSED',
+                      segment_id: issue.segmentId ?? (issue as any)?.metadata?.segment_id ?? undefined,
+                      reason_code: (issue as any)?.metadata?.reason_code ?? null,
+                      issue_id: issue.issueId,
+                    },
+                  },
+                }
+              : {
+                  // For QA (Fact vs Reasoning): carry machine evidence into DecisionLog.metadata.details.evidence
+                  rule_id: 'temp_wind_speed_drive_limit_v1',
+                  details: {
+                    evidence: {
+                      type: 'weather_physics',
+                      source: 'climateSeasonality.typicalWeather',
+                      // Convention: m/s unit; keep both generic and explicit keys for downstream normalization.
+                      value_mps: Number((issue as any)?.metadata?.windSpeedMps),
+                      threshold_mps: 15,
+                      unit: 'm/s',
+                      visibility_meters: Number((issue as any)?.metadata?.visibilityMeters),
+                      visibility_threshold_meters: 100,
+                      precipitation_mm_per_hour: (issue as any)?.metadata?.precipitationMmPerHour ?? undefined,
+                      segment_id: issue.segmentId ?? undefined,
+                      issue_id: issue.issueId,
+                    },
+                  },
+                }
+            : undefined,
       });
     }
 
@@ -323,6 +365,30 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
     plan: RoutePlanDraft
   ): Promise<SpatialIssue[]> {
     const issues: SpatialIssue[] = [];
+
+    // 0. Emergency hard-forbidden segments (physical.roadStates overlay)
+    // If a segment is marked CLOSED (especially from EMERGENCY_CONSTRAINT), Neptune must treat it as HARD blocked.
+    const roadStates = Array.isArray(world?.physical?.roadStates) ? world.physical.roadStates : [];
+    if (roadStates.length > 0) {
+      for (const segment of plan.segments) {
+        const rs = roadStates.find((r: any) => String(r?.segmentId ?? '') === String(segment.segmentId));
+        if (!rs) continue;
+        if (String(rs.status) !== 'CLOSED') continue;
+        issues.push({
+          issueId: `road_closed_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'HARD',
+          reason: `路段已封闭（segment=${segment.segmentId}）`,
+          metadata: {
+            segment_id: segment.segmentId,
+            source: rs?.metadata?.source ?? 'ROAD_STATE',
+            reason_code: rs?.metadata?.reason_code ?? rs?.metadata?.reasonCode ?? null,
+          },
+        });
+        break; // one is enough to force reroute
+      }
+    }
 
     // 1. 检测天气硬违规导致的路段阻塞
     // 注意：天气证据现在应该从 PhysicalRealityModel.climateSeasonality 获取
@@ -357,6 +423,59 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
           });
           break; // 只添加一个，避免重复
         }
+      }
+    }
+
+    // 1.5 Solar safety HARD window: planned activity ends after (sunset - buffer)
+    // v0: fixed sunset=19:00 (derived on the same UTC date as activity end time).
+    // Segment metadata convention (best-effort):
+    // - metadata.activity.end_time_iso OR metadata.end_time_iso
+    // - metadata.is_high_risk (boolean) → buffer=60 else 30
+    for (const segment of plan.segments) {
+      const md = (segment as any)?.metadata ?? {};
+      const endIso =
+        (md?.activity && typeof md.activity === 'object' ? (md.activity as any)?.end_time_iso : undefined) ??
+        md?.end_time_iso ??
+        md?.endTimeIso ??
+        md?.endTime ??
+        null;
+      if (!endIso || typeof endIso !== 'string') continue;
+      const end = new Date(endIso);
+      if (Number.isNaN(end.getTime())) continue;
+
+      const isHighRisk = Boolean(md?.is_high_risk) === true || Boolean(md?.isHighRisk) === true;
+      const bufferMin = isHighRisk ? 60 : 30;
+
+      const [hh, mm] = NeptuneStrategy.FIXED_SUNSET_HHMM.split(':').map((x) => Number(x));
+      const sunset = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), hh || 19, mm || 0, 0));
+      const safetyThreshold = new Date(sunset.getTime() - bufferMin * 60_000);
+
+      if (end.getTime() > safetyThreshold.getTime()) {
+        issues.push({
+          issueId: `solar_safety_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'HARD',
+          reason: `日落安全窗限制（end=${end.toISOString()} > threshold=${safetyThreshold.toISOString()}）`,
+          metadata: {
+            rule_id: 'solar_safety_v1',
+            details: {
+              evidence: {
+                type: 'solar_safety',
+                source: 'FIXED_SUNSET_MOCK',
+                actual_end_time_iso: end.toISOString(),
+                sunset_time_iso: sunset.toISOString(),
+                safety_threshold_iso: safetyThreshold.toISOString(),
+                buffer_min: bufferMin,
+                unit: 'ISO_8601',
+                is_violated: true,
+                segment_id: segment.segmentId,
+                issue_id: `solar_safety_${segment.segmentId}`,
+              },
+            },
+          },
+        });
+        break; // one is enough to trigger replanning in v0
       }
     }
 

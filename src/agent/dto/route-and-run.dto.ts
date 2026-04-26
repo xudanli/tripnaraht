@@ -1,11 +1,11 @@
 // src/agent/dto/route-and-run.dto.ts
-import { IsString, IsOptional, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep, JepaPayload } from '../interfaces/trip-plan.interface';
 import { ErrorType } from '../interfaces/error-types.interface';
-import { ClarificationQuestion } from '../interfaces/clarification.interface';
+import { ClarificationAnswer, ClarificationQuestion } from '../interfaces/clarification.interface';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { TravelActionType } from '../constants/action-execution.constants';
 
@@ -349,8 +349,287 @@ export class RouteAndRunRequestDto {
   @ValidateNested()
   @Type(() => AgentOptionsDto)
   options?: AgentOptionsDto;
+
+  @ApiPropertyOptional({
+    description:
+      '澄清回合的结构化回答（用于闭环：将用户选择映射为 DecisionStatePatch 并触发组合放宽推演）',
+    type: 'array',
+    example: [{ questionId: 'plan_gen_empty_draft_relax_constraints', value: ['upgrade_vehicle_to_4wd', 'increase_days_by_1'] }],
+  })
+  @IsOptional()
+  clarification_answers?: ClarificationAnswer[];
+
+  @ApiPropertyOptional({
+    description:
+      'Emergency constraint injection for resilient execution (hard-forbidden segments, forced road states). Used by auto-heal replan.',
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      forbidden_segments: ['seg-1'],
+      forced_road_states: { 'seg-1': 'CLOSED' },
+      reason_code: 'HEALING_PHYSICAL_DRIFT',
+    },
+  })
+  @IsOptional()
+  emergency_constraints?: {
+    forbidden_segments?: string[];
+    forced_road_states?: Record<string, 'CLOSED'>;
+    /** Temporal hard deadlines (latest allowable end time), keyed by poi_id or segment_id. ISO-8601 preferred. */
+    hard_deadlines?: Record<string, string>;
+    reason_code?: string;
+  };
 }
 
+/** Flags on assembled evidence cards (payload.decision_metadata.evidence_cards) */
+export class DecisionEvidenceCardFlagsDto {
+  @ApiPropertyOptional({
+    description: '原始数值疑似异常（如风速 >50m/s），建议二次校验数据源或降级展示',
+    example: false,
+  })
+  data_anomaly?: boolean;
+}
+
+/** Single physical-evidence card (Iron Shield) for frontend “证据视图” */
+export class DecisionEvidenceCardDto {
+  @ApiProperty({ enum: ['iron_shield_evidence'], example: 'iron_shield_evidence' })
+  kind!: 'iron_shield_evidence';
+
+  @ApiProperty({ example: 'temp_wind_speed_drive_limit_v1' })
+  rule_id!: string;
+
+  @ApiPropertyOptional({ example: 'High wind warning for driving segments' })
+  rule_name?: string;
+
+  @ApiProperty({ enum: ['HARD', 'SOFT'], example: 'HARD' })
+  severity!: 'HARD' | 'SOFT';
+
+  @ApiPropertyOptional({ enum: [1, 2, 3], description: '说服阶梯：1 事实 / 2 后果 / 3 权威' })
+  persuasion_tier?: 1 | 2 | 3;
+
+  @ApiProperty({ description: '用户可读一行（可与 narrator_hint_rendered 对齐）' })
+  message!: string;
+
+  @ApiPropertyOptional({ description: '规则引擎渲染后的叙事（含物理锚点）' })
+  narrator_hint_rendered?: string;
+
+  @ApiProperty({
+    description: '结构化证据包（如 type=solar_physics / weather_physics、source、baseline、阈值等）',
+    type: 'object',
+    additionalProperties: true,
+    example: { type: 'weather_physics', source: 'segment_prediction', value_mps: 25, threshold_mps: 15 },
+  })
+  evidence!: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: DecisionEvidenceCardFlagsDto })
+  flags?: DecisionEvidenceCardFlagsDto;
+}
+
+/** 决策元数据：前端优先读取的稳定装配区（与 orchestrationResult.state.narration 对齐） */
+export class DecisionMetadataDto {
+  @ApiPropertyOptional({
+    type: [DecisionEvidenceCardDto],
+    description: 'Iron Shield 物理证据卡片列表（由 narration.warnings 中的 iron_shield_evidence 装配）',
+  })
+  evidence_cards?: DecisionEvidenceCardDto[];
+}
+
+/** Tier 2+：损失时间块（与 EvidenceCardUIProps.impact 对齐） */
+export class EvidenceCardImpactUiDto {
+  @ApiProperty({ description: '延误估值（小时）', example: 2.5 })
+  @IsNumber()
+  hours!: number;
+
+  @ApiProperty({ description: '展示标签', example: 'Estimated delay' })
+  @IsString()
+  label!: string;
+}
+
+/** Tier 3：判例 / 社会证明 */
+export class EvidenceCardSocialProofUiDto {
+  @ApiProperty({ example: 8 })
+  @IsNumber()
+  count!: number;
+
+  @ApiProperty({ example: 91, description: '接受推荐或同类决策的占比（百分比整数）' })
+  @IsNumber()
+  percentage!: number;
+}
+
+/** Tier 3：策略锚点（可审计） */
+export class EvidenceCardPolicyReferenceUiDto {
+  @ApiProperty({ example: 'temp_wind_speed_drive_limit_v1' })
+  @IsString()
+  ruleId!: string;
+
+  @ApiPropertyOptional({ example: 'High wind warning for driving segments' })
+  @IsOptional()
+  @IsString()
+  ruleName?: string;
+}
+
+export class EvidenceCardUiFlagsDto {
+  @ApiPropertyOptional({ description: '原始量疑似异常，建议降级展示', example: false })
+  @IsOptional()
+  @IsBoolean()
+  data_anomaly?: boolean;
+}
+
+/**
+ * Iron Shield 证据卡片 — 视觉契约（与 `src/shared/interfaces/evidence-ui.interface.ts` 对齐）。
+ * 由服务端装配，客户端可直接 map 渲染，无需再跑 Assembler。
+ */
+export class EvidenceCardUiPropsDto {
+  @ApiProperty({ enum: ['iron_shield_evidence'] })
+  @IsIn(['iron_shield_evidence'])
+  kind!: 'iron_shield_evidence';
+
+  @ApiProperty({ enum: [1, 2, 3], description: '说服阶梯' })
+  @IsIn([1, 2, 3])
+  tier!: 1 | 2 | 3;
+
+  @ApiProperty({ enum: ['minimalist', 'analytical', 'authoritative'], description: '与 tier 硬映射的布局密度' })
+  @IsIn(['minimalist', 'analytical', 'authoritative'])
+  layout!: 'minimalist' | 'analytical' | 'authoritative';
+
+  @ApiProperty({ enum: ['solar', 'weather', 'road'], description: '主题色 / 图标族' })
+  @IsIn(['solar', 'weather', 'road'])
+  theme!: 'solar' | 'weather' | 'road';
+
+  @ApiProperty({ description: '主标题（多为 narrator_hint_rendered）' })
+  @IsString()
+  title!: string;
+
+  @ApiProperty({ description: '主指标展示', example: '25.0 m/s' })
+  @IsString()
+  valueDisplay!: string;
+
+  @ApiPropertyOptional({ description: '数据来源标签', example: 'segment_prediction' })
+  @IsOptional()
+  @IsString()
+  sourceLabel?: string;
+
+  @ApiPropertyOptional({ example: 'Threshold: 15.0 m/s' })
+  @IsOptional()
+  @IsString()
+  benchmark?: string;
+
+  @ApiPropertyOptional({ type: EvidenceCardImpactUiDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceCardImpactUiDto)
+  impact?: EvidenceCardImpactUiDto;
+
+  @ApiPropertyOptional({ type: EvidenceCardSocialProofUiDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceCardSocialProofUiDto)
+  socialProof?: EvidenceCardSocialProofUiDto;
+
+  @ApiPropertyOptional({ type: EvidenceCardPolicyReferenceUiDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceCardPolicyReferenceUiDto)
+  policyReference?: EvidenceCardPolicyReferenceUiDto;
+
+  @ApiPropertyOptional({ type: EvidenceCardUiFlagsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceCardUiFlagsDto)
+  flags?: EvidenceCardUiFlagsDto;
+}
+
+/** 纯展示层：与 decision_metadata（逻辑/审计）分离 */
+export class DecisionUiDisplayDto {
+  @ApiPropertyOptional({
+    type: [EvidenceCardUiPropsDto],
+    description: 'Iron Shield 证据卡片 UI 列表（EvidenceCardUIProps）',
+  })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => EvidenceCardUiPropsDto)
+  evidence_cards_ui?: EvidenceCardUiPropsDto[];
+}
+
+export class DecisionCandidateScoreDimensionsDto {
+  @ApiPropertyOptional({ description: '安全得分 (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  safety?: number;
+
+  @ApiPropertyOptional({ description: '体验得分 (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  experience?: number;
+
+  @ApiPropertyOptional({ description: '成本效用 (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  cost_efficiency?: number;
+}
+
+export class DecisionCandidateScoreBreakdownDto {
+  @ApiPropertyOptional({ description: '总效用 (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  total_utility?: number;
+
+  @ApiPropertyOptional({ type: DecisionCandidateScoreDimensionsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DecisionCandidateScoreDimensionsDto)
+  dimensions?: DecisionCandidateScoreDimensionsDto;
+}
+
+export class DecisionCandidateRiskProfileDto {
+  @ApiPropertyOptional({ description: '漂移概率 (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  probability_of_drift?: number;
+
+  @ApiPropertyOptional({ description: '触碰到的关键约束（通常为软约束/风险点）', type: [String] })
+  @IsOptional()
+  critical_constraints?: string[];
+}
+
+export class DecisionCandidateDto {
+  @ApiProperty({ description: '候选方案 ID (e.g., plan_b_optimized)' })
+  @IsString()
+  candidate_id!: string;
+
+  @ApiPropertyOptional({ type: () => Object, description: '完整行程实态' })
+  @IsOptional()
+  itinerary?: Itinerary;
+
+  @ApiPropertyOptional({ type: DecisionCandidateScoreBreakdownDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DecisionCandidateScoreBreakdownDto)
+  score_breakdown?: DecisionCandidateScoreBreakdownDto;
+
+  @ApiPropertyOptional({ type: DecisionCandidateRiskProfileDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DecisionCandidateRiskProfileDto)
+  risk_profile?: DecisionCandidateRiskProfileDto;
+
+  @ApiPropertyOptional({ description: '针对该候选方案的简评' })
+  @IsOptional()
+  @IsString()
+  explanation?: string;
+}
+
+@ApiExtraModels(
+  DecisionMetadataDto,
+  DecisionEvidenceCardDto,
+  DecisionEvidenceCardFlagsDto,
+  DecisionUiDisplayDto,
+  EvidenceCardUiPropsDto,
+  EvidenceCardImpactUiDto,
+  EvidenceCardSocialProofUiDto,
+  EvidenceCardPolicyReferenceUiDto,
+  EvidenceCardUiFlagsDto,
+  DecisionCandidateDto,
+)
 export class RouteAndRunResponseDto {
   @ApiProperty({ 
     description: '请求 ID（与请求中的 request_id 相同）',
@@ -518,7 +797,8 @@ export class RouteAndRunResponseDto {
     payload: {
       timeline: ItineraryDay[];
       dropped_items: ItineraryItem[];
-      candidates: any[]; // TODO: 定义明确的 Candidate 类型
+      candidates: DecisionCandidateDto[];
+      alternatives?: DecisionCandidateDto[];
       evidence: EvidenceRef[];
       robustness: number | null;
         jepa?: JepaPayload;
@@ -665,6 +945,10 @@ export class RouteAndRunResponseDto {
           minutes?: number[][];
         };
       };
+      /** 结构化决策元数据（证据卡片等），与编排 state 对齐装配 */
+      decision_metadata?: DecisionMetadataDto;
+      /** 展示层：开箱即用的 UI 块（与 decision_metadata 并行，不参与 DPO 逻辑链） */
+      ui_display?: DecisionUiDisplayDto;
     };
   };
 

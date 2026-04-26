@@ -800,6 +800,10 @@ model User {
   emailVerified         Boolean?               @default(false) @map("email_verified")
   displayName           String?                @map("display_name")
   avatarUrl             String?                @map("avatar_url")
+  /// bcrypt hash for staff console login (`/api/admin/auth/login`). Null for OAuth-only users.
+  passwordHash          String?                @map("password_hash") @db.Text
+  /// USER | OPERATOR | ADMIN — gates `/api/admin/**` when combined with JWT or password login.
+  platformRole          String                 @default("USER") @map("platform_role") @db.VarChar(32)
   createdAt             DateTime               @default(now()) @map("created_at")
   updatedAt             DateTime               @updatedAt @map("updated_at")
   profile               UserProfile?
@@ -817,6 +821,7 @@ model User {
 
   @@index([googleSub])
   @@index([email])
+  @@index([platformRole])
   @@map("users")
 }
 
@@ -2831,4 +2836,144 @@ model LearningConvergenceLog {
   @@index([round])
   @@index([createdAt])
   @@map("learning_convergence_logs")
+}
+
+/// CBR 判例聚合（与 LocalCaseStore signature 对齐；供跨实例温启动与离线回灌）
+model CbrCaseAggregate {
+  id                     String   @id @default(uuid()) @db.Uuid
+  signatureHash          String   @unique @map("signature_hash") @db.VarChar(64)
+  conflictType           String   @map("conflict_type") @db.VarChar(16)
+  primaryViolationType   String?  @map("primary_violation_type") @db.VarChar(128)
+  regionId               String?  @map("region_id") @db.VarChar(64)
+  month                  Int?
+  relaxationTypesJson    Json?    @map("relaxation_types_json")
+  totalCount             Int      @default(0) @map("total_count")
+  lateAcceptCount        Int      @default(0) @map("late_accept_count")
+  lateAcceptRate         Float?   @map("late_accept_rate")
+  avgWallHitLatencyMs    Float?   @map("avg_wall_hit_latency_ms")
+  avgWallHitEventSpan    Float?   @map("avg_wall_hit_event_span")
+  evidenceAnchors        Json?    @map("evidence_anchors")
+  precedentSummaryLatest String? @map("precedent_summary_latest") @db.Text
+  lastCaseId             String?  @map("last_case_id") @db.VarChar(255)
+  lastRequestId          String?  @map("last_request_id") @db.VarChar(255)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([conflictType, primaryViolationType])
+  @@index([updatedAt])
+  @@map("cbr_case_aggregates")
+}
+
+/// 博弈图 + 效率指标（供 SQL 热点分析、A/B 与周报）
+model DecisionIntelligenceLog {
+  id                           String   @id @default(uuid()) @db.Uuid
+  requestId                    String?  @map("request_id") @db.VarChar(255)
+  dominantCid                  String?  @map("dominant_cid") @db.VarChar(128)
+  graphJson                    Json     @map("graph_json")
+  efficiencyMetrics            Json     @map("efficiency_metrics")
+  persuasionLatencyEventSpan   Int?     @map("persuasion_latency_event_span")
+  oscillationEscalated         Boolean  @default(false) @map("oscillation_escalated")
+  hardTruthIsHard              Boolean  @default(false) @map("hard_truth_is_hard")
+  hasConversion                Boolean  @default(false) @map("has_conversion")
+  createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([dominantCid, createdAt])
+  @@index([requestId])
+  @@index([createdAt])
+  @@map("decision_intelligence_logs")
+}
+
+/// Decision Center layer-2: SideEffect handler param overrides (hot-reload from DB → SideEffectParamResolverService)
+model DecisionRuleConfig {
+  id         String   @id @default(uuid()) @db.Uuid
+  actionName String   @map("action_name") @db.VarChar(255)
+  handlerId  String   @map("handler_id") @db.VarChar(255)
+  params     Json
+  isActive   Boolean  @default(true) @map("is_active")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([actionName, handlerId])
+  @@index([isActive, updatedAt])
+  @@map("decision_rule_configs")
+}
+
+/// FINANCIAL_HOLD tokens persisted across process restarts (SideEffect apply → monitor/expire APIs)
+model AgentFinancialHold {
+  holdId     String   @id @map("hold_id") @db.VarChar(255)
+  actionId   String   @map("action_id") @db.VarChar(255)
+  actionName String   @map("action_name") @db.VarChar(255)
+  tripId     String   @map("trip_id") @db.VarChar(255)
+  requestId  String   @map("request_id") @db.VarChar(255)
+  /// Shadow amount locked (best-effort). Unit follows action_input (v1).
+  amount     Float?   @map("amount")
+  currency   String?  @map("currency") @db.VarChar(8)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tripId, expiresAt])
+  @@map("agent_financial_holds")
+}
+
+/// Commit saga ledger: action.execute vs side-effect apply (audit + recovery worker hooks)
+model AgentActionLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  requestId        String   @map("request_id") @db.VarChar(255)
+  tripId           String   @map("trip_id") @db.VarChar(255)
+  actionId         String   @map("action_id") @db.VarChar(255)
+  actionName       String   @map("action_name") @db.VarChar(255)
+  /// INIT | COMMITTED | SIDE_EFFECT_DONE | FAILED
+  status           String   @db.VarChar(32)
+  idempotencyKey   String?  @map("idempotency_key") @db.VarChar(255)
+  payload          Json?
+  lastError        String?  @map("last_error") @db.Text
+  committedAt      DateTime? @map("committed_at") @db.Timestamptz(6)
+  sideEffectDoneAt DateTime? @map("side_effect_done_at") @db.Timestamptz(6)
+  failedAt         DateTime? @map("failed_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tripId, actionId, createdAt])
+  @@index([status, updatedAt])
+  @@map("agent_action_logs")
+}
+
+/// Admin / operator audit trail for high-privilege mutations (rules, saga retries, hold releases).
+model AdminActivityLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor     String?  @map("actor") @db.VarChar(255)
+  path      String   @map("path") @db.VarChar(512)
+  method    String   @map("method") @db.VarChar(16)
+  meta      Json?    @map("meta")
+
+  @@index([createdAt])
+  @@map("admin_activity_logs")
+}
+
+/// Idempotency guard for manual saga side-effect replays (one successful replay per saga log row).
+model AdminSagaSideEffectReplay {
+  id               String   @id @default(uuid()) @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  agentActionLogId String   @unique @map("agent_action_log_id") @db.Uuid
+  idempotencyKey   String?  @map("idempotency_key") @db.VarChar(255)
+
+  @@index([idempotencyKey])
+  @@map("admin_saga_side_effect_replays")
+}
+
+/// Admin quality labeling for training/audit (e.g. DRIFT between facts vs explanation).
+model AdminQualityMark {
+  id         String   @id @default(uuid()) @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor      String?  @map("actor") @db.VarChar(255)
+  targetType String   @map("target_type") @db.VarChar(32)
+  targetId   String   @map("target_id") @db.VarChar(255)
+  label      String   @map("label") @db.VarChar(64)
+  comment    String?  @map("comment") @db.Text
+  meta       Json?    @map("meta")
+
+  @@index([targetType, targetId])
+  @@index([label])
+  @@index([createdAt])
+  @@map("admin_quality_marks")
 }

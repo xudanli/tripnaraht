@@ -36,6 +36,8 @@ export interface GoogleTokenResponse {
 export interface TripNaraAccessTokenPayload {
   sub: string; // User ID
   email?: string;
+  /** Optional platform roles embedded at issuance (ADMIN / OPERATOR). */
+  roles?: string[];
   iat: number;
   exp: number;
 }

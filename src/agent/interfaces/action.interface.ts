@@ -27,6 +27,45 @@ export enum ActionSideEffect {
   CHARGES_MONEY = 'charges_money',
 }
 
+export type ActionFeasibilityStatus = 'feasible' | 'blocked' | 'requires_confirmation';
+
+export type PreconditionFindingCode =
+  | 'MISSING_FIELD'
+  | 'INSUFFICIENT_FUNDS'
+  | 'BUDGET_LIMIT_WARNING'
+  | 'PRECONDITION_FAILED'
+  | 'UNKNOWN';
+
+export interface PreconditionFinding {
+  code: PreconditionFindingCode;
+  message: string;
+  /** Optional JSON path / dotted path that failed */
+  path?: string;
+  severity: 'INFO' | 'WARN' | 'BLOCK';
+}
+
+export interface ShadowDeltaBudget {
+  current: number;
+  delta: number;
+  after: number;
+  currency: string;
+}
+
+export interface ShadowDeltaView {
+  resources?: {
+    budget?: ShadowDeltaBudget;
+    time?: { start_offset_ms: number; end_offset_ms: number; duration_delta_ms: number };
+  };
+  risk_profile?: { before: string; after: string; delta_reason: string };
+  ontology_patches?: any[];
+}
+
+export interface PreconditionAssessment {
+  status: ActionFeasibilityStatus;
+  findings: PreconditionFinding[];
+  shadow_delta?: ShadowDeltaView;
+}
+
 /**
  * Action 元数据
  */
@@ -63,5 +102,20 @@ export interface Action {
   output_schema: Record<string, any>;
   /** 执行函数 */
   execute: (input: any, state: any) => Promise<any>;
+
+  /**
+   * Optional: richer precondition + impact assessment for preview.
+   * If omitted, registry falls back to metadata.preconditions dotted-path checks.
+   */
+  assess_preconditions?: (input: any, state: any) => PreconditionAssessment | Promise<PreconditionAssessment>;
+
+  /**
+   * Declarative side-effect wiring (config only; runtime resolved via SideEffectRegistry).
+   * This makes SideEffects a first-class, extensible contract.
+   */
+  side_effect_configs?: Array<{
+    handlerId: string;
+    params?: Record<string, any>;
+  }>;
 }
 

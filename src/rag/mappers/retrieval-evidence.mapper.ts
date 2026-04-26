@@ -4,6 +4,8 @@
  * - **同类合并**：同一 `category` 多条命中时，保留 **最鲜** 证据（`ageHours` 最小 = `updated_at` 最晚）。
  * - **置信度过滤**：默认按 `hybridScore ?? similarity ?? denseScore` 打分；`scoreThreshold` 未设置则**不过滤**（避免 RRF hybrid≈0.001 被误杀）。Dense 主路径可设 `0.6`。
  * - **输出顺序**：规则/风险类优先于路况类，便于日志阅读（不影响 CGUS 聚合逻辑）。
+ * - **反馈指针**：每类输出 `contextPointer`（`rag:{fileId}:{chunkId}`）及可选 `metadataChecksum`
+ *  （`structured_data` 短哈希），供 TerrainAudit / 回放按区域重评证据链。
  *
  * 端到端示例（编排层）：
  * ```ts
@@ -15,6 +17,7 @@
  * await this.cgusSearch.search(candidates, context, { retrievalCategoryEvidence: evidence });
  * ```
  */
+import { createHash } from 'crypto';
 import type { ChunkRetrievalResult } from '../services/chunk-retrieval.service';
 import type { RetrievalCategoryEvidence } from '../../trips/decision/optimization/retrieval-category-constraint-boost';
 
@@ -51,6 +54,23 @@ function categoryRank(category: string): number {
   const i = CATEGORY_PRIORITY.indexOf(category as (typeof CATEGORY_PRIORITY)[number]);
   return i === -1 ? 100 + category.charCodeAt(0) : i;
 }
+
+function checksumStructuredSubset(metadata: unknown): string | undefined {
+  const structured = (metadata as { structured_data?: unknown } | null)?.structured_data;
+  if (!structured || typeof structured !== 'object') return undefined;
+  try {
+    return createHash('sha256').update(JSON.stringify(structured)).digest('hex').slice(0, 16);
+  } catch {
+    return undefined;
+  }
+}
+
+type CategoryWinner = {
+  ageHours: number;
+  chunkId: string;
+  fileId: string;
+  metadata: unknown;
+};
 
 function pushDerivedCategoriesFromStructuredData(
   out: Set<string>,
@@ -124,8 +144,8 @@ export class RetrievalEvidenceMapper {
     const threshold = options?.scoreThreshold;
     const scoreOf = options?.selectScore ?? RetrievalEvidenceMapper.selectDefaultScore;
 
-    /** category → 当前见到的最小 ageHours（最鲜）；无时间戳用 +∞ 表示「不参与抢鲜」 */
-    const freshestAgeByCategory = new Map<string, number>();
+    /** category → 最鲜证据对应的 chunk 与 ageHours（无时间戳 ageHours=+∞） */
+    const winnerByCategory = new Map<string, CategoryWinner>();
 
     for (const chunk of chunks) {
       if (threshold !== undefined) {
@@ -149,21 +169,32 @@ export class RetrievalEvidenceMapper {
           ? Math.max(0, (now.getTime() - chunk.chunkUpdatedAt.getTime()) / 3_600_000)
           : Number.POSITIVE_INFINITY;
 
+      const chunkId = chunk.chunkId ?? chunk.id;
+      const fileId = chunk.fileId?.trim() ? chunk.fileId : 'unknown';
+      const win: CategoryWinner = { ageHours, chunkId, fileId, metadata: chunk.metadata };
+
       for (const category of categories) {
-        const prev = freshestAgeByCategory.get(category);
-        if (prev === undefined || ageHours < prev) {
-          freshestAgeByCategory.set(category, ageHours);
+        const prev = winnerByCategory.get(category);
+        if (!prev || ageHours < prev.ageHours) {
+          winnerByCategory.set(category, win);
         }
       }
     }
 
     const rows: RetrievalCategoryEvidence[] = [];
-    for (const [category, ageVal] of freshestAgeByCategory) {
-      if (ageVal === Number.POSITIVE_INFINITY) {
-        rows.push({ category });
-      } else {
-        rows.push({ category, ageHours: ageVal });
+    for (const [category, w] of winnerByCategory) {
+      const row: RetrievalCategoryEvidence = {
+        category,
+        contextPointer: `rag:${w.fileId}:${w.chunkId}`,
+      };
+      if (w.ageHours !== Number.POSITIVE_INFINITY) {
+        row.ageHours = w.ageHours;
       }
+      const cs = checksumStructuredSubset(w.metadata);
+      if (cs) {
+        row.metadataChecksum = cs;
+      }
+      rows.push(row);
     }
 
     rows.sort((a, b) => {

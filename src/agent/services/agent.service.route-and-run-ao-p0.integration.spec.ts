@@ -260,6 +260,50 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
     expect(p1.allErrors).toHaveLength(0);
   });
 
+  it('AO-04: exposes optimization candidates[] with score_breakdown + risk_profile', async () => {
+    mockClaudeOrchestrator.orchestrateWithStateMachine.mockResolvedValue(
+      baseOrchestrationResult({
+        result: {
+          state: baseState({
+            current_step: 'DONE',
+            itinerary: { request_id: 'ao-p0-asm', days: [] } as any,
+            gate_result: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9, evidence_refs: [] } as any,
+          }),
+          itinerary: { request_id: 'ao-p0-asm', days: [] } as any,
+          gate_result: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9, evidence_refs: [] } as any,
+          decisionState: {
+            optimizationHints: {
+              method: 'CGUS',
+              recommendedAlternativeId: 'plan-base',
+              alternatives: [
+                {
+                  id: 'plan-base',
+                  score: 0.88,
+                  finalScore: 0.81,
+                  scoreBreakdown: { baseU: 0.9, baseP: 0.9, blendedU: 0.9, blendedP: 0.9 },
+                  riskProfile: { hard_violations: 0, soft_degree: 0.2 },
+                  itinerary: { request_id: 'plan-base', days: [], action_plan: [] },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    const res = await agentService.routeAndRun(aoP0Request());
+    expect(Array.isArray(res.result.payload.candidates)).toBe(true);
+    expect(res.result.payload.candidates.length).toBe(1);
+    expect((res.result.payload.candidates[0] as any).candidate_id).toBe('plan-base');
+    expect((res.result.payload.candidates[0] as any).score_breakdown?.total_utility).toBe(0.88);
+    // mockClaudeOrchestrator here does not run real CGUS; drift probability is best-effort and may be undefined.
+    expect(typeof (res.result.payload.candidates[0] as any).risk_profile).toBe('object');
+    expect((res.result.payload.candidates[0] as any).itinerary?.request_id).toBe('plan-base');
+
+    expect(Array.isArray((res.result.payload as any).alternatives)).toBe(true);
+    expect(((res.result.payload as any).alternatives?.[0] as any)?.candidate_id).toBe('plan-base');
+  });
+
   it('将仅 prompt、无 text 的 readiness 问题映射到 payload（与 executeGateEvalStep 注入一致）', async () => {
     const needConfirmGate = {
       gate_result: 'NEED_USER_CONFIRM' as const,

@@ -42,6 +42,11 @@ import { RouteAndRunResponseAssemblerService } from './route-and-run-response-as
 import { JepaProjectorService } from './jepa-projector.service';
 import { AgentEntryResponseFactoryService } from './agent-entry-response-factory.service';
 import { PlanningRequestClassifierService } from './planning-request-classifier.service';
+import { ModuleRef } from '@nestjs/core';
+import type { DecisionLogEntry as TripsDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
+import type { DecisionStage as TripsDecisionStage } from '../../trips/decision/shared/decision-result.types';
+import type { DecisionPersona as TripsDecisionPersona } from '../../trips/decision/shared/decision-result.types';
+import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';
 
 /**
  * Agent Service
@@ -72,7 +77,89 @@ export class AgentService {
     @Optional() private responseAssembler?: RouteAndRunResponseAssemblerService,
     @Optional() private entryResponses?: AgentEntryResponseFactoryService,
     @Optional() private planningRequestClassifier?: PlanningRequestClassifierService,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
+
+  private shouldPersistRouteAndRunDecisionLogs(request: RouteAndRunRequestDto): boolean {
+    if (request.options?.dry_run) return false;
+    const v = String(process.env.ROUTE_AND_RUN_PERSIST_DECISION_LOGS ?? '').toLowerCase();
+    return v === '1' || v === 'true';
+  }
+
+  private resolveTripsPersonaFromAgentLog(log: DecisionLogEntry): TripsDecisionPersona {
+    const g = String((log.metadata as any)?.guardian ?? '').toUpperCase();
+    if (g === 'ABU' || g === 'DR_DRE' || g === 'NEPTUNE') return g as TripsDecisionPersona;
+    const actor = String(log.actor ?? '');
+    if (actor === 'Gatekeeper') return 'ABU';
+    if (actor === 'LocalInsight') return 'NEPTUNE';
+    if (actor === 'CoreDecision') return 'DR_DRE';
+    return 'USER_ACTION';
+  }
+
+  private resolveTripsStageFromStep(step: OrchestrationStep): TripsDecisionStage {
+    const s = String(step ?? '').toUpperCase();
+    if (s === 'GATE_EVAL') return 'ABU_GATE';
+    if (s === 'REPAIR') return 'SPATIAL_REPAIR';
+    if (s === 'VERIFY') return 'FINALIZE';
+    if (s === 'PLAN_GEN' || s === 'OPTIMIZE') return 'PLAN_SCORE';
+    if (s === 'INTAKE') return 'ROUTE_PICK';
+    return 'FINALIZE';
+  }
+
+  private mapRouteAndRunDecisionLogToTrips(entries: DecisionLogEntry[]): TripsDecisionLogEntry[] {
+    const out: TripsDecisionLogEntry[] = [];
+    for (const it of entries ?? []) {
+      if (!it || typeof it !== 'object') continue;
+      const ts = typeof it.timestamp === 'string' ? it.timestamp : new Date().toISOString();
+      const meta = (it.metadata && typeof it.metadata === 'object') ? { ...(it.metadata as any) } : {};
+      // Preserve original orchestration log payload for audit/debug.
+      const persistMeta = {
+        ...meta,
+        route_and_run: {
+          request_id: it.request_id,
+          step: it.step,
+          actor: it.actor,
+          inputs_summary: it.inputs_summary,
+          outputs_summary: it.outputs_summary,
+        },
+      };
+      out.push({
+        persona: this.resolveTripsPersonaFromAgentLog(it),
+        action: 'EVALUATE',
+        explanation: String(it.outputs_summary ?? '').slice(0, 4000),
+        reasonCodes: [String(it.step ?? 'UNKNOWN_STEP')],
+        evidenceRefs: Array.isArray(it.evidence_refs) ? it.evidence_refs.map((x) => String(x)) : [],
+        timestamp: ts,
+        decisionSource: 'HEURISTIC',
+        decisionStage: this.resolveTripsStageFromStep(it.step),
+        metadata: persistMeta,
+      });
+    }
+    return out;
+  }
+
+  private async persistRouteAndRunDecisionLogs(params: {
+    request: RouteAndRunRequestDto;
+    orchestrationDecisionLog?: DecisionLogEntry[];
+  }): Promise<void> {
+    if (!this.shouldPersistRouteAndRunDecisionLogs(params.request)) return;
+    const logs = params.orchestrationDecisionLog ?? [];
+    if (logs.length === 0) return;
+    if (!this.moduleRef) return;
+    let storage: DecisionLogStorageService | undefined;
+    try {
+      storage = this.moduleRef.get(DecisionLogStorageService, { strict: false });
+    } catch {
+      storage = undefined;
+    }
+    if (!storage) return;
+    const mapped = this.mapRouteAndRunDecisionLogToTrips(logs);
+    if (mapped.length === 0) return;
+    await storage.saveLogEntries(mapped, {
+      tripId: params.request.trip_id ?? undefined,
+      metadata: { source: 'route_and_run' },
+    });
+  }
 
   private getResponseAssembler(): RouteAndRunResponseAssemblerService {
     return (
@@ -855,6 +942,16 @@ export class AgentService {
 
     // 构建响应
     const assembler = this.getResponseAssembler();
+    // Best-effort persistence for QA/DPO mining (route_and_run -> decision_logs table).
+    // This is intentionally non-blocking and gated by env flag.
+    this.persistRouteAndRunDecisionLogs({
+      request,
+      orchestrationDecisionLog: orchestrationResult.result?.state?.decision_log,
+    }).catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.debug(`[AgentService] persistRouteAndRunDecisionLogs skipped: ${msg}`);
+    });
+
     return assembler.assembleClaudeStateMachineResponse({
       request,
       startTime,

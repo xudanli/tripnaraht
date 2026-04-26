@@ -100,4 +100,217 @@ describe('RepairExecutorService', () => {
 
     expect(mockLocalInsight.suggestAlternatives).not.toHaveBeenCalled();
   });
+
+  it('L3 tactic: TIME_SPACE_MAX_DRIVING_HOURS should drop or migrate an item', async () => {
+    const dso: any = {
+      verification: {
+        issues: [
+          {
+            code: 'FATIGUE_OVERLOAD',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|time_space.max_driving_hours|DAY:2026-06-01|cmp:LEQ|actual:11|limit:10|unit:h|slack:-1] 超时',
+            source: 'ROUTE_FEASIBILITY',
+            at: new Date().toISOString(),
+            entityRef: { type: 'DAY', id: '2026-06-01' },
+          },
+        ],
+      },
+      poiPlanning: { poiPlan: { requiredAnchorPoiIds: [] } },
+    };
+    const ctx: any = {
+      requestId: 'r1',
+      tripPlanRequest: { destination: 'Iceland', mode: 'drive' },
+      gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9 },
+      itinerary: {
+        request_id: 'r1',
+        days: [
+          {
+            date: '2026-06-01',
+            items: [
+              { id: 'a', type: 'POI', metadata: { duration_minutes: 120 } },
+              { id: 'b', type: 'POI', metadata: { duration_minutes: 60 } },
+            ],
+          },
+        ],
+      },
+    };
+    const result = await service.execute(dso, ctx);
+    expect(result.repairApplied).toBe(true);
+    expect(result.itinerary?.days?.[0]?.items?.length).toBeLessThan(2);
+  });
+
+  it('L3 tactic: TIME_SPACE_ETA_FEASIBILITY should shift windows', async () => {
+    const dso: any = {
+      verification: {
+        issues: [
+          {
+            code: 'ROUTE_INFEASIBLE',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|time_space.eta_feasibility|SEGMENT:2026-06-01|cmp:GEQ|actual:0|limit:10|unit:min|slack:-10] infeasible',
+            source: 'ROUTE_FEASIBILITY',
+            at: new Date().toISOString(),
+            entityRef: { type: 'SEGMENT', id: '2026-06-01|a->b' },
+          },
+        ],
+      },
+    };
+    const ctx: any = {
+      requestId: 'r1',
+      tripPlanRequest: { destination: 'Iceland', mode: 'drive' },
+      gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9 },
+      itinerary: {
+        request_id: 'r1',
+        days: [
+          {
+            date: '2026-06-01',
+            items: [
+              { id: 'a', type: 'POI', start_window: '10:00', end_window: '11:00', metadata: { duration_minutes: 60 } },
+              { id: 'b', type: 'POI', start_window: '12:00', end_window: '13:00', metadata: { duration_minutes: 60 } },
+            ],
+          },
+        ],
+      },
+    };
+    const before = new Date('2026-06-01T12:00:00.000Z').getTime();
+    const result = await service.execute(dso, ctx);
+    expect(result.repairApplied).toBe(true);
+    const shifted = new Date((result.itinerary as any).days[0].items[1].start_window).getTime();
+    expect(shifted).toBeGreaterThan(before);
+  });
+
+  it('L3 tactic: TERRAIN_REROUTE should accept 40min detour under low fatigue', async () => {
+    const terrainEngine = {
+      findAlternativePath: jest.fn().mockResolvedValue({
+        slope_ok: true,
+        slope_slack_pct: 1,
+        delta_drive_min: 40,
+        delta_distance_km: 12,
+        path_fingerprint: 'fp-lowfat-001',
+        patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
+      }),
+    };
+    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const dso: any = {
+      tripState: { fatigue: 10 }, // low fatigue -> w≈0.9
+      verification: {
+        issues: [
+          {
+            code: 'TERRAIN_STEEP_SLOPE',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|terrain.max_slope_pct|SEGMENT:seg-1|cmp:LEQ|actual:16|limit:15|unit:pct|slack:-1] steep',
+            source: 'ROUTE_FEASIBILITY',
+            at: new Date().toISOString(),
+            entityRef: { type: 'SEGMENT', id: 'seg-1' },
+          },
+        ],
+      },
+    };
+    const ctx: any = {
+      requestId: 'r1',
+      tripPlanRequest: { destination: 'Iceland', mode: 'drive' },
+      gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9 },
+      itinerary: {
+        request_id: 'r1',
+        days: [{ date: '2026-06-01', items: [{ id: 'seg-1', type: 'DRIVE', metadata: { duration_minutes: 60 } }] }],
+      },
+    };
+    const result = await s.execute(dso, ctx);
+    expect(result.repairApplied).toBe(true);
+    const meta = (result.itinerary as any).days[0].items[0].metadata;
+    expect(meta.route_encoded_polyline).toBe('abc');
+    expect(meta.route_eta_minutes).toBe(70);
+  });
+
+  it('L3 tactic: TERRAIN_REROUTE should reject 40min detour under high fatigue (effective limit suppressed)', async () => {
+    const terrainEngine = {
+      findAlternativePath: jest.fn().mockResolvedValue({
+        slope_ok: true,
+        slope_slack_pct: 1,
+        delta_drive_min: 40,
+        delta_distance_km: 12,
+        path_fingerprint: 'fp-highfat-001',
+        patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
+      }),
+    };
+    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const dso: any = {
+      tripState: { fatigue: 80 }, // high fatigue -> w≈0.2 => effSoft≈6
+      verification: {
+        issues: [
+          {
+            code: 'TERRAIN_STEEP_SLOPE',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|terrain.max_slope_pct|SEGMENT:seg-1|cmp:LEQ|actual:16|limit:15|unit:pct|slack:-1] steep',
+            source: 'ROUTE_FEASIBILITY',
+            at: new Date().toISOString(),
+            entityRef: { type: 'SEGMENT', id: 'seg-1' },
+          },
+        ],
+      },
+    };
+    const ctx: any = {
+      requestId: 'r1',
+      tripPlanRequest: { destination: 'Iceland', mode: 'drive' },
+      gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9 },
+      itinerary: {
+        request_id: 'r1',
+        days: [{ date: '2026-06-01', items: [{ id: 'seg-1', type: 'DRIVE', metadata: { duration_minutes: 60 } }] }],
+      },
+    };
+    const result = await s.execute(dso, ctx);
+    // No other tactics apply; should fall back to skill-based repair which is not configured -> false.
+    expect(result.repairApplied).toBe(false);
+    expect(terrainEngine.findAlternativePath).toHaveBeenCalled();
+  });
+
+  it('L3 tactic: TERRAIN_REROUTE should emit OSCILLATION_PREVENTION when path_fingerprint repeats', async () => {
+    const terrainEngine = {
+      findAlternativePath: jest.fn().mockResolvedValue({
+        slope_ok: true,
+        slope_slack_pct: 1,
+        delta_drive_min: 10,
+        delta_distance_km: 3,
+        path_fingerprint: 'fp-repeat-001',
+        patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
+      }),
+    };
+    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const dso: any = {
+      tripState: { fatigue: 10 },
+      verification: {
+        issues: [
+          {
+            code: 'TERRAIN_STEEP_SLOPE',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|terrain.max_slope_pct|SEGMENT:seg-1|cmp:LEQ|actual:16|limit:15|unit:pct|slack:-1] steep',
+            source: 'ROUTE_FEASIBILITY',
+            at: new Date().toISOString(),
+            entityRef: { type: 'SEGMENT', id: 'seg-1' },
+          },
+        ],
+      },
+    };
+    const ctx: any = {
+      requestId: 'r1',
+      tripPlanRequest: { destination: 'Iceland', mode: 'drive' },
+      gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9 },
+      itinerary: {
+        request_id: 'r1',
+        days: [
+          {
+            date: '2026-06-01',
+            items: [{ id: 'seg-1', type: 'DRIVE', metadata: { duration_minutes: 60, reroute_path_fingerprints: ['fp-repeat-001'] } }],
+          },
+        ],
+      },
+    };
+    const result = await s.execute(dso, ctx);
+    expect(result.repairApplied).toBe(false);
+    expect(result.repairTraces?.[0]?.reason).toBe('OSCILLATION_PREVENTION');
+  });
 });

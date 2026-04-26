@@ -6,6 +6,30 @@ import { ConstraintRule, ConstraintType } from '../interfaces/safety-compliance.
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+export interface RuleProvider {
+  fetchRules(type: ConstraintType): Promise<ConstraintRule[]>;
+}
+
+class FileRuleProvider implements RuleProvider {
+  constructor(private readonly rulesDir: string, private readonly logger: Logger) {}
+
+  async fetchRules(type: ConstraintType): Promise<ConstraintRule[]> {
+    const fileName = `${type.toLowerCase()}_rules.json`;
+    const filePath = path.join(this.rulesDir, fileName);
+    try {
+      const fileContent = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(fileContent) as ConstraintRule[];
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        this.logger.warn(`[ConstraintRuleManager] 规则文件不存在: ${filePath}，返回空数组`);
+        return [];
+      }
+      this.logger.error(`[ConstraintRuleManager] 读取规则文件失败: ${error?.message}`, error?.stack);
+      return [];
+    }
+  }
+}
+
 /**
  * ConstraintRuleManagerService
  * 
@@ -23,45 +47,96 @@ import * as path from 'path';
 export class ConstraintRuleManagerService {
   private readonly logger = new Logger(ConstraintRuleManagerService.name);
   private readonly rulesDir: string;
+  private readonly providers: RuleProvider[];
   private rulesCache: Map<string, ConstraintRule[]> = new Map();
+  private triggerTagIndex: Map<string, ConstraintRule[]> = new Map();
+  private allLoaded = false;
 
   constructor(private readonly configService: ConfigService) {
     // 从环境变量或配置获取规则目录
     this.rulesDir =
       this.configService.get<string>('CONSTRAINT_RULES_DIR') ||
-      path.join(process.cwd(), 'data', 'constraint-rules');
+      // Policy-as-code default: checked-in assets
+      path.join(process.cwd(), 'src', 'assets', 'ontology', 'rules');
+
+    // Future-proof: can append DbRuleProvider / RemoteRuleProvider later.
+    this.providers = [new FileRuleProvider(this.rulesDir, this.logger)];
+  }
+
+  /**
+   * Load all rule types once and build runtime indexes.
+   * This is the "Brain" layer: O(1) retrieval by trigger tags.
+   */
+  async loadAll(): Promise<void> {
+    if (this.allLoaded) return;
+    const types: ConstraintType[] = ['GEOGRAPHIC', 'TEMPORAL', 'COMPLIANCE', 'USER_PREFERENCE'];
+    const all: ConstraintRule[] = [];
+    for (const t of types) {
+      // loadRulesFromFile already validates schema + falls back to defaults
+      const rules = await this.loadRulesFromFile(t);
+      all.push(...rules);
+      this.rulesCache.set(t, rules);
+    }
+
+    // Build triggerTagIndex
+    // Convention: rule.condition can optionally include:
+    // { "trigger": { "tags": ["aurora", ...] }, ... }
+    const idx = new Map<string, ConstraintRule[]>();
+    for (const r of all) {
+      try {
+        const cond = typeof r.condition === 'string' ? JSON.parse(r.condition) : (r as any).condition;
+        const tags: string[] = Array.isArray(cond?.trigger?.tags) ? cond.trigger.tags.map((x: any) => String(x)) : [];
+        for (const tag of tags) {
+          const key = tag.toLowerCase();
+          const arr = idx.get(key) ?? [];
+          arr.push(r);
+          idx.set(key, arr);
+        }
+      } catch {
+        // ignore non-JSON conditions
+      }
+    }
+    this.triggerTagIndex = idx;
+    this.allLoaded = true;
+    this.logger.log(`[ConstraintRuleManager] loadAll done: rules=${all.length}, triggerTags=${idx.size}`);
+  }
+
+  getRulesByTriggerTag(tag: string): ConstraintRule[] {
+    const key = String(tag ?? '').toLowerCase().trim();
+    if (!key) return [];
+    return this.triggerTagIndex.get(key) ?? [];
   }
 
   /**
    * 从文件加载规则
    */
   async loadRulesFromFile(type: ConstraintType): Promise<ConstraintRule[]> {
-    const fileName = `${type.toLowerCase()}_rules.json`;
-    const filePath = path.join(this.rulesDir, fileName);
-
     try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      const rules = JSON.parse(fileContent) as ConstraintRule[];
-
-      // 验证规则格式
+      const fetched = await Promise.all(this.providers.map((p) => p.fetchRules(type)));
+      const rules = fetched.flat();
       const validRules = rules.filter((rule) => this.validateRule(rule, type));
-
-      this.logger.log(
-        `[ConstraintRuleManager] 从文件加载规则: type=${type}, count=${validRules.length}`,
-      );
-
-      return validRules;
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        this.logger.warn(
-          `[ConstraintRuleManager] 规则文件不存在: ${filePath}，返回默认规则`,
-        );
-        return this.getDefaultRules(type);
+      if (validRules.length > 0) {
+        this.logger.log(`[ConstraintRuleManager] 从 providers 加载规则: type=${type}, count=${validRules.length}`);
+        return validRules;
       }
-      this.logger.error(
-        `[ConstraintRuleManager] 加载规则失败: ${error?.message}`,
-        error?.stack,
-      );
+
+      // Back-compat fallback path (older demo scripts wrote to /data/constraint-rules)
+      const fileName = `${type.toLowerCase()}_rules.json`;
+      try {
+        const legacyPath = path.join(process.cwd(), 'data', 'constraint-rules', fileName);
+        const legacy = await fs.readFile(legacyPath, 'utf-8');
+        const legacyRules = JSON.parse(legacy) as ConstraintRule[];
+        const validLegacy = legacyRules.filter((rule) => this.validateRule(rule, type));
+        if (validLegacy.length > 0) {
+          this.logger.log(`[ConstraintRuleManager] Loaded from legacy path: ${legacyPath}, count=${validLegacy.length}`);
+          return validLegacy;
+        }
+      } catch {
+        // ignore
+      }
+      return this.getDefaultRules(type);
+    } catch (error: any) {
+      this.logger.error(`[ConstraintRuleManager] 加载规则失败: ${error?.message}`, error?.stack);
       return this.getDefaultRules(type);
     }
   }
@@ -233,6 +308,8 @@ export class ConstraintRuleManagerService {
    */
   clearCache(): void {
     this.rulesCache.clear();
+    this.triggerTagIndex.clear();
+    this.allLoaded = false;
     this.logger.log('[ConstraintRuleManager] 规则缓存已清除');
   }
 }

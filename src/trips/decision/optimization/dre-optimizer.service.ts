@@ -764,13 +764,25 @@ export class DreOptimizerService implements DecisionPersonaStrategy {
       }
     }
     
-    // 疲劳统计对比日志
+    // 疲劳统计对比日志（同时写入结构化 evidence，供 DecisionLogStorage 派生 facts）
+    const fatigueThreshold = Number(DEFAULT_CONFIG.fatigueThreshold ?? 1.1) || 1.1;
     logs.push({
       persona: 'DR_DRE',
       action: 'ALLOW',
       explanation: `疲劳指数: 优化前 [均值=${original.fatigueStats.mean.toFixed(2)}, 最大=${original.fatigueStats.max.toFixed(2)}, 超载=${original.fatigueStats.overloadedDays}天] → 优化后 [均值=${recommended.fatigueStats.mean.toFixed(2)}, 最大=${recommended.fatigueStats.max.toFixed(2)}, 超载=${recommended.fatigueStats.overloadedDays}天]`,
       reasonCodes: ['FATIGUE_COMPARISON'],
       evidenceRefs: [],
+      metadata: {
+        rule_id: 'fatigue.max_daily',
+        details: {
+          evidence: {
+            type: 'fatigue_stats',
+            threshold_fatigue_index: fatigueThreshold,
+            original: original.fatigueStats,
+            recommended: recommended.fatigueStats,
+          },
+        },
+      },
       timestamp: new Date().toISOString(),
       decisionSource: 'HUMAN',
       decisionStage: 'PACE_ADJUST',

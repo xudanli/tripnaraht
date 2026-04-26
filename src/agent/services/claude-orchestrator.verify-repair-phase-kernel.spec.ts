@@ -197,7 +197,9 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
     expect(outVerify).toBe(dsoAfterVerify);
     expect(state.errors.some((e) => e.step === 'VERIFY' && e.error_code === 'VERIFICATION_ISSUES')).toBe(true);
     const verifyEntry = state.decision_log.filter((e) => e.step === 'VERIFY' && e.inputs_summary === 'Kernel 原生 VERIFY');
-    expect(verifyEntry[verifyEntry.length - 1].outputs_summary).toContain('发现');
+    const lastVerify = verifyEntry[verifyEntry.length - 1];
+    expect((lastVerify.metadata as any)?.issues?.length).toBeGreaterThan(0);
+    expect(lastVerify.outputs_summary).toMatch(/fatal=\d+ conflict=\d+ advisory=\d+/);
 
     const outRepair = await (orchestrator as any).executeRepairPhase(
       dsoAfterVerify,

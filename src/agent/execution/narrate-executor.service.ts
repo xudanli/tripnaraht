@@ -12,16 +12,28 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type {
   INarrateExecutor,
   NarrateExecutorContext,
+  NarrationEvidenceCard,
   NarrationLike,
+  NarrationWarningEntry,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { ClaudeNarratorAgentService } from '../services/sub-agents/narrator-agent.service';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
+import {
+  buildL3PersuasionLine,
+  parseL3ProofPrefix,
+  selectPersuasionMode,
+} from '../utils/narrator-l3-persuasion.util';
+import { ConstraintsEngineService } from '../training/services/constraints-engine.service';
+import { resolveWallHitDistanceMsForConstraints } from '../utils/wall-hit-distance.util';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
   private readonly logger = new Logger(NarrateExecutorService.name);
 
-  constructor(@Optional() private readonly narratorAgent?: ClaudeNarratorAgentService) {}
+  constructor(
+    @Optional() private readonly narratorAgent?: ClaudeNarratorAgentService,
+    @Optional() private readonly constraintsEngine?: ConstraintsEngineService,
+  ) {}
 
   async execute(
     dso: DecisionState,
@@ -59,12 +71,118 @@ export class NarrateExecutorService implements INarrateExecutor {
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
       } as OrchestratorState;
 
-      let narration = await this.narratorAgent.narrate(
+      let narration = (await this.narratorAgent.narrate(
         state.itinerary,
         state.gate_result,
         state.decision_log ?? [],
         stateForNarrate,
-      );
+      )) as NarrationLike;
+
+      // Physical Narration (Level 2): inject rendered safety/compliance hints from rule engine if available.
+      // This keeps the "Vault/Brain" decoupled: rule engine emits narrator_hint_rendered, narrator only surfaces it.
+      if (this.constraintsEngine) {
+        try {
+          const raw = dso.environmentState?.daylightByDate as
+            | Record<string, { sunset?: string; civil_dusk?: string; sunrise?: string }>
+            | undefined;
+          const daylightByDate = raw && typeof raw === 'object' ? raw : undefined;
+
+          const riskTol = (state.trip_plan_request as any)?.party_profile?.risk_tolerance ?? (state.trip_plan_request as any)?.constraints?.risk_tolerance;
+          const risk_appetite =
+            String(riskTol ?? '').toLowerCase() === 'low'
+              ? 'low'
+              : String(riskTol ?? '').toLowerCase() === 'high'
+                ? 'high'
+                : 'medium';
+
+          const buf = Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
+          const twilightBufferMin = Number.isFinite(buf) && buf > 0 ? Math.round(buf) : undefined;
+
+          const windSpeedMs =
+            (dso.environmentState as any)?.windSpeedMs ??
+            (dso.environmentState as any)?.weather?.wind_speed_mps ??
+            undefined;
+          const windSpeedByDate = (dso.environmentState as any)?.windSpeedByDate;
+          const windSpeedBySegment = (dso.environmentState as any)?.windSpeedBySegment;
+          const segmentNameBySegment = (dso.environmentState as any)?.segmentNameBySegment;
+
+          const check = await this.constraintsEngine.checkConstraints(state.itinerary as any, {
+            country_code: dso.environmentState?.countryCode ?? (state.trip_plan_request as any)?.destination?.country_code,
+            risk_appetite,
+            user_preferences: { risk_appetite },
+            daylightByDate,
+            decision_log: state.decision_log ?? [],
+            wall_hit_distance_ms: resolveWallHitDistanceMsForConstraints({
+              orchestratorState: state as any,
+              decisionLog: state.decision_log ?? [],
+            }),
+            ...(Number.isFinite(Number(windSpeedMs)) ? { windSpeedMs: Number(windSpeedMs) } : {}),
+            ...(windSpeedByDate ? { windSpeedByDate } : {}),
+            ...(windSpeedBySegment ? { windSpeedBySegment } : {}),
+            ...(segmentNameBySegment ? { segmentNameBySegment } : {}),
+            ...(twilightBufferMin ? { twilightBufferMin } : {}),
+          } as any);
+
+          const renderedFromWarnings = (check.warnings ?? [])
+            .map((w: any) => w?.details?.narrator_hint_rendered)
+            .filter((x: any) => typeof x === 'string' && x.trim()) as string[];
+          const renderedFromViolations = (check.violations ?? [])
+            .map((v: any) => v?.details?.narrator_hint_rendered)
+            .filter((x: any) => typeof x === 'string' && x.trim()) as string[];
+          // Violations (e.g. wind HARD) should surface ahead of SOFT warnings in tips order.
+          const rendered = [...renderedFromViolations, ...renderedFromWarnings].slice(0, 6);
+
+          if (rendered.length > 0) {
+            const tips = [...(narration.tips ?? [])];
+            for (let i = rendered.length - 1; i >= 0; i--) {
+              const line = rendered[i];
+              const msg = `[安全贴士] ${line}`.slice(0, 500);
+              if (!tips.includes(msg)) tips.unshift(msg);
+            }
+            narration = { ...narration, tips };
+          }
+
+          // Level 4: structured warnings (evidence cards) for UI / audit — not only plain tips text.
+          const evidenceCards: NarrationEvidenceCard[] = [];
+          const pushEvidenceCard = (row: any) => {
+            const ev = row?.details?.evidence;
+            const hintRendered = row?.details?.narrator_hint_rendered;
+            if (!ev || typeof ev !== 'object' || Array.isArray(ev) || Object.keys(ev).length === 0) return;
+            if (typeof hintRendered !== 'string' || !hintRendered.trim()) return;
+            const rid = String(row?.rule_id ?? '').trim();
+            if (!rid) return;
+            const sev = String(row?.severity ?? 'SOFT').toUpperCase() === 'HARD' ? 'HARD' : 'SOFT';
+            const msg = `[安全贴士] ${hintRendered.trim()}`.slice(0, 500);
+            const pt = Number((row as any)?.details?.persuasion_tier);
+            evidenceCards.push({
+              kind: 'iron_shield_evidence',
+              message: msg,
+              severity: sev,
+              rule_id: rid,
+              rule_name: typeof row?.rule_name === 'string' ? row.rule_name : undefined,
+              ...(pt === 1 || pt === 2 || pt === 3 ? { persuasion_tier: pt as 1 | 2 | 3 } : {}),
+              evidence: ev as Record<string, unknown>,
+              narrator_hint_rendered: hintRendered.trim(),
+            });
+          };
+          for (const v of check.violations ?? []) pushEvidenceCard(v);
+          for (const w of check.warnings ?? []) pushEvidenceCard(w);
+
+          if (evidenceCards.length > 0) {
+            const prev = (narration.warnings ?? []) as NarrationWarningEntry[];
+            const seen = new Set(evidenceCards.map((c) => c.rule_id));
+            const rest = prev.filter((w) => {
+              if (typeof w === 'object' && w !== null && (w as NarrationEvidenceCard).kind === 'iron_shield_evidence') {
+                return !seen.has((w as NarrationEvidenceCard).rule_id);
+              }
+              return true;
+            });
+            narration = { ...narration, warnings: [...evidenceCards, ...rest] };
+          }
+        } catch (e: any) {
+          this.logger.debug(`[NarrateExecutor] physical narration hint inject skipped: ${e?.message}`);
+        }
+      }
 
       const envConstraintIssues = (dso.verification?.issues ?? []).filter(
         (i) => i.source === 'ENVIRONMENTAL_CONSTRAINTS',
@@ -83,6 +201,34 @@ export class NarrateExecutorService implements INarrateExecutor {
         narration = { ...narration, tips };
       }
 
+      // L3-aware persuasion (demo): derive deterministic “intercept vs actuary” lines from L3-PROOF payloads.
+      const l3Issues = (dso.verification?.issues ?? []).filter((i) =>
+        String(i?.message ?? '').startsWith('[L3-PROOF|'),
+      );
+      if (l3Issues.length > 0) {
+        const tips = [...(narration.tips ?? [])];
+        const warnings = [...(narration.warnings ?? [])] as NarrationWarningEntry[];
+        let addedTips = 0;
+        let addedWarn = 0;
+        for (const i of l3Issues) {
+          const parsed = parseL3ProofPrefix(i.message);
+          if (!parsed) continue;
+          const mode = selectPersuasionMode(parsed.cid);
+          const out = buildL3PersuasionLine({ proof: parsed, mode });
+          if (!out) continue;
+          if (out.channel === 'warnings' && addedWarn < 2) {
+            if (!warnings.some((w) => typeof w === 'string' && w === out.line)) warnings.unshift(out.line);
+            addedWarn++;
+          }
+          if (out.channel === 'tips' && addedTips < 2) {
+            if (!tips.includes(out.line)) tips.unshift(out.line);
+            addedTips++;
+          }
+          if (addedTips >= 2 && addedWarn >= 2) break;
+        }
+        narration = { ...narration, tips, warnings };
+      }
+
       if (escalation?.userClarificationSnippet?.trim()) {
         const escPrefix =
           escalation.constraint === 'SUNSET_VISIBILITY' ? '[内核事实·日落/观景窗口]' : '[内核事实·须优先说明]';
@@ -91,8 +237,12 @@ export class NarrateExecutorService implements INarrateExecutor {
         if (!tips.some((t) => t.includes(escalation.userClarificationSnippet!.slice(0, 24)))) {
           tips.unshift(core);
         }
-        const warnings = [...(narration.warnings ?? [])];
-        if (!warnings.some((w) => w.includes(escalation.userClarificationSnippet!.slice(0, 24)))) {
+        const warnings = [...(narration.warnings ?? [])] as NarrationWarningEntry[];
+        if (
+          !warnings.some(
+            (w) => typeof w === 'string' && w.includes(escalation.userClarificationSnippet!.slice(0, 24)),
+          )
+        ) {
           warnings.unshift(core);
         }
         narration = { ...narration, tips, warnings };

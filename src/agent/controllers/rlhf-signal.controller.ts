@@ -27,7 +27,7 @@ import { DecisionOutput } from '../interfaces/decision-node.interface';
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
 import type { IDsoFeedbackPersistence } from '../../decision/kernel/dso-feedback-persistence.interface';
 import { DSO_FEEDBACK_PERSISTENCE } from '../../decision/kernel/dso-feedback-persistence.interface';
-import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import type { DecisionState, UserRepairResolutionLabel } from '../../decision/kernel/decision-state.types';
 import { projectJepaZStateFromDecisionState } from '../services/jepa-z-state.projection';
 
 /**
@@ -394,6 +394,54 @@ export class RLHFSignalController {
   recordFeedbackSignal(@Body() signal: Omit<FeedbackSignal, 'signal_id' | 'timestamp'>): FeedbackSignal {
     this.logger.debug(`[RLHF] Recording feedback: ${signal.feedback_type}`);
     return this.rlhfService.recordFeedbackSignal(signal);
+  }
+
+  @Post('decision/user-repair-resolution')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: '记录 REPAIR/效用补偿澄清选择',
+    description:
+      '与 DSO.verification.escalationPlan.correlationId 对齐；payload 由客户端回传 correlation_id + user_repair_resolution。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['trip_run_id', 'correlation_id', 'user_repair_resolution'],
+      properties: {
+        trip_run_id: { type: 'string' },
+        correlation_id: { type: 'string' },
+        user_repair_resolution: {
+          type: 'string',
+          enum: ['ACCEPTED_AUTO_REPAIR', 'RELAXED_CONSTRAINTS', 'PROCEED_REGARDLESS', 'ABANDONED'],
+        },
+        /** 先知卡回传 INTAKE；REPAIR 效用补偿等可省略（默认 REPAIR） */
+        phase: { type: 'string', enum: ['INTAKE', 'REPAIR'] },
+        user_id: { type: 'string' },
+      },
+    },
+  })
+  async recordUserRepairResolution(
+    @Body()
+    body: {
+      trip_run_id: string;
+      correlation_id: string;
+      user_repair_resolution: string;
+      phase?: 'INTAKE' | 'REPAIR';
+      user_id?: string;
+    },
+  ) {
+    if (!this.decisionKernel) {
+      this.logger.warn('[RLHF] recordUserRepairResolution: DecisionKernel 未注入');
+      return { success: false, error: 'decision_kernel_unavailable' };
+    }
+    const out = await this.decisionKernel.recordUserRepairResolution({
+      tripRunId: body.trip_run_id,
+      correlationId: body.correlation_id,
+      resolution: body.user_repair_resolution as UserRepairResolutionLabel,
+      userId: body.user_id,
+      feedbackPhase: body.phase,
+    });
+    return { success: out.ok, deduped: out.deduped, persisted: out.persisted };
   }
 
   @Post('feedback/accept')

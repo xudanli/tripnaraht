@@ -18,6 +18,8 @@ import { ExperienceAgentService } from '../services/domain-agents/experience-age
 import type { Itinerary } from '../interfaces/trip-plan.interface';
 import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
 import { classifyVerificationIssueFromText } from './verification-issue.rules';
+import type { ConstraintViolation, FeasibilityFinding } from '../services/route-feasibility.types';
+import { CONSTRAINT_IDS } from '../services/constraint-registry';
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -133,6 +135,40 @@ export class VerifyExecutorService implements IVerifyExecutor {
     const issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
 
+    // A. 显式约束投影（Constraint Projection）
+    // 即便路径/POI 尚未完整编排，只要用户意图明确包含 F-road/高地，且车辆为 2WD，则必须给出 HARD 级别 terrain 证据。
+    try {
+      const msg = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
+      const vehicle =
+        String((ctx.tripPlanRequest as any)?.constraints?.vehicle_type ?? '').toUpperCase() ||
+        (/4wd|4x4|四驱/i.test(msg) ? '4WD' : /2wd|两驱/i.test(msg) ? '2WD' : '');
+      const wantsFroad =
+        /\bf-?road\b/i.test(msg) ||
+        /\bF\d{2,4}\b/i.test(msg) || // F208 / F26 / F905...
+        /高地|内陆|山地|河渡|涉水/i.test(msg);
+      if (wantsFroad && vehicle === '2WD') {
+        const now = new Date().toISOString();
+        issues.push({
+          code: 'TERRAIN_F_ROAD_UNFIT',
+          class: 'CONFLICT',
+          // L3 proof-carrying prefix for dominant_cid + formal_proof_audit extraction
+          message:
+            `[L3-PROOF|terrain.f_road_compatibility|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+            `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`,
+          source: 'ROUTE_FEASIBILITY',
+          at: now,
+          entityRef: { type: 'DESTINATION', id: String((ctx.tripPlanRequest as any)?.destination ?? '') || ctx.requestId },
+          suggestedActions: [
+            { action: 'RELAX', detail: '升级车辆至 4WD 或取消 F-road/高地路段' },
+            { action: 'ASK_USER', detail: '确认是否自担风险继续（可能仍无解）' },
+          ],
+        });
+        confidenceDelta -= 0.25;
+      }
+    } catch {
+      // best-effort only
+    }
+
     // 0. RouteFeasibilityEngine（统一聚合：verify + fatigue + terrain + expert rules）
     if (this.routeFeasibility && ctx.itinerary) {
       try {
@@ -152,10 +188,16 @@ export class VerifyExecutorService implements IVerifyExecutor {
           },
         });
 
-        // RouteFeasibilityEngine: issues[] as strings → structured issues（保守默认：CONFLICT/ADVISORY）
-        for (const raw of out.issues ?? []) {
-          const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ROUTE_FEASIBILITY' });
+        // RouteFeasibilityEngine: prefer proof-carrying findings -> structured issues; only fall back to text classification.
+        for (const f of out.findings ?? []) {
+          const v = this.mapFeasibilityFindingToVerificationIssue(f);
           if (v) issues.push(v);
+        }
+        if ((out.findings ?? []).length === 0) {
+          for (const raw of out.issues ?? []) {
+            const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ROUTE_FEASIBILITY' });
+            if (v) issues.push(v);
+          }
         }
 
         // Confidence delta heuristic
@@ -300,5 +342,89 @@ export class VerifyExecutorService implements IVerifyExecutor {
       age_group: party?.has_elderly ? 'senior' : undefined,
       special_needs: [],
     };
+  }
+
+  private mapFeasibilityFindingToVerificationIssue(f: FeasibilityFinding): VerificationIssue | undefined {
+    if (!f) return undefined;
+    const now = new Date().toISOString();
+
+    const source: VerificationIssue['source'] = 'ROUTE_FEASIBILITY';
+    const issueClass: VerificationIssue['class'] =
+      f.severity === 'BLOCK' ? 'CONFLICT' : f.severity === 'WARNING' ? 'ADVISORY' : 'ADVISORY';
+
+    // L3 path: structured violation -> deterministic mapping + proof-carrying message prefix
+    if (f.violation) {
+      const mappedCode = this.mapConstraintIdToVerificationIssueCode(f.violation);
+      const msg = this.formatL3ProofMessage({ violation: f.violation, human: f.message });
+      return {
+        code: mappedCode,
+        class: issueClass,
+        message: msg,
+        source,
+        at: now,
+        entityRef: f.violation.entityRef,
+        suggestedActions: f.violation.suggestedActions,
+        confidence01: 0.95,
+      };
+    }
+
+    // L1 fallback: classify from text (finding.message only, no RFE issues[] dependency)
+    const v = classifyVerificationIssueFromText({ text: String(f.message ?? ''), source });
+    if (!v) return undefined;
+    return v;
+  }
+
+  private mapConstraintIdToVerificationIssueCode(v: ConstraintViolation): VerificationIssue['code'] {
+    const id = v.anchor?.constraintId ?? '';
+    switch (id) {
+      // terrain.*
+      case CONSTRAINT_IDS.TERRAIN_MAX_DAILY_ASCENT_M:
+        return 'FATIGUE_OVERLOAD';
+      case CONSTRAINT_IDS.TERRAIN_MAX_SLOPE_PCT:
+      case CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY:
+        return 'ROUTE_INFEASIBLE';
+
+      // time_space.*
+      case CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY:
+        return 'ROUTE_INFEASIBLE';
+      case CONSTRAINT_IDS.TIME_SPACE_MAX_DRIVING_HOURS:
+        return 'FATIGUE_OVERLOAD';
+      case CONSTRAINT_IDS.TIME_SPACE_MIN_TRANSFER_BUFFER:
+        return 'TIME_WINDOW_BREACH';
+
+      // entity.*
+      case CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP:
+      case CONSTRAINT_IDS.ENTITY_SEASONAL_CLOSURE:
+        return 'POI_CLOSED';
+      case CONSTRAINT_IDS.ENTITY_MANDATORY_RESERVATION:
+        return 'TIME_WINDOW_BREACH';
+
+      // environment.*
+      case CONSTRAINT_IDS.ENVIRONMENT_WIND_SPEED_LIMIT:
+      case CONSTRAINT_IDS.ENVIRONMENT_EXTREME_WEATHER_CLOSURE:
+        return 'WEATHER_RISK';
+      case CONSTRAINT_IDS.ENVIRONMENT_VISIBILITY_SUNSET_BUFFER:
+        return 'SUNSET_BREACH';
+
+      default:
+        return 'UNKNOWN';
+    }
+  }
+
+  private formatL3ProofMessage(params: { violation: ConstraintViolation; human?: string }): string {
+    const { violation, human } = params;
+    const a = violation.anchor;
+    const e = violation.entityRef;
+    const m = violation.metric;
+    const evid = violation.evidence;
+    const entity = e ? `${e.type}:${e.id ?? ''}` : 'OTHER:';
+    const metric =
+      m && Number.isFinite(m.actual) && Number.isFinite(m.limit) && Number.isFinite(m.slack)
+        ? `cmp:${m.cmp}|actual:${m.actual}|limit:${m.limit}|unit:${m.unit}|slack:${m.slack}`
+        : 'cmp:LEQ|actual:|limit:|unit:|slack:';
+    const ev = evid?.source ? `|evidence:${evid.source}${evid.refIds?.length ? `:${evid.refIds.join(',')}` : ''}` : '';
+    const prefix = `[L3-PROOF|${a.constraintId}|${entity}|${metric}${ev}]`;
+    const tail = human && String(human).trim() ? ` ${String(human).trim()}` : '';
+    return `${prefix}${tail}`;
   }
 }

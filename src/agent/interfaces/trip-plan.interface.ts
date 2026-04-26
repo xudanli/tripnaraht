@@ -10,12 +10,18 @@
 
 import { ClarificationQuestion } from './clarification.interface';
 import type { TravelActionType } from '../constants/action-execution.constants';
+import type { NarrationWarningEntry } from '../../decision/kernel/interfaces/phase-executor.interface';
 
 /**
  * TripPlanRequest（最小字段）
  */
 export interface TripPlanRequest {
   request_id: string; // 必填
+  /**
+   * Optional raw NL message hint.
+   * Used by deterministic intake compile / predictive simulation; not a source of truth for downstream execution.
+   */
+  message?: string;
   origin: string | { lat: number; lng: number };
   destination: string | { lat: number; lng: number };
   date_range?: {
@@ -41,6 +47,11 @@ export interface TripPlanRequest {
       total?: number;
       currency?: string;
     };
+    /**
+     * 车辆能力（准入类约束的最小载体）
+     * - 用于 F-road / 高地等 4x4 准入判断，以及 Shadow Dry-Run 的 Relaxation Patch
+     */
+    vehicle_type?: '2WD' | '4WD';
     daily_time_window?: {
       start: string; // HH:mm
       end: string; // HH:mm
@@ -282,6 +293,8 @@ export interface ItineraryItem {
     /** 可选：多维度风险标签，用于过滤/分析；不替代 Gate 侧 `GateViolation` */
     risk_tags?: ItineraryRiskTag[];
     distance_meters?: number; // 步行距离（米）
+    /** 显式终点坐标；若缺省，Kernel `itineraryToRoutePlanDraft` 可用相邻 POI 链推断并打 `auto_filled_for_audit` */
+    endLocation?: { lat: number; lng: number };
     transport_mode_changed?: boolean; // 交通方式是否已更改
     /** 专利实施例 2：航班号（REPLAN 替代航班） */
     flight?: string;
@@ -473,7 +486,13 @@ export interface OrchestratorState {
   current_step: OrchestrationStep;
   trip_plan_request?: TripPlanRequest;
   gaps?: Array<{
-    type: 'MISSING_DESTINATION' | 'MISSING_DATES' | 'MISSING_CONSTRAINTS' | 'MISSING_PREFERENCES';
+    type:
+      | 'MISSING_DESTINATION'
+      | 'MISSING_DATES'
+      | 'MISSING_CONSTRAINTS'
+      | 'MISSING_PREFERENCES'
+      | 'SPEC_TYPE_ERROR'
+      | 'INTENT_COMPILE_ERROR';
     severity: 'HARD' | 'SOFT';
     detail: string;
   }>;
@@ -516,7 +535,7 @@ export interface OrchestratorState {
     }>;
     highlights: string[];
     tips: string[];
-    warnings?: string[];
+    warnings?: NarrationWarningEntry[];
   };
   evidence_registry: Map<string, EvidenceRef>; // evidence_id -> EvidenceRef
   decision_log: DecisionLogEntry[];

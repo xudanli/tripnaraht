@@ -110,6 +110,7 @@ export function orchestratorStateToDecisionStatePatch(
     currentPhase: os.current_step,
     startedAt: os.metadata?.started_at,
     lastUpdatedAt: os.metadata?.last_updated_at,
+    ...(Boolean((os.metadata as any)?.early_warning_acknowledged) ? { earlyWarningAcknowledged: true } : {}),
   };
 
   const metaInput: DecisionMetaInput = {
@@ -159,11 +160,15 @@ export function buildPatchFromDSOPrimary(
       ? dso.environmentState
       : fromO.environmentState;
 
+  const earlyAck = Boolean(
+    dso.systemState?.earlyWarningAcknowledged || (os.metadata as any)?.early_warning_acknowledged,
+  );
   patch.systemState = {
     requestId: patch.requestId ?? os.request_id ?? '',
     currentPhase: os.current_step,
     startedAt: dso.systemState?.startedAt ?? os.metadata?.started_at,
     lastUpdatedAt: new Date().toISOString(),
+    ...(earlyAck ? { earlyWarningAcknowledged: true } : {}),
   };
 
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;
@@ -351,6 +356,7 @@ export function decisionStateToOrchestratorState(
       ...base?.metadata,
       started_at: base?.metadata?.started_at ?? dso.systemState?.startedAt ?? new Date().toISOString(),
       last_updated_at: dso.systemState?.lastUpdatedAt ?? new Date().toISOString(),
+      ...(dso.systemState?.earlyWarningAcknowledged ? { early_warning_acknowledged: true } : {}),
     },
   };
 
@@ -507,9 +513,16 @@ function gateResultToConstraintReport(gate: GateResult): ConstraintReport {
     detail: v.detail,
     degree: v.severity === 'HARD' ? 1 : 0.5,
   }));
+  const gateOutcome: ConstraintReport['gateOutcome'] =
+    gate.gate_result === 'ALLOW'
+      ? 'ALLOW'
+      : gate.gate_result === 'ADJUST_REQUIRED'
+        ? 'ADJUST_REQUIRED'
+        : 'BLOCK';
   return {
     feasible,
     violations,
     feasibleActions: gate.required_adjustments?.map((a) => a.action),
+    gateOutcome,
   };
 }

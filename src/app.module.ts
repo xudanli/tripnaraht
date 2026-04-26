@@ -62,6 +62,7 @@ import { DecisionKernelModule } from './decision/decision-kernel.module';
 import { HarnessModule } from './harness/harness.module';
 import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { WorldModelSchedulerModule } from './trips/decision/world-model-schedule
     ContentStrategyModule, // 内容策略模块（话术规范框架）
     // ✅ 第一批：基础服务模块（已确认正常）
     SystemModule, // 系统状态模块
+    MonitoringModule, // Prometheus /metrics exporter (global)
     ContactModule, // 联系我们模块
     UsersModule, // 用户画像模块
     CountriesModule, // 国家档案模块

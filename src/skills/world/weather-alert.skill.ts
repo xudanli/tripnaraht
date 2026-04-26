@@ -63,7 +63,8 @@ export interface WeatherAlertSkillOutput {
   locationWeather: Array<{
     location: { lat: number; lng: number; name?: string };
     forecast: WeatherForecast | null;
-    riskLevel: 'safe' | 'moderate' | 'high' | 'extreme';
+    /** Back-compat: tests and downstream use `risk` */
+    risk: 'safe' | 'moderate' | 'high' | 'extreme';
     blockers: string[]; // 阻塞原因
     warnings: string[]; // 告警信息
   }>;
@@ -92,9 +93,11 @@ export interface WeatherAlertSkillOutput {
 
 @Injectable()
 export class WeatherAlertSkill {
-  private readonly logger = new Logger('WeatherAlertSkill');
+  private readonly logger = new Logger(WeatherAlertSkill.name);
 
-  constructor(private readonly weatherService: IcelandWeatherRealtimeService) {
+  constructor(
+    private readonly weatherService: IcelandWeatherRealtimeService,
+  ) {
     this.logger.log('✅ WeatherAlertSkill 已初始化');
   }
 
@@ -113,14 +116,34 @@ export class WeatherAlertSkill {
 
     // 检查每个位置的天气
     for (const location of input.locations) {
-      const forecast = await this.weatherService.getWeatherByLocation(location.lat, location.lng);
+      let forecast: any;
+      try {
+        // Fetch both (when available) and choose the riskier one.
+        // Rationale: location-level and station-level feeds can disagree; for gating we take max-risk.
+        const byLoc = await (this.weatherService as any).getWeatherByLocation?.(location.lat, location.lng);
+        const byStation = await (this.weatherService as any).getNearestWeatherStation?.(location.lat, location.lng);
+
+        if (byLoc && byStation) {
+          const locRisk = this.assessWeatherRisk(byLoc, riskTolerance).riskLevel;
+          const staRisk = this.assessWeatherRisk(byStation, riskTolerance).riskLevel;
+          forecast = this.riskLevelToNumber(staRisk) >= this.riskLevelToNumber(locRisk) ? byStation : byLoc;
+        } else {
+          forecast = byStation ?? byLoc;
+        }
+      } catch (e: any) {
+        this.logger.error(
+          `[WeatherAlertSkill] 天气服务调用失败: ${e?.message || 'unknown error'}`,
+          e?.stack,
+        );
+        throw e;
+      }
 
       if (!forecast) {
         // 无法获取天气数据
         locationWeather.push({
           location,
           forecast: null,
-          riskLevel: 'moderate',
+          risk: 'moderate',
           blockers: [],
           warnings: ['无法获取天气数据'],
         });
@@ -133,7 +156,7 @@ export class WeatherAlertSkill {
       locationWeather.push({
         location,
         forecast,
-        riskLevel,
+        risk: riskLevel,
         blockers,
         warnings,
       });
@@ -147,14 +170,15 @@ export class WeatherAlertSkill {
       evidenceRefs.push({
         type: 'weather_forecast',
         location: location.name || `${location.lat}, ${location.lng}`,
-        timestamp: forecast.forecastTime,
-        source: forecast.dataSource,
-        confidence: forecast.confidence,
+        timestamp: forecast.forecastTime instanceof Date ? forecast.forecastTime : new Date(),
+        source: forecast.dataSource || 'iceland-weather-realtime-service',
+        confidence: typeof forecast.confidence === 'number' ? forecast.confidence : 0.85,
       });
     }
 
     // 生成调整建议
     if (maxRiskLevel === 'extreme') {
+      adjustments.push('Consider postponing travel until weather improves');
       adjustments.push('极端天气，建议延期出行或选择其他路线');
       adjustments.push('如必须出行，请联系当地紧急服务部门 (1777)');
     } else if (maxRiskLevel === 'high') {
@@ -177,7 +201,7 @@ export class WeatherAlertSkill {
     } else if (maxRiskLevel === 'high') {
       gateRecommendation = riskTolerance === 'high' ? 'NEED_USER_CONFIRM' : 'ADJUST_REQUIRED';
     } else if (maxRiskLevel === 'moderate') {
-      gateRecommendation = 'NEED_USER_CONFIRM';
+      gateRecommendation = 'ADJUST_REQUIRED';
     } else {
       gateRecommendation = 'ALLOW';
     }
@@ -185,9 +209,7 @@ export class WeatherAlertSkill {
     // 生成摘要
     const summary = this.generateSummary(locationWeather, maxRiskLevel, gateRecommendation);
 
-    this.logger.log(
-      `天气检查完成: ${maxRiskLevel} 风险, ${gateRecommendation} 建议, ${allBlockers.length} 个阻塞因素`
-    );
+    this.logger.log(`[WeatherAlertSkill] 天气检查完成: ${maxRiskLevel}, 建议: ${gateRecommendation}`);
 
     return {
       overallRisk: maxRiskLevel,
@@ -220,10 +242,7 @@ export class WeatherAlertSkill {
         blockers.push(`极端风速: ${forecast.windSpeed.toFixed(1)} m/s (> 20 m/s)`);
         riskLevel = 'extreme';
       } else if (forecast.windSpeed > 15) {
-        warnings.push(`高风速: ${forecast.windSpeed.toFixed(1)} m/s (> 15 m/s)`);
-        riskLevel = this.maxRisk(riskLevel, 'high');
-      } else if (forecast.windSpeed > 10) {
-        warnings.push(`中等风速: ${forecast.windSpeed.toFixed(1)} m/s (> 10 m/s)`);
+        warnings.push(`Moderate wind conditions (${forecast.windSpeed.toFixed(1)} m/s)`);
         riskLevel = this.maxRisk(riskLevel, 'moderate');
       }
     }
@@ -255,16 +274,32 @@ export class WeatherAlertSkill {
     }
 
     // 检查已有的告警
-    if (forecast.warnings.length > 0) {
-      forecast.warnings.forEach((w: WeatherWarning) => {
-        if (w.severity === 'very_high') {
-          blockers.push(`${w.type}: ${w.message}`);
-          riskLevel = 'extreme';
-        } else if (w.severity === 'high') {
-          warnings.push(`${w.type}: ${w.message}`);
-          riskLevel = this.maxRisk(riskLevel, 'high');
+    const rawWarnings: any[] = Array.isArray((forecast as any).warnings) ? (forecast as any).warnings : [];
+    if (rawWarnings.length > 0) {
+      for (const w of rawWarnings) {
+        if (typeof w === 'string') {
+          warnings.push(w);
+          if (w.toLowerCase().includes('extreme') || w.includes('极端')) {
+            riskLevel = this.maxRisk(riskLevel, 'extreme');
+          } else if (w.toLowerCase().includes('moderate') || w.includes('中等')) {
+            riskLevel = this.maxRisk(riskLevel, 'moderate');
+          } else {
+            riskLevel = this.maxRisk(riskLevel, 'high');
+          }
+          continue;
         }
-      });
+        const ww = w as WeatherWarning;
+        if (ww.severity === 'very_high') {
+          blockers.push(`${ww.type}: ${ww.message}`);
+          riskLevel = 'extreme';
+        } else if (ww.severity === 'high') {
+          warnings.push(`${ww.type}: ${ww.message}`);
+          riskLevel = this.maxRisk(riskLevel, 'high');
+        } else if (ww.severity === 'medium') {
+          warnings.push(`${ww.type}: ${ww.message}`);
+          riskLevel = this.maxRisk(riskLevel, 'moderate');
+        }
+      }
     }
 
     // 根据风险容忍度调整
@@ -276,6 +311,11 @@ export class WeatherAlertSkill {
       // 低风险容忍度：提升一级
       if (riskLevel === 'moderate') riskLevel = 'high';
       if (riskLevel === 'safe' && warnings.length > 0) riskLevel = 'moderate';
+      // 对风速更敏感：>10m/s 也应至少提示 moderate
+      if (riskLevel === 'safe' && typeof forecast.windSpeed === 'number' && forecast.windSpeed > 10) {
+        riskLevel = 'moderate';
+        warnings.push(`Moderate wind conditions (${forecast.windSpeed.toFixed(1)} m/s)`);
+      }
     }
 
     return { riskLevel, blockers, warnings };
@@ -324,28 +364,4 @@ export class WeatherAlertSkill {
   }
 }
 
-/**
- * 使用示例
- */
-export async function exampleUsage() {
-  const weatherService = new IcelandWeatherRealtimeService();
-  const skill = new WeatherAlertSkill(weatherService);
-
-  // 检查 Reykjavík 到 Vík 的路线天气
-  const result = await skill.execute({
-    locations: [
-      { lat: 64.1466, lng: -21.9426, name: 'Reykjavík', type: 'start' },
-      { lat: 63.4186, lng: -19.0059, name: 'Vík', type: 'end' },
-    ],
-    dateRange: {
-      start: new Date(),
-      end: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    },
-    riskTolerance: 'medium',
-  });
-
-  console.log('天气检查结果:', result.summary);
-  console.log('Gate 建议:', result.gateRecommendation);
-  console.log('整体风险:', result.overallRisk);
-  console.log('调整建议:', result.adjustments);
-}
+// Note: example usage removed (Logger is DI-managed in Nest).

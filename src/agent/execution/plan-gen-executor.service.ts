@@ -13,6 +13,7 @@ import type {
   IPlanGenExecutor,
   PhaseExecutorContext,
   ItineraryLike,
+  PlanGenEmptyDraftExplanation,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import type { TripPlanRequest, GateResult } from '../interfaces/trip-plan.interface';
@@ -26,7 +27,11 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
   async execute(
     dso: DecisionState,
     ctx: PhaseExecutorContext,
-  ): Promise<{ itinerary: ItineraryLike; planDraft: unknown }> {
+  ): Promise<{
+    itinerary: ItineraryLike;
+    planDraft: unknown;
+    emptyDraftExplanation?: PlanGenEmptyDraftExplanation;
+  }> {
     this.logger.debug(`[PlanGenExecutor] 执行 PLAN_GEN 阶段 requestId=${ctx.requestId}`);
 
     const emptyItinerary: ItineraryLike = {
@@ -34,14 +39,40 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
       days: [],
     };
 
-    if (!this.skillsRegistry || !ctx.tripPlanRequest) {
-      return { itinerary: emptyItinerary, planDraft: emptyItinerary };
+    if (!this.skillsRegistry) {
+      return {
+        itinerary: emptyItinerary,
+        planDraft: emptyItinerary,
+        emptyDraftExplanation: {
+          code: 'NO_SKILLS_REGISTRY',
+          message: '技能注册中心不可用，无法调用行程生成。',
+        },
+      };
+    }
+    if (!ctx.tripPlanRequest) {
+      return {
+        itinerary: emptyItinerary,
+        planDraft: emptyItinerary,
+        emptyDraftExplanation: {
+          code: 'NO_TRIP_PLAN_REQUEST',
+          message: '缺少行程请求上下文（tripPlanRequest），无法生成日程。',
+        },
+      };
     }
 
     try {
       const req = this.toTripPlanRequest(ctx.tripPlanRequest, ctx.requestId);
       const skill = this.skillsRegistry.getSkill('itinerary.generate');
-      if (!skill) return { itinerary: emptyItinerary, planDraft: emptyItinerary };
+      if (!skill) {
+        return {
+          itinerary: emptyItinerary,
+          planDraft: emptyItinerary,
+          emptyDraftExplanation: {
+            code: 'SKILL_NOT_REGISTERED',
+            message: '未注册 itinerary.generate 技能。',
+          },
+        };
+      }
 
       const result = await skill.execute({
         request: req,
@@ -58,13 +89,39 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
           days: result.days,
           metadata: result.metadata,
         };
+        const days = Array.isArray(itinerary.days) ? itinerary.days : [];
+        if (days.length === 0) {
+          return {
+            itinerary,
+            planDraft: itinerary,
+            emptyDraftExplanation: {
+              code: 'EMPTY_DAYS_FROM_SKILL',
+              message: '行程生成技能返回了零天日程，当前约束下可能无可行解。',
+            },
+          };
+        }
         return { itinerary, planDraft: itinerary };
       }
+      return {
+        itinerary: emptyItinerary,
+        planDraft: emptyItinerary,
+        emptyDraftExplanation: {
+          code: 'SKILL_RESULT_INVALID',
+          message: '行程生成技能返回了无法解析的结构（缺少 request_id 或 days）。',
+        },
+      };
     } catch (e: any) {
       this.logger.warn(`[PlanGenExecutor] itinerary.generate 失败: ${e?.message}`);
+      return {
+        itinerary: emptyItinerary,
+        planDraft: emptyItinerary,
+        emptyDraftExplanation: {
+          code: 'SKILL_EXECUTION_ERROR',
+          message: '行程生成技能执行失败。',
+          detail: e?.message,
+        },
+      };
     }
-
-    return { itinerary: emptyItinerary, planDraft: emptyItinerary };
   }
 
   private toTripPlanRequest(

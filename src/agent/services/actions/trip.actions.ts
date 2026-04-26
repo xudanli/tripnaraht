@@ -128,6 +128,14 @@ Please provide args.trip_id or ensure it is stored in agent state.`;
         idempotent: false,
         cacheable: false,
       },
+      // Admin “策略实验室”底稿（3-tier merged view 的第 1 层）：声明该 Action 可能触发的副作用及其默认参数。
+      // Runtime will merge DB / file overrides via SideEffectParamResolverService.
+      side_effect_configs: [
+        {
+          handlerId: 'side_effect.financial_hold.book_flight_v1',
+          params: { ttl_seconds: 900, hold_ratio: 1.0 },
+        },
+      ],
       input_schema: {
         type: 'object',
         properties: {

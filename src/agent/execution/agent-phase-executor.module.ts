@@ -20,10 +20,12 @@ import { PredictionCollectorService } from './shared/prediction-collector.servic
 import { TripContextExtractorService } from './shared/trip-context-extractor.service';
 import { ResearchExecutorService } from './research-executor.service';
 import { GateEvalExecutorService } from './gate-eval-executor.service';
+import { HardTruthRuleResolverService } from '../services/hard-truth-rule-resolver.service';
 import { PlanGenExecutorService } from './plan-gen-executor.service';
 import { VerifyExecutorService } from './verify-executor.service';
 import { RepairExecutorService } from './repair-executor.service';
 import { IntakeExecutorService } from './intake-executor.service';
+import { IntakeCompilerService } from './intake-compiler.service';
 import { NarrateExecutorService } from './narrate-executor.service';
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
@@ -33,6 +35,7 @@ import { ReadinessModule } from '../../trips/readiness/readiness.module';
 import { AgentModule } from '../agent.module';
 import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
 import { ExtremeScenarioRuleEngineService } from '../services/extreme-scenario-rule-engine.service';
+import { TrainingModule } from '../training/training.module';
 
 @Module({
   imports: [
@@ -42,6 +45,7 @@ import { ExtremeScenarioRuleEngineService } from '../services/extreme-scenario-r
     forwardRef(() => SkillsModule), // SkillsRegistryService for transport/poi/dem/geo skills
     forwardRef(() => ReadinessModule), // ReadinessService, UserDecisionService for GATE_EVAL
     forwardRef(() => AgentModule), // ClaudeGatekeeperAgentService for GATE_EVAL
+    forwardRef(() => TrainingModule), // ConstraintsEngineService / RuleManager for physical narration hints
   ],
   providers: [
     CountryConfigService,
@@ -51,12 +55,14 @@ import { ExtremeScenarioRuleEngineService } from '../services/extreme-scenario-r
     PredictionCollectorService,
     TripContextExtractorService,
     ResearchExecutorService,
+    HardTruthRuleResolverService,
     GateEvalExecutorService,
     PlanGenExecutorService,
     VerifyExecutorService,
     ExtremeScenarioRuleEngineService,
     RouteFeasibilityEngineService,
     RepairExecutorService,
+    IntakeCompilerService,
     IntakeExecutorService,
     NarrateExecutorService,
   ],
@@ -65,11 +71,13 @@ import { ExtremeScenarioRuleEngineService } from '../services/extreme-scenario-r
     PredictionCollectorService,
     TripContextExtractorService,
     ResearchExecutorService,
+    HardTruthRuleResolverService,
     GateEvalExecutorService,
     PlanGenExecutorService,
     VerifyExecutorService,
     RouteFeasibilityEngineService,
     RepairExecutorService,
+    IntakeCompilerService,
     IntakeExecutorService,
     NarrateExecutorService,
   ],

@@ -21,7 +21,12 @@ export class DraftValidatorService {
     const warnings: DraftValidationResult['warnings'] = [];
     
     // 1. 验证步骤数量（必须包含 10 个状态机步骤）
-    const requiredSteps: OrchestrationStep[] = ['INTAKE', 'RESEARCH', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'COMPLIANCE', 'REPAIR', 'NARRATE', 'FEEDBACK', 'DONE'];
+    const requiredSteps: OrchestrationStep[] =
+      // CLAUDE_SM v0 草案契约使用最小化的 8 步链
+      // （COMPLIANCE / FEEDBACK 是较新流水线中的可选扩展）。
+      (draft as any)?.orchestration_mode === 'CLAUDE_SM'
+        ? (['INTAKE', 'RESEARCH', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'REPAIR', 'NARRATE', 'DONE'] as OrchestrationStep[])
+        : (['INTAKE', 'RESEARCH', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'COMPLIANCE', 'REPAIR', 'NARRATE', 'FEEDBACK', 'DONE'] as OrchestrationStep[]);
     const stepTypes = draft.steps.map(s => s.step_type);
     
     for (const requiredStep of requiredSteps) {

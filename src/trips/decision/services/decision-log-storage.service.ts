@@ -23,12 +23,39 @@ import {
   extractJepaTraceFromMetadata,
   mergeMetadataWithJepaTrace,
 } from '../shared/decision-trace-jepa.types';
+import {
+  mergeTriggeredAssertions,
+  normalizeHardRuleSnapshot,
+} from '../shared/hard-rule-snapshot.types';
+import { deriveFactsFromMetadata } from '../shared/fact-derivation.util';
 
 @Injectable()
 export class DecisionLogStorageService {
   private readonly logger = new Logger(DecisionLogStorageService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Best-effort: derive `metadata.assertions_triggered` from `metadata.details.evidence`.
+   * This ensures QA/DPO mining works even when callers forget to write facts explicitly.
+   */
+  private enrichMetadataWithFacts(params: {
+    metadata: Record<string, unknown>;
+    entry: Pick<DecisionLogEntry, 'reasonCodes' | 'timestamp' | 'action'>;
+  }): Record<string, unknown> {
+    const meta = params.metadata ?? {};
+    const existing = normalizeHardRuleSnapshot(meta).assertions_triggered;
+    if (existing.length > 0) return meta;
+
+    const facts = deriveFactsFromMetadata({
+      metadata: meta,
+      reasonCodes: params.entry.reasonCodes,
+      timestampIso: params.entry.timestamp,
+    });
+    if (facts.length === 0) return meta;
+    const merged = mergeTriggeredAssertions(meta, facts);
+    return { ...meta, ...merged };
+  }
 
   /** Map Prisma row → `DecisionLogEntry` (includes `metadata.jepaTrace` when present). */
   private mapRowToDecisionLogEntry(log: {
@@ -156,10 +183,13 @@ export class DecisionLogStorageService {
           evidenceRefs: entry.evidenceRefs || [],
           timestamp: new Date(entry.timestamp),
           metadata: mergeMetadataWithJepaTrace(
-            {
-              ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
-              ...((entry.metadata ?? {}) as Record<string, unknown>),
-            },
+            this.enrichMetadataWithFacts({
+              metadata: {
+                ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
+                ...((entry.metadata ?? {}) as Record<string, unknown>),
+              },
+              entry: { reasonCodes: entry.reasonCodes, timestamp: entry.timestamp, action: entry.action },
+            }),
             entry.jepaTrace,
           ) as Prisma.InputJsonValue,
         },
@@ -223,10 +253,13 @@ export class DecisionLogStorageService {
           evidenceRefs: entry.evidenceRefs || [],
           timestamp: new Date(entry.timestamp),
           metadata: mergeMetadataWithJepaTrace(
-            {
-              ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
-              ...((entry.metadata ?? {}) as Record<string, unknown>),
-            },
+            this.enrichMetadataWithFacts({
+              metadata: {
+                ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
+                ...((entry.metadata ?? {}) as Record<string, unknown>),
+              },
+              entry: { reasonCodes: entry.reasonCodes, timestamp: entry.timestamp, action: entry.action },
+            }),
             entry.jepaTrace,
           ) as Prisma.InputJsonValue,
         })),

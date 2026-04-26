@@ -1,13 +1,19 @@
 /**
  * 自动修复服务
- * 
+ *
+ * TerrainAudit（缺失 ascentM 时按需 DEM / shadow polyline）见 `StateConsistencyGuardService`，
+ * 已在 Kernel OPTIMIZE（CGUS / MC）路径执行；本服务在 `repairPlan` 入口若注入该 Guard 且
+ * `plan` 为 `RoutePlanDraft` 形态，会先跑同一审计再应用修复规则。
+ *
  * 负责检测和修复因实时状态变化而受影响的行程，包括：
  * - 检测受影响行程
  * - 自动修复计划（基于实时状态变化）
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import type { RoutePlanDraft } from '../../../trips/decision/shared/world-model.types';
+import { StateConsistencyGuardService } from '../../../trips/dem/services/state-consistency-guard.service';
 import { RealtimeRoadStatusService } from './realtime-road-status.service';
 import { RealtimeWeatherService } from './realtime-weather.service';
 /**
@@ -40,6 +46,7 @@ export class AutoRepairService {
     private prisma: PrismaService,
     private realtimeRoadStatusService: RealtimeRoadStatusService,
     private realtimeWeatherService: RealtimeWeatherService,
+    @Optional() private readonly terrainAudit?: StateConsistencyGuardService,
   ) {}
 
   /**
@@ -73,7 +80,16 @@ export class AutoRepairService {
   ): Promise<RepairResult> {
     this.logger.log(`[AutoRepair] 修复计划: changes=${changes.length}`);
 
-    const repairedPlan = { ...plan };
+    let basePlan = plan;
+    if (this.terrainAudit && this.isRoutePlanDraft(basePlan)) {
+      const { plan: audited, patched } = await this.terrainAudit.runTerrainAudit(basePlan);
+      if (patched) {
+        this.logger.log('[AutoRepair] TerrainAudit applied (DEM ascent / slope before repair rules)');
+      }
+      basePlan = audited;
+    }
+
+    const repairedPlan = { ...basePlan };
     const warnings: string[] = [];
 
     for (const change of changes) {
@@ -137,5 +153,11 @@ export class AutoRepairService {
     // }
 
     return changes;
+  }
+
+  private isRoutePlanDraft(p: unknown): p is RoutePlanDraft {
+    if (!p || typeof p !== 'object') return false;
+    const o = p as Record<string, unknown>;
+    return typeof o.tripId === 'string' && typeof o.routeDirectionId === 'string' && Array.isArray(o.segments);
   }
 }

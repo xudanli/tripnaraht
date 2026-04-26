@@ -102,6 +102,14 @@ export interface CGUSSearchResult {
   complexityReport?: ComplexityReport;
   /** Monte Carlo 采样数据详情（当 usedMonteCarlo 时，便于诊断「采样数据有没有」） */
   monteCarloSamplingDetails?: MonteCarloSamplingDetails;
+  /**
+   * 地形认知不确定性：effort01 同时驱动采样预算与 MC 置信区间膨胀（自知高风险）。
+   */
+  terrainEpistemics?: {
+    topCandidateEffort01: number;
+    topConfidenceIntervalInflation: number;
+    earlyWarningTerrain: boolean;
+  };
 }
 
 @Injectable()
@@ -368,7 +376,24 @@ export class CGUSSearchService {
           (finalResults[i] as any).rawMonteCarloExpectedUtility = result.expectedUtility;
           (finalResults[i] as any).appliedSoftPenaltyDelta = softPenaltyDelta;
           finalResults[i].expectedUtility = Math.max(0, Math.min(1, result.expectedUtility - softPenaltyDelta));
-          finalResults[i].confidenceInterval = result.confidenceInterval;
+          let terrainInflation = 1;
+          if (this.planFeatures) {
+            const effort01 = this.planFeatures.extract(candidate.plan).effort01;
+            terrainInflation = 1 + Math.min(1.35, effort01 * 1.5);
+          }
+          let ciOut = result.confidenceInterval;
+          if (
+            ciOut &&
+            terrainInflation > 1.001 &&
+            Number.isFinite(ciOut.lower) &&
+            Number.isFinite(ciOut.upper)
+          ) {
+            const mid = (ciOut.upper + ciOut.lower) / 2;
+            const half = ((ciOut.upper - ciOut.lower) / 2) * terrainInflation;
+            ciOut = { lower: mid - half, upper: mid + half, level: ciOut.level };
+          }
+          (finalResults[i] as any).terrainCiInflation = terrainInflation;
+          finalResults[i].confidenceInterval = ciOut;
           finalResults[i].feasibilityProbability = result.feasibilityProbability;
           finalResults[i].samplingDetails = {
             totalSamples: result.samplingDetails?.totalSamples ?? perSize,
@@ -676,6 +701,18 @@ export class CGUSSearchService {
         `recommended=${!!recommended} monteCarlo=${usedMonteCarlo} rollout=${usedRollout} exploration=${usedExploration}`,
     );
 
+    const primary = finalResults.find((r) => r.candidate.feasible) ?? finalResults[0];
+    let terrainEpistemics: CGUSSearchResult['terrainEpistemics'];
+    if (primary && this.planFeatures) {
+      const f = this.planFeatures.extract(primary.candidate.plan);
+      const inf = (primary as any).terrainCiInflation ?? 1;
+      terrainEpistemics = {
+        topCandidateEffort01: f.effort01,
+        topConfidenceIntervalInflation: inf,
+        earlyWarningTerrain: f.effort01 >= 0.5 && inf >= 1.12,
+      };
+    }
+
     return {
       rankedCandidates: finalResults,
       recommended,
@@ -684,6 +721,7 @@ export class CGUSSearchService {
       usedExploration,
       complexityReport,
       monteCarloSamplingDetails,
+      terrainEpistemics,
     };
   }
 

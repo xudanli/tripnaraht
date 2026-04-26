@@ -29,6 +29,8 @@ import { TrajectoryETLService } from './services/trajectory-etl.service';
 import { DataQualityCheckerService } from './services/data-quality-checker.service';
 import { PIIAnonymizerService } from './services/pii-anonymizer.service';
 import { RLIntegrationService } from './services/rl-integration.service';
+import { ConstraintRuleManagerService } from './services/constraint-rule-manager.service';
+import { ConstraintsEngineService } from './services/constraints-engine.service';
 
 // Controllers
 import { TrainingController } from './controllers/training.controller';
@@ -83,6 +85,8 @@ import { TrainingController } from './controllers/training.controller';
     ModelDeploymentService,
     /** 编排层可选注入：`preDecision` 与对外 `verdict` 合并（仅依赖 ConfigService，其余 Optional） */
     RLIntegrationService,
+    ConstraintRuleManagerService,
+    ConstraintsEngineService,
   ],
   exports: [
     FineTuneService,
@@ -98,6 +102,8 @@ import { TrainingController } from './controllers/training.controller';
     IterativeDeploymentWorkflowService,
     ModelDeploymentService,
     RLIntegrationService,
+    ConstraintRuleManagerService,
+    ConstraintsEngineService,
   ],
 })
 export class TrainingModule {}

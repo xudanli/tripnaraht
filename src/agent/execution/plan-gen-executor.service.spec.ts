@@ -35,11 +35,13 @@ describe('PlanGenExecutorService', () => {
     const result = await svc.execute({} as any, { requestId: 'r1', tripPlanRequest: {} });
     expect(result.itinerary).toEqual({ request_id: 'r1', days: [] });
     expect(result.planDraft).toEqual({ request_id: 'r1', days: [] });
+    expect(result.emptyDraftExplanation?.code).toBe('NO_SKILLS_REGISTRY');
   });
 
   it('无 tripPlanRequest 应返回空行程', async () => {
     const result = await service.execute({} as any, { requestId: 'r1' });
     expect(result.itinerary.days).toEqual([]);
+    expect(result.emptyDraftExplanation?.code).toBe('NO_TRIP_PLAN_REQUEST');
   });
 
   it('skill 返回有效行程应正确映射', async () => {
@@ -71,5 +73,7 @@ describe('PlanGenExecutorService', () => {
       { requestId: 'r1', tripPlanRequest: { destination: 'X' } },
     );
     expect(result.itinerary.days).toEqual([]);
+    expect(result.emptyDraftExplanation?.code).toBe('SKILL_EXECUTION_ERROR');
+    expect(result.emptyDraftExplanation?.detail).toContain('generate failed');
   });
 });

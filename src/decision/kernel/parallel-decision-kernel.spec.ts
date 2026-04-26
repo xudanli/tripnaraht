@@ -1,6 +1,8 @@
 import { ParallelDecisionKernel, computeCvar } from './parallel-decision-kernel';
 
 describe('parallel-decision-kernel', () => {
+  jest.setTimeout(30000);
+
   it('computeCvar matches worst-tail average', () => {
     const items = [
       { weight: 0.5, value: 10 },

@@ -11,6 +11,7 @@ import { DecisionLogStorageService } from './services/decision-log-storage.servi
 import { DecisionStatsService } from './services/decision-stats.service';
 import { DecisionLogClusteringService } from './evaluation/decision-log-clustering.service';
 import { AdminDecisionLogListQueryDto, AdminDecisionStatsQueryDto } from './dto/admin-decision.dto';
+import { AdminDecisionLogFactAppendDto } from './dto/admin-quality-fact.dto';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
 import { ConstraintChecker } from './constraints/constraint-checker';
 import { ConstraintEngineService } from './constraints/constraint-engine.service';
@@ -31,6 +32,8 @@ import {
   BatchFeedbackDto,
   FeedbackStatsQueryDto,
 } from './dto/feedback.dto';
+import { mergeTriggeredAssertions, normalizeHardRuleSnapshot } from './shared/hard-rule-snapshot.types';
+import { assessDrift } from './shared/drift-assessment.util';
 
 @ApiTags('decision')
 @Controller('decision')
@@ -379,6 +382,97 @@ export class DecisionController {
       return successResponse(log);
     } catch (error: any) {
       this.logger.error(`获取决策日志详情失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/logs/:id/qa-view')
+  @ApiOperation({
+    summary: 'Fact vs Reasoning QA view (Side-by-side)',
+    description:
+      'Left: metadata.assertions_triggered (hard facts). Right: explanation. Also returns raw metadata for audit.',
+  })
+  async getAdminLogQaView(@Param('id') id: string) {
+    try {
+      const log = await this.decisionLogStorage.getLogDetailById(id);
+      if (!log) {
+        return errorResponse(ErrorCode.NOT_FOUND, `决策日志 ${id} 不存在`);
+      }
+      const meta = (log.metadata && typeof log.metadata === 'object') ? log.metadata : {};
+      const fact = normalizeHardRuleSnapshot(meta).assertions_triggered;
+      return successResponse({
+        id: log.id,
+        tripId: log.tripId,
+        persona: log.persona,
+        action: log.action,
+        timestamp: log.timestamp,
+        fact,
+        reasoning: { explanation: log.explanation, reasonCodes: log.reasonCodes },
+        metadata: meta,
+      });
+    } catch (error: any) {
+      this.logger.error(`获取决策日志 QA 视图失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('admin/logs/:id/qa-pair')
+  @ApiOperation({
+    summary: 'QA Pair: Fact + Reasoning + drift_score',
+    description:
+      'Aggregates HardRuleFact (left) + explanation (right) and returns a heuristic drift_score for auto-sampling.',
+  })
+  async getAdminLogQaPair(@Param('id') id: string) {
+    try {
+      const log = await this.decisionLogStorage.getLogDetailById(id);
+      if (!log) {
+        return errorResponse(ErrorCode.NOT_FOUND, `决策日志 ${id} 不存在`);
+      }
+      const meta = (log.metadata && typeof log.metadata === 'object') ? log.metadata : {};
+      const fact = normalizeHardRuleSnapshot(meta).assertions_triggered;
+      const explanation = String(log.explanation ?? '');
+      const assessed = assessDrift({ fact, explanation });
+
+      return successResponse({
+        id: log.id,
+        tripId: log.tripId,
+        persona: log.persona,
+        action: log.action,
+        timestamp: log.timestamp,
+        fact,
+        reasoning: { explanation, reasonCodes: log.reasonCodes },
+        drift_score: assessed.drift_score,
+        drift_label: assessed.drift_label,
+        drift_signals: assessed.drift_signals,
+        metadata: meta,
+      });
+    } catch (error: any) {
+      this.logger.error(`获取决策日志 QA Pair 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('admin/logs/:id/facts')
+  @ApiOperation({
+    summary: 'Append/merge hard facts into DecisionLog.metadata.assertions_triggered',
+    description:
+      'This is the write path for Fact snapshots. Frontend can call after inspection or during orchestration to persist physics facts.',
+  })
+  async appendAdminLogFacts(@Param('id') id: string, @Body() body: AdminDecisionLogFactAppendDto) {
+    try {
+      const log = await this.decisionLogStorage.getLogDetailById(id);
+      if (!log) {
+        return errorResponse(ErrorCode.NOT_FOUND, `决策日志 ${id} 不存在`);
+      }
+      const meta = (log.metadata && typeof log.metadata === 'object') ? log.metadata : {};
+      const merged = mergeTriggeredAssertions(meta, body.assertions_triggered as any);
+      const updated = await this.decisionLogStorage.updateLogMetadata(id, merged as any);
+      return successResponse({ id: updated?.metadata ? id : id, assertions_triggered: merged.assertions_triggered });
+    } catch (error: any) {
+      this.logger.error(`追加决策日志 Fact 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

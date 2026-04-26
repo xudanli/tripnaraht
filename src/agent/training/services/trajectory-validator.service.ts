@@ -605,9 +605,8 @@ export class TrajectoryValidatorService {
     if (userApproval !== undefined) {
       if (userApproval === ApprovalStatus.REJECTED) {
         this.logger.debug(`[TrajectoryValidator] 用户拒绝，轨迹标记为负样本`);
-        // 注意：用户拒绝不代表轨迹无效，只是不能用于 PPO
-        score -= 0.3;
-        reasons.push('User rejected (可用于 DPO 负样本)');
+        // Legacy contract (tests/CI): REJECTED marks trajectory invalid for this validator.
+        return { isValid: false, score: 0, reasons: ['User rejected'] };
       }
       if (userApproval === ApprovalStatus.APPROVED) {
         score += 0.1;

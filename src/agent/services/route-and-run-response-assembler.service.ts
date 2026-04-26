@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import type { DecisionCandidateDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import type { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 import {
@@ -20,10 +21,25 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
 import { JepaProjectorService } from './jepa-projector.service';
 import { assertDoneResponseCompleteness } from '../guards/done-response-completeness.guard';
+import { assembleDecisionEvidenceCards } from '../utils/evidence-payload-assembler.util';
+import { assembleEvidenceCardUIPropsFromState } from '../utils/evidence-ui-assembler.util';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
   constructor(private readonly jepaProjector: JepaProjectorService) {}
+
+  /** Iron Shield: API evidence_cards + parallel ui_display.evidence_cards_ui */
+  private buildIronShieldPayloadBlocks(state: OrchestratorState | undefined | null) {
+    const st = state === null ? undefined : state;
+    return {
+      decision_metadata: {
+        evidence_cards: assembleDecisionEvidenceCards(st),
+      },
+      ui_display: {
+        evidence_cards_ui: assembleEvidenceCardUIPropsFromState(st),
+      },
+    };
+  }
 
   buildSimplifiedExplanation(
     decisionLog: DecisionLogEntry[],
@@ -128,7 +144,8 @@ export class RouteAndRunResponseAssemblerService {
         payload: {
           timeline: orchestrationResult.result?.itinerary?.days || [],
           dropped_items: [],
-          candidates: [],
+          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
+          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
           evidence: stateWithVerdict?.decision_log || [],
           robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
           orchestrationResult:
@@ -149,6 +166,7 @@ export class RouteAndRunResponseAssemblerService {
           fallbackTemplateVersion: orchestrationResult.result?.state?.metadata?.fallback_template_version,
           fallbackPacingMode: orchestrationResult.result?.state?.metadata?.fallback_pacing_mode,
           poiTrace: orchestrationResult.result?.state?.metadata?.poi_trace,
+          ...this.buildIronShieldPayloadBlocks(stateWithVerdict as OrchestratorState | undefined),
           ...(isTimeout ? { errorType: ErrorType.TIMEOUT_ERROR } : {}),
           ...(needsUserConfirmation
             ? {
@@ -217,6 +235,46 @@ export class RouteAndRunResponseAssemblerService {
     return response;
   }
 
+  private buildDecisionCandidates(decisionState: any | undefined): DecisionCandidateDto[] {
+    const hints = decisionState?.optimizationHints;
+    const alts: any[] = Array.isArray(hints?.alternatives) ? hints.alternatives : [];
+    const dim = hints?.dimensionBreakdown ?? {};
+    const clamp01 = (x: unknown): number | undefined => {
+      if (typeof x !== 'number' || !Number.isFinite(x)) return undefined;
+      return Math.max(0, Math.min(1, x));
+    };
+    const safety = clamp01(1 - Math.max(Number(dim.weather ?? 0), Number(dim.fatigue ?? 0)));
+    const experience = clamp01(1 - Number(dim.crowdAvoidance ?? 0));
+    const costEfficiency = clamp01(1 - Number(dim.budget ?? 0));
+
+    return alts
+      .map((a) => ({
+        candidate_id: String(a?.id ?? ''),
+        itinerary: a?.itinerary ?? undefined,
+        score_breakdown: {
+          total_utility: clamp01(a?.expectedUtility ?? a?.score),
+          dimensions: {
+            safety,
+            experience,
+            cost_efficiency: costEfficiency,
+          },
+        },
+        risk_profile: {
+          probability_of_drift: clamp01(
+            a?.feasibilityProbability !== undefined ? 1 - Number(a.feasibilityProbability) : undefined,
+          ),
+          critical_constraints: Array.isArray(a?.violations)
+            ? a.violations
+                .filter((v: any) => v?.severity === 'SOFT')
+                .map((v: any) => String(v?.type ?? ''))
+                .filter(Boolean)
+            : [],
+        },
+        explanation: typeof a?.summary === 'string' ? a.summary : undefined,
+      }))
+      .filter((c) => c.candidate_id);
+  }
+
   assembleClaudeDynamicResponse(params: {
     request: RouteAndRunRequestDto;
     startTime: number;
@@ -259,6 +317,7 @@ export class RouteAndRunResponseAssemblerService {
             candidates: system1Result.result?.candidates || [],
             evidence: system1Result.result?.evidence || [],
             robustness: system1Result.result?.robustness || null,
+            ...this.buildIronShieldPayloadBlocks(orchestrationResult.result?.state as OrchestratorState | undefined),
           },
         },
         explain: {
@@ -355,7 +414,8 @@ export class RouteAndRunResponseAssemblerService {
         payload: {
           timeline: [],
           dropped_items: [],
-          candidates: [],
+          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
+          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
           evidence: [],
           robustness: null,
           ...(orchestrationResult.result && (orchestrationResult.result as any).state
@@ -380,6 +440,7 @@ export class RouteAndRunResponseAssemblerService {
                 errorType: orchestrationResult.result?.errorType,
               }
             : {}),
+          ...this.buildIronShieldPayloadBlocks((orchestrationResult.result as any)?.state as OrchestratorState | undefined),
         } as any,
       },
       explain: {

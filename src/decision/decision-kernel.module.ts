@@ -26,10 +26,12 @@ import { AgentPhaseExecutorModule } from '../agent/execution/agent-phase-executo
 import { HarnessModule } from '../harness/harness.module';
 import { RagModule } from '../rag/rag.module';
 import { InterventionEngine } from './actuator/intervention-engine';
+import { DemModule } from '../trips/dem/dem.module';
 
 @Global()
 @Module({
   imports: [
+    DemModule,
     HarnessModule,
     forwardRef(() => RagModule),
     ContextEngineModule,

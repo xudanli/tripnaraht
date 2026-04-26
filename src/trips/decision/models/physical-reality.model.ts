@@ -100,6 +100,15 @@ export interface PhysicalRealityModel {
 
   /** 月份 */
   month: number;
+
+  /**
+   * Temporal constraints overlay (auto-heal / emergency injection).
+   * Keyed by poi_id or segment_id depending on caller context.
+   */
+  temporalConstraints?: {
+    hard_deadlines?: Record<string, string>;
+    reason_code?: string;
+  };
 }
 
 /**

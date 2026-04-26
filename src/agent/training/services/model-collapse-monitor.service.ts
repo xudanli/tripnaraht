@@ -339,22 +339,16 @@ export class ModelCollapseMonitorService {
     // 性能下降贡献 40%
     if (performanceTrend === 'DECLINING') {
       riskScore += 0.4;
-    } else if (performanceTrend === 'STABLE') {
-      riskScore += 0.1;
     }
 
     // 多样性下降贡献 30%
     if (diversityTrend === 'DECLINING') {
       riskScore += 0.3;
-    } else if (diversityTrend === 'STABLE') {
-      riskScore += 0.1;
     }
 
     // 分布变化贡献 30%
     if (distributionShift === 'SHIFT_DETECTED') {
       riskScore += 0.3;
-    } else if (distributionShift === 'STABLE') {
-      riskScore += 0.1;
     }
 
     return Math.min(1, riskScore);

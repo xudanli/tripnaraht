@@ -841,7 +841,7 @@ export class OrchestratorService {
     }
 
     // 检查前置条件
-    if (!this.actionRegistry.checkPreconditions(action.name, state)) {
+    if (this.actionRegistry.checkPreconditions(action.name, state).status === 'blocked') {
       this.logger.warn(`Preconditions not met for action: ${action.name}`);
       return { state, cacheHit: false };
     }
@@ -1084,7 +1084,7 @@ export class OrchestratorService {
     }
 
     // 检查前置条件
-    if (!this.actionRegistry.checkPreconditions(action.name, state)) {
+    if (this.actionRegistry.checkPreconditions(action.name, state).status === 'blocked') {
       this.logger.warn(`Preconditions not met for action: ${action.name}`);
       return state;
     }
@@ -1187,7 +1187,7 @@ export class OrchestratorService {
       }
 
       // 检查前置条件
-      if (!this.actionRegistry.checkPreconditions(action.name, currentState)) {
+      if (this.actionRegistry.checkPreconditions(action.name, currentState).status === 'blocked') {
         this.logger.warn(`Preconditions not met for action: ${action.name}`);
         return { action, result: null, error: new Error(`Preconditions not met: ${action.name}`) };
       }

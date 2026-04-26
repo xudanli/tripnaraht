@@ -11,6 +11,12 @@ import type {
 } from './route-feasibility.types';
 import type { ItineraryVerifyOutput } from '../../skills/itinerary/itinerary-verify.skill';
 import { ExtremeScenarioRuleEngineService } from './extreme-scenario-rule-engine.service';
+import { CONSTRAINT_IDS } from './constraint-registry';
+import {
+  constraintIdFromItineraryVerifyType,
+  constraintIdFromTerrainRiskFlagType,
+} from './constraint-mapping.v0';
+import { DEFAULT_TERRAIN_POLICY } from '../../trips/readiness/config/terrain-policy.config';
 
 @Injectable()
 export class RouteFeasibilityEngineService {
@@ -31,12 +37,33 @@ export class RouteFeasibilityEngineService {
     if (verifyOutput) {
       for (const i of verifyOutput.issues) {
         const severity = i.severity === 'ERROR' ? 'BLOCK' : 'WARNING';
+        const violationAnchor = constraintIdFromItineraryVerifyType(i.type);
+        const carried = (i as any)?.violation;
         findings.push({
           source: 'ITINERARY_VERIFY',
           severity,
           code: i.type,
           message: i.message,
           data: { suggestion: i.suggestion, day: i.day, item_id: i.item_id },
+          ...(carried
+            ? { violation: carried }
+            : violationAnchor
+              ? {
+                  violation: {
+                    anchor: { constraintId: violationAnchor, ruleId: `itinerary.verify:${i.type}` },
+                    entityRef: i.item_id ? { type: 'POI', id: i.item_id } : i.day ? { type: 'DAY', id: i.day } : { type: 'OTHER' },
+                    evidence: {
+                      source:
+                        i.type === 'OPENING_HOURS_CONFLICT'
+                          ? 'OPENING_HOURS'
+                          : i.type === 'REACHABILITY_ISSUE'
+                            ? 'TRANSPORT'
+                            : 'RULE',
+                    },
+                    scope: i.day ? 'GLOBAL' : 'LOCAL',
+                  },
+                }
+              : {}),
         });
         issues.push(`[VERIFY] ${i.type}: ${i.message}${i.suggestion ? `（建议：${i.suggestion}）` : ''}`);
       }
@@ -202,12 +229,37 @@ export class RouteFeasibilityEngineService {
     const flags = this.terrainRisk.evaluateRisks(terrainFactsLike);
     for (const flag of flags || []) {
       const sev = flag.severity === 'HIGH' ? 'WARNING' : flag.severity === 'MEDIUM' ? 'WARNING' : 'INFO';
+      const mappedId = constraintIdFromTerrainRiskFlagType(flag.type);
+      const violation =
+        flag.type === 'STEEP_SLOPE' && mappedId
+          ? {
+              anchor: { constraintId: mappedId, ruleId: 'terrain_risk.steep_slope', policyId: 'DEFAULT_TERRAIN_POLICY' },
+              entityRef: { type: 'SEGMENT' as const },
+              metric: {
+                cmp: 'LEQ' as const,
+                actual: (terrainFactsLike as any)?.terrainStats?.maxSlopePct ?? 0,
+                limit: (DEFAULT_TERRAIN_POLICY as any)?.riskThresholds?.steepSlopePct ?? 0,
+                unit: 'pct',
+                slack: ((DEFAULT_TERRAIN_POLICY as any)?.riskThresholds?.steepSlopePct ?? 0) - ((terrainFactsLike as any)?.terrainStats?.maxSlopePct ?? 0),
+              },
+              evidence: { source: 'DEM' as const },
+              scope: 'LOCAL' as const,
+            }
+          : mappedId
+            ? {
+                anchor: { constraintId: mappedId, ruleId: `terrain_risk.${String(flag.type).toLowerCase()}`, policyId: 'DEFAULT_TERRAIN_POLICY' },
+                entityRef: { type: 'DAY' as const },
+                evidence: { source: 'DEM' as const },
+                scope: 'GLOBAL' as const,
+              }
+            : undefined;
       findings.push({
         source: 'TERRAIN',
         severity: sev,
         code: `TERRAIN_${flag.type}`,
         message: flag.message,
         data: { severity: flag.severity },
+        ...(violation ? { violation } : {}),
       });
     }
 

@@ -11,6 +11,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { DEMElevationService } from './services/dem-elevation.service';
 import { DEMEffortMetadataService } from './services/dem-effort-metadata.service';
+import { StateConsistencyGuardService } from './services/state-consistency-guard.service';
 import { DemController } from './dem.controller';
 
 @Module({
@@ -21,10 +22,12 @@ import { DemController } from './dem.controller';
   providers: [
     DEMElevationService,
     DEMEffortMetadataService,
+    StateConsistencyGuardService,
   ],
   exports: [
     DEMElevationService,
     DEMEffortMetadataService,
+    StateConsistencyGuardService,
   ],
 })
 export class DemModule {}

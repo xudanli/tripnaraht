@@ -18,6 +18,7 @@ import type {
 import { haversineMeters, normalizeItem } from '../../decision/kernel/itinerary.types';
 import {
   isOutdoorVisibilityConstrainedItem,
+  addMinutes,
   parseItemWindow,
   solveDayTimeline,
   type SolveDayTimelineEnvironment,
@@ -32,14 +33,48 @@ import { SkillsRegistryService } from '../../skills/services/skills-registry.ser
 import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
 import type { TripPlanRequest, GateResult } from '../interfaces/trip-plan.interface';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
+import { parseL3ProofPrefix } from '../utils/narrator-l3-persuasion.util';
+import { formatRepairDeadlockAudit } from '../utils/repair-causal-explainer.util';
+import { evaluateAltPath } from '../utils/terrain-reroute-evaluator.util';
+import type { RepairReason, RepairTrace } from '../services/route-feasibility.types';
 
 @Injectable()
 export class RepairExecutorService implements IRepairExecutor {
   private readonly logger = new Logger(RepairExecutorService.name);
 
+  private static readonly OSCILLATION_MOVE_THRESHOLD = 3; // >2 times
+
   constructor(
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly localInsightAgent?: ClaudeLocalInsightAgentService,
+    /**
+     * Optional: terrain reroute engine (Michigan solver / routing backend).
+     * v0 skeleton: if not injected, RerouteTactic is disabled and we safely fall back.
+     */
+    @Optional() private readonly terrainRerouteEngine?: {
+      findAlternativePath: (input: {
+        requestId: string;
+        entityRefId?: string;
+        avoidSlopePctGE?: number;
+      }) => Promise<{
+        slope_ok: boolean;
+        slope_slack_pct?: number;
+        delta_drive_min: number;
+        delta_distance_km?: number;
+        path_fingerprint: string;
+        /**
+         * Segment-level atomic patch (Minimal Perturbation).
+         * - segment_id is the itinerary item id that owns this segment.
+         * - distance/eta are ABSOLUTE values for the patched segment after reroute.
+         */
+        patch?: {
+          segment_id: string;
+          encoded_polyline?: string;
+          distance_meters?: number;
+          eta_minutes?: number;
+        };
+      } | null>;
+    },
   ) {}
 
   async execute(
@@ -48,6 +83,7 @@ export class RepairExecutorService implements IRepairExecutor {
   ): Promise<{
     itinerary?: ItineraryLike;
     repairApplied: boolean;
+    repairTraces?: RepairTrace[];
     escalationPlan?: RepairEscalationPlan;
     postRepairAdvisories?: VerificationIssue[];
     pendingMigrations?: PendingMigrationRequest[];
@@ -61,6 +97,7 @@ export class RepairExecutorService implements IRepairExecutor {
     const postRepairAdvisories: VerificationIssue[] = [];
     const pendingMigrations: PendingMigrationRequest[] = [];
     let recoverySignal: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined;
+    const repairTraces: RepairTrace[] = [];
 
     if (!ctx.tripPlanRequest || !ctx.gateResult) {
       return { itinerary, repairApplied, escalationPlan, postRepairAdvisories: undefined };
@@ -79,12 +116,73 @@ export class RepairExecutorService implements IRepairExecutor {
       alternatives: ctx.alternatives as OrchestratorState['alternatives'],
     };
 
+    // A. Verifier 物理钩子（Repair-side fail-safe）
+    // 某些编排路径中 VERIFY 可能被跳过，导致 real:{∅} 的“证据链断裂”。
+    // 在 REPAIR 入口做一次最小地形硬约束投影：F-road/高地语义 + 2WD => 必然生成 L3 证据 + real repair trace（applied=false）。
+    try {
+      const msg = String((req as any)?.message ?? '').trim();
+      const vehicle =
+        String((req as any)?.constraints?.vehicle_type ?? '').toUpperCase() ||
+        (/4wd|4x4|四驱/i.test(msg) ? '4WD' : /2wd|两驱/i.test(msg) ? '2WD' : '');
+      const wantsFroad =
+        /\bf-?road\b/i.test(msg) || /\bF\d{2,4}\b/i.test(msg) || /高地|内陆|山地|河渡|涉水/i.test(msg);
+      const hasExisting = (dso.verification?.issues ?? []).some(
+        (i) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === 'terrain.f_road_compatibility',
+      );
+      if (!hasExisting && wantsFroad && vehicle === '2WD') {
+        const now = new Date().toISOString();
+        postRepairAdvisories.push({
+          code: 'TERRAIN_F_ROAD_UNFIT',
+          class: 'CONFLICT',
+          message:
+            `[L3-PROOF|terrain.f_road_compatibility|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+            `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`,
+          source: 'ROUTE_FEASIBILITY',
+          at: now,
+          entityRef: { type: 'DESTINATION', id: String(req.destination ?? '') || ctx.requestId },
+          suggestedActions: [
+            { action: 'RELAX', detail: '升级车辆至 4WD 或取消 F-road/高地路段' },
+            { action: 'ASK_USER', detail: '确认是否自担风险继续（可能仍无解）' },
+          ],
+          metadata: { confidence_impact: -0.25 },
+        });
+        repairTraces.push({
+          tacticId: 'TerrainFRoadCompatibilityProjection',
+          targetEntity: { type: 'DESTINATION', id: String(req.destination ?? '') || ctx.requestId },
+          applied: false,
+          metrics: {
+            fatigue_weight: 1,
+            base_limit: 4,
+            effective_limit: 4,
+            actual_cost: 2,
+            unit: 'WD',
+            utility_delta: -12,
+          },
+          reason: 'TERRAIN_F_ROAD_UNFIT',
+          evidence: { refIds: ['intent_froad'] },
+        });
+        recoverySignal = 'NEED_USER_INTERVENTION';
+        escalationPlan = {
+          type: 'PHYSICAL_LIMIT_REACHED',
+          reason: 'TERRAIN_F_ROAD_UNFIT',
+          suggestedAction: 'ASK_USER',
+          userClarificationSnippet:
+            '【地形硬约束】2WD 与 F-road/高地意图不兼容（通常要求 4WD）。如坚持进入高地，请升级车辆或撤销 F-road 要求。',
+          at: now,
+          constraint: 'PHYSICAL_CONNECTIVITY',
+        };
+      }
+    } catch {
+      // best-effort only
+    }
+
     // 0. 靶向治疗：优先读取 DSO.verification.issues（仅处理 CONFLICT）
     const report = dso.verification;
     const conflictIssues = (report?.issues ?? []).filter((i) => i.class === 'CONFLICT');
     if (itinerary && conflictIssues.length > 0) {
       for (const issue of conflictIssues) {
         const out = await this.tryDeterministicRepair(issue, dso, itinerary, ctx);
+        if (out.repairTrace) repairTraces.push(out.repairTrace);
         if (out.producedFatal) {
           // 将 FATAL 以“异常”形式上抛给 Kernel/Orchestrator（下一轮 VERIFY 会写入 DSO.verification.hasFatal）
           throw new Error(`FATAL_REPAIR_GUARD: ${out.producedFatal.message}`);
@@ -96,6 +194,29 @@ export class RepairExecutorService implements IRepairExecutor {
         if (out.itinerary) itinerary = out.itinerary;
         if (out.ok && out.itinerary) {
           repairApplied = true;
+
+          const osc = this.detectTacticOscillation(out.itinerary, repairTraces);
+          if (osc) {
+            this.logger.warn(
+              `[RepairExecutor] Tactic oscillation detected: ${osc.itemId} moved=${osc.moveCount}`,
+            );
+            return {
+              itinerary: out.itinerary,
+              repairApplied: true,
+              repairTraces: repairTraces.length ? repairTraces : undefined,
+              escalationPlan: {
+                type: 'PHYSICAL_LIMIT_REACHED',
+                reason: 'TACTIC_OSCILLATION',
+                bottleneckNodeId: osc.itemId,
+                suggestedAction: 'ASK_USER',
+                userClarificationSnippet: osc.userClarificationSnippet,
+                at: new Date().toISOString(),
+                constraint: 'PHYSICAL_CONNECTIVITY',
+              },
+              recoverySignal: 'NEED_USER_INTERVENTION',
+            };
+          }
+
           continue;
         }
         if (out.escalationPlan) {
@@ -153,9 +274,28 @@ export class RepairExecutorService implements IRepairExecutor {
       }
     }
 
+    const roundUtility = repairTraces.reduce((s, t) => s + (t.metrics?.utility_delta ?? 0), 0);
+    const thRaw = process.env.DECISION_REPAIR_UTILITY_DELTA_THRESHOLD;
+    const defaultTh = -45;
+    const threshold =
+      thRaw != null && String(thRaw).trim() !== '' && Number.isFinite(Number(thRaw)) ? Number(thRaw) : defaultTh;
+    if (!recoverySignal && !escalationPlan && repairApplied && roundUtility < threshold && repairTraces.length > 0) {
+      recoverySignal = 'NEED_USER_INTERVENTION';
+      escalationPlan = {
+        type: 'PHYSICAL_LIMIT_REACHED',
+        reason: 'UTILITY_COMPENSATION_THRESHOLD',
+        suggestedAction: 'ASK_USER',
+        userClarificationSnippet:
+          `【效用补偿】本轮自动修复累计 utility_delta≈${roundUtility.toFixed(1)}（阈值=${threshold}）。` +
+          `继续静默压缩/迁移可能显著拉低体验分；请您进行更高级别放宽（减 POI / 加天 / 降强度 / 调交通）以避免“修到不像旅行”。`,
+        at: new Date().toISOString(),
+      };
+    }
+
     return {
       itinerary,
       repairApplied,
+      repairTraces: repairTraces.length ? repairTraces : undefined,
       escalationPlan,
       postRepairAdvisories: postRepairAdvisories.length ? postRepairAdvisories : undefined,
       pendingMigrations: pendingMigrations.length ? pendingMigrations : undefined,
@@ -171,12 +311,120 @@ export class RepairExecutorService implements IRepairExecutor {
   ): Promise<{
     ok: boolean;
     itinerary?: ItineraryLike;
+    repairTrace?: RepairTrace;
     producedFatal?: VerificationIssue;
     escalationPlan?: RepairEscalationPlan;
     postRepairAdvisories?: VerificationIssue[];
     pendingMigrations?: PendingMigrationRequest[];
     recoverySignal?: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION';
   }> {
+    // L3-first tactic router: prefer proof-carrying repairs when possible.
+    const proof = parseL3ProofPrefix(issue.message);
+    if (proof?.cid === 'terrain.f_road_compatibility' && typeof proof.slack === 'number' && proof.slack < 0) {
+      const repairTrace: RepairTrace = {
+        tacticId: 'TerrainFRoadCompatibilityProjection',
+        targetEntity: issue.entityRef ?? { type: 'DESTINATION', id: ctx.requestId },
+        applied: false,
+        metrics: {
+          fatigue_weight: 1,
+          base_limit: Number.isFinite(proof.limit) ? (proof.limit as number) : 4,
+          effective_limit: Number.isFinite(proof.limit) ? (proof.limit as number) : 4,
+          actual_cost: Number.isFinite(proof.actual) ? (proof.actual as number) : 2,
+          unit: proof.unit ?? 'WD',
+          utility_delta: -12,
+        },
+        reason: 'TERRAIN_F_ROAD_UNFIT',
+        evidence: proof.evidence?.refIds?.length ? { refIds: proof.evidence.refIds } : { refIds: ['intent_froad'] },
+      };
+      return {
+        ok: false,
+        repairTrace,
+        escalationPlan: {
+          type: 'PHYSICAL_LIMIT_REACHED',
+          reason: 'TERRAIN_F_ROAD_UNFIT',
+          suggestedAction: 'ASK_USER',
+          userClarificationSnippet:
+            '【地形硬约束】2WD 与 F-road/高地意图不兼容（通常要求 4WD）。如坚持进入高地，请升级车辆或撤销 F-road 要求。',
+          at: new Date().toISOString(),
+          constraint: 'PHYSICAL_CONNECTIVITY',
+        },
+        recoverySignal: 'NEED_USER_INTERVENTION',
+      };
+    }
+    if (proof?.cid === 'time_space.min_transfer_buffer' && typeof proof.slack === 'number' && proof.slack < 0) {
+      const out = this.timeSpaceMinTransferBufferTactic(issue, itinerary, proof.slack);
+      if (out.ok && out.itinerary && typeof out.debtMin === 'number') {
+        const debt = out.debtMin;
+        const util = -0.85 * debt;
+        const repairTrace: RepairTrace = {
+          tacticId: 'TimeShrinkTactic',
+          targetEntity: issue.entityRef ?? { type: 'SEGMENT' },
+          applied: true,
+          reason: 'SUCCESS_APPLIED',
+          metrics: {
+            fatigue_weight: 1,
+            base_limit: 0,
+            effective_limit: 0,
+            actual_cost: debt,
+            unit: 'min',
+            utility_delta: util,
+          },
+          evidence: { refIds: [`UTILITY:TIME_SHRINK_DEBT_MIN=${debt}`] },
+        };
+        return { ok: true, itinerary: out.itinerary, repairTrace };
+      }
+    }
+    if (proof?.cid === 'time_space.max_driving_hours' && typeof proof.slack === 'number' && proof.slack < 0) {
+      const out = this.timeSpaceMaxDrivingHoursTactic(issue, dso, itinerary, proof.slack);
+      if (out.ok && out.itinerary) {
+        const util = typeof out.utility_delta === 'number' ? out.utility_delta : -12;
+        const repairTrace: RepairTrace = {
+          tacticId: out.tacticId ?? 'MigrateToNextDayTactic',
+          targetEntity: issue.entityRef ?? { type: 'DAY' },
+          applied: true,
+          reason: 'SUCCESS_APPLIED',
+          metrics: {
+            fatigue_weight: 1,
+            base_limit: 0,
+            effective_limit: 0,
+            actual_cost: 1,
+            unit: 'op',
+            utility_delta: util,
+          },
+          evidence: { refIds: [`UTILITY:${String(out.tacticId ?? 'MAX_DRIVE_REPAIR')}`] },
+        };
+        return { ok: true, itinerary: out.itinerary, repairTrace };
+      }
+    }
+    if (proof?.cid === 'time_space.eta_feasibility' && typeof proof.slack === 'number' && proof.slack < 0) {
+      const out = this.timeSpaceEtaFeasibilityShiftTactic(issue, itinerary, proof.slack);
+      if (out.ok && out.itinerary && typeof out.debtMin === 'number') {
+        const debt = out.debtMin;
+        const util = -0.45 * debt;
+        const repairTrace: RepairTrace = {
+          tacticId: 'ShiftTactic',
+          targetEntity: issue.entityRef ?? { type: 'SEGMENT' },
+          applied: true,
+          reason: 'SUCCESS_APPLIED',
+          metrics: {
+            fatigue_weight: 1,
+            base_limit: 0,
+            effective_limit: 0,
+            actual_cost: debt,
+            unit: 'min',
+            utility_delta: util,
+          },
+          evidence: { refIds: [`UTILITY:ETA_SHIFT_DEBT_MIN=${debt}`] },
+        };
+        return { ok: true, itinerary: out.itinerary, repairTrace };
+      }
+    }
+    if (proof?.cid === 'terrain.max_slope_pct' && typeof proof.slack === 'number' && proof.slack < 0) {
+      const out = await this.terrainRerouteTactic(issue, dso, ctx, proof);
+      if (out.ok && out.itinerary) return { ...out, repairTrace: out.repairTrace };
+      if (out.repairTrace) return { ok: false, repairTrace: out.repairTrace };
+    }
+
     switch (issue.code as VerificationIssueCode) {
       case 'POI_CLOSED':
         return this.poiClosedReplacementOperator(issue, dso, itinerary, ctx);
@@ -192,6 +440,519 @@ export class RepairExecutorService implements IRepairExecutor {
       default:
         return { ok: false };
     }
+  }
+
+  /**
+   * Formal Tactic (v0): TIME_SPACE_MIN_TRANSFER_BUFFER
+   *
+   * entityRef.id convention: "<dayDate>|<fromItemId>-><toItemId>"
+   * Repair strategy: shrink duration of `fromItem` by debt minutes (best-effort).
+   */
+  private timeSpaceMinTransferBufferTactic(
+    issue: VerificationIssue,
+    itinerary: ItineraryLike,
+    slackMin: number,
+  ): { ok: boolean; itinerary?: ItineraryLike; debtMin?: number } {
+    const ref = issue.entityRef;
+    if (!ref || ref.type !== 'SEGMENT' || !ref.id) return { ok: false };
+    const id = String(ref.id);
+    const [dayDateRaw, edge] = id.split('|');
+    const dayDate = String(dayDateRaw ?? '').trim();
+    const [fromId, toId] = String(edge ?? '').split('->').map((s) => s.trim());
+    if (!dayDate || !fromId || !toId) return { ok: false };
+    const debt = Math.max(1, Math.round(Math.abs(slackMin)));
+
+    const next = this.cloneItinerary(itinerary);
+    const dayIdx = (next.days as any[]).findIndex((d) => String(d?.date ?? '') === dayDate);
+    if (dayIdx < 0) return { ok: false };
+    const day: any = (next.days as any[])[dayIdx];
+    const items: any[] = Array.isArray(day?.items) ? day.items : [];
+    const fromIdx = items.findIndex((it) => String(it?.id ?? '') === fromId);
+    const toIdx = items.findIndex((it) => String(it?.id ?? '') === toId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx >= toIdx) return { ok: false };
+
+    const from = items[fromIdx] ?? {};
+    const currDur = typeof from?.metadata?.duration_minutes === 'number' ? from.metadata.duration_minutes : undefined;
+    if (!Number.isFinite(currDur)) return { ok: false };
+    const newDur = Math.max(0, Math.round(currDur) - debt);
+    if (newDur === Math.round(currDur)) return { ok: false };
+
+    items[fromIdx] = {
+      ...from,
+      metadata: {
+        ...(from.metadata ?? {}),
+        duration_minutes: newDur,
+        repair_tactic: 'TimeShrinkTactic',
+        repair_tactic_debt_min: debt,
+        repair_tactic_from: String(fromId),
+        repair_tactic_to: String(toId),
+        ...this.appendTacticSignature(from.metadata, {
+          constraintId: 'time_space.min_transfer_buffer',
+          tacticId: 'TimeShrinkTactic',
+          moveDelta: 1,
+        }),
+      },
+      notes: `${String(from.notes ?? '')} [Tactic] shortened by ${debt}min for transfer buffer`.trim(),
+    };
+    day.items = items;
+    const logs = (next.metadata?.explain_logs ?? []) as string[];
+    next.metadata = {
+      ...(next.metadata ?? {}),
+      explain_logs: [
+        `[Tactic] TIME_SPACE_MIN_TRANSFER_BUFFER: shrink ${fromId} duration by ${debt}min (${dayDate})`,
+        ...logs,
+      ],
+    };
+    return { ok: true, itinerary: next, debtMin: debt };
+  }
+
+  /**
+   * Formal Tactic (v0): TIME_SPACE_MAX_DRIVING_HOURS
+   *
+   * Strategy:
+   * - Prefer migration (move last non-anchor POI-like item to next day) to retain utility.
+   * - Fallback: remove lowest-utility non-anchor item on that day.
+   *
+   * NOTE: This is a single-step operator. Kernel VERIFY/REPAIR loop will re-run until slack >= 0.
+   */
+  private timeSpaceMaxDrivingHoursTactic(
+    issue: VerificationIssue,
+    dso: DecisionState,
+    itinerary: ItineraryLike,
+    _slackHours: number,
+  ): { ok: boolean; itinerary?: ItineraryLike; utility_delta?: number; tacticId?: string } {
+    const ref = issue.entityRef;
+    if (!ref || ref.type !== 'DAY' || !ref.id) return { ok: false };
+    const dayDate = String(ref.id).trim();
+    if (!dayDate) return { ok: false };
+
+    const next = this.cloneItinerary(itinerary);
+    const days = next.days as any[];
+    const dayIdx = days.findIndex((d) => String(d?.date ?? '') === dayDate);
+    if (dayIdx < 0) return { ok: false };
+
+    const anchors = new Set<string>((dso.poiPlanning?.poiPlan?.requiredAnchorPoiIds ?? []).map(String));
+    const day = days[dayIdx];
+    const items: any[] = Array.isArray(day?.items) ? [...day.items] : [];
+    if (items.length < 2) return { ok: false };
+
+    const isAnchorItem = (it: any): boolean => {
+      const pid = String(it?.location_ref?.place_id ?? it?.poi_id ?? it?.id ?? it?.place_id ?? '');
+      return !!(pid && anchors.has(pid));
+    };
+
+    const nonAnchorIdxs = items
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => !isAnchorItem(it))
+      .map(({ idx }) => idx);
+    if (nonAnchorIdxs.length === 0) return { ok: false };
+
+    // Prefer migration of the last non-anchor POI-like item to next day if it exists.
+    const nextDay = days[dayIdx + 1];
+    if (nextDay && Array.isArray(nextDay.items)) {
+      const lastIdx = [...nonAnchorIdxs].reverse().find((idx) => {
+        const it = items[idx];
+        return it?.type === 'POI' || it?.location_ref?.place_id || it?.poi_id;
+      });
+      if (lastIdx != null && lastIdx >= 0) {
+        const moved = items.splice(lastIdx, 1)[0];
+        if (moved) {
+          moved.metadata = {
+            ...(moved.metadata ?? {}),
+            ...this.appendTacticSignature(moved.metadata, {
+              constraintId: 'time_space.max_driving_hours',
+              tacticId: 'MigrateToNextDayTactic',
+              moveDelta: 1,
+            }),
+          };
+        }
+        day.items = items;
+        nextDay.items = [...nextDay.items, moved];
+        const logs = (next.metadata?.explain_logs ?? []) as string[];
+        next.metadata = {
+          ...(next.metadata ?? {}),
+          explain_logs: [
+            `[Tactic] TIME_SPACE_MAX_DRIVING_HOURS: migrate item ${String(moved?.id ?? '')} from ${dayDate} → ${String(nextDay.date ?? '')}`,
+            ...logs,
+          ],
+        };
+        return { ok: true, itinerary: next, utility_delta: -14, tacticId: 'MigrateToNextDayTactic' };
+      }
+    }
+
+    // Fallback: remove the lowest-utility non-anchor item on that day.
+    const scored = nonAnchorIdxs
+      .map((idx) => {
+        const it = items[idx];
+        const base =
+          it?.type === 'POI'
+            ? 100
+            : it?.type === 'MEAL'
+              ? 70
+              : it?.type === 'REST'
+                ? 40
+                : 55;
+        const evidenceBoost = Array.isArray(it?.evidence_refs) ? Math.min(20, it.evidence_refs.length) : 0;
+        const durationPenalty = typeof it?.metadata?.duration_minutes === 'number' ? Math.min(30, it.metadata.duration_minutes / 10) : 0;
+        const score = base + evidenceBoost - durationPenalty;
+        return { idx, score, it };
+      })
+      .sort((a, b) => a.score - b.score);
+    const drop = scored[0];
+    if (!drop) return { ok: false };
+    const removed = items.splice(drop.idx, 1)[0];
+    day.items = items;
+    const logs = (next.metadata?.explain_logs ?? []) as string[];
+    next.metadata = {
+      ...(next.metadata ?? {}),
+      explain_logs: [
+        `[Tactic] TIME_SPACE_MAX_DRIVING_HOURS: drop item ${String(removed?.id ?? '')} on ${dayDate}`,
+        ...logs,
+      ],
+    };
+    return { ok: true, itinerary: next, utility_delta: -32, tacticId: 'DropItemTactic' };
+  }
+
+  /**
+   * Formal Tactic (v0): TIME_SPACE_ETA_FEASIBILITY
+   *
+   * Strategy: segment-level shift (push later items forward by debt minutes).
+   * entityRef.id convention: "<dayDate>|<fromItemId>-><toItemId>"
+   */
+  private timeSpaceEtaFeasibilityShiftTactic(
+    issue: VerificationIssue,
+    itinerary: ItineraryLike,
+    slackMin: number,
+  ): { ok: boolean; itinerary?: ItineraryLike; debtMin?: number } {
+    const ref = issue.entityRef;
+    if (!ref || ref.type !== 'SEGMENT' || !ref.id) return { ok: false };
+    const id = String(ref.id);
+    const [dayDateRaw, edge] = id.split('|');
+    const dayDate = String(dayDateRaw ?? '').trim();
+    const [fromId, toId] = String(edge ?? '').split('->').map((s) => s.trim());
+    if (!dayDate || !fromId || !toId) return { ok: false };
+    const debt = Math.max(1, Math.round(Math.abs(slackMin)));
+
+    const next = this.cloneItinerary(itinerary);
+    const dayIdx = (next.days as any[]).findIndex((d) => String(d?.date ?? '') === dayDate);
+    if (dayIdx < 0) return { ok: false };
+    const day: any = (next.days as any[])[dayIdx];
+    const items: any[] = Array.isArray(day?.items) ? [...day.items] : [];
+    const toIdx = items.findIndex((it) => String(it?.id ?? '') === toId);
+    if (toIdx < 0) return { ok: false };
+
+    let shifted = 0;
+    for (let i = toIdx; i < items.length; i++) {
+      const it = items[i];
+      const w = parseItemWindow(dayDate, it);
+      if (w.start && Number.isFinite(w.start.getTime())) {
+        it.start_window = addMinutes(w.start, debt).toISOString();
+        shifted++;
+      }
+      if (w.end && Number.isFinite(w.end.getTime())) {
+        it.end_window = addMinutes(w.end, debt).toISOString();
+        shifted++;
+      }
+      items[i] = it;
+    }
+    if (shifted === 0) return { ok: false };
+
+    // Mark the primary shifted node as touched (avoid tagging every node to reduce noise).
+    const primary = items[toIdx];
+    if (primary) {
+      primary.metadata = {
+        ...(primary.metadata ?? {}),
+        ...this.appendTacticSignature(primary.metadata, {
+          constraintId: 'time_space.eta_feasibility',
+          tacticId: 'ShiftTactic',
+          moveDelta: 1,
+        }),
+      };
+      items[toIdx] = primary;
+    }
+    day.items = items;
+
+    const logs = (next.metadata?.explain_logs ?? []) as string[];
+    next.metadata = {
+      ...(next.metadata ?? {}),
+      explain_logs: [
+        `[Tactic] TIME_SPACE_ETA_FEASIBILITY: shift items >=${toId} by ${debt}min (${dayDate})`,
+        ...logs,
+      ],
+    };
+    return { ok: true, itinerary: next, debtMin: debt };
+  }
+
+  private appendTacticSignature(
+    priorMeta: any,
+    input: { constraintId: string; tacticId: string; moveDelta: number },
+  ): { repair_tactic_signatures: any[]; repair_move_count: number } {
+    const prev = priorMeta && typeof priorMeta === 'object' ? priorMeta : {};
+    const prevArr = Array.isArray(prev.repair_tactic_signatures) ? prev.repair_tactic_signatures : [];
+    const nextArr = [
+      ...prevArr,
+      {
+        at: new Date().toISOString(),
+        constraintId: input.constraintId,
+        tacticId: input.tacticId,
+      },
+    ].slice(-10); // cap
+    const prevCount = typeof prev.repair_move_count === 'number' ? prev.repair_move_count : 0;
+    const repair_move_count = prevCount + Math.max(0, Math.round(input.moveDelta));
+    return { repair_tactic_signatures: nextArr, repair_move_count };
+  }
+
+  private detectTacticOscillation(
+    itin: ItineraryLike,
+    repairTraces?: RepairTrace[],
+  ): { itemId: string; moveCount: number; userClarificationSnippet: string } | undefined {
+    const days = (itin.days as any[]) ?? [];
+    for (const d of days) {
+      const items: any[] = Array.isArray(d?.items) ? d.items : [];
+      for (const it of items) {
+        const mc = typeof it?.metadata?.repair_move_count === 'number' ? it.metadata.repair_move_count : 0;
+        if (mc >= RepairExecutorService.OSCILLATION_MOVE_THRESHOLD) {
+          const itemId = String(it?.id ?? it?.location_ref?.place_id ?? it?.poi_id ?? 'unknown');
+          const signatures = Array.isArray(it?.metadata?.repair_tactic_signatures)
+            ? (it.metadata.repair_tactic_signatures as any[])
+            : [];
+          const userClarificationSnippet = formatRepairDeadlockAudit({
+            moveCount: mc,
+            itemId,
+            signatures,
+            repairTraces,
+            maxSteps: 5,
+          });
+          return { itemId, moveCount: mc, userClarificationSnippet };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * TerrainRerouteTactic (v0 skeleton)
+   * - Calls optional routing engine to request an alternative path avoiding steep slopes.
+   * - Applies accept/reject based on evaluateAltPath; v0 does not mutate itinerary yet without a concrete patch.
+   * - Records path_fingerprint into the signatures to enable cycle-detection.
+   */
+  private async terrainRerouteTactic(
+    issue: VerificationIssue,
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    proof: { slack?: number; limit?: number; cid: string },
+  ): Promise<{ ok: boolean; itinerary?: ItineraryLike; repairTrace?: RepairTrace }> {
+    if (!this.terrainRerouteEngine) return { ok: false };
+    const avoidSlopePctGE = typeof proof.limit === 'number' && Number.isFinite(proof.limit) ? proof.limit : undefined;
+    const entityRefId = issue.entityRef?.id;
+    const alt = await this.terrainRerouteEngine.findAlternativePath({
+      requestId: ctx.requestId,
+      entityRefId: entityRefId ? String(entityRefId) : undefined,
+      avoidSlopePctGE,
+    });
+    if (!alt) return { ok: false };
+
+    const fatigue01 = this.deriveNormalizedFatigueScore01(dso);
+    const fatigueWeight = this.deriveFatigueWeight(fatigue01);
+    const policy = this.deriveTerrainAltPathPolicy(ctx, { fatigue01, fatigueWeight });
+    const decision = evaluateAltPath(alt, policy);
+    const baseLimit = 45;
+    const effectiveLimit = policy.max_extra_drive_min_soft;
+    const actualCost = Math.max(0, Math.round(Number(alt.delta_drive_min) || 0));
+    const segId = String(alt.patch?.segment_id ?? issue.entityRef?.id ?? entityRefId ?? '');
+    // Hard cycle prevention: if this segment has already tried the same path_fingerprint in this repair lineage, reject.
+    if (ctx.itinerary && segId && alt.path_fingerprint) {
+      const curr = this.findItineraryItemById(ctx.itinerary, segId);
+      const seen = Array.isArray(curr?.metadata?.reroute_path_fingerprints)
+        ? (curr.metadata.reroute_path_fingerprints as any[]).map(String)
+        : [];
+      if (seen.includes(String(alt.path_fingerprint))) {
+        const repairTrace: RepairTrace = {
+          tacticId: 'TerrainRerouteTactic',
+          targetEntity: { type: 'SEGMENT', id: segId },
+          applied: false,
+          metrics: {
+            fatigue_score01: this.deriveNormalizedFatigueScore01(dso),
+            fatigue_weight: this.deriveFatigueWeight(this.deriveNormalizedFatigueScore01(dso)),
+            base_limit: 45,
+            effective_limit: 0,
+            actual_cost: Math.max(0, Math.round(Number(alt.delta_drive_min) || 0)),
+            unit: 'min',
+          },
+          reason: 'OSCILLATION_PREVENTION',
+          evidence: { path_fingerprint: String(alt.path_fingerprint), segment_id: segId },
+        };
+        return { ok: false, repairTrace };
+      }
+    }
+    const reasonWhenRejected: RepairReason =
+      effectiveLimit <= 0 ? 'FATIGUE_EXHAUSTION' : actualCost > policy.max_extra_drive_min_hard ? 'COST_EXCEEDS_HARD_LIMIT' : 'FATIGUE_SUPPRESSION';
+    const repairTrace: RepairTrace = {
+      tacticId: 'TerrainRerouteTactic',
+      targetEntity: { type: 'SEGMENT', ...(segId ? { id: segId } : {}) },
+      applied: false,
+      metrics: {
+        fatigue_score01: fatigue01,
+        fatigue_weight: fatigueWeight,
+        base_limit: baseLimit,
+        effective_limit: effectiveLimit,
+        actual_cost: actualCost,
+        unit: 'min',
+      },
+      reason: decision.accept ? 'SUCCESS_APPLIED' : reasonWhenRejected,
+      evidence: { path_fingerprint: alt.path_fingerprint, ...(segId ? { segment_id: segId } : {}) },
+    };
+    if (!decision.accept) {
+      return { ok: false, repairTrace };
+    }
+
+    const next = ctx.itinerary ? this.cloneItinerary(ctx.itinerary) : undefined;
+    if (!next) return { ok: false, repairTrace };
+    const didApply = alt.patch ? this.applySegmentRoutePatch(next, alt.patch) : false;
+    repairTrace.applied = didApply;
+    repairTrace.reason = didApply ? 'SUCCESS_APPLIED' : 'PATCH_MISSING';
+    if (didApply) {
+      repairTrace.metrics.utility_delta = -Math.min(18, Math.max(1, Math.round(Number(alt.delta_drive_min) * 0.15)));
+    }
+    const logs = (next.metadata?.explain_logs ?? []) as string[];
+    next.metadata = {
+      ...(next.metadata ?? {}),
+      explain_logs: [
+        `[Tactic] TERRAIN_REROUTE: accept altPath fp=${alt.path_fingerprint} Δdrive=${Math.round(alt.delta_drive_min)}min` +
+          (didApply ? ' patch=APPLIED' : ' patch=MISSING') +
+          ` (w_fatigue=${fatigueWeight.toFixed(3)} eff_soft=${policy.max_extra_drive_min_soft}min eff_hard=${policy.max_extra_drive_min_hard}min reason=${decision.reason})`,
+        ...logs,
+      ],
+    };
+    // Mark the patched segment (or fall back to the first item) to carry fingerprint for oscillation detection.
+    const segmentId = String(alt.patch?.segment_id ?? issue.entityRef?.id ?? '');
+    const touched = segmentId ? this.findItineraryItemById(next, segmentId) : undefined;
+    const fallbackFirst = touched ?? this.findFirstItineraryItem(next);
+    if (fallbackFirst) {
+      // Persist fingerprint history on the segment itself (minimal, bounded).
+      if (segId && alt.path_fingerprint) {
+        const prev = Array.isArray((fallbackFirst.metadata as any)?.reroute_path_fingerprints)
+          ? ((fallbackFirst.metadata as any).reroute_path_fingerprints as any[])
+          : [];
+        const nextFps = [...prev.map(String), String(alt.path_fingerprint)];
+        (fallbackFirst.metadata as any).reroute_path_fingerprints = Array.from(new Set(nextFps)).slice(-8);
+      }
+      fallbackFirst.metadata = {
+        ...(fallbackFirst.metadata ?? {}),
+        ...this.appendTacticSignature(fallbackFirst.metadata, {
+          constraintId: 'terrain.max_slope_pct',
+          tacticId: `RerouteTactic:${String(alt.path_fingerprint)}|w=${fatigueWeight.toFixed(3)}|effSoft=${policy.max_extra_drive_min_soft}|effHard=${policy.max_extra_drive_min_hard}`,
+          moveDelta: 1,
+        }),
+      };
+    }
+    return { ok: true, itinerary: next, repairTrace };
+  }
+
+  private deriveTerrainAltPathPolicy(
+    ctx: PhaseExecutorContext,
+    fatigue?: { fatigue01: number; fatigueWeight: number },
+  ): { max_extra_drive_min_soft: number; max_extra_drive_min_hard: number } {
+    // Default v0 policy.
+    // Note: terrain reroute is a "HARD-fix hammer"; we allow a bit more detour by default,
+    // and let downstream time_space tactics absorb the cascade in the VERIFY↔REPAIR loop.
+    let soft = 45;
+    let hard = 120;
+
+    // If fatigue is already a top-level concern, be more conservative about extra driving.
+    const v = ctx.gateResult?.violations ?? [];
+    const hasHardFatigue = v.some((x) => String(x?.type ?? '').toUpperCase() === 'FATIGUE' && x?.severity === 'HARD');
+    const hasSoftFatigue = v.some((x) => String(x?.type ?? '').toUpperCase() === 'FATIGUE' && x?.severity === 'SOFT');
+    if (hasHardFatigue) {
+      soft = 15;
+      hard = 60;
+    } else if (hasSoftFatigue) {
+      soft = 20;
+      hard = 90;
+    }
+
+    // Fitness hints: low fitness -> stricter; high fitness -> slightly more tolerant.
+    const fitness = String(ctx.tripPlanRequest?.party?.fitness_level ?? ctx.tripPlanRequest?.party_profile?.fitness ?? '').toLowerCase();
+    if (fitness === 'low') {
+      soft = Math.min(soft, 20);
+      hard = Math.min(hard, 90);
+    } else if (fitness === 'high') {
+      soft = Math.max(soft, 35);
+      hard = Math.max(hard, 120);
+    }
+
+    // Continuous physiological scaling (v1): effective_limit = base_limit * w(f).
+    const wf = fatigue?.fatigueWeight;
+    if (typeof wf === 'number' && Number.isFinite(wf)) {
+      const w = Math.max(0, Math.min(1, wf));
+      soft = Math.max(0, Math.round(soft * w));
+      hard = Math.max(soft, Math.round(hard * w));
+    }
+
+    return { max_extra_drive_min_soft: soft, max_extra_drive_min_hard: hard };
+  }
+
+  private deriveNormalizedFatigueScore01(dso: DecisionState): number {
+    // Canonical signal: DSO.tripState.fatigue is a scalar; treat as 0..100 if present.
+    const raw = (dso as any)?.tripState?.fatigue;
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+    // If some pipelines store 0..1, normalize up.
+    const v = raw <= 1 ? raw : raw / 100;
+    return Math.max(0, Math.min(1, v));
+  }
+
+  /**
+   * Fatigue weight w(f) (continuous, v1):
+   * - f in [0,1], higher means more fatigue.
+   * - w in (0,1], higher means more tolerance for extra driving.
+   * Linear first: w = 1 - f.
+   * (Sigmoid can be swapped in later without changing call sites.)
+   */
+  private deriveFatigueWeight(fatigue01: number): number {
+    const f = Math.max(0, Math.min(1, fatigue01));
+    if (f < 0.3) return 1;
+    if (f >= 0.8) return 0;
+    return Math.max(0, Math.min(1, (0.8 - f) / 0.5));
+  }
+
+  private findFirstItineraryItem(itin: ItineraryLike): any | undefined {
+    const firstDay: any = (itin.days as any[])?.[0];
+    const items: any[] = Array.isArray(firstDay?.items) ? firstDay.items : [];
+    return items[0];
+  }
+
+  private findItineraryItemById(itin: ItineraryLike, id: string): any | undefined {
+    for (const d of (itin.days as any[]) ?? []) {
+      const items: any[] = Array.isArray(d?.items) ? d.items : [];
+      for (const it of items) {
+        if (String(it?.id ?? '') === String(id)) return it;
+      }
+    }
+    return undefined;
+  }
+
+  private applySegmentRoutePatch(
+    itin: ItineraryLike,
+    patch: { segment_id: string; encoded_polyline?: string; distance_meters?: number; eta_minutes?: number },
+  ): boolean {
+    const segId = String(patch.segment_id ?? '');
+    if (!segId) return false;
+    const hit = this.findItineraryItemById(itin, segId);
+    if (!hit) return false;
+    const meta = { ...(hit.metadata ?? {}) } as Record<string, unknown>;
+    if (typeof patch.encoded_polyline === 'string' && patch.encoded_polyline.trim()) {
+      meta.route_encoded_polyline = patch.encoded_polyline.trim();
+    }
+    if (typeof patch.distance_meters === 'number' && Number.isFinite(patch.distance_meters) && patch.distance_meters >= 0) {
+      meta.distance_meters = Math.round(patch.distance_meters);
+    }
+    if (typeof patch.eta_minutes === 'number' && Number.isFinite(patch.eta_minutes) && patch.eta_minutes >= 0) {
+      meta.route_eta_minutes = Math.round(patch.eta_minutes);
+    }
+    meta.route_patch_applied_at = new Date().toISOString();
+    meta.route_patch_kind = 'TERRAIN_REROUTE_SEGMENT_ATOMIC_V0';
+    hit.metadata = meta;
+    return true;
   }
 
   /**
@@ -1269,6 +2030,7 @@ export class RepairExecutorService implements IRepairExecutor {
   ): TripPlanRequest {
     return {
       request_id: requestId,
+      message: (req as any)?.message,
       origin: (req?.origin ?? '') as TripPlanRequest['origin'],
       destination: (req?.destination ?? '') as TripPlanRequest['destination'],
       date_range: req?.date_range,
@@ -1277,6 +2039,7 @@ export class RepairExecutorService implements IRepairExecutor {
       mode: req?.mode as TripPlanRequest['mode'],
       party: req?.party as TripPlanRequest['party'],
       party_profile: req?.party_profile as TripPlanRequest['party_profile'],
+      constraints: (req as any)?.constraints,
     };
   }
 }

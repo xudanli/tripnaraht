@@ -67,6 +67,17 @@ import { AgentAdminController } from './agent-admin.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
 import { TripRunManagerService } from './services/trip-run-manager.service';
 import { ActionExecutionService } from './services/action-execution.service';
+import { FinancialHoldStoreService } from './services/financial-hold-store.service';
+import { SideEffectRegistryService } from './services/side-effect-registry.service';
+import { SideEffectParamResolverService } from './services/side-effect-param-resolver.service';
+import { SideEffectRuleSyncerService } from './services/side-effect-rule-syncer.service';
+import { HardTruthRuleResolverService } from './services/hard-truth-rule-resolver.service';
+import { AgentActionLogService } from './services/agent-action-log.service';
+import { ClarificationHandlerService } from './services/clarification-handler.service';
+import { ShadowConflictScannerService } from './services/shadow-conflict-scanner.service';
+import { LocalCaseStoreService } from './cbr/local-case-store.service';
+import { CbrRepository } from './cbr/cbr.repository';
+import { CbrAggregatorService } from './cbr/cbr-aggregator.service';
 import { JepaProjectorService } from './services/jepa-projector.service';
 import { RouteAndRunResponseAssemblerService } from './services/route-and-run-response-assembler.service';
 import { AgentEntryResponseFactoryService } from './services/agent-entry-response-factory.service';
@@ -89,6 +100,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TrainingModule } from './training/training.module';
 import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
+import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
 
 /**
  * Agent Module
@@ -157,11 +169,23 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
     AgentRunAdminService, // Agent 运行管理服务（后台管理）
     TripRunManagerService, // TripRun 和 TripAttempt 管理服务
+    FinancialHoldStoreService,
+    SideEffectRegistryService,
+    SideEffectParamResolverService,
+    SideEffectRuleSyncerService,
+    HardTruthRuleResolverService,
+    AgentActionLogService,
     ActionExecutionService, // Action 执行域（preview/commit/rollback）
+    DecisionContractCapturerService,
     JepaProjectorService,
     RouteAndRunResponseAssemblerService,
     AgentEntryResponseFactoryService,
     PlanningRequestClassifierService,
+    ClarificationHandlerService,
+    ShadowConflictScannerService,
+    CbrRepository,
+    CbrAggregatorService,
+    LocalCaseStoreService,
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [
@@ -172,6 +196,12 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
     AgentInfraModule, // 导出 Infra 模块（LLMExecutor、CoreGateway）
     ClaudeGatekeeperAgentService, // Phase 3: GateEvalExecutor 需要
     ClaudeLocalInsightAgentService, // Phase 4: RepairExecutor 需要
+    SideEffectRuleSyncerService,
+    SideEffectRegistryService,
+    ActionExecutionService,
+    FinancialHoldStoreService,
+    AgentActionLogService,
+    HardTruthRuleResolverService,
   ],
 })
 export class AgentModule {

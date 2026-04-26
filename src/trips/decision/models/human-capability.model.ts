@@ -197,6 +197,12 @@ export interface HumanCapabilityModel {
   /** 体能评分（0-100，来自问卷或校准） */
   fitnessScore?: number;
 
+  /**
+   * 垂直爬升速度（米/小时），参与移动时长估计；未设置时由 PaceConstraints 默认 600。
+   * 反馈闭环（如预警被拒后实际高负荷）可逐步下调以贴合真实体力。
+   */
+  ascentSpeedMPerH?: number;
+
   /** 细粒度体能等级 */
   fitnessLevel?: FitnessLevel;
 

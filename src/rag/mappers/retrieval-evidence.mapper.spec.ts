@@ -47,6 +47,7 @@ describe('RetrievalEvidenceMapper.toEvidence', () => {
     expect(ev).toHaveLength(1);
     expect(ev[0].category).toBe('ROAD_STATUS');
     expect(ev[0].ageHours).toBeCloseTo(2, 5);
+    expect(ev[0].contextPointer).toBe('rag:00000000-0000-4000-8000-000000000001:2');
   });
 
   it('drops chunks below scoreThreshold when set', () => {
@@ -99,6 +100,7 @@ describe('RetrievalEvidenceMapper.toEvidence', () => {
       { now, scoreThreshold: 0.2 },
     );
     expect(ev[0].ageHours).toBeUndefined();
+    expect(ev[0].contextPointer).toBe('rag:00000000-0000-4000-8000-000000000001:1');
   });
 
   it('derives RULES/ROAD_STATUS from metadata.structured_data.f_road_required', () => {
@@ -120,5 +122,8 @@ describe('RetrievalEvidenceMapper.toEvidence', () => {
     );
     const cats = ev.map((e) => e.category);
     expect(cats).toEqual(expect.arrayContaining(['POI_HOURS', 'RULES', 'ROAD_STATUS']));
+    const rules = ev.find((e) => e.category === 'RULES');
+    expect(rules?.metadataChecksum).toMatch(/^[a-f0-9]{16}$/);
+    expect(rules?.contextPointer).toMatch(/^rag:/);
   });
 });

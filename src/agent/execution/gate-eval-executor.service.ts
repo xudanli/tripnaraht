@@ -20,6 +20,7 @@ import { ClaudeGatekeeperAgentService } from '../services/sub-agents/gatekeeper-
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import type { TripPlanRequest, OrchestratorState } from '../interfaces/trip-plan.interface';
+import { HardTruthRuleResolverService } from '../services/hard-truth-rule-resolver.service';
 
 @Injectable()
 export class GateEvalExecutorService implements IGateEvalExecutor {
@@ -30,6 +31,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly gatekeeperAgent?: ClaudeGatekeeperAgentService,
+    @Optional() private readonly hardTruthRules?: HardTruthRuleResolverService,
   ) {}
 
   async execute(
@@ -37,6 +39,8 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     ctx: PhaseExecutorContext,
   ): Promise<{ constraints: ConstraintReport; gateResult: GateResultLike; alternatives?: OrchestratorAlternativesLike }> {
     this.logger.debug(`[GateEvalExecutor] 执行 GATE_EVAL 阶段 requestId=${ctx.requestId}`);
+    await this.hardTruthRules?.refreshFromDbIfStale();
+    const hardTruth = this.hardTruthRules?.getSnapshot() ?? { gateFroadBlock2wd: true };
 
     const tripRequest = ctx.tripPlanRequest;
     const researchData = (ctx.researchData ?? {}) as Record<string, any>;
@@ -108,7 +112,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       };
       const hasFailureRisk = readinessBlockers.some((b: any) => b?.type === 'FAILURE_RISK');
       return {
-        constraints: { feasible: false, violations: gateResult.violations },
+        constraints: { feasible: false, violations: gateResult.violations, gateOutcome: 'BLOCK' },
         gateResult,
         alternatives: this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness'),
       };
@@ -123,7 +127,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         confidence: 0.8,
       };
       return {
-        constraints: { feasible: false, violations: [] },
+        constraints: { feasible: false, violations: [], gateOutcome: 'NEED_USER_CONFIRM' },
         gateResult,
       };
     }
@@ -160,6 +164,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         feasible: gateResult.gate_result === 'ALLOW',
         violations: (gateResult.violations || []).map((v) => ({ type: v.type, severity: v.severity, detail: v.detail })),
         feasibleActions: gateResult.required_adjustments?.map((a) => a.action),
+        gateOutcome: gateResult.gate_result,
       };
       const gateResultLike: GateResultLike = {
         gate_result: gateResult.gate_result,
@@ -177,10 +182,18 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       };
     }
 
-    // 降级：默认 ALLOW
+    // 6. 最小硬规则（无 gatekeeperAgent 时仍可执行）：准入/空间类原子约束
+    const extraViolations = this.evaluateAdmissionAndSpatialAtoms(tripRequest, researchData, hardTruth);
+
+    // 降级：默认 ALLOW（若 extraViolations 存在则 ADJUST_REQUIRED/BLOCK）
     const gateResult: GateResultLike = {
-      gate_result: readinessMust.length > 0 ? 'ADJUST_REQUIRED' : 'ALLOW',
-      violations: [],
+      gate_result:
+        extraViolations.some((v) => v.severity === 'HARD')
+          ? 'BLOCK'
+          : (readinessMust.length > 0 || extraViolations.length > 0)
+            ? 'ADJUST_REQUIRED'
+            : 'ALLOW',
+      violations: extraViolations,
       required_adjustments: readinessMust.map((item: any) => ({
         action: 'REPLACE_SEGMENT',
         why: typeof item.message === 'string' ? item.message : item.message?.zh || item.message?.en || '',
@@ -188,9 +201,58 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       confidence: 0.8,
     };
     return {
-      constraints: { feasible: gateResult.gate_result === 'ALLOW', violations: [], feasibleActions: [] },
+      constraints: {
+        feasible: gateResult.gate_result === 'ALLOW',
+        violations: gateResult.violations,
+        feasibleActions: [],
+        gateOutcome: gateResult.gate_result,
+      },
       gateResult,
     };
+  }
+
+  private evaluateAdmissionAndSpatialAtoms(
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+    researchData: Record<string, any>,
+    hardTruth: { gateFroadBlock2wd: boolean },
+  ): GateResultLike['violations'] {
+    if (!tripRequest) return [];
+    const out: GateResultLike['violations'] = [];
+
+    // --- 准入类：F-road / 4x4 vs vehicle_type ---
+    const vehicleRequiredRaw =
+      researchData?.routeCorridorWorld?.constraints?.vehicleRequired ??
+      researchData?.route_corridor_world?.constraints?.vehicleRequired ??
+      researchData?.world?.routeDirection?.metadata?.vehicleRequired ??
+      researchData?.world?.routeDirection?.metadata?.vehicleRequired;
+    const vehicleRequired = typeof vehicleRequiredRaw === 'string' ? vehicleRequiredRaw.toLowerCase() : '';
+    const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
+
+    const vehicleType = (tripRequest as any)?.constraints?.vehicle_type as '2WD' | '4WD' | undefined;
+    const is2wd = vehicleType === undefined ? true : vehicleType === '2WD';
+
+    if (hardTruth.gateFroadBlock2wd && need4x4 && is2wd) {
+      out.push({
+        type: 'REACHABILITY',
+        severity: 'HARD',
+        detail: `Route requires 4x4/4WD (${String(vehicleRequiredRaw)}), but vehicle_type is ${vehicleType ?? '2WD (assumed)'}.`,
+      });
+    }
+
+    // --- 空间类：must_include_poi_ids vs days（近似容量判断） ---
+    const must = Array.isArray((tripRequest as any)?.must_include_poi_ids)
+      ? ((tripRequest as any).must_include_poi_ids as string[])
+      : [];
+    const days = typeof (tripRequest as any)?.days === 'number' ? (tripRequest as any).days : undefined;
+    if (must.length > 0 && typeof days === 'number' && Number.isFinite(days) && must.length > Math.max(1, Math.floor(days) + 1)) {
+      out.push({
+        type: 'SCOPE',
+        severity: 'SOFT',
+        detail: `must_include_poi_ids(${must.length}) exceeds approximate capacity for days=${days}. Consider increasing days or removing must-includes.`,
+      });
+    }
+
+    return out;
   }
 
   /**

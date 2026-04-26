@@ -10,7 +10,11 @@ export type IntakeGapType =
   | 'MISSING_DESTINATION'
   | 'MISSING_DATES'
   | 'MISSING_CONSTRAINTS'
-  | 'MISSING_PREFERENCES';
+  | 'MISSING_PREFERENCES'
+  /** L4: spec schema/type check failed */
+  | 'SPEC_TYPE_ERROR'
+  /** L3: pre-flight lower-bound check failed */
+  | 'INTENT_COMPILE_ERROR';
 
 export interface IntakeGap {
   type: IntakeGapType;
@@ -163,6 +167,28 @@ export function generateClarificationQuestions(
           options: ['轻松', '平衡', '紧凑'],
           hint: '轻松：每天安排较少活动；平衡：适中安排；紧凑：尽可能多安排活动',
           default: '平衡',
+        });
+        break;
+
+      case 'SPEC_TYPE_ERROR':
+        questions.push({
+          id: `question-${questionId++}`,
+          question: `【意图语法错误】${gap.detail}。请补充或修正关键字段后重试。`,
+          type: 'text',
+          required: true,
+          placeholder: '请用一句话补充：目的地/日期/天数/交通方式等',
+          hint: '这是编译器级语法/类型检查，信息缺失将导致后续物理推演不可用。',
+        });
+        break;
+
+      case 'INTENT_COMPILE_ERROR':
+        questions.push({
+          id: `question-${questionId++}`,
+          question: `【意图编译失败】${gap.detail}`,
+          type: 'single_choice',
+          required: true,
+          options: ['增加天数', '缩小范围/减少必去点', '改为更快交通方式', '我想重新描述需求'],
+          hint: '这是物理下界校验失败：即使在最理想情况下也无法满足硬约束。',
         });
         break;
     }

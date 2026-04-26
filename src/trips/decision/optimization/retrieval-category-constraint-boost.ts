@@ -28,6 +28,15 @@ export type RetrievalCategoryEvidence = {
    * 未传则视为仍有效（乘子 1），便于无时间戳语料渐进接入。
    */
   ageHours?: number;
+  /**
+   * 指向「该类最鲜证据」来源 chunk，便于 TerrainAudit / 回放按区域重评 ROAD_STATUS 等。
+   * 格式：`rag:{fileId}:{chunkId}`（由 `RetrievalEvidenceMapper` 写入）。
+   */
+  contextPointer?: string;
+  /**
+   * `metadata.structured_data` 的稳定短指纹；structured 变化时 checksum 变，可触发证据再聚合。
+   */
+  metadataChecksum?: string;
 };
 
 function normCat(c: string): string {

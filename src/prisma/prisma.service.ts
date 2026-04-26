@@ -69,6 +69,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const errorMessage = e?.message || String(e);
       this.logger.warn(`⚠️ [Prisma] 连接超时或失败，跳过数据库连接，继续启动 App。错误: ${errorMessage}`);
       // 重点：这里捕获了错误，但没有 throw，所以 App 能够继续启动！
+      // 同时在后台继续尝试连接：Prisma 会在首次查询时自动建连，但我们需要把 isConnected 置为 true
+      // 以避免业务层因 isDbConnected=false 而错误地返回空数据（例如 admin 列表接口）。
+      this.$connect()
+        .then(() => {
+          this.isConnected = true;
+          this.logger.log('✅ [Prisma] 后台重连成功');
+        })
+        .catch((err: any) => {
+          this.logger.warn(`⚠️ [Prisma] 后台重连失败: ${err?.message || String(err)}`);
+        });
     }
   }
 
