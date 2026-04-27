@@ -1,4 +1,5 @@
 import type { HardRuleFact } from './hard-rule-snapshot.types';
+import { DRIVE_SAFETY_V1, driveSafetyWindThresholdMps } from '../../ontology/environment/weather.schema';
 
 /**
  * Best-effort derive HardRuleFact[] from metadata shape.
@@ -18,6 +19,7 @@ export function deriveFactsFromMetadata(params: {
   if (!rule_id) return [];
 
   const facts: HardRuleFact[] = [];
+  const evType = String((evidence as any)?.type ?? '');
 
   // Pattern: wind threshold/value in m/s (matches ConstraintsEngine + Neptune weather evidence)
   const threshold_mps = (evidence as any)?.threshold_mps;
@@ -69,10 +71,39 @@ export function deriveFactsFromMetadata(params: {
     });
   }
 
+  // Pattern: weather physics (wind lock) — derive DRIVE_SAFETY_V1 as a HARD fact.
+  // Evidence shape:
+  // {
+  //   type:'weather_physics',
+  //   wind_speed_mps,
+  //   vehicle_type?: 'SUV'|'CAMPERVAN'|...,
+  //   threshold_mps?: number,
+  //   source, snapshotId?, is_violated?
+  // }
+  if (evType === 'weather_physics') {
+    const wind = (evidence as any)?.wind_speed_mps ?? (evidence as any)?.windSpeedMps ?? (evidence as any)?.wind_speed;
+    if (typeof wind === 'number') {
+      const thr =
+        typeof (evidence as any)?.threshold_mps === 'number'
+          ? (evidence as any)?.threshold_mps
+          : driveSafetyWindThresholdMps((evidence as any)?.vehicle_type ?? (evidence as any)?.vehicleType);
+      const isViolated = Boolean((evidence as any)?.is_violated) === true || wind > thr;
+      facts.push({
+        rule_id: DRIVE_SAFETY_V1.rule_id,
+        actual_value: wind,
+        threshold: thr,
+        unit: 'm/s',
+        is_violated: isViolated,
+        severity: 'HARD',
+        evidence: { ...(evidence as any), threshold_mps: thr, wind_speed_mps: wind },
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+  }
+
   // Pattern: fatigue stats (Dr.Dre optimizer) — emit max fatigue and overloaded days facts.
   // Evidence shape:
   // { type:'fatigue_stats', threshold_fatigue_index, original:{...}, recommended:{ mean, variance, max, overloadedDays } }
-  const evType = String((evidence as any)?.type ?? '');
   if (evType === 'fatigue_stats') {
     const thr = (evidence as any)?.threshold_fatigue_index;
     const rec = (evidence as any)?.recommended;

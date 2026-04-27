@@ -106,7 +106,16 @@ export class RouteAndRunResponseAssemblerService {
         .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
         .some((it: any) => String(it?.type ?? '').toUpperCase() === 'TRANSIT'),
     );
+    const drivePresent = Boolean(
+      (params.candidateItinerary?.days ?? [])
+        .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
+        .some((it: any) => String(it?.type ?? '').toUpperCase() === 'DRIVE'),
+    );
     const hasPtHardFact = hardFactsList.some((x) => String(x.rule_id) === 'public_transport_v1');
+    const hasDriveSafetyFact = hardFactsList.some((x) => String(x.rule_id) === 'drive_safety_v1');
+    const driveSafetyViolated = hardFactsList.some(
+      (x) => String(x.rule_id) === 'drive_safety_v1' && Boolean((x as any)?.is_violated) === true,
+    );
     const ptCancelled =
       ptCancelledFromLog ||
       hardFactsList.some((x) => {
@@ -146,6 +155,22 @@ export class RouteAndRunResponseAssemblerService {
         verification_status = 'FAILED';
       }
       if (ptTransferWindowViolated) {
+        verification_status = 'FAILED';
+      }
+    }
+
+    // Weather hard-fact enforcement (Wind Lock, C1 strict):
+    // - If DRIVE exists but we don't have drive_safety_v1 hard fact → FAILED in strict mode, otherwise PARTIAL.
+    // - If drive_safety_v1 is violated (e.g. wind_speed > threshold) → FAILED always (forces recompute under strict).
+    if (drivePresent) {
+      if (!hasDriveSafetyFact) {
+        verification_status = this.isC1StrictEvidenceBundle()
+          ? 'FAILED'
+          : verification_status === 'VERIFIED'
+            ? 'PARTIAL'
+            : verification_status;
+      }
+      if (driveSafetyViolated) {
         verification_status = 'FAILED';
       }
     }

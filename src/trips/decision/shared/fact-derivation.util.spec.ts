@@ -82,5 +82,28 @@ describe('fact-derivation.util', () => {
       true,
     );
   });
+
+  it('derives HARD drive_safety_v1 fact from weather_physics wind evidence', () => {
+    const facts = deriveFactsFromMetadata({
+      metadata: {
+        rule_id: 'drive_safety_v1',
+        details: {
+          evidence: {
+            type: 'weather_physics',
+            wind_speed_mps: 25,
+            vehicle_type: 'CAMPERVAN',
+            source: 'UNIT_TEST',
+          },
+        },
+      },
+      reasonCodes: ['drive_safety_v1'],
+      timestampIso: '2026-06-01T00:00:00.000Z',
+    });
+    expect(
+      facts.some(
+        (f) => f.rule_id === 'drive_safety_v1' && f.severity === 'HARD' && f.is_violated === true && f.unit === 'm/s',
+      ),
+    ).toBe(true);
+  });
 });
 

@@ -976,9 +976,47 @@ export class AgentService {
     } catch (e: any) {
       const msg = e instanceof Error ? e.message : String(e);
       const isC1Strict = /C1_STRICT_EVIDENCE_BUNDLE/.test(msg);
-      const alreadyRetried = (request as any)?.meta?.pt_heal_retry === '1' || (request as any)?.meta?.pt_heal_retry === true;
+      const alreadyPtRetried =
+        (request as any)?.meta?.pt_heal_retry === '1' || (request as any)?.meta?.pt_heal_retry === true;
+      const alreadyWeatherRetried =
+        (request as any)?.meta?.weather_heal_retry === '1' || (request as any)?.meta?.weather_heal_retry === true;
+
+      const decisionLog = orchestrationResult?.result?.state?.decision_log ?? orchestrationResult?.decisionLog ?? [];
+      const hasWeatherWindEvidence = (decisionLog as any[]).some((x) => {
+        const ev = (x as any)?.metadata?.details?.evidence;
+        const t = String(ev?.type ?? '').toLowerCase();
+        return t === 'weather_physics' || String((x as any)?.metadata?.rule_id ?? '') === 'drive_safety_v1';
+      });
+
+      // Auto-heal Weather (Wind Lock): replan without driving; prefer indoor/hotel "stay in place".
+      if (isC1Strict && hasWeatherWindEvidence && !alreadyWeatherRetried && this.claudeOrchestrator) {
+        this.logger.warn(`[AgentService] C1 strict failed, attempting WEATHER sentinel replan: ${msg}`);
+        const patchedRequest: RouteAndRunRequestDto = {
+          ...request,
+          message:
+            `${request.message}\n` +
+            `[CONSTRAINT_ZONE] Driving is not allowed due to extreme wind safety constraints (drive_safety_v1). ` +
+            `Prefer staying in place (ACCOMMODATION/REST) or indoor POIs; if long-distance relocation is required, prefer rail/ferry over driving.`,
+          meta: { ...(request.meta ?? {}), weather_heal_retry: '1' } as any,
+          emergency_constraints: {
+            ...(request.emergency_constraints ?? {}),
+            reason_code: 'HEALING_DRIVE_SAFETY_FAILED',
+          },
+        };
+        const healed = await this.claudeOrchestrator.orchestrateWithStateMachine(
+          patchedRequest,
+          context,
+          deadline,
+          resumedCheckpoint
+            ? { decision_state: resumedCheckpoint.decision_state, checkpoint_loaded: true }
+            : undefined,
+        );
+        persist(patchedRequest, healed);
+        return assemble(patchedRequest, healed);
+      }
+
       // Auto-heal PT hard failures: replan without PUBLIC TRANSIT.
-      if (isC1Strict && !alreadyRetried && this.claudeOrchestrator) {
+      if (isC1Strict && !alreadyPtRetried && this.claudeOrchestrator) {
         this.logger.warn(`[AgentService] C1 strict failed, attempting PT auto-heal replan: ${msg}`);
         const patchedRequest: RouteAndRunRequestDto = {
           ...request,
