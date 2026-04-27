@@ -42,5 +42,75 @@ describe('C1 strict evidence bundle guard', () => {
       } as any),
     ).toThrow(/C1_STRICT_EVIDENCE_BUNDLE/);
   });
+
+  it('PT-hard: fails under strict when itinerary contains TRANSIT but no public_transport_v1 hard fact', () => {
+    process.env.C1_STRICT_EVIDENCE_BUNDLE = '1';
+    const svc = new RouteAndRunResponseAssemblerService({ buildJePaPayload: () => undefined } as unknown as JepaProjectorService);
+
+    const now = new Date().toISOString();
+    const req: any = { request_id: 'req-pt', message: 'x', options: { dry_run: true } };
+    const orchestrationResult: any = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [{ stepId: 'DONE', success: true, duration: 1 }],
+      totalDuration: 1,
+      decisionLog: [],
+      result: {
+        state: {
+          request_id: 'req-pt',
+          current_step: 'DONE',
+          decision_log: [],
+          errors: [],
+          evidence_registry: new Map(),
+          narration: {
+            user_friendly_summary: 'ok',
+            day_by_day_narrative: [],
+            highlights: [],
+            tips: [],
+            warnings: [
+              {
+                kind: 'iron_shield_evidence',
+                rule_id: 'wind_speed_drive_limit_v1',
+                severity: 'HARD',
+                message: 'wind warning',
+                evidence: { type: 'weather_physics', value_mps: 20, threshold_mps: 15, source: 'stub' },
+              },
+            ],
+          },
+          metadata: { started_at: now, last_updated_at: now },
+        },
+        itinerary: {
+          request_id: 'req-pt',
+          days: [
+            {
+              date: '2026-01-01',
+              items: [
+                {
+                  id: 't1',
+                  type: 'TRANSIT',
+                  start_window: '10:00',
+                  end_window: '10:30',
+                  location_ref: { name: 'Metro', place_id: 'seg-1' },
+                  evidence_refs: [],
+                  verified: false,
+                  verification_status: 'ASSUMPTION',
+                },
+              ],
+            },
+          ],
+          action_plan: [],
+        },
+        gate_result: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.9, evidence_refs: [] },
+      },
+    };
+
+    expect(() =>
+      svc.assembleClaudeStateMachineResponse({
+        request: req,
+        startTime: Date.now(),
+        orchestrationResult,
+      } as any),
+    ).toThrow(/C1_STRICT_EVIDENCE_BUNDLE/);
+  });
 });
 

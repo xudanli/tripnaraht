@@ -41,6 +41,7 @@ export class RouteAndRunResponseAssemblerService {
     decisionLog: DecisionLogEntry[];
     state?: OrchestratorState | null;
     candidateId?: string;
+    candidateItinerary?: Itinerary | null;
   }): DecisionCandidateDto['evidence_bundle'] {
     const now = new Date().toISOString();
     const cards = assembleDecisionEvidenceCards(params.state ?? undefined);
@@ -74,13 +75,37 @@ export class RouteAndRunResponseAssemblerService {
     const hardFactsList = Array.from(hardFacts.values());
     const evidenceCardRefs = cards.map((c) => ({ kind: c.kind, rule_id: c.rule_id }));
 
+    const transitPresent = Boolean(
+      (params.candidateItinerary?.days ?? [])
+        .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
+        .some((it: any) => String(it?.type ?? '').toUpperCase() === 'TRANSIT'),
+    );
+    const hasPtHardFact = hardFactsList.some((x) => String(x.rule_id) === 'public_transport_v1');
+    const ptCancelled = hardFactsList.some((x) => {
+      if (String(x.rule_id) !== 'public_transport_v1') return false;
+      const st = String((x as any)?.evidence?.serviceStatus ?? (x as any)?.evidence?.boardingStatus ?? '').toUpperCase();
+      return st === 'CANCELLED' || st === 'CANCELED';
+    });
+
     // C1 strict rule-of-thumb:
     // - VERIFIED when we have at least 1 hard fact and at least 1 evidence card (human-auditable UI payload).
     // - PARTIAL when only one side exists.
     // - FAILED when neither exists.
     const hasFacts = hardFactsList.length > 0;
     const hasCards = evidenceCardRefs.length > 0;
-    const verification_status = hasFacts && hasCards ? 'VERIFIED' : hasFacts || hasCards ? 'PARTIAL' : 'FAILED';
+    let verification_status = hasFacts && hasCards ? 'VERIFIED' : hasFacts || hasCards ? 'PARTIAL' : 'FAILED';
+
+    // PT-Hard fact enforcement (C1 strict):
+    // - If transit exists but we don't have PT hard fact → FAILED in strict mode, otherwise PARTIAL.
+    // - If service status is CANCELLED → FAILED always (forces recompute under strict).
+    if (transitPresent) {
+      if (!hasPtHardFact) {
+        verification_status = this.isC1StrictEvidenceBundle() ? 'FAILED' : verification_status === 'VERIFIED' ? 'PARTIAL' : verification_status;
+      }
+      if (ptCancelled) {
+        verification_status = 'FAILED';
+      }
+    }
 
     const snapshot_id = sha256Signature({
       request_id: params.requestId,
@@ -178,6 +203,7 @@ export class RouteAndRunResponseAssemblerService {
       requestId: request.request_id,
       decisionLog: k3DecisionLog ?? [],
       state: stateWithVerdict as any,
+      candidateItinerary: orchestrationResult.result?.itinerary ?? null,
     });
 
     const resultStatus = isTimeout
@@ -394,6 +420,7 @@ export class RouteAndRunResponseAssemblerService {
                 decisionLog: ctx.decisionLog ?? [],
                 state: ctx.state ?? undefined,
                 candidateId: String(a?.id ?? ''),
+                candidateItinerary: (a?.itinerary as any) ?? null,
               })
             : undefined,
       }))

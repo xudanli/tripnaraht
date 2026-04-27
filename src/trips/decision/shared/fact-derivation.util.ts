@@ -167,6 +167,36 @@ export function deriveFactsFromMetadata(params: {
     }
   }
 
+  // Pattern: public transport hard fact (GTFS / transit API snapshot)
+  // Evidence shape (C1 strict):
+  // {
+  //   type:'public_transit',
+  //   segmentId, routeId?, operator?, serviceDate?,
+  //   departureTime, arrivalTime?,
+  //   serviceStatus: 'ACTIVE'|'CANCELLED'|'UNKNOWN',
+  //   transferWindowMin?, plannedTransferWindowMin?,
+  //   source, snapshotId, is_violated?
+  // }
+  if (evType === 'public_transit') {
+    const status = String((evidence as any)?.serviceStatus ?? (evidence as any)?.boardingStatus ?? '').toUpperCase();
+    const required = (evidence as any)?.transferWindowMin ?? (evidence as any)?.transferWindow ?? (evidence as any)?.transfer_window_min;
+    const planned = (evidence as any)?.plannedTransferWindowMin ?? (evidence as any)?.planned_transfer_window_min;
+    const hasWindow = typeof required === 'number' && typeof planned === 'number';
+    const isCancelled = status === 'CANCELLED' || status === 'CANCELED';
+    const windowViolated = hasWindow ? planned < required : false;
+    const isViolated = Boolean((evidence as any)?.is_violated) === true || isCancelled || windowViolated;
+    facts.push({
+      rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'public_transport_v1'),
+      actual_value: hasWindow ? planned : String((evidence as any)?.departureTime ?? (evidence as any)?.departure_time ?? ''),
+      threshold: hasWindow ? required : String(status || 'UNKNOWN'),
+      unit: hasWindow ? 'min' : 'ISO_8601',
+      is_violated: isViolated,
+      severity: 'HARD',
+      evidence: evidence as any,
+      ...(params.timestampIso ? { at: params.timestampIso } : {}),
+    });
+  }
+
   return facts;
 }
 
