@@ -48,6 +48,7 @@ export class RouteAndRunResponseAssemblerService {
     const hardFacts = new Map<string, { rule_id: string; is_violated?: boolean; severity?: string; ref_id?: string }>();
 
     // Primary: metadata.assertions_triggered (Kernel-native hard snapshot)
+    let ptCancelledFromLog = false;
     for (const e of params.decisionLog ?? []) {
       const meta = (e as any)?.metadata;
       const snap = normalizeHardRuleSnapshot(meta);
@@ -67,7 +68,25 @@ export class RouteAndRunResponseAssemblerService {
       });
       for (const f of derived) {
         if (!hardFacts.has(f.rule_id)) {
-          hardFacts.set(f.rule_id, { rule_id: f.rule_id, is_violated: f.is_violated, severity: f.severity });
+          hardFacts.set(f.rule_id, {
+            rule_id: f.rule_id,
+            is_violated: f.is_violated,
+            severity: f.severity,
+            // best-effort: carry evidence for local guard checks (PT cancellation, etc.)
+            evidence: f.evidence,
+          } as any);
+        }
+      }
+
+      // PT cancellation: compute from raw evidence log (even if fact ref is compacted).
+      const ev = (meta as any)?.details?.evidence;
+      if (ev && typeof ev === 'object' && !Array.isArray(ev)) {
+        const t = String((ev as any)?.type ?? '').toLowerCase();
+        if (t === 'public_transit') {
+          const st = String((ev as any)?.serviceStatus ?? (ev as any)?.boardingStatus ?? '').toUpperCase();
+          if (st === 'CANCELLED' || st === 'CANCELED') {
+            ptCancelledFromLog = true;
+          }
         }
       }
     }
@@ -81,11 +100,13 @@ export class RouteAndRunResponseAssemblerService {
         .some((it: any) => String(it?.type ?? '').toUpperCase() === 'TRANSIT'),
     );
     const hasPtHardFact = hardFactsList.some((x) => String(x.rule_id) === 'public_transport_v1');
-    const ptCancelled = hardFactsList.some((x) => {
-      if (String(x.rule_id) !== 'public_transport_v1') return false;
-      const st = String((x as any)?.evidence?.serviceStatus ?? (x as any)?.evidence?.boardingStatus ?? '').toUpperCase();
-      return st === 'CANCELLED' || st === 'CANCELED';
-    });
+    const ptCancelled =
+      ptCancelledFromLog ||
+      hardFactsList.some((x) => {
+        if (String(x.rule_id) !== 'public_transport_v1') return false;
+        const st = String((x as any)?.evidence?.serviceStatus ?? (x as any)?.evidence?.boardingStatus ?? '').toUpperCase();
+        return st === 'CANCELLED' || st === 'CANCELED';
+      });
 
     // C1 strict rule-of-thumb:
     // - VERIFIED when we have at least 1 hard fact and at least 1 evidence card (human-auditable UI payload).

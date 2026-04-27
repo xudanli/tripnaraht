@@ -940,32 +940,71 @@ export class AgentService {
         this.logger.log(`[AgentService] 状态机状态: current_step=${orchestrationResult.result.state.current_step}, decision_log.length=${orchestrationResult.result.state.decision_log?.length || 0}`);
       }
 
-    // 构建响应
+    // 构建响应（C1 strict: may throw; we optionally auto-heal for PT hard fact failures）
     const assembler = this.getResponseAssembler();
-    // Best-effort persistence for QA/DPO mining (route_and_run -> decision_logs table).
-    // This is intentionally non-blocking and gated by env flag.
-    this.persistRouteAndRunDecisionLogs({
-      request,
-      orchestrationDecisionLog: orchestrationResult.result?.state?.decision_log,
-    }).catch((e: unknown) => {
-      const msg = e instanceof Error ? e.message : String(e);
-      this.logger.debug(`[AgentService] persistRouteAndRunDecisionLogs skipped: ${msg}`);
-    });
 
-    return assembler.assembleClaudeStateMachineResponse({
-      request,
-      startTime,
-      traceInfo,
-      orchestrationResult,
-      policyAction,
-      durableRun:
-        tripRunId || resumedCheckpoint
-          ? {
-              trip_run_id: tripRunId ?? undefined,
-              checkpoint_loaded: !!resumedCheckpoint,
-            }
-          : undefined,
-    });
+    const persist = (reqToPersist: RouteAndRunRequestDto, orc: any) => {
+      this.persistRouteAndRunDecisionLogs({
+        request: reqToPersist,
+        orchestrationDecisionLog: orc?.result?.state?.decision_log,
+      }).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.debug(`[AgentService] persistRouteAndRunDecisionLogs skipped: ${msg}`);
+      });
+    };
+
+    const assemble = (reqToAssemble: RouteAndRunRequestDto, orc: any) =>
+      assembler.assembleClaudeStateMachineResponse({
+        request: reqToAssemble,
+        startTime,
+        traceInfo,
+        orchestrationResult: orc,
+        policyAction,
+        durableRun:
+          tripRunId || resumedCheckpoint
+            ? {
+                trip_run_id: tripRunId ?? undefined,
+                checkpoint_loaded: !!resumedCheckpoint,
+              }
+            : undefined,
+      });
+
+    // First attempt
+    persist(request, orchestrationResult);
+    try {
+      return assemble(request, orchestrationResult);
+    } catch (e: any) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isC1Strict = /C1_STRICT_EVIDENCE_BUNDLE/.test(msg);
+      const alreadyRetried = (request as any)?.meta?.pt_heal_retry === '1' || (request as any)?.meta?.pt_heal_retry === true;
+      // Auto-heal PT hard failures: replan without PUBLIC TRANSIT.
+      if (isC1Strict && !alreadyRetried && this.claudeOrchestrator) {
+        this.logger.warn(`[AgentService] C1 strict failed, attempting PT auto-heal replan: ${msg}`);
+        const patchedRequest: RouteAndRunRequestDto = {
+          ...request,
+          message:
+            `${request.message}\n` +
+            `[CONSTRAINT_ZONE] Public transit is not allowed (PT hard evidence failed). ` +
+            `Re-route using DRIVE/taxi or adjust stay location.`,
+          meta: { ...(request.meta ?? {}), pt_heal_retry: '1' } as any,
+          emergency_constraints: {
+            ...(request.emergency_constraints ?? {}),
+            reason_code: 'HEALING_PT_HARD_FACT_FAILED',
+          },
+        };
+        const healed = await this.claudeOrchestrator.orchestrateWithStateMachine(
+          patchedRequest,
+          context,
+          deadline,
+          resumedCheckpoint
+            ? { decision_state: resumedCheckpoint.decision_state, checkpoint_loaded: true }
+            : undefined,
+        );
+        persist(patchedRequest, healed);
+        return assemble(patchedRequest, healed);
+      }
+      throw e;
+    }
   }
 
   private async routeAndRunWithClaude(
