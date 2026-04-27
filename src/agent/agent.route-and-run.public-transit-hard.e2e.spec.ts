@@ -101,9 +101,10 @@ describe('POST /agent/route_and_run — PT-hard fact strict auto-heal (E2E)', ()
       orchestrateWithStateMachine: jest.fn().mockImplementation(async (req: any) => {
         const now = new Date().toISOString();
         const isHeal = String(req?.meta?.pt_heal_retry ?? '') === '1' || String(req?.emergency_constraints?.reason_code ?? '') === 'HEALING_PT_HARD_FACT_FAILED';
+        const scenario = String(req?.message ?? '').includes('transfer') ? 'TRANSFER' : 'CANCELLED';
 
         if (!isHeal) {
-          // First attempt: TRANSIT plan with CANCELLED PT evidence (should fail strict and trigger auto-heal).
+          // First attempt: TRANSIT plan with PT evidence (should fail strict and trigger auto-heal).
           const itinerary = {
             request_id: req.request_id ?? 'e2e-pt-hard',
             days: [
@@ -130,8 +131,11 @@ describe('POST /agent/route_and_run — PT-hard fact strict auto-heal (E2E)', ()
             {
               step: 'VERIFY',
               timestamp: now,
-              inputs_summary: 'PT verify: inject CANCELLED service status',
-              outputs_summary: 'TRANSIT cancelled',
+              inputs_summary:
+                scenario === 'TRANSFER'
+                  ? 'PT verify: inject transfer window violation'
+                  : 'PT verify: inject CANCELLED service status',
+              outputs_summary: scenario === 'TRANSFER' ? 'TRANSIT transfer gap violated' : 'TRANSIT cancelled',
               evidence_refs: [],
               metadata: {
                 rule_id: 'public_transport_v1',
@@ -140,11 +144,11 @@ describe('POST /agent/route_and_run — PT-hard fact strict auto-heal (E2E)', ()
                     type: 'public_transit',
                     segmentId: 'seg_transit_1',
                     departureTime: '2026-06-01T23:30:00.000Z',
-                    serviceStatus: 'CANCELLED',
+                    serviceStatus: scenario === 'TRANSFER' ? 'ACTIVE' : 'CANCELLED',
                     transferWindowMin: 6,
                     plannedTransferWindowMin: 2,
                     source: 'DETERMINISTIC_PT_STUB',
-                    snapshotId: 'pt_snap_cancelled_1',
+                    snapshotId: scenario === 'TRANSFER' ? 'pt_snap_transfer_1' : 'pt_snap_cancelled_1',
                     is_violated: true,
                   },
                 },
@@ -171,8 +175,17 @@ describe('POST /agent/route_and_run — PT-hard fact strict auto-heal (E2E)', ()
                       kind: 'iron_shield_evidence',
                       rule_id: 'public_transport_v1',
                       severity: 'HARD',
-                      message: 'Transit service cancelled',
-                      evidence: { type: 'public_transit', serviceStatus: 'CANCELLED', source: 'DETERMINISTIC_PT_STUB' },
+                      message:
+                        scenario === 'TRANSFER'
+                          ? 'Transit transfer gap below minimum'
+                          : 'Transit service cancelled',
+                      evidence: {
+                        type: 'public_transit',
+                        serviceStatus: scenario === 'TRANSFER' ? 'ACTIVE' : 'CANCELLED',
+                        transferWindowMin: 6,
+                        plannedTransferWindowMin: 2,
+                        source: 'DETERMINISTIC_PT_STUB',
+                      },
                     },
                   ],
                 } as any,
@@ -337,6 +350,35 @@ describe('POST /agent/route_and_run — PT-hard fact strict auto-heal (E2E)', ()
 
     const stub = moduleRef.get(ClaudeOrchestratorService) as any;
     expect(stub.orchestrateWithStateMachine).toHaveBeenCalledTimes(2);
+  });
+
+  it('auto-heals a transfer-window-violated TRANSIT plan into DRIVE (C1 strict)', async () => {
+    const body = {
+      request_id: 'e2e-pt-hard-transfer',
+      user_id: 'u1',
+      trip_id: 'trip-e2e',
+      message: 'late night transit plan transfer',
+      options: {
+        use_claude_orchestration: true,
+        use_state_machine_orchestration: true,
+        dry_run: true,
+      },
+    };
+
+    const response = await request(app.getHttpServer()).post('/agent/route_and_run').send(body).expect(200);
+    const p1 = summarizeP1RouteAndRunValidation(response.body);
+    expect(p1.valid).toBe(true);
+
+    const payload = response.body.result.payload;
+    expect(payload?.evidence_bundle).toBeTruthy();
+    expect(payload?.evidence_bundle?.verification_status).not.toBe('FAILED');
+
+    const items =
+      payload?.orchestrationResult?.itinerary?.days?.[0]?.items ??
+      payload?.timeline?.[0]?.items ??
+      [];
+    expect(items.some((it: any) => it?.type === 'DRIVE')).toBe(true);
+    expect(items.some((it: any) => it?.type === 'TRANSIT')).toBe(false);
   });
 });
 

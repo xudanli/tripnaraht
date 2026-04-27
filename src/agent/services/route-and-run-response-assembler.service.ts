@@ -49,6 +49,7 @@ export class RouteAndRunResponseAssemblerService {
 
     // Primary: metadata.assertions_triggered (Kernel-native hard snapshot)
     let ptCancelledFromLog = false;
+    let ptTransferWindowViolatedFromLog = false;
     for (const e of params.decisionLog ?? []) {
       const meta = (e as any)?.metadata;
       const snap = normalizeHardRuleSnapshot(meta);
@@ -87,6 +88,12 @@ export class RouteAndRunResponseAssemblerService {
           if (st === 'CANCELLED' || st === 'CANCELED') {
             ptCancelledFromLog = true;
           }
+          const required =
+            (ev as any)?.transferWindowMin ?? (ev as any)?.transferWindow ?? (ev as any)?.transfer_window_min;
+          const planned = (ev as any)?.plannedTransferWindowMin ?? (ev as any)?.planned_transfer_window_min;
+          if (typeof required === 'number' && typeof planned === 'number' && planned < required) {
+            ptTransferWindowViolatedFromLog = true;
+          }
         }
       }
     }
@@ -107,6 +114,18 @@ export class RouteAndRunResponseAssemblerService {
         const st = String((x as any)?.evidence?.serviceStatus ?? (x as any)?.evidence?.boardingStatus ?? '').toUpperCase();
         return st === 'CANCELLED' || st === 'CANCELED';
       });
+    const ptTransferWindowViolated =
+      ptTransferWindowViolatedFromLog ||
+      hardFactsList.some((x) => {
+        if (String(x.rule_id) !== 'public_transport_v1') return false;
+        const req =
+          (x as any)?.evidence?.transferWindowMin ??
+          (x as any)?.evidence?.transferWindow ??
+          (x as any)?.evidence?.transfer_window_min;
+        const planned =
+          (x as any)?.evidence?.plannedTransferWindowMin ?? (x as any)?.evidence?.planned_transfer_window_min;
+        return typeof req === 'number' && typeof planned === 'number' && planned < req;
+      });
 
     // C1 strict rule-of-thumb:
     // - VERIFIED when we have at least 1 hard fact and at least 1 evidence card (human-auditable UI payload).
@@ -124,6 +143,9 @@ export class RouteAndRunResponseAssemblerService {
         verification_status = this.isC1StrictEvidenceBundle() ? 'FAILED' : verification_status === 'VERIFIED' ? 'PARTIAL' : verification_status;
       }
       if (ptCancelled) {
+        verification_status = 'FAILED';
+      }
+      if (ptTransferWindowViolated) {
         verification_status = 'FAILED';
       }
     }
