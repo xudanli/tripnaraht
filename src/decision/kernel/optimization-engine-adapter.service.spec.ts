@@ -8,9 +8,12 @@ import { DecisionOSConfigService } from '../../trips/decision/optimization/confi
 
 describe('OptimizationEngineAdapterService', () => {
   const prevKernelCgusRag = process.env.KERNEL_CGUS_RAG_EVIDENCE;
+  const prevCgusContrast = process.env.CGUS_INJECT_CONTRAST_CANDIDATES;
   afterEach(() => {
     if (prevKernelCgusRag === undefined) delete process.env.KERNEL_CGUS_RAG_EVIDENCE;
     else process.env.KERNEL_CGUS_RAG_EVIDENCE = prevKernelCgusRag;
+    if (prevCgusContrast === undefined) delete process.env.CGUS_INJECT_CONTRAST_CANDIDATES;
+    else process.env.CGUS_INJECT_CONTRAST_CANDIDATES = prevCgusContrast;
   });
 
   const mkDso = (overrides?: Partial<DecisionState>): DecisionState =>
@@ -66,6 +69,60 @@ describe('OptimizationEngineAdapterService', () => {
     const candidates = call?.[0] as CGUSCandidate[];
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.every((c) => c.feasible === true)).toBe(true);
+  });
+
+  it('AO-04 diversity: CGUS Top-N alternatives must be >1 with differing utility and drift risk', async () => {
+    process.env.CGUS_INJECT_CONTRAST_CANDIDATES = '1';
+
+    const cgusSearchMock: Pick<CGUSSearchService, 'search'> = {
+      search: jest.fn(async (candidates: CGUSCandidate[]) => {
+        // Deterministic tradeoff: "experience" plan has higher utility but lower feasibilityProbability (higher drift).
+        const scored = candidates.map((c) => {
+          if (c.id === 'plan-high-density') {
+            return { candidate: c, utility: 0.95, expectedUtility: 0.92, feasibilityProbability: 0.65 };
+          }
+          if (c.id === 'plan-relaxed-pace') {
+            return { candidate: c, utility: 0.82, expectedUtility: 0.78, feasibilityProbability: 0.95 };
+          }
+          return { candidate: c, utility: 0.75, expectedUtility: 0.74, feasibilityProbability: 0.9 };
+        });
+        scored.sort((a, b) => (b.expectedUtility ?? b.utility) - (a.expectedUtility ?? a.utility));
+        return {
+          rankedCandidates: scored as any,
+          recommended: scored.find((x) => x.candidate.feasible)?.candidate,
+          usedMonteCarlo: true,
+          usedRollout: false,
+          usedExploration: false,
+        } as any;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OptimizationEngineAdapterService,
+        { provide: CGUSSearchService, useValue: cgusSearchMock },
+      ],
+    }).compile();
+
+    const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
+    const hints = await service.getHintsAsync(mkDso({ constraints: { feasible: true, violations: [] } as any }));
+
+    expect(hints?.method).toBe('CGUS');
+    expect(Array.isArray(hints?.alternatives)).toBe(true);
+    expect((hints?.alternatives?.length ?? 0)).toBeGreaterThanOrEqual(2);
+
+    const a = hints!.alternatives![0] as any;
+    const b = hints!.alternatives![1] as any;
+    expect(a.score).not.toBe(b.score);
+    expect(typeof a.feasibilityProbability).toBe('number');
+    expect(typeof b.feasibilityProbability).toBe('number');
+
+    // Aggressive candidate should have lower feasibilityProbability.
+    const planHigh = (hints!.alternatives! as any[]).find((x) => x.id === 'plan-high-density');
+    const planRelaxed = (hints!.alternatives! as any[]).find((x) => x.id === 'plan-relaxed-pace');
+    expect(planHigh).toBeTruthy();
+    expect(planRelaxed).toBeTruthy();
+    expect(planHigh.feasibilityProbability).toBeLessThan(planRelaxed.feasibilityProbability);
   });
 
   it('should not mark candidates feasible in legacy fallback when HARD violations exist (no constraint engine)', async () => {
