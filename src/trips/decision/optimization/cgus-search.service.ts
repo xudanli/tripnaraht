@@ -110,6 +110,18 @@ export interface CGUSSearchResult {
     topConfidenceIntervalInflation: number;
     earlyWarningTerrain: boolean;
   };
+
+  /**
+   * Emergency hard mask audit for Sentinel.
+   * Proves forbidden modes were pruned *before* feasibility projection and scoring.
+   */
+  emergencyMaskAudit?: {
+    forbidden_modes: string[];
+    candidates_before: number;
+    candidates_after: number;
+    pruned_candidates: number;
+    pruned_segments_by_type: Record<string, number>;
+  };
 }
 
 @Injectable()
@@ -203,14 +215,21 @@ export class CGUSSearchService {
       this.logger.log(`[CGUS] emergency hard mask: forbidden_modes=${JSON.stringify(forbiddenModes)}`);
     }
 
+    const prunedSegmentsByType: Record<string, number> = {};
     const pruneCandidate = (c: CGUSCandidate): CGUSCandidate => {
       if (!c?.plan?.segments?.length) return c;
       if (!forbidDrive && !forbidTransit) return c;
       const before = c.plan.segments.length;
       const segs = c.plan.segments.filter((s: any) => {
         const t = String(s?.metadata?.type ?? s?.metadata?.itemType ?? '').toUpperCase();
-        if (forbidDrive && t === 'DRIVE') return false;
-        if (forbidTransit && t === 'TRANSIT') return false;
+        if (forbidDrive && t === 'DRIVE') {
+          prunedSegmentsByType.DRIVE = (prunedSegmentsByType.DRIVE ?? 0) + 1;
+          return false;
+        }
+        if (forbidTransit && t === 'TRANSIT') {
+          prunedSegmentsByType.TRANSIT = (prunedSegmentsByType.TRANSIT ?? 0) + 1;
+          return false;
+        }
         return true;
       });
       if (segs.length === before) return c;
@@ -233,6 +252,17 @@ export class CGUSSearchService {
             .map(pruneCandidate)
             .filter((c) => (c.plan?.segments?.length ?? 0) > 0)
         : candidates;
+
+    const emergencyMaskAudit =
+      forbiddenModes.length > 0
+        ? {
+            forbidden_modes: forbiddenModes,
+            candidates_before: candidates.length,
+            candidates_after: maskedCandidates.length,
+            pruned_candidates: Math.max(0, candidates.length - maskedCandidates.length),
+            pruned_segments_by_type: prunedSegmentsByType,
+          }
+        : undefined;
 
     const retrievalConstraintCoeffs =
       options?.retrievalCategoryEvidence?.length
@@ -769,6 +799,7 @@ export class CGUSSearchService {
       complexityReport,
       monteCarloSamplingDetails,
       terrainEpistemics,
+      ...(emergencyMaskAudit ? { emergencyMaskAudit } : {}),
     };
   }
 

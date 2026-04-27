@@ -942,6 +942,7 @@ export class RouteAndRunResponseAssemblerService {
     return {
       method: (hints as any).method,
       recommended_alternative_id: (hints as any).recommendedAlternativeId,
+      emergency_mask_audit: (hints as any).emergencyMaskAudit,
       alternatives: (hints as any).alternatives?.map((a: any) => ({
         id: a.id,
         score: a.score,

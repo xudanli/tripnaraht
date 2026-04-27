@@ -24,6 +24,9 @@ import { ClaudeOrchestratorService } from './services/claude-orchestrator.servic
 import type { OrchestrationResult } from './interfaces/claude-orchestration.interface';
 import type { OrchestratorState } from './interfaces/trip-plan.interface';
 import { summarizeP1RouteAndRunValidation } from './contracts/p1-route-and-run-validators';
+import { OptimizationEngineAdapterService } from '../decision/kernel/optimization-engine-adapter.service';
+import { CGUSSearchService } from '../trips/decision/optimization/cgus-search.service';
+import { UnifiedDecisionFormulaService } from '../trips/decision/optimization/unified-decision-formula.service';
 
 describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
   let app: INestApplication;
@@ -285,6 +288,45 @@ describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
             } as any),
             gate_result: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.78, evidence_refs: [] },
             itinerary,
+            decisionState: await (async () => {
+              // Real CGUS path (deterministic): prove forbidden DRIVE is pruned at search time.
+              const unified = new UnifiedDecisionFormulaService();
+              const cgus = new CGUSSearchService(unified);
+              const adapter = new OptimizationEngineAdapterService(undefined, undefined, undefined, undefined, undefined, cgus as any);
+
+              const dso: any = {
+                userIntent: { destination: 'X', days: 1, dateRange: { startDate: '2026-06-01', endDate: '2026-06-01' } },
+                tripState: {
+                  // include a DRIVE item in planDraft so pruning has something to delete
+                  planDraft: {
+                    request_id: 'e2e-weather-rail',
+                    days: [
+                      {
+                        date: '2026-06-01',
+                        items: [
+                          { id: 'p1', type: 'POI', start_window: '09:00', end_window: '10:00', location_ref: { place_id: 'p1', name: 'P1', coordinates: { lat: 0, lng: 0 } } },
+                          { id: 'd1', type: 'DRIVE', start_window: '10:00', end_window: '11:00', location_ref: { place_id: 'd1', name: 'Drive', coordinates: { lat: 0.1, lng: 0.1 } } },
+                          { id: 'p2', type: 'POI', start_window: '11:00', end_window: '12:00', location_ref: { place_id: 'p2', name: 'P2', coordinates: { lat: 0.2, lng: 0.2 } } },
+                        ],
+                      },
+                    ],
+                  },
+                },
+                environmentState: { routeDirectionId: 'rd-1' },
+                constraints: { feasible: true, violations: [] },
+                systemState: {
+                  requestId: 'e2e-weather-rail',
+                  version: 0,
+                  startedAt: now,
+                  lastUpdatedAt: now,
+                  emergency_constraints: req?.emergency_constraints ?? {},
+                },
+                requestId: 'e2e-weather-rail',
+              };
+
+              const hints = await adapter.getHintsAsync(dso);
+              return { ...(dso as any), optimizationHints: hints };
+            })(),
           },
         });
       }),
@@ -343,6 +385,12 @@ describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
     expect(items.some((it: any) => it?.type === 'DRIVE')).toBe(false);
     expect(items.some((it: any) => it?.type === 'TRANSIT')).toBe(true);
     expect(items.some((it: any) => String(it?.metadata?.transport_mode ?? '').toUpperCase() === 'RAIL')).toBe(true);
+
+    // E2E proof: CGUS pruning happened at candidate-search time (not just response filtering).
+    const audit = response.body.explain?.optimization?.emergency_mask_audit;
+    expect(audit).toBeTruthy();
+    expect(audit?.forbidden_modes).toEqual(expect.arrayContaining(['DRIVE']));
+    expect((audit?.pruned_segments_by_type?.DRIVE ?? 0)).toBeGreaterThan(0);
 
     const stub = moduleRef.get(ClaudeOrchestratorService) as any;
     expect(stub.orchestrateWithStateMachine).toHaveBeenCalledTimes(2);

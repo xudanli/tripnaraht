@@ -401,6 +401,15 @@ export interface OptimizationHints {
   dimensionBreakdown?: DimensionBreakdown;
   /** Monte Carlo 置信区间（专利：不确定性时采用 Monte Carlo 模拟） */
   confidenceInterval?: MonteCarloConfidenceInterval;
+
+  /** Sentinel hard mask proof from CGUS (for audit/E2E) */
+  emergencyMaskAudit?: {
+    forbidden_modes: string[];
+    candidates_before: number;
+    candidates_after: number;
+    pruned_candidates: number;
+    pruned_segments_by_type: Record<string, number>;
+  };
   /**
    * 地形/爬升带来的认知不确定性：CGUS 中 effort01 会放大 MC 置信区间半宽。
    */
