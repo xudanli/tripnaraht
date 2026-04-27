@@ -185,8 +185,55 @@ export class CGUSSearchService {
         /** 比较日志中包含的候选方案数量。 */
         compareTopN?: number;
       };
+      /**
+       * Emergency constraint injection (Sentinel hard mask).
+       * When forbidden modes are present, CGUS will prune any matching segments from candidate plans
+       * before feasibility projection and scoring, ensuring forbidden modes physically disappear from
+       * the search space (not merely filtered post-hoc).
+       */
+      emergencyConstraints?: {
+        forbidden_modes?: string[];
+      };
     },
   ): Promise<CGUSSearchResult> {
+    const forbiddenModes = (options?.emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
+    const forbidDrive = forbiddenModes.includes('DRIVE') || forbiddenModes.includes('MOTORCYCLE');
+    const forbidTransit = forbiddenModes.includes('TRANSIT');
+    if (forbiddenModes.length > 0) {
+      this.logger.log(`[CGUS] emergency hard mask: forbidden_modes=${JSON.stringify(forbiddenModes)}`);
+    }
+
+    const pruneCandidate = (c: CGUSCandidate): CGUSCandidate => {
+      if (!c?.plan?.segments?.length) return c;
+      if (!forbidDrive && !forbidTransit) return c;
+      const before = c.plan.segments.length;
+      const segs = c.plan.segments.filter((s: any) => {
+        const t = String(s?.metadata?.type ?? s?.metadata?.itemType ?? '').toUpperCase();
+        if (forbidDrive && t === 'DRIVE') return false;
+        if (forbidTransit && t === 'TRANSIT') return false;
+        return true;
+      });
+      if (segs.length === before) return c;
+      this.logger.debug(
+        `[CGUS Pruning] candidate=${c.id} segments ${before}→${segs.length} by forbidden_modes=${JSON.stringify(
+          forbiddenModes,
+        )}`,
+      );
+      return {
+        ...c,
+        plan: { ...(c.plan as any), segments: segs } as any,
+        // If pruning removes everything, the candidate is not feasible for search.
+        feasible: segs.length > 0 ? c.feasible : false,
+      };
+    };
+
+    const maskedCandidates =
+      forbiddenModes.length > 0
+        ? candidates
+            .map(pruneCandidate)
+            .filter((c) => (c.plan?.segments?.length ?? 0) > 0)
+        : candidates;
+
     const retrievalConstraintCoeffs =
       options?.retrievalCategoryEvidence?.length
         ? buildConstraintPenaltyCoefficientsFromRetrievalEvidence(options.retrievalCategoryEvidence)
@@ -199,11 +246,11 @@ export class CGUSSearchService {
     }
 
     // Step 1：可行域投影 A_f = {a | g_i(s,a) ≤ 0}
-    const feasibleCandidates = candidates.filter((c) => c.feasible);
+    const feasibleCandidates = maskedCandidates.filter((c) => c.feasible);
     if (feasibleCandidates.length === 0) {
       this.logger.warn('[CGUS] 无可行候选，返回按效用排序的全部候选（含不可行）');
     }
-    const toRank = feasibleCandidates.length > 0 ? feasibleCandidates : candidates;
+    const toRank = feasibleCandidates.length > 0 ? feasibleCandidates : maskedCandidates;
 
     // Step 2：效用先验估计 Û(a)（可选，用于加速排序或加权采样）
     const withPrior = toRank.map((candidate) => {

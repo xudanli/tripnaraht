@@ -255,6 +255,47 @@ describe('CGUSSearchService (candidate scorer sidecar)', () => {
   });
 });
 
+describe('CGUSSearchService (emergency hard mask)', () => {
+  it('prunes DRIVE segments from the search space when forbidden_modes includes DRIVE', async () => {
+    const unified = new UnifiedDecisionFormulaService();
+    const service = new CGUSSearchService(unified);
+
+    const makePlan = (types: string[]) => ({
+      tripId: 't',
+      routeDirectionId: 'rd-1',
+      segments: types.map((t, i) => ({
+        dayIndex: 0,
+        distanceKm: 5,
+        ascentM: 0,
+        slopePct: 0,
+        segmentId: `s${i}`,
+        metadata: { type: t },
+      })),
+    });
+
+    const candidates: CGUSCandidate[] = [
+      { id: 'A', plan: makePlan(['POI', 'DRIVE', 'POI']) as any, feasible: true, constraintViolations: [] },
+      { id: 'B', plan: makePlan(['POI', 'WALK', 'POI']) as any, feasible: true, constraintViolations: [] },
+    ];
+
+    const worldContext: any = {
+      physical: { month: 1, climateSeasonality: { accessibilityScore: 0.8 } },
+      human: { fitnessScore: 80, riskTolerance: 'MEDIUM' },
+      routeDirection: { id: 'rd-1', name: 'RD' },
+    };
+
+    const result = await service.search(candidates, worldContext, {
+      useMonteCarlo: false,
+      emergencyConstraints: { forbidden_modes: ['DRIVE'] },
+    });
+
+    for (const r of result.rankedCandidates) {
+      const segs = r.candidate.plan?.segments ?? [];
+      expect(segs.some((s: any) => String(s?.metadata?.type ?? '').toUpperCase() === 'DRIVE')).toBe(false);
+    }
+  });
+});
+
 describe('CGUSSearchService (soft constraints affect Monte Carlo expectedUtility)', () => {
   it('case A: should monotonically decrease E[U] with larger SOFT violation degree', async () => {
     const unified = new UnifiedDecisionFormulaService();
