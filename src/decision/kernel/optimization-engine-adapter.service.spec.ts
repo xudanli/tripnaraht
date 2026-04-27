@@ -317,5 +317,43 @@ describe('OptimizationEngineAdapterService', () => {
     expect(OptimizationEngineAdapterService.buildKernelRagQuery(state, { minQueryLength: 2 })).toBeUndefined();
     expect(OptimizationEngineAdapterService.buildKernelRagQuery(state, { minQueryLength: 1 })).toMatch(/road conditions/);
   });
+
+  it('plumbs systemState.emergency_constraints.forbidden_modes into CGUS search options', async () => {
+    const cgusSearchMock: Pick<CGUSSearchService, 'search'> = {
+      search: jest.fn(async (candidates: CGUSCandidate[], _world: any, options: any) => {
+        // Assert at the "nerve ending": adapter must pass forbidden_modes down to CGUS.
+        expect(options?.emergencyConstraints?.forbidden_modes).toEqual(expect.arrayContaining(['DRIVE']));
+        return {
+          rankedCandidates: candidates.map((c) => ({ candidate: c, utility: 0.7 })),
+          recommended: candidates[0],
+          usedMonteCarlo: false,
+          usedRollout: false,
+          usedExploration: false,
+        } as any;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OptimizationEngineAdapterService,
+        { provide: CGUSSearchService, useValue: cgusSearchMock },
+        // prevent optional injections from causing missing-provider failures in some envs
+        { provide: ChunkRetrievalService, useValue: { retrieve: jest.fn().mockResolvedValue([]) } },
+        { provide: DecisionOSConfigService, useValue: { get: jest.fn().mockReturnValue({ enabled: false }) } },
+      ],
+    }).compile();
+
+    const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
+    const dso = mkDso({
+      constraints: { feasible: true, violations: [] } as any,
+      systemState: {
+        ...(mkDso().systemState as any),
+        emergency_constraints: { forbidden_modes: ['DRIVE'], reason_code: 'HEALING_DRIVE_SAFETY_FAILED' },
+      } as any,
+    });
+    const hints = await service.getHintsAsync(dso);
+    expect(hints?.method).toBe('CGUS');
+    expect(cgusSearchMock.search).toHaveBeenCalled();
+  });
 });
 

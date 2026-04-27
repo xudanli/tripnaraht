@@ -537,6 +537,9 @@ export class OptimizationEngineAdapterService {
         ...(retrievalCategoryEvidence?.length
           ? { retrievalCategoryEvidence }
           : {}),
+        emergencyConstraints: {
+          forbidden_modes: (state.systemState as any)?.emergency_constraints?.forbidden_modes,
+        },
       },
     );
 

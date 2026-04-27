@@ -111,6 +111,9 @@ export function orchestratorStateToDecisionStatePatch(
     startedAt: os.metadata?.started_at,
     lastUpdatedAt: os.metadata?.last_updated_at,
     ...(Boolean((os.metadata as any)?.early_warning_acknowledged) ? { earlyWarningAcknowledged: true } : {}),
+    ...((os.metadata as any)?.emergency_constraints
+      ? { emergency_constraints: (os.metadata as any).emergency_constraints }
+      : {}),
   };
 
   const metaInput: DecisionMetaInput = {
@@ -169,6 +172,11 @@ export function buildPatchFromDSOPrimary(
     startedAt: dso.systemState?.startedAt ?? os.metadata?.started_at,
     lastUpdatedAt: new Date().toISOString(),
     ...(earlyAck ? { earlyWarningAcknowledged: true } : {}),
+    ...((dso.systemState as any)?.emergency_constraints
+      ? { emergency_constraints: (dso.systemState as any).emergency_constraints }
+      : (os.metadata as any)?.emergency_constraints
+        ? { emergency_constraints: (os.metadata as any).emergency_constraints }
+        : {}),
   };
 
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;

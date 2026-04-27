@@ -249,6 +249,18 @@ export interface SystemState {
    * 用户针对带 `correlationId` 的 REPAIR/效用补偿澄清之选择（append-only，供离线 RLHF join）。
    */
   userRepairResolutionLog?: UserRepairResolutionEvent[];
+
+  /**
+   * Emergency constraints persisted on the DecisionState (Sentinel hard mask).
+   * Purpose: ensure auto-heal retries and multi-turn planning retain the same physical禁区
+   * until env/signature changes.
+   */
+  emergency_constraints?: {
+    forbidden_modes?: string[];
+    preferred_modes?: string[];
+    max_wind_speed_tolerance_mps?: number;
+    reason_code?: string;
+  };
 }
 
 /** 跨天迁移协议（Bubble-up）：锚点或关键节点无法在当日时间/日照约束下落位时建议挪至相邻日 */

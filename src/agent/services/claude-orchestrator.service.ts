@@ -2459,6 +2459,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         poi_policy: request.options?.poi_policy,
         poi_source_hint: request.options?.poi_source,
         show_poi_trace: request.options?.show_poi_trace === true,
+        // Persist emergency constraints on OrchestratorState for DSO projection (Sentinel hard mask).
+        emergency_constraints: (request as any).emergency_constraints ?? undefined,
       },
     };
 
