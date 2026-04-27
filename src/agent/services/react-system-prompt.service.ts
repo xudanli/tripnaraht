@@ -30,16 +30,18 @@ export class ReactSystemPromptService {
     currentTime?: string;
     includeToolSchemas?: boolean;
     customInstructions?: string;
+    emergencyConstraints?: { forbidden_modes?: string[] };
   } = {}): string {
     const {
       currentTime = new Date().toISOString(),
       includeToolSchemas = true,
       customInstructions = '',
+      emergencyConstraints,
     } = options;
 
     // 生成工具定义部分
     const toolSchemasSection = includeToolSchemas
-      ? this.generateToolSchemasSection()
+      ? this.generateToolSchemasSection(emergencyConstraints)
       : '{{tool_schemas}}';
 
     // 构建提示词
@@ -140,8 +142,8 @@ Action: (不再调用工具，直接向用户说明)
   /**
    * 生成工具定义部分
    */
-  private generateToolSchemasSection(): string {
-    const actions = this.actionRegistry.list();
+  private generateToolSchemasSection(emergencyConstraints?: { forbidden_modes?: string[] }): string {
+    const actions = this.actionRegistry.listForEmergencyConstraints(emergencyConstraints);
     
     if (actions.length === 0) {
       return '目前没有可用的工具。';

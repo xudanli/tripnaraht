@@ -53,6 +53,37 @@ export class ActionRegistryService {
   }
 
   /**
+   * Sentinel-aware action listing.
+   * If emergency constraints forbid a transport mode, remove related actions from the tool surface area
+   * (tool schema "memory wipe") so the LLM cannot reason about forbidden modes.
+   */
+  listForEmergencyConstraints(emergencyConstraints?: {
+    forbidden_modes?: string[];
+  }): Action[] {
+    const forbidden = (emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
+    if (forbidden.length === 0) return this.list();
+
+    const forbidDrive = forbidden.includes('DRIVE') || forbidden.includes('MOTORCYCLE');
+    const forbidTransit = forbidden.includes('TRANSIT');
+    const forbidRail = forbidden.includes('RAIL');
+    const forbidFerry = forbidden.includes('FERRY');
+
+    const isDriveRelated = (name: string) =>
+      /(^|\.)(drive|car|parking|navigation|road_trip|roadtrip)(_|\.|$)/i.test(name);
+    const isTransitRelated = (name: string) => /(^|\.)transit(_|\.|$)/i.test(name);
+    const isRailRelated = (name: string) => /(^|\.)rail(_|\.|$)/i.test(name);
+    const isFerryRelated = (name: string) => /(^|\.)ferry(_|\.|$)/i.test(name);
+
+    return this.list().filter((a) => {
+      if (forbidDrive && isDriveRelated(a.name)) return false;
+      if (forbidTransit && isTransitRelated(a.name)) return false;
+      if (forbidRail && isRailRelated(a.name)) return false;
+      if (forbidFerry && isFerryRelated(a.name)) return false;
+      return true;
+    });
+  }
+
+  /**
    * 按类别查找 Actions
    */
   findByCategory(category: string): Action[] {
