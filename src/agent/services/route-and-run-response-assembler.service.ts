@@ -23,10 +23,91 @@ import { JepaProjectorService } from './jepa-projector.service';
 import { assertDoneResponseCompleteness } from '../guards/done-response-completeness.guard';
 import { assembleDecisionEvidenceCards } from '../utils/evidence-payload-assembler.util';
 import { assembleEvidenceCardUIPropsFromState } from '../utils/evidence-ui-assembler.util';
+import { sha256Signature } from '../contracts/decision-contract.types';
+import { normalizeHardRuleSnapshot } from '../../trips/decision/shared/hard-rule-snapshot.types';
+import { deriveFactsFromMetadata } from '../../trips/decision/shared/fact-derivation.util';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
   constructor(private readonly jepaProjector: JepaProjectorService) {}
+
+  private isC1StrictEvidenceBundle(): boolean {
+    const v = process.env.C1_STRICT_EVIDENCE_BUNDLE;
+    return v === '1' || v === 'true';
+  }
+
+  private buildEvidenceBundle(params: {
+    requestId: string;
+    decisionLog: DecisionLogEntry[];
+    state?: OrchestratorState | null;
+    candidateId?: string;
+  }): DecisionCandidateDto['evidence_bundle'] {
+    const now = new Date().toISOString();
+    const cards = assembleDecisionEvidenceCards(params.state ?? undefined);
+    const hardFacts = new Map<string, { rule_id: string; is_violated?: boolean; severity?: string; ref_id?: string }>();
+
+    // Primary: metadata.assertions_triggered (Kernel-native hard snapshot)
+    for (const e of params.decisionLog ?? []) {
+      const meta = (e as any)?.metadata;
+      const snap = normalizeHardRuleSnapshot(meta);
+      for (const f of snap.assertions_triggered ?? []) {
+        hardFacts.set(f.rule_id, {
+          rule_id: f.rule_id,
+          is_violated: f.is_violated,
+          severity: f.severity,
+          ref_id: undefined,
+        });
+      }
+      // Backfill: Pattern-A metadata.details.evidence → derived facts
+      const derived = deriveFactsFromMetadata({
+        metadata: (meta && typeof meta === 'object' ? meta : {}) as any,
+        reasonCodes: [String((meta as any)?.rule_id ?? '')].filter(Boolean),
+        timestampIso: (e as any)?.timestamp,
+      });
+      for (const f of derived) {
+        if (!hardFacts.has(f.rule_id)) {
+          hardFacts.set(f.rule_id, { rule_id: f.rule_id, is_violated: f.is_violated, severity: f.severity });
+        }
+      }
+    }
+
+    const hardFactsList = Array.from(hardFacts.values());
+    const evidenceCardRefs = cards.map((c) => ({ kind: c.kind, rule_id: c.rule_id }));
+
+    // C1 strict rule-of-thumb:
+    // - VERIFIED when we have at least 1 hard fact and at least 1 evidence card (human-auditable UI payload).
+    // - PARTIAL when only one side exists.
+    // - FAILED when neither exists.
+    const hasFacts = hardFactsList.length > 0;
+    const hasCards = evidenceCardRefs.length > 0;
+    const verification_status = hasFacts && hasCards ? 'VERIFIED' : hasFacts || hasCards ? 'PARTIAL' : 'FAILED';
+
+    const snapshot_id = sha256Signature({
+      request_id: params.requestId,
+      candidate_id: params.candidateId ?? null,
+      hard_facts: hardFactsList.map((x) => x.rule_id).sort(),
+      evidence_cards: evidenceCardRefs.map((x) => `${x.kind}:${x.rule_id ?? ''}`).sort(),
+    });
+    const bundle_id = sha256Signature({
+      snapshot_id,
+      generated_at: now,
+      verification_status,
+    });
+
+    return {
+      bundle_id,
+      snapshot_id,
+      sources: [
+        ...(hasFacts ? [{ type: 'HARD_RULE_SNAPSHOT', label: 'hard facts snapshot' }] : []),
+        ...(hasCards ? [{ type: 'IRON_SHIELD', label: 'evidence cards' }] : []),
+      ],
+      hard_facts: hardFactsList,
+      evidence_cards: evidenceCardRefs,
+      confidence: hasFacts && hasCards ? 0.9 : hasFacts || hasCards ? 0.6 : 0.1,
+      generated_at: now,
+      verification_status,
+    } as any;
+  }
 
   /** Iron Shield: API evidence_cards + parallel ui_display.evidence_cards_ui */
   private buildIronShieldPayloadBlocks(state: OrchestratorState | undefined | null) {
@@ -93,6 +174,11 @@ export class RouteAndRunResponseAssemblerService {
     const stateWithVerdict = rawState !== undefined ? { ...rawState, verdict: finalVerdict } : undefined;
 
     const k3DecisionLog = this.resolveCanonicalDecisionLogForK3(orchestrationResult);
+    const evidenceBundle = this.buildEvidenceBundle({
+      requestId: request.request_id,
+      decisionLog: k3DecisionLog ?? [],
+      state: stateWithVerdict as any,
+    });
 
     const resultStatus = isTimeout
       ? 'TIMEOUT'
@@ -144,10 +230,19 @@ export class RouteAndRunResponseAssemblerService {
         payload: {
           timeline: orchestrationResult.result?.itinerary?.days || [],
           dropped_items: [],
-          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
-          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
+          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
+            requestId: request.request_id,
+            decisionLog: k3DecisionLog ?? [],
+            state: stateWithVerdict as any,
+          }),
+          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
+            requestId: request.request_id,
+            decisionLog: k3DecisionLog ?? [],
+            state: stateWithVerdict as any,
+          }),
           evidence: stateWithVerdict?.decision_log || [],
           robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
+          evidence_bundle: evidenceBundle,
           orchestrationResult:
             orchestrationResult.result && stateWithVerdict
               ? {
@@ -222,6 +317,24 @@ export class RouteAndRunResponseAssemblerService {
       } as any,
     };
 
+    // C1 strict: final output must carry evidence bundle; candidates must carry evidence bundle.
+    if (this.isC1StrictEvidenceBundle()) {
+      const payload: any = response.result?.payload ?? {};
+      if (!payload.evidence_bundle) {
+        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: missing payload.evidence_bundle');
+      }
+      if (String(payload.evidence_bundle?.verification_status ?? '') === 'FAILED') {
+        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: payload evidence_bundle verification_status=FAILED');
+      }
+      const candidates: any[] = Array.isArray(payload.alternatives) ? payload.alternatives : Array.isArray(payload.candidates) ? payload.candidates : [];
+      if (candidates.some((c) => !c?.evidence_bundle)) {
+        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate missing evidence_bundle');
+      }
+      if (candidates.some((c) => String(c?.evidence_bundle?.verification_status ?? '') === 'FAILED')) {
+        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate evidence_bundle verification_status=FAILED');
+      }
+    }
+
     const metrics = extractMetricsFromResponse(response);
     if (metrics.error_type) MetricsRecorder.recordClarification(metrics.error_type);
     if (metrics.decision_log_completeness !== undefined) {
@@ -235,7 +348,10 @@ export class RouteAndRunResponseAssemblerService {
     return response;
   }
 
-  private buildDecisionCandidates(decisionState: any | undefined): DecisionCandidateDto[] {
+  private buildDecisionCandidates(
+    decisionState: any | undefined,
+    ctx?: { requestId: string; decisionLog: DecisionLogEntry[]; state?: OrchestratorState | null },
+  ): DecisionCandidateDto[] {
     const hints = decisionState?.optimizationHints;
     const alts: any[] = Array.isArray(hints?.alternatives) ? hints.alternatives : [];
     const dim = hints?.dimensionBreakdown ?? {};
@@ -271,8 +387,19 @@ export class RouteAndRunResponseAssemblerService {
             : [],
         },
         explanation: typeof a?.summary === 'string' ? a.summary : undefined,
+        evidence_bundle:
+          ctx && ctx.requestId
+            ? this.buildEvidenceBundle({
+                requestId: ctx.requestId,
+                decisionLog: ctx.decisionLog ?? [],
+                state: ctx.state ?? undefined,
+                candidateId: String(a?.id ?? ''),
+              })
+            : undefined,
       }))
-      .filter((c) => c.candidate_id);
+      .filter((c) => c.candidate_id)
+      // C1 strict: do not emit candidates without evidence bundle.
+      .filter((c) => (this.isC1StrictEvidenceBundle() ? Boolean((c as any).evidence_bundle) : true));
   }
 
   assembleClaudeDynamicResponse(params: {

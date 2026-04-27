@@ -591,6 +591,97 @@ export class DecisionCandidateRiskProfileDto {
   critical_constraints?: string[];
 }
 
+export class EvidenceSourceDto {
+  @ApiPropertyOptional({ description: 'Source type (e.g., KERNEL_FEASIBILITY_ENGINE, GOOGLE_PLACES, OPENING_HOURS)' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional({ description: 'Human-readable source label' })
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @ApiPropertyOptional({ description: 'Optional stable id (e.g., evidence_id / log id)' })
+  @IsOptional()
+  @IsString()
+  ref_id?: string;
+}
+
+export class HardRuleFactRefDto {
+  @ApiProperty({ description: 'Hard rule id (e.g., solar_safety_v1, temporal_opening_v1)' })
+  @IsString()
+  rule_id!: string;
+
+  @ApiPropertyOptional({ description: 'Violated flag as captured in snapshot' })
+  @IsOptional()
+  @IsBoolean()
+  is_violated?: boolean;
+
+  @ApiPropertyOptional({ description: 'Severity (HARD/SOFT)' })
+  @IsOptional()
+  @IsString()
+  severity?: string;
+
+  @ApiPropertyOptional({ description: 'Optional reference id (e.g., decision_log_id)' })
+  @IsOptional()
+  @IsString()
+  ref_id?: string;
+}
+
+export class EvidenceCardRefDto {
+  @ApiProperty({ description: 'Evidence card kind (e.g., iron_shield_evidence)' })
+  @IsString()
+  kind!: string;
+
+  @ApiPropertyOptional({ description: 'Rule id this card supports' })
+  @IsOptional()
+  @IsString()
+  rule_id?: string;
+}
+
+export class EvidenceBundleDto {
+  @ApiProperty({ description: 'Bundle id (stable hash)' })
+  @IsString()
+  bundle_id!: string;
+
+  @ApiProperty({ description: 'Snapshot id (stable hash for time-bounded world snapshot)' })
+  @IsString()
+  snapshot_id!: string;
+
+  @ApiProperty({ type: [EvidenceSourceDto] })
+  @ValidateNested({ each: true })
+  @Type(() => EvidenceSourceDto)
+  sources!: EvidenceSourceDto[];
+
+  @ApiProperty({ type: [HardRuleFactRefDto] })
+  @ValidateNested({ each: true })
+  @Type(() => HardRuleFactRefDto)
+  hard_facts!: HardRuleFactRefDto[];
+
+  @ApiProperty({ type: [EvidenceCardRefDto] })
+  @ValidateNested({ each: true })
+  @Type(() => EvidenceCardRefDto)
+  evidence_cards!: EvidenceCardRefDto[];
+
+  @ApiProperty({ description: 'Confidence (0-1)' })
+  @IsNumber()
+  confidence!: number;
+
+  @ApiProperty({ description: 'Generated at (ISO)' })
+  @IsString()
+  generated_at!: string;
+
+  @ApiPropertyOptional({ description: 'Expires at (ISO)' })
+  @IsOptional()
+  @IsString()
+  expires_at?: string;
+
+  @ApiProperty({ enum: ['VERIFIED', 'PARTIAL', 'STALE', 'FAILED'] as const })
+  @IsString()
+  verification_status!: 'VERIFIED' | 'PARTIAL' | 'STALE' | 'FAILED';
+}
+
 export class DecisionCandidateDto {
   @ApiProperty({ description: '候选方案 ID (e.g., plan_b_optimized)' })
   @IsString()
@@ -616,6 +707,12 @@ export class DecisionCandidateDto {
   @IsOptional()
   @IsString()
   explanation?: string;
+
+  @ApiPropertyOptional({ description: 'C1 Strict: auditable evidence bundle', type: EvidenceBundleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceBundleDto)
+  evidence_bundle?: EvidenceBundleDto;
 }
 
 @ApiExtraModels(

@@ -371,6 +371,10 @@ export interface DecisionLogEntry {
   outputs_summary: string; // 输出摘要
   evidence_refs: string[]; // 使用的证据引用 ID
   timestamp: string; // ISO 8601
+  /** C1 Strict: evidence bundle linkage (stable id) */
+  evidence_bundle_id?: string;
+  /** C1 Strict: hard rule fact refs used by this decision */
+  hard_rule_fact_refs?: string[];
   metadata?: {
     duration_ms?: number;
     tool_calls?: number;
