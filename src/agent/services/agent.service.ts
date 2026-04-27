@@ -996,7 +996,8 @@ export class AgentService {
           message:
             `${request.message}\n` +
             `[CONSTRAINT_ZONE] Driving is not allowed due to extreme wind safety constraints (drive_safety_v1). ` +
-            `Prefer staying in place (ACCOMMODATION/REST) or indoor POIs; if long-distance relocation is required, prefer rail/ferry over driving.`,
+            `Prefer rail/ferry over driving if you must relocate; otherwise prefer staying in place (ACCOMMODATION/REST) or indoor POIs. ` +
+            `Assume roads may be unsafe while rail can remain operational.`,
           meta: { ...(request.meta ?? {}), weather_heal_retry: '1' } as any,
           emergency_constraints: {
             ...(request.emergency_constraints ?? {}),

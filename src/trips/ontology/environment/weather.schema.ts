@@ -18,6 +18,15 @@ export const DRIVE_SAFETY_V1 = {
   wind_threshold_mps_high_profile: 18,
 } as const;
 
+export const RAIL_SAFETY_V1 = {
+  rule_id: 'rail_safety_v1',
+  /**
+   * Rail wind tolerance is typically higher than road driving.
+   * Spec suggestion: 35 m/s.
+   */
+  wind_threshold_mps: 35,
+} as const;
+
 export function normalizeVehicleType(v: unknown): VehicleType {
   const s = String(v ?? '').toUpperCase().trim();
   if (s === 'SUV') return 'SUV';
@@ -32,5 +41,9 @@ export function driveSafetyWindThresholdMps(vehicleType: unknown): number {
   if (vt === 'SUV' || vt === 'CAMPERVAN') return DRIVE_SAFETY_V1.wind_threshold_mps_high_profile;
   // Default: keep slightly higher for low-profile vehicles; can be refined later.
   return 20;
+}
+
+export function railSafetyWindThresholdMps(): number {
+  return RAIL_SAFETY_V1.wind_threshold_mps;
 }
 

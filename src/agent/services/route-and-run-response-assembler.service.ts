@@ -106,6 +106,15 @@ export class RouteAndRunResponseAssemblerService {
         .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
         .some((it: any) => String(it?.type ?? '').toUpperCase() === 'TRANSIT'),
     );
+    const railPresent = Boolean(
+      (params.candidateItinerary?.days ?? [])
+        .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
+        .some((it: any) => {
+          if (String(it?.type ?? '').toUpperCase() !== 'TRANSIT') return false;
+          const mode = String((it as any)?.metadata?.transport_mode ?? (it as any)?.metadata?.transportMode ?? '').toUpperCase();
+          return mode === 'RAIL';
+        }),
+    );
     const drivePresent = Boolean(
       (params.candidateItinerary?.days ?? [])
         .flatMap((d: any) => (Array.isArray(d?.items) ? d.items : []))
@@ -115,6 +124,10 @@ export class RouteAndRunResponseAssemblerService {
     const hasDriveSafetyFact = hardFactsList.some((x) => String(x.rule_id) === 'drive_safety_v1');
     const driveSafetyViolated = hardFactsList.some(
       (x) => String(x.rule_id) === 'drive_safety_v1' && Boolean((x as any)?.is_violated) === true,
+    );
+    const hasRailSafetyFact = hardFactsList.some((x) => String(x.rule_id) === 'rail_safety_v1');
+    const railSafetyViolated = hardFactsList.some(
+      (x) => String(x.rule_id) === 'rail_safety_v1' && Boolean((x as any)?.is_violated) === true,
     );
     const ptCancelled =
       ptCancelledFromLog ||
@@ -171,6 +184,22 @@ export class RouteAndRunResponseAssemblerService {
             : verification_status;
       }
       if (driveSafetyViolated) {
+        verification_status = 'FAILED';
+      }
+    }
+
+    // Rail resilience mapping (C1 strict):
+    // - If a transit segment is explicitly marked as RAIL, require rail_safety_v1 hard fact.
+    // - If rail_safety_v1 is violated, fail (forces recompute).
+    if (railPresent) {
+      if (!hasRailSafetyFact) {
+        verification_status = this.isC1StrictEvidenceBundle()
+          ? 'FAILED'
+          : verification_status === 'VERIFIED'
+            ? 'PARTIAL'
+            : verification_status;
+      }
+      if (railSafetyViolated) {
         verification_status = 'FAILED';
       }
     }

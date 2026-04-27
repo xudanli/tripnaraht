@@ -1,5 +1,5 @@
 import type { HardRuleFact } from './hard-rule-snapshot.types';
-import { DRIVE_SAFETY_V1, driveSafetyWindThresholdMps } from '../../ontology/environment/weather.schema';
+import { DRIVE_SAFETY_V1, RAIL_SAFETY_V1, driveSafetyWindThresholdMps, railSafetyWindThresholdMps } from '../../ontology/environment/weather.schema';
 
 /**
  * Best-effort derive HardRuleFact[] from metadata shape.
@@ -96,6 +96,20 @@ export function deriveFactsFromMetadata(params: {
         is_violated: isViolated,
         severity: 'HARD',
         evidence: { ...(evidence as any), threshold_mps: thr, wind_speed_mps: wind },
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+
+      // Also derive a rail resilience fact from the same environmental snapshot.
+      // This enables multi-factor orchestration: DRIVE can be violated while RAIL remains safe.
+      const railThr = railSafetyWindThresholdMps();
+      facts.push({
+        rule_id: RAIL_SAFETY_V1.rule_id,
+        actual_value: wind,
+        threshold: railThr,
+        unit: 'm/s',
+        is_violated: wind > railThr,
+        severity: 'HARD',
+        evidence: { ...(evidence as any), threshold_mps: railThr, wind_speed_mps: wind, transport_mode: 'RAIL' },
         ...(params.timestampIso ? { at: params.timestampIso } : {}),
       });
     }

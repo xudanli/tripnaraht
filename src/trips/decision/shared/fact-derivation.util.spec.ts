@@ -105,5 +105,28 @@ describe('fact-derivation.util', () => {
       ),
     ).toBe(true);
   });
+
+  it('derives HARD rail_safety_v1 fact from weather_physics wind evidence (safe at 25m/s)', () => {
+    const facts = deriveFactsFromMetadata({
+      metadata: {
+        rule_id: 'drive_safety_v1',
+        details: {
+          evidence: {
+            type: 'weather_physics',
+            wind_speed_mps: 25,
+            vehicle_type: 'CAMPERVAN',
+            source: 'UNIT_TEST',
+          },
+        },
+      },
+      reasonCodes: ['drive_safety_v1'],
+      timestampIso: '2026-06-01T00:00:00.000Z',
+    });
+    const rail = facts.find((f) => f.rule_id === 'rail_safety_v1');
+    expect(rail).toBeTruthy();
+    expect(rail?.severity).toBe('HARD');
+    expect(rail?.unit).toBe('m/s');
+    expect(rail?.is_violated).toBe(false);
+  });
 });
 
