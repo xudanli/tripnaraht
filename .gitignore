@@ -84,6 +84,14 @@ artifacts/release_gate_report.json
 artifacts/readiness_report.json
 artifacts/e2e_run_log.json
 
+# Feature-freeze cleanup: runtime artifacts (do not commit)
+artifacts/
+logs/
+playgrounds/
+
+# Raw run dumps / local evaluation payloads (do not commit)
+data/raw_runs*.json
+
 # Documentation (not pushed to git)
 docs/
 .env.backup

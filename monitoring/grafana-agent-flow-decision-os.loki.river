@@ -1,0 +1,96 @@
+// Grafana Agent (Flow mode) · Loki pipeline for Decision OS audit drill-down
+//
+// Environment (given):
+// - app="tripnara-decision-kernel"
+// - namespace="prod-engine"
+// - pod="decision-os-*"
+// - logs: Node.js stdout, JSON via console.log(JSON.stringify(payload)) or pino
+//
+// Goal:
+// - Keep a single atomic log event: event="decision_os_audit_report"
+// - Parse JSON to enable LogQL: `| json | dominant_cid="..." | session_consistency_score < 60`
+// - Avoid high-cardinality labels: DO NOT label request_id (keep as JSON field)
+
+logging {
+  level = "info"
+}
+
+// --- Discover pod logs from Kubernetes ---
+loki.source.kubernetes "decision_os" {
+  // Adjust to your cluster settings (service account / in-cluster auth)
+  // This component discovers pods and tails their stdout/stderr logs.
+
+  // Only keep the Decision OS pods in prod-engine
+  selectors {
+    role = "pod"
+    label = "app=tripnara-decision-kernel"
+  }
+
+  // Note: if you prefer namespace scoping, use your agent's supported selector config
+  forward_to = [loki.process.decision_os.receiver]
+}
+
+// --- Parse & enrich ---
+loki.process "decision_os" {
+  // Keep only logs from namespace/pod pattern (extra guard)
+  stage.match {
+    selector = "{app=\"tripnara-decision-kernel\", namespace=\"prod-engine\"}"
+    action   = "keep"
+  }
+
+  // Parse the JSON line. This expects the application emits a single-line JSON object.
+  stage.json {
+    expressions = {
+      event                     = "event",
+      request_id                = "request_id",
+      dominant_cid              = "dominant_cid",
+      session_consistency_score = "session_consistency_score",
+      delta_reason_kind         = "delta_reason_kind",
+      is_intent_revised         = "is_intent_revised",
+      utility_drift_severity    = "utility_drift_severity",
+    }
+  }
+
+  // Only keep the atomic audit event (drop everything else here; keep other pipelines separate)
+  stage.match {
+    selector = "{event=\"decision_os_audit_report\"}"
+    action   = "keep"
+  }
+
+  // Promote low-cardinality fields to labels for fast filtering/aggregation.
+  // NOTE: dominant_cid cardinality is moderate; acceptable for drill-down and hotspot analysis.
+  stage.labels {
+    values = {
+      event        = "event",
+      dominant_cid = "dominant_cid",
+      namespace    = "namespace",
+      app          = "app",
+      delta_reason_kind      = "delta_reason_kind",
+      utility_drift_severity = "utility_drift_severity",
+    }
+  }
+
+  // Keep request_id + score as searchable fields in the log line via structured metadata.
+  stage.structured_metadata {
+    values = {
+      request_id                = "request_id",
+      session_consistency_score = "session_consistency_score",
+      is_intent_revised         = "is_intent_revised",
+    }
+  }
+
+  // Optional: normalize message output
+  stage.output {
+    source = "message"
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+// --- Write to Loki ---
+loki.write "default" {
+  endpoint {
+    url = env("LOKI_URL")
+  }
+}
+

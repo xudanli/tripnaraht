@@ -1,0 +1,49 @@
+groups:
+  - name: tripnara-decision-os-logic-debt
+    interval: 1m
+    rules:
+      # Alert A: Precision degradation (p50 too low)
+      #
+      # Note: we gate on a minimum sample rate to avoid alerting on sparse data.
+      - alert: TripNaraDecisionOSSessionConsistencyP50Low
+        expr: |
+          (
+            histogram_quantile(
+              0.50,
+              sum by (le) (
+                rate(tripnara_session_consistency_score_bucket{phase="REPAIR"}[15m])
+              )
+            ) < 60
+          )
+          and
+          (
+            sum(rate(tripnara_session_consistency_score_count{phase="REPAIR"}[15m])) > 0.02
+          )
+        for: 30m
+        labels:
+          severity: critical
+          team: decision-os
+          signal: logic_debt
+        annotations:
+          summary: "Decision OS session_consistency_score P50 过低"
+          description: "REPAIR 阶段 session_consistency_score p50 < 60 且采样充足，疑似 Predictive/Repair 认知漂移。"
+          playbook_url: "/explore?left=%7B%22datasource%22:%22Loki%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bevent%3D%5C%22decision_os_audit_report%5C%22,app%3D%5C%22tripnara-decision-kernel%5C%22%7D%20%7C%20json%20%7C%20session_consistency_score%20%3C%2060%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D"
+
+      # Alert B: Dominant constraint hotspot (low-score rate spike)
+      #
+      # Fires when a specific dominant_cid starts producing many low-score sessions.
+      - alert: TripNaraDecisionOSDominantCidLowScoreSpike
+        expr: |
+          sum by (dominant_cid) (
+            rate(tripnara_session_consistency_score_bucket{phase="REPAIR", le="60", dominant_cid!="UNKNOWN"}[15m])
+          ) > 0.02
+        for: 15m
+        labels:
+          severity: warning
+          team: decision-os
+          signal: logic_debt
+        annotations:
+          summary: "dominant_cid 低分热点突增"
+          description: "dominant_cid={{ $labels.dominant_cid }} 在 15m 内出现显著低分样本速率突增，建议下钻 Loki 查看 drift_vector / delta_reason_kind 并校准对应约束/策略。"
+          playbook_url: "/explore?left=%7B%22datasource%22:%22Loki%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bevent%3D%5C%22decision_os_audit_report%5C%22,app%3D%5C%22tripnara-decision-kernel%5C%22,dominant_cid%3D%5C%22{{%20$labels.dominant_cid%20}}%5C%22%7D%20%7C%20json%20%7C%20session_consistency_score%20%3C%2060%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D"
+

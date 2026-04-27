@@ -1,0 +1,10 @@
+{
+  "side_effect_param_overrides": {
+    "trip.apply_user_edit": {
+      "side_effect.financial_hold.book_flight_v1": {
+        "ttl_seconds": 1800,
+        "hold_ratio": 0.2
+      }
+    }
+  }
+}

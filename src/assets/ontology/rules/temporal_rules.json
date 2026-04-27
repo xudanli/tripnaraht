@@ -1,0 +1,41 @@
+[
+  {
+    "id": "temp_aurora_visibility_v2",
+    "type": "TEMPORAL",
+    "name": "Aurora visibility window (sunset + offset)",
+    "severity": "SOFT",
+    "condition": "{\"trigger\":{\"tags\":[\"aurora\",\"northern lights\",\"极光\",\"北极光\"],\"country_code\":\"IS\"},\"constraint\":{\"type\":\"DYNAMIC_WINDOW\",\"engine_func\":\"DERIVE_SUNSET_WINDOW\",\"params\":{\"offset_min\":60,\"twilight_buffer_min\":30}},\"narrator_hint\":\"基于 {{evidence.source}}={{evidence.baseline}} 的光照证据（暮光缓冲 {{evidence.twilight_buffer_min}} 分钟），极光观测建议在日落/黄昏约 1 小时后开始（即 {{requiredStartTime}} 之后），以提高肉眼可见度。\",\"narrator_hints_by_tier\":{\"1\":\"【Tier1·事实】基于 {{evidence.source}}={{evidence.baseline}}（暮光缓冲 {{evidence.twilight_buffer_min}} 分钟），极光观测建议在 {{requiredStartTime}} 之后再开始，以减少环境光干扰。\",\"2\":\"【Tier2·后果】若继续在错误窗口博弈，常见代价是整体行程延误约 {{wall_hit_hours}} 小时；光照证据仍为 {{evidence.source}}={{evidence.baseline}}，建议推迟到 {{requiredStartTime}} 后。\",\"3\":\"【Tier3·权威】物理窗口不变：仍以 {{evidence.baseline}} 为锚。判例语义：在高冲突场景约 {{precedent_n}} 次样本中，约 {{precedent_accept_pct}}% 用户最终接受“推迟观测”；系统仍建议在 {{requiredStartTime}} 后再行动。\"}}",
+    "sev_level": "SEV-3",
+    "action": "WARN",
+    "metadata": {
+      "category": "DOMAIN_RULES",
+      "description": "Dynamic temporal window derived from physical sunset time."
+    }
+  },
+  {
+    "id": "temp_fatigue_drive_sunset_limit_v1",
+    "type": "TEMPORAL",
+    "name": "Fatigue warning: avoid driving deep into night (sunset + offset)",
+    "severity": "SOFT",
+    "condition": "{\"trigger\":{\"country_code\":\"IS\",\"risk_appetite\":\"low\"},\"constraint\":{\"type\":\"DYNAMIC_WINDOW\",\"engine_func\":\"DERIVE_SUNSET_WINDOW\",\"applies_to_item_types\":[\"DRIVE\",\"TRANSIT\"],\"params\":{\"offset_min\":180,\"mode\":\"END_TIME_LIMIT\",\"severity\":\"WARN\",\"prefer_civil_dusk\":true}},\"narrator_hint\":\"基于 {{evidence.source}}={{evidence.baseline}} 的光照证据，长时间黑夜驾驶易疲劳，建议最晚在 {{requiredEndTime}} 前结束行程（约 {{evidence.offset_min}} 分钟窗口）。\",\"narrator_hints_by_tier\":{\"1\":\"【Tier1·事实】基于 {{evidence.source}}={{evidence.baseline}}，黑夜驾驶视线与疲劳风险上升；建议最晚在 {{requiredEndTime}} 前结束驾驶（{{evidence.offset_min}} 分钟窗口）。\",\"2\":\"【Tier2·后果】若继续在深夜窗口博弈，常见代价是整体延误约 {{wall_hit_hours}} 小时；证据仍为 {{evidence.source}}={{evidence.baseline}}，最晚结束时间仍为 {{requiredEndTime}}。\",\"3\":\"【Tier3·权威】物理红线不变：仍以 {{evidence.baseline}} 与 {{requiredEndTime}} 为硬边界。判例语义：约 {{precedent_n}} 次类似样本中约 {{precedent_accept_pct}}% 用户最终接受改期或压缩夜驾；系统仍建议遵守该窗口。\"}}",
+    "sev_level": "SEV-3",
+    "action": "WARN",
+    "metadata": {
+      "category": "SAFETY",
+      "description": "Driving after dark increases fatigue/visibility risks; warn when driving ends too late relative to sunset/civil dusk."
+    }
+  },
+  {
+    "id": "temp_wind_speed_drive_limit_v1",
+    "type": "TEMPORAL",
+    "name": "High wind warning for driving segments",
+    "severity": "HARD",
+    "condition": "{\"trigger\":{\"country_code\":\"IS\"},\"constraint\":{\"type\":\"DYNAMIC_THRESHOLD\",\"engine_func\":\"WIND_SPEED_LIMIT\",\"applies_to_item_types\":[\"DRIVE\",\"TRANSIT\"],\"params\":{\"threshold_mps\":15}},\"narrator_hint\":\"基于 {{evidence.source}} 提供的 {{evidence.value_mps}}m/s 路段风速数据（红线阈值 {{evidence.threshold_mps}}m/s）：{{segmentName}} 已达危险侧风区间（展示值 {{windSpeed}}m/s），建议延迟出发或更换路线。\",\"narrator_hints_by_tier\":{\"1\":\"【Tier1·事实】基于 {{evidence.source}} 的 {{evidence.value_mps}}m/s 数据（红线 {{evidence.threshold_mps}}m/s）：{{segmentName}} 展示风速 {{windSpeed}}m/s，建议延迟或改线。\",\"2\":\"【Tier2·后果】若继续在危险窗口博弈，常见代价是整体延误约 {{wall_hit_hours}} 小时；{{segmentName}} 仍为 {{windSpeed}}m/s，超过阈值 {{thresholdMps}}m/s，建议改线或延后。\",\"3\":\"【第三轮·权威】物理红线不变：阈值 {{evidence.threshold_mps}}m/s。判例语义：约 {{precedent_n}} 次高冲突样本中约 {{precedent_accept_pct}}% 用户最终采纳改线/改期；系统仍不建议在 {{segmentName}} 以当前风速通行。\"}}",
+    "sev_level": "SEV-2",
+    "action": "BLOCK",
+    "metadata": {
+      "category": "SAFETY",
+      "description": "Block or warn when predicted wind speed exceeds safe threshold."
+    }
+  }
+]

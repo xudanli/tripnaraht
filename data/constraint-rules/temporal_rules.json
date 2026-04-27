@@ -1,0 +1,16 @@
+[
+  {
+    "id": "temp_aurora_001",
+    "type": "TEMPORAL",
+    "name": "Aurora / night-sky must be scheduled at night",
+    "severity": "SOFT",
+    "condition": "{\"itinerary_item_name_matches_any\":[\"aurora\",\"northern lights\",\"极光\",\"北极光\"],\"required_start_time_gte\":\"20:00\"}",
+    "sev_level": "SEV-3",
+    "action": "WARN",
+    "metadata": {
+      "category": "DOMAIN_RULES",
+      "description": "If the itinerary contains aurora/northern-lights activities, they must start at night (>= 20:00)."
+    }
+  }
+]
+

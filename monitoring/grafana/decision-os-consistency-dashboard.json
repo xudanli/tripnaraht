@@ -1,0 +1,282 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "panels": [],
+      "title": "Decision OS · Consistency (session_consistency_score)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "red", "value": 60 },
+              { "color": "yellow", "value": 80 },
+              { "color": "green", "value": 90 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (increase(tripnara_session_consistency_score_bucket[$__range])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        }
+      ],
+      "title": "Session Consistency Score (p50)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "red", "value": 60 },
+              { "color": "yellow", "value": 80 },
+              { "color": "green", "value": 90 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.9, sum by (le) (increase(tripnara_session_consistency_score_bucket[$__range])))",
+          "legendFormat": "p90",
+          "refId": "A"
+        }
+      ],
+      "title": "Session Consistency Score (p90)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "id": 4,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum(increase(tripnara_session_consistency_score_count[$__range]))",
+          "legendFormat": "samples Δ over $__range",
+          "refId": "A"
+        }
+      ],
+      "title": "Score Samples (increase over range)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 7 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, dominant_cid) (increase(tripnara_session_consistency_score_bucket[$__range])))",
+          "legendFormat": "{{dominant_cid}} · p50",
+          "refId": "A"
+        }
+      ],
+      "title": "Consistency p50 by dominant_cid (15m window)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "links": [
+            {
+              "title": "Loki drill-down (dominant_cid)",
+              "targetBlank": true,
+              "url": "/explore?left=%7B%22datasource%22:%22${DS_LOKI}%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bevent%3D%5C%22decision_os_audit_report%5C%22,app%3D%5C%22tripnara-decision-kernel%5C%22,namespace%3D%5C%22prod-engine%5C%22,dominant_cid%3D%5C%22${__value.text}%5C%22%7D%20%7C%20json%20%7C%20session_consistency_score%20%3C%2060%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D"
+            }
+          ]
+        }
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 15 },
+      "id": 6,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "low_score_rate" }]
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "topk(15, sum by (dominant_cid) (increase(tripnara_session_consistency_score_bucket{le=\"60\"}[$__range])))",
+          "legendFormat": "{{dominant_cid}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Low score hot spots (score ≤ 60) by dominant_cid",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "links": [
+            {
+              "title": "Loki drill-down (matrix cell)",
+              "targetBlank": true,
+              "url": "/explore?left=%7B%22datasource%22:%22${DS_LOKI}%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bevent%3D%5C%22decision_os_audit_report%5C%22,app%3D%5C%22tripnara-decision-kernel%5C%22,namespace%3D%5C%22prod-engine%5C%22%7D%20%7C%20json%20%7C%20dominant_cid%3D%5C%22${__data.fields.dominant_cid}%5C%22%20%7C%20delta_reason_kind%3D%5C%22${__data.fields.delta_reason_kind}%5C%22%20%7C%20session_consistency_score%20%3C%2060%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D"
+            }
+          ]
+        }
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Value" }]
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum by (priority, dominant_cid, delta_reason_kind) (count_over_time({event=\"decision_os_audit_report\", app=\"tripnara-decision-kernel\", namespace=\"prod-engine\"} | json | delta_reason_kind=\"mismatch\" | session_consistency_score < 60 | label_format priority=\"P0\" [15m]))",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (priority, dominant_cid, delta_reason_kind) (count_over_time({event=\"decision_os_audit_report\", app=\"tripnara-decision-kernel\", namespace=\"prod-engine\"} | json | delta_reason_kind=\"aligned\" | session_consistency_score < 45 | label_format priority=\"P1\" [15m]))",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (priority, dominant_cid, delta_reason_kind) (count_over_time({event=\"decision_os_audit_report\", app=\"tripnara-decision-kernel\", namespace=\"prod-engine\"} | json | delta_reason_kind=\"aligned\" | session_consistency_score >= 45 | session_consistency_score < 75 | label_format priority=\"P2\" [15m]))",
+          "refId": "C"
+        }
+      ],
+      "title": "Logic Debt Matrix (P0/P1/P2) · dominant_cid × delta_reason_kind · count (15m)",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["decision-os", "audit", "consistency"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 2,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": false, "text": "Loki", "value": "Loki" },
+        "hide": 2,
+        "includeAll": false,
+        "label": "Loki",
+        "multi": false,
+        "name": "DS_LOKI",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Decision OS · Session Consistency",
+  "uid": "decision-os-session-consistency",
+  "version": 1
+}
+

@@ -1,0 +1,51 @@
+[
+  {
+    "request_id": "demo-iceland-deadhead",
+    "audit_report": {
+      "interaction_trace": { "consecutive_same_relaxation_attempts": 2 },
+      "behavioral_gap": { "is_gold_sample": true, "early_warning_id": "ew-demo", "wall_hit_distance": { "latency_ms": 180000 } },
+      "persuasion_summary": { "feedback_event_count": 1, "positive_reward_count": 1, "negative_reward_count": 0 }
+    },
+    "decision_log": [
+      {
+        "request_id": "demo-iceland-deadhead",
+        "step": "RESEARCH",
+        "actor": "Orchestrator",
+        "inputs_summary": "",
+        "outputs_summary": "",
+        "evidence_refs": [],
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "metadata": {
+          "system_action": "EARLY_WARNING",
+          "early_warning": {
+            "evidence_summary": "F-road requires 4WD",
+            "historical_precedents": [{ "stats": { "historical_late_accept_rate": 0.95 } }]
+          }
+        }
+      },
+      {
+        "request_id": "demo-iceland-deadhead",
+        "step": "STATE_UPDATE",
+        "actor": "Orchestrator",
+        "inputs_summary": "",
+        "outputs_summary": "",
+        "evidence_refs": [],
+        "timestamp": "2026-01-01T00:00:10.000Z",
+        "metadata": {
+          "system_action": "CLARIFICATION_FEEDBACK",
+          "questionId": "early_warning_relaxations",
+          "reward": 1,
+          "early_warning_id": "ew-demo",
+          "options_snapshot": [
+            {
+              "value": "upgrade_vehicle_to_4wd",
+              "label": "【路径 A·推荐】升级为 4WD",
+              "metadata": { "score": 9, "dominant_cid": "REACHABILITY_HARD", "precedent_n": 15 }
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
+

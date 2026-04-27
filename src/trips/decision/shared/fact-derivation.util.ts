@@ -1,0 +1,172 @@
+import type { HardRuleFact } from './hard-rule-snapshot.types';
+
+/**
+ * Best-effort derive HardRuleFact[] from metadata shape.
+ * Primary target: Pattern A (`metadata.details.evidence`) used by IronShield/constraints.
+ */
+export function deriveFactsFromMetadata(params: {
+  metadata: Record<string, unknown>;
+  reasonCodes?: string[];
+  timestampIso?: string;
+}): HardRuleFact[] {
+  const meta = params.metadata ?? {};
+  const details = (meta as any)?.details;
+  const evidence = details?.evidence;
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return [];
+
+  const rule_id = String((meta as any)?.rule_id ?? (meta as any)?.ruleId ?? params.reasonCodes?.[0] ?? '').trim();
+  if (!rule_id) return [];
+
+  const facts: HardRuleFact[] = [];
+
+  // Pattern: wind threshold/value in m/s (matches ConstraintsEngine + Neptune weather evidence)
+  const threshold_mps = (evidence as any)?.threshold_mps;
+  const value_mps = (evidence as any)?.value_mps;
+  if (typeof threshold_mps === 'number' && typeof value_mps === 'number') {
+    facts.push({
+      rule_id,
+      actual_value: value_mps,
+      threshold: threshold_mps,
+      unit: 'm/s',
+      is_violated: value_mps > threshold_mps,
+      severity: 'HARD',
+      evidence: evidence as any,
+      ...(params.timestampIso ? { at: params.timestampIso } : {}),
+    });
+  }
+
+  // Pattern: solar physics window (sunset/civil dusk) — offset minutes constraint.
+  // Evidence shape from ConstraintsEngineService (DYNAMIC_WINDOW/DERIVE_SUNSET_WINDOW):
+  // { type:'solar_physics', offset_min, twilight_buffer_min, mode, baseline, source }
+  const offset_min = (evidence as any)?.offset_min;
+  if (typeof offset_min === 'number') {
+    facts.push({
+      rule_id,
+      actual_value: offset_min,
+      threshold: null,
+      unit: 'min',
+      // Offset itself isn't a violation; treat as NOT violated unless evidence explicitly says so.
+      is_violated: Boolean((evidence as any)?.is_violated) === true,
+      severity: 'HARD',
+      evidence: evidence as any,
+      ...(params.timestampIso ? { at: params.timestampIso } : {}),
+    });
+  }
+
+  // Pattern: visibility threshold (meters) — if present, derive a violation fact.
+  const visibility_meters = (evidence as any)?.visibility_meters;
+  const visibility_threshold_meters = (evidence as any)?.visibility_threshold_meters;
+  if (typeof visibility_meters === 'number' && typeof visibility_threshold_meters === 'number') {
+    facts.push({
+      rule_id,
+      actual_value: visibility_meters,
+      threshold: visibility_threshold_meters,
+      unit: 'm',
+      is_violated: visibility_meters < visibility_threshold_meters,
+      severity: 'HARD',
+      evidence: evidence as any,
+      ...(params.timestampIso ? { at: params.timestampIso } : {}),
+    });
+  }
+
+  // Pattern: fatigue stats (Dr.Dre optimizer) — emit max fatigue and overloaded days facts.
+  // Evidence shape:
+  // { type:'fatigue_stats', threshold_fatigue_index, original:{...}, recommended:{ mean, variance, max, overloadedDays } }
+  const evType = String((evidence as any)?.type ?? '');
+  if (evType === 'fatigue_stats') {
+    const thr = (evidence as any)?.threshold_fatigue_index;
+    const rec = (evidence as any)?.recommended;
+    const max = rec?.max;
+    const overloadedDays = rec?.overloadedDays;
+    if (typeof max === 'number') {
+      facts.push({
+        rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'fatigue.max_daily'),
+        actual_value: max,
+        threshold: typeof thr === 'number' ? thr : null,
+        unit: 'fatigue_index',
+        is_violated: typeof thr === 'number' ? max > thr : false,
+        severity: 'SOFT',
+        evidence: evidence as any,
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+    if (typeof overloadedDays === 'number') {
+      facts.push({
+        rule_id: 'fatigue.overloaded_days',
+        actual_value: overloadedDays,
+        threshold: 0,
+        unit: 'days',
+        is_violated: overloadedDays > 0,
+        severity: 'SOFT',
+        evidence: evidence as any,
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+  }
+
+  // Pattern: road state closure (Emergency hard-forbidden injection)
+  // Evidence shape: { type:'road_state', status:'CLOSED', segment_id, reason_code }
+  if (evType === 'road_state') {
+    const status = String((evidence as any)?.status ?? '').toUpperCase();
+    if (status === 'CLOSED') {
+      facts.push({
+        rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'road_closed_v1'),
+        actual_value: 1,
+        threshold: 0,
+        unit: 'closed',
+        is_violated: true,
+        severity: 'HARD',
+        evidence: evidence as any,
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+  }
+
+  // Pattern: solar safety window (fixed sunset / twilight buffer)
+  // Evidence shape:
+  // {
+  //   type:'solar_safety',
+  //   actual_end_time_iso, sunset_time_iso, safety_threshold_iso,
+  //   buffer_min, unit:'ISO_8601', is_violated:true
+  // }
+  if (evType === 'solar_safety') {
+    const isViolated = Boolean((evidence as any)?.is_violated) === true;
+    if (isViolated) {
+      facts.push({
+        rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'solar_safety_v1'),
+        actual_value: String((evidence as any)?.actual_end_time_iso ?? ''),
+        threshold: String((evidence as any)?.safety_threshold_iso ?? ''),
+        unit: 'ISO_8601',
+        is_violated: true,
+        severity: 'HARD',
+        evidence: evidence as any,
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+  }
+
+  // Pattern: opening hours conflict (POI closed at planned window)
+  // Evidence shape:
+  // {
+  //   type:'opening_hours',
+  //   poi_id, planned_start, planned_end, open_window, date, timezone, is_violated:true
+  // }
+  if (evType === 'opening_hours') {
+    const isViolated = Boolean((evidence as any)?.is_violated) === true;
+    if (isViolated) {
+      facts.push({
+        rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'temporal_opening_v1'),
+        actual_value: String((evidence as any)?.planned_start ?? ''),
+        threshold: String((evidence as any)?.open_window ?? ''),
+        unit: 'ISO_8601',
+        is_violated: true,
+        severity: 'HARD',
+        evidence: evidence as any,
+        ...(params.timestampIso ? { at: params.timestampIso } : {}),
+      });
+    }
+  }
+
+  return facts;
+}
+
