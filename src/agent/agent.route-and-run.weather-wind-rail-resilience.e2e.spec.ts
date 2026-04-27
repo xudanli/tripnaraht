@@ -346,6 +346,10 @@ describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
 
     const stub = moduleRef.get(ClaudeOrchestratorService) as any;
     expect(stub.orchestrateWithStateMachine).toHaveBeenCalledTimes(2);
+    const secondReq = stub.orchestrateWithStateMachine.mock.calls?.[1]?.[0];
+    expect(secondReq?.emergency_constraints?.forbidden_modes).toEqual(expect.arrayContaining(['DRIVE', 'MOTORCYCLE']));
+    expect(secondReq?.emergency_constraints?.preferred_modes).toEqual(expect.arrayContaining(['RAIL', 'FERRY']));
+    expect(secondReq?.emergency_constraints?.max_wind_speed_tolerance_mps).toBe(18);
   });
 });
 

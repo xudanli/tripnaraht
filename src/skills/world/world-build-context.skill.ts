@@ -81,6 +81,9 @@ export interface WorldBuildContextInput extends SkillInput {
     forced_road_states?: Record<string, 'CLOSED'>;
     /** Temporal hard deadlines (latest allowable end time), keyed by poi_id or segment_id. ISO-8601 preferred. */
     hard_deadlines?: Record<string, string>;
+    forbidden_modes?: string[];
+    preferred_modes?: string[];
+    max_wind_speed_tolerance_mps?: number;
     reason_code?: string;
   };
 }

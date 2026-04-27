@@ -42,6 +42,7 @@ export class RouteAndRunResponseAssemblerService {
     state?: OrchestratorState | null;
     candidateId?: string;
     candidateItinerary?: Itinerary | null;
+    emergencyConstraints?: RouteAndRunRequestDto['emergency_constraints'];
   }): DecisionCandidateDto['evidence_bundle'] {
     const now = new Date().toISOString();
     const cards = assembleDecisionEvidenceCards(params.state ?? undefined);
@@ -129,6 +130,8 @@ export class RouteAndRunResponseAssemblerService {
     const railSafetyViolated = hardFactsList.some(
       (x) => String(x.rule_id) === 'rail_safety_v1' && Boolean((x as any)?.is_violated) === true,
     );
+    const forbiddenModes = (params.emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
+    const driveForbidden = forbiddenModes.includes('DRIVE') || forbiddenModes.includes('MOTORCYCLE');
     const ptCancelled =
       ptCancelledFromLog ||
       hardFactsList.some((x) => {
@@ -184,6 +187,9 @@ export class RouteAndRunResponseAssemblerService {
             : verification_status;
       }
       if (driveSafetyViolated) {
+        verification_status = 'FAILED';
+      }
+      if (driveForbidden) {
         verification_status = 'FAILED';
       }
     }
@@ -301,6 +307,7 @@ export class RouteAndRunResponseAssemblerService {
       decisionLog: k3DecisionLog ?? [],
       state: stateWithVerdict as any,
       candidateItinerary: orchestrationResult.result?.itinerary ?? null,
+      emergencyConstraints: request.emergency_constraints,
     });
 
     const resultStatus = isTimeout
@@ -357,11 +364,13 @@ export class RouteAndRunResponseAssemblerService {
             requestId: request.request_id,
             decisionLog: k3DecisionLog ?? [],
             state: stateWithVerdict as any,
+            emergencyConstraints: request.emergency_constraints,
           }),
           alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
             requestId: request.request_id,
             decisionLog: k3DecisionLog ?? [],
             state: stateWithVerdict as any,
+            emergencyConstraints: request.emergency_constraints,
           }),
           evidence: stateWithVerdict?.decision_log || [],
           robustness: orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
@@ -473,7 +482,12 @@ export class RouteAndRunResponseAssemblerService {
 
   private buildDecisionCandidates(
     decisionState: any | undefined,
-    ctx?: { requestId: string; decisionLog: DecisionLogEntry[]; state?: OrchestratorState | null },
+    ctx?: {
+      requestId: string;
+      decisionLog: DecisionLogEntry[];
+      state?: OrchestratorState | null;
+      emergencyConstraints?: RouteAndRunRequestDto['emergency_constraints'];
+    },
   ): DecisionCandidateDto[] {
     const hints = decisionState?.optimizationHints;
     const alts: any[] = Array.isArray(hints?.alternatives) ? hints.alternatives : [];
@@ -485,6 +499,20 @@ export class RouteAndRunResponseAssemblerService {
     const safety = clamp01(1 - Math.max(Number(dim.weather ?? 0), Number(dim.fatigue ?? 0)));
     const experience = clamp01(1 - Number(dim.crowdAvoidance ?? 0));
     const costEfficiency = clamp01(1 - Number(dim.budget ?? 0));
+
+    const forbiddenModes = (ctx?.emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
+    const isForbiddenItinerary = (it: any): boolean => {
+      if (!it) return false;
+      const items =
+        (it?.days ?? []).flatMap((d: any) => (Array.isArray(d?.items) ? d.items : [])) ?? [];
+      if (forbiddenModes.includes('DRIVE') || forbiddenModes.includes('MOTORCYCLE')) {
+        if (items.some((x: any) => String(x?.type ?? '').toUpperCase() === 'DRIVE')) return true;
+      }
+      if (forbiddenModes.includes('TRANSIT')) {
+        if (items.some((x: any) => String(x?.type ?? '').toUpperCase() === 'TRANSIT')) return true;
+      }
+      return false;
+    };
 
     return alts
       .map((a) => ({
@@ -518,10 +546,13 @@ export class RouteAndRunResponseAssemblerService {
                 state: ctx.state ?? undefined,
                 candidateId: String(a?.id ?? ''),
                 candidateItinerary: (a?.itinerary as any) ?? null,
+                emergencyConstraints: ctx.emergencyConstraints,
               })
             : undefined,
       }))
       .filter((c) => c.candidate_id)
+      // Candidate filter (engine-level): drop forbidden-mode candidates from output surface.
+      .filter((c) => (this.isC1StrictEvidenceBundle() ? !isForbiddenItinerary(c.itinerary) : true))
       // C1 strict: do not emit candidates without evidence bundle.
       .filter((c) => (this.isC1StrictEvidenceBundle() ? Boolean((c as any).evidence_bundle) : true));
   }

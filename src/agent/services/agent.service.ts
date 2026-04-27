@@ -1001,6 +1001,16 @@ export class AgentService {
           meta: { ...(request.meta ?? {}), weather_heal_retry: '1' } as any,
           emergency_constraints: {
             ...(request.emergency_constraints ?? {}),
+            forbidden_modes: Array.from(
+              new Set([...(request.emergency_constraints?.forbidden_modes ?? []), 'DRIVE', 'MOTORCYCLE']),
+            ),
+            preferred_modes: Array.from(
+              new Set([...(request.emergency_constraints?.preferred_modes ?? []), 'RAIL', 'FERRY']),
+            ),
+            max_wind_speed_tolerance_mps:
+              typeof request.emergency_constraints?.max_wind_speed_tolerance_mps === 'number'
+                ? request.emergency_constraints.max_wind_speed_tolerance_mps
+                : 18,
             reason_code: 'HEALING_DRIVE_SAFETY_FAILED',
           },
         };

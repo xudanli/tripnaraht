@@ -376,6 +376,14 @@ export class RouteAndRunRequestDto {
     forced_road_states?: Record<string, 'CLOSED'>;
     /** Temporal hard deadlines (latest allowable end time), keyed by poi_id or segment_id. ISO-8601 preferred. */
     hard_deadlines?: Record<string, string>;
+    /**
+     * Mode guardrails for Sentinel (engine-level constraints).
+     * These are evaluated by candidate filtering + strict evidence bundle enforcement.
+     */
+    forbidden_modes?: Array<'DRIVE' | 'MOTORCYCLE' | 'TRANSIT' | 'RAIL' | 'FERRY' | string>;
+    preferred_modes?: Array<'RAIL' | 'FERRY' | 'TRANSIT' | 'DRIVE' | string>;
+    /** Optional override for wind tolerance used in guards/filters (m/s). */
+    max_wind_speed_tolerance_mps?: number;
     reason_code?: string;
   };
 }
