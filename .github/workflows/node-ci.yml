@@ -1,0 +1,36 @@
+# Node CI — lint + Physical 逻辑岛类型检查（npm run check:physical）。
+# 全仓 `npm run typecheck:src` 因历史类型债未纳入 CI；物理竖切由 tsconfig.ci.json 闭包保证。
+#
+# PR 主门禁：Readiness P1（.github/workflows/readiness-p1.yml）已在 scripts/readiness-p1.sh 中串入
+# lint → check:physical → build → …，请勿从该脚本移除 check:physical。
+#
+# 本 workflow 供手动 workflow_dispatch 快速验证；日常 PR 以 Readiness P1 为准。
+
+name: Node CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lint-and-physical-island:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Physical island typecheck (logic closure)
+        run: npm run check:physical

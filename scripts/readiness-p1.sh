@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P1 发布前聚合门禁：lint → build → ROLL Week1-3 文件校验（可跳过）→ AO P0 → TD P0（含 TD-05 test:td-replay）→ AO P1 合同
+# P1 发布前聚合门禁：lint → check:physical（逻辑孤岛 / 替代全仓 typecheck:src）→ build → ROLL Week1-3 文件校验（可跳过）→ AO P0 → Decision OS unit（normalize / traceability / LangGraph PRD / task memory）→ TD P0（含 TD-05 test:td-replay）→ AO P1 合同
 # 输出 JSON 报告（默认 ./readiness-p1-report.json，schema readiness-p1/v2）
 # 环境变量：
 #   READINESS_P1_REPORT — 报告输出路径
@@ -30,6 +30,9 @@ else
   npm run lint || lint=1
 fi
 
+physical_island=0
+npm run check:physical || physical_island=1
+
 build=0
 npm run build || build=1
 
@@ -52,6 +55,9 @@ fi
 ao_p0=0
 npm run test:ao-p0 || ao_p0=1
 
+decision_os=0
+npm run test:decision-os:unit || decision_os=1
+
 td_p0=0
 if [ "${READINESS_P1_SKIP_TD_REPLAY:-}" = "1" ]; then
   echo "readiness:p1 — SKIP test:td-replay → npm run test:td-p0-core only (READINESS_P1_SKIP_TD_REPLAY=1)"
@@ -67,7 +73,10 @@ overall=0
 if [ "$lint_skipped" = "false" ] && [ "$lint" -ne 0 ]; then
   overall=1
 fi
-if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ]; then
+if [ "$physical_island" -ne 0 ]; then
+  overall=1
+fi
+if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ]; then
   overall=1
 fi
 if [ "$roll_skipped" = "false" ] && [ "$roll_exit" = "1" ]; then
@@ -105,9 +114,11 @@ printf '%s\n' "{
   },
   \"suites\": {
     $lint_block,
+    \"check_physical\": { \"exitCode\": $physical_island },
     \"build\": { \"exitCode\": $build },
     $roll_block,
     \"test_ao_p0\": { \"exitCode\": $ao_p0 },
+    \"test_decision_os_unit\": { \"exitCode\": $decision_os },
     \"test_td_p0\": { \"exitCode\": $td_p0 },
     $td_replay_block,
     \"test_ao_p1_contract\": { \"exitCode\": $ao_p1 }

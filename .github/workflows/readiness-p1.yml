@@ -15,6 +15,7 @@ on:
       - "tsconfig.backend.json"
       - "package.json"
       - "package-lock.json"
+      - "tsconfig.ci.json"
       - ".github/workflows/readiness-p1.yml"
   push:
     branches:
@@ -31,6 +32,7 @@ on:
       - "tsconfig.backend.json"
       - "package.json"
       - "package-lock.json"
+      - "tsconfig.ci.json"
       - ".github/workflows/readiness-p1.yml"
 
 jobs:
@@ -51,7 +53,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run readiness P1 (lint + build + ROLL week1-3 + AO/TD tests)
+      - name: Run readiness P1 (lint + check:physical + build + ROLL week1-3 + AO/TD tests)
         run: npm run readiness:p1
 
       - name: Upload report artifact
