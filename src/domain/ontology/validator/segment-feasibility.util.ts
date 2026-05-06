@@ -2,6 +2,8 @@
  * Pure segment × POI feasibility checks (same semantics as SpatialDomainAdmin POST .../validate-feasibility).
  */
 
+import { ICELAND_F_ROAD_POLICY_SOURCE, isIcelandHighlandFRoadSeasonallyClosed } from './iceland-f-road-policy.util';
+
 export interface SegmentFeasibilityPoiLike {
   closed?: boolean;
   time_windows?: Array<{
@@ -30,13 +32,24 @@ export function computeSegmentFeasibilityViolations(params: {
   const roadStatus = segment.road_condition?.status ?? 'OPEN';
   if (roadStatus === 'CLOSED') violations.push('SEGMENT_ROAD_CLOSED');
 
-  const seasonalBlocked = (segment.seasonal_closures ?? []).some((x) => {
+  const dbSeasonalClosures = segment.seasonal_closures ?? [];
+  const seasonalBlocked = dbSeasonalClosures.some((x) => {
     const start = new Date(x.start);
     const end = new Date(x.end);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
     return enterAt >= start && enterAt <= end;
   });
   if (seasonalBlocked) violations.push('SEGMENT_SEASONALLY_CLOSED');
+
+  /**
+   * Road.is 未接入时：F-Road 且 DB 未命中任一 seasonal_closure 窗口 → 用冰岛高地典型季历（例如 5 月内陆 → 封闭 / INTERRUPT）。
+   * 若 DB 已命中封闭窗，以上分支已 emit，此处不再叠加。
+   */
+  let icelandPolicySeasonallyClosed = false;
+  if (segment.segment_type === 'F_ROAD' && !seasonalBlocked) {
+    icelandPolicySeasonallyClosed = isIcelandHighlandFRoadSeasonallyClosed(enterAt);
+    if (icelandPolicySeasonallyClosed) violations.push('SEGMENT_SEASONALLY_CLOSED');
+  }
 
   if (segment.segment_type === 'F_ROAD' && vehicleType && vehicleType !== 'FOUR_BY_FOUR') {
     violations.push('SEGMENT_REQUIRES_4X4');
@@ -51,6 +64,8 @@ export function computeSegmentFeasibilityViolations(params: {
       segmentType: segment.segment_type,
       roadStatus,
       seasonalBlocked,
+      icelandPolicySeasonallyClosed,
+      ...(icelandPolicySeasonallyClosed ? { road_policy_source: ICELAND_F_ROAD_POLICY_SOURCE } : {}),
       endpointReachable: endpointOpen,
     },
   };

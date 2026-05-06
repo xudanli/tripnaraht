@@ -11,6 +11,7 @@ import type {
   PhysicalEvaluationResult,
   PhysicalViolationItem,
 } from './physical-validator.types';
+import { ICELAND_F_ROAD_POLICY_SOURCE } from './iceland-f-road-policy.util';
 import { computeSegmentFeasibilityViolations, type SegmentFeasibilityPoiLike } from './segment-feasibility.util';
 
 function userIntentFromActionInput(ai: Record<string, unknown>): DecisionState['userIntent'] | undefined {
@@ -40,17 +41,33 @@ function mapOntologyViolation(v: ConstraintViolationItem): PhysicalViolationItem
   };
 }
 
-function mapSpatialViolation(code: string, segmentEvidence?: Record<string, unknown>): PhysicalViolationItem {
-  const evidence_source =
+function mapSpatialViolation(
+  code: string,
+  segmentEvidence?: Record<string, unknown>,
+  feasibilityFacts?: Record<string, unknown>,
+): PhysicalViolationItem {
+  let evidence_source =
     typeof segmentEvidence?.url === 'string'
       ? segmentEvidence.url
       : typeof segmentEvidence?.source === 'string'
         ? segmentEvidence.source
         : undefined;
+
+  let detail = `Spatial feasibility violation: ${code}`;
+  if (
+    code === 'SEGMENT_SEASONALLY_CLOSED' &&
+    feasibilityFacts?.icelandPolicySeasonallyClosed &&
+    feasibilityFacts?.road_policy_source === ICELAND_F_ROAD_POLICY_SOURCE
+  ) {
+    detail =
+      `Iceland interior F-Road: enter_at falls in typical highland closed season (${ICELAND_F_ROAD_POLICY_SOURCE}; integrate Road.is for live closure data).`;
+    evidence_source = evidence_source ?? `policy:${ICELAND_F_ROAD_POLICY_SOURCE}`;
+  }
+
   return {
     code,
     severity: 'BLOCK',
-    detail: `Spatial feasibility violation: ${code}`,
+    detail,
     evidence_source,
   };
 }
@@ -166,9 +183,8 @@ export class PhysicalValidatorService {
       });
       const evidence = segment.evidence && typeof segment.evidence === 'object' ? (segment.evidence as any) : undefined;
       for (const code of codes) {
-        out.push(mapSpatialViolation(code, evidence));
+        out.push(mapSpatialViolation(code, evidence, facts));
       }
-      void facts;
     } catch (e) {
       this.logger.warn(`[PhysicalValidator] segment evaluate failed: ${e}`);
       out.push({
