@@ -30,9 +30,21 @@ import { DecisionContractCapturerService } from './decision-contract-capturer.se
 import type { AgentService } from './agent.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { physicalGateFingerprint } from '../../domain/ontology/validator/physical-validator.fingerprint';
-import { PHYSICAL_VALIDATOR_VERSION } from '../../domain/ontology/validator/physical-validator.constants';
+import {
+  PHYSICAL_VALIDATOR_VERSION,
+  ViolationCode,
+  violationStrategyForCode,
+  type ActionSeverity,
+} from '../../domain/ontology/validator/physical-validator.constants';
 import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
-import { toPhysicalValidationSignable, type PhysicalEvaluationResult } from '../../domain/ontology/validator/physical-validator.types';
+import {
+  toPhysicalValidationSignable,
+  type PhysicalEvaluationResult,
+  type PhysicalViolationItem,
+} from '../../domain/ontology/validator/physical-validator.types';
+import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import { budgetCapFromUserIntent, scaleTravelOntologyNounsToBudgetCap } from '../../decision/kernel/travel-ontology-constraints';
+import { ontologyContextToNouns } from '../../decision/kernel/travel-ontology.mapper';
 
 class MissingRequiredEvidenceError extends Error {
   constructor(
@@ -242,15 +254,43 @@ export class ActionExecutionService {
     const action_previews =
       registry && actionsWithPolicy.length > 0
         ? await Promise.all(actionsWithPolicy.map(async (a) => {
-            const physical = await this.runPhysicalGate(request.trip_id, a.action_input as Record<string, unknown>);
+            let gateInput: Record<string, unknown> =
+              a.action_input && typeof a.action_input === 'object' ? (a.action_input as Record<string, unknown>) : {};
+            let physicalResult = await this.runPhysicalGate(request.trip_id, gateInput);
+            let healingPreviewMeta: { is_auto_healed: true; healing_summary: string } | undefined;
+
+            let routeSeverity = this.determineActionSeverity(physicalResult.violations);
+            if (routeSeverity === 'SILENT_HEAL' && physicalResult.violations.length > 0) {
+              const healed = await this.performSilentHealing(request.trip_id, gateInput, physicalResult);
+              if (healed) {
+                physicalResult = healed.physical;
+                gateInput = healed.actionInput;
+                healingPreviewMeta = { is_auto_healed: true, healing_summary: healed.healing_summary };
+                routeSeverity = this.determineActionSeverity(physicalResult.violations);
+              } else {
+                routeSeverity = 'INTERRUPT';
+              }
+            }
+
+            const effectiveActionInput = healingPreviewMeta
+              ? gateInput
+              : a.action_input !== undefined && a.action_input !== null
+                ? a.action_input
+                : null;
+            const registryInput: Record<string, unknown> =
+              effectiveActionInput != null && typeof effectiveActionInput === 'object'
+                ? (effectiveActionInput as Record<string, unknown>)
+                : {};
+            const actionForPreview = { ...a, action_input: effectiveActionInput } as ActionCommitRequestDto['actions'][number];
+            const physical = physicalResult;
             const gateFp = this.computePhysicalGateFingerprint(physical);
             const physicalSignable = toPhysicalValidationSignable(physical);
             const physicalOut = { ...physicalSignable, evaluated_at: physical.evaluated_at };
             const effectiveVerb = this.normalizeVerbForMapping(a.action_type);
             const actionName = a.action_name || this.mapActionName(effectiveVerb, a.target_type);
 
-            if (physical.blocking) {
-              const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+            if (routeSeverity === 'INTERRUPT') {
+              const resourceSnapshot = await this.buildResourceSnapshotForSignature(actionForPreview);
               const findings = this.physicalPreconditionsFromViolations(physical);
               const assessmentBlocked = { status: 'blocked' as const, findings, shadow_delta: null };
               const previewPayload = {
@@ -259,13 +299,13 @@ export class ActionExecutionService {
                 action_type: a.action_type,
                 target_type: a.target_type,
                 target_ref: a.target_ref,
-                action_input: a.action_input ?? null,
+                action_input: effectiveActionInput,
                 physical_validation: physicalSignable,
                 assessment: assessmentBlocked,
               };
               const context_signature = sha256Signature(previewPayload);
               const context_signature_v2 = this.buildContextSignatureV2({
-                action: a as ActionCommitRequestDto['actions'][number],
+                action: actionForPreview,
                 actionName: actionName ?? null,
                 assessment: assessmentBlocked,
                 side_effects: [],
@@ -280,11 +320,12 @@ export class ActionExecutionService {
                 ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
                 context_signature,
                 context_signature_v2,
+                ...(healingPreviewMeta ?? {}),
               };
             }
 
             if (!actionName || !registry.has(actionName)) {
-              const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+              const resourceSnapshot = await this.buildResourceSnapshotForSignature(actionForPreview);
               const physicalFindings = this.physicalPreconditionsFromViolations(physical);
               const unknownFinding = {
                 code: 'UNKNOWN',
@@ -297,7 +338,7 @@ export class ActionExecutionService {
                 action_type: a.action_type,
                 target_type: a.target_type,
                 target_ref: a.target_ref,
-                action_input: a.action_input ?? null,
+                action_input: effectiveActionInput,
                 physical_validation: physicalSignable,
                 assessment: {
                   status: 'blocked',
@@ -307,7 +348,7 @@ export class ActionExecutionService {
               };
               const context_signature = sha256Signature(previewPayload);
               const context_signature_v2 = this.buildContextSignatureV2({
-                action: a as ActionCommitRequestDto['actions'][number],
+                action: actionForPreview,
                 actionName: actionName ?? null,
                 assessment: {
                   status: 'blocked',
@@ -326,6 +367,7 @@ export class ActionExecutionService {
                 ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
                 context_signature,
                 context_signature_v2,
+                ...(healingPreviewMeta ?? {}),
               };
             }
             const assessment = registry.checkPreconditions(
@@ -334,9 +376,11 @@ export class ActionExecutionService {
                 trip: { trip_id: request.trip_id },
                 request_id: request.request_id,
                 trip_id: request.trip_id,
-                ...(a.action_input && typeof (a.action_input as any).wallet === 'object' ? { wallet: (a.action_input as any).wallet } : {}),
+                ...(registryInput && typeof (registryInput as any).wallet === 'object'
+                  ? { wallet: (registryInput as any).wallet }
+                  : {}),
               },
-              a.action_input,
+              registryInput,
             );
             const physicalFindings = this.physicalPreconditionsFromViolations(physical);
             const mergedFindings = [...physicalFindings, ...(assessment.findings ?? [])];
@@ -357,27 +401,27 @@ export class ActionExecutionService {
                     action_type: a.action_type,
                     target_type: a.target_type,
                     target_ref: a.target_ref,
-                    action_input: a.action_input,
+                    action_input: registryInput,
                     state: {
                       trip: { trip_id: request.trip_id },
                       request_id: request.request_id,
                       trip_id: request.trip_id,
-                      ...(a.action_input && typeof (a.action_input as any).wallet === 'object'
-                        ? { wallet: (a.action_input as any).wallet }
+                      ...(registryInput && typeof (registryInput as any).wallet === 'object'
+                        ? { wallet: (registryInput as any).wallet }
                         : {}),
                     },
                   },
                   sideEffectConfigs,
                 )
               : [];
-            const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+            const resourceSnapshot = await this.buildResourceSnapshotForSignature(actionForPreview);
             const previewPayload = {
               action_id: a.action_id,
               action_name: actionName,
               action_type: a.action_type,
               target_type: a.target_type,
               target_ref: a.target_ref,
-              action_input: a.action_input ?? null,
+              action_input: effectiveActionInput,
               physical_validation: physicalSignable,
               ...(side_effects.length ? { side_effects } : {}),
               assessment: {
@@ -388,7 +432,7 @@ export class ActionExecutionService {
             };
             const context_signature = sha256Signature(previewPayload);
             const context_signature_v2 = this.buildContextSignatureV2({
-              action: a as ActionCommitRequestDto['actions'][number],
+              action: actionForPreview,
               actionName,
               assessment: mergedAssessment,
               side_effects,
@@ -405,6 +449,7 @@ export class ActionExecutionService {
               ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
               context_signature,
               context_signature_v2,
+              ...(healingPreviewMeta ?? {}),
             };
           }))
         : undefined;
@@ -1638,6 +1683,112 @@ export class ActionExecutionService {
       };
     }
     return this.physicalValidator.evaluate({ tripId, actionInput: actionInput ?? null });
+  }
+
+  private userIntentFromPreviewActionInput(ai: Record<string, unknown>): DecisionState['userIntent'] | undefined {
+    const wallet = ai.wallet as Record<string, unknown> | undefined;
+    const budget =
+      typeof wallet?.budget_limit === 'number' && wallet.budget_limit > 0
+        ? wallet.budget_limit
+        : typeof ai.budget === 'number' && (ai.budget as number) > 0
+          ? (ai.budget as number)
+          : undefined;
+    const constraints = ai.constraints as Record<string, unknown> | undefined;
+    if (budget == null && !constraints) return undefined;
+    return {
+      ...(budget != null ? { budget } : {}),
+      ...(constraints ? { constraints } : {}),
+    } as DecisionState['userIntent'];
+  }
+
+  private extractOntologyNounsFromActionInput(
+    ai: Record<string, unknown>,
+  ): NonNullable<NonNullable<DecisionState['travelOntologyState']>['nouns']> | undefined {
+    try {
+      if (ai.ontology_context && typeof ai.ontology_context === 'object') {
+        return ontologyContextToNouns(ai.ontology_context as Parameters<typeof ontologyContextToNouns>[0]);
+      }
+      if (
+        ai.travel_ontology &&
+        typeof ai.travel_ontology === 'object' &&
+        (ai.travel_ontology as Record<string, unknown>).nouns &&
+        typeof (ai.travel_ontology as Record<string, unknown>).nouns === 'object'
+      ) {
+        return (ai.travel_ontology as Record<string, unknown>).nouns as NonNullable<
+          NonNullable<DecisionState['travelOntologyState']>['nouns']
+        >;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  /** Per-violation severity after B-guarded budget drift rule (drift_ratio > 0.1 → INTERRUPT). */
+  private effectiveViolationSeverity(v: PhysicalViolationItem): ActionSeverity {
+    if (v.severity === 'BLOCK') return 'INTERRUPT';
+    if (v.code === ViolationCode.TRAVEL_ONTOLOGY_BUDGET) {
+      const drift = typeof v.degree === 'number' ? v.degree : 0;
+      if (drift > 0.1) return 'INTERRUPT';
+    }
+    return violationStrategyForCode(v.code);
+  }
+
+  /** Aggregate heal router outcome for PhysicalValidator violations (empty → OK). */
+  private determineActionSeverity(violations: PhysicalViolationItem[]): 'OK' | 'INTERRUPT' | 'SILENT_HEAL' {
+    if (!violations.length) return 'OK';
+    const levels = violations.map((v) => this.effectiveViolationSeverity(v));
+    if (levels.some((l) => l === 'INTERRUPT')) return 'INTERRUPT';
+    if (levels.every((l) => l === 'SILENT_HEAL')) return 'SILENT_HEAL';
+    return 'INTERRUPT';
+  }
+
+  /**
+   * MVP silent heal: proportional ontology price scale to satisfy budget (B-guarded: same POI inventory).
+   * Time/route heals defer to Planner/Solver wrapper (Sprint 2 follow-up).
+   */
+  private async performSilentHealing(
+    tripId: string,
+    actionInput: Record<string, unknown>,
+    physical: PhysicalEvaluationResult,
+  ): Promise<{ physical: PhysicalEvaluationResult; actionInput: Record<string, unknown>; healing_summary: string } | null> {
+    const violations = physical.violations;
+    const allSilentBudgetDrift =
+      violations.length > 0 &&
+      violations.every(
+        (v) =>
+          v.code === ViolationCode.TRAVEL_ONTOLOGY_BUDGET &&
+          v.severity !== 'BLOCK' &&
+          (typeof v.degree !== 'number' || v.degree <= 0.1),
+      );
+    if (!allSilentBudgetDrift || !this.physicalValidator) return null;
+
+    const nouns = this.extractOntologyNounsFromActionInput(actionInput);
+    const userIntent = this.userIntentFromPreviewActionInput(actionInput);
+    const cap = budgetCapFromUserIntent(userIntent);
+    if (!nouns || cap == null) return null;
+
+    const { scaled, factor } = scaleTravelOntologyNounsToBudgetCap(nouns, cap);
+    const nextInput: Record<string, unknown> = { ...actionInput };
+    nextInput.travel_ontology = {
+      ...(typeof nextInput.travel_ontology === 'object' ? nextInput.travel_ontology : {}),
+      nouns: scaled,
+    };
+    delete nextInput.ontology_context;
+
+    const nextPhysical = await this.runPhysicalGate(tripId, nextInput);
+    if (this.determineActionSeverity(nextPhysical.violations) === 'INTERRUPT') {
+      this.logger.warn(`[ActionExecution] silent heal still INTERRUPT tier; escalating to blocked preview`);
+      return null;
+    }
+
+    const summary =
+      factor >= 1
+        ? 'B-guarded silent heal: budget drift cleared without price scaling (POI set unchanged).'
+        : `B-guarded silent heal: proportional price scale factor=${factor.toFixed(6)} to satisfy travel_ontology_budget (POI set unchanged).`;
+
+    this.logger.log(`[ActionExecution] preview is_auto_healed=true healing_summary=${summary}`);
+    return { physical: nextPhysical, actionInput: nextInput, healing_summary: summary };
   }
 
   private computePhysicalGateFingerprint(physical: PhysicalEvaluationResult): string {

@@ -19,7 +19,7 @@ function estimateNights(checkIn?: string, checkOut?: string): number {
   return Math.max(1, Math.round((b - a) / (86400 * 1000)));
 }
 
-function sumOntologySpend(nouns: NonNullable<NonNullable<DecisionState['travelOntologyState']>['nouns']>): number {
+export function sumOntologySpend(nouns: NonNullable<NonNullable<DecisionState['travelOntologyState']>['nouns']>): number {
   let sum = 0;
   for (const f of nouns.flights ?? []) {
     sum += f.price ?? 0;
@@ -35,6 +35,33 @@ function sumOntologySpend(nouns: NonNullable<NonNullable<DecisionState['travelOn
     sum += t.costEstimate ?? 0;
   }
   return sum;
+}
+
+export type TravelOntologyNouns = NonNullable<NonNullable<DecisionState['travelOntologyState']>['nouns']>;
+
+/**
+ * B-guarded silent heal: scale quoted ontology prices down so estimated spend ≤ cap (same POI inventory).
+ */
+export function scaleTravelOntologyNounsToBudgetCap(nouns: TravelOntologyNouns, cap: number): { scaled: TravelOntologyNouns; factor: number } {
+  const spend = sumOntologySpend(nouns);
+  if (!(cap > 0) || spend <= cap) {
+    return { scaled: nouns, factor: 1 };
+  }
+  const factor = cap / spend;
+  const scaled = JSON.parse(JSON.stringify(nouns)) as TravelOntologyNouns;
+  for (const f of scaled.flights ?? []) {
+    if (typeof f.price === 'number') f.price = Math.round(f.price * factor * 1e6) / 1e6;
+  }
+  for (const h of scaled.hotels ?? []) {
+    if (typeof h.nightlyPrice === 'number') h.nightlyPrice = Math.round(h.nightlyPrice * factor * 1e6) / 1e6;
+  }
+  for (const a of scaled.activities ?? []) {
+    if (typeof a.price === 'number') a.price = Math.round(a.price * factor * 1e6) / 1e6;
+  }
+  for (const t of scaled.transportation ?? []) {
+    if (typeof t.costEstimate === 'number') t.costEstimate = Math.round(t.costEstimate * factor * 1e6) / 1e6;
+  }
+  return { scaled, factor };
 }
 
 export function budgetCapFromUserIntent(userIntent: DecisionState['userIntent'] | undefined): number | undefined {

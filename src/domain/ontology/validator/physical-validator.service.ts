@@ -36,6 +36,7 @@ function mapOntologyViolation(v: ConstraintViolationItem): PhysicalViolationItem
     severity: sev,
     detail: v.detail,
     constraint: v.constraint,
+    ...(typeof v.degree === 'number' ? { degree: v.degree } : {}),
   };
 }
 

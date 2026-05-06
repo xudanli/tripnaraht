@@ -10,6 +10,8 @@ export interface PhysicalViolationItem {
   severity: PhysicalViolationSeverity;
   detail: string;
   constraint?: string;
+  /** SOFT constraint degree (e.g. budget overrun ratio); used by heal router + audit. */
+  degree?: number;
   /** Optional upstream cite (Road API URL, admin evidence ref, etc.) */
   evidence_source?: string;
 }

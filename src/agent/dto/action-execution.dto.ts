@@ -375,6 +375,20 @@ export class ActionPreviewAssessmentDto {
   })
   @IsOptional()
   side_effects?: SideEffectPreviewDto[];
+
+  @ApiPropertyOptional({
+    description: 'True when preview applied B-guarded silent heal (e.g. minor budget proportional scale).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_auto_healed?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'One-line human-readable summary of silent heal for observability / UI.',
+  })
+  @IsOptional()
+  @IsString()
+  healing_summary?: string;
 }
 
 export class ActionPreviewRequestDto {
