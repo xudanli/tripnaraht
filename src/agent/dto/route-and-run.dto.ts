@@ -1,5 +1,17 @@
 // src/agent/dto/route-and-run.dto.ts
-import { IsString, IsOptional, IsBoolean, IsNumber, ValidateNested, IsEnum, IsNotEmpty, MinLength, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  ValidateNested,
+  IsEnum,
+  IsNotEmpty,
+  MinLength,
+  IsIn,
+  IsArray,
+  Matches,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
@@ -8,6 +20,12 @@ import { ErrorType } from '../interfaces/error-types.interface';
 import { ClarificationAnswer, ClarificationQuestion } from '../interfaces/clarification.interface';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { TravelActionType } from '../constants/action-execution.constants';
+import { EvidenceLineageDto } from './evidence-lineage.dto';
+import type { IntentMode } from '../constants/intent-mode.constants';
+import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
+
+export type { IntentMode } from '../constants/intent-mode.constants';
+export { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 
 export class ConversationContextDto {
   @ApiPropertyOptional({ 
@@ -18,8 +36,9 @@ export class ConversationContextDto {
   @IsOptional()
   recent_messages?: string[];
 
-  @ApiPropertyOptional({ 
-    description: '用户语言环境',
+  @ApiPropertyOptional({
+    description:
+      '用户语言环境（BCP-47）。影响 NEED_MORE_INFO 澄清问卷与引导语的 Fallback 文案矩阵（见 src/common/constants/agent-prompts.ts）；缺省 zh。',
     example: 'zh-CN',
   })
   @IsOptional()
@@ -33,6 +52,27 @@ export class ConversationContextDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '可选上下文类型（如 active_trip_summary）。后端识别则注入摘要；未知类型忽略。与 trip_id 配合使用。',
+    example: 'active_trip_summary',
+  })
+  @IsOptional()
+  @IsString()
+  context_type?: string;
+}
+
+/** route_and_run.options.intent_flags：与 TaskType 并行，用于微分流（不新增顶层 TaskType） */
+export class IntentFlagsDto {
+  @ApiPropertyOptional({
+    description:
+      '启用「实时事实」类传感器分流（与 enable_live_tools 配合；例如命中天气类问题时允许拉取天气 MCP）',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  live_facts?: boolean;
 }
 
 export class AgentOptionsDto {
@@ -107,6 +147,16 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   use_claude_orchestration?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      '是否启用 intent.recognize 技能覆盖规则层 taskType（默认 true；设为 false 时仅使用 keywords 规则，不发起额外 LLM 调用）',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_intent_recognition_skill?: boolean;
 
   @ApiPropertyOptional({ 
     description: '是否使用状态机编排（默认 true，仅在 use_claude_orchestration=true 时生效）',
@@ -237,6 +287,55 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   persist_dso_checkpoint?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Replan（PRD I3）：上一版编排 `plan_version`；与 `previous_world_snapshot_hash` 一并写入新建 TripRun.metadata.replan_context，支撑继承审计。',
+    example: 2,
+  })
+  @IsOptional()
+  @IsNumber()
+  previous_plan_version?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Replan（PRD I3）：上一版世界快照哈希或摘要 id（客户端/编排投影）；trim 后写入 TripRun.metadata.replan_context。',
+    example: 'sha256:abcdef…',
+  })
+  @IsOptional()
+  @IsString()
+  previous_world_snapshot_hash?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '意图档位：AUTO=服务端推断；TRIP_PLANNING / DATA_LOOKUP / GENERIC_QA=显式覆盖 task_type（与 observability.trace.route_decision 对齐）',
+    enum: INTENT_MODE_VALUES,
+    example: 'AUTO',
+    default: 'AUTO',
+  })
+  @IsOptional()
+  @IsIn([...INTENT_MODE_VALUES])
+  intent_mode?: IntentMode;
+
+  @ApiPropertyOptional({
+    description:
+      '只读实时工具开关（Phase1 传感器）：weather=天气；hotel=住宿检索；car_rental=Booking.com 租车（需 Trip 或 structured 起止日）。轻量路径 DATA_LOOKUP/GENERIC_QA/RAG_QA 下注入事实块；租车亦可在未列此项时由话术「租车/推荐租车」自动触发。',
+    example: ['weather', 'hotel', 'car_rental'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  enable_live_tools?: string[];
+
+  @ApiPropertyOptional({
+    description: '意图微标志（与 intent_mode / task_type 并行）；用于 live_facts 等细粒度开关',
+    type: IntentFlagsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => IntentFlagsDto)
+  intent_flags?: IntentFlagsDto;
 }
 
 /** 与 NL message 并行：澄清/前端显式提交，避免仅靠关键词表丢失 Reykjavik 等城市 */
@@ -256,6 +355,25 @@ export class StructuredTravelInputDto {
   @IsOptional()
   @IsString()
   origin?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '结构化出发/开始日期（ISO 日期，YYYY-MM-DD）。与 message 中 NL 日期并行，澄清/日期选择器提交时写入，供 INTAKE 与门控 `start_date` 使用。',
+    example: '2026-05-08',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'start_date 须为 YYYY-MM-DD' })
+  start_date?: string;
+
+  @ApiPropertyOptional({
+    description: '可选结束日（与 start_date 组成 date_range 覆盖区间）',
+    example: '2026-05-12',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'end_date 须为 YYYY-MM-DD' })
+  end_date?: string;
 }
 
 /**
@@ -270,6 +388,63 @@ export class RouteAndRunRequestMetaDto {
   @IsOptional()
   @IsString()
   run_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '稳定对话 id（同一会话多轮 route_and_run 保持一致）。用于服务端恢复上一轮 research_data 快照，支撑澄清后的 transport_only 合并。',
+    example: 'conv-7c2a9f1b',
+  })
+  @IsOptional()
+  @IsString()
+  conversation_id?: string;
+}
+
+/**
+ * 客户端点击 `suggested_operations` 按钮时随 POST 传入的嵌套负载。
+ * 须声明在 DTO 上：全局 ValidationPipe `whitelist` 会剥离未注册字段，裸 `payload: { trip_id }` 无法进入业务层。
+ */
+export class SuggestedOperationInvokePayloadDto {
+  @ApiPropertyOptional({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  @IsOptional()
+  @IsString()
+  trip_id?: string;
+
+  @ApiPropertyOptional({ description: '可选；通常仍使用顶层 message' })
+  @IsOptional()
+  @IsString()
+  message?: string;
+}
+
+export class PreferenceProfileDto {
+  @ApiPropertyOptional({ example: 20, description: 'Max extra cost user is willing to pay (USD)' })
+  @IsOptional()
+  @IsNumber()
+  max_extra_cost_usd?: number;
+
+  @ApiPropertyOptional({ example: 30, description: 'Max delay user is willing to accept (minutes)' })
+  @IsOptional()
+  @IsNumber()
+  max_delay_minutes?: number;
+
+  @ApiPropertyOptional({ example: 0.7, description: 'Cost sensitivity (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  cost_sensitivity?: number;
+
+  @ApiPropertyOptional({ example: 0.6, description: 'Time sensitivity (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  time_sensitivity?: number;
+
+  @ApiPropertyOptional({ example: 0.4, description: 'Effort/comfort sensitivity (0-1)' })
+  @IsOptional()
+  @IsNumber()
+  effort_sensitivity?: number;
+
+  @ApiPropertyOptional({ enum: ['STRICT', 'FLEX'] as const, example: 'STRICT' })
+  @IsOptional()
+  @IsEnum(['STRICT', 'FLEX'])
+  respect_reservations?: 'STRICT' | 'FLEX';
 }
 
 export class RouteAndRunRequestDto {
@@ -297,6 +472,35 @@ export class RouteAndRunRequestDto {
   @IsOptional()
   @IsString()
   trip_id?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'camelCase 别名，与 trip_id 等价（部分前端序列化默认驼峰）。',
+    example: 'trip-456',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  tripId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      '一键操作回调：将 suggested_operations[].payload 放在此字段 POST 时，其中的 trip_id 会合并到顶层（解决仅展开 message 导致丢 trip_id）。',
+    type: SuggestedOperationInvokePayloadDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SuggestedOperationInvokePayloadDto)
+  suggested_operation_payload?: SuggestedOperationInvokePayloadDto;
+
+  @ApiPropertyOptional({
+    description:
+      '兼容字段名：与 suggested_operation_payload 相同（部分客户端把按钮 payload 直接命名为 payload）。',
+    type: SuggestedOperationInvokePayloadDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SuggestedOperationInvokePayloadDto)
+  payload?: SuggestedOperationInvokePayloadDto;
 
   @ApiPropertyOptional({ 
     description: '关联的路线方向 ID（可选，用于护城河扩展的失败风险预测）',
@@ -386,6 +590,22 @@ export class RouteAndRunRequestDto {
     max_wind_speed_tolerance_mps?: number;
     reason_code?: string;
   };
+
+  @ApiPropertyOptional({
+    description:
+      'Human-centric preference profile used for trade-off arbitration and negotiation triggering. Never overrides hard facts.',
+    example: {
+      max_extra_cost_usd: 20,
+      max_delay_minutes: 30,
+      cost_sensitivity: 0.7,
+      time_sensitivity: 0.6,
+      respect_reservations: 'STRICT',
+    },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PreferenceProfileDto)
+  preference_profile?: PreferenceProfileDto;
 }
 
 /** Flags on assembled evidence cards (payload.decision_metadata.evidence_cards) */
@@ -688,6 +908,201 @@ export class EvidenceBundleDto {
   @ApiProperty({ enum: ['VERIFIED', 'PARTIAL', 'STALE', 'FAILED'] as const })
   @IsString()
   verification_status!: 'VERIFIED' | 'PARTIAL' | 'STALE' | 'FAILED';
+
+  @ApiPropertyOptional({
+    description:
+      'Machine-readable failure codes (Iron Shield / ops). Prefer stable enums documented in docs/api/failure-reason-codes.md; merge/dedupe with explain.failure_reason_codes on the client.',
+    type: [String],
+    example: ['PT_TRANSFER_GAP_VIOLATION', 'MISSING_DESTINATION'],
+  })
+  @IsOptional()
+  failure_reason_codes?: string[];
+
+  @ApiPropertyOptional({
+    description: '与 failure_reason_codes 同序中文说明（调试/中文 UI）；未知码与码一致',
+    type: [String],
+  })
+  @IsOptional()
+  failure_reason_labels_zh?: string[];
+}
+
+export class NegotiationAlternativeDto {
+  @ApiProperty({ description: 'Stable id for selection', example: 'UPGRADE_TO_DRIVE' })
+  @IsString()
+  id!: string;
+
+  @ApiPropertyOptional({ description: 'Extra cost delta (USD)', example: 50 })
+  @IsOptional()
+  @IsNumber()
+  cost_delta_usd?: number;
+
+  @ApiPropertyOptional({ description: 'Extra time delta (minutes)', example: 0 })
+  @IsOptional()
+  @IsNumber()
+  time_delta_minutes?: number;
+
+  @ApiPropertyOptional({ description: 'Effort/comfort delta (0-1, higher=worse)', example: 0.2 })
+  @IsOptional()
+  @IsNumber()
+  effort_delta?: number;
+
+  @ApiPropertyOptional({ description: 'Optional candidate id link', example: 'cand_heal_drive' })
+  @IsOptional()
+  @IsString()
+  candidate_id?: string;
+
+  @ApiPropertyOptional({ description: 'User-facing one-liner', example: '多花 $50，但能保住 14:00 的博物馆预约。' })
+  @IsOptional()
+  @IsString()
+  message?: string;
+
+  @ApiPropertyOptional({ description: 'Explicit consequence text', example: '如果不升级，预约可能失效。' })
+  @IsOptional()
+  @IsString()
+  consequence?: string;
+
+  @ApiPropertyOptional({
+    description: 'True if user recently rolled back from this alternative (soft penalty / UI badge).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  prior_rollback_of_same_alternative?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Same intent as prior_rollback; explicit “曾被拒绝” for product copy.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  previously_rejected?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Timeline fragility: hard-booking slack after this option would be very tight.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_fragile?: boolean;
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Pre-emptive rollback / punctuality risk tier.' })
+  @IsOptional()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
+  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Causal disclosure tags (e.g. TAILORED_TO_YOUR_PREFERENCE, REAL_TIME_RISK_WARNING, ROLLBACK_MEMORY).',
+    example: ['REAL_TIME_RISK_WARNING', 'ROLLBACK_MEMORY'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  reasoning_tags?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      '0–1 reliability from hard-booking buffer slack: clamp((min_buffer_min − 5) / 15, 0, 1). Higher = safer.',
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  reliability_score?: number;
+
+  @ApiPropertyOptional({
+    description: 'User-facing line when this option was previously undone via physical rollback.',
+  })
+  @IsOptional()
+  @IsString()
+  regret_notice?: string;
+}
+
+export class NegotiationPayloadDto {
+  @ApiProperty({ enum: ['PENDING_USER_DECISION'] as const, example: 'PENDING_USER_DECISION' })
+  @IsString()
+  status!: 'PENDING_USER_DECISION';
+
+  @ApiProperty({ description: 'Machine reason code', example: 'PT_DELAY_IMPACTING_BOOKING' })
+  @IsString()
+  reason!: string;
+
+  @ApiPropertyOptional({ description: 'User-facing impact text', example: '换乘时间不足，极大概率错过班次。' })
+  @IsOptional()
+  @IsString()
+  impact?: string;
+
+  @ApiPropertyOptional({
+    description: 'One-line counselor-style recommendation summarizing why option A is preferred over B.',
+    example:
+      '我们更推荐[打车升级]。虽然[推迟 30 分钟]也能解决冲突，但该方案准点风险更高，且你近期曾回滚过类似选择，系统不建议再次冒险。',
+  })
+  @IsOptional()
+  @IsString()
+  recommendation_summary?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Strategy impact map: baseline vs each alternative — critical-path segment time shifts, cost deltas, and on-time index interval (buffer-derived; see on_time_model).',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  strategy_impact_map?: Record<string, unknown>;
+
+  @ApiProperty({ type: [NegotiationAlternativeDto] })
+  @ValidateNested({ each: true })
+  @Type(() => NegotiationAlternativeDto)
+  alternatives!: NegotiationAlternativeDto[];
+
+  @ApiPropertyOptional({ description: 'Suggested default option id', example: 'POSTPONE_SCHEDULE' })
+  @IsOptional()
+  @IsString()
+  default_option_id?: string;
+
+  @ApiPropertyOptional({ description: 'Negotiation session id for confirm flow', example: 'neg:req-003' })
+  @IsOptional()
+  @IsString()
+  negotiation_session_id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optimistic lock hash (client must echo back when confirming)',
+    example: 'sha256:7e3c4b...'
+  })
+  @IsOptional()
+  @IsString()
+  expected_negotiation_hash?: string;
+
+  @ApiPropertyOptional({
+    description: 'Impact assessment for downstream itinerary (e.g., hard bookings that will be missed)',
+    type: 'object',
+    additionalProperties: true,
+    example: { warnings: [{ item_id: 'museum_1', message: '将导致预约失效' }] },
+  })
+  @IsOptional()
+  impact_assessment?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: 'Evidence lineage / reliability for trade-off numbers (audit + UX)',
+    example: {
+      travel_time_v1: {
+        reliability: 'VOLATILE',
+        captured_context: { is_peak: true, mode: 'DRIVE', bucket: '2026-06-01T17:00:00.000Z' },
+        invalidation_reason: 'EXPIRED_TRUST_NEIGHBORHOOD',
+        source_type: 'L2_REALTIME_COMPUTED',
+      },
+    },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceLineageDto)
+  evidence_lineage?: EvidenceLineageDto;
+
+  @ApiPropertyOptional({
+    description: 'One-line summary explaining why evidence was re-measured / downgraded',
+    example: '高峰时段：已主动降权邻域缓存并触发实时重测（DRIVE 路况波动）',
+  })
+  @IsOptional()
+  @IsString()
+  lineage_summary?: string;
 }
 
 export class DecisionCandidateDto {
@@ -723,6 +1138,36 @@ export class DecisionCandidateDto {
   evidence_bundle?: EvidenceBundleDto;
 }
 
+/**
+ * RAG / 知识库引用（与观测层统一：优先使用 `reference_sources`；`rag_sources` / `sources` 为同义别名）
+ */
+export class ReferenceSourceDto {
+  @ApiPropertyOptional({ example: 'chunk-uuid-1' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({ example: 'Iceland travel budget' })
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional({ example: 's3://kb/iceland-budget.md' })
+  @IsOptional()
+  @IsString()
+  uri?: string;
+
+  @ApiPropertyOptional({ example: '人均餐饮约 2000–4000 ISK...' })
+  @IsOptional()
+  @IsString()
+  snippet?: string;
+
+  @ApiPropertyOptional({ example: 0.82 })
+  @IsOptional()
+  @IsNumber()
+  score?: number;
+}
+
 @ApiExtraModels(
   DecisionMetadataDto,
   DecisionEvidenceCardDto,
@@ -734,6 +1179,10 @@ export class DecisionCandidateDto {
   EvidenceCardPolicyReferenceUiDto,
   EvidenceCardUiFlagsDto,
   DecisionCandidateDto,
+  NegotiationPayloadDto,
+  NegotiationAlternativeDto,
+  EvidenceLineageDto,
+  ReferenceSourceDto,
 )
 export class RouteAndRunResponseDto {
   @ApiProperty({ 
@@ -775,6 +1224,17 @@ export class RouteAndRunResponseDto {
     estimated_time_remaining_ms?: number;
     /** 🆕 当前步骤详细说明 */
     current_step_detail?: string;
+    /** 与 `observability.trace.steps` 对齐：由 `stepsExecuted` 镜像，供 OrchestrationProgressCard 无需再读 payload */
+    steps?: Array<{
+      step_id: string;
+      step_name: string;
+      /** 编排步骤中文名（与 step_id 对应）；未知 ID 时等于 step_id */
+      step_display_zh?: string;
+      skill_name?: string;
+      action_name?: string;
+      success: boolean;
+      duration_ms: number;
+    }>;
   };
 
   @ApiProperty({ 
@@ -906,7 +1366,97 @@ export class RouteAndRunResponseDto {
       alternatives?: DecisionCandidateDto[];
       evidence: EvidenceRef[];
       robustness: number | null;
-        jepa?: JepaPayload;
+      /**
+       * 轻量 DATA_LOOKUP：住宿 MCP 结构化列表（与 `routing.target === 'hotel'` 联用）。
+       * 常见字段含：`distance_to_anchor_km`、`distance_label_zh`、`anchor_poi_name_zh`、`listing_lat`/`listing_lng`（锚点为入住当日最后一站行程 POI）、`decision_support_zh`（住宿决策辅助文案：规则信号 + 可选 LLM 管家一句话；与请求里 `preference_profile`、行程 `budgetConfig.travelers` 等相关）。
+       */
+      accommodations?: Array<Record<string, unknown>>;
+      airbnbListings?: unknown[];
+      routing?: { target?: string };
+      /** 按晚聚合的住宿块（与正文分工：前端可「每晚」标题下直接挂卡片，避免与 answer_text 清单重复） */
+      accommodation_night_groups?: Array<{
+        night_index: number;
+        check_in: string;
+        check_out: string;
+        anchor_label_zh: string;
+        stay_label_zh: string;
+        has_mcp_sample: boolean;
+        placeholder_zh?: string;
+        cards: Array<Record<string, unknown>>;
+      }>;
+      /**
+       * 行程中的 POI 经 Place 表补办后的卡片数据（与 `timeline` / `orchestrationResult.itinerary` 对齐）。
+       * 优先用 `location_ref.place_id`（数字字符串）命中库内地点；否则按 `location_ref.name` 精确匹配 nameCN/nameEN。
+       */
+      poi_cards?: Array<{
+        place_id: number | null;
+        uuid: string | null;
+        itinerary_item_id: string;
+        day_index: number;
+        date: string;
+        item_type: string;
+        start_window: string;
+        end_window: string;
+        itinerary_name: string;
+        name_cn: string | null;
+        name_en: string | null;
+        display_name: string;
+        category: string | null;
+        rating: number | null;
+        description: string | null;
+        address: string | null;
+        lat: number | null;
+        lng: number | null;
+        tags: string[];
+        matched_from: 'place_id' | 'name_exact' | 'itinerary_only';
+      }>;
+      /** 按天聚合的 POI 卡片（便于 UI：每日一块下方挂卡片） */
+      poi_cards_by_day?: Array<{
+        day_index: number;
+        date: string;
+        cards: Array<Record<string, unknown>>;
+      }>;
+      /**
+       * `suppress_answer_prose`: 不要用长篇逐日叙述抢占版面；`answer_text` 仍为一句简短说明，
+       * 前端可据此收起 Markdown 长文组件，仅保留气泡摘要 + 卡片（与住宿 night_groups 分工一致）。
+       */
+      poi_cards_meta?: {
+        suppress_answer_prose?: boolean;
+      };
+      /** 多日行程「每晚上一间」采样策略说明（中文免责 + 采样晚序号） */
+      hotel_search_meta?: {
+        strategy?: 'single_stay' | 'per_night_sample';
+        total_nights?: number;
+        sampled_nights?: number[];
+        disclaimer_zh?: string;
+        ui_layout_hint_zh?: string;
+        /** 用户话术限定仅某一晚/部分晚检索时为 true */
+        user_limited_night_intent?: boolean;
+      };
+      /** 轻量路径 MCP 传感器审计（天气/酒店等） */
+      live_sensor_audit?: Array<{ tool_id: string; ok: boolean; latency_ms: number; error?: string }>;
+      /** 轻量 DATA_LOOKUP RAG 命中的知识片段：文档名与 chunk/file 引用（与摘录括号《》一致） */
+      data_lookup_rag_citations?: Array<{
+        chunk_id: string;
+        file_id: string;
+        document_title: string;
+        source_file?: string;
+        category: 'practical' | 'risks';
+        credibility_score?: number;
+      }>;
+      /**
+       * 轻量咨询且携带 trip_id：结构化「一键操作」（前端渲染按钮）。
+       * - `route_and_run_message`：点击后用 `payload.message` 作为用户话术再次 POST `/api/agent/route_and_run`。
+       *   **须携带行程**：顶层 `trip_id`（或与 `trip_id` 等价的 `tripId`），或将整个 `payload` 置于请求体的 `suggested_operation_payload` / `payload` 字段（全局 whitelist 会丢弃未声明的裸嵌套字段）。
+       * - `client_navigation`：仅前端路由，使用 `payload.route`（如 timeline）与 `payload.trip_id`。
+       */
+      suggested_operations?: Array<{
+        id: string;
+        label: string;
+        kind: 'route_and_run_message' | 'client_navigation';
+        payload?: Record<string, unknown>;
+      }>;
+      jepa?: JepaPayload;
       orchestrationResult?: {
         state?: OrchestratorState;
         itinerary?: Itinerary;
@@ -924,6 +1474,18 @@ export class RouteAndRunResponseDto {
           requires_confirmation: boolean;
           risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
         }>;
+      };
+      /**
+       * Decision OS：与 orchestration 同一 `itinerary.action_plan` 跑 Action PREVIEW（PhysicalValidator + INTERRUPT_WITH_SUGGESTION）。
+       * 含 `action_previews[].suggested_healing_options` / `healed_action_input`，供决策链 UI 直接渲染「拦截 + 一键修复」。
+       */
+      actionExecutionPreview?: {
+        status: 'OK' | 'FAILED' | 'PARTIAL';
+        message?: string;
+        action_previews?: Array<Record<string, unknown>>;
+        accepted_actions?: Array<Record<string, unknown>>;
+        requires_confirmation_count?: number;
+        high_risk_count?: number;
       };
       /** DSO 旅行本体子状态投影（与 Kernel STATE_UPDATE 对齐；无 Kernel 时由编排 state 推导） */
       travelOntologyState?: DecisionState['travelOntologyState'];
@@ -1054,11 +1616,14 @@ export class RouteAndRunResponseDto {
       decision_metadata?: DecisionMetadataDto;
       /** 展示层：开箱即用的 UI 块（与 decision_metadata 并行，不参与 DPO 逻辑链） */
       ui_display?: DecisionUiDisplayDto;
+      /** Human-centric negotiation payload when trade-offs exceed thresholds */
+      negotiation_payload?: NegotiationPayloadDto;
     };
   };
 
-  @ApiProperty({ 
-    description: '决策解释（决策日志）',
+  @ApiProperty({
+    description:
+      '决策解释（决策日志）。`failure_reason_codes` 与证据包合并去重后输出，详见 docs/api/failure-reason-codes.md。',
     example: {
       decision_log: [
         {
@@ -1069,6 +1634,8 @@ export class RouteAndRunResponseDto {
           policy_id: 'FACTS_FIRST',
         },
       ],
+      failure_reason_codes: ['MISSING_DESTINATION', 'TIME_GAP'],
+      failure_reason_labels_zh: ['目的地未确定', '时间窗或日程空隙不足'],
       simplified_explanation: {
         summary: '行程已通过，进行了3项关键检查',
         key_decisions: [
@@ -1081,6 +1648,10 @@ export class RouteAndRunResponseDto {
   })
   explain!: {
     decision_log: DecisionLogEntry[];
+    /** 与 `result.payload.evidence_bundle.failure_reason_codes` 对齐（并含 intake HARD gaps 推导码）；详见 docs/api/failure-reason-codes.md */
+    failure_reason_codes?: string[];
+    /** 与 `failure_reason_codes` 同序中文标签（调试 UI 可直接展示） */
+    failure_reason_labels_zh?: string[];
     simplified_explanation?: SimplifiedExplanation; // 🆕 简化版解释（减少认知负荷）
     ai_capability_display?: AICapabilityDisplay; // 🆕 AI能力展示（信任建立机制）
     /** OPTIMIZE/CGUS 输出（用于直接展示备选方案与推荐理由） */
@@ -1120,6 +1691,9 @@ export class RouteAndRunResponseDto {
       harness_shadow_summary?: string;
       /** Durable 恢复：准入通过的 Harness 步骤 */
       resume_admission?: { step: string; passed?: boolean };
+      /** PRD I3：DSO `harnessRuntime.replan_*`（与 observability / worldStateSummary 对齐） */
+      replan_previous_plan_version?: number;
+      replan_previous_world_snapshot_hash?: string;
     };
   };
 
@@ -1149,6 +1723,17 @@ export class RouteAndRunResponseDto {
     router_ms: number;
     system_mode: 'SYSTEM1' | 'SYSTEM2' | 'REDIRECT';
     tool_calls: number;
+    /**
+     * Agentic Tool Loop：本轮 MCP 工具真实调用次数（与 SYSTEM1 固定 1 步对照实验）。
+     * 非 agentic 路径通常省略。
+     */
+    tool_call_count?: number;
+    /** Agentic：chat/completions 轮数（含最终无 tool 的一轮） */
+    agentic_llm_rounds?: number;
+    agentic_tokens_prompt?: number;
+    agentic_tokens_completion?: number;
+    /** Agentic 快路径（FEATURE_AGENTIC_TOOL_LOOP） */
+    agentic_tool_loop?: boolean;
     browser_steps: number;
     tokens_est: number;
     cost_est_usd: number;
@@ -1186,10 +1771,49 @@ export class RouteAndRunResponseDto {
     durable_checkpoint_loaded?: boolean;
     /** v1.0：断点关联的 `trip_runs.id`（新建或续跑） */
     durable_trip_run_id?: string | null;
+    /** PRD I3：请求声明的上一版 `plan_version`（replan 继承；与 `options.previous_plan_version` / 编排 metadata 对齐） */
+    replan_previous_plan_version?: number;
+    /** PRD I3：上一版世界快照哈希前缀（最多 64 字符，便于日志/网关聚合） */
+    replan_previous_world_snapshot_hash_preview?: string;
+    /** PRD I3：本轮编排 `OrchestratorState.plan_version` */
+    replan_new_plan_version?: number;
+    /** PRD I5：编排失败结构化分类（与 `OrchestrationResult.result.orchestrator_robustness` 对齐） */
+    orchestration_failure?: {
+      domain: string;
+      code: string;
+      source_layer: string;
+      retryable_hint?: boolean;
+      orchestrator_step?: string;
+      message_preview?: string;
+    };
+    /** Option B+：`routeAndRun` 稳定层指数退避（每次 sleep 前写入一条，便于 API / 刷新后会话回放） */
+    recovery_trace?: Array<{
+      attempt: number;
+      backoff_ms: number;
+      failure_code?: string;
+      /** 相对本次 route_and_run 起点的 wall-clock 耗时（便于区分「退避慢」vs「推理慢」） */
+      elapsed_ms?: number;
+      recorded_at?: string;
+    }>;
+    /** 本轮请求内实际完成的退避尝试次数（成功路径为最后一次成功的 attempt；失败见 recovery_trace.length） */
+    recovery_retry_attempts?: number;
     orchestration_mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
     received_route_direction_id?: string;
     mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
+    /** 推荐：RAG 引用列表（与 `rag_sources` / `sources` 三选一或并列回填同内容） */
+    reference_sources?: ReferenceSourceDto[];
+    /** 与 `reference_sources` 同义 */
+    rag_sources?: ReferenceSourceDto[];
+    /** 与 `reference_sources` 同义 */
+    sources?: ReferenceSourceDto[];
     trace?: {
+      /** 与 options.intent_mode、最终 taskType 对齐的决策摘要 */
+      route_decision?: {
+        task_type: string;
+        route_policy: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
+        intent_mode_requested: string;
+        intent_mode_resolved: 'TRIP_PLANNING' | 'DATA_LOOKUP' | 'GENERIC_QA';
+      };
       orchestration: {
         // 实际执行的路径（强制，不可变）
         resolved: {
@@ -1235,6 +1859,7 @@ export class RouteAndRunResponseDto {
       steps?: Array<{
         step_id: string;
         step_name: string;
+        step_display_zh?: string;
         skill_name?: string;
         action_name?: string;
         success: boolean;
