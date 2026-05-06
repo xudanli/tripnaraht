@@ -12,6 +12,7 @@ import type {
   PhysicalViolationItem,
 } from './physical-validator.types';
 import { ICELAND_F_ROAD_POLICY_SOURCE } from './iceland-f-road-policy.util';
+import { getStaticPhysicalPoliciesEnvelope, type StaticPhysicalPoliciesEnvelope } from './physical-validator.static-policies';
 import { computeSegmentFeasibilityViolations, type SegmentFeasibilityPoiLike } from './segment-feasibility.util';
 
 function userIntentFromActionInput(ai: Record<string, unknown>): DecisionState['userIntent'] | undefined {
@@ -88,6 +89,11 @@ export class PhysicalValidatorService {
       rule_bundle_id: result.rule_bundle_id,
       violations: result.violations,
     });
+  }
+
+  /** Admin / Policy Lab (read-only): built-in static gates documented before Road.is rows exist. */
+  getStaticPolicies(): StaticPhysicalPoliciesEnvelope {
+    return getStaticPhysicalPoliciesEnvelope();
   }
 
   /**

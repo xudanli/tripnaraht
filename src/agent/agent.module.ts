@@ -272,6 +272,7 @@ import { PhysicalValidatorService } from '../domain/ontology/validator/physical-
     AgentActionLogService,
     HardTruthRuleResolverService,
     ActionGraphSagaCompilerService,
+    PhysicalValidatorService,
   ],
 })
 export class AgentModule {
