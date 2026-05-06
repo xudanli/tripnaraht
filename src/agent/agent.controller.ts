@@ -87,10 +87,59 @@ export class AgentController {
         requires_confirmation_count: preview.requires_confirmation_count,
         high_risk_count: preview.high_risk_count,
       };
+      this.appendPhysicalHealingNarrative(response);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.warn(`[route_and_run] actionExecutionPreview failed: ${msg}`);
     }
+  }
+
+  /**
+   * 将物理门 + 建议型自愈摘要追加到 `answer_text`，使对话主文案与结构化 `actionExecutionPreview` 对齐。
+   */
+  private appendPhysicalHealingNarrative(response: RouteAndRunResponseDto): void {
+    const payload = response.result?.payload as Record<string, unknown> | undefined;
+    const aep = payload?.actionExecutionPreview as Record<string, unknown> | undefined;
+    const previews = aep?.action_previews;
+    if (!Array.isArray(previews) || previews.length === 0) return;
+
+    const blocked = previews.filter((p: unknown) => (p as { status?: string })?.status === 'blocked');
+    if (blocked.length === 0) return;
+
+    const withSuggestion = blocked.filter((p: unknown) => {
+      const x = p as {
+        physical_validator_interrupt_mode?: string;
+        suggested_healing_options?: unknown[];
+      };
+      return (
+        x.physical_validator_interrupt_mode === 'INTERRUPT_WITH_SUGGESTION' &&
+        Array.isArray(x.suggested_healing_options) &&
+        x.suggested_healing_options.length > 0
+      );
+    });
+
+    const lines: string[] = [];
+    if (withSuggestion.length > 0) {
+      lines.push('');
+      lines.push(
+        '**【物理门 · 建议型修复】** 当前草案在路段可通行性上未通过复核；系统已生成可一键重预览的调整方案（结构化字段见 `result.payload.actionExecutionPreview`）：',
+      );
+      for (const p of withSuggestion.slice(0, 3)) {
+        const opts = (p as { suggested_healing_options?: Array<{ summary?: string }> }).suggested_healing_options ?? [];
+        for (const o of opts.slice(0, 2)) {
+          if (o?.summary && String(o.summary).trim()) lines.push(`- ${String(o.summary).trim()}`);
+        }
+      }
+      lines.push('采纳方式：选择界面上的修复项，或使用返回的 `healed_action_input` 再次发起预览（契约：`PREVIEW_WITH_HEALED_INPUT_V1`）。');
+    } else {
+      lines.push('');
+      lines.push(
+        '**【物理门】** 当前草案存在路段或时空约束拦截；详见 `result.payload.actionExecutionPreview.action_previews` 中的违规项并调整行程。',
+      );
+    }
+
+    const base = String(response.result?.answer_text ?? '').trimEnd();
+    response.result.answer_text = base ? `${base}\n${lines.join('\n')}` : lines.join('\n').trim();
   }
 
   @Public()

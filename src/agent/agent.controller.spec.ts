@@ -116,6 +116,8 @@ describe('AgentController', () => {
     expect(response.result.payload.actionExecutionPreview?.action_previews?.[0]).toMatchObject({
       physical_validator_interrupt_mode: 'INTERRUPT_WITH_SUGGESTION',
     });
+    expect(response.result.answer_text).toContain('【物理门 · 建议型修复】');
+    expect(response.result.answer_text).toContain('一键重预览');
   });
 
   it('fills travelOntologyState from orchestration state when service omitted it', async () => {
