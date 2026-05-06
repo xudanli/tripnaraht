@@ -24,7 +24,12 @@ export const ACTION_REJECT_REASON_CODES = {
   ACTION_PRECONDITION_FAILED: 'ACTION_PRECONDITION_FAILED',
   ACTION_PREVIEW_SIGNATURE_MISSING: 'ACTION_PREVIEW_SIGNATURE_MISSING',
   ACTION_PREVIEW_SIGNATURE_MISMATCH: 'ACTION_PREVIEW_SIGNATURE_MISMATCH',
+  RESOURCE_STALE_RECOMPUTE: 'RESOURCE_STALE_RECOMPUTE',
+  MISSING_IDEMPOTENCY_KEY: 'MISSING_IDEMPOTENCY_KEY',
+  MISSING_REQUIRED_EVIDENCE: 'MISSING_REQUIRED_EVIDENCE',
   BOOK_ADD_MISSING_REQUIRED_FIELDS: 'BOOK_ADD_MISSING_REQUIRED_FIELDS',
+  PHYSICAL_VALIDATOR_BLOCKED: 'PHYSICAL_VALIDATOR_BLOCKED',
+  PHYSICAL_VALIDATOR_VERSION_MISMATCH: 'PHYSICAL_VALIDATOR_VERSION_MISMATCH',
 } as const;
 
 export type ActionRejectReasonCode =
@@ -51,5 +56,14 @@ export const ACTION_REJECT_REASON_MESSAGES: Record<ActionRejectReasonCode, strin
     'Missing preview context_signature. Please call preview again and re-submit commit with the signature.',
   ACTION_PREVIEW_SIGNATURE_MISMATCH:
     'Preview is stale (signature mismatch). Please re-run preview to re-evaluate consequences before commit.',
+  RESOURCE_STALE_RECOMPUTE:
+    'Resource snapshot changed since preview (price/availability/budget). Please re-run preview before commit.',
+  MISSING_IDEMPOTENCY_KEY:
+    'Missing idempotency_key for financial or booking side effect. Provide idempotency_key and retry commit.',
+  MISSING_REQUIRED_EVIDENCE:
+    'Required evidence is missing for financial side effect. Attach EvidenceCard-compliant evidence and retry.',
   BOOK_ADD_MISSING_REQUIRED_FIELDS: 'BOOK add action requires placeId, tripDayId, startTime, and endTime.',
+  PHYSICAL_VALIDATOR_BLOCKED: 'Physical domain validation blocked this action (road closure, feasibility, or ontology conflict).',
+  PHYSICAL_VALIDATOR_VERSION_MISMATCH:
+    'Physical validator version mismatch with preview. Please call preview again and resubmit with the current validator version.',
 };

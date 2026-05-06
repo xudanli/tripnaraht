@@ -6,6 +6,7 @@ import {
   ActionExecutionItemDto,
   ActionPreviewRequestDto,
   ActionRollbackRequestDto,
+  ContextSignatureV12Dto,
 } from '../dto/action-execution.dto';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import {
@@ -18,16 +19,37 @@ import type { Action } from '../interfaces/action.interface';
 import { ActionRegistryService } from './action-registry.service';
 import { AgentEventType, EventTelemetryService } from './event-telemetry.service';
 import { SideEffectRegistryService } from './side-effect-registry.service';
+import { SideEffectApplyFailedError } from './side-effect-registry.service';
 import { FinancialHoldSideEffect } from '../actions/side-effects/financial-hold.side-effect';
+import { createResourceLockSideEffect } from '../actions/side-effects/resource-lock.side-effect';
 import { SideEffectParamResolverService } from './side-effect-param-resolver.service';
 import { AgentActionLogService } from './agent-action-log.service';
 import { AGENT_ACTION_LOG_STATUS } from '../constants/agent-action-log.constants';
 import { DecisionContractV1, sha256Signature, type PhysicsFactV1 } from '../contracts/decision-contract.types';
 import { DecisionContractCapturerService } from './decision-contract-capturer.service';
 import type { AgentService } from './agent.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { physicalGateFingerprint } from '../../domain/ontology/validator/physical-validator.fingerprint';
+import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
+import { toPhysicalValidationSignable, type PhysicalEvaluationResult } from '../../domain/ontology/validator/physical-validator.types';
+
+class MissingRequiredEvidenceError extends Error {
+  constructor(
+    public readonly context: {
+      required_action_type: 'FINANCIAL_HOLD';
+      required_evidence_type: 'EvidenceCard';
+      side_effect_kind: 'FINANCIAL_HOLD';
+    },
+  ) {
+    super(ACTION_REJECT_REASON_CODES.MISSING_REQUIRED_EVIDENCE);
+    this.name = 'MissingRequiredEvidenceError';
+  }
+}
 
 @Injectable()
 export class ActionExecutionService {
+  private static readonly EVIDENCE_REQUIREMENT_ACTION = '__admin__.evidence_requirement';
+  private readonly contextSignatureTtlMs = 10 * 60 * 1000;
   private readonly logger = new Logger(ActionExecutionService.name);
   private readonly actionNameMapping: Record<string, string> = {
     'BOOK:FLIGHT': 'trip.apply_user_edit',
@@ -65,9 +87,12 @@ export class ActionExecutionService {
     @Optional() private readonly agentActionLog?: AgentActionLogService,
     @Optional() private readonly contractCapturer?: DecisionContractCapturerService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly physicalValidator?: PhysicalValidatorService,
   ) {
     // v1 bootstrap: register built-in side effects when registry is available.
     this.sideEffectRegistry?.register(FinancialHoldSideEffect);
+    this.sideEffectRegistry?.register(createResourceLockSideEffect(this.prisma));
   }
 
   private getAgentService(): AgentService | null {
@@ -118,11 +143,6 @@ export class ActionExecutionService {
         ? { emergency_constraints: params.emergency_constraints }
         : {}),
     });
-    const env_hash = sha256Signature({
-      // Use preview shadow delta as env surrogate for resource state snapshot.
-      shadow_delta: params.shadowDelta ?? null,
-      wallet: action_input && typeof (action_input as any).wallet === 'object' ? (action_input as any).wallet : null,
-    });
     const risk_profile_hash =
       action_input && (action_input as any).wallet && typeof (action_input as any).wallet === 'object'
         ? sha256Signature({ wallet: (action_input as any).wallet })
@@ -158,6 +178,20 @@ export class ActionExecutionService {
     const captured = this.contractCapturer
       ? await this.contractCapturer.captureFeasibilitySnapshot({ tripId: params.tripId, lookbackMinutes: 90, take: 80 })
       : null;
+
+    const extracted_environment_hash = String(
+      (captured?.facts ?? [])
+        .map((f) => (f as any)?.evidence?.environment_hash)
+        .find((v) => typeof v === 'string' && v.trim()) ?? '',
+    ).trim() || null;
+
+    const env_hash = sha256Signature({
+      // Use preview shadow delta as env surrogate for resource state snapshot.
+      shadow_delta: params.shadowDelta ?? null,
+      wallet: action_input && typeof (action_input as any).wallet === 'object' ? (action_input as any).wallet : null,
+      // Spec: include environmentHash to prevent Preview→Commit drift due to weather/solar updates.
+      environment_hash: extracted_environment_hash,
+    });
 
     return {
       version: 'v1',
@@ -207,39 +241,90 @@ export class ActionExecutionService {
     const action_previews =
       registry && actionsWithPolicy.length > 0
         ? await Promise.all(actionsWithPolicy.map(async (a) => {
+            const physical = await this.runPhysicalGate(request.trip_id, a.action_input as Record<string, unknown>);
+            const gateFp = this.computePhysicalGateFingerprint(physical);
+            const physicalSignable = toPhysicalValidationSignable(physical);
+            const physicalOut = { ...physicalSignable, evaluated_at: physical.evaluated_at };
             const effectiveVerb = this.normalizeVerbForMapping(a.action_type);
             const actionName = a.action_name || this.mapActionName(effectiveVerb, a.target_type);
-            if (!actionName || !registry.has(actionName)) {
-              const context_signature = sha256Signature({
+
+            if (physical.blocking) {
+              const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+              const findings = this.physicalPreconditionsFromViolations(physical);
+              const assessmentBlocked = { status: 'blocked' as const, findings, shadow_delta: null };
+              const previewPayload = {
                 action_id: a.action_id,
                 action_name: actionName ?? null,
                 action_type: a.action_type,
                 target_type: a.target_type,
                 target_ref: a.target_ref,
                 action_input: a.action_input ?? null,
-                assessment: {
-                  status: 'blocked',
-                  findings: [
-                    {
-                      code: 'UNKNOWN',
-                      severity: 'BLOCK',
-                      message: actionName ? `Action not registered: ${actionName}` : 'Missing action_name mapping',
-                    },
-                  ],
-                  shadow_delta: null,
-                },
+                physical_validation: physicalSignable,
+                assessment: assessmentBlocked,
+              };
+              const context_signature = sha256Signature(previewPayload);
+              const context_signature_v2 = this.buildContextSignatureV2({
+                action: a as ActionCommitRequestDto['actions'][number],
+                actionName: actionName ?? null,
+                assessment: assessmentBlocked,
+                side_effects: [],
+                resource_snapshot: resourceSnapshot,
+                physicalGateFingerprint: gateFp,
               });
               return {
                 action_id: a.action_id,
                 status: 'blocked' as const,
-                preconditions: [
-                  {
-                    code: 'UNKNOWN',
-                    severity: 'BLOCK' as const,
-                    message: actionName ? `Action not registered: ${actionName}` : 'Missing action_name mapping',
-                  },
-                ],
+                preconditions: findings,
+                physical_validation: physicalOut,
+                ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
                 context_signature,
+                context_signature_v2,
+              };
+            }
+
+            if (!actionName || !registry.has(actionName)) {
+              const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+              const physicalFindings = this.physicalPreconditionsFromViolations(physical);
+              const unknownFinding = {
+                code: 'UNKNOWN',
+                severity: 'BLOCK' as const,
+                message: actionName ? `Action not registered: ${actionName}` : 'Missing action_name mapping',
+              };
+              const previewPayload = {
+                action_id: a.action_id,
+                action_name: actionName ?? null,
+                action_type: a.action_type,
+                target_type: a.target_type,
+                target_ref: a.target_ref,
+                action_input: a.action_input ?? null,
+                physical_validation: physicalSignable,
+                assessment: {
+                  status: 'blocked',
+                  findings: [...physicalFindings, unknownFinding],
+                  shadow_delta: null,
+                },
+              };
+              const context_signature = sha256Signature(previewPayload);
+              const context_signature_v2 = this.buildContextSignatureV2({
+                action: a as ActionCommitRequestDto['actions'][number],
+                actionName: actionName ?? null,
+                assessment: {
+                  status: 'blocked',
+                  findings: [...physicalFindings, unknownFinding],
+                  shadow_delta: null,
+                },
+                side_effects: [],
+                resource_snapshot: resourceSnapshot,
+                physicalGateFingerprint: gateFp,
+              });
+              return {
+                action_id: a.action_id,
+                status: 'blocked' as const,
+                preconditions: previewPayload.assessment.findings,
+                physical_validation: physicalOut,
+                ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
+                context_signature,
+                context_signature_v2,
               };
             }
             const assessment = registry.checkPreconditions(
@@ -252,6 +337,13 @@ export class ActionExecutionService {
               },
               a.action_input,
             );
+            const physicalFindings = this.physicalPreconditionsFromViolations(physical);
+            const mergedFindings = [...physicalFindings, ...(assessment.findings ?? [])];
+            const mergedAssessment = {
+              status: assessment.status,
+              findings: mergedFindings,
+              shadow_delta: assessment.shadow_delta ?? null,
+            };
             const actionDef = registry.get(actionName);
             const sideEffectConfigs = this.buildSideEffectConfigs(actionName, actionDef);
             const side_effects = this.sideEffectRegistry && sideEffectConfigs.length > 0
@@ -277,45 +369,81 @@ export class ActionExecutionService {
                   sideEffectConfigs,
                 )
               : [];
-            const context_signature = sha256Signature({
+            const resourceSnapshot = await this.buildResourceSnapshotForSignature(a as ActionCommitRequestDto['actions'][number]);
+            const previewPayload = {
               action_id: a.action_id,
               action_name: actionName,
               action_type: a.action_type,
               target_type: a.target_type,
               target_ref: a.target_ref,
               action_input: a.action_input ?? null,
+              physical_validation: physicalSignable,
               ...(side_effects.length ? { side_effects } : {}),
               assessment: {
-                status: assessment.status,
-                findings: assessment.findings ?? [],
-                shadow_delta: assessment.shadow_delta ?? null,
+                status: mergedAssessment.status,
+                findings: mergedAssessment.findings,
+                shadow_delta: mergedAssessment.shadow_delta,
               },
+            };
+            const context_signature = sha256Signature(previewPayload);
+            const context_signature_v2 = this.buildContextSignatureV2({
+              action: a as ActionCommitRequestDto['actions'][number],
+              actionName,
+              assessment: mergedAssessment,
+              side_effects,
+              resource_snapshot: resourceSnapshot,
+              physicalGateFingerprint: gateFp,
             });
             return {
               action_id: a.action_id,
-              status: assessment.status,
-              preconditions: assessment.findings,
-              ...(assessment.shadow_delta ? { shadow_delta: assessment.shadow_delta } : {}),
+              status: mergedAssessment.status,
+              preconditions: mergedAssessment.findings,
+              physical_validation: physicalOut,
+              ...(mergedAssessment.shadow_delta ? { shadow_delta: mergedAssessment.shadow_delta } : {}),
               ...(side_effects.length ? { side_effects } : {}),
+              ...(resourceSnapshot ? { resource_snapshot: resourceSnapshot } : {}),
               context_signature,
+              context_signature_v2,
             };
           }))
         : undefined;
     const signatureById = new Map(
       (action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), String((p as any).context_signature ?? '')]),
     );
+    const signatureV2ById = new Map(
+      (action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), (p as any).context_signature_v2 ?? undefined]),
+    );
     const shadowDeltaById = new Map((action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), (p as any).shadow_delta ?? undefined]));
     const sideEffectsById = new Map((action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), (p as any).side_effects ?? undefined]));
-    const accepted_actions = actionsWithPolicy.map((a) => ({
-      ...a,
-      ...(signatureById.get(String(a.action_id ?? '')) ? { context_signature: signatureById.get(String(a.action_id ?? '')) } : {}),
-      ...(shadowDeltaById.get(String(a.action_id ?? ''))
-        ? { preview_snapshot: { shadow_delta: shadowDeltaById.get(String(a.action_id ?? '')) } }
-        : {}),
-      ...(sideEffectsById.get(String(a.action_id ?? ''))
-        ? { preview_snapshot: { ...(shadowDeltaById.get(String(a.action_id ?? '')) ? { shadow_delta: shadowDeltaById.get(String(a.action_id ?? '')) } : {}), side_effects: sideEffectsById.get(String(a.action_id ?? '')) } }
-        : {}),
-    }));
+    const resourceSnapshotById = new Map(
+      (action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), (p as any).resource_snapshot ?? undefined]),
+    );
+    const physicalSnapById = new Map(
+      (action_previews ?? []).map((p) => [String((p as any).action_id ?? ''), (p as any).physical_validation]),
+    );
+    const accepted_actions = actionsWithPolicy.map((a) => {
+      const pid = String(a.action_id ?? '');
+      const physSnap = physicalSnapById.get(pid);
+      const preview_snapshot = {
+        ...(shadowDeltaById.get(pid) ? { shadow_delta: shadowDeltaById.get(pid) } : {}),
+        ...(sideEffectsById.get(pid) ? { side_effects: sideEffectsById.get(pid) } : {}),
+        ...(resourceSnapshotById.get(pid) ? { resource_snapshot: resourceSnapshotById.get(pid) } : {}),
+        ...(physSnap ? { physical_validation: physSnap } : {}),
+      };
+      const hasSnap = Object.keys(preview_snapshot).length > 0;
+      return {
+        ...a,
+        ...(signatureById.get(pid) ? { context_signature: signatureById.get(pid) } : {}),
+        ...(signatureV2ById.get(pid) ? { context_signature_v2: signatureV2ById.get(pid) } : {}),
+        ...(physSnap
+          ? {
+              physical_validator_version: physSnap.validator_version,
+              physical_rule_bundle_id: physSnap.rule_bundle_id,
+            }
+          : {}),
+        ...(hasSnap ? { preview_snapshot } : {}),
+      };
+    });
     const response: ActionExecutionResponseDto = {
       status: 'OK',
       message: `Action preview generated with ${mode} confirmation policy.`,
@@ -382,6 +510,7 @@ export class ActionExecutionService {
     const acceptedActions: ActionCommitRequestDto['actions'] = [];
     const blockedActions: ActionCommitRequestDto['actions'] = [];
     const rejectedReasonCodes = new Set<string>();
+    const requiredEvidenceActionTypes = await this.loadRequiredEvidenceActionTypes();
     const healingDiagnoses: any[] = [];
     const healingRecomputedPreviews: any[] = [];
     const healingPhysicalDiagnoses: any[] = [];
@@ -418,6 +547,58 @@ export class ActionExecutionService {
         continue;
       }
 
+      const physicalAtCommit = await this.runPhysicalGate(request.trip_id, action.action_input as Record<string, unknown>);
+      const physicalSnapCommit = toPhysicalValidationSignable(physicalAtCommit);
+      const echoedPv =
+        String((action as any).physical_validator_version ?? '').trim() ||
+        String((action as any).preview_snapshot?.physical_validation?.validator_version ?? '').trim();
+      if (this.requiresPhysicalVersionEcho(action.action_input, physicalAtCommit)) {
+        if (echoedPv !== PhysicalValidatorService.VALIDATOR_VERSION) {
+          const expectedVersion = PhysicalValidatorService.VALIDATOR_VERSION;
+          const receivedVersion = echoedPv || null;
+          this.logger.warn(
+            `[ActionExecution] PHYSICAL_VALIDATOR_VERSION_MISMATCH action_id=${action.action_id} ` +
+              `expected_version=${expectedVersion} received_version=${receivedVersion ?? '(missing)'}`,
+          );
+          this.eventTelemetry?.recordEvent({
+            type: AgentEventType.SYSTEM2_STEP,
+            request_id: request.request_id,
+            data: {
+              action_api: 'commit',
+              system_action: 'PHYSICAL_VALIDATOR_VERSION_MISMATCH',
+              action_id: action.action_id,
+              expected_version: expectedVersion,
+              received_version: receivedVersion,
+              rule_bundle_id: PhysicalValidatorService.RULE_BUNDLE_ID,
+            },
+          });
+          blockedActions.push(
+            this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_VERSION_MISMATCH, {
+              rejected_message:
+                `${ACTION_REJECT_REASON_MESSAGES.PHYSICAL_VALIDATOR_VERSION_MISMATCH} ` +
+                `(expected ${expectedVersion}, got ${receivedVersion ?? 'missing'})`,
+              physical_validator_audit: {
+                expected_version: expectedVersion,
+                received_version: receivedVersion,
+                rule_bundle_id: PhysicalValidatorService.RULE_BUNDLE_ID,
+              },
+            } as any),
+          );
+          rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_VERSION_MISMATCH);
+          continue;
+        }
+      }
+      if (physicalAtCommit.blocking) {
+        blockedActions.push(
+          this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_BLOCKED, {
+            rejected_message: ACTION_REJECT_REASON_MESSAGES.PHYSICAL_VALIDATOR_BLOCKED,
+            physical_violations: physicalAtCommit.violations,
+          } as any),
+        );
+        rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_BLOCKED);
+        continue;
+      }
+
       const pre = this.actionRegistry.checkPreconditions(actionName, {
         trip: { trip_id: request.trip_id },
         request_id: request.request_id,
@@ -426,8 +607,19 @@ export class ActionExecutionService {
           ? { wallet: (action.action_input as any).wallet }
           : {}),
       }, action.action_input);
+      const physicalFindingsCommit = this.physicalPreconditionsFromViolations(physicalAtCommit);
+      const mergedAssessmentCommit = {
+        status: pre.status,
+        findings: [...physicalFindingsCommit, ...(pre.findings ?? [])],
+        shadow_delta: pre.shadow_delta ?? null,
+      };
       const actionDef = this.actionRegistry.get(actionName);
       const sideEffectConfigs = this.buildSideEffectConfigs(actionName, actionDef);
+      if (this.requiresStrictIdempotency(action, sideEffectConfigs) && !String(request.idempotency_key ?? '').trim()) {
+        blockedActions.push(this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.MISSING_IDEMPOTENCY_KEY));
+        rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.MISSING_IDEMPOTENCY_KEY);
+        continue;
+      }
       const side_effects_recomputed = this.sideEffectRegistry && sideEffectConfigs.length > 0
         ? await this.sideEffectRegistry.previewMany(
             {
@@ -451,28 +643,47 @@ export class ActionExecutionService {
             sideEffectConfigs,
           )
         : [];
-      const recomputedSig = sha256Signature({
+      const resourceSnapshot = await this.buildResourceSnapshotForSignature(action);
+      const recomputePayload = {
         action_id: action.action_id,
         action_name: actionName,
         action_type: action.action_type,
         target_type: action.target_type,
         target_ref: action.target_ref,
         action_input: action.action_input ?? null,
+        physical_validation: physicalSnapCommit,
         ...(side_effects_recomputed.length ? { side_effects: side_effects_recomputed } : {}),
         assessment: {
-          status: pre.status,
-          findings: pre.findings ?? [],
-          shadow_delta: pre.shadow_delta ?? null,
+          status: mergedAssessmentCommit.status,
+          findings: mergedAssessmentCommit.findings,
+          shadow_delta: mergedAssessmentCommit.shadow_delta,
         },
+      };
+      const recomputedSig = sha256Signature(recomputePayload);
+      const recomputedSigV2 = this.buildContextSignatureV2({
+        action,
+        actionName,
+        assessment: mergedAssessmentCommit,
+        side_effects: side_effects_recomputed,
+        resource_snapshot: resourceSnapshot,
+        physicalGateFingerprint: this.computePhysicalGateFingerprint(physicalAtCommit),
       });
-      if (String((action as any).context_signature) !== recomputedSig) {
+      const providedSigV2 = (action as any)?.context_signature_v2 as ContextSignatureV12Dto | undefined;
+      const staleDimensions = this.findStaleDimensions(providedSigV2, recomputedSigV2);
+      const v2Mismatch = staleDimensions.length > 0;
+      const v1Mismatch = String((action as any).context_signature) !== recomputedSig;
+      if (v1Mismatch || v2Mismatch) {
         const originalShadowDelta = (action as any)?.preview_snapshot?.shadow_delta;
         const originalSideEffects = (action as any)?.preview_snapshot?.side_effects;
         const origAfter = originalShadowDelta?.resources?.budget?.after;
         const origCur = originalShadowDelta?.resources?.budget?.currency;
         const budgetAfter = (pre as any)?.shadow_delta?.resources?.budget?.after;
         const currency = (pre as any)?.shadow_delta?.resources?.budget?.currency;
-        const baseMsg = ACTION_REJECT_REASON_MESSAGES[ACTION_REJECT_REASON_CODES.ACTION_PREVIEW_SIGNATURE_MISMATCH];
+        const resourceDrift = staleDimensions.includes('resourceHash');
+        const reasonCode = resourceDrift
+          ? ACTION_REJECT_REASON_CODES.RESOURCE_STALE_RECOMPUTE
+          : ACTION_REJECT_REASON_CODES.ACTION_PREVIEW_SIGNATURE_MISMATCH;
+        const baseMsg = ACTION_REJECT_REASON_MESSAGES[reasonCode];
         const enrichedMsg = (() => {
           const hasCur = typeof budgetAfter === 'number' && Number.isFinite(budgetAfter) && currency;
           const hasOrig = typeof origAfter === 'number' && Number.isFinite(origAfter) && origCur;
@@ -488,13 +699,21 @@ export class ActionExecutionService {
           return baseMsg;
         })();
         blockedActions.push(
-          this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.ACTION_PREVIEW_SIGNATURE_MISMATCH, {
+          this.withRejectedReason(action, reasonCode, {
             rejected_message: enrichedMsg,
             stale_shadow_context: {
               provided_signature: String((action as any).context_signature ?? ''),
               recomputed_signature: recomputedSig,
+              ...(providedSigV2 ? { provided_signature_v2: providedSigV2 } : {}),
+              recomputed_signature_v2: recomputedSigV2,
+              ...(staleDimensions.length ? { stale_dimensions: staleDimensions } : {}),
+              ...((action as any)?.preview_snapshot?.resource_snapshot
+                ? { original_resource_snapshot: (action as any).preview_snapshot.resource_snapshot }
+                : {}),
+              ...(resourceSnapshot ? { recomputed_resource_snapshot: resourceSnapshot } : {}),
               ...(originalShadowDelta ? { original_shadow_delta: originalShadowDelta } : {}),
               ...(originalSideEffects ? { original_side_effects: originalSideEffects } : {}),
+              physical_violations: physicalAtCommit.violations,
               recomputed_assessment: {
                 status: pre.status,
                 preconditions: (pre.findings ?? []) as any,
@@ -514,13 +733,16 @@ export class ActionExecutionService {
             action_name: actionName,
             provided_signature: String((action as any).context_signature ?? ''),
             recomputed_signature: recomputedSig,
+            provided_signature_v2: providedSigV2 ?? null,
+            recomputed_signature_v2: recomputedSigV2,
+            stale_dimensions: staleDimensions,
             original_shadow_delta: originalShadowDelta ?? null,
             recomputed_shadow_delta: pre.shadow_delta ?? null,
             original_side_effects: originalSideEffects ?? null,
             recomputed_side_effects: side_effects_recomputed ?? null,
           },
         });
-        rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.ACTION_PREVIEW_SIGNATURE_MISMATCH);
+        rejectedReasonCodes.add(reasonCode);
         continue;
       }
       if (pre.status === 'blocked') {
@@ -534,13 +756,13 @@ export class ActionExecutionService {
       const sagaRealizedState: Record<string, unknown> = {};
       try {
         const registered = this.actionRegistry.get(actionName);
-        const builtInput = this.buildActionInput(actionName, action, request.trip_id, effectiveVerb);
-        if (builtInput.rejectReasonCode) {
-          blockedActions.push(this.withRejectedReason(action, builtInput.rejectReasonCode));
-          rejectedReasonCodes.add(builtInput.rejectReasonCode);
-          continue;
-        }
-        const actionInput = builtInput.input;
+      const builtInput = this.buildActionInput(actionName, action, request.trip_id, effectiveVerb);
+      if (builtInput.rejectReasonCode) {
+        blockedActions.push(this.withRejectedReason(action, builtInput.rejectReasonCode));
+        rejectedReasonCodes.add(builtInput.rejectReasonCode);
+        continue;
+      }
+      const actionInput = builtInput.input;
 
         const decision_contract = await this.buildDecisionContractV1({
           tripId: request.trip_id,
@@ -602,6 +824,22 @@ export class ActionExecutionService {
               },
               sideEffectConfigs,
             );
+            if (requiredEvidenceActionTypes.has('FINANCIAL_HOLD') && this.hasFinancialSideEffectWithoutEvidence(applyResults)) {
+              const evidenceError = new MissingRequiredEvidenceError({
+                required_action_type: 'FINANCIAL_HOLD',
+                required_evidence_type: 'EvidenceCard',
+                side_effect_kind: 'FINANCIAL_HOLD',
+              });
+              await this.agentActionLog?.mergePayload(sagaLogId, {
+                evidence_requirement_context: evidenceError.context,
+              });
+              await this.agentActionLog?.updateStatus(
+                sagaLogId,
+                AGENT_ACTION_LOG_STATUS.FAILED,
+                evidenceError.message,
+              );
+              throw evidenceError;
+            }
 
             // Realized settlement (best-effort): capture applied hold tokens from side effect state_patch.
             const realized_holds: Array<Record<string, unknown>> = [];
@@ -1099,12 +1337,34 @@ export class ActionExecutionService {
         }
       } catch (error: any) {
         const errMsg = error?.message ?? String(error);
+        if (sagaLogId && error instanceof SideEffectApplyFailedError) {
+          sagaRealizedState.side_effects_ledger = error.side_effects_ledger;
+          const maxRetryCount = (error.side_effects_ledger ?? []).reduce((acc, entry) => {
+            const retryCount = Number((entry as any)?.retry_count ?? 0);
+            return Number.isFinite(retryCount) ? Math.max(acc, Math.floor(retryCount)) : acc;
+          }, 0);
+          sagaRealizedState.max_retry_count = maxRetryCount;
+          await this.agentActionLog?.mergePayload(sagaLogId, {
+            realized_state: { ...sagaRealizedState },
+          });
+        }
         await this.agentActionLog?.updateStatus(sagaLogId, AGENT_ACTION_LOG_STATUS.FAILED, errMsg);
         this.logger.warn(
           `[ActionExecution] action execution failed: action_name=${actionName}, action_id=${action.action_id}, error=${errMsg}`,
         );
-        blockedActions.push(this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.ACTION_EXECUTION_FAILED));
-        rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.ACTION_EXECUTION_FAILED);
+        const reasonCode =
+          error instanceof MissingRequiredEvidenceError ||
+          errMsg === ACTION_REJECT_REASON_CODES.MISSING_REQUIRED_EVIDENCE
+            ? ACTION_REJECT_REASON_CODES.MISSING_REQUIRED_EVIDENCE
+            : ACTION_REJECT_REASON_CODES.ACTION_EXECUTION_FAILED;
+        blockedActions.push(
+          this.withRejectedReason(action, reasonCode, {
+            ...(error instanceof MissingRequiredEvidenceError
+              ? { evidence_requirement_context: error.context }
+              : {}),
+          }),
+        );
+        rejectedReasonCodes.add(reasonCode);
       }
     }
 
@@ -1184,6 +1444,55 @@ export class ActionExecutionService {
     return response;
   }
 
+  getActionRegistryCatalog(): {
+    total: number;
+    actions: Array<{
+      name: string;
+      description: string;
+      category: string;
+      side_effect_handlers: string[];
+      preconditions: string[];
+    }>;
+  } {
+    const actions = (this.actionRegistry?.list?.() ?? []).map((a) => ({
+      name: String(a.name),
+      description: String(a.description ?? ''),
+      category: String(a.name ?? '').split('.')[0] || 'unknown',
+      side_effect_handlers: (a.side_effect_configs ?? [])
+        .map((s) => String(s?.handlerId ?? ''))
+        .filter(Boolean),
+      preconditions: (a.metadata?.preconditions ?? []).map((p) => String(p)),
+    }));
+    return {
+      total: actions.length,
+      actions,
+    };
+  }
+
+  simulateActionNameMapping(input: {
+    action_type: string;
+    target_type: 'FLIGHT' | 'HOTEL' | 'ACTIVITY' | 'TRANSPORT' | 'ITINERARY';
+    action_name?: string;
+  }): {
+    action_type: string;
+    normalized_action_type: string;
+    target_type: string;
+    mapped_action_name: string | null;
+    exists_in_registry: boolean;
+    source: 'explicit' | 'mapping';
+  } {
+    const normalized = this.normalizeVerbForMapping(input.action_type);
+    const mapped = input.action_name?.trim() || this.mapActionName(normalized, input.target_type);
+    return {
+      action_type: String(input.action_type ?? ''),
+      normalized_action_type: normalized,
+      target_type: String(input.target_type ?? ''),
+      mapped_action_name: mapped,
+      exists_in_registry: mapped ? Boolean(this.actionRegistry?.get(mapped)) : false,
+      source: input.action_name?.trim() ? 'explicit' : 'mapping',
+    };
+  }
+
   /**
    * commit 成功后返回与 route_and_run 同构的 travelOntologyState 增量（verbs.committed）。
    */
@@ -1234,6 +1543,59 @@ export class ActionExecutionService {
     return this.sideEffectParamResolver.resolve(actionName, raw);
   }
 
+  private requiresStrictIdempotency(
+    action: ActionCommitRequestDto['actions'][number],
+    sideEffectConfigs: Array<{ handlerId: string; params?: Record<string, any> }>,
+  ): boolean {
+    const actionType = String(action.action_type ?? '').toUpperCase();
+    if (actionType === 'BOOK' || actionType === 'PAY') {
+      return true;
+    }
+    return sideEffectConfigs.some((cfg) => {
+      const handlerId = String(cfg?.handlerId ?? '').toLowerCase();
+      return handlerId.includes('financial') || handlerId.includes('booking');
+    });
+  }
+
+  private hasFinancialSideEffectWithoutEvidence(results: Array<{ kind?: string; evidenceBundle?: unknown }>): boolean {
+    return (results ?? []).some((r) => {
+      const kind = String((r as any)?.kind ?? '').toUpperCase();
+      if (kind !== 'FINANCIAL_HOLD') return false;
+      return !(r as any)?.evidenceBundle;
+    });
+  }
+
+  private async loadRequiredEvidenceActionTypes(): Promise<Set<string>> {
+    if (!this.prisma?.isDbConnected?.()) {
+      return new Set();
+    }
+    const decisionRuleConfig = (this.prisma as any)?.decisionRuleConfig;
+    if (!decisionRuleConfig || typeof decisionRuleConfig.findMany !== 'function') {
+      return new Set();
+    }
+    try {
+      const rows = await decisionRuleConfig.findMany({
+        where: {
+          actionName: ActionExecutionService.EVIDENCE_REQUIREMENT_ACTION,
+          isActive: true,
+        },
+      });
+      const required = new Set<string>();
+      for (const row of rows) {
+        const p = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? (row.params as any) : {};
+        const at = String(p.actionType ?? '').trim().toUpperCase();
+        const ev = String(p.evidenceType ?? '').trim();
+        const req = Boolean(p.required);
+        if (!at || !req || ev !== 'EvidenceCard') continue;
+        required.add(at);
+      }
+      return required;
+    } catch (e: any) {
+      this.logger.warn(`load evidence requirements failed: ${e?.message ?? String(e)}`);
+      return new Set();
+    }
+  }
+
   private requiresConfirmationByMode(
     risk: 'LOW' | 'MEDIUM' | 'HIGH',
     mode: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO',
@@ -1259,6 +1621,62 @@ export class ActionExecutionService {
     return this.actionNameMapping[`${actionType}:${targetType}`] || null;
   }
 
+  private async runPhysicalGate(
+    tripId: string,
+    actionInput?: Record<string, unknown> | null,
+  ): Promise<PhysicalEvaluationResult> {
+    if (!this.physicalValidator) {
+      const evaluated_at = new Date().toISOString();
+      return {
+        validator_version: PhysicalValidatorService.VALIDATOR_VERSION,
+        rule_bundle_id: PhysicalValidatorService.RULE_BUNDLE_ID,
+        violations: [],
+        evaluated_at,
+        blocking: false,
+      };
+    }
+    return this.physicalValidator.evaluate({ tripId, actionInput: actionInput ?? null });
+  }
+
+  private computePhysicalGateFingerprint(physical: PhysicalEvaluationResult): string {
+    if (this.physicalValidator) return this.physicalValidator.gateFingerprint(physical);
+    return physicalGateFingerprint({
+      validator_version: physical.validator_version,
+      rule_bundle_id: physical.rule_bundle_id,
+      violations: physical.violations,
+    });
+  }
+
+  private hasPhysicalGateInputs(actionInput?: Record<string, unknown> | null): boolean {
+    if (!actionInput || typeof actionInput !== 'object') return false;
+    const ai = actionInput as Record<string, unknown>;
+    const pd = ai.physical_domain as { segment_id?: string } | undefined;
+    if (pd?.segment_id) return true;
+    if (ai.ontology_context) return true;
+    const tr = ai.travel_ontology as { nouns?: unknown } | undefined;
+    if (tr?.nouns && typeof tr.nouns === 'object') return true;
+    return false;
+  }
+
+  private requiresPhysicalVersionEcho(actionInput: unknown, physical: PhysicalEvaluationResult): boolean {
+    if (!this.physicalValidator) return false;
+    return this.hasPhysicalGateInputs(actionInput as Record<string, unknown>) || physical.violations.length > 0;
+  }
+
+  private physicalPreconditionsFromViolations(physical: PhysicalEvaluationResult): Array<{
+    code: string;
+    severity: 'INFO' | 'WARN' | 'BLOCK';
+    message: string;
+    path?: string;
+  }> {
+    return physical.violations.map((v) => ({
+      code: v.code,
+      severity: v.severity === 'BLOCK' ? ('BLOCK' as const) : ('WARN' as const),
+      message: v.detail,
+      path: 'physical_gate',
+    }));
+  }
+
   private withRejectedReason(
     action: ActionCommitRequestDto['actions'][number],
     reason: ActionRejectReasonCode,
@@ -1270,6 +1688,127 @@ export class ActionExecutionService {
       rejected_message: ACTION_REJECT_REASON_MESSAGES[reason],
       ...(extra ? extra : {}),
     };
+  }
+
+  private async buildResourceSnapshotForSignature(action: ActionCommitRequestDto['actions'][number]): Promise<Record<string, unknown> | null> {
+    const ai = (action.action_input ?? {}) as Record<string, any>;
+    const accountId =
+      (typeof ai.accountId === 'string' && ai.accountId.trim()
+        ? ai.accountId.trim()
+        : typeof ai.account_id === 'string' && ai.account_id.trim()
+          ? ai.account_id.trim()
+          : typeof ai.wallet?.accountId === 'string' && ai.wallet.accountId.trim()
+            ? ai.wallet.accountId.trim()
+            : typeof ai.wallet?.account_id === 'string' && ai.wallet.account_id.trim()
+              ? ai.wallet.account_id.trim()
+              : 'default');
+    const inventoryId =
+      (typeof ai.inventoryId === 'string' && ai.inventoryId.trim()
+        ? ai.inventoryId.trim()
+        : typeof ai.inventory_id === 'string' && ai.inventory_id.trim()
+          ? ai.inventory_id.trim()
+          : typeof action.target_ref === 'string' && action.target_ref.trim()
+            ? action.target_ref.trim()
+            : null);
+    if (!this.prisma?.isDbConnected()) {
+      return {
+        accountId,
+        inventoryId,
+        budgetAvailable:
+          typeof ai.wallet?.available === 'number' && Number.isFinite(ai.wallet.available) ? ai.wallet.available : null,
+        inventoryPrice: typeof ai.price === 'number' && Number.isFinite(ai.price) ? ai.price : null,
+        inventoryAvailability:
+          typeof ai.availability === 'string' && ai.availability.trim() ? ai.availability.trim() : null,
+      };
+    }
+    const budget = await (this.prisma as any).physicalDomainBudget.findUnique({ where: { accountId } });
+    const fallbackBudget = budget
+      ? null
+      : await (this.prisma as any).physicalDomainBudget.findUnique({ where: { accountId: 'default' } });
+    const inv = inventoryId
+      ? await (this.prisma as any).physicalDomainInventoryItem.findUnique({ where: { id: inventoryId } })
+      : null;
+    return {
+      accountId,
+      inventoryId,
+      budgetAvailable:
+        typeof (budget ?? fallbackBudget)?.available === 'number'
+          ? Number((budget ?? fallbackBudget).available)
+          : null,
+      inventoryPrice: typeof inv?.price === 'number' ? Number(inv.price) : null,
+      inventoryAvailability:
+        typeof inv?.availability === 'string' && inv.availability.trim() ? inv.availability.trim() : null,
+    };
+  }
+
+  private buildContextSignatureV2(params: {
+    action: ActionCommitRequestDto['actions'][number];
+    actionName: string | null;
+    assessment: { status: string; findings?: unknown[]; shadow_delta?: unknown | null };
+    side_effects?: unknown[];
+    resource_snapshot?: Record<string, unknown> | null;
+    /** Fold PhysicalValidator gate into tripartite signature (PREVIEW/COMMIT alignment). */
+    physicalGateFingerprint?: string | null;
+  }): ContextSignatureV12Dto {
+    const now = Date.now();
+    const generatedAt = new Date(now).toISOString();
+    const expiresAt = new Date(now + this.contextSignatureTtlMs).toISOString();
+    const physicalHash = sha256Signature({
+      action_id: params.action.action_id,
+      action_type: params.action.action_type,
+      target_type: params.action.target_type,
+      target_ref: params.action.target_ref ?? null,
+      shadow_delta: params.assessment?.shadow_delta ?? null,
+      findings: params.assessment?.findings ?? [],
+      physical_gate: params.physicalGateFingerprint ?? null,
+    });
+    const resourceHash = sha256Signature({
+      action_input: params.action.action_input ?? null,
+      side_effects: params.side_effects ?? [],
+      resource_snapshot: params.resource_snapshot ?? null,
+    });
+    const policyVersion = this.resolvePolicyVersion(params.action, params.actionName);
+    const signatureId = sha256Signature({
+      physicalHash,
+      resourceHash,
+      policyVersion,
+    });
+    return {
+      signatureId,
+      physicalHash,
+      resourceHash,
+      policyVersion,
+      generatedAt,
+      expiresAt,
+    };
+  }
+
+  private resolvePolicyVersion(
+    action: ActionCommitRequestDto['actions'][number],
+    actionName: string | null,
+  ): string {
+    const raw =
+      (action.action_input as any)?.policyVersion ??
+      (action.action_input as any)?.policy_version ??
+      (action.action_input as any)?.policyLabVersion;
+    if (typeof raw === 'string' && raw.trim()) {
+      return raw.trim();
+    }
+    return `policy-lab:${sha256Signature({ action_name: actionName ?? null }).slice(0, 16)}`;
+  }
+
+  private findStaleDimensions(
+    provided: ContextSignatureV12Dto | undefined,
+    recomputed: ContextSignatureV12Dto,
+  ): Array<'physicalHash' | 'resourceHash' | 'policyVersion'> {
+    if (!provided) {
+      return [];
+    }
+    const stale: Array<'physicalHash' | 'resourceHash' | 'policyVersion'> = [];
+    if (String(provided.physicalHash ?? '') !== String(recomputed.physicalHash ?? '')) stale.push('physicalHash');
+    if (String(provided.resourceHash ?? '') !== String(recomputed.resourceHash ?? '')) stale.push('resourceHash');
+    if (String(provided.policyVersion ?? '') !== String(recomputed.policyVersion ?? '')) stale.push('policyVersion');
+    return stale;
   }
 
   private buildActionInput(

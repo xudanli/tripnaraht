@@ -37,28 +37,30 @@ function sumOntologySpend(nouns: NonNullable<NonNullable<DecisionState['travelOn
   return sum;
 }
 
-function budgetCapFromDso(dso: DecisionState): number | undefined {
-  if (typeof dso.userIntent?.budget === 'number' && dso.userIntent.budget > 0) {
-    return dso.userIntent.budget;
+export function budgetCapFromUserIntent(userIntent: DecisionState['userIntent'] | undefined): number | undefined {
+  if (typeof userIntent?.budget === 'number' && userIntent.budget > 0) {
+    return userIntent.budget;
   }
-  const c = dso.userIntent?.constraints as Record<string, unknown> | undefined;
+  const c = userIntent?.constraints as Record<string, unknown> | undefined;
   const b = c?.budget as { total?: number } | undefined;
   if (typeof b?.total === 'number' && b.total > 0) return b.total;
   return undefined;
 }
 
 /**
- * 基于 DSO.travelOntologyState 与 userIntent 的轻量约束（预算、时间一致性）。
- * 无本体数据时返回空数组。
+ * 基于 travelOntology nouns + userIntent 的轻量约束（预算、时间一致性）。
+ * 无本体名词时返回空数组。
  */
-export function evaluateTravelOntologyConstraints(dso: DecisionState): ConstraintViolationItem[] {
+export function evaluateTravelOntologyConstraintsForNouns(
+  nouns: NonNullable<NonNullable<DecisionState['travelOntologyState']>['nouns']> | undefined,
+  userIntent: DecisionState['userIntent'] | undefined,
+): ConstraintViolationItem[] {
   const out: ConstraintViolationItem[] = [];
-  const nouns = dso.travelOntologyState?.nouns;
   if (!nouns || Object.keys(nouns).length === 0) {
     return out;
   }
 
-  const cap = budgetCapFromDso(dso);
+  const cap = budgetCapFromUserIntent(userIntent);
   if (cap != null) {
     const spend = sumOntologySpend(nouns);
     if (spend > cap) {
@@ -121,6 +123,14 @@ export function evaluateTravelOntologyConstraints(dso: DecisionState): Constrain
   }
 
   return out;
+}
+
+/**
+ * 基于 DSO.travelOntologyState 与 userIntent 的轻量约束（预算、时间一致性）。
+ * 无本体数据时返回空数组。
+ */
+export function evaluateTravelOntologyConstraints(dso: DecisionState): ConstraintViolationItem[] {
+  return evaluateTravelOntologyConstraintsForNouns(dso.travelOntologyState?.nouns, dso.userIntent);
 }
 
 export function mergeOntologyViolationsIntoGateResult(

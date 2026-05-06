@@ -64,6 +64,7 @@ import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
 import { AgentAdminController } from './agent-admin.controller';
+import { DecisionReplayController } from './controllers/decision-replay.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
 import { TripRunManagerService } from './services/trip-run-manager.service';
 import { ActionExecutionService } from './services/action-execution.service';
@@ -74,14 +75,35 @@ import { SideEffectRuleSyncerService } from './services/side-effect-rule-syncer.
 import { HardTruthRuleResolverService } from './services/hard-truth-rule-resolver.service';
 import { AgentActionLogService } from './services/agent-action-log.service';
 import { ClarificationHandlerService } from './services/clarification-handler.service';
+import { ResearchPriorSnapshotService } from './services/research-prior-snapshot.service';
 import { ShadowConflictScannerService } from './services/shadow-conflict-scanner.service';
 import { LocalCaseStoreService } from './cbr/local-case-store.service';
 import { CbrRepository } from './cbr/cbr.repository';
 import { CbrAggregatorService } from './cbr/cbr-aggregator.service';
 import { JepaProjectorService } from './services/jepa-projector.service';
 import { RouteAndRunResponseAssemblerService } from './services/route-and-run-response-assembler.service';
+import { RouteRunItineraryPoiHydratorService } from './services/route-run-itinerary-poi-hydrator.service';
+import { TradeoffEngineService } from './services/tradeoff-engine.service';
+import { NegotiationNarratorService } from './services/negotiation-narrator.service';
+import { HotelDecisionSupportNarratorService } from './services/hotel-decision-support-narrator.service';
+import { TravelTimeResolverService } from './services/travel-time-resolver.service';
+import { TravelTimeRouterService } from './services/travel-time-router.service';
+import { NegotiationSessionStoreService } from './services/negotiation-session-store.service';
+import { NegotiationResolverService } from './services/negotiation-resolver.service';
+import { TimelineInspectorService } from './services/timeline-inspector.service';
+import { ItineraryVersionService } from './services/itinerary-version.service';
+import { AuditRecordService } from './services/audit-record.service';
+import { RevisionNarratorService } from './services/revision-narrator.service';
+import { ItineraryRevisionTimelineService } from './services/itinerary-revision-timeline.service';
+import { ItineraryRevisionRegretService } from './services/itinerary-revision-regret.service';
+import { UserPreferenceLearningService } from './services/user-preference-learning.service';
+import { UserProfileLearningService } from './services/user-profile-learning.service';
+import { ItineraryRollbackService } from './services/itinerary-rollback.service';
+import { PreferenceEvolutionService } from './services/preference-evolution.service';
 import { AgentEntryResponseFactoryService } from './services/agent-entry-response-factory.service';
 import { PlanningRequestClassifierService } from './services/planning-request-classifier.service';
+import { DecisionReplayService } from './services/decision-replay.service';
+import { RouteAndRunContextEnricherService } from './services/route-and-run-context-enricher.service';
 import { SkillsModule } from '../skills/skills.module';
 // 子 Agent 服务（Claude 编排）
 import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
@@ -98,9 +120,18 @@ import { RouteDirectionsModule } from '../route-directions/route-directions.modu
 import { DataModelingModule } from '../data-modeling/data-modeling.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TrainingModule } from './training/training.module';
+import { DomainAgentsModule } from './services/domain-agents/domain-agents.module';
+import { StrategyConflictOptionsService } from './services/strategy-conflict-options.service';
 import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
+import { ChainOfWorkModule } from '../chain-of-work/chain-of-work.module';
 import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
+import { RedisModule } from '../redis/redis.module';
 import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
+import { AgentActionReconcilerService } from './services/agent-action-reconciler.service';
+import { SagaReconciliationCron } from './crons/saga-reconciliation.cron';
+import { SideEffectCleanupAdapterRegistry } from './services/side-effect-cleanup-adapter.registry';
+import { ActionGraphSagaCompilerService } from './services/action-graph-saga-compiler.service';
+import { PhysicalValidatorService } from '../domain/ontology/validator/physical-validator.service';
 
 /**
  * Agent Module
@@ -128,11 +159,22 @@ import { DecisionContractCapturerService } from './services/decision-contract-ca
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
+    DomainAgentsModule, // Geo/Weather/Cost/Experience 域 Agent（PlanningWorkbench getWorldModelData）
     TrainingModule, // Iterative Deployment 训练模块
     forwardRef(() => DecisionDraftModule), // 使用 forwardRef 避免循环依赖
+    forwardRef(() => ChainOfWorkModule), // Phase B+：ExecutionIntegrationService（编排恢复闭环）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
+    RedisModule, // research prior 快照（可选 Redis；MCP 模式下为内存 cache）
   ],
-  controllers: [AgentController, ActionsController, PlanningWorkbenchController, ExecutionController, TripDetailController, AgentAdminController],
+  controllers: [
+    AgentController,
+    ActionsController,
+    PlanningWorkbenchController,
+    ExecutionController,
+    TripDetailController,
+    AgentAdminController,
+    DecisionReplayController,
+  ],
   providers: [
     AgentService,
     RouterService,
@@ -175,13 +217,40 @@ import { DecisionContractCapturerService } from './services/decision-contract-ca
     SideEffectRuleSyncerService,
     HardTruthRuleResolverService,
     AgentActionLogService,
+    PhysicalValidatorService,
     ActionExecutionService, // Action 执行域（preview/commit/rollback）
+    AgentActionReconcilerService,
+    SagaReconciliationCron,
+    SideEffectCleanupAdapterRegistry,
+    ActionGraphSagaCompilerService,
     DecisionContractCapturerService,
     JepaProjectorService,
+    RouteRunItineraryPoiHydratorService,
     RouteAndRunResponseAssemblerService,
+    TravelTimeResolverService,
+    TradeoffEngineService,
+    NegotiationNarratorService,
+    HotelDecisionSupportNarratorService,
+    TravelTimeRouterService,
+    NegotiationSessionStoreService,
+    NegotiationResolverService,
+    TimelineInspectorService,
+    AuditRecordService,
+    RevisionNarratorService,
+    ItineraryRevisionTimelineService,
+    ItineraryRevisionRegretService,
+    UserPreferenceLearningService,
+    UserProfileLearningService,
+    PreferenceEvolutionService,
+    ItineraryRollbackService,
+    ItineraryVersionService,
     AgentEntryResponseFactoryService,
     PlanningRequestClassifierService,
+    DecisionReplayService,
+    RouteAndRunContextEnricherService,
+    StrategyConflictOptionsService,
     ClarificationHandlerService,
+    ResearchPriorSnapshotService,
     ShadowConflictScannerService,
     CbrRepository,
     CbrAggregatorService,
@@ -202,6 +271,7 @@ import { DecisionContractCapturerService } from './services/decision-contract-ca
     FinancialHoldStoreService,
     AgentActionLogService,
     HardTruthRuleResolverService,
+    ActionGraphSagaCompilerService,
   ],
 })
 export class AgentModule {

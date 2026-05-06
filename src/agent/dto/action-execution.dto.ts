@@ -10,6 +10,32 @@ import {
 } from '../constants/action-execution.constants';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 
+export class ContextSignatureV12Dto {
+  @ApiProperty({ description: 'Deterministic ID/hash for full tripartite signature payload.' })
+  @IsString()
+  signatureId!: string;
+
+  @ApiProperty({ description: 'Physical domain hash: weather/poi/segment related snapshot.' })
+  @IsString()
+  physicalHash!: string;
+
+  @ApiProperty({ description: 'Resource domain hash: budget/inventory related snapshot.' })
+  @IsString()
+  resourceHash!: string;
+
+  @ApiProperty({ description: 'Policy version from Policy Lab at preview time.' })
+  @IsString()
+  policyVersion!: string;
+
+  @ApiProperty({ description: 'ISO timestamp when this signature is generated.' })
+  @IsString()
+  generatedAt!: string;
+
+  @ApiProperty({ description: 'ISO timestamp when this signature expires.' })
+  @IsString()
+  expiresAt!: string;
+}
+
 export class ActionExecutionItemDto {
   @ApiProperty({ example: 'act_123' })
   @IsString()
@@ -51,6 +77,48 @@ export class ActionExecutionItemDto {
   @IsString()
   rejected_message?: string;
 
+  @ApiPropertyOptional({
+    description: 'PhysicalValidator 结构化违规（仅响应字段，含 PHYSICAL_VALIDATOR_BLOCKED）',
+    type: 'array',
+  })
+  @IsOptional()
+  physical_violations?: Array<{
+    code: string;
+    severity: 'BLOCK' | 'WARN';
+    detail: string;
+    constraint?: string;
+    evidence_source?: string;
+  }>;
+
+  @ApiPropertyOptional({
+    description:
+      'Commit 拒绝 PHYSICAL_VALIDATOR_VERSION_MISMATCH 时的版本审计快照（部署漂移 / 客户端未刷新预览排查）',
+    type: 'object',
+    additionalProperties: false,
+  })
+  @IsOptional()
+  physical_validator_audit?: {
+    expected_version: string;
+    received_version: string | null;
+    rule_bundle_id: string;
+  };
+
+  @ApiPropertyOptional({
+    description:
+      'When rejected by evidence requirement rule, exposes structured details for UI remediation hints.',
+    example: {
+      required_action_type: 'FINANCIAL_HOLD',
+      required_evidence_type: 'EvidenceCard',
+      side_effect_kind: 'FINANCIAL_HOLD',
+    },
+  })
+  @IsOptional()
+  evidence_requirement_context?: {
+    required_action_type: 'FINANCIAL_HOLD';
+    required_evidence_type: 'EvidenceCard';
+    side_effect_kind: 'FINANCIAL_HOLD';
+  };
+
   @ApiProperty({ enum: ['LOW', 'MEDIUM', 'HIGH'] })
   @IsEnum(['LOW', 'MEDIUM', 'HIGH'])
   risk_level!: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -70,6 +138,36 @@ export class ActionExecutionItemDto {
 
   @ApiPropertyOptional({
     description:
+      'v1.2 structured signature lock for commit validation (physical/resource/policy tripartite checks).',
+    type: 'object',
+    additionalProperties: false,
+    example: {
+      signatureId: 'sha256:...',
+      physicalHash: 'sha256:physical...',
+      resourceHash: 'sha256:resource...',
+      policyVersion: 'policy-lab:v1',
+      generatedAt: '2026-04-29T07:00:00.000Z',
+      expiresAt: '2026-04-29T07:10:00.000Z',
+    },
+  })
+  @IsOptional()
+  context_signature_v2?: ContextSignatureV12Dto;
+
+  @ApiPropertyOptional({
+    description:
+      'Echo from preview: unified physical + ontology gate snapshot (validator_version must match on commit when gate applies).',
+  })
+  @IsOptional()
+  @IsString()
+  physical_validator_version?: string;
+
+  @ApiPropertyOptional({ description: 'Echo from preview: rule bundle id bound to PhysicalValidator.' })
+  @IsOptional()
+  @IsString()
+  physical_rule_bundle_id?: string;
+
+  @ApiPropertyOptional({
+    description:
       'Preview snapshot passthrough for side-by-side comparison on stale preview. Client should echo this back on commit.',
     example: {
       shadow_delta: { resources: { budget: { current: 2000, delta: -500, after: 1500, currency: 'USD' } } },
@@ -79,6 +177,26 @@ export class ActionExecutionItemDto {
   preview_snapshot?: {
     shadow_delta?: ActionShadowDeltaViewDto;
     side_effects?: SideEffectPreviewDto[];
+    resource_snapshot?: {
+      accountId?: string | null;
+      inventoryId?: string | null;
+      budgetAvailable?: number | null;
+      inventoryPrice?: number | null;
+      inventoryAvailability?: string | null;
+    };
+    physical_validation?: {
+      validator_version: string;
+      rule_bundle_id: string;
+      violations: Array<{
+        code: string;
+        severity: 'BLOCK' | 'WARN';
+        detail: string;
+        constraint?: string;
+        evidence_source?: string;
+      }>;
+      evaluated_at: string;
+      blocking: boolean;
+    };
   };
 
   @ApiPropertyOptional({
@@ -98,6 +216,30 @@ export class ActionExecutionItemDto {
   stale_shadow_context?: {
     provided_signature: string;
     recomputed_signature: string;
+    provided_signature_v2?: ContextSignatureV12Dto;
+    recomputed_signature_v2?: ContextSignatureV12Dto;
+    stale_dimensions?: Array<'physicalHash' | 'resourceHash' | 'policyVersion'>;
+    physical_violations?: Array<{
+      code: string;
+      severity: 'BLOCK' | 'WARN';
+      detail: string;
+      constraint?: string;
+      evidence_source?: string;
+    }>;
+    original_resource_snapshot?: {
+      accountId?: string | null;
+      inventoryId?: string | null;
+      budgetAvailable?: number | null;
+      inventoryPrice?: number | null;
+      inventoryAvailability?: string | null;
+    };
+    recomputed_resource_snapshot?: {
+      accountId?: string | null;
+      inventoryId?: string | null;
+      budgetAvailable?: number | null;
+      inventoryPrice?: number | null;
+      inventoryAvailability?: string | null;
+    };
     original_shadow_delta?: ActionShadowDeltaViewDto;
     original_side_effects?: SideEffectPreviewDto[];
     recomputed_assessment: {
@@ -217,6 +359,15 @@ export class ActionPreviewAssessmentDto {
   })
   @IsString()
   context_signature!: string;
+
+  @ApiPropertyOptional({
+    description: 'v1.2 structured context signature; commit compares physical/resource/policy dimensions.',
+    type: ContextSignatureV12Dto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContextSignatureV12Dto)
+  context_signature_v2?: ContextSignatureV12Dto;
 
   @ApiPropertyOptional({
     description: 'Side effect previews (resource lock / financial hold / risk drift, etc.)',
