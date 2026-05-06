@@ -4,11 +4,66 @@ import { Type } from 'class-transformer';
 import {
   ACTION_REJECT_REASON_CODES,
   ActionRejectReasonCode,
+  HEALING_ONE_CLICK_ACTION_ID,
   TRAVEL_ACTION_TYPE_VALUES,
   TravelActionType,
   TRAVEL_ONTOLOGY_MERGE_POLICY,
 } from '../constants/action-execution.constants';
+import type { HealingOptionKind } from '../../domain/ontology/healer/healing-options.types';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
+
+/** One suggestive-healing row for INTERRUPT_WITH_SUGGESTION (replay PREVIEW with healed_action_input). */
+export class SuggestedHealingOptionItemDto {
+  @ApiProperty({ enum: ['TEMPORAL_SHIFT', 'ROUTE_REOPTIMIZE'] })
+  kind!: HealingOptionKind;
+
+  @ApiProperty({ example: 'temporal_shift_iceland_fr_seasonal_v1' })
+  option_id!: string;
+
+  @ApiProperty({ type: [String], example: ['SEGMENT_SEASONALLY_CLOSED'] })
+  violation_codes_addressed!: string[];
+
+  @ApiProperty()
+  summary!: string;
+
+  @ApiPropertyOptional({
+    description: 'TEMPORAL_SHIFT details when kind is TEMPORAL_SHIFT.',
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      anchor_enter_at: '2026-05-15T10:00:00.000Z',
+      suggested_enter_at: '2026-06-22T10:00:00.000Z',
+      shift_days: 38,
+      buffer_days: 2,
+      risk: 'MEDIUM',
+      rationale: 'Plan 1 whole-itinerary shift.',
+    },
+  })
+  temporal_shift?: {
+    anchor_enter_at: string;
+    suggested_enter_at: string;
+    shift_days: number;
+    buffer_days: number;
+    policy_id?: string;
+    policy_source_key?: string;
+    risk: 'LOW' | 'MEDIUM' | 'HIGH';
+    rationale: string;
+  };
+
+  @ApiProperty({
+    description:
+      'Replace actions[].action_input with this object (same action_id) and call preview again — see healing_one_click_action_id.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  healed_action_input!: Record<string, unknown>;
+
+  @ApiProperty({
+    description: 'Stable UI/agent routing id for one-click healed replay.',
+    example: HEALING_ONE_CLICK_ACTION_ID,
+  })
+  healing_one_click_action_id!: typeof HEALING_ONE_CLICK_ACTION_ID;
+}
 
 export class ContextSignatureV12Dto {
   @ApiProperty({ description: 'Deterministic ID/hash for full tripartite signature payload.' })
@@ -118,6 +173,22 @@ export class ActionExecutionItemDto {
     required_evidence_type: 'EvidenceCard';
     side_effect_kind: 'FINANCIAL_HOLD';
   };
+
+  @ApiPropertyOptional({
+    description:
+      'Phase B suggestive healing: present when PHYSICAL_VALIDATOR_BLOCKED includes healable violations (replay preview with healed_action_input).',
+    type: [SuggestedHealingOptionItemDto],
+  })
+  @IsOptional()
+  suggested_healing_options?: SuggestedHealingOptionItemDto[];
+
+  @ApiPropertyOptional({
+    enum: ['INTERRUPT', 'INTERRUPT_WITH_SUGGESTION'],
+    description: 'INTERRUPT_WITH_SUGGESTION when suggested_healing_options is non-empty.',
+  })
+  @IsOptional()
+  @IsIn(['INTERRUPT', 'INTERRUPT_WITH_SUGGESTION'])
+  physical_validator_interrupt_mode?: 'INTERRUPT' | 'INTERRUPT_WITH_SUGGESTION';
 
   @ApiProperty({ enum: ['LOW', 'MEDIUM', 'HIGH'] })
   @IsEnum(['LOW', 'MEDIUM', 'HIGH'])
@@ -389,6 +460,21 @@ export class ActionPreviewAssessmentDto {
   @IsOptional()
   @IsString()
   healing_summary?: string;
+
+  @ApiPropertyOptional({
+    description: 'Suggestive healing options when preview status is blocked due to physical gate (Phase B).',
+    type: [SuggestedHealingOptionItemDto],
+  })
+  @IsOptional()
+  suggested_healing_options?: SuggestedHealingOptionItemDto[];
+
+  @ApiPropertyOptional({
+    enum: ['INTERRUPT', 'INTERRUPT_WITH_SUGGESTION'],
+    description: 'INTERRUPT_WITH_SUGGESTION when suggested_healing_options is non-empty.',
+  })
+  @IsOptional()
+  @IsIn(['INTERRUPT', 'INTERRUPT_WITH_SUGGESTION'])
+  physical_validator_interrupt_mode?: 'INTERRUPT' | 'INTERRUPT_WITH_SUGGESTION';
 }
 
 export class ActionPreviewRequestDto {

@@ -45,4 +45,25 @@ describe('computeSegmentFeasibilityViolations / Iceland F-Road policy', () => {
     });
     expect(violations).not.toContain('SEGMENT_SEASONALLY_CLOSED');
   });
+
+  it('live Road.is snapshot CLOSED blocks even when seasonal calendar would allow July travel', () => {
+    const { violations, facts } = computeSegmentFeasibilityViolations({
+      segment: {
+        ...baseSegment,
+        latest_status: {
+          condition: 'CLOSED',
+          condition_text: 'Sudden storm closure',
+          source_url: 'https://road.is',
+          synced_at: '2026-07-21T08:00:00.000Z',
+          provider: 'mock',
+        },
+      },
+      toPoi: null,
+      enterAt: new Date('2026-07-15T10:00:00.000Z'),
+      vehicleType: 'FOUR_BY_FOUR',
+    });
+    expect(violations).toContain('SEGMENT_ROAD_CLOSED');
+    expect(violations).not.toContain('SEGMENT_SEASONALLY_CLOSED');
+    expect((facts as Record<string, unknown>).roadIsBlocking).toBe(true);
+  });
 });

@@ -46,6 +46,12 @@ export const SYSTEM_ORCHESTRATOR_ACTIONS = {
 export type SystemOrchestratorAction =
   (typeof SYSTEM_ORCHESTRATOR_ACTIONS)[keyof typeof SYSTEM_ORCHESTRATOR_ACTIONS];
 
+/**
+ * Frontend / agent contract: after INTERRUPT_WITH_SUGGESTION, replay action preview with the same
+ * `action_id` and `action_input` replaced by `healed_action_input` from `suggested_healing_options[]`.
+ */
+export const HEALING_ONE_CLICK_ACTION_ID = 'PREVIEW_WITH_HEALED_INPUT_V1' as const;
+
 export const ACTION_REJECT_REASON_MESSAGES: Record<ActionRejectReasonCode, string> = {
   HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN: 'High-risk action requires confirmation token.',
   UNSUPPORTED_ACTION_MAPPING: 'Action type and target type mapping is not supported.',

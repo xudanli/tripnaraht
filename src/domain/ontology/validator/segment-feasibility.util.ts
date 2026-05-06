@@ -3,6 +3,8 @@
  */
 
 import { ICELAND_F_ROAD_POLICY_SOURCE, isIcelandHighlandFRoadSeasonallyClosed } from './iceland-f-road-policy.util';
+import type { SegmentLatestRoadStatusV1 } from './road-status-contract.types';
+import { parseRoadSurfaceCondition, roadSurfaceConditionIsBlocking } from './road-status-contract.types';
 
 export interface SegmentFeasibilityPoiLike {
   closed?: boolean;
@@ -16,6 +18,8 @@ export interface SegmentFeasibilityPoiLike {
 export interface SegmentFeasibilitySegmentLike {
   segment_type?: string;
   road_condition?: { status?: string };
+  /** EnvSyncWorker → SpatialDomainSegment.latest_status (Road.is / mock). */
+  latest_status?: SegmentLatestRoadStatusV1 | Record<string, unknown>;
   seasonal_closures?: Array<{ start: string; end: string }>;
   evidence?: { url?: string; source?: string } | Record<string, unknown>;
 }
@@ -30,7 +34,14 @@ export function computeSegmentFeasibilityViolations(params: {
   const violations: string[] = [];
 
   const roadStatus = segment.road_condition?.status ?? 'OPEN';
-  if (roadStatus === 'CLOSED') violations.push('SEGMENT_ROAD_CLOSED');
+  const staticRoadClosed = roadStatus === 'CLOSED';
+
+  const ls = segment.latest_status as SegmentLatestRoadStatusV1 | undefined;
+  const liveCondition = ls?.condition != null ? parseRoadSurfaceCondition(ls.condition) : undefined;
+  const roadIsBlocking = liveCondition != null ? roadSurfaceConditionIsBlocking(liveCondition) : false;
+
+  /** Union: static admin road_condition OR live Road.is snapshot — any CLOSED-class condition blocks. */
+  if (staticRoadClosed || roadIsBlocking) violations.push('SEGMENT_ROAD_CLOSED');
 
   const dbSeasonalClosures = segment.seasonal_closures ?? [];
   const seasonalBlocked = dbSeasonalClosures.some((x) => {
@@ -58,14 +69,25 @@ export function computeSegmentFeasibilityViolations(params: {
   const endpointOpen = toPoi ? isPoiOpenAt(toPoi, enterAt) : true;
   if (!endpointOpen) violations.push('POI_CLOSED_AT_ETA');
 
+  const deduped = [...new Set(violations)];
+
   return {
-    violations,
+    violations: deduped,
     facts: {
       segmentType: segment.segment_type,
       roadStatus,
+      staticRoadClosed,
       seasonalBlocked,
       icelandPolicySeasonallyClosed,
       ...(icelandPolicySeasonallyClosed ? { road_policy_source: ICELAND_F_ROAD_POLICY_SOURCE } : {}),
+      ...(liveCondition != null
+        ? {
+            roadIsCondition: liveCondition,
+            roadIsBlocking,
+            roadIsConditionText: typeof ls?.condition_text === 'string' ? ls.condition_text : undefined,
+            roadIsSourceUrl: typeof ls?.source_url === 'string' ? ls.source_url : undefined,
+          }
+        : {}),
       endpointReachable: endpointOpen,
     },
   };

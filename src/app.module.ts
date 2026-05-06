@@ -63,6 +63,7 @@ import { HarnessModule } from './harness/harness.module';
 import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     }),
     ScheduleModule.forRoot(), // 提供定时任务支持（SchedulerRegistry）
     PrismaModule,
+    RoadIsModule, // Road.is provider + spatial segment latest_status sync (opt-in via ROAD_IS_SEGMENT_SYNC_ENABLED)
     AuthModule,
     RedisModule, // Redis 缓存模块
     DataContractsModule, // 数据契约模块（适配器模式）

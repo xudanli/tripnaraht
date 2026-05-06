@@ -5,6 +5,9 @@ import { TRAVEL_ONTOLOGY_MERGE_POLICY } from '../constants/action-execution.cons
 import { AGENT_ACTION_LOG_STATUS } from '../constants/agent-action-log.constants';
 import { createHash } from 'node:crypto';
 import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
+import { SelfHealingService } from '../../domain/ontology/healer/self-healing.service';
+import { ViolationCode } from '../../domain/ontology/validator/physical-validator.constants';
+import { HEALING_ONE_CLICK_ACTION_ID } from '../constants/action-execution.constants';
 
 const EMPTY_PHYSICAL_SIGNABLE = {
   validator_version: PhysicalValidatorService.VALIDATOR_VERSION,
@@ -80,6 +83,65 @@ describe('ActionExecutionService', () => {
     expect(response.rejected_reason_codes).toContain('HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN');
     expect(response.blocked_actions?.[0].rejected_reason_code).toBe('HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN');
     expect(response.blocked_actions?.[0].rejected_message).toContain('High-risk');
+  });
+
+  it('preview physical INTERRUPT includes suggestive healing when healer is wired', async () => {
+    const physicalValidator = {
+      evaluate: jest.fn().mockResolvedValue({
+        validator_version: PhysicalValidatorService.VALIDATOR_VERSION,
+        rule_bundle_id: PhysicalValidatorService.RULE_BUNDLE_ID,
+        violations: [
+          {
+            code: ViolationCode.SEGMENT_SEASONALLY_CLOSED,
+            severity: 'BLOCK' as const,
+            detail: 'seasonal',
+            evidence_source: 'policy:iceland_fr_highland_calendar_v1',
+          },
+        ],
+        evaluated_at: new Date().toISOString(),
+        blocking: true,
+      }),
+      gateFingerprint: jest.fn().mockReturnValue('sha256:physical-gate-mock'),
+    };
+    service = new ActionExecutionService(
+      dedup as unknown as RequestDeduplicationService,
+      registry as unknown as ActionRegistryService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      physicalValidator as any,
+      new SelfHealingService(),
+    );
+
+    const preview = await service.preview({
+      request_id: 'req-h1',
+      trip_id: 'trip-h1',
+      actions: [
+        {
+          action_id: 'a1',
+          action_type: 'ADJUST',
+          target_type: 'ITINERARY',
+          action_name: 'execution.handle_change',
+          risk_level: 'LOW',
+          requires_confirmation: false,
+          action_input: {
+            physical_domain: { segment_id: 'seg1', enter_at: '2026-05-15T10:00:00.000Z' },
+          },
+        },
+      ],
+    });
+
+    const ap = preview.action_previews?.[0] as Record<string, unknown> | undefined;
+    expect(ap?.status).toBe('blocked');
+    expect(ap?.physical_validator_interrupt_mode).toBe('INTERRUPT_WITH_SUGGESTION');
+    const opts = ap?.suggested_healing_options as Array<{ healing_one_click_action_id?: string }> | undefined;
+    expect(opts?.[0]?.healing_one_click_action_id).toBe(HEALING_ONE_CLICK_ACTION_ID);
+    const healed = opts?.[0] as { healed_action_input?: { physical_domain?: { enter_at?: string } } } | undefined;
+    expect(healed?.healed_action_input?.physical_domain?.enter_at).toBeDefined();
   });
 
   it('returns deduplicated response on idempotent hit', async () => {

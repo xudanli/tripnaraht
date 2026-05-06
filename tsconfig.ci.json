@@ -6,9 +6,13 @@
   },
   "include": [
     "src/domain/ontology/validator/**/*.ts",
+    "src/domain/ontology/healer/**/*.ts",
     "src/agent/services/action-execution.service.ts",
     "src/decision/kernel/travel-ontology-constraints.ts",
-    "src/admin/controllers/spatial-domain-admin.controller.ts"
+    "src/admin/controllers/spatial-domain-admin.controller.ts",
+    "src/infrastructure/external/road-is/**/*.ts",
+    "src/prisma/prisma.module.ts",
+    "src/prisma/prisma.service.ts"
   ],
   "exclude": ["node_modules", "dist", "src/**/*.spec.ts"]
 }

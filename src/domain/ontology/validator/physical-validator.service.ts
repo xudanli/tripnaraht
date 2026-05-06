@@ -12,6 +12,7 @@ import type {
   PhysicalViolationItem,
 } from './physical-validator.types';
 import { ICELAND_F_ROAD_POLICY_SOURCE } from './iceland-f-road-policy.util';
+import type { SegmentLatestRoadStatusV1 } from './road-status-contract.types';
 import { getStaticPhysicalPoliciesEnvelope, type StaticPhysicalPoliciesEnvelope } from './physical-validator.static-policies';
 import { computeSegmentFeasibilityViolations, type SegmentFeasibilityPoiLike } from './segment-feasibility.util';
 
@@ -63,6 +64,27 @@ function mapSpatialViolation(
     detail =
       `Iceland interior F-Road: enter_at falls in typical highland closed season (${ICELAND_F_ROAD_POLICY_SOURCE}; integrate Road.is for live closure data).`;
     evidence_source = evidence_source ?? `policy:${ICELAND_F_ROAD_POLICY_SOURCE}`;
+  }
+
+  if (code === 'SEGMENT_ROAD_CLOSED') {
+    const parts: string[] = [];
+    if (feasibilityFacts?.staticRoadClosed) parts.push('static road_condition=CLOSED');
+    if (feasibilityFacts?.roadIsBlocking) {
+      parts.push(
+        `live Road.is snapshot: ${String(feasibilityFacts.roadIsCondition ?? '')}` +
+          (feasibilityFacts?.roadIsConditionText
+            ? ` (${String(feasibilityFacts.roadIsConditionText)})`
+            : ''),
+      );
+    }
+    if (parts.length) {
+      detail = `Road passage blocked — ${parts.join('; ')}`;
+      evidence_source =
+        evidence_source ??
+        (typeof feasibilityFacts?.roadIsSourceUrl === 'string'
+          ? (feasibilityFacts.roadIsSourceUrl as string)
+          : undefined);
+    }
   }
 
   return {
@@ -218,6 +240,10 @@ export class PhysicalValidatorService {
       to_poi_id: String(row.toPoiId),
       segment_type: row.segmentType,
       road_condition: (row.roadCondition ?? undefined) as any,
+      latest_status:
+        row.latestStatus && typeof row.latestStatus === 'object'
+          ? (row.latestStatus as SegmentLatestRoadStatusV1)
+          : undefined,
       seasonal_closures: Array.isArray(row.seasonalClosures) ? row.seasonalClosures : [],
       evidence: (row.evidence ?? undefined) as any,
     };

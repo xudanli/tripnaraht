@@ -132,6 +132,7 @@ import { SagaReconciliationCron } from './crons/saga-reconciliation.cron';
 import { SideEffectCleanupAdapterRegistry } from './services/side-effect-cleanup-adapter.registry';
 import { ActionGraphSagaCompilerService } from './services/action-graph-saga-compiler.service';
 import { PhysicalValidatorService } from '../domain/ontology/validator/physical-validator.service';
+import { SelfHealingService } from '../domain/ontology/healer/self-healing.service';
 
 /**
  * Agent Module
@@ -218,6 +219,7 @@ import { PhysicalValidatorService } from '../domain/ontology/validator/physical-
     HardTruthRuleResolverService,
     AgentActionLogService,
     PhysicalValidatorService,
+    SelfHealingService,
     ActionExecutionService, // Action 执行域（preview/commit/rollback）
     AgentActionReconcilerService,
     SagaReconciliationCron,
@@ -273,6 +275,7 @@ import { PhysicalValidatorService } from '../domain/ontology/validator/physical-
     HardTruthRuleResolverService,
     ActionGraphSagaCompilerService,
     PhysicalValidatorService,
+    SelfHealingService,
   ],
 })
 export class AgentModule {

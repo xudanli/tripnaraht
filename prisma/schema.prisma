@@ -210,6 +210,9 @@ model Place {
   address                         String?
   cityId                          Int?
   metadata                        Json?
+  /// Ontology rules for this POI/Place (Layer-1 Physical Domain constraints).
+  /// Stored as JSONB so admin UI can manage rule sets atomically.
+  ontologyRules                   Json?
   physicalMetadata                Json?
   googlePlaceId                   String?                   @unique
   rating                          Float?                    @default(0)
@@ -648,8 +651,59 @@ model Trip {
   TripChecklistStatus    TripChecklistStatus[]
   TripFindingMark        TripFindingMark[]
   TripPackingListItem    TripPackingListItem[]
+  TripSuggestionState    TripSuggestionState[]
 
   @@index([status])
+}
+
+/// 持久化建议状态（用于 AssistantCenter 建议列表/角标）
+model TripSuggestionState {
+  id           String   @id @default(uuid())
+  tripId       String   @map("trip_id")
+  suggestionId String   @map("suggestion_id")
+  /// new | seen | applied | dismissed（与 SuggestionStatus 对齐）
+  status       String   @default("new")
+  firstSeenAt  DateTime? @map("first_seen_at")
+  appliedAt    DateTime? @map("applied_at")
+  dismissedAt  DateTime? @map("dismissed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, suggestionId])
+  @@index([tripId, status])
+  @@map("trip_suggestion_states")
+}
+
+/// Append-only negotiation / confirm snapshots for audit + rollback (no FK to Trip — trip_id is logical).
+model ItineraryRevision {
+  id                     String   @id @default(uuid())
+  tripId                 String?  @map("trip_id")
+  userId                 String?  @map("user_id")
+  parentRevisionId       String?  @map("parent_revision_id")
+  negotiationSessionId   String?  @map("negotiation_session_id")
+  alternativeId          String?  @map("alternative_id")
+  resolutionPatchSummary String?  @map("resolution_patch_summary")
+  snapshot               Json
+  /// BASELINE | CONFIRMED | ROLLBACK (append-only rollback hop).
+  kind                   String   @default("CONFIRMED")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  /// Structured audit delta (V_n → V_{n+1}); unset on BASELINE rows.
+  deltaCostUsd         Float?   @map("delta_cost_usd")
+  deltaTimeMinutes     Int?     @map("delta_time_minutes")
+  interruptedItems     Json?    @map("interrupted_items")
+  resolutionType       String?  @map("resolution_type")
+
+  parent   ItineraryRevision?  @relation("ItineraryRevisionChain", fields: [parentRevisionId], references: [id], onDelete: SetNull)
+  children ItineraryRevision[] @relation("ItineraryRevisionChain")
+
+  @@index([tripId, createdAt])
+  @@index([negotiationSessionId])
+  @@index([parentRevisionId])
+  @@index([tripId, deltaTimeMinutes])
+  @@map("itinerary_revisions")
 }
 
 model TripCollaborator {
@@ -1555,17 +1609,27 @@ model KnowledgeFile {
   id               String   @id @default(uuid()) @db.Uuid
   filename         String   @unique @db.VarChar(255)
   filepath         String   @db.VarChar(500)
+  /// 文档集合：六类 canonical（decision-support | geography | pois | practical | risks | routes）或迁移期旧值
   category         String   @db.VarChar(50)
+  /// 业务子类型 slug（与 category 组合校验）；迁移前可为空
+  subType          String?  @map("sub_type") @db.VarChar(64)
   version          String   @db.VarChar(20)
   language         String   @default("zh-CN") @db.VarChar(10)
   credibilityScore Float    @map("credibility_score")
   dataSources      String[] @map("data_sources")
+  /// 管理端：国家/地区代码（如 IS、CN），可选
+  countryCode      String?  @map("country_code") @db.VarChar(16)
+  /// 管理端：来源说明，可选
+  source           String?  @map("source") @db.VarChar(500)
+  /// 管理端：扩展 JSON（与 RAG Update API metadata 对齐）
+  adminMetadata    Json?    @map("admin_metadata")
   lastUpdated      DateTime @map("last_updated")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
   chunks           Chunk[]
 
   @@index([category])
+  @@index([category, subType])
   @@index([filename])
   @@map("knowledge_files")
 }
@@ -2976,4 +3040,99 @@ model AdminQualityMark {
   @@index([label])
   @@index([createdAt])
   @@map("admin_quality_marks")
+}
+
+/// Physical Domain admin: Budget snapshot per account.
+model PhysicalDomainBudget {
+  accountId String   @id @map("account_id") @db.VarChar(191)
+  currency  String   @default("USD") @db.VarChar(16)
+  total     Float    @default(0)
+  available Float    @default(0)
+  held      Float    @default(0)
+  spent     Float    @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("physical_domain_budgets")
+}
+
+/// Physical Domain admin: Inventory items.
+model PhysicalDomainInventoryItem {
+  id           String   @id @db.VarChar(191)
+  type         String   @db.VarChar(16)
+  price        Float
+  availability String   @default("AVAILABLE") @db.VarChar(16)
+  lockable     Boolean  @default(true)
+  holdExpiresAt DateTime? @map("hold_expires_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([type, availability])
+  @@map("physical_domain_inventory_items")
+}
+
+/// Physical Domain admin: Policy Lab constraint configs.
+model PhysicalDomainConstraintConfig {
+  ruleId    String   @id @map("rule_id") @db.VarChar(191)
+  enabled   Boolean  @default(true)
+  threshold Float?
+  description String? @db.Text
+  params    Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([enabled, updatedAt])
+  @@map("physical_domain_constraint_configs")
+}
+
+/// Physical Domain admin: Data source / fallback configs.
+model PhysicalDomainDataSourceConfig {
+  sourceId         String   @id @map("source_id") @db.VarChar(191)
+  provider         String   @db.VarChar(191)
+  enabled          Boolean  @default(true)
+  baseUrl          String?  @map("base_url") @db.VarChar(1024)
+  fallbackStrategy String?  @map("fallback_strategy") @db.VarChar(191)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([enabled, updatedAt])
+  @@map("physical_domain_data_source_configs")
+}
+
+/// Spatial Domain admin: POI entities with time windows and rules.
+model SpatialDomainPoi {
+  id            String   @id @db.VarChar(191)
+  name          String   @db.VarChar(255)
+  coordinates   Json
+  timeWindows   Json?    @map("time_windows")
+  rules         Json?
+  capacityLimit Int?     @map("capacity_limit")
+  closed        Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([closed, updatedAt])
+  @@map("spatial_domain_pois")
+}
+
+/// Spatial Domain admin: Segment entities linking POIs and travel constraints.
+model SpatialDomainSegment {
+  id               String    @id @db.VarChar(191)
+  fromPoiId        String    @map("from_poi_id") @db.VarChar(191)
+  toPoiId          String    @map("to_poi_id") @db.VarChar(191)
+  segmentType      String    @map("segment_type") @db.VarChar(32)
+  gradient         Json?
+  roadCondition    Json?     @map("road_condition")
+  seasonalClosures Json?     @map("seasonal_closures")
+  rules            Json?
+  evidence         Json?
+  /// Road.is / EnvSyncWorker snapshot (condition, source_url, synced_at, …)
+  latestStatus     Json?     @map("latest_status")
+  lastSyncedAt     DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([fromPoiId, toPoiId])
+  @@index([segmentType, updatedAt])
+  @@map("spatial_domain_segments")
 }

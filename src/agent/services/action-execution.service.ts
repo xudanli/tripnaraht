@@ -7,12 +7,14 @@ import {
   ActionPreviewRequestDto,
   ActionRollbackRequestDto,
   ContextSignatureV12Dto,
+  type SuggestedHealingOptionItemDto,
 } from '../dto/action-execution.dto';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import {
   ACTION_REJECT_REASON_CODES,
   ACTION_REJECT_REASON_MESSAGES,
   ActionRejectReasonCode,
+  HEALING_ONE_CLICK_ACTION_ID,
   TRAVEL_ONTOLOGY_MERGE_POLICY,
 } from '../constants/action-execution.constants';
 import type { Action } from '../interfaces/action.interface';
@@ -37,6 +39,7 @@ import {
   type ActionSeverity,
 } from '../../domain/ontology/validator/physical-validator.constants';
 import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
+import { SelfHealingService } from '../../domain/ontology/healer/self-healing.service';
 import {
   toPhysicalValidationSignable,
   type PhysicalEvaluationResult,
@@ -102,6 +105,7 @@ export class ActionExecutionService {
     @Optional() private readonly moduleRef?: ModuleRef,
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly physicalValidator?: PhysicalValidatorService,
+    @Optional() private readonly selfHealing?: SelfHealingService,
   ) {
     // v1 bootstrap: register built-in side effects when registry is available.
     this.sideEffectRegistry?.register(FinancialHoldSideEffect);
@@ -290,6 +294,10 @@ export class ActionExecutionService {
             const actionName = a.action_name || this.mapActionName(effectiveVerb, a.target_type);
 
             if (routeSeverity === 'INTERRUPT') {
+              const interruptExtras = this.buildSuggestiveHealingEnvelope(
+                physical.violations,
+                gateInput,
+              );
               const resourceSnapshot = await this.buildResourceSnapshotForSignature(actionForPreview);
               const findings = this.physicalPreconditionsFromViolations(physical);
               const assessmentBlocked = { status: 'blocked' as const, findings, shadow_delta: null };
@@ -321,6 +329,7 @@ export class ActionExecutionService {
                 context_signature,
                 context_signature_v2,
                 ...(healingPreviewMeta ?? {}),
+                ...interruptExtras,
               };
             }
 
@@ -636,10 +645,15 @@ export class ActionExecutionService {
         }
       }
       if (physicalAtCommit.blocking) {
+        const healingExtras = this.buildSuggestiveHealingEnvelope(
+          physicalAtCommit.violations,
+          action.action_input as Record<string, unknown>,
+        );
         blockedActions.push(
           this.withRejectedReason(action, ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_BLOCKED, {
             rejected_message: ACTION_REJECT_REASON_MESSAGES.PHYSICAL_VALIDATOR_BLOCKED,
             physical_violations: physicalAtCommit.violations,
+            ...healingExtras,
           } as any),
         );
         rejectedReasonCodes.add(ACTION_REJECT_REASON_CODES.PHYSICAL_VALIDATOR_BLOCKED);
@@ -1666,6 +1680,35 @@ export class ActionExecutionService {
     targetType: 'FLIGHT' | 'HOTEL' | 'ACTIVITY' | 'TRANSPORT' | 'ITINERARY',
   ): string | null {
     return this.actionNameMapping[`${actionType}:${targetType}`] || null;
+  }
+
+  /**
+   * Phase B: attach healing rows when SelfHealingService can derive a follow-up PREVIEW input (e.g. TEMPORAL_SHIFT).
+   */
+  private buildSuggestiveHealingEnvelope(
+    violations: PhysicalViolationItem[],
+    actionInput: Record<string, unknown>,
+  ): {
+    suggested_healing_options?: SuggestedHealingOptionItemDto[];
+    physical_validator_interrupt_mode?: 'INTERRUPT' | 'INTERRUPT_WITH_SUGGESTION';
+  } {
+    if (!this.selfHealing) return {};
+    const raw = this.selfHealing.suggestOptions(violations, actionInput);
+    if (!raw.length) return {};
+    const suggested_healing_options: SuggestedHealingOptionItemDto[] = raw.map((opt) => {
+      const healed =
+        this.selfHealing!.buildHealedActionInput(opt, actionInput) ??
+        ({ ...actionInput } as Record<string, unknown>);
+      return {
+        ...opt,
+        healed_action_input: healed,
+        healing_one_click_action_id: HEALING_ONE_CLICK_ACTION_ID,
+      } as SuggestedHealingOptionItemDto;
+    });
+    return {
+      suggested_healing_options,
+      physical_validator_interrupt_mode: 'INTERRUPT_WITH_SUGGESTION',
+    };
   }
 
   private async runPhysicalGate(
