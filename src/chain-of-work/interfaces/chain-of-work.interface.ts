@@ -15,6 +15,7 @@ import {
   GateResult,
   DecisionLogEntry,
 } from '../../agent/interfaces/trip-plan.interface';
+import type { ExecutionRecoveryKind } from '../execution/execution-recovery-policy.util';
 
 /**
  * 步骤草案
@@ -98,7 +99,7 @@ export interface SkillMapping {
 export interface SubAgentMapping {
   step_id: string;
   sub_agent: SubAgentType;
-  guardian?: GuardianType; // 'ABU' | 'DR_DRE' | 'NEPTUNE'
+  guardian?: GuardianType | null; // 'ABU' | 'DR_DRE' | 'NEPTUNE'
   prompt_template: string;
   output_schema?: any; // 输出 Schema（JSON Schema）
 }
@@ -130,6 +131,17 @@ export interface ExecutionPlan {
 /**
  * 执行结果
  */
+/** Phase B：与 I5 `orchestrator_robustness` / `resolveExecutionRecoveryPlan` 对齐的执行反馈摘要 */
+export interface ExecutionRecoveryFeedback {
+  recovery_kind: ExecutionRecoveryKind;
+  failure_domain?: string;
+  failure_code?: string;
+  orchestrator_step_at_failure?: string;
+  /** 指数退避已执行的重试次数（不含首次尝试） */
+  retry_attempts?: number;
+  reason?: string;
+}
+
 export interface ExecutionResult {
   execution_id: string;
   draft_id: string;
@@ -145,6 +157,8 @@ export interface ExecutionResult {
   total_duration_ms: number;
   total_cost_est_usd: number;
   error_message?: string;
+  /** 当上游传入 I5 分类或执行路径触发恢复策略时填充 */
+  recovery_feedback?: ExecutionRecoveryFeedback;
 }
 
 /**

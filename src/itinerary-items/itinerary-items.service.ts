@@ -2414,10 +2414,11 @@ export class ItineraryItemsService {
       }
 
       if (googleCategories.length > 0 && this.googleMapsService?.isServiceAvailable()) {
+        const googleMaps = this.googleMapsService;
         // 并行执行所有Google API请求，使用Promise.allSettled确保一个失败不影响其他的
         const googleSearchPromises = googleCategories.map(async (googleType) => {
           try {
-            const googleResults = await this.googleMapsService.nearbySearch({
+            const googleResults = await googleMaps.nearbySearch({
               location: { lat, lng },
               radius: radius,
               type: googleType,

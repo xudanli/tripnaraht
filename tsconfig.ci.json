@@ -1,15 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": false,
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/**/*.spec.ts",
-    "scripts",
-    "test",
-    "src/mcp/mcp-skills-server.ts"
-  ]
+  "include": [
+    "src/domain/ontology/validator/**/*.ts",
+    "src/agent/services/action-execution.service.ts",
+    "src/decision/kernel/travel-ontology-constraints.ts",
+    "src/admin/controllers/spatial-domain-admin.controller.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/**/*.spec.ts"]
 }

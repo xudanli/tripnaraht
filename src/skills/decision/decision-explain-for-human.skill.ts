@@ -220,7 +220,7 @@ export class DecisionExplainForHumanSkill implements Skill<DecisionExplainForHum
 
     // 从 REJECT 和 HARD violation 中提取高风险
     const highRisks = logs
-      .filter(log => log.action === 'REJECT' || log.reasonCodes?.some(code => code.includes('HARD')))
+      .filter(log => log.action === 'REJECT' || log.reasonCodes?.some((code: string) => code.includes('HARD')))
       .slice(0, 5)
       .map(log => ({
         risk: log.explanation,

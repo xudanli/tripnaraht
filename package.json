@@ -7,7 +7,7 @@
     "build": "nest build && bash scripts/post-build.sh",
     "start": "node dist/main",
     "typecheck:src": "tsc --noEmit -p tsconfig.build.json",
-    "check:core": "tsc --project tsconfig.ci.json --noEmit",
+    "check:physical": "tsc --project tsconfig.ci.json --noEmit",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings 0",
     "lint:p1-decision": "eslint \"src/decision/kernel/**/*.ts\" \"src/trips/decision/**/*.ts\" --max-warnings 0",
     "lint:p1-agent": "eslint \"src/agent/**/*.ts\" --max-warnings 0",

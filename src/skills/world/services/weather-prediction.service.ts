@@ -130,6 +130,31 @@ export class WeatherPredictionService {
   }
 
   /**
+   * 天气源不可用或单日本身超时：继续下一天只会重复踩适配器链，拖垮 RESEARCH / 状态机预算。
+   */
+  private shouldAbortWeatherDayLoop(error: unknown): boolean {
+    const msg = String((error as { message?: string })?.message ?? error ?? '');
+    const lower = msg.toLowerCase();
+    if (msg.includes('所有天气适配器都失败')) return true;
+    if (lower.includes('invalid api key') || lower.includes(' 401') || msg.includes('401')) return true;
+    if (msg.includes('未配置')) return true;
+    if (lower.includes('weatherapi_api_key')) return true;
+    if (lower.includes('certificate has expired') || lower.includes('ssl 证书')) return true;
+    if (lower.includes('day_timeout_after')) return true;
+    return false;
+  }
+
+  private weatherDayTimeoutMs(): number {
+    const n = Number(process.env.DECISION_OS_WEATHER_DAY_TIMEOUT_MS ?? '5000');
+    return Number.isFinite(n) ? Math.min(25_000, Math.max(2000, n)) : 5000;
+  }
+
+  private weatherFetchBudgetMs(): number {
+    const n = Number(process.env.DECISION_OS_WEATHER_FETCH_BUDGET_MS ?? '10000');
+    return Number.isFinite(n) ? Math.min(90_000, Math.max(4000, n)) : 10_000;
+  }
+
+  /**
    * 从API获取预测（使用WeatherSearchSkill）
    */
   private async fetchPredictionsFromAPI(
@@ -146,17 +171,36 @@ export class WeatherPredictionService {
             (1000 * 60 * 60 * 24),
         ) + 1;
 
-        // 为每一天获取天气预报
-        for (let day = 0; day < Math.min(days, 7); day++) {
+        const maxDays = Math.min(days, 7);
+        const dayTimeoutMs = this.weatherDayTimeoutMs();
+        const loopBudgetMs = this.weatherFetchBudgetMs();
+        const loopStart = Date.now();
+
+        // 为每一天获取天气预报（带单日超时 + 总预算；全局性失败时提前结束，避免状态机超时）
+        for (let day = 0; day < maxDays; day++) {
+          if (Date.now() - loopStart > loopBudgetMs) {
+            this.logger.warn(
+              `[WeatherPrediction] 天气拉取总预算用尽 (${loopBudgetMs}ms)，已取 ${predictions.length}/${maxDays} 天，停止`,
+            );
+            break;
+          }
           const date = new Date(dateRange.start);
           date.setDate(date.getDate() + day);
 
           try {
-            const weatherResult = await this.weatherSearchSkill.execute({
-              lat: location.lat,
-              lng: location.lng,
-              date: date.toISOString().split('T')[0],
-            });
+            const weatherResult = await Promise.race([
+              this.weatherSearchSkill.execute({
+                lat: location.lat,
+                lng: location.lng,
+                date: date.toISOString().split('T')[0],
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`weather.search:day_timeout_after_${dayTimeoutMs}ms`)),
+                  dayTimeoutMs,
+                ),
+              ),
+            ]);
 
             const weather = weatherResult.weather;
             const prediction: WeatherPrediction = {
@@ -179,7 +223,12 @@ export class WeatherPredictionService {
             this.logger.warn(
               `获取第${day + 1}天天气预报失败: ${error.message}`,
             );
-            // 继续处理下一天
+            if (this.shouldAbortWeatherDayLoop(error)) {
+              this.logger.warn(
+                `[WeatherPrediction] 判定为不可恢复或单日超时，跳过后续 ${maxDays - day - 1} 天以避免拖垮编排`,
+              );
+              break;
+            }
           }
         }
 
@@ -409,10 +458,13 @@ export class WeatherPredictionService {
     }
 
     // 能见度影响（<1km 降低可达性）
-    if (prediction.visibility < 1000) {
-      score -= 0.4;
-    } else if (prediction.visibility < 5000) {
-      score -= 0.2;
+    const visibility = prediction.visibility;
+    if (visibility !== undefined) {
+      if (visibility < 1000) {
+        score -= 0.4;
+      } else if (visibility < 5000) {
+        score -= 0.2;
+      }
     }
 
     // 温度影响（<0°C 降低可达性）

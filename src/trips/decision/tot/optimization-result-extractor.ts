@@ -145,9 +145,11 @@ export function extractDiagnostics(
   const robustness = optimizationResult.robustness;
 
   const criticalWindows = diagnostics?.critical_windows ?? [];
-  const minSlack = robustness?.top3_min_slack_nodes?.length > 0
-    ? Math.min(...robustness.top3_min_slack_nodes.map(n => n.slack_min))
-    : 60; // 默认值
+  const slackNodes = robustness?.top3_min_slack_nodes;
+  const minSlack =
+    slackNodes && slackNodes.length > 0
+      ? Math.min(...slackNodes.map(n => n.slack_min))
+      : 60; // 默认值
 
   return {
     criticalWindows,

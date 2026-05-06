@@ -30,6 +30,7 @@ import { DecisionContractCapturerService } from './decision-contract-capturer.se
 import type { AgentService } from './agent.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { physicalGateFingerprint } from '../../domain/ontology/validator/physical-validator.fingerprint';
+import { PHYSICAL_VALIDATOR_VERSION } from '../../domain/ontology/validator/physical-validator.constants';
 import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
 import { toPhysicalValidationSignable, type PhysicalEvaluationResult } from '../../domain/ontology/validator/physical-validator.types';
 
@@ -556,8 +557,9 @@ export class ActionExecutionService {
         if (echoedPv !== PhysicalValidatorService.VALIDATOR_VERSION) {
           const expectedVersion = PhysicalValidatorService.VALIDATOR_VERSION;
           const receivedVersion = echoedPv || null;
-          this.logger.warn(
+          this.logger.error(
             `[ActionExecution] PHYSICAL_VALIDATOR_VERSION_MISMATCH action_id=${action.action_id} ` +
+              `(current: ${PHYSICAL_VALIDATOR_VERSION}, requested: ${String((action as any).physical_validator_version ?? '') || '(unset)'}) ` +
               `expected_version=${expectedVersion} received_version=${receivedVersion ?? '(missing)'}`,
           );
           this.eventTelemetry?.recordEvent({

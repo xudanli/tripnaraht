@@ -67,7 +67,7 @@ export class ChainOfWorkService {
         if (['INTAKE', 'GATE_EVAL', 'PLAN_GEN', 'VERIFY', 'REPAIR', 'NARRATE'].includes(step.step_type)) {
           const subAgentMapping = await this.subAgentMapping.mapStepToSubAgent(step, draft.orchestrator_state);
           step.sub_agent = subAgentMapping.sub_agent;
-          step.guardian = subAgentMapping.guardian;
+          step.guardian = subAgentMapping.guardian ?? undefined;
         }
       }
       

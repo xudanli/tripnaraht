@@ -29,7 +29,7 @@ export interface ObjectiveWeights {
   preferViewpoints?: number; // 偏好观景点权重
   preferHotSpring?: number; // 偏好温泉权重
   preferPhotography?: number; // 偏好摄影权重
-  [key: string]: number; // 其他偏好权重
+  [key: string]: number | undefined; // 其他偏好权重
 }
 
 /**
@@ -106,6 +106,50 @@ export interface ItinerarySkeleton {
   dailyPace?: string; // 每日节奏（LIGHT/MODERATE/INTENSE）
   restDaysRequired?: number[]; // 必须休息的日期（从1开始）
   [key: string]: any; // 允许其他字段
+}
+
+/**
+ * Segment facts (v1) stored under RouteDirection.metadata.segment_facts_v1.
+ *
+ * This is a "corridor-level" representation used to inject Layer-1 line constraints
+ * into PhysicalRealityModel.roadStates during world.buildContext.
+ */
+export interface SegmentFactV1 {
+  /** Road network id (e.g., "F208", "Ring Road"). */
+  roadId: string;
+  /** Topology: edge from/to POI. */
+  fromPoiId?: string;
+  toPoiId?: string;
+  /** Directionality of this segment in graph topology. */
+  direction?: 'BIDIRECTIONAL' | 'ONE_WAY';
+  /** Connectivity status (dynamic route availability). */
+  connectivity?: {
+    isConnected: boolean;
+    reason?: string;
+  };
+  /** Dynamic traversal cost baseline. */
+  baseDurationMin?: number;
+  estimatedSpeedFactor?: number;
+  /** Hard access constraints. */
+  requires4x4?: boolean;
+  requiresPermit?: boolean;
+  /** Surface hint for routing/risk explanation. */
+  surfaceType?: 'paved' | 'gravel' | 'unpaved' | 'f-road' | 'snow' | 'ice' | string;
+  /** Segment type for topology / risk matrix. */
+  segmentType?: 'HIGHWAY' | 'F_ROAD' | 'MOUNTAIN' | 'CITY_ROAD' | string;
+  /** Seasonal closure windows (inclusive; supports wrap-around). */
+  seasonalClosures?: Array<{
+    startMonth: number; // 1-12
+    endMonth: number; // 1-12
+    reason?: string;
+  }>;
+  /** Human-readable hazard labels for evidence + admin QA. */
+  hazards?: string[];
+  /** Confidence score of this fact (0..1). */
+  confidence?: number;
+  /** Evidence metadata. */
+  updatedAt?: string; // ISO
+  source?: string;
 }
 
 /**

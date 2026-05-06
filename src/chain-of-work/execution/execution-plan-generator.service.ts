@@ -20,7 +20,8 @@ export class ExecutionPlanGeneratorService {
       id: step.id,
       step_type: step.step_type,
       sub_agent: step.sub_agent,
-      skills: step.skills?.map(s => s.skill_name) || [],
+      skills:
+        step.skills?.map(s => (typeof s === 'string' ? s : s.skill_name)) || [],
       input_mapping: {},
       output_schema: {},
       dependencies: this.calculateDependencies(step, draft.steps),
